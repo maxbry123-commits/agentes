@@ -1,0 +1,27 @@
+name: Free disk space
+description: Remove unused files to free-up disk space
+runs:
+  using: composite
+  steps:
+    - name: Install rmz
+      uses: cerbos/actions/install-tools@69bd18cfe7152a480728c2617569acfcb3fcc3b7 # main
+      with:
+        tools: rmz
+
+    - name: Remove unused files
+      shell: bash
+      run: |
+        df -h
+        sudo env PATH="${PATH}" rmz -f \
+          /opt/az \
+          /opt/ghc \
+          /opt/google \
+          /opt/hostedtoolcache \
+          /opt/microsoft \
+          /usr/local/julia* \
+          /usr/local/lib/android \
+          /usr/local/share/powershell \
+          /usr/share/dotnet
+        sudo docker system prune --all --force || true
+        sudo docker builder prune --all --force || true
+        df -h

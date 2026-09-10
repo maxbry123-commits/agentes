@@ -1,0 +1,70 @@
+name: Mirror release tags
+
+# This workflow mirrors the core `v*` tag to the cedar-spec and
+# cedar-integration-tests repositories. Pre-built `cedar` CLI binaries are
+# produced by the separate `cedar-policy-cli-release.yml` workflow (managed
+# by cargo-dist) on `cedar-policy-cli-v*` tags.
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+# Declare default permissions as read only.
+# Since we use the GitHub App token to create the tags/references,
+# we do not need additional permissions for the "create_related_repo_tags" job.
+permissions: read-all
+
+jobs:
+  create_related_repo_tags:
+    runs-on: ubuntu-latest
+    # Check if APP_ID has been set
+    if: vars.APP_ID
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: cedar-spec,cedar-integration-tests
+
+      - name: Create tag in cedar-spec
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            const version = tag.replace('v', '');
+            const [major, minor, _] = version.split('.');
+            const releaseBranch = `release/${major}.${minor}.x`;
+            await github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo: 'cedar-spec',
+              ref: `refs/tags/${tag}`,
+              sha: (await github.rest.repos.getBranch({
+                owner: context.repo.owner,
+                repo: 'cedar-spec',
+                branch: releaseBranch
+              })).data.commit.sha
+            });
+
+      - name: Create tag in cedar-integration-tests
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            const version = tag.replace('v', '');
+            const [major, minor, _] = version.split('.');
+            const releaseBranch = `release/${major}.${minor}.x`;
+            await github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo: 'cedar-integration-tests',
+              ref: `refs/tags/${tag}`,
+              sha: (await github.rest.repos.getBranch({
+                owner: context.repo.owner,
+                repo: 'cedar-integration-tests',
+                branch: releaseBranch
+              })).data.commit.sha
+            });

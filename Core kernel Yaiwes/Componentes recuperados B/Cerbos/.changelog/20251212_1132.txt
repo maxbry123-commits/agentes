@@ -1,3 +1,0 @@
-type:fix
-Isolate role policy restrictions in query planner
-Fixes a regression introduced as a result of fixing how role policy effects are intersected for principals with multiple roles

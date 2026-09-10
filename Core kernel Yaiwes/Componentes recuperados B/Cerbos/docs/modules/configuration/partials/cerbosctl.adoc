@@ -1,3 +1,0 @@
-
-TIP: The xref:cli:cerbosctl.adoc[`cerbosctl` utility] is a handy way to interact with the Admin API and supports loading policies through the xref:cli:cerbosctl.adoc#put[built-in `put` command].
-

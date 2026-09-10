@@ -1,0 +1,492 @@
+import {
+  ApiCliSkillDeleteResponseSchema,
+  ApiCliTelemetryInstallResponseSchema,
+  CliTelemetryInstallRequestSchema,
+  CliPublishRequestSchema,
+  CliSkillDeleteRequestSchema,
+  parseArk,
+} from "clawhub-schema";
+import { api, internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
+import type { ActionCtx } from "./_generated/server";
+import { httpAction } from "./functions";
+import { ambiguousSkillSlugMessage } from "./httpApiV1/shared";
+import { requireApiTokenUser, requirePackagePublishAuth } from "./lib/apiTokenAuth";
+import { serializeCanonicalSkillSearchResults } from "./lib/canonicalSkillSearchResponse";
+import { corsHeaders, mergeHeaders } from "./lib/httpHeaders";
+import { applyRateLimit } from "./lib/httpRateLimit";
+import { parseBooleanQueryParam, resolveBooleanQueryParam } from "./lib/httpUtils";
+import { publishVersionForUser } from "./skills";
+
+const LEGACY_TELEMETRY_BATCH_SIZE = 100;
+const MAX_LEGACY_TELEMETRY_SKILLS = 5_000;
+
+type GetBySlugResult = {
+  skill: {
+    _id: Id<"skills">;
+    slug: string;
+    displayName: string;
+    summary?: string;
+    tags: Record<string, string>;
+    stats: unknown;
+    createdAt: number;
+    updatedAt: number;
+  } | null;
+  latestVersion: { version: string; createdAt: number; changelog: string } | null;
+  owner: { handle?: string; displayName?: string; image?: string } | null;
+  ambiguous?: boolean;
+} | null;
+
+type ResolveVersionResult = {
+  match: { version: string } | null;
+  latestVersion: { version: string } | null;
+  ambiguous?: boolean;
+} | null;
+
+async function searchSkillsHandler(ctx: ActionCtx, request: Request) {
+  const url = new URL(request.url);
+  const query = url.searchParams.get("q")?.trim() ?? "";
+  const limit = toOptionalNumber(url.searchParams.get("limit"));
+  const approvedOnly = parseBooleanQueryParam(url.searchParams.get("approvedOnly"));
+  const highlightedOnly =
+    parseBooleanQueryParam(url.searchParams.get("highlightedOnly")) || approvedOnly;
+  const nonSuspiciousOnly = resolveBooleanQueryParam(
+    url.searchParams.get("nonSuspiciousOnly"),
+    url.searchParams.get("nonSuspicious"),
+  );
+
+  if (!query) return json({ results: [] });
+
+  const results = (await ctx.runAction(api.search.searchSkills, {
+    query,
+    limit,
+    highlightedOnly: highlightedOnly || undefined,
+    nonSuspiciousOnly: nonSuspiciousOnly || undefined,
+  })) as unknown[];
+
+  return json({ results: serializeCanonicalSkillSearchResults(results) });
+}
+
+export const searchSkillsHttp = httpAction(searchSkillsHandler);
+
+async function getSkillHandler(ctx: ActionCtx, request: Request) {
+  const url = new URL(request.url);
+  const slug = url.searchParams.get("slug")?.trim().toLowerCase();
+  const ownerHandle =
+    (url.searchParams.get("ownerHandle") ?? url.searchParams.get("owner"))
+      ?.trim()
+      .replace(/^@+/, "") || undefined;
+  if (!slug) return text("Missing slug", 400);
+
+  const result = (await ctx.runQuery(api.skills.getBySlug, {
+    slug,
+    ...(ownerHandle ? { ownerHandle } : {}),
+  })) as GetBySlugResult;
+  if (!result?.skill) {
+    return result?.ambiguous
+      ? text(
+          ambiguousSkillSlugMessage(
+            slug,
+            `/api/skill?slug=${encodeURIComponent(slug)}&ownerHandle=<owner>`,
+          ),
+          409,
+        )
+      : text("Skill not found", 404);
+  }
+
+  return json({
+    skill: {
+      slug: result.skill.slug,
+      displayName: result.skill.displayName,
+      summary: result.skill.summary ?? null,
+      tags: result.skill.tags,
+      stats: result.skill.stats,
+      createdAt: result.skill.createdAt,
+      updatedAt: result.skill.updatedAt,
+    },
+    latestVersion: result.latestVersion
+      ? {
+          version: result.latestVersion.version,
+          createdAt: result.latestVersion.createdAt,
+          changelog: result.latestVersion.changelog,
+        }
+      : null,
+    owner: result.owner
+      ? {
+          handle: result.owner.handle ?? null,
+          displayName: result.owner.displayName ?? null,
+          image: result.owner.image ?? null,
+        }
+      : null,
+  });
+}
+
+export const getSkillHttp = httpAction(getSkillHandler);
+
+async function resolveSkillVersionHandler(ctx: ActionCtx, request: Request) {
+  const url = new URL(request.url);
+  const slug = url.searchParams.get("slug")?.trim().toLowerCase();
+  const ownerHandle =
+    (url.searchParams.get("ownerHandle") ?? url.searchParams.get("owner"))
+      ?.trim()
+      .replace(/^@+/, "") || undefined;
+  const hash = url.searchParams.get("hash")?.trim().toLowerCase();
+  if (!slug || !hash) return text("Missing slug or hash", 400);
+  if (!/^[a-f0-9]{64}$/.test(hash)) return text("Invalid hash", 400);
+
+  const resolved = (await ctx.runQuery(api.skills.resolveVersionByHash, {
+    slug,
+    hash,
+    ...(ownerHandle ? { ownerHandle } : {}),
+  })) as ResolveVersionResult;
+  if (!resolved) return text("Skill not found", 404);
+  if (resolved.ambiguous) {
+    return text(
+      ambiguousSkillSlugMessage(
+        slug,
+        `/api/skill/resolve?slug=${encodeURIComponent(slug)}&ownerHandle=<owner>&hash=${hash}`,
+      ),
+      409,
+    );
+  }
+
+  return json({ slug, match: resolved.match, latestVersion: resolved.latestVersion });
+}
+
+export const resolveSkillVersionHttp = httpAction(resolveSkillVersionHandler);
+
+async function cliWhoamiHandler(ctx: ActionCtx, request: Request) {
+  try {
+    const { user } = await requireApiTokenUser(ctx, request);
+    return json({
+      user: {
+        handle: user.handle ?? null,
+        displayName: user.displayName ?? null,
+        image: user.image ?? null,
+      },
+    });
+  } catch (error) {
+    return text(formatAuthFailure(error), 401);
+  }
+}
+
+export const cliWhoamiHttp = httpAction(cliWhoamiHandler);
+
+async function cliUploadUrlHandler(ctx: ActionCtx, request: Request) {
+  try {
+    const auth = await requirePackagePublishAuth(ctx, request);
+    const upload =
+      auth.kind === "user"
+        ? await ctx.runMutation(internal.uploads.createPackagePublishUploadForUserInternal, {
+            userId: auth.userId,
+          })
+        : await ctx.runMutation(internal.uploads.createPackagePublishUploadForTokenInternal, {
+            publishTokenId: auth.publishToken._id,
+          });
+    return json(upload);
+  } catch (error) {
+    return text(formatAuthFailure(error), 401);
+  }
+}
+
+export const cliUploadUrlHttp = httpAction(cliUploadUrlHandler);
+
+async function cliPublishHandler(ctx: ActionCtx, request: Request) {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return text("Invalid JSON", 400);
+  }
+
+  try {
+    const { userId } = await requireApiTokenUser(ctx, request);
+    const args = parsePublishBody(body);
+    if (!hasAcceptedLegacyLicenseTerms(args.acceptLicenseTerms)) {
+      return text("MIT-0 license terms must be accepted to publish skills", 400);
+    }
+    const { ownerHandle, sourceOwnerHandle, migrateOwner, ...publishPayload } = args;
+    const target = ownerHandle
+      ? ((await ctx.runMutation(internal.publishers.resolvePublishTargetForUserInternal, {
+          actorUserId: userId,
+          ownerHandle,
+          minimumRole: "publisher",
+        })) as { publisherId: Id<"publishers"> })
+      : null;
+    const source =
+      target && migrateOwner === true && sourceOwnerHandle && sourceOwnerHandle !== ownerHandle
+        ? ((await ctx.runMutation(internal.publishers.resolvePublishTargetForUserInternal, {
+            actorUserId: userId,
+            ownerHandle: sourceOwnerHandle,
+            minimumRole: "publisher",
+          })) as { publisherId: Id<"publishers"> })
+        : null;
+    const shouldMigrateOwner = Boolean(target && source);
+    const result = await publishVersionForUser(ctx, userId, publishPayload, {
+      ...(target ? { ownerPublisherId: target.publisherId } : {}),
+      ...(source ? { sourceOwnerPublisherId: source.publisherId } : {}),
+      ...(shouldMigrateOwner ? { migrateOwner: true } : {}),
+    });
+    return json({ ok: true, ...result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Publish failed";
+    if (message.toLowerCase().includes("unauthorized")) return text(formatAuthFailure(error), 401);
+    return text(message, 400);
+  }
+}
+
+function hasAcceptedLegacyLicenseTerms(acceptLicenseTerms: boolean | undefined) {
+  return acceptLicenseTerms === true;
+}
+
+export const cliPublishHttp = httpAction(cliPublishHandler);
+
+async function cliSkillDeleteHandler(ctx: ActionCtx, request: Request, deleted: boolean) {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return text("Invalid JSON", 400);
+  }
+
+  try {
+    const { userId } = await requireApiTokenUser(ctx, request);
+    if (
+      body !== null &&
+      typeof body === "object" &&
+      !Array.isArray(body) &&
+      Object.prototype.hasOwnProperty.call(body, "version")
+    ) {
+      return text(
+        "Legacy skill delete does not support versions; use the version-scoped v1 endpoint.",
+        400,
+      );
+    }
+    const args = parseArk(CliSkillDeleteRequestSchema, body, "Delete payload");
+    await ctx.runMutation(internal.skills.setSkillSoftDeletedInternal, {
+      userId,
+      slug: args.slug,
+      deleted,
+      reason: args.reason,
+    });
+    const ok = parseArk(ApiCliSkillDeleteResponseSchema, { ok: true }, "Delete response");
+    return json(ok);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Delete failed";
+    if (message.toLowerCase().includes("unauthorized")) return text(formatAuthFailure(error), 401);
+    return text(message, 400);
+  }
+}
+
+export const cliSkillDeleteHttp = httpAction((ctx, request) =>
+  cliSkillDeleteHandler(ctx, request, true),
+);
+export const cliSkillUndeleteHttp = httpAction((ctx, request) =>
+  cliSkillDeleteHandler(ctx, request, false),
+);
+
+async function cliTelemetryInstallHandler(ctx: ActionCtx, request: Request) {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return text("Invalid JSON", 400);
+  }
+
+  try {
+    const { userId } = await requireApiTokenUser(ctx, request);
+    const args = parseArk(CliTelemetryInstallRequestSchema, body, "Install telemetry payload");
+    if ("roots" in args) {
+      const skillCount = args.roots.reduce((total, root) => total + root.skills.length, 0);
+      if (skillCount > MAX_LEGACY_TELEMETRY_SKILLS) {
+        throw new Error(
+          `Legacy install telemetry supports at most ${MAX_LEGACY_TELEMETRY_SKILLS} skills`,
+        );
+      }
+      // Legacy snapshots are presence-only so stale or partial reports cannot deactivate installs.
+      for (const root of args.roots) {
+        for (let offset = 0; offset < root.skills.length; offset += LEGACY_TELEMETRY_BATCH_SIZE) {
+          await ctx.runMutation(internal.telemetry.reportCliLegacyInstallBatchInternal, {
+            userId,
+            skills: root.skills
+              .slice(offset, offset + LEGACY_TELEMETRY_BATCH_SIZE)
+              .map((skill) => ({
+                slug: skill.slug,
+                version: skill.version ?? undefined,
+              })),
+          });
+        }
+      }
+    } else if (args.event === "plugin_install") {
+      await ctx.runMutation(internal.telemetry.reportCliPluginInstallInternal, {
+        userId,
+        packageName: args.packageName,
+        version: args.version,
+      });
+    } else {
+      await ctx.runMutation(internal.telemetry.reportCliInstallInternal, {
+        userId,
+        slug: args.slug,
+        ownerHandle: args.ownerHandle,
+        sourceRef: args.sourceRef,
+        sourceKind: args.sourceKind,
+        sourceRepository: args.sourceRepository,
+        sourcePath: args.sourcePath,
+        sourceUrl: args.sourceUrl,
+        canonicalRef: args.canonicalRef,
+        clawhubScan: args.clawhubScan,
+        trustLabel: args.trustLabel,
+        version: args.version,
+      });
+    }
+    const ok = parseArk(ApiCliTelemetryInstallResponseSchema, { ok: true }, "Telemetry response");
+    return json(ok);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Telemetry failed";
+    if (message.toLowerCase().includes("unauthorized")) return text(formatAuthFailure(error), 401);
+    return text(message, 400);
+  }
+}
+
+export const cliTelemetryInstallHttp = httpAction(cliTelemetryInstallHandler);
+
+async function cliDeviceCodeHandler(ctx: ActionCtx, request: Request) {
+  if (request.method !== "POST") return text("Method not allowed", 405);
+  const rate = await applyRateLimit(ctx, request, "write");
+  if (!rate.ok) return rate.response;
+
+  const body = (await request.json().catch(() => ({}))) as {
+    scope?: unknown;
+    label?: unknown;
+    site_url?: unknown;
+  };
+  const result = await ctx.runMutation(internal.cliDeviceAuth.createInternal, {
+    scope: typeof body.scope === "string" ? body.scope : undefined,
+    label: typeof body.label === "string" ? body.label : undefined,
+    siteUrl: typeof body.site_url === "string" ? body.site_url : undefined,
+  });
+  return json(result, 200, rate.headers);
+}
+
+export const cliDeviceCodeHttp = httpAction(cliDeviceCodeHandler);
+
+async function cliDeviceTokenHandler(ctx: ActionCtx, request: Request) {
+  if (request.method !== "POST") return text("Method not allowed", 405);
+  const rate = await applyRateLimit(ctx, request, "write");
+  if (!rate.ok) return rate.response;
+
+  const body = (await request.json().catch(() => null)) as {
+    device_code?: unknown;
+    grant_type?: unknown;
+  } | null;
+  const deviceCode = typeof body?.device_code === "string" ? body.device_code.trim() : "";
+  const grantType = typeof body?.grant_type === "string" ? body.grant_type.trim() : "";
+  if (!deviceCode) {
+    return json(
+      { error: "invalid_request", error_description: "device_code required" },
+      400,
+      rate.headers,
+    );
+  }
+  if (grantType !== "urn:ietf:params:oauth:grant-type:device_code") {
+    return json(
+      { error: "unsupported_grant_type", error_description: "device_code grant required" },
+      400,
+      rate.headers,
+    );
+  }
+
+  const result = await ctx.runMutation(internal.cliDeviceAuth.pollInternal, { deviceCode });
+  if ("access_token" in result) return json(result, 200, rate.headers);
+  const status = result.error === "authorization_pending" ? 428 : 400;
+  return json(result, status, rate.headers);
+}
+
+export const cliDeviceTokenHttp = httpAction(cliDeviceTokenHandler);
+
+function json(value: unknown, status = 200, headers?: HeadersInit) {
+  return new Response(JSON.stringify(value), {
+    status,
+    headers: mergeHeaders(
+      {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+      },
+      headers,
+      corsHeaders(),
+    ),
+  });
+}
+
+function text(value: string, status: number, headers?: HeadersInit) {
+  return new Response(value, {
+    status,
+    headers: mergeHeaders(
+      {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-store",
+      },
+      headers,
+      corsHeaders(),
+    ),
+  });
+}
+
+function formatAuthFailure(error: unknown) {
+  const message = error instanceof Error ? error.message.trim() : "";
+  if (!message || /^unauthorized$/i.test(message)) return "Unauthorized";
+  return message.replace(/^ConvexError:\s*/i, "").trim() || "Unauthorized";
+}
+
+function toOptionalNumber(value: string | null) {
+  if (!value) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parsePublishBody(body: unknown) {
+  const parsed = parseArk(CliPublishRequestSchema, body, "Publish payload");
+  if (parsed.files.length === 0) throw new Error("files required");
+  const tags = parsed.tags && parsed.tags.length > 0 ? parsed.tags : undefined;
+  return {
+    slug: parsed.slug,
+    displayName: parsed.displayName,
+    ownerHandle: parsed.ownerHandle?.trim().replace(/^@+/, "") || undefined,
+    sourceOwnerHandle: parsed.sourceOwnerHandle?.trim().replace(/^@+/, "") || undefined,
+    migrateOwner: parsed.migrateOwner === true ? true : undefined,
+    version: parsed.version,
+    changelog: parsed.changelog,
+    acceptLicenseTerms: parsed.acceptLicenseTerms,
+    tags,
+    source: parsed.source ?? undefined,
+    forkOf: parsed.forkOf
+      ? {
+          slug: parsed.forkOf.slug,
+          ownerHandle: parsed.forkOf.ownerHandle?.trim().replace(/^@+/, "") || undefined,
+          version: parsed.forkOf.version ?? undefined,
+        }
+      : undefined,
+    files: parsed.files.map((file) => ({
+      ...file,
+      storageId: file.storageId as Id<"_storage">,
+    })),
+  };
+}
+
+export const __test = {
+  parsePublishBody,
+  toOptionalNumber,
+};
+
+export const __handlers = {
+  searchSkillsHandler,
+  getSkillHandler,
+  resolveSkillVersionHandler,
+  cliWhoamiHandler,
+  cliUploadUrlHandler,
+  cliPublishHandler,
+  cliSkillDeleteHandler,
+  cliTelemetryInstallHandler,
+  cliDeviceCodeHandler,
+  cliDeviceTokenHandler,
+};

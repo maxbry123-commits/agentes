@@ -1,7 +1,0 @@
----
-apiVersion: "api.cerbos.dev/v1"
-derivedRoles:
-  name: some_derived_roles
-  definitions:
-    - name: admin
-      parentRoles: ["admin"]

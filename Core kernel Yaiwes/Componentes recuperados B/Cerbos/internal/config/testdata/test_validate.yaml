@@ -1,4 +1,0 @@
----
-server:
-  listenAddr: ":9999"
-  dataDir: "xxx"

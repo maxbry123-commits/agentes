@@ -1,7 +1,0 @@
-entity User;
-entity Group;
-entity Document = {
-    "owner": User,
-    "editors": Set<User>,
-    "group": Group
-};

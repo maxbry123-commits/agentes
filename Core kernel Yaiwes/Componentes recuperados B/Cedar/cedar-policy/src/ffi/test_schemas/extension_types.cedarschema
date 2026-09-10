@@ -1,6 +1,0 @@
-entity User = {
-    "a": String,
-    "id": Long,
-    "ip": ipaddr,
-    "balance": decimal
-};

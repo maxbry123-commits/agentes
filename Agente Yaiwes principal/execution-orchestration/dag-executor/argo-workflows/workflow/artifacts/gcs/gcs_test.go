@@ -1,0 +1,73 @@
+package gcs
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"net/url"
+	"runtime"
+	"testing"
+
+	"google.golang.org/api/googleapi"
+
+	argoErrors "github.com/argoproj/argo-workflows/v4/errors"
+	"github.com/argoproj/argo-workflows/v4/util/logging"
+)
+
+type tlsHandshakeTimeoutError struct{}
+
+func (tlsHandshakeTimeoutError) Temporary() bool { return true }
+func (tlsHandshakeTimeoutError) Error() string   { return "net/http: TLS handshake timeout" }
+
+func TestIsTransientGCSErr(t *testing.T) {
+	ctx := logging.TestContext(t.Context())
+
+	for _, test := range []struct {
+		err         error
+		shouldretry bool
+	}{
+		{&googleapi.Error{Code: 0}, false},
+		{argoErrors.New(argoErrors.CodeNotFound, "no results for key: foo/bar"), false},
+		{&googleapi.Error{Code: 429}, true},
+		{&googleapi.Error{Code: 504}, true},
+		{&googleapi.Error{Code: 518}, true},
+		{&googleapi.Error{Code: 599}, true},
+		{&url.Error{Op: "blah", URL: "blah", Err: errors.New("connection refused")}, true},
+		{&url.Error{Op: "blah", URL: "blah", Err: errors.New("compute: Received 504 `Gateway Timeout\n`")}, true},
+		{&url.Error{Op: "blah", URL: "blah", Err: errors.New("http2: client connection lost")}, true},
+		{io.ErrUnexpectedEOF, true},
+		{&tlsHandshakeTimeoutError{}, true},
+		{fmt.Errorf("Test unwrapping of a temporary error: %w", &googleapi.Error{Code: 500}), true},
+		{fmt.Errorf("Test unwrapping of a non-retriable error: %w", &googleapi.Error{Code: 400}), false},
+		{fmt.Errorf("writer close: Post \"https://storage.googleapis.com/upload/storage/v1/b/bucket/o?alt=json&name=test.json&uploadType=multipart\": compute: Received 504 `Gateway Timeout\n`"), true},
+		{fmt.Errorf("http2: client connection lost"), true},
+	} {
+		got := isTransientGCSErr(ctx, test.err)
+		if got != test.shouldretry {
+			t.Errorf("%+v: got %v, want %v", test, got, test.shouldretry)
+		}
+	}
+}
+
+func TestNormalizeGCSKey(t *testing.T) {
+	// GCS object names always use "/"; normalizeGCSKey only converts "\" to "/" on
+	// Windows, since "\" is a valid filename character on other OSes.
+	for _, test := range []struct {
+		key      string
+		expected string
+	}{
+		{"utils\\p4", "utils/p4"},
+		{"some\\prefix\\some-file.exe", "some/prefix/some-file.exe"},
+		{"some/prefix/some-file.exe", "some/prefix/some-file.exe"},
+		{"no-separators", "no-separators"},
+	} {
+		expected := test.expected
+		if runtime.GOOS != "windows" {
+			expected = test.key
+		}
+		got := normalizeGCSKey(test.key)
+		if got != expected {
+			t.Errorf("normalizeGCSKey(%q): got %q, want %q", test.key, got, expected)
+		}
+	}
+}

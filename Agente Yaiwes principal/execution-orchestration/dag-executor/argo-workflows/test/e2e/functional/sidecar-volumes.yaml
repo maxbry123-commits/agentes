@@ -1,0 +1,43 @@
+# Verifies sidecars can reference/use volumeClaimTemplates
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: sidecar-with-volumes-
+spec:
+  entrypoint: sidecar-with-volumes
+  volumeClaimTemplates:
+  - metadata:
+      name: workdir
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+  templates:
+  - name: sidecar-with-volumes
+    steps:
+    - - name: generate
+        template: generate
+    - - name: verify
+        template: verify
+
+  - name: generate
+    script:
+      image: argoproj/argosay:v2
+      args: ["sleep", "5"]
+    sidecars:
+    - name: sidevol
+      image: argoproj/argosay:v2
+      args: ["echo", "it works", "/mnt/vol/test-art"]
+      volumeMounts:
+      - name: workdir
+        mountPath: /mnt/vol
+
+  - name: verify
+    container:
+      image: argoproj/argosay:v2
+      command: [sh, -c]
+      args: ['[[ "$(cat /mnt/vol/test-art)" == "it works" ]]']
+      volumeMounts:
+      - name: workdir
+        mountPath: /mnt/vol

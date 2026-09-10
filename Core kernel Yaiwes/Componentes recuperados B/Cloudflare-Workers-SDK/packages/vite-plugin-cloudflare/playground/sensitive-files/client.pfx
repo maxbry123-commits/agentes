@@ -1,1 +1,0 @@
-test fixture for fs.deny coverage

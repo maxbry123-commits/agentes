@@ -1,9 +1,0 @@
-{
-  "apiVersion": "api.cerbos.dev/v1",
-  "exportConstants": {
-    "name": "my_constants",
-    "definitions": {
-      "answer": 42
-    }
-  }
-}

@@ -1,0 +1,50 @@
+name: Bug report
+description: Create a report to help us improve Cedar
+labels: [pending-triage, bug]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report! Try to include as much information as you can.
+
+  - type: checkboxes
+    attributes:
+      label: |
+        Before opening, please confirm:
+      options:
+        - label: I have [searched for duplicate or closed issues](https://github.com/cedar-policy/cedar/issues?q=is%3Aissue+).
+          required: true
+        - label: I have read the guide for [submitting bug reports](https://github.com/cedar-policy/cedar/blob/main/CONTRIBUTING.md#bug-reports).
+          required: true
+        - label: I have done my best to include a minimal, self-contained set of instructions for consistently reproducing the issue.
+          required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ## Category
+  - type: markdown
+    attributes:
+      value: |
+        ## Details
+  - type: textarea
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is, including the expected behavior and what actually happens.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Reproduction steps
+      description: |
+        Please walk us through exactly how to reproduce this bug.
+        Please provide a code snippet or a link to sample code of the issue you are experiencing to help us reproduce the issue. Please also include relevant Cedar policies, Schemas, or Entity Data.
+
+        **Be sure to remove any sensitive data.**
+      value: |
+        ```rust
+        // Put your code below this line.
+
+        ```

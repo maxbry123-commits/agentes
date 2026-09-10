@@ -1,4 +1,0 @@
-description: Resources filtered
-config:
-  excludedResourcePolicyFqns:
-    - cerbos.resource.purchase_order.vdefault

@@ -1,3 +1,0 @@
-description: Tests filtered by regexp
-config:
-  includedTestNamesRegexp: John and his leave request

@@ -1,4 +1,0 @@
-{
-	"extends": ["@cloudflare/workers-tsconfig/base.json"],
-	"include": ["__tests__"]
-}

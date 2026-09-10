@@ -1,3 +1,0 @@
-# Gradle build output and caches produced by the in-Docker bundle build.
-.gradle/
-build/

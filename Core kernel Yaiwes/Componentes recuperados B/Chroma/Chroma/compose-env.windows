@@ -1,2 +1,0 @@
-DOCKERFILE=Dockerfile.windows
-PLATFORM=windows/amd64

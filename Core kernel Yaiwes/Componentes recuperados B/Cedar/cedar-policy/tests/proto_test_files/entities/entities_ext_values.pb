@@ -1,23 +1,0 @@
-
-®
-
-
-Hosth1&
-addrJ
-
-ip
-192.168.1.100/243
-created(J&
-
-
-datetime
-2024-03-15T10:30:00Z!
-priceJ
-	
-decimal	
-19.99
-ttlJ
-
-
-duration
-30m

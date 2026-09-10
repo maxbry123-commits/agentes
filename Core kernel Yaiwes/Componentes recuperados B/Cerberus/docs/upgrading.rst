@@ -1,1 +1,0 @@
-.. include:: ../UPGRADING.rst

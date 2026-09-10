@@ -1,0 +1,958 @@
+use crate::work_queue::state::QueueState;
+use crate::work_queue::types::{FinishResult, WorkQueueError, WorkQueueRecord};
+
+use async_trait::async_trait;
+use chroma_config::assignment::assignment_policy::AssignmentPolicy;
+use chroma_error::ChromaError;
+use chroma_memberlist::memberlist_provider::Memberlist;
+use chroma_storage::{GetOptions, PutMode, PutOptions, Storage};
+use chroma_sysdb::SysDb;
+use chroma_system::{Component, ComponentContext, ComponentRuntime, Handler};
+use chroma_types::chroma_proto::TryFinishAsyncAttachedFunctionInvocationRequest;
+use chroma_types::{AttachedFunctionUuid, CollectionUuid};
+use std::time::Duration;
+use tokio::sync::oneshot;
+use tonic::Code;
+
+// Message types
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct PushWorkMessage {
+    pub fn_id: AttachedFunctionUuid,
+    pub input_coll_id: CollectionUuid,
+    pub completion_offset: i64,
+    pub compaction_offset: i64,
+    pub response_tx: oneshot::Sender<Result<(), WorkQueueError>>,
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct FinishWorkMessage {
+    pub fn_id: AttachedFunctionUuid,
+    pub input_coll_id: CollectionUuid,
+    pub new_completion_offset: i64,
+    pub response_tx: oneshot::Sender<Result<FinishResult, WorkQueueError>>,
+}
+
+#[derive(Debug)]
+pub struct DeferWorkMessage {
+    pub fn_id: AttachedFunctionUuid,
+    pub input_coll_id: CollectionUuid,
+    pub response_tx: oneshot::Sender<()>,
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct GetWorkMessage {
+    pub shard_id: String,
+    pub limit: usize,
+    pub max_failure_count: i32,
+    pub response_tx: oneshot::Sender<Result<Vec<WorkQueueRecord>, WorkQueueError>>,
+}
+
+#[derive(Debug)]
+pub struct UpdateFunctionFailureCountMessage {
+    pub fn_id: AttachedFunctionUuid,
+    pub input_coll_id: CollectionUuid,
+    pub failure_count: i32,
+    pub response_tx: oneshot::Sender<()>,
+}
+
+#[derive(Debug)]
+pub struct SetFunctionFailureCountMessage {
+    pub fn_id: AttachedFunctionUuid,
+    pub input_coll_id: CollectionUuid,
+    pub failure_count: i32,
+    pub response_tx: oneshot::Sender<Result<bool, WorkQueueError>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct WorkQueueReadyMessage;
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct PeriodicPersistMessage;
+
+// Component implementation
+#[derive(Debug)]
+pub(crate) struct WorkQueueManager {
+    state: QueueState,
+    storage: Storage,
+    storage_path: String,
+    sysdb: SysDb,
+    config: crate::work_queue::config::WorkQueueConfig,
+    assignment_policy: Box<dyn AssignmentPolicy>,
+    // Pending responses waiting for persistence (push work responses)
+    pending_push_responses: Vec<oneshot::Sender<Result<(), WorkQueueError>>>,
+    // Pending responses for finish work
+    pending_finish_responses: Vec<(
+        FinishResult,
+        oneshot::Sender<Result<FinishResult, WorkQueueError>>,
+    )>,
+}
+
+impl WorkQueueManager {
+    pub fn new(
+        storage: Storage,
+        config: crate::work_queue::config::WorkQueueConfig,
+        sysdb: SysDb,
+        assignment_policy: Box<dyn AssignmentPolicy>,
+    ) -> Self {
+        Self {
+            state: QueueState::new(),
+            storage,
+            storage_path: config.storage_path.clone(),
+            sysdb,
+            config,
+            assignment_policy,
+            pending_push_responses: Vec::new(),
+            pending_finish_responses: Vec::new(),
+        }
+    }
+
+    fn set_memberlist(&mut self, memberlist: Memberlist) {
+        self.assignment_policy.set_members(
+            memberlist
+                .into_iter()
+                .map(|member| member.member_id)
+                .collect(),
+        );
+    }
+
+    fn get_work_for_shard(
+        &self,
+        shard_id: &str,
+        limit: usize,
+        max_failure_count: i32,
+    ) -> (Vec<WorkQueueRecord>, usize) {
+        let members = self.assignment_policy.get_members();
+        if members.is_empty() {
+            tracing::warn!("Fn-consumer memberlist is empty; returning no work");
+            return (Vec::new(), 0);
+        }
+        if !members.iter().any(|member| member == shard_id) {
+            tracing::warn!(
+                shard_id,
+                member_count = members.len(),
+                "Unknown fn-consumer shard requested work"
+            );
+            return (Vec::new(), 0);
+        }
+
+        let mut work = Vec::with_capacity(limit);
+        let mut failure_count_filtered = 0;
+        for item in self
+            .state
+            .pending_work
+            .iter()
+            .filter(|item| self.state.contains_entry(&item.fn_id, &item.input_coll_id))
+        {
+            let assigned_member = match self.assignment_policy.assign_one(&item.fn_id.to_string()) {
+                Ok(member) => member,
+                Err(error) => {
+                    tracing::error!(
+                        fn_id = %item.fn_id,
+                        error = %error,
+                        "Failed to assign queued function to an fn-consumer"
+                    );
+                    continue;
+                }
+            };
+            if assigned_member != shard_id {
+                continue;
+            }
+            if item.failure_count >= max_failure_count {
+                failure_count_filtered += 1;
+            } else if work.len() < limit {
+                work.push(item.clone());
+            }
+        }
+
+        (work, failure_count_filtered)
+    }
+
+    #[tracing::instrument(name = "WorkQueueManager::load_state", skip(self))]
+    async fn load_state(&mut self) -> Result<(), WorkQueueError> {
+        match self
+            .storage
+            .get_with_e_tag(&self.storage_path, GetOptions::default())
+            .await
+        {
+            Ok((bytes, Some(etag))) => {
+                self.state = QueueState::from_parquet_bytes(&bytes)?;
+                self.state.current_etag = Some(etag);
+                tracing::info!(
+                    "Loaded work queue state with {} items",
+                    self.state.pending_work.len()
+                );
+                Ok(())
+            }
+            Ok((bytes, None)) => {
+                self.state = QueueState::from_parquet_bytes(&bytes)?;
+                self.state.current_etag = None;
+                tracing::info!(
+                    "Loaded work queue state with {} items (no ETag support)",
+                    self.state.pending_work.len()
+                );
+                Ok(())
+            }
+            Err(chroma_storage::StorageError::NotFound { .. }) => {
+                tracing::info!("No existing work queue state found, starting fresh");
+                Ok(())
+            }
+            Err(e) => Err(WorkQueueError::Storage(e.to_string())),
+        }
+    }
+
+    #[tracing::instrument(name = "WorkQueueManager::persist", skip(self), level = "debug")]
+    async fn persist(&mut self) -> Result<(), WorkQueueError> {
+        if !self.state.dirty {
+            self.notify_pending_responses();
+            return Ok(());
+        }
+
+        let bytes = self.state.to_parquet_bytes()?;
+
+        let put_options = if let Some(etag) = &self.state.current_etag {
+            PutOptions::default().with_mode(PutMode::IfMatch(etag.clone()))
+        } else {
+            PutOptions::default().with_mode(PutMode::IfNotExist)
+        };
+
+        match self
+            .storage
+            .put_bytes(&self.storage_path, bytes.to_vec(), put_options)
+            .await
+        {
+            Ok(etag_opt) => {
+                let has_etag = etag_opt.is_some();
+                self.state.current_etag = etag_opt;
+                self.state.dirty = false;
+
+                let etag_msg = if has_etag { "" } else { " (no ETag)" };
+                let total_pending =
+                    self.pending_push_responses.len() + self.pending_finish_responses.len();
+                tracing::debug!(
+                    "Persisted work queue state{}, responding to {} pending requests",
+                    etag_msg,
+                    total_pending
+                );
+
+                self.notify_pending_responses();
+                Ok(())
+            }
+            Err(e) => match e {
+                chroma_storage::StorageError::Precondition { .. } => {
+                    tracing::error!("ETag mismatch - another instance is active");
+                    panic!("Work queue ETag mismatch - shutting down");
+                }
+                _ => {
+                    let err = WorkQueueError::Storage(e.to_string());
+                    self.notify_pending_responses_error(&err);
+                    Err(err)
+                }
+            },
+        }
+    }
+
+    fn notify_pending_responses(&mut self) {
+        for tx in self.pending_push_responses.drain(..) {
+            if tx.send(Ok(())).is_err() {
+                tracing::error!("Failed to send push work response - receiver dropped");
+            }
+        }
+
+        for (result, tx) in self.pending_finish_responses.drain(..) {
+            if tx.send(Ok(result)).is_err() {
+                tracing::error!("Failed to send finish work response - receiver dropped");
+            }
+        }
+    }
+
+    fn notify_pending_responses_error(&mut self, error: &WorkQueueError) {
+        for tx in self.pending_push_responses.drain(..) {
+            if tx.send(Err(error.clone())).is_err() {
+                tracing::error!("Failed to send push work error response - receiver dropped");
+            }
+        }
+
+        for (_, tx) in self.pending_finish_responses.drain(..) {
+            if tx.send(Err(error.clone())).is_err() {
+                tracing::error!("Failed to send finish work error response - receiver dropped");
+            }
+        }
+    }
+
+    fn should_persist(&self) -> bool {
+        if !self.state.dirty {
+            return false;
+        }
+
+        let total_pending_responses =
+            self.pending_push_responses.len() + self.pending_finish_responses.len();
+
+        total_pending_responses >= self.config.persistence.pending_threshold
+    }
+
+    async fn push_work_and_queue_response(&mut self, msg: PushWorkMessage) {
+        let PushWorkMessage {
+            fn_id,
+            input_coll_id,
+            completion_offset,
+            compaction_offset,
+            response_tx,
+        } = msg;
+
+        let _ = self
+            .state
+            .push_work(fn_id, input_coll_id, completion_offset, compaction_offset);
+
+        // TODO(tanujnay112): Can optimize the case where we push work
+        // that gets deduplicated. That would require epoch tracking
+        // where the epoch is incremented per persistence event and
+        // we associate each dedup map entry with an epoch.
+
+        self.pending_push_responses.push(response_tx);
+
+        // Check if persist needed
+        if self.should_persist() {
+            if let Err(e) = self.persist().await {
+                tracing::error!("Failed to persist work queue: {}", e);
+            }
+        }
+    }
+
+    // Update sysdb's completion offset for an async attached function invocation.
+    fn is_stale_async_invocation_not_found(status: &tonic::Status) -> bool {
+        status.code() == Code::NotFound
+    }
+
+    #[tracing::instrument(name = "WorkQueueManager::try_finish_invocation", skip(self))]
+    async fn try_finish_invocation(
+        &mut self,
+        fn_id: &AttachedFunctionUuid,
+        input_coll_id: &CollectionUuid,
+        completion_offset: i64,
+    ) -> Result<FinishResult, WorkQueueError> {
+        let request = TryFinishAsyncAttachedFunctionInvocationRequest {
+            attached_function_id: fn_id.to_string(),
+            collection_id: input_coll_id.to_string(),
+            new_completion_offset: completion_offset as u64,
+        };
+
+        self.sysdb
+            .try_finish_async_attached_function_invocation(request)
+            .await
+            .map(|_| FinishResult::Success)
+            .or_else(|status| {
+                if Self::is_stale_async_invocation_not_found(&status) {
+                    tracing::info!(
+                        fn_id = %fn_id,
+                        input_coll_id = %input_coll_id,
+                        status = %status,
+                        "Dropping stale fn-consumer work item after SysDB reported deleted invocation"
+                    );
+                    Ok(FinishResult::Success)
+                } else {
+                    Err(WorkQueueError::TryFinishFailed(status.message().to_string()))
+                }
+            })
+    }
+}
+
+#[async_trait]
+impl Component for WorkQueueManager {
+    fn get_name() -> &'static str {
+        "WorkQueueManager"
+    }
+
+    fn queue_size(&self) -> usize {
+        1000
+    }
+
+    fn runtime() -> ComponentRuntime {
+        ComponentRuntime::Inherit
+    }
+
+    async fn on_start(&mut self, ctx: &ComponentContext<Self>) -> () {
+        tracing::info!("Starting WorkQueueManager");
+
+        // Load existing state
+        if let Err(e) = self.load_state().await {
+            tracing::error!("Failed to load work queue state: {}", e);
+            panic!("Cannot start without valid state");
+        }
+
+        // Schedule periodic persistence
+        ctx.scheduler.schedule(
+            PeriodicPersistMessage,
+            Duration::from_secs(self.config.persistence.time_threshold_seconds),
+            ctx,
+            || None,
+        );
+    }
+
+    async fn on_stop(&mut self) -> Result<(), Box<dyn ChromaError>> {
+        tracing::info!("Stopping WorkQueueManager");
+
+        // Final persist if dirty or if we have pending responses
+        if self.state.dirty
+            || !self.pending_push_responses.is_empty()
+            || !self.pending_finish_responses.is_empty()
+        {
+            self.persist()
+                .await
+                .map_err(|e| Box::new(e) as Box<dyn ChromaError>)?;
+        }
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Handler<PushWorkMessage> for WorkQueueManager {
+    type Result = ();
+
+    async fn handle(&mut self, msg: PushWorkMessage, _ctx: &ComponentContext<WorkQueueManager>) {
+        tracing::info!(
+            "Received PushWorkMessage for fn_id: {}, input_coll_id: {}, completion_offset: {}, compaction_offset: {}",
+            msg.fn_id,
+            msg.input_coll_id,
+            msg.completion_offset,
+            msg.compaction_offset
+        );
+        self.push_work_and_queue_response(msg).await;
+    }
+}
+
+#[async_trait]
+impl Handler<FinishWorkMessage> for WorkQueueManager {
+    type Result = ();
+
+    async fn handle(&mut self, msg: FinishWorkMessage, _ctx: &ComponentContext<WorkQueueManager>) {
+        // Call sysdb
+        let finish_result = match self
+            .try_finish_invocation(&msg.fn_id, &msg.input_coll_id, msg.new_completion_offset)
+            .await
+        {
+            Ok(finish_result) => finish_result,
+            Err(e) => {
+                if msg.response_tx.send(Err(e)).is_err() {
+                    tracing::error!("Failed to send error response");
+                }
+                return;
+            }
+        };
+
+        // Use the queued compaction frontier to decide whether to remove or advance the entry.
+        self.state
+            .finish_work_success(&msg.fn_id, &msg.input_coll_id, msg.new_completion_offset);
+
+        // Send immediate success response
+        if msg.response_tx.send(Ok(finish_result)).is_err() {
+            tracing::error!("Failed to send finish work response");
+        }
+
+        if self.should_persist() {
+            let _ = self.persist().await;
+        }
+    }
+}
+
+#[async_trait]
+impl Handler<DeferWorkMessage> for WorkQueueManager {
+    type Result = ();
+
+    async fn handle(&mut self, msg: DeferWorkMessage, _ctx: &ComponentContext<WorkQueueManager>) {
+        self.state.defer_work(&msg.fn_id, &msg.input_coll_id);
+        if msg.response_tx.send(()).is_err() {
+            tracing::warn!("Failed to acknowledge deferred work - receiver dropped");
+        }
+    }
+}
+
+#[async_trait]
+impl Handler<GetWorkMessage> for WorkQueueManager {
+    type Result = ();
+
+    async fn handle(&mut self, msg: GetWorkMessage, _ctx: &ComponentContext<WorkQueueManager>) {
+        // With eager stale-row removal on push, the queue's dedup index is the
+        // source of truth for whether a row is still live.
+        let (filtered, failure_count_filtered) =
+            self.get_work_for_shard(&msg.shard_id, msg.limit, msg.max_failure_count);
+        tracing::info!(
+            shard_id = %msg.shard_id,
+            returned_items = filtered.len(),
+            failure_count_filtered,
+            max_failure_count = msg.max_failure_count,
+            "Returning work from get work response"
+        );
+
+        if msg.response_tx.send(Ok(filtered)).is_err() {
+            tracing::warn!("Failed to send get work response - receiver dropped");
+        }
+    }
+}
+
+#[async_trait]
+impl Handler<Memberlist> for WorkQueueManager {
+    type Result = ();
+
+    async fn handle(&mut self, memberlist: Memberlist, _ctx: &ComponentContext<WorkQueueManager>) {
+        tracing::info!(
+            member_count = memberlist.len(),
+            "Updating fn-consumer memberlist"
+        );
+        self.set_memberlist(memberlist);
+    }
+}
+
+#[async_trait]
+impl Handler<UpdateFunctionFailureCountMessage> for WorkQueueManager {
+    type Result = ();
+
+    async fn handle(
+        &mut self,
+        msg: UpdateFunctionFailureCountMessage,
+        _ctx: &ComponentContext<WorkQueueManager>,
+    ) {
+        self.state
+            .update_failure_count(&msg.fn_id, &msg.input_coll_id, msg.failure_count);
+        if msg.response_tx.send(()).is_err() {
+            tracing::warn!(
+                "Failed to acknowledge function failure count update - receiver dropped"
+            );
+        }
+    }
+}
+
+#[async_trait]
+impl Handler<SetFunctionFailureCountMessage> for WorkQueueManager {
+    type Result = ();
+
+    async fn handle(
+        &mut self,
+        msg: SetFunctionFailureCountMessage,
+        _ctx: &ComponentContext<WorkQueueManager>,
+    ) {
+        let result =
+            match self
+                .state
+                .set_failure_count(&msg.fn_id, &msg.input_coll_id, msg.failure_count)
+            {
+                Some(_) => self.persist().await.map(|_| true),
+                None => Ok(false),
+            };
+        if msg.response_tx.send(result).is_err() {
+            tracing::warn!("Failed to acknowledge function failure count set");
+        }
+    }
+}
+
+#[async_trait]
+impl Handler<WorkQueueReadyMessage> for WorkQueueManager {
+    type Result = ();
+
+    async fn handle(
+        &mut self,
+        _msg: WorkQueueReadyMessage,
+        _ctx: &ComponentContext<WorkQueueManager>,
+    ) {
+    }
+}
+
+#[async_trait]
+impl Handler<PeriodicPersistMessage> for WorkQueueManager {
+    type Result = ();
+
+    async fn handle(
+        &mut self,
+        _msg: PeriodicPersistMessage,
+        ctx: &ComponentContext<WorkQueueManager>,
+    ) {
+        if let Err(e) = self.persist().await {
+            tracing::error!("Periodic persist failed: {}", e);
+        }
+
+        ctx.scheduler.schedule(
+            PeriodicPersistMessage,
+            Duration::from_secs(self.config.persistence.time_threshold_seconds),
+            ctx,
+            || None,
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::work_queue::state::QueueState;
+    use chroma_config::assignment::assignment_policy::RendezvousHashingAssignmentPolicy;
+    use chroma_memberlist::memberlist_provider::Member;
+    use chroma_storage::local::LocalStorage;
+    use tempfile::TempDir;
+    use uuid::Uuid;
+
+    fn create_test_config() -> crate::work_queue::config::WorkQueueConfig {
+        crate::work_queue::config::WorkQueueConfig {
+            storage_path: "test-queue.parquet".to_string(),
+            persistence: crate::work_queue::config::PersistenceConfig {
+                time_threshold_seconds: 2,
+                pending_threshold: 100, // Set high to avoid auto-persist in tests
+            },
+        }
+    }
+
+    fn create_test_sysdb() -> SysDb {
+        SysDb::Test(chroma_sysdb::test_sysdb::TestSysDb::new())
+    }
+
+    fn create_test_assignment_policy() -> Box<dyn AssignmentPolicy> {
+        Box::new(RendezvousHashingAssignmentPolicy::default())
+    }
+
+    async fn create_test_manager() -> (WorkQueueManager, TempDir) {
+        let temp_dir = TempDir::new().unwrap();
+        let storage = Storage::Local(LocalStorage::new(temp_dir.path().to_str().unwrap()));
+        let mut config = create_test_config();
+        config.storage_path = "queue.parquet".to_string(); // Use relative path within temp dir
+        let sysdb = create_test_sysdb();
+        (
+            WorkQueueManager::new(storage, config, sysdb, create_test_assignment_policy()),
+            temp_dir,
+        )
+    }
+
+    #[test]
+    fn test_push_work_deduplication() {
+        let mut state = QueueState::new();
+
+        let fn_id = AttachedFunctionUuid(Uuid::new_v4());
+        let coll_id = CollectionUuid(Uuid::new_v4());
+
+        // Test direct state manipulation to verify deduplication logic
+        state.push_work(fn_id, coll_id, 100, 100);
+        assert_eq!(state.pending_work.len(), 1);
+        assert_eq!(state.pending_work[0].completion_offset, 100);
+
+        // Push with lower offset should be ignored
+        state.push_work(fn_id, coll_id, 50, 50);
+        assert_eq!(state.pending_work.len(), 1);
+        assert_eq!(state.pending_work[0].completion_offset, 100);
+
+        // Push with higher offset should replace
+        state.push_work(fn_id, coll_id, 200, 200);
+        assert_eq!(state.pending_work.len(), 1);
+        assert_eq!(state.pending_work[0].completion_offset, 200);
+
+        assert!(state.dirty);
+    }
+
+    #[test]
+    fn test_finish_work_success() {
+        let mut state = QueueState::new();
+
+        let fn_id = AttachedFunctionUuid(Uuid::new_v4());
+        let coll_id = CollectionUuid(Uuid::new_v4());
+
+        // Push work
+        state.push_work(fn_id, coll_id, 100, 100);
+        assert_eq!(state.pending_work.len(), 1);
+
+        // Finish work
+        state.finish_work_success(&fn_id, &coll_id, 100);
+        assert_eq!(state.pending_work.len(), 0);
+        assert!(state.dirty);
+    }
+
+    #[test]
+    fn test_get_work_filtering() {
+        let mut state = QueueState::new();
+        let stale_fn_id = AttachedFunctionUuid(Uuid::new_v4());
+        let stale_coll_id = CollectionUuid(Uuid::new_v4());
+
+        // Add multiple work items
+        for i in 0..5 {
+            state.push_work(
+                AttachedFunctionUuid(Uuid::new_v4()),
+                CollectionUuid(Uuid::new_v4()),
+                i * 100,
+                i * 100,
+            );
+        }
+
+        assert_eq!(state.pending_work.len(), 5);
+
+        // Add an orphaned row to simulate a stale queue entry without a dedup record.
+        state.pending_work.push_back(WorkQueueRecord {
+            fn_id: stale_fn_id,
+            input_coll_id: stale_coll_id,
+            completion_offset: 999,
+            compaction_offset: 999,
+            insertion_order: 999,
+            failure_count: 0,
+        });
+
+        // Test filtering logic (simulating what get_work does)
+        let limit = 3;
+        let filtered: Vec<_> = state
+            .pending_work
+            .iter()
+            .filter(|item| state.contains_entry(&item.fn_id, &item.input_coll_id))
+            .take(limit)
+            .cloned()
+            .collect();
+
+        assert_eq!(filtered.len(), 3);
+
+        // Verify we got the first 3 live items in FIFO order.
+        for (i, item) in filtered.iter().enumerate().take(3) {
+            assert_eq!(item.completion_offset, (i as i64) * 100);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_work_returns_only_functions_assigned_to_shard() {
+        let (mut manager, _temp_dir) = create_test_manager().await;
+        manager.set_memberlist(vec![
+            Member {
+                member_id: "fn-consumer-a".to_string(),
+                member_ip: "10.0.0.1".to_string(),
+                member_node_name: "node-a".to_string(),
+            },
+            Member {
+                member_id: "fn-consumer-b".to_string(),
+                member_ip: "10.0.0.2".to_string(),
+                member_node_name: "node-b".to_string(),
+            },
+        ]);
+
+        let fn_for_a = (1..1000)
+            .map(|value| AttachedFunctionUuid(Uuid::from_u128(value)))
+            .find(|fn_id| {
+                manager
+                    .assignment_policy
+                    .assign_one(&fn_id.to_string())
+                    .unwrap()
+                    == "fn-consumer-a"
+            })
+            .expect("expected to find a function assigned to shard a");
+        let fn_for_b = (1..1000)
+            .map(|value| AttachedFunctionUuid(Uuid::from_u128(value)))
+            .find(|fn_id| {
+                manager
+                    .assignment_policy
+                    .assign_one(&fn_id.to_string())
+                    .unwrap()
+                    == "fn-consumer-b"
+            })
+            .expect("expected to find a function assigned to shard b");
+
+        // Put shard b first to prove the shard filter scans past other shards
+        // before applying the response limit.
+        manager
+            .state
+            .push_work(fn_for_b, CollectionUuid(Uuid::new_v4()), 10, 10);
+        manager
+            .state
+            .push_work(fn_for_a, CollectionUuid(Uuid::new_v4()), 20, 20);
+        manager
+            .state
+            .push_work(fn_for_a, CollectionUuid(Uuid::new_v4()), 30, 30);
+
+        let (work_for_a, _) = manager.get_work_for_shard("fn-consumer-a", 1, i32::MAX);
+        assert_eq!(work_for_a.len(), 1);
+        assert_eq!(work_for_a[0].fn_id, fn_for_a);
+
+        let (all_work_for_a, _) = manager.get_work_for_shard("fn-consumer-a", 10, i32::MAX);
+        assert_eq!(all_work_for_a.len(), 2);
+        assert!(all_work_for_a.iter().all(|item| item.fn_id == fn_for_a));
+
+        let (work_for_b, _) = manager.get_work_for_shard("fn-consumer-b", 10, i32::MAX);
+        assert_eq!(work_for_b.len(), 1);
+        assert_eq!(work_for_b[0].fn_id, fn_for_b);
+    }
+
+    #[tokio::test]
+    async fn test_get_work_returns_nothing_for_empty_or_unknown_memberlist() {
+        let (mut manager, _temp_dir) = create_test_manager().await;
+        manager.state.push_work(
+            AttachedFunctionUuid(Uuid::new_v4()),
+            CollectionUuid(Uuid::new_v4()),
+            10,
+            10,
+        );
+
+        let (without_members, _) = manager.get_work_for_shard("fn-consumer-a", 10, i32::MAX);
+        assert!(without_members.is_empty());
+
+        manager.set_memberlist(vec![Member {
+            member_id: "fn-consumer-a".to_string(),
+            member_ip: "10.0.0.1".to_string(),
+            member_node_name: "node-a".to_string(),
+        }]);
+        let (unknown_member, _) = manager.get_work_for_shard("fn-consumer-unknown", 10, i32::MAX);
+        assert!(unknown_member.is_empty());
+    }
+
+    #[test]
+    fn test_get_work_skips_dlq_items_before_applying_limit() {
+        let mut state = QueueState::new();
+        let dlq_fn_id = AttachedFunctionUuid(Uuid::new_v4());
+        let dlq_coll_id = CollectionUuid(Uuid::new_v4());
+        let live_fn_id = AttachedFunctionUuid(Uuid::new_v4());
+        let live_coll_id = CollectionUuid(Uuid::new_v4());
+
+        state.push_work(dlq_fn_id, dlq_coll_id, 10, 10);
+        state.push_work(live_fn_id, live_coll_id, 20, 20);
+        assert!(state.update_failure_count(&dlq_fn_id, &dlq_coll_id, 3));
+
+        let (work, failure_count_filtered) = state.get_live_work(1, 3);
+
+        assert_eq!(work.len(), 1);
+        assert_eq!(work[0].fn_id, live_fn_id);
+        assert_eq!(failure_count_filtered, 1);
+    }
+
+    #[tokio::test]
+    async fn test_load_state() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = create_test_config();
+        let fn_id_1 = AttachedFunctionUuid(Uuid::new_v4());
+        let coll_id_1 = CollectionUuid(Uuid::new_v4());
+        let fn_id_2 = AttachedFunctionUuid(Uuid::new_v4());
+        let coll_id_2 = CollectionUuid(Uuid::new_v4());
+
+        // Create and persist state
+        {
+            let storage = Storage::Local(LocalStorage::new(temp_dir.path().to_str().unwrap()));
+            let sysdb = create_test_sysdb();
+            let mut manager = WorkQueueManager::new(
+                storage,
+                config.clone(),
+                sysdb,
+                create_test_assignment_policy(),
+            );
+            manager.state.push_work(fn_id_1, coll_id_1, 100, 100);
+            manager.state.push_work(fn_id_2, coll_id_2, 200, 200);
+            manager.persist().await.unwrap();
+        }
+
+        // Load state in new manager
+        {
+            let storage = Storage::Local(LocalStorage::new(temp_dir.path().to_str().unwrap()));
+            let sysdb = create_test_sysdb();
+            let mut manager =
+                WorkQueueManager::new(storage, config, sysdb, create_test_assignment_policy());
+            manager.load_state().await.unwrap();
+            assert_eq!(manager.state.pending_work.len(), 2);
+            assert_eq!(manager.state.pending_work[0].completion_offset, 100);
+            assert_eq!(manager.state.pending_work[1].completion_offset, 200);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_notify_pending_responses() {
+        let (mut manager, _temp_dir) = create_test_manager().await;
+
+        // Add pending responses
+        let (tx1, rx1) = oneshot::channel();
+        let (tx2, rx2) = oneshot::channel();
+        manager.pending_push_responses.push(tx1);
+        manager
+            .pending_finish_responses
+            .push((FinishResult::NeedsRepair, tx2));
+
+        // Notify success
+        manager.notify_pending_responses();
+
+        // Check responses
+        assert!(rx1.await.unwrap().is_ok());
+        let finish_result = rx2.await.unwrap().unwrap();
+        assert!(matches!(finish_result, FinishResult::NeedsRepair));
+
+        // Queues should be empty
+        assert!(manager.pending_push_responses.is_empty());
+        assert!(manager.pending_finish_responses.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_notify_pending_responses_error() {
+        let (mut manager, _temp_dir) = create_test_manager().await;
+
+        // Add pending responses
+        let (tx1, rx1) = oneshot::channel();
+        let (tx2, rx2) = oneshot::channel();
+        manager.pending_push_responses.push(tx1);
+        manager
+            .pending_finish_responses
+            .push((FinishResult::NeedsRepair, tx2));
+
+        // Notify error
+        let error = WorkQueueError::Storage("test error".to_string());
+        manager.notify_pending_responses_error(&error);
+
+        // Check error responses
+        assert!(matches!(
+            rx1.await.unwrap(),
+            Err(WorkQueueError::Storage(_))
+        ));
+        assert!(matches!(
+            rx2.await.unwrap(),
+            Err(WorkQueueError::Storage(_))
+        ));
+
+        // Queues should be empty
+        assert!(manager.pending_push_responses.is_empty());
+        assert!(manager.pending_finish_responses.is_empty());
+    }
+
+    // Note: ETag mismatch testing requires storage that supports conditional puts
+    // LocalStorage may not enforce ETag conditions like S3 does
+    // This test would be more appropriate with S3Storage or mocked storage
+    // #[tokio::test]
+    // #[should_panic(expected = "Work queue ETag mismatch")]
+    // async fn test_etag_mismatch_panic() {
+    //     // Test disabled for LocalStorage - would require S3 or mock storage
+    // }
+
+    #[test]
+    fn test_finish_work_multiple_offsets() {
+        let mut state = QueueState::new();
+
+        let fn_id = AttachedFunctionUuid(Uuid::new_v4());
+        let coll_id = CollectionUuid(Uuid::new_v4());
+
+        // Push multiple work items with different offsets
+        state.push_work(fn_id, coll_id, 100, 100);
+        state.push_work(fn_id, coll_id, 200, 200);
+        state.push_work(fn_id, coll_id, 300, 300);
+        assert_eq!(state.pending_work.len(), 1);
+        assert_eq!(state.pending_work[0].completion_offset, 300);
+
+        // Finish work up to offset 200
+        state.finish_work_success(&fn_id, &coll_id, 200);
+
+        // Should still have work with offset 300
+        assert_eq!(state.pending_work.len(), 1);
+        assert_eq!(state.pending_work[0].completion_offset, 300);
+
+        // Finish remaining work
+        state.finish_work_success(&fn_id, &coll_id, 300);
+        assert_eq!(state.pending_work.len(), 0);
+    }
+
+    #[test]
+    fn not_found_finish_error_is_treated_as_stale_invocation() {
+        assert!(WorkQueueManager::is_stale_async_invocation_not_found(
+            &tonic::Status::not_found("collection not found")
+        ));
+    }
+
+    #[test]
+    fn internal_finish_error_is_not_treated_as_stale_invocation() {
+        assert!(!WorkQueueManager::is_stale_async_invocation_not_found(
+            &tonic::Status::internal("boom")
+        ));
+    }
+}

@@ -1,8 +1,0 @@
-camunda:
-  client:
-    zeebe:
-      override:
-        foo:
-          tenant-ids:
-            - <default>
-            - foo

@@ -1,4 +1,0 @@
-camunda:
-  client:
-    zeebe:
-      rest-address: http://localhost:18088

@@ -1,5 +1,0 @@
-camunda:
-  client:
-    zeebe:
-      defaults:
-        auto-complete: false

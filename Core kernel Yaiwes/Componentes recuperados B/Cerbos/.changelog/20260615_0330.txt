@@ -1,2 +1,0 @@
-type:enhancement
-Reduce rule table memory usage by interning binding fields and replacing string evaluation keys with a structured form

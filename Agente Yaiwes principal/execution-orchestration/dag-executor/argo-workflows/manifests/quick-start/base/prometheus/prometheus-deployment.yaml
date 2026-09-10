@@ -1,0 +1,35 @@
+# This manifests creates a minimal Prometheus server to scrape and display the metrics emitted by the workflow
+# controller. To open this server, create an external IP for the prometheus service or use kubectl port-forward,
+# then open:
+#   
+#   localhost:9091/graph
+#
+# Note: this assumes the workflow-controller is emitting metrics in the default port (9090). This will need to
+# be modified if the default is overridden.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+      name: prometheus
+    spec:
+      containers:
+        - name: prometheus
+          image: quay.io/prometheus/prometheus:v3.2.1@sha256:6927e0919a144aa7616fd0137d4816816d42f6b816de3af269ab065250859a62
+          args:
+            - --config.file=/config/prometheus.yaml
+          volumeMounts:
+          - name: config
+            mountPath: /config
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config

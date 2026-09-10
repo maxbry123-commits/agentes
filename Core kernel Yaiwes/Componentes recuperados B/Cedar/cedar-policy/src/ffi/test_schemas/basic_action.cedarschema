@@ -1,6 +1,0 @@
-entity User;
-action view appliesTo {
-    principal: [User],
-    resource: [User],
-    context: {}
-};

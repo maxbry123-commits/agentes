@@ -1,5 +1,0 @@
-entity User = {
-    "name": __cedar::String,
-    "email"?: __cedar::String,
-    "phone"?: __cedar::String
-};

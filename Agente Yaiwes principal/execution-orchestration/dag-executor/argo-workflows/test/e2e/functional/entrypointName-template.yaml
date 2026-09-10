@@ -1,0 +1,15 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: next-template
+spec:
+  entrypoint: next
+  templates:
+  - name: next
+    inputs:
+      parameters:
+        - name: test
+          value: "{{ workflow.mainEntrypoint }}"
+    container:
+      image: argoproj/argosay:v2
+      args: [echo, "We got here!"]

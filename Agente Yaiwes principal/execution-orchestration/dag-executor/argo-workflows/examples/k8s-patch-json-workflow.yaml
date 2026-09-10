@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  labels:
+    workflows.argoproj.io/no-test: "environment"
+  annotations:
+    workflows.argoproj.io/no-test-reasons: |
+      main: Error (exit code 64): no more retries Error from server (Forbidden):
+      workflows.argoproj.io "k8s-patch-json-workflow-mfwwt" is forb idden: User
+      "system:serviceaccount:argo:default" cannot patch resource "workflows" in
+      API group "argoproj.io" in the namespace "argo"
+  generateName: k8s-patch-json-workflow-
+  annotations:
+    workflows.argoproj.io/description: |
+      This example shows how to patch a workflow with json mergeStrategy
+spec:
+  entrypoint: main
+  templates:
+    - name: main
+      resource:
+        action: patch
+        mergeStrategy: json
+        # patch an annotation to self
+        flags:
+          - workflow
+          - "{{workflow.name}}"
+        manifest: |
+          - op: add
+            path: /metadata/labels/foo
+            value: bar

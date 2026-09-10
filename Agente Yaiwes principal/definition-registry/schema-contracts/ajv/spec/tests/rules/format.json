@@ -1,0 +1,15 @@
+[
+  {
+    "description": "allowed unknown format is valid",
+    "schema": {
+      "format": "allowedUnknown"
+    },
+    "tests": [
+      {
+        "description": "any string is valid",
+        "data": "any value",
+        "valid": true
+      }
+    ]
+  }
+]

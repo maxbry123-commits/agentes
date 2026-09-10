@@ -1,0 +1,451 @@
+---
+name: CI
+on:
+  pull_request:
+    branches:
+      - main
+      - "v*"
+      - "feat/*"
+permissions: {}
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      actions: ${{ steps.filter.outputs.actions }}
+      code: ${{ steps.filter.outputs.code }}
+      docs: ${{ steps.filter.outputs.docs }}
+      npm: ${{ steps.filter.outputs.npm }}
+      protos: ${{ steps.filter.outputs.protos }}
+    steps:
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            actions:
+              - '.github/**'
+            code:
+              - '!(.node-version|{docs,npm}/**)'
+            docs:
+              - .github/workflows/pr-test.yaml
+              - 'docs/**'
+            npm:
+              - .github/workflows/pr-test.yaml
+              - 'npm/**'
+              - .node-version
+            protos:
+              - .github/workflows/pr-test.yaml
+              - '**/*.proto'
+
+  cache:
+    uses: ./.github/workflows/cache.yaml
+    permissions:
+      pull-requests: read
+
+  generate:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    name: Generate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions: {}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Free disk space
+        uses: ./.github/actions/free-disk-space
+
+      - name: Install Go and restore cached dependencies
+        uses: ./.github/actions/setup-go
+
+      - name: Install tools
+        uses: cerbos/actions/install-tools@69bd18cfe7152a480728c2617569acfcb3fcc3b7 # main
+        with:
+          tools: |-
+            buf
+            just
+
+      - name: Generate
+        run: just generate
+
+      - name: Check repo status
+        uses: cerbos/actions/check-repo-status@69bd18cfe7152a480728c2617569acfcb3fcc3b7 # main
+
+  download-test-times:
+    name: Download test times
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Download previous test times
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@d63b86af1b34672e53c440b1b83979861906bad7 # v24
+        with:
+          workflow: pr-test.yaml
+          name: test-times
+          search_artifacts: true
+
+      - name: Upload previous test times
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: previous-test-times
+          path: test-times.json
+
+  test:
+    needs:
+      - changes
+      - download-test-times
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions: {}
+    strategy:
+      fail-fast: false
+      matrix:
+        split: [0, 1, 2, 3, 4, 5]
+    outputs:
+      job-total: ${{ strategy.job-total }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: true
+          persist-credentials: false
+
+      - name: Free disk space
+        uses: ./.github/actions/free-disk-space
+
+      - name: Install Go and restore cached dependencies
+        uses: ./.github/actions/setup-go
+
+      - name: Install just
+        uses: cerbos/actions/install-tools@69bd18cfe7152a480728c2617569acfcb3fcc3b7 # main
+        with:
+          tools: just
+
+      - name: Download previous test times
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: previous-test-times
+
+      - name: Test
+        run: just test-integration "${STRATEGY_JOB_INDEX}" "${STRATEGY_JOB_TOTAL}"
+        env:
+          CERBOS_LOG_LEVEL: "debug"
+          CERBOS_TEST_LOG_LEVEL: "debug"
+          CERBOS_DEBUG_DB: "true"
+          CERBOS_DEBUG_ENGINE: "true"
+          CERBOS_DEBUG_KAFKA: "true"
+          CERBOS_HUB_API_ENDPOINT: "${{ secrets.CERBOS_HUB_API_ENDPOINT }}"
+          CERBOS_HUB_CLIENT_ID: "${{ secrets.CERBOS_HUB_CLIENT_ID }}"
+          CERBOS_HUB_CLIENT_SECRET: "${{ secrets.CERBOS_HUB_CLIENT_SECRET }}"
+          CERBOS_HUB_STORE_ID: "${{ secrets.CERBOS_HUB_STORE_ID }}"
+          STRATEGY_JOB_INDEX: ${{ strategy.job-index }}
+          STRATEGY_JOB_TOTAL: ${{ strategy.job-total }}
+
+      - name: Upload JUnit reports
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: junit-reports-${{ strategy.job-index }}
+          path: junit.*.xml
+
+      - name: Upload integration coverage to Coveralls
+        uses: shogo82148/actions-goveralls@8781f5dd05b691c4dd042d5e859c11c73e0104fa # v1.11.1
+        continue-on-error: true
+        with:
+          path-to-profile: integration.cover
+          flag-name: integration-${{ strategy.job-index }}
+          parallel: true
+
+  upload-test-times:
+    needs: test
+    if: ${{ always() && needs.test.result != 'skipped' }}
+    name: Upload test times
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Check test results
+        run: test "${NEEDS_TEST_RESULT}" = "success"
+        env:
+          NEEDS_TEST_RESULT: ${{ needs.test.result }}
+
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: 1.27.x
+          cache: false
+          check-latest: true
+
+      - name: Install just
+        uses: cerbos/actions/install-tools@69bd18cfe7152a480728c2617569acfcb3fcc3b7 # main
+        with:
+          tools: just
+
+      - name: Download JUnit reports
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+
+      - name: Combine JUnit reports
+        run: |-
+          mv junit-reports-*/junit.*.xml .
+          just test-times "${NEEDS_TEST_OUTPUTS_JOB_TOTAL}"
+        env:
+          NEEDS_TEST_OUTPUTS_JOB_TOTAL: ${{ needs.test.outputs.job-total }}
+
+      - name: Upload new test times
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-times
+          path: test-times.json
+
+      - name: Complete coveralls report
+        uses: shogo82148/actions-goveralls@8781f5dd05b691c4dd042d5e859c11c73e0104fa # v1.11.1
+        continue-on-error: true
+        with:
+          parallel-finished: true
+
+  docs:
+    needs: changes
+    if: ${{ needs.changes.outputs.docs == 'true' }}
+    name: Build docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          lfs: true
+          persist-credentials: false
+
+      - name: Generate docs
+        uses: ./.github/actions/antora-docs
+        id: docs
+
+  golangci:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: 1.27.x
+          check-latest: true
+
+      - name: Install just
+        uses: cerbos/actions/install-tools@69bd18cfe7152a480728c2617569acfcb3fcc3b7 # main
+        with:
+          tools: just
+
+      - name: Compile
+        run: just compile
+
+      - name: modernize
+        run: just lint-modernize
+
+      - name: golangci-lint
+        uses: cerbos/actions/golangci-lint@69bd18cfe7152a480728c2617569acfcb3fcc3b7 # main
+
+  buf:
+    needs: changes
+    if: ${{ needs.changes.outputs.protos == 'true' }}
+    name: Proto check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Lint protos
+        uses: cerbos/actions/buf@69bd18cfe7152a480728c2617569acfcb3fcc3b7 # main
+        with:
+          breaking: false
+          format: true
+          lint: true
+
+      - name: Find latest release
+        id: latest-release
+        run: gh release view --json tagName --jq '"tag=\(.tagName)"' >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Set latest release commit ID
+        id: latest_release_commit_id
+        run: |
+          echo "LATEST_RELEASE_COMMIT_ID=$(git rev-list -n 1 "tags/${STEPS_LATEST_RELEASE_OUTPUTS_TAG}")" >> "$GITHUB_OUTPUT"
+        env:
+          STEPS_LATEST_RELEASE_OUTPUTS_TAG: ${{ steps.latest-release.outputs.tag }}
+
+      - name: Check backwards compatibility
+        uses: cerbos/buf-breaking-action@b637955df51832cca5dd244fb3ac9ab35781cdb5 # since
+        with:
+          against: https://github.com/cerbos/cerbos.git#ref=${{ steps.latest_release_commit_id.outputs.LATEST_RELEASE_COMMIT_ID }}
+          since: https://github.com/cerbos/cerbos.git#ref=main
+
+  test-helm:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    name: Helm test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: 1.27.x
+
+      - name: Test Helm chart
+        run: ./deploy/charts/validate.sh
+
+  build-npm:
+    needs: changes
+    if: ${{ needs.changes.outputs.npm == 'true' }}
+    name: Build npm packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions: {}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Free disk space
+        uses: ./.github/actions/free-disk-space
+
+      - name: Install Go and cache dependencies
+        uses: ./.github/actions/setup-go
+        with:
+          cross_compiling: true
+
+      - name: Install tools
+        uses: cerbos/actions/install-tools@69bd18cfe7152a480728c2617569acfcb3fcc3b7 # main
+        with:
+          tools: |-
+            goreleaser
+            syft
+
+      - name: Build binaries
+        run: goreleaser build --config=.goreleaser.yml --clean --snapshot
+        env:
+          AWS_CONTAINER_REPO: ${{ vars.AWS_CONTAINER_REPO }}
+          AWS_PRODUCT_CODE: ${{ vars.AWS_PRODUCT_CODE }}
+          TELEMETRY_WRITE_KEY: ${{ secrets.TELEMETRY_WRITE_KEY }}
+          TELEMETRY_URL: ${{ secrets.TELEMETRY_URL }}
+
+      - name: Collect npm packages
+        run: tar --create --verbose --file npm.tar npm
+
+      - name: Upload npm packages
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: npm-packages
+          path: npm.tar
+
+  test-npm:
+    needs: build-npm
+    name: Test npm packages
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on:
+          - macos-latest
+          - ubuntu-latest
+    runs-on: ${{ matrix.runs-on }}
+    timeout-minutes: 10
+    permissions: {}
+    steps:
+      - name: Install bash
+        if: runner.os == 'macOS'
+        run: brew install bash
+
+      - name: Check out .node-version file
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .node-version
+            hack/scripts/install-corepack.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Download npm packages
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: npm-packages
+
+      - name: Extract npm packages
+        run: tar --extract --verbose --file npm.tar
+
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          cache-dependency-path: npm/test/registry/package-lock.json
+          node-version-file: .node-version
+
+      - name: Install corepack
+        run: hack/scripts/install-corepack.sh
+
+      - name: Test npm packages
+        working-directory: npm
+        run: corepack npm test
+
+  test-npm-results:
+    name: Check results of npm package tests
+    runs-on: ubuntu-latest
+    permissions: {}
+    if: always() && needs.test-npm.result != 'skipped'
+    needs:
+      - test-npm
+    steps:
+      - name: Check test results
+        run: test "${NEEDS_TEST_NPM_RESULT}" = "success"
+        env:
+          NEEDS_TEST_NPM_RESULT: ${{ needs.test-npm.result }}
+
+  lint-actions:
+    name: Lint GitHub Actions
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.actions == 'true' }}
+    permissions:
+      security-events: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Lint GitHub Actions
+        uses: cerbos/actions/lint-actions@69bd18cfe7152a480728c2617569acfcb3fcc3b7 # main
