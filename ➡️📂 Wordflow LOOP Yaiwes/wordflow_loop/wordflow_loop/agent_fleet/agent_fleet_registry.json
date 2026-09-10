@@ -3,15 +3,16 @@
   "mode": "FAIL_CLOSED_EXECUTION_LOOP",
   "step": 3,
   "status": "READY_FOR_REAL_AGENT_TEST",
+  "scope_root": "➡️📂 Wordflow LOOP Yaiwes/",
   "routing": "deterministic_exact_id_then_slot_role",
-  "canonical_adapter": "Agente Yaiwes principal/execution-engine-pool/agent-bindings/agent_fleet_adapter.py",
-  "ready_for_test_manifest": "Agente Yaiwes principal/execution-engine-pool/agent-bindings/AGENT_FLEET_READY_FOR_TEST.json",
+  "canonical_adapter": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_adapter.py",
+  "ready_for_test_manifest": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/AGENT_FLEET_READY_FOR_TEST.json",
   "step3_evidence": {
     "run_id": 34406268016,
     "job_id": 102649876845,
     "head_sha": "05ce5fc43a599da1ae9e80f485450d52aede07a1",
     "conclusion": "success",
-    "evidence_path": "Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/wordflow-loop-evidence/STEP3_AGENT_FLEET_VERIFY.json"
+    "evidence_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/STEP3_AGENT_FLEET_VERIFY.json"
   },
   "agents": [
     {"slot":1,"agent_id":"opencode","display_name":"OpenCode","roles":["writer","executor","final_reviewer"],"transport":"command_env","command_env":"YAIWES_OPENCODE_COMMAND","source_repo":"maxbry123-commits/Agentes-motores-Wordflow-YAIWES","source_path":"OpenCode/OpenCode","source_tree_sha":"3e72d587a460f8ad64f95f2e13b50ad8f6385e4f","status":"WIRED_VERIFIED"},
