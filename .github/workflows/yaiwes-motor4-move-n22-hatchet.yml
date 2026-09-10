@@ -64,25 +64,31 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          SRC='Core kernel Yaiwes/Hatchet'
+          DST='Agente Yaiwes principal/execution-orchestration/state-machine-executor/hatchet'
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A -- 'Core kernel Yaiwes/Hatchet' 'Agente Yaiwes principal/execution-orchestration/state-machine-executor/hatchet'
-          if git diff --cached --quiet; then
+          if ! git ls-files "$SRC" | grep -q . && git ls-files "$DST" | grep -q .; then
             echo MOVE_ALREADY_CANONICAL_NO_DELTA
           else
-            git commit -m 'move(yaiwes): Motor4 MOVE N22 Hatchet to state-machine-executor/hatchet'
-            ok=0
-            for attempt in 1 2 3 4; do
-              git fetch origin main
-              if git rebase origin/main && git push origin HEAD:main; then
-                ok=1
-                break
-              fi
-              git rebase --abort || true
-              sleep $((attempt * 3))
-            done
-            test "$ok" -eq 1
-            echo "MOVE_COMMIT=$(git rev-parse HEAD)"
+            git add -A -- "$SRC" "$DST"
+            if git diff --cached --quiet; then
+              echo MOVE_ALREADY_CANONICAL_NO_DELTA
+            else
+              git commit -m 'move(yaiwes): Motor4 MOVE N22 Hatchet to state-machine-executor/hatchet'
+              ok=0
+              for attempt in 1 2 3 4; do
+                git fetch origin main
+                if git rebase origin/main && git push origin HEAD:main; then
+                  ok=1
+                  break
+                fi
+                git rebase --abort || true
+                sleep $((attempt * 3))
+              done
+              test "$ok" -eq 1
+              echo "MOVE_COMMIT=$(git rev-parse HEAD)"
+            fi
           fi
 
       - name: Read-back dest N22
