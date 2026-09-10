@@ -1,0 +1,32 @@
+{
+  "schema": "yaiwes.integration.node-state/v1",
+  "node": 24,
+  "component": "Redis",
+  "worker": "SOL integración 2",
+  "step": 3,
+  "status": "GAP",
+  "classification": "C",
+  "source": "Core kernel Yaiwes/Redis/",
+  "target": "Agente Yaiwes principal/state-events-durability/run-state-store/redis/",
+  "step2": {
+    "status": "PASS",
+    "motor4_blob": "9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
+    "move_commit": "b14595a603dde3697473e83041c56703577b6a06",
+    "source_readback": "404_ABSENT",
+    "target_readme_blob": "ff8660fda8727712a32f76af12f986c816a13b14"
+  },
+  "step3": {
+    "adapter_commit": "b204957094fb9c050dec1f1eafac0ad18465f01d",
+    "adapter_blob": "2f77b8387bd798e4c346f14015780aeec56352a5",
+    "adapter_sha256": "5b648d051aae4e66dbde9ea025b3c4f673c302d0727bcadad9de6c51773cbfb1",
+    "ficha_commit": "28dce3c2acc7ba879e17586b1453d8c911a37f80",
+    "ficha_blob": "1eb57ef4f300b2633286f9188f597b243eae88bc",
+    "microtest_commit": "0ed66c1188958583e604699795166baa55743581",
+    "microtest_blob": "5ca170d34ad51e265eb5584a428ca2ad18010899",
+    "evidence_commit": "ff3393f3683f48c5f6de6ea8f8a028f5b925be21",
+    "check_runs": 0,
+    "runtime_test_executed": false,
+    "prune": "NOT_NEEDED"
+  },
+  "next_action": "RUN_EXISTING_AUTHORIZED_STEP3_EXECUTOR_FOR_REDIS_MICROTEST_THEN_VERIFY_L2_L3_L4"
+}
