@@ -51,6 +51,7 @@ jobs:
           ROOT=Path('Agente Yaiwes principal'); WALL=Path('📂 Bitácora stated JSON Craxy wall.json')
           BUS=ROOT/'kernel-principal/extension-kernel/plugin-bus'; sys.path.insert(0,str(BUS.resolve()))
           RUN_ID=os.environ['RUN_ID']
+          ACTOR='➡️ sol osquestador plan'
           def load(name,path):
               s=importlib.util.spec_from_file_location(name,path)
               if s is None or s.loader is None: raise RuntimeError(f'cannot load {path}')
@@ -100,11 +101,15 @@ jobs:
           now=datetime.now(timezone.utc).isoformat(); wall=json.loads(WALL.read_text()); byid={r['n']:r for r in results}
           for node in wall['nodes']:
               if 1 <= node['id'] <= 20:
-                  r=byid[node['id']]; node.setdefault('checkpoint',{})['after']=f"{now} STEP3 {r['status']} run={RUN_ID}"; node.setdefault('evidence',[]).append(f"step3-run:{RUN_ID}:{r['status']}"); node.setdefault('history',[]).append({'at':now,'actor':'SOL','event':'STEP3_'+r['status'],'step':3})
-                  if r['status']=='PASS': node.update({'current_step':3,'status':'PASS_STEP3','owner':None,'lock':'FREE'})
-                  else: node.update({'current_step':3,'status':'GAP_STEP3','owner':'SOL','lock':'CLAIMED'})
-          wall['updated_at']=now; wall['counts']['closed_current_contract']=sum(1 for x in wall['nodes'] if 1<=x['id']<=20 and x.get('status')=='PASS_STEP3'); WALL.write_text(json.dumps(wall,ensure_ascii=False,indent=2)+'\n')
-          Path('Readme arquitectura Yaiwes/STEP3-TEST-REPORT-1-20.json').write_text(json.dumps({'run_id':RUN_ID,'results':results},ensure_ascii=False,indent=2)+'\n')
+                  r=byid[node['id']]; node.setdefault('checkpoint',{})['after']=f"{now} STEP3 {r['status']} run={RUN_ID}"; node.setdefault('evidence',[]).append(f"step3-run:{RUN_ID}:{r['status']}"); node.setdefault('history',[]).append({'at':now,'actor':ACTOR,'event':'STEP3_'+r['status'],'step':3})
+                  if r['status']=='PASS': node.update({'current_step':3,'status':'PASS_STEP3','owner':None,'lock':'FREE','next_action':'COMPLETE'})
+                  else: node.update({'current_step':3,'status':'GAP_STEP3','owner':ACTOR,'lock':'CLAIMED','next_action':'repair same STEP3 and retest'})
+          wall['updated_at']=now
+          wall.setdefault('counts',{})['closed_current_contract']=sum(1 for x in wall['nodes'] if 1<=x['id']<=20 and x.get('status')=='PASS_STEP3')
+          WALL.write_text(json.dumps(wall,ensure_ascii=False,indent=2)+'\n')
+          report=Path('Readme arquitectura Yaiwes/STEP3-TEST-REPORT-1-20.json')
+          report.parent.mkdir(parents=True,exist_ok=True)
+          report.write_text(json.dumps({'run_id':RUN_ID,'actor':ACTOR,'results':results},ensure_ascii=False,indent=2)+'\n')
           if any(r['status']!='PASS' for r in results): raise SystemExit('STEP3_HAS_FAILURES')
           print('STEP3_ALL_20_PASS')
           PY
