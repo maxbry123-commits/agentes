@@ -9,38 +9,26 @@
     {
       "id": 2,
       "component": "AWS-Step-Functions-DS-SDK",
-      "status": "GAP",
-      "gaps": [
-        "ADAPTER_MISSING",
-        "FICHA_MISSING"
-      ]
+      "status": "OK",
+      "gaps": []
     },
     {
       "id": 3,
       "component": "Ajv",
-      "status": "GAP",
-      "gaps": [
-        "ADAPTER_MISSING",
-        "FICHA_MISSING"
-      ]
+      "status": "OK",
+      "gaps": []
     },
     {
       "id": 4,
       "component": "Apache-APISIX",
-      "status": "GAP",
-      "gaps": [
-        "ADAPTER_MISSING",
-        "FICHA_MISSING"
-      ]
+      "status": "OK",
+      "gaps": []
     },
     {
       "id": 5,
       "component": "Apache-Airflow",
-      "status": "GAP",
-      "gaps": [
-        "ADAPTER_MISSING",
-        "FICHA_MISSING"
-      ]
+      "status": "OK",
+      "gaps": []
     },
     {
       "id": 6,
@@ -57,106 +45,80 @@
     {
       "id": 8,
       "component": "BAML",
-      "status": "GAP",
-      "gaps": [
-        "GENERIC_SOURCE_PROBE"
-      ]
+      "status": "OK",
+      "gaps": []
     },
     {
       "id": 9,
       "component": "Burr",
-      "status": "GAP",
-      "gaps": [
-        "GENERIC_SOURCE_PROBE"
-      ]
+      "status": "OK",
+      "gaps": []
     },
     {
       "id": 10,
       "component": "Caddy",
-      "status": "GAP",
-      "gaps": [
-        "GENERIC_SOURCE_PROBE"
-      ]
+      "status": "OK",
+      "gaps": []
     },
     {
       "id": 11,
       "component": "Camunda",
-      "status": "GAP",
-      "gaps": [
-        "GENERIC_SOURCE_PROBE"
-      ]
+      "status": "OK",
+      "gaps": []
     },
     {
       "id": 12,
       "component": "Cedar",
-      "status": "GAP",
-      "gaps": [
-        "GENERIC_SOURCE_PROBE"
-      ]
+      "status": "OK",
+      "gaps": []
     },
     {
       "id": 13,
       "component": "Celery",
-      "status": "GAP",
-      "gaps": [
-        "GENERIC_SOURCE_PROBE"
-      ]
+      "status": "OK",
+      "gaps": []
     },
     {
       "id": 14,
       "component": "Cerberus",
-      "status": "GAP",
-      "gaps": [
-        "GENERIC_SOURCE_PROBE"
-      ]
+      "status": "OK",
+      "gaps": []
     },
     {
       "id": 15,
       "component": "Cerbos",
-      "status": "GAP",
-      "gaps": [
-        "GENERIC_SOURCE_PROBE"
-      ]
+      "status": "OK",
+      "gaps": []
     },
     {
       "id": 16,
       "component": "Chroma",
-      "status": "GAP",
-      "gaps": [
-        "GENERIC_SOURCE_PROBE"
-      ]
+      "status": "OK",
+      "gaps": []
     },
     {
       "id": 17,
       "component": "ClawHub",
-      "status": "GAP",
-      "gaps": [
-        "GENERIC_SOURCE_PROBE"
-      ]
+      "status": "OK",
+      "gaps": []
     },
     {
       "id": 18,
       "component": "Cloudflare-Workers-SDK",
-      "status": "GAP",
-      "gaps": [
-        "GENERIC_SOURCE_PROBE"
-      ]
+      "status": "OK",
+      "gaps": []
     },
     {
       "id": 19,
       "component": "Coconut",
-      "status": "GAP",
-      "gaps": [
-        "GENERIC_SOURCE_PROBE"
-      ]
+      "status": "OK",
+      "gaps": []
     },
     {
       "id": 20,
       "component": "CodeUltraFeedback",
-      "status": "GAP",
-      "gaps": [
-        "GENERIC_SOURCE_PROBE"
-      ]
+      "status": "OK",
+      "gaps": []
     }
   ]
 }

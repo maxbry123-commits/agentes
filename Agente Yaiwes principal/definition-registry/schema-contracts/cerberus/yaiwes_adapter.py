@@ -1,8 +1,18 @@
+from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+EXPECTED = ['pyproject.toml', 'cerberus']
+RUNTIME_COMMAND = ['python', '-c', "from cerberus import Validator; v=Validator({'name':{'type':'string'}}); assert v.validate({'name':'ok'}); assert not v.validate({'name':1})"]
 
-def source_probe():
-    if not ROOT.exists():
-        raise RuntimeError('component root missing')
-    return {'component': 'Cerberus', 'root': str(ROOT), 'exists': True}
+def source_probe() -> dict:
+    missing=[x for x in EXPECTED if not (ROOT/x).exists()]
+    if missing:
+        raise RuntimeError("upstream markers missing: " + ",".join(missing))
+    return {"ok": True, "root": str(ROOT), "markers": EXPECTED}
+
+def runtime_command() -> list[str]:
+    return list(RUNTIME_COMMAND)
+
+def runtime_cwd() -> str:
+    return str(ROOT)

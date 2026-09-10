@@ -1,7 +1,7 @@
 {
   "artifact_id": "yaiwes.authorization.cerbos",
   "version": "1.0.0",
-  "estado": "wired_no_test",
+  "estado": "testing",
   "contract_hash": "",
   "tribunal_case_id": "YAIWES-15-CERBOS",
   "contrato": {
@@ -95,7 +95,7 @@
     "compensacion": "fail_closed"
   },
   "salud": {
-    "metodo": "source_probe",
+    "metodo": "exec",
     "heartbeat_interval_s": 30
   },
   "trazas": {
