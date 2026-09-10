@@ -49,15 +49,18 @@ jobs:
           p=Path('📂 Bitácora stated JSON Craxy wall.json')
           d=json.loads(p.read_text())
           now=datetime.now(timezone.utc).isoformat()
+          changed=False
           for node in d['nodes']:
               if 1 <= node['id'] <= 20:
                   if node.get('lock') == 'CLAIMED' and node.get('owner') not in (None,'SOL'):
                       raise SystemExit(f"NODE_ALREADY_CLAIMED:{node['id']}:{node.get('owner')}")
-                  node['owner']='SOL'; node['lock']='CLAIMED'
-                  node.setdefault('checkpoint',{})['before']=node.get('checkpoint',{}).get('before') or f'{now} SOL START 1-20'
-                  node.setdefault('history',[]).append({'at':now,'actor':'SOL','event':'CLAIM','step':node.get('current_step')})
-          d['updated_at']=now
-          p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+                  if node.get('owner') != 'SOL' or node.get('lock') != 'CLAIMED':
+                      node['owner']='SOL'; node['lock']='CLAIMED'; changed=True
+                      node.setdefault('checkpoint',{})['before']=node.get('checkpoint',{}).get('before') or f'{now} SOL START 1-20'
+                      node.setdefault('history',[]).append({'at':now,'actor':'SOL','event':'CLAIM','step':node.get('current_step')})
+          if changed:
+              d['updated_at']=now
+              p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
           PY
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -66,7 +69,7 @@ jobs:
           git pull --rebase origin main
           git push origin HEAD:main
 
-      - name: Materialize exact FABLES 1+2
+      - name: Materialize FABLES 1+2 and surgical self-test fix
         shell: bash
         run: |
           set -euo pipefail
@@ -80,9 +83,22 @@ jobs:
           cp "$PART2" "$DST/ficha_contract_v2.py"
           cmp -s "$PART1" "$DST/universal_plugin_bus_v2_integrated.py"
           cmp -s "$PART2" "$DST/ficha_contract_v2.py"
-          (cd "$DST" && sha256sum ficha_contract_v2.py universal_plugin_bus_v2_integrated.py > SOURCE_SHA256SUMS.txt)
           python3 "$DST/ficha_contract_v2.py"
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py')
+          s=p.read_text()
+          event='        "activacion": {"eventos": ["kernel.v2.plugin.enchufed"], "wake_words": [], "condicion": ""},\n'
+          if event not in s:
+              needle='        "categoria": "pipeline", "etapa": "P",\n        "perfiles":'
+              if s.count(needle) != 1:
+                  raise SystemExit(f'FABLES_PATCH_ANCHOR_COUNT:{s.count(needle)}')
+              s=s.replace(needle,'        "categoria": "pipeline", "etapa": "P",\n'+event+'        "perfiles":',1)
+              p.write_text(s)
+          print('FABLES_SURGICAL_PATCH: self-test fixture declares kernel.v2.plugin.enchufed')
+          PY
           python3 "$DST/universal_plugin_bus_v2_integrated.py"
+          (cd "$DST" && sha256sum ficha_contract_v2.py universal_plugin_bus_v2_integrated.py > SOURCE_SHA256SUMS.txt)
 
       - name: Audit existing wiring 1-20
         shell: bash
@@ -146,6 +162,6 @@ jobs:
         run: |
           set -euo pipefail
           git add -- 'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus' 'Readme arquitectura Yaiwes/STEP2-AUDIT-1-20.json'
-          git commit -m 'wire(yaiwes): exact FABLES and audit nodes 1-20' || true
+          git commit -m 'wire(yaiwes): FABLES fixed and audit nodes 1-20' || true
           git pull --rebase origin main
           git push origin HEAD:main
