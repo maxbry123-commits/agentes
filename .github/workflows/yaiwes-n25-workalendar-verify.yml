@@ -1,0 +1,37 @@
+name: YAIWES Workalendar N25 Verify
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            Agente Yaiwes principal/execution-orchestration/classifier-scheduler/workalendar
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install workalendar deps
+        working-directory: Agente Yaiwes principal/execution-orchestration/classifier-scheduler/workalendar
+        run: |
+          pip install python-dateutil lunardate convertdate pyluach
+          pip install -e .
+      - name: Microtest is_working_day
+        working-directory: Agente Yaiwes principal/execution-orchestration/classifier-scheduler/workalendar
+        run: |
+          python - <<'PY'
+          from adapter import is_working_day
+          thu = is_working_day('2026-09-10')
+          sat = is_working_day('2026-09-12')
+          assert thu['working'] is True, thu
+          assert sat['working'] is False, sat
+          print('N25_MICROTEST_PASS', thu, sat)
+          PY
