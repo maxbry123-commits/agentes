@@ -1,0 +1,52 @@
+{
+  "contract": "tel.workflow/v4",
+  "project": "Wordflow LOOP Yaiwes",
+  "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
+  "date": "2026-09-10",
+  "status": "LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING",
+  "three_steps": {
+    "1_structure_and_scope": "PASS",
+    "2_runtime_logic_tests": "PASS",
+    "3_persistence_and_watchdog": "PASS"
+  },
+  "sources": {
+    "adapter": {"path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_adapter.py", "blob": "3e88678073c895899ab05dac0dd1c0ecee3c817e"},
+    "registry": {"path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_registry.json", "blob": "7aeed16fedd7a9b9c8eb6f285d25f82e01e1b93b"},
+    "router": {"path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/model_api_router_mvp.py", "blob": "8d11112ca86d8c4b8a29f4265bb10716ddda492b"}
+  },
+  "fleet_tests": {
+    "fleet_count_18": "PASS",
+    "unique_ids_18": "PASS",
+    "council12": "PASS",
+    "routing_writer_opencode": "PASS",
+    "routing_repair_openhands": "PASS",
+    "routing_flow_review_claude_code": "PASS",
+    "routing_research_goose": "PASS",
+    "routing_fallback_coder_opendev": "PASS",
+    "fail_closed_unconfigured_18_of_18": "PASS",
+    "unconfigured_invoke_rejected": "PASS"
+  },
+  "router_tests": {
+    "providers_3": "PASS",
+    "priority_order": ["kimi_k", "minimax", "deepseek_v4_pro", "deepseek_v4_flash", "glm_5", "meta_glimmer", "qwen_3_8", "gpt_oss"],
+    "priority_order_test": "PASS",
+    "same_family_route_rotation": "PASS",
+    "kimi_failure_falls_to_minimax": "PASS",
+    "parallel_dispatch_3_of_3": "PASS",
+    "public_routes_exclude_secret_key": "PASS"
+  },
+  "external_provider_auth": {
+    "nvidia": "NOT_EXECUTED_IN_THIS_ENVIRONMENT",
+    "cerebras": "NOT_EXECUTED_IN_THIS_ENVIRONMENT",
+    "groq": "NOT_EXECUTED_IN_THIS_ENVIRONMENT",
+    "reason": "Current execution environment does not provide a safe outbound authenticated channel for user secrets. No fake PASS is claimed."
+  },
+  "watchdog": {
+    "enabled": true,
+    "cadence": "HOURLY",
+    "scope": "ONLY_AUTHORIZED_WORDFLOW_ROOT",
+    "mutation_rule": "NO_WRITE_OUTSIDE_AUTHORIZED_ROOT",
+    "auth_provider_rule": "REPORT_AUTH_PROVIDER_TEST_PENDING_UNTIL_REAL_EVIDENCE"
+  },
+  "closure": "Repository structure, deterministic fleet routing, fail-closed behavior, model priority/failover logic and parallel dispatch are tested and closed. Authenticated external provider execution remains evidence-gated."
+}
