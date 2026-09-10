@@ -2,7 +2,7 @@
   "artifact_id": "yaiwes.orchestration.hatchet",
   "version": "1.0.0",
   "estado": "active",
-  "contract_hash": "sha256:b0858b935634ae027c7f1ce9a6486eca0dc75e56bfc05739ed0abc72d19250f3",
+  "contract_hash": "sha256:f4b0626be30fc6aa55dfab5214fa50c84c7fe4c93fa28d2185ae2efb49ae8c4c",
   "tribunal_case_id": "YAIWES-N22-HATCHET-STEP3",
   "contrato": {
     "rol": "transform",
