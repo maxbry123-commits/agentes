@@ -7,11 +7,11 @@
   "microtest": "embedded_two_task_dag",
   "input": 20,
   "result": {
-    "double": {
-      "value": 40
-    },
     "plus_one": {
       "value": 41
+    },
+    "double": {
+      "value": 40
     }
   },
   "evidence_levels": [
