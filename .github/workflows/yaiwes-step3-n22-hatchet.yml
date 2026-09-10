@@ -171,8 +171,7 @@ jobs:
           git fetch origin main
           test -z "$(git ls-tree -r --name-only origin/main -- 'Core kernel Yaiwes/Hatchet')"
           test -n "$(git ls-tree -r --name-only origin/main -- "$TARGET")"
-          ADAPTER_REMOTE="$(git show "origin/main:$ADAPTER")"
-          test "$(printf '%s' "$ADAPTER_REMOTE" | sha256sum | awk '{print $1}')" = 'b0858b935634ae027c7f1ce9a6486eca0dc75e56bfc05739ed0abc72d19250f3'
+          test "$(git show "origin/main:$ADAPTER" | sha256sum | awk '{print $1}')" = 'f4b0626be30fc6aa55dfab5214fa50c84c7fe4c93fa28d2185ae2efb49ae8c4c'
           git show "origin/main:$FICHA" | grep -Fq 'yaiwes.orchestration.hatchet'
           git show "origin/main:$EVIDENCE" | grep -Fq 'embedded_two_task_dag'
           git show "origin/main:$EVIDENCE" | grep -Fq '"value": 41'
@@ -207,8 +206,8 @@ jobs:
           )
           evidence=node.setdefault('evidence',[])
           items=[
-              'step3:adapter_commit:bd3e1075f79f9733c8225e1f340bcd290204f483',
-              'step3:ficha_commit:4dce1285c08fa5083cdcd3d92c93ca0e004e419a',
+              'step3:adapter_commit:d55d9c8bc4d1445a59be090a27ebf57788c21952',
+              'step3:ficha_commit:d6cf21f9d2edaf9ef164c15c30b6cca32aa5e49d',
               f"step3:runner_commit:{os.environ['GITHUB_SHA']}",
               f"step3:evidence_commit:{os.environ.get('EVIDENCE_COMMIT','unknown')}",
               f"step3:run:{os.environ['GITHUB_RUN_ID']}",
