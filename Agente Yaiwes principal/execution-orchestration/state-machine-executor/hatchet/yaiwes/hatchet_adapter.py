@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 import threading
 import time
@@ -86,3 +87,15 @@ def run_microtest(repo_root: str | Path) -> dict[str, Any]:
             except Exception:
                 pass
         hatchet.stop_embedded()
+
+
+def main() -> int:
+    if len(sys.argv) != 2:
+        raise SystemExit("usage: hatchet_adapter.py <repo_root>")
+    result = run_microtest(sys.argv[1])
+    print("YAIWES_HATCHET_RESULT=" + json.dumps(result, separators=(",", ":")), flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
