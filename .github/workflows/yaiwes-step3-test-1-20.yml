@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: yaiwes-step3-test-1-20
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   test-1x1:
@@ -24,6 +24,7 @@ jobs:
           ref: main
           fetch-depth: 1
           lfs: false
+          sparse-checkout-cone-mode: false
           sparse-checkout: |
             Agente Yaiwes principal/execution-orchestration
             Agente Yaiwes principal/definition-registry
@@ -34,8 +35,9 @@ jobs:
             Agente Yaiwes principal/kernel-principal
             Agente Yaiwes principal/code-programming-engine
             Readme arquitectura Yaiwes
+            📂 Bitácora stated JSON Craxy wall.json
 
-      - name: STEP 3 - test each component 1x1
+      - name: STEP 3 - real test each component 1x1
         id: tests
         continue-on-error: true
         shell: bash
@@ -43,14 +45,25 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import importlib.util, inspect, json, sys, traceback
+          import copy, importlib.util, inspect, json, subprocess, sys
+          from datetime import datetime, timezone
 
           ROOT=Path('Agente Yaiwes principal')
           ARCH=Path('Readme arquitectura Yaiwes/README.md')
+          WALL=Path('📂 Bitácora stated JSON Craxy wall.json')
           BUS_DIR=ROOT/'kernel-principal/extension-kernel/plugin-bus'
           sys.path.insert(0,str(BUS_DIR.resolve()))
-          spec=importlib.util.spec_from_file_location('yaiwes_bus', BUS_DIR/'universal_plugin_bus_v2_integrated.py')
-          busmod=importlib.util.module_from_spec(spec); spec.loader.exec_module(busmod)
+
+          def load_module(name,path):
+              spec=importlib.util.spec_from_file_location(name,path)
+              if spec is None or spec.loader is None: raise RuntimeError(f'cannot load {path}')
+              mod=importlib.util.module_from_spec(spec)
+              sys.modules[name]=mod
+              spec.loader.exec_module(mod)
+              return mod
+
+          busmod=load_module('yaiwes_bus',BUS_DIR/'universal_plugin_bus_v2_integrated.py')
+          fichamod=load_module('yaiwes_ficha_v2',BUS_DIR/'ficha_contract_v2.py')
 
           items=[
             (1,'APScheduler',ROOT/'execution-orchestration/task-classifier-scheduler'),
@@ -72,8 +85,12 @@ jobs:
             (17,'ClawHub',ROOT/'kernel-principal/extension-kernel/capability-registry/clawhub'),
             (18,'Cloudflare-Workers-SDK',ROOT/'execution-engine-pool/adapter-layer/cloudflare-workers-sdk'),
             (19,'Coconut',ROOT/'kernel-principal/reasoning-kernel/decision-on-demand/coconut'),
-            (20,'CodeUltraFeedback',ROOT/'code-programming-engine/standards-forensic/code-ultrafeedback'),
-          ]
+            (20,'CodeUltraFeedback',ROOT/'code-programming-engine/standards-forensic/code-ultrafeedback')]
+
+          def resolve(dest,value):
+              p=Path(value)
+              if p.parts and p.parts[0]=='Agente Yaiwes principal': return p
+              return dest/p
 
           results=[]
           for n,name,dest in items:
@@ -82,77 +99,96 @@ jobs:
               wiring_p=dest/'WIRING.json'
               if not wiring_p.exists(): raise RuntimeError('WIRING.json missing')
               wiring=json.loads(wiring_p.read_text())
-              adapter_name=wiring.get('adapter','adapter.py')
-              manifest_name=wiring.get('manifest') or wiring.get('ficha')
-              if not manifest_name: raise RuntimeError('manifest/ficha missing in WIRING')
-              adapter_p=dest/adapter_name; manifest_p=dest/manifest_name
-              if not adapter_p.exists(): raise RuntimeError(f'adapter missing: {adapter_name}')
-              if not manifest_p.exists(): raise RuntimeError(f'manifest missing: {manifest_name}')
+              adapter_value=wiring.get('adapter') or 'adapter.py'
+              manifest_value=wiring.get('manifest') or wiring.get('ficha')
+              if not manifest_value: raise RuntimeError('manifest/ficha missing in WIRING')
+              adapter_p=resolve(dest,adapter_value); manifest_p=resolve(dest,manifest_value)
+              if not adapter_p.exists(): raise RuntimeError(f'adapter missing: {adapter_p}')
+              if not manifest_p.exists(): raise RuntimeError(f'manifest missing: {manifest_p}')
               code=adapter_p.read_text(encoding='utf-8',errors='strict')
               compile(code,str(adapter_p),'exec')
+              if "if not ROOT.exists()" in code and "'exists': True" in code and 'runtime_command' not in code:
+                  raise RuntimeError('generic source_probe forbidden')
               manifest=json.loads(manifest_p.read_text())
 
-              # Import real adapter surface.
-              m_spec=importlib.util.spec_from_file_location(f'yaiwes_component_{n}',adapter_p)
-              module=importlib.util.module_from_spec(m_spec); m_spec.loader.exec_module(module)
-              entry=(manifest.get('ejecucion') or {}).get('entry_point','')
-              fn_name=entry.split(':')[-1] if ':' in entry else ''
-              if fn_name and hasattr(module,fn_name):
-                fn=getattr(module,fn_name)
-                if callable(fn):
-                  sig=inspect.signature(fn)
-                  required=[p for p in sig.parameters.values() if p.default is inspect._empty and p.kind in (p.POSITIONAL_ONLY,p.POSITIONAL_OR_KEYWORD)]
-                  if not required:
-                    fn()
-              if hasattr(module,'source_probe') and callable(module.source_probe): module.source_probe()
+              verdict=fichamod.validar(manifest)
+              if not verdict.valido: raise RuntimeError('FABLES ficha invalid: '+','.join(verdict.errores))
+              broken=copy.deepcopy(manifest); broken.pop('artifact_id',None)
+              if fichamod.validar(broken).valido: raise RuntimeError('FABLES fail-closed negative test failed')
 
-              # Mount through canonical UniversalPluginBus.
+              module=load_module(f'yaiwes_component_{n}',adapter_p)
+              probe=None
+              for candidate in ('source_probe','capability','health'):
+                  fn=getattr(module,candidate,None)
+                  if callable(fn):
+                      sig=inspect.signature(fn)
+                      required=[p for p in sig.parameters.values() if p.default is inspect._empty and p.kind in (p.POSITIONAL_ONLY,p.POSITIONAL_OR_KEYWORD)]
+                      if not required:
+                          probe=fn(); break
+              if isinstance(probe,dict) and probe.get('ok') is False: raise RuntimeError(f'adapter probe failed: {probe}')
+
+              runtime_detail='adapter-real-surface'
+              runtime_fn=getattr(module,'runtime_command',None)
+              if callable(runtime_fn):
+                  cmd=runtime_fn()
+                  if not isinstance(cmd,(list,tuple)) or not cmd: raise RuntimeError('runtime_command invalid')
+                  cwd_fn=getattr(module,'runtime_cwd',None)
+                  cwd=Path(cwd_fn()) if callable(cwd_fn) else dest
+                  proc=subprocess.run(list(cmd),cwd=str(cwd),text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=300)
+                  if proc.returncode != 0: raise RuntimeError(f"runtime rc={proc.returncode}: {proc.stdout[-1800:]}")
+                  runtime_detail='runtime_command:'+ ' '.join(map(str,cmd))
+
               bus=busmod.UniversalPluginBus()
               case=manifest.get('tribunal_case_id','')
               bus.add_tribunal_approval(case)
-              cand=busmod.ComponentCandidate(source_code=code,language='python',file_paths=[adapter_name])
+              cand=busmod.ComponentCandidate(source_code=code,language='python',file_paths=[str(adapter_p)])
               conv=busmod.TargetConventions(language='python',naming_style='snake_case',async_style='mixed',type_system='dynamic')
               reg=bus.enchufar(manifest,cand,conv,registered_by='STEP3')
               bus.health.heartbeat(reg.plugin_id)
               if reg.status.value!='ACTIVE': raise RuntimeError('plugin not ACTIVE')
               if not bus.check_plugin_health(reg.plugin_id): raise RuntimeError('health false')
               if not bus.evidence.get(reg.plugin_id): raise RuntimeError('evidence missing')
-              results.append({'n':n,'name':name,'status':'PASS','detail':'adapter import + ficha + UniversalPluginBus ACTIVE + health/evidence'})
-              print(f'{n:02d} {name}: PASS')
+              results.append({'n':n,'name':name,'status':'PASS','detail':runtime_detail+' + FABLES valid/fail-closed/mount/health/evidence'})
+              print(f'{n:02d} {name}: PASS {runtime_detail}')
             except Exception as e:
               results.append({'n':n,'name':name,'status':'FAIL','detail':f'{type(e).__name__}: {e}'})
               print(f'{n:02d} {name}: FAIL: {type(e).__name__}: {e}')
 
+          now=datetime.now(timezone.utc).isoformat()
+          wall=json.loads(WALL.read_text())
+          byid={r['n']:r for r in results}
+          for node in wall['nodes']:
+              if 1 <= node['id'] <= 20:
+                  r=byid[node['id']]
+                  node.setdefault('checkpoint',{})['after']=f"{now} STEP3 {r['status']} run=${{{{ github.run_id }}}}"
+                  node.setdefault('evidence',[]).append(f"step3-run:${{{{ github.run_id }}}}:{r['status']}")
+                  node.setdefault('history',[]).append({'at':now,'actor':'SOL','event':'STEP3_'+r['status'],'step':3})
+                  if r['status']=='PASS':
+                      node['current_step']=3; node['status']='PASS_STEP3'; node['owner']=None; node['lock']='FREE'
+                  else:
+                      node['current_step']=3; node['status']='GAP_STEP3'; node['owner']='SOL'; node['lock']='CLAIMED'
+          wall['updated_at']=now
+          wall['counts']['closed_current_contract']=sum(1 for node in wall['nodes'] if 1 <= node['id'] <= 20 and node.get('status')=='PASS_STEP3')
+          WALL.write_text(json.dumps(wall,ensure_ascii=False,indent=2)+'\n')
+
           report=Path('Readme arquitectura Yaiwes/STEP3-TEST-REPORT-1-20.json')
           report.write_text(json.dumps({'run_id':'${{ github.run_id }}','results':results},indent=2,ensure_ascii=False)+'\n')
-          marker='<!-- YAIWES_3_STEPS_STEP3_TEST_1_20 -->'
-          text=ARCH.read_text(encoding='utf-8',errors='ignore')
-          if marker not in text:
-            with ARCH.open('a',encoding='utf-8') as f:
-              f.write('\n\n'+marker+'\n## Paso 3/3 — Tests 1×1 componentes 1–20\n\n')
-              f.write('Reporte: [STEP3-TEST-REPORT-1-20.json](./STEP3-TEST-REPORT-1-20.json)\n\n')
-              f.write('| # | Componente | Test | Detalle |\n|---:|---|---|---|\n')
-              for r in results:
-                f.write(f"| {r['n']} | {r['name']} | `{r['status']}` | {r['detail'].replace('|','/')} |\n")
-          if any(r['status']!='PASS' for r in results):
-            raise SystemExit('STEP3_HAS_FAILURES')
+          if any(r['status']!='PASS' for r in results): raise SystemExit('STEP3_HAS_FAILURES')
           print('STEP3_ALL_20_PASS')
           PY
 
-      - name: Publish STEP 3 report
+      - name: Publish STEP 3 report and Crazy Wall
         if: always()
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- 'Readme arquitectura Yaiwes/README.md' 'Readme arquitectura Yaiwes/STEP3-TEST-REPORT-1-20.json'
-          if git diff --cached --quiet; then
-            echo 'STEP3_REPORT_NO_CHANGES'
-          else
-            git commit -m 'test(yaiwes): STEP 3 results components 1-20'
-            git push origin HEAD:main
-          fi
+          git add -- 'Readme arquitectura Yaiwes/STEP3-TEST-REPORT-1-20.json' '📂 Bitácora stated JSON Craxy wall.json'
+          if git diff --cached --quiet; then echo 'STEP3_REPORT_NO_CHANGES'; exit 0; fi
+          git commit -m 'test(yaiwes): STEP 3 real results nodes 1-20'
+          git pull --rebase origin main
+          git push origin HEAD:main
 
       - name: Enforce all 20 PASS
         shell: bash
