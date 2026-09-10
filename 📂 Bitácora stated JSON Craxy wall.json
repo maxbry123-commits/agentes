@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v5",
-  "updated_at": "2026-09-10T11:16:00Z",
+  "updated_at": "2026-09-10T11:18:00Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_3_STEPS_MULTI_AI",
@@ -10,10 +10,14 @@
     "activated_by": "GROK",
     "activated_at": "2026-09-10T11:16:00Z",
     "automation_task_id": "742ae598-1df5-42db-8df0-bacad6883850",
-    "loop": ["scan", "register", "claim", "checkpoint_before", "execute_current_step", "checkpoint_after", "evidence", "advance_or_gap", "release"]
+    "claimed_node": 21
   },
   "contract": {
-    "steps": ["STEP_1_DESTINATION_ABC_AND_MOVE", "STEP_2_PRUNE_IF_NEEDED_AND_FABLES_WIRE", "STEP_3_REAL_TEST"],
+    "steps": [
+      "STEP_1_DESTINATION_ABC_AND_MOVE",
+      "STEP_2_PRUNE_IF_NEEDED_AND_FABLES_WIRE",
+      "STEP_3_REAL_TEST"
+    ],
     "no_step4": true,
     "gap_policy": "repair_same_node_in_owning_step_then_repeat",
     "fables_mandatory_step2": true,
@@ -27,6 +31,7 @@
     "claim_required_before_code_change": true,
     "owner_write_only_while_claimed": true,
     "skip_claimed_nodes": true,
+    "claim_sequence": ["read_fresh_main", "set_owner", "set_lock_CLAIMED", "write_checkpoint_before", "execute_current_step", "write_checkpoint_after_and_evidence", "advance_or_close", "release_lock"],
     "lock_values": ["FREE", "CLAIMED"],
     "source_of_truth": "physical_main_then_evidence_then_crazy_wall"
   },
@@ -37,19 +42,54 @@
     "step1_new_components": 7,
     "closed_current_contract": 0
   },
+  "move_1_20_evidence": {
+    "status": "VERIFIED_CLOSED",
+    "run": 34445710787,
+    "job": 102771861495,
+    "commit": "a3cf705f58f95cce65d1c230cb00abcab39732b2",
+    "motor4_blob": "9a21facfe11327cf60a2afca8f415ad52f0ecbe5"
+  },
   "fables": {
     "required": true,
     "part1": {"name": "universal_plugin_bus_v2_integrated.py", "entry": "UniversalPluginBus.enchufar", "sha256": "5e4595a86bfd68a3c1fde70ba614ce7b9ec6ea4d6c867912e836cca33c626fc3"},
     "part2": {"name": "ficha_contract_v2.py", "entry": "validar", "sha256": "759d0d7855d8df106462b966bfc4ee543f24a3e789a27048f253159b58ff8d1a"}
   },
-  "claimed_now": {
-    "id": 21,
-    "component": "Dagu",
-    "owner": "GROK",
-    "lock": "CLAIMED",
-    "current_step": 1,
-    "checkpoint_before": "2026-09-10T11:16:00Z source=Core kernel Yaiwes/Dagu/ engine.go+executor.go+cmd present"
+  "node_defaults": {
+    "owner": null,
+    "lock": "FREE",
+    "checkpoint": {"before": null, "after": null},
+    "evidence": [],
+    "history": []
   },
+  "nodes": [
+    {"id":1,"component":"APScheduler","current_step":3,"status":"PENDING_STEP3_REVALIDATION","abc":"B","target":"Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":2,"component":"AWS-Step-Functions-DS-SDK","current_step":3,"status":"PENDING_STEP3_REVALIDATION","abc":"B","target":"Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":3,"component":"Ajv","current_step":3,"status":"PENDING_STEP3_REVALIDATION","abc":"C","target":"Agente Yaiwes principal/definition-registry/schema-contracts/ajv/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":4,"component":"Apache-APISIX","current_step":3,"status":"PENDING_STEP3_REVALIDATION","abc":"C","target":"Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":5,"component":"Apache-Airflow","current_step":3,"status":"PENDING_STEP3_REVALIDATION","abc":"B","target":"Agente Yaiwes principal/execution-orchestration/dag-executor/apache-airflow/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":6,"component":"Argo-Workflows","current_step":2,"status":"PENDING_STEP2_FABLES","abc":"B","target":"Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":7,"component":"Azure-Durable-Functions","current_step":2,"status":"PENDING_STEP2_FABLES","abc":"B","target":"Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":8,"component":"BAML","current_step":2,"status":"PENDING_STEP2_FABLES","abc":"C","target":"Agente Yaiwes principal/definition-registry/domain-specific-contracts/baml/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":9,"component":"Burr","current_step":2,"status":"PENDING_STEP2_FABLES","abc":"B","target":"Agente Yaiwes principal/execution-orchestration/state-machine-executor/burr/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":10,"component":"Caddy","current_step":2,"status":"PENDING_STEP2_FABLES","abc":"C","target":"Agente Yaiwes principal/mesh-routing-collaboration/caddy-gateway/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":11,"component":"Camunda","current_step":2,"status":"PENDING_STEP2_FABLES","abc":"B","target":"Agente Yaiwes principal/execution-orchestration/state-machine-executor/camunda/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":12,"component":"Cedar","current_step":2,"status":"PENDING_STEP2_FABLES","abc":"C","target":"Agente Yaiwes principal/definition-registry/authorization-model/cedar/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":13,"component":"Celery","current_step":2,"status":"PENDING_STEP2_FABLES","abc":"B","target":"Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":14,"component":"Cerberus","current_step":2,"status":"PENDING_STEP2_FABLES","abc":"C","target":"Agente Yaiwes principal/definition-registry/schema-contracts/cerberus/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":15,"component":"Cerbos","current_step":2,"status":"PENDING_STEP2_FABLES","abc":"C","target":"Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":16,"component":"Chroma","current_step":2,"status":"PENDING_STEP2_FABLES","abc":"C","target":"Agente Yaiwes principal/tools-models-memory-knowledge/memory-microservices/chroma/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":17,"component":"ClawHub","current_step":2,"status":"PENDING_STEP2_FABLES","abc":"C","target":"Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/clawhub/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":18,"component":"Cloudflare-Workers-SDK","current_step":2,"status":"PENDING_STEP2_FABLES","abc":"C","target":"Agente Yaiwes principal/execution-engine-pool/adapter-layer/cloudflare-workers-sdk/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":19,"component":"Coconut","current_step":2,"status":"PENDING_STEP2_FABLES","abc":"C","target":"Agente Yaiwes principal/kernel-principal/reasoning-kernel/decision-on-demand/coconut/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":20,"component":"CodeUltraFeedback","current_step":2,"status":"PENDING_STEP2_FABLES","abc":"C","target":"Agente Yaiwes principal/code-programming-engine/standards-forensic/code-ultrafeedback/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":21,"component":"Dagu","source":"Core kernel Yaiwes/Dagu/","current_step":1,"status":"PENDING_STEP1","abc":"B_CANDIDATE_VERIFY","target":"Agente Yaiwes principal/execution-orchestration/state-machine-executor/dagu/","target_status":"VERIFY_BEFORE_MOVE","owner":"GROK","lock":"CLAIMED","checkpoint":{"before":"2026-09-10T11:16:00Z SCAN_WATCHDOG engine.go executor.go cmd present","after":null},"evidence":["commit:b348db14774ecba416857bee1e387d12c91b98c7","automation:742ae598-1df5-42db-8df0-bacad6883850"],"history":[{"at":"2026-09-10T11:16:00Z","actor":"GROK","event":"CLAIM","step":1}]},
+    {"id":22,"component":"Hatchet","source":"Core kernel Yaiwes/Hatchet/","current_step":1,"status":"PENDING_STEP1","abc":"B_CANDIDATE_VERIFY","target":"Agente Yaiwes principal/execution-orchestration/state-machine-executor/hatchet/","target_status":"VERIFY_BEFORE_MOVE","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":23,"component":"PostgreSQL","source":"Core kernel Yaiwes/PostgreSQL/","current_step":1,"status":"PENDING_STEP1","abc":"C_CANDIDATE_VERIFY","target":"Agente Yaiwes principal/state-events-durability/run-state-store/postgresql/","target_status":"VERIFY_BEFORE_MOVE","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":24,"component":"Redis","source":"Core kernel Yaiwes/Redis/","current_step":1,"status":"PENDING_STEP1","abc":"C_CANDIDATE_VERIFY","target":"Agente Yaiwes principal/state-events-durability/redis/","target_status":"VERIFY_BEFORE_MOVE","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":25,"component":"Workalendar","source":"Core kernel Yaiwes/Workalendar/","current_step":1,"status":"PENDING_STEP1","abc":"C_CANDIDATE_VERIFY","target":"Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler/workalendar/","target_status":"VERIFY_BEFORE_MOVE","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":26,"component":"gVisor","source":"Core kernel Yaiwes/gVisor/","current_step":1,"status":"PENDING_STEP1","abc":"C_CANDIDATE_VERIFY","target":"Agente Yaiwes principal/execution-orchestration/container-pod-isolation/gvisor/","target_status":"VERIFY_BEFORE_MOVE","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
+    {"id":27,"component":"pgvector","source":"Core kernel Yaiwes/pgvector/","current_step":1,"status":"PENDING_STEP1","abc":"C_CANDIDATE_VERIFY","target":"Agente Yaiwes principal/tools-models-memory-knowledge/memory-microservices/pgvector/","target_status":"VERIFY_BEFORE_MOVE","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]}
+  ],
   "watchdog": {
     "enabled_plan": true,
     "enabled_runtime": true,
