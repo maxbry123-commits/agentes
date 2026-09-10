@@ -1,14 +1,14 @@
 {
-  "checkpoint_id":"WFLOOP-AGENTS-3STEP-0003-CLOSED",
+  "checkpoint_id":"WFLOOP-AGENTS-PRETEST-AUTHORIZED-ROOT-0002",
   "contract":"tel.workflow/v4",
   "mode":"FAIL_CLOSED_EXECUTION_LOOP",
-  "status":"VERIFIED_CLOSED_3STEP_AGENT_INTEGRATION",
-  "current_node":"STEP3_AGENT_FLEET_VERIFY_CLOSED",
+  "authorized_write_root":"➡️📂 Wordflow LOOP Yaiwes/",
+  "status":"READY_FOR_REAL_AGENT_TEST",
+  "current_node":"AGENT_FLEET_PRETEST_READY",
   "queue":"1x1",
-  "steps":{"1":{"status":"VERIFIED_CLOSED","index_commit":"ba9596c5716f34926e23186330609d4238bd8ccd"},"2":{"status":"VERIFIED_CLOSED_WIRING","fleet_count":18,"council12":12,"adapter_commit":"1567d025656466df2c816ee4f52f404cbaca2e5a","registry_commit":"f2e99e193286043d8cd2ed5bd5310b5ea9b42c7c","ficha_commit":"c21c632a09d27098157d39b80e0ebd29fd72dad1","health_commit":"ff4f60a69bad684acb60e2239ffe72c2f6b0e20d","plug_commit":"973a9ab800ea91ff0503efbd933428a693fdee50"},"3":{"status":"VERIFIED_CLOSED","run_id":34406268016,"job_id":102649876845,"head_sha":"05ce5fc43a599da1ae9e80f485450d52aede07a1","conclusion":"success","evidence_commit":"7a7b1a6af381dbdb4882d3d744ef392161dffdff"}},
-  "promotion":{"fleet_registry_commit":"f2f978a18cbeaeac8c99d35993a66a68bfdcef7f","health_commit":"e05946c349ef79d26e036e8f2fb5ee15f77775e0","universal_plug_commit":"08b42de1136917ef0adc712155c583188c6b9085","plugin_status":"ACTIVE","registry_active_count":12},
-  "gaps":["Hermes/Muse-Glimmer/Goose physical source unresolved","18 external runtimes unconfigured in Actions; fail-closed verified; runtime execution not claimed"],
-  "hf_status":"IN_PROGRESS_EXTERNAL_WAIT_DIRECTOR",
-  "next_action":"No action inside the closed 3-step block. Await Director instruction or HF-ready signal.",
+  "steps":{"1":{"status":"VERIFIED_CLOSED","index":"➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme indice agentes.md"},"2":{"status":"VERIFIED_CLOSED_WIRING","fleet_count":18,"council12":12,"adapter":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_adapter.py","registry":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_registry.json","ficha":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/contracts/ficha.agent_fleet.v2.json"},"3":{"status":"VERIFIED_CLOSED_HISTORICAL","run_id":34406268016,"job_id":102649876845,"evidence":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/STEP3_AGENT_FLEET_VERIFY.json"}},
+  "migration":{"main_commit":"2a73aba061db7dfba2b37bf6637babb2e73c4b0d","source_index_cleanup_commit":"a17e1572b9df41954597fc8c66b390c47800d081","external_registry_restored_blob":"ce40e9afd13fdbea22609fe57807566770dfc1b0"},
+  "gaps":["Hermes/Muse-Glimmer/Goose external_not_vendored","real agent runtimes require authorized API/MCP/command values"],
+  "next_action":"REAL_AGENT_TESTS_ONLY_WHEN_AUTHORIZED",
   "recovery_entrypoint":"➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md"
 }
