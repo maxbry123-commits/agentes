@@ -1,14 +1,16 @@
 {
-  "checkpoint_id":"WFLOOP-AGENTS-PRETEST-AUTHORIZED-ROOT-0002",
+  "checkpoint_id":"WFLOOP-FINAL-3STEP-20260910",
   "contract":"tel.workflow/v4",
   "mode":"FAIL_CLOSED_EXECUTION_LOOP",
   "authorized_write_root":"➡️📂 Wordflow LOOP Yaiwes/",
-  "status":"READY_FOR_REAL_AGENT_TEST",
-  "current_node":"AGENT_FLEET_PRETEST_READY",
+  "status":"LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING",
+  "current_node":"FINAL_3STEP_CLOSED_LOCAL_TESTS",
   "queue":"1x1",
-  "steps":{"1":{"status":"VERIFIED_CLOSED","index":"➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme indice agentes.md"},"2":{"status":"VERIFIED_CLOSED_WIRING","fleet_count":18,"council12":12,"adapter":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_adapter.py","registry":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_registry.json","ficha":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/contracts/ficha.agent_fleet.v2.json"},"3":{"status":"VERIFIED_CLOSED_HISTORICAL","run_id":34406268016,"job_id":102649876845,"evidence":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/STEP3_AGENT_FLEET_VERIFY.json"}},
+  "steps":{"1":{"status":"PASS_SCOPE_AND_STRUCTURE"},"2":{"status":"PASS_RUNTIME_LOGIC","fleet_count":18,"council12":12,"fail_closed":"18/18","router_priority":"PASS","router_failover":"PASS","parallel_dispatch":"3/3"},"3":{"status":"PASS_PERSISTENCE_AND_WATCHDOG","watchdog":"ACTIVE_HOURLY"}},
+  "evidence":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/FINAL_3STEP_CLOSURE_TEST_2026-09-10.json",
+  "evidence_commit":"6c4b10a49fa8de3bd85348f15bd5f5fa461d128c",
   "migration":{"main_commit":"2a73aba061db7dfba2b37bf6637babb2e73c4b0d","source_index_cleanup_commit":"a17e1572b9df41954597fc8c66b390c47800d081","external_registry_restored_blob":"ce40e9afd13fdbea22609fe57807566770dfc1b0"},
-  "gaps":["Hermes/Muse-Glimmer/Goose external_not_vendored","real agent runtimes require authorized API/MCP/command values"],
-  "next_action":"REAL_AGENT_TESTS_ONLY_WHEN_AUTHORIZED",
+  "gaps":["Hermes/Muse-Glimmer/Goose external_not_vendored","Authenticated provider/API and remote agent execution not available from current safe execution channel"],
+  "next_action":"AUTH_PROVIDER_REAL_TEST_ONLY_WHEN_SAFE_CHANNEL_AVAILABLE",
   "recovery_entrypoint":"➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md"
 }
