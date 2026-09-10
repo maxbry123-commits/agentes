@@ -1,5 +1,6 @@
 name: YAIWES Motor4 Final MOVE 20
 
+# trigger: canonical-motor4-move-20
 on:
   push:
     branches: [main]
