@@ -1,9 +1,10 @@
 {
-  "schema": "yaiwes.crazy-wall.integration-watchdog/v3",
+  "schema": "yaiwes.crazy-wall.integration-watchdog/v4",
   "updated_at": "2026-09-10",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_LOOP",
+  "current_boundary": "STEP_2_WIRE_PRUNE_1X1_NO_TESTS",
   "source_of_truth_order": [
     "physical_repo_state",
     "fresh_readback_from_main",
@@ -23,6 +24,22 @@
     "gap_policy": "resolve_inside_current_step_and_repeat"
   },
   "integration_1_20": {
+    "status": {
+      "step1_move": "VERIFIED_CLOSED",
+      "step2_wire_prune_no_tests": "PENDING_CURRENT_BOUNDARY",
+      "step3_test_1x1": "PENDING"
+    },
+    "step1_evidence": {
+      "workflow": ".github/workflows/yaiwes-motor4-move-20-final.yml",
+      "run": 34445710787,
+      "job": 102771861495,
+      "run_conclusion": "success",
+      "execute_move": "success",
+      "publish_to_main": "success",
+      "readback_all_20_from_origin_main": "success",
+      "move_commit": "a3cf705f58f95cce65d1c230cb00abcab39732b2",
+      "motor4_blob_sha": "9a21facfe11327cf60a2afca8f415ad52f0ecbe5"
+    },
     "contract": [
       {
         "step": 1,
@@ -68,66 +85,16 @@
     "root": "Core kernel Yaiwes/Backend watchdog workflow adaptativo",
     "status": "COMPONENTS_PRESENT_INTEGRATION_PENDING",
     "canonical_base": [
-      {
-        "name": "APScheduler",
-        "role": "TIME_AUTHORITY",
-        "physical_status": "PRESENT",
-        "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/time-scheduling/apscheduler"
-      },
-      {
-        "name": "Workalendar",
-        "role": "WORK_CALENDAR",
-        "physical_status": "PRESENT",
-        "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/work-calendar/workalendar"
-      },
-      {
-        "name": "Celery",
-        "role": "SIMPLE_JOB_WORKERS",
-        "physical_status": "PRESENT_EXTERNAL_TO_WATCHDOG_ROOT_REFERENCE_REQUIRED",
-        "path": "Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery"
-      },
-      {
-        "name": "Redis",
-        "role": "EVENT_TRANSPORT",
-        "physical_status": "PRESENT",
-        "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/event-plane/redis"
-      },
-      {
-        "name": "Hatchet",
-        "role": "DURABLE_LONG_JOB",
-        "physical_status": "PRESENT",
-        "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/durable-execution/hatchet"
-      },
-      {
-        "name": "Dagu",
-        "role": "MULTI_STEP_JOB",
-        "physical_status": "PRESENT",
-        "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/workflow-multistep/dagu"
-      },
-      {
-        "name": "PostgreSQL",
-        "role": "DURABLE_SOURCE_OF_TRUTH",
-        "physical_status": "PRESENT",
-        "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/persistent-state/postgresql"
-      },
-      {
-        "name": "pgvector",
-        "role": "SEMANTIC_MEMORY",
-        "physical_status": "PRESENT",
-        "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/persistent-memory/pgvector"
-      },
-      {
-        "name": "gVisor",
-        "role": "SANDBOX_ISOLATION",
-        "physical_status": "PRESENT",
-        "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/sandbox-isolation/gvisor"
-      },
-      {
-        "name": "S3-Compatible-Artifact-Storage",
-        "role": "ARTIFACT_SNAPSHOTS",
-        "physical_status": "RUSTFS_PRESENT_BACKBLAZE_B2_BINDING_NOT_DEMONSTRATED",
-        "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/artifact-storage/rustfs"
-      }
+      {"name": "APScheduler", "role": "TIME_AUTHORITY", "physical_status": "PRESENT", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/time-scheduling/apscheduler"},
+      {"name": "Workalendar", "role": "WORK_CALENDAR", "physical_status": "PRESENT", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/work-calendar/workalendar"},
+      {"name": "Celery", "role": "SIMPLE_JOB_WORKERS", "physical_status": "PRESENT_EXTERNAL_TO_WATCHDOG_ROOT_REFERENCE_REQUIRED", "path": "Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery"},
+      {"name": "Redis", "role": "EVENT_TRANSPORT", "physical_status": "PRESENT", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/event-plane/redis"},
+      {"name": "Hatchet", "role": "DURABLE_LONG_JOB", "physical_status": "PRESENT", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/durable-execution/hatchet"},
+      {"name": "Dagu", "role": "MULTI_STEP_JOB", "physical_status": "PRESENT", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/workflow-multistep/dagu"},
+      {"name": "PostgreSQL", "role": "DURABLE_SOURCE_OF_TRUTH", "physical_status": "PRESENT", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/persistent-state/postgresql"},
+      {"name": "pgvector", "role": "SEMANTIC_MEMORY", "physical_status": "PRESENT", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/persistent-memory/pgvector"},
+      {"name": "gVisor", "role": "SANDBOX_ISOLATION", "physical_status": "PRESENT", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/sandbox-isolation/gvisor"},
+      {"name": "S3-Compatible-Artifact-Storage", "role": "ARTIFACT_SNAPSHOTS", "physical_status": "RUSTFS_PRESENT_BACKBLAZE_B2_BINDING_NOT_DEMONSTRATED", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/artifact-storage/rustfs"}
     ],
     "additional_present_components": [
       {"name": "Rocketry", "role": "SCHEDULER_ALTERNATIVE", "path": "time-scheduling/rocketry"},
