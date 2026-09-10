@@ -8,9 +8,15 @@ import time
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel
+
 PLUGIN_ID = "yaiwes.orchestration.hatchet"
 ROLE = "durable_task_orchestration"
 SDK_RELATIVE = "Agente Yaiwes principal/execution-orchestration/state-machine-executor/hatchet/sdks/python"
+
+
+class MicroInput(BaseModel):
+    value: int
 
 
 def descriptor() -> dict[str, str]:
@@ -30,11 +36,7 @@ def run_microtest(repo_root: str | Path) -> dict[str, Any]:
     if str(sdk) not in sys.path:
         sys.path.insert(0, str(sdk))
 
-    from pydantic import BaseModel
-    from hatchet_sdk import Context, Hatchet
-
-    class MicroInput(BaseModel):
-        value: int
+    from hatchet_sdk import Hatchet
 
     hatchet = Hatchet.from_embedded()
     workflow = hatchet.workflow(
@@ -43,11 +45,11 @@ def run_microtest(repo_root: str | Path) -> dict[str, Any]:
     )
 
     @workflow.task(name="double")
-    def double(input: MicroInput, ctx: Context) -> dict[str, int]:
+    def double(input: MicroInput, ctx) -> dict[str, int]:
         return {"value": input.value * 2}
 
     @workflow.task(name="plus_one", parents=[double])
-    def plus_one(input: MicroInput, ctx: Context) -> dict[str, int]:
+    def plus_one(input: MicroInput, ctx) -> dict[str, int]:
         parent = ctx.task_output(double)
         return {"value": parent["value"] + 1}
 
