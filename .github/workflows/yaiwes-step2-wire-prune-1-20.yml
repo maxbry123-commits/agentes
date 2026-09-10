@@ -62,9 +62,16 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- '📂 Bitácora stated JSON Craxy wall.json'
-          git commit -m 'state(yaiwes): SOL owns nodes 1-20 during repair' || true
-          git pull --rebase origin main
-          git push origin HEAD:main
+          if ! git diff --cached --quiet; then
+            git commit -m 'state(yaiwes): SOL owns nodes 1-20 during repair'
+            for attempt in 1 2 3 4 5 6; do
+              git fetch origin main
+              git rebase origin/main || { git rebase --abort || true; exit 1; }
+              git push origin HEAD:main && break
+              test "$attempt" = 6 && exit 1
+              sleep "$attempt"
+            done
+          fi
 
       - name: Materialize FABLES 1+2
         shell: bash
@@ -114,18 +121,13 @@ jobs:
             18:(R/'execution-engine-pool/adapter-layer/cloudflare-workers-sdk',['package.json','lint-turbo.mjs','packages'],['node','lint-turbo.mjs']),
             19:(R/'kernel-principal/reasoning-kernel/decision-on-demand/coconut',['Coconut/coconut.py','Coconut/dataset.py'],['python','-m','compileall','-q','Coconut']),
             20:(R/'code-programming-engine/standards-forensic/code-ultrafeedback',['README.md','src','evalplus'],['python','-m','compileall','-q','src','evalplus'])}
-
           def resolve(dest,v):
-              p=Path(v)
-              return p if p.parts and p.parts[0]=='Agente Yaiwes principal' else dest/p
-
+              p=Path(v); return p if p.parts and p.parts[0]=='Agente Yaiwes principal' else dest/p
           repaired=[]
           for n,(dest,markers,cmd) in specs.items():
               wp=dest/'WIRING.json'
               if not wp.exists(): raise SystemExit(f'{n}:WIRING_MISSING')
-              w=json.loads(wp.read_text())
-              ap=resolve(dest,w.get('adapter') or 'yaiwes_adapter.py')
-              fp=resolve(dest,w.get('manifest') or w.get('ficha') or '')
+              w=json.loads(wp.read_text()); ap=resolve(dest,w.get('adapter') or 'yaiwes_adapter.py'); fp=resolve(dest,w.get('manifest') or w.get('ficha') or '')
               if not ap.exists() or not fp.exists(): raise SystemExit(f'{n}:ADAPTER_OR_FICHA_MISSING')
               old=ap.read_text(errors='strict')
               generic=("if not ROOT.exists()" in old and "'exists': True" in old and 'runtime_command' not in old)
@@ -147,8 +149,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import importlib.util,json,sys
-          R=Path('Agente Yaiwes principal')
-          BUS=R/'kernel-principal/extension-kernel/plugin-bus'
+          R=Path('Agente Yaiwes principal'); BUS=R/'kernel-principal/extension-kernel/plugin-bus'
           spec=importlib.util.spec_from_file_location('ficha_v2',BUS/'ficha_contract_v2.py'); mod=importlib.util.module_from_spec(spec); sys.modules[spec.name]=mod; spec.loader.exec_module(mod)
           items=[
           (1,'APScheduler',R/'execution-orchestration/task-classifier-scheduler'),(2,'AWS-Step-Functions-DS-SDK',R/'execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk'),(3,'Ajv',R/'definition-registry/schema-contracts/ajv'),(4,'Apache-APISIX',R/'mesh-routing-collaboration/apisix-api-gateway'),(5,'Apache-Airflow',R/'execution-orchestration/dag-executor/apache-airflow'),(6,'Argo-Workflows',R/'execution-orchestration/dag-executor/argo-workflows'),(7,'Azure-Durable-Functions',R/'execution-orchestration/state-machine-executor/azure-durable-functions'),(8,'BAML',R/'definition-registry/domain-specific-contracts/baml'),(9,'Burr',R/'execution-orchestration/state-machine-executor/burr'),(10,'Caddy',R/'mesh-routing-collaboration/caddy-gateway'),(11,'Camunda',R/'execution-orchestration/state-machine-executor/camunda'),(12,'Cedar',R/'definition-registry/authorization-model/cedar'),(13,'Celery',R/'execution-engine-pool/parallel-dispatch/celery'),(14,'Cerberus',R/'definition-registry/schema-contracts/cerberus'),(15,'Cerbos',R/'control-governance/policy-guardrails-permissions/cerbos'),(16,'Chroma',R/'tools-models-memory-knowledge/memory-microservices/chroma'),(17,'ClawHub',R/'kernel-principal/extension-kernel/capability-registry/clawhub'),(18,'Cloudflare-Workers-SDK',R/'execution-engine-pool/adapter-layer/cloudflare-workers-sdk'),(19,'Coconut',R/'kernel-principal/reasoning-kernel/decision-on-demand/coconut'),(20,'CodeUltraFeedback',R/'code-programming-engine/standards-forensic/code-ultrafeedback')]
@@ -157,7 +158,7 @@ jobs:
           rows=[]
           for n,name,dest in items:
               gaps=[]; wp=dest/'WIRING.json'
-              if not wp.exists(): gaps.append('WIRING_MISSING'); rows.append({'id':n,'component':name,'status':'GAP','gaps':gaps}); continue
+              if not wp.exists(): rows.append({'id':n,'component':name,'status':'GAP','gaps':['WIRING_MISSING']}); continue
               w=json.loads(wp.read_text()); ap=resolve(dest,w.get('adapter') or 'adapter.py'); fv=w.get('manifest') or w.get('ficha'); fp=resolve(dest,fv) if fv else None
               if not ap.exists(): gaps.append('ADAPTER_MISSING')
               if fp is None or not fp.exists(): gaps.append('FICHA_MISSING')
@@ -167,8 +168,7 @@ jobs:
               if fp and fp.exists():
                   f=json.loads(fp.read_text()); v=mod.validar(f)
                   if not v.valido: gaps.extend('FABLES_'+e for e in v.errores)
-              row={'id':n,'component':name,'status':'GAP' if gaps else 'OK','gaps':gaps}; rows.append(row)
-              print(f"{n:02d} {name}: {row['status']} {','.join(gaps)}")
+              row={'id':n,'component':name,'status':'GAP' if gaps else 'OK','gaps':gaps}; rows.append(row); print(f"{n:02d} {name}: {row['status']} {','.join(gaps)}")
           Path('Readme arquitectura Yaiwes/STEP2-AUDIT-1-20.json').write_text(json.dumps({'results':rows},ensure_ascii=False,indent=2)+'\n')
           bad=[r for r in rows if r['status']!='OK']; print('STEP2_OK',20-len(bad),'GAP',len(bad))
           if bad: raise SystemExit('STEP2_STRUCTURAL_GAPS')
@@ -184,16 +184,21 @@ jobs:
           git add -- 'Agente Yaiwes principal' 'Readme arquitectura Yaiwes/STEP2-AUDIT-1-20.json'
           if git diff --cached --quiet; then echo STEP2_NO_CHANGES; exit 0; fi
           git commit -m 'wire(yaiwes): surgical adapters and FABLES nodes 1-20'
-          git pull --rebase origin main
-          git push origin HEAD:main
+          for attempt in 1 2 3 4 5 6 7 8; do
+            git fetch origin main
+            git rebase origin/main || { git rebase --abort || true; exit 1; }
+            if git push origin HEAD:main; then
+              echo "STEP2_PUBLISH_OK attempt=$attempt"
+              exit 0
+            fi
+            test "$attempt" = 8 && exit 1
+            sleep "$attempt"
+          done
 
       - name: Enforce Step2 structural close
         shell: bash
         run: |
           python3 - <<'PY'
           import json,sys
-          d=json.load(open('Readme arquitectura Yaiwes/STEP2-AUDIT-1-20.json'))
-          bad=[x for x in d['results'] if x['status']!='OK']
-          print('STEP2_OK',len(d['results'])-len(bad),'GAP',len(bad))
-          if bad: sys.exit(1)
+          d=json.load(open('Readme arquitectura Yaiwes/STEP2-AUDIT-1-20.json')); bad=[x for x in d['results'] if x['status']!='OK']; print('STEP2_OK',len(d['results'])-len(bad),'GAP',len(bad)); sys.exit(bool(bad))
           PY
