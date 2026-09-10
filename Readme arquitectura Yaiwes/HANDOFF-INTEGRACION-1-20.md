@@ -1,22 +1,48 @@
-# HANDOFF — Integración YAIWES componentes 1–20
+# HANDOFF — Integración YAIWES componentes 1–20 + continuidad Watchdog
 
 **Repositorio canónico:** `maxbry123-commits/agentes`  
 **Estado:** `ACTIVE_LOOP`  
-**Contrato:** exactamente 3 pasos. No abrir fases adicionales.
+**Contrato:** exactamente 3 pasos. No abrir fases adicionales.  
+**Actualización:** 2026-09-10.
 
-## Regla principal
+## 1. Regla principal
 
 `PASO 1 MOVE 1–20 → PASO 2 CABLEAR/PODAR 1×1 SIN TESTS → PASO 3 TESTS 1×1`
 
-- Código upstream: mover/conservar bytes de código originales; no reescribirlos durante el MOVE.
-- Dentro de `agentes`: MOVE, no COPY.
+- Código upstream: conservar bytes/código originales durante el MOVE; no reescribirlos.
+- Dentro de `agentes`: MOVE/deduplicación verificada, no una copia paralela sin justificación.
 - Paso 1: sin cableado, sin poda, sin tests.
-- Paso 2: cableado + poda 1×1; prohibido ejecutar tests.
-- Paso 3: tests 1×1 únicamente cuando 1 y 2 estén completos para los 20.
-- Si un componente falla dentro de un paso, resolver el GAP dentro del mismo paso y continuar; no abrir otra fase.
-- Actualizar `Readme arquitectura Yaiwes/README.md` con el avance físico de cada paso.
+- Paso 2: X-Ray + decisión A/B/C + cableado + poda 1×1; prohibido ejecutar tests.
+- Paso 3: tests 1×1 únicamente después de completar el Paso 2 correspondiente.
+- Un GAP se repara dentro del mismo paso. No se inventa un Paso 4.
+- La fuente de verdad es el estado físico de `main`, seguido por read-back/test/evidence; el chat y documentos no sustituyen la verificación física.
 
-## Componentes y destinos finales
+## 2. Estado físico actualizado
+
+### Paso 1 — `VERIFIED_CLOSED`
+
+El MOVE final fue ejecutado con el motor de movimientos por lotes y quedó publicado en `main`.
+
+- Workflow final: `YAIWES Motor4 Final MOVE 20`.
+- Archivo: `.github/workflows/yaiwes-motor4-move-20-final.yml`.
+- Run: `34445710787` — `completed/success`.
+- Job: `102771861495` — `completed/success`.
+- `Execute MOVE 1-20`: `success`.
+- `Publish physical MOVE to main`: `success`.
+- `Read back all 20 from origin main`: `success`.
+- Commit físico de MOVE observado en `main`: `a3cf705f58f95cce65d1c230cb00abcab39732b2` (`move(yaiwes): Motor4 batch MOVE components 1-20 to final destinations`).
+
+Esto cierra **solamente el Paso 1**. No implica que los 20 componentes estén aún `VERIFIED_CLOSED` como integración completa; falta Paso 2 y Paso 3.
+
+### Paso 2 — `PENDING / CURRENT_BOUNDARY`
+
+Siguiente frontera operativa: X-Ray + clasificación A/B/C + adapter/Ficha/WIRING/registry + poda mínima segura, uno por uno y **sin tests**.
+
+### Paso 3 — `PENDING`
+
+Solo después del cableado/poda: test 1×1 con contract/import/build/mount/health/behavior/fail-closed/evidence/read-back.
+
+## 3. Componentes y destinos finales
 
 | # | Componente | Destino final |
 |---:|---|---|
@@ -41,53 +67,119 @@
 | 19 | Coconut | `Agente Yaiwes principal/kernel-principal/reasoning-kernel/decision-on-demand/coconut/` |
 | 20 | CodeUltraFeedback | `Agente Yaiwes principal/code-programming-engine/standards-forensic/code-ultrafeedback/` |
 
-## Paso 1 — MOVE
+## 4. Paso 2 detallado — X-Ray + A/B/C + wire/prune
 
-**Workflow:** `YAIWES STEP 1 - MOVE 1-20`  
-**Archivo:** `.github/workflows/yaiwes-step1-move-1-20.yml`  
-**Run activo optimizado:** `34299244917`  
-**Job:** `102302447840`  
-**Regla:** mover árboles originales a destino final y registrar en README arquitectura. Sin poda/cableado/tests.
+El X-Ray no es un cuarto paso: vive dentro del Paso 2 y determina cómo se conecta cada componente.
 
-## Paso 2 — Cableado y poda
+Por cada componente registrar:
 
-**Workflow:** `YAIWES STEP 2 - WIRE PRUNE 1-20 NO TESTS`  
-**Archivo:** `.github/workflows/yaiwes-step2-wire-prune-1-20.yml`  
-Se dispara automáticamente cuando Paso 1 termina `success`.  
-Cola estricta `1 → 20`; conserva runtime, añade/adopta adapter + Ficha v2 + WIRING y hace poda mínima segura.  
-**Prohibido testear en Paso 2.**
+`SOURCE/DESTINATION → runtime real → entrypoint → inputs/outputs → dependencias → estado/persistencia → seguridad → scheduler/DAG/queue/loop → LLM vs determinista → duplicados → GAP YAIWES → A/B/C → KEEP/PRUNE → PORT/ADAPTER → FICHA → WIRING → REGISTRY → EVIDENCE`.
 
-## Paso 3 — Tests
+Si una propiedad no se puede demostrar: `GAP / NO_DETERMINABLE`.
 
-**Workflow:** `YAIWES STEP 3 - TEST 1-20`  
-**Archivo:** `.github/workflows/yaiwes-step3-test-1-20.yml`  
-Se dispara automáticamente cuando Paso 2 termina `success`.  
-Cola estricta `1 → 20`; prueba adapter/Ficha/WIRING, import real del adapter y montaje mediante `UniversalPluginBus`, health/evidence, y publica reporte en README arquitectura.
+### Opción A — Subagente/hijo
 
-## Enlaces canónicos
+Aplicar si conserva objetivo, lifecycle, herramientas, contexto/memoria y decisiones autónomas. Integración:
+
+`YAIWES → AgentPort/Contract → Policy/Budget → Sandbox/Runtime aislado → Subagente → Result normalizado → Evidence`.
+
+No incrustar un agente autónomo completo como lógica del microkernel.
+
+### Opción B — Workflow/DAG/pool
+
+Aplicar si su valor es scheduler, DAG, state-machine, cola, workers, durable execution, multi-step, pipeline o loop. Integración:
+
+`TaskClassifier → WorkflowPort/ExecutionPort → motor → state/events → ResultNormalizer → Evidence`.
+
+El motor ejecuta; YAIWES mantiene policy y objetivo global.
+
+### Opción C — Capacidad modular
+
+Aplicar si aporta una capacidad concreta: schema, authorization, policy, storage, memory, routing, observability, research utility, sandbox helper o reasoning utility. Integración:
+
+`Capability → Adapter → Ficha/Contract → Registry → UniversalPluginBus/Port → YAIWES → Evidence`.
+
+## 5. Paso 3 detallado — test 1×1
+
+Gate mínimo:
+
+`DESTINATION → CONTRACT/FICHA VALID → ADAPTER IMPORT/BUILD → WIRING → REGISTRY/MOUNT → HEALTH → BEHAVIOR → FAILURE PATH/FAIL-CLOSED → HEARTBEAT/EVIDENCE → READ-BACK → PASS|GAP`.
+
+Un PASS sin evidencia física no cierra el componente.
+
+## 6. Continuidad Watchdog programable
+
+El backend Watchdog ya tiene físicamente las familias principales bajo `Core kernel Yaiwes/Backend watchdog workflow adaptativo/`: APScheduler, Rocketry, Workalendar, Taskiq, Redis, Hatchet, DBOS Python, Restate, Dagu, PocketFlow, Apache Hamilton, redun, smolagents, DeerFlow, GPT-Researcher, MindSearch, PostgreSQL, pgvector, gVisor, Firecracker, iii-sandbox y RustFS. Celery está físicamente en `Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery/` y debe consumirse por referencia/adapter, no duplicarse.
+
+El GAP backend principal ya no es descargar otro orquestador grande. Son los contratos/ports: `WatchdogDefinition`, `WatchdogRun`, `WatchdogStep`, `Checkpoint`, `EventEnvelope`, `SchedulerPort`, `QueuePort`, `DurableExecutionPort`, `WorkflowPort`, `ResearchPort`, `PlanningPort`, `SandboxPort`, `StatePort`, `SemanticMemoryPort`, `ArtifactPort`, idempotency/leases/heartbeat/retry/timeout/recovery y health/evidence. RustFS cubre un proveedor S3-compatible; un binding específico de Backblaze B2 permanece `NOT_DEMONSTRATED` hasta materializar el adapter/configuración correspondiente.
+
+Frontend: `assistant-ui` y `Dockview` están demostrados como `EXTRACTED/COMPLETE`; `xyflow` está inventariado como `ZIP_ONLY/COMPLETE` y requiere extracción/read-back antes de integrarlo. Los módulos no demostrados en el índice revisado son FullCalendar, TanStack Table, react-jsonschema-form, xterm.js, Monaco Editor, Apache ECharts, dnd-kit y, opcionalmente, Frappe Gantt.
+
+## 7. Workflow objetivo del Watchdog
+
+```text
+CHAT/UI
+→ WATCHDOG DEFINITION
+→ SCHEMA/POLICY
+→ PostgreSQL
+→ APScheduler + Workalendar
+→ DUE EVENT
+→ RUN + IDEMPOTENCY KEY
+→ PRIORITY QUEUE
+→ TASK CLASSIFIER
+→ SELECT ENGINE
+→ LEASE
+→ SANDBOX
+→ LOAD STATE/MEMORY
+→ PRELINE/POLICY
+→ EXECUTE + HEARTBEAT
+→ CHECKPOINT
+→ VERIFY/EVIDENCE
+→ COMPLETE | RETRY | ROLLBACK | REPLAN
+→ NEXT RUN
+```
+
+Routing previsto:
+
+- SIMPLE → Celery; Taskiq como alternativa detrás de `QueuePort`.
+- DURABLE LONG → Hatchet; DBOS/Restate como alternativas detrás de `DurableExecutionPort`.
+- MULTI-STEP → Dagu.
+- SMALL LOOP → PocketFlow.
+- DAG/CASCADE → Apache Hamilton/redun.
+- RESEARCH → `ResearchPort` → DeerFlow | GPT-Researcher | MindSearch.
+- ADAPTIVE → YAIWES + planning subordinado + PRELINE/policy.
+- STATE → PostgreSQL; semantic memory → pgvector; events → Redis.
+- SANDBOX → gVisor/Firecracker según perfil de riesgo.
+- ARTIFACTS → RustFS/S3-compatible; B2 mediante adapter si se selecciona.
+
+## 8. Trabajo en paralelo
+
+`500 Watchdogs registrados ≠ 500 procesos simultáneos`.
+
+Usar priority queues, pools persistentes, batching, sharding, fan-out/fan-in, backpressure, dedup, idempotency, leases, DLQ, queue-depth scaling, límites por agente/modelo/proveedor y aislamiento por sandbox/workspace.
+
+## 9. Enlaces canónicos
 
 - Repositorio: https://github.com/maxbry123-commits/agentes
-- Arquitectura YAIWES: https://github.com/maxbry123-commits/agentes/blob/main/Readme%20arquitectura%20Yaiwes/README.md
+- Arquitectura histórica: https://github.com/maxbry123-commits/agentes/blob/main/Readme%20arquitectura%20Yaiwes/README.md
+- Arquitectura integración + Watchdog detallada: https://github.com/maxbry123-commits/agentes/blob/main/%F0%9F%93%82%20Readme%20arquitectura%20Yaiwes.md
 - Este HANDOFF: https://github.com/maxbry123-commits/agentes/blob/main/Readme%20arquitectura%20Yaiwes/HANDOFF-INTEGRACION-1-20.md
-- Crazy Wall / STATE: https://github.com/maxbry123-commits/agentes/blob/main/Core%20kernel%20Yaiwes/Crack%20wall%20bit%C3%A1cora%20stated%20JSON/STATE.json
-- Método de integración: https://github.com/maxbry123-commits/agentes/blob/main/Core%20kernel%20Yaiwes/Readme%20de%20integraci%C3%B3n%20de%20componentes%20arquitectura%20Yaiwes/README.md
-- Memoria Watchdog: https://github.com/maxbry123-commits/agentes/blob/main/Core%20kernel%20Yaiwes/readme-memoria.md
-- Plan Watchdog programación: https://github.com/maxbry123-commits/agentes/blob/main/Core%20kernel%20Yaiwes/Crack%20wall%20bit%C3%A1cora%20stated%20JSON/PLAN-WATCHDOG-PROGRAMMING-V2.json
-- Workflow Paso 1: https://github.com/maxbry123-commits/agentes/blob/main/.github/workflows/yaiwes-step1-move-1-20.yml
-- Run Paso 1 activo: https://github.com/maxbry123-commits/agentes/actions/runs/34299244917
-- Job Paso 1 activo: https://github.com/maxbry123-commits/agentes/actions/runs/34299244917/job/102302447840
-- Workflow Paso 2: https://github.com/maxbry123-commits/agentes/blob/main/.github/workflows/yaiwes-step2-wire-prune-1-20.yml
-- Workflow Paso 3: https://github.com/maxbry123-commits/agentes/blob/main/.github/workflows/yaiwes-step3-test-1-20.yml
+- Handoff core + integración + Watchdog: https://github.com/maxbry123-commits/agentes/blob/main/%F0%9F%93%82%20Readme%20Handoff%20core%20integracion%20y%20wachdog.md
+- Plan Watchdog/paralelo: https://github.com/maxbry123-commits/agentes/blob/main/%F0%9F%93%82%20Readme%20plan%20wachdog%20y%20trabajo%20en%20paralelo.md
+- Crazy Wall detallado: https://github.com/maxbry123-commits/agentes/blob/main/%F0%9F%93%82%20Bit%C3%A1cora%20stated%20JSON%20Craxy%20wall.json
+- STATE: https://github.com/maxbry123-commits/agentes/blob/main/Core%20kernel%20Yaiwes/Crack%20wall%20bit%C3%A1cora%20stated%20JSON/STATE.json
+- Plan machine-readable Watchdog: https://github.com/maxbry123-commits/agentes/blob/main/Core%20kernel%20Yaiwes/Crack%20wall%20bit%C3%A1cora%20stated%20JSON/PLAN-WATCHDOG-PROGRAMMING-V2.json
+- Backend Watchdog: https://github.com/maxbry123-commits/agentes/tree/main/Core%20kernel%20Yaiwes/Backend%20watchdog%20workflow%20adaptativo
+- Run Motor4 MOVE 20: https://github.com/maxbry123-commits/agentes/actions/runs/34445710787
+- Commit MOVE 20: https://github.com/maxbry123-commits/agentes/commit/a3cf705f58f95cce65d1c230cb00abcab39732b2
+- Recovery patch: https://github.com/maxbry123-commits/agentes/blob/main/PARCHE-RECUPERACION-CORE-INTEGRACION-WATCHDOG.md
 
-## Cómo continuar la tarea
+## 10. Cómo continuar en una sesión nueva
 
-1. Leer este HANDOFF.
-2. Leer `Readme arquitectura Yaiwes/README.md`.
-3. Leer `STATE.json`.
-4. Continuar en el paso físico actual sin reiniciar trabajo cerrado.
-5. Si falla un componente, resolver dentro del mismo paso y seguir la cola.
-6. No iniciar ninguna tarea externa hasta cerrar `Paso 1 → Paso 2 → Paso 3`.
-
-## Handoff operativo
-
-En cualquier chat/sesión nueva: leer primero este archivo, después README arquitectura y STATE. Continuar exactamente desde el paso y componente físico no completado; no reiniciar ni reinterpretar el plan.
+1. Leer `PARCHE-RECUPERACION-CORE-INTEGRACION-WATCHDOG.md`.
+2. Leer este Handoff.
+3. Leer `📂 Bitácora stated JSON Craxy wall.json` y `STATE.json`.
+4. Verificar físicamente el boundary actual.
+5. No repetir Paso 1: su run final y read-back están cerrados.
+6. Continuar desde Paso 2 sin tests; después ejecutar Paso 3.
+7. Construir/cablear el Watchdog sobre los componentes ya presentes, evitando descargar motores redundantes.
