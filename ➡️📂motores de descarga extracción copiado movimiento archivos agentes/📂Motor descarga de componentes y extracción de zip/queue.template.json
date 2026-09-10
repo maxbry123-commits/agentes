@@ -1,0 +1,11 @@
+{
+  "queue": [
+    {
+      "id": "0001:component",
+      "source_repo": "OWNER/REPOSITORY",
+      "source_ref": "HEAD",
+      "slug": "COMPONENT_NAME",
+      "publish": false
+    }
+  ]
+}

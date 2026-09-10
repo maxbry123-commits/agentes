@@ -1,264 +1,116 @@
-# ⚠️ SKILL CANÓNICO — DESCARGAR / EXTRAER ZIP / COPIAR / MOVER ARCHIVOS
+# SKILL — descargar, extraer ZIP, copiar y mover archivos
 
-> **ADVERTENCIA CRÍTICA — LECTURA OBLIGATORIA ANTES DE EJECUTAR**
->
-> 1. **LOS MOTORES SON INTOCABLES.** Está prohibido editar, reescribir, refactorizar, formatear, regenerar, parchear o adaptar su código.
-> 2. **SOLO SE PUEDE COPIAR EL CÓDIGO FUENTE EXACTO DE LOS MOTORES.** La copia debe conservar el mismo blob SHA de GitHub.
-> 3. **NINGÚN DESTINO PUEDE QUEDAR FIJADO POR LA IA.** El usuario entrega el destino de cada operación. Está prohibido inferir, recordar o reutilizar un destino anterior.
-> 4. **EL PROCESO DE ESTOS MOTORES SOLO PUEDE OPERAR DENTRO DE SU RAÍZ DE MOTORES**, salvo el destino explícito entregado por el usuario para la operación.
-> 5. **NO CREAR RAÍCES, ARCHIVOS AUXILIARES, LOCKS, LEDGERS, TESTS, COLAS O MANIFESTS EXTRA DENTRO DE LA RAÍZ FINAL.**
-> 6. **NO LFS. NO FORCE PUSH. NO SOBREESCRITURA SILENCIOSA.**
-> 7. **NO PASS SIN READ-BACK.** Una copia solo es válida después de releer `main` y comprobar nombre, allowlist y hashes.
-> 8. **MODIFICAR UN MOTOR REQUIERE AUTORIZACIÓN EXPLÍCITA DEL USUARIO EN EL CHAT ACTUAL.** Sin esa autorización: `MOTOR_CODE_LOCK_GAP`.
+Estado: CANÓNICO / FAIL-CLOSED / MOTORES INMUTABLES
+Repositorio plantilla: `maxbry123-commits/frontend`
 
-Estado: `CANONICAL / FAIL_CLOSED / COPY_ONLY / IMMUTABLE_MOTORS`  
-Repositorio fuente canónico: `maxbry123-commits/frontend`  
-Rama canónica: `main`
+## 1. Regla principal
 
----
+Los motores de esta raíz son **INTOCABLES**.
 
-## 1. Objetivo
+- PROHIBIDO editar, reescribir, refactorizar, formatear, regenerar o parchear el código fuente de un motor.
+- PROHIBIDO crear una variante del motor para resolver un error.
+- El código de un motor solo puede transferirse mediante **COPIA EXACTA desde GitHub**.
+- Antes de usar o copiar un motor se debe validar su blob SHA contra `MOTOR-CODE-LOCK.json`.
+- Si el SHA no coincide: `MOTOR_CODE_LOCK_GAP` y no se ejecuta.
+- Un cambio de código requiere autorización explícita del Director/usuario en el chat actual.
 
-Esta raíz contiene los motores autorizados para:
+## 2. Entorno de trabajo
 
-- descargar componentes;
-- extraer ZIP;
-- copiar archivos;
-- mover archivos;
-- copiar esta raíz completa de motores + skill a otro repositorio.
+Todos los archivos operativos del sistema de motores deben permanecer dentro de esta raíz: estados, colas, balances, manifests, locks, logs e índices auxiliares.
 
-La raíz destino siempre debe llamarse:
+No crear nuevas raíces de motores ni archivos auxiliares fuera de este entorno. Un archivo destino de una operación de descarga/copia/movimiento solo puede estar fuera de esta raíz cuando el usuario entregue explícitamente ese destino para esa operación.
 
-`➡️📂motores de descarga extracción copiado movimiento archivos <NOMBRE_REPO>/`
+## 3. Destinos — regla obligatoria
 
-El nombre se define **desde la copia inicial**. No se crea con un nombre temporal para renombrarlo después.
+**Nunca inferir, recordar ni reutilizar un destino anterior.** El usuario entrega el destino en cada operación.
 
----
+Antes de ejecutar:
 
-## 2. Contenido final autorizado de la raíz
+- Motor 1: exigir `ARCHIVE_INPUT`, `DEST_DIR`, `STATE_FILE`.
+- Motor 2: exigir `QUEUE_FILE`, `STATE_FILE`, `ENGINE_PATH`, `INDEX_PATH`; si publica, exigir además `DEST_REPO`, `DEST_BRANCH`, `DEST_ROOT` y credencial runtime autorizada.
+- Engine combinado del Motor 2: exigir `SOURCE_REPO`; si publica, exigir explícitamente `DEST_REPO`, `DEST_BRANCH`, `DEST_ROOT`.
+- Motor 3: exigir `SOURCE_DIR`, `DEST_DIR`, `STATE_FILE`, `BATCH_SIZE`.
+- Motor 4: exigir `SOURCE_DIR`, `DEST_DIR`, `STATE_FILE`, `BATCH_SIZE`.
 
-La raíz final contiene **solamente** estos siete archivos distribuidos en cuatro carpetas de motores + este skill:
+Aunque un motor heredado contenga un valor default, **el default está operativamente prohibido**. Si falta un destino explícito, detener con `DESTINATION_INPUT_GAP` y no ejecutar.
 
-1. `➡️📂 skills descargar extraer zip copiar mover archivos readme.md`
-2. `➡️📂 Motor de extracción zip/motor_1_extract_only.py`
-3. `📂Motor descarga de componentes y extracción de zip/motor_2_queue_download_extract.py`
-4. `📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py`
-5. `➡️📂motor de copiar archivos/motor_3_copy_batches.py`
-6. `➡️📂motor de copiar archivos/motor_copy_root_to_repo.py`
-7. `➡️📂motor de moves archivos/motor_4_move_batches.py`
+## 4. Motor 1 — solo extracción ZIP
 
-Cualquier otro archivo dentro de esta raíz produce:
+Ruta: `➡️📂 Motor de extracción zip/motor_1_extract_only.py`
 
-`SOURCE_ALLOWLIST_GAP` o `DESTINATION_ALLOWLIST_GAP`.
+Función: reconstruir ZIP fragmentado cuando aplique, validar CRC/rutas seguras y extraer en lotes persistentes de 1 a 100.
 
----
+Aceptación: `VERIFIED_CLOSED`, `failed=0`, `pending=0` y tree hash generado.
 
-## 3. Bloqueo de integridad del código
+## 5. Motor 2 — descarga + extracción en cola persistente
 
-Los siguientes blobs son canónicos e inmutables:
+Controlador: `📂Motor descarga de componentes y extracción de zip/motor_2_queue_download_extract.py`
+Engine: `📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py`
 
-| Archivo | Blob SHA GitHub |
-|---|---|
-| `motor_1_extract_only.py` | `a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500` |
-| `motor_2_queue_download_extract.py` | `84d566e2ee4e98e42eb3a864026d067d48caabd9` |
-| `hf_download_extract_engine.py` | `91e6e4486692eab314be5c7130d8310d3c855397` |
-| `motor_3_copy_batches.py` | `3689924361ce4a1a9fde4ae2b6f6009c37a6042d` |
-| `motor_copy_root_to_repo.py` | `8281211da76db3080fe1f1ea38b3eb0c45d655cb` |
-| `motor_4_move_batches.py` | `9a21facfe11327cf60a2afca8f415ad52f0ecbe5` |
+Función: procesar una cola de repositorios, descargar un ref exacto, crear ZIP determinista, fragmentar cuando sea necesario, reconstruir, extraer, verificar árbol y mantener estado/reintentos.
 
-Regla: si una copia de cualquiera de esos motores devuelve un blob distinto, la operación falla y no se publica como PASS.
+Balance obligatorio al finalizar:
 
----
+- total
+- download_verified
+- extraction_verified
+- published_readback_verified
+- failed
+- pending
 
-## 4. Destino obligatorio y no persistente
+También debe generar/actualizar un README índice en la ubicación `INDEX_PATH` entregada explícitamente por el usuario.
 
-El usuario entrega el destino en cada operación.
+## 6. Motor 3 — copiar archivos en lotes
 
-Está prohibido:
+Ruta: `➡️📂motor de copiar archivos/motor_3_copy_batches.py`
 
-- deducir el repo destino;
-- usar un destino de una conversación anterior;
-- reutilizar un path anterior;
-- confiar en defaults heredados dentro de un motor;
-- escribir un destino fijo nuevo dentro del código del motor.
+Función: copiar archivos en lotes `BATCH_SIZE=1..100` usando staging, `copy2`, SHA-256 y read-back.
 
-Si falta el destino: `DESTINATION_INPUT_GAP`.
+Política por defecto de operación recomendada: `COLLISION_POLICY=fail`.
 
-Aunque un motor heredado contenga un default histórico, ese default queda **operativamente prohibido** por este skill.
+Aceptación: `VERIFIED_CLOSED`, `failed=0`, `pending=0`.
 
----
+## 7. Motor 4 — mover archivos en lotes
 
-## 5. Motor de extracción ZIP
+Ruta: `➡️📂motor de moves archivos/motor_4_move_batches.py`
 
-Ruta:
+Función: mover archivos en lotes `BATCH_SIZE=1..100`, verificar SHA-256 destino y soportar reanudación segura.
 
-`➡️📂 Motor de extracción zip/motor_1_extract_only.py`
+Política por defecto de operación recomendada: `COLLISION_POLICY=fail`.
 
-Entradas obligatorias:
+Aceptación: `VERIFIED_CLOSED`, `failed=0`, `pending=0`; para traslado completo, `source_files_remaining=0`.
 
-- `ARCHIVE_INPUT`
-- `DEST_DIR`
-- `STATE_FILE`
+## 8. Proceso para copiar estos motores a otro repositorio
 
-Funciones:
+1. Leer este skill.
+2. Leer `MOTOR-CODE-LOCK.json`.
+3. Fetch del código canónico desde GitHub `main`.
+4. Verificar que el blob SHA coincide con el lock.
+5. Ejecutar Motor 3 sobre una copia de trabajo en lotes de 1 a 100.
+6. Verificar SHA/read-back de la copia.
+7. Publicar la copia exacta mediante comandos GitHub en el `main` del repo destino.
+8. La raíz destino se llama `➡️📂motores de descarga extracción copiado movimiento archivos <NOMBRE_REPO>/`.
+9. Solo cambia `<NOMBRE_REPO>`; el código fuente de los motores no cambia.
+10. Releer desde `main` y comparar blob SHA.
 
-- reconstrucción de ZIP fragmentado;
-- comprobación CRC;
-- bloqueo de rutas inseguras;
-- bloqueo de symlink ZIP;
-- extracción por lotes;
-- persistencia;
-- SHA-256/tree hash;
-- read-back físico.
+## 9. Registro obligatorio
 
-PASS:
+Cada operación debe dejar una entrada en `OPERATIONS-LEDGER.jsonl` con:
 
-`VERIFIED_CLOSED` + `failed=0` + `pending=0`.
+`timestamp`, `repository`, `motor`, `action`, `source`, `destination`, `batch_size`, `code_blob_sha`, `result`, `commit`, `readback`.
 
----
+Sin registro + evidencia de read-back, la operación no se considera cerrada.
 
-## 6. Motor de descarga + extracción
+## 10. Índice de componentes
 
-Controlador:
+Cuando Motor 2 procese una cola, se debe generar un `README-INDICE-COMPONENTES.md` en el destino de índice que entregue el usuario. El índice debe listar componente, URL fuente visible, estado, commit fuente y balance descarga/extracción.
 
-`📂Motor descarga de componentes y extracción de zip/motor_2_queue_download_extract.py`
+## 11. Prohibiciones
 
-Engine:
-
-`📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py`
-
-Entradas de destino, cuando exista publicación, deben ser explícitas:
-
-- `DEST_REPO`
-- `DEST_BRANCH`
-- `DEST_ROOT`
-
-Además, `ENGINE_PATH`, `QUEUE_FILE`, `STATE_FILE` e `INDEX_PATH` deben entregarse explícitamente cuando correspondan.
-
-PASS solo después de descargar, reconstruir, extraer y verificar read-back.
-
----
-
-## 7. Motor de copia por lotes
-
-Ruta:
-
-`➡️📂motor de copiar archivos/motor_3_copy_batches.py`
-
-Uso:
-
-- `SOURCE_DIR`
-- `DEST_DIR`
-- `STATE_FILE`
-- `BATCH_SIZE=1..100`
-
-Política recomendada:
-
-`COLLISION_POLICY=fail`
-
-PASS:
-
-`VERIFIED_CLOSED` + `failed=0` + `pending=0`.
-
----
-
-## 8. Motor dedicado para copiar esta raíz a otro repo
-
-Ruta:
-
-`➡️📂motor de copiar archivos/motor_copy_root_to_repo.py`
-
-Este motor está diseñado exclusivamente para copiar:
-
-**4 carpetas de motores + skill, y nada más.**
-
-Entradas obligatorias:
-
-- `SOURCE_ROOT`
-- `DEST_ROOT`
-- `DEST_REPO_NAME`
-- `BATCH_SIZE` opcional, recomendado `2`
-
-Controles:
-
-1. valida el nombre exacto de la raíz destino;
-2. valida que el origen contenga exactamente la allowlist de siete archivos;
-3. copia por lotes;
-4. usa `.partial` únicamente dentro de la raíz destino durante la operación;
-5. verifica SHA-256 antes y después de cada reemplazo;
-6. elimina la raíz destino si la operación falla;
-7. rechaza colisiones no idénticas;
-8. no crea archivos de estado, ledger o manifests;
-9. produce el balance únicamente por `stdout`;
-10. termina en `VERIFIED_CLOSED` o falla cerrado.
-
----
-
-## 9. Motor de movimiento
-
-Ruta:
-
-`➡️📂motor de moves archivos/motor_4_move_batches.py`
-
-Entradas:
-
-- `SOURCE_DIR`
-- `DEST_DIR`
-- `STATE_FILE`
-- `BATCH_SIZE=1..100`
-
-PASS:
-
-`VERIFIED_CLOSED` + `failed=0` + `pending=0`.
-
----
-
-## 10. Protocolo profesional para copiar la raíz a un repo
-
-1. Leer este skill completo.
-2. Confirmar que el usuario entregó el repo destino.
-3. Leer desde `frontend/main` los motores canónicos.
-4. Validar los blob SHA del apartado 3.
-5. Definir directamente la raíz:
-   `➡️📂motores de descarga extracción copiado movimiento archivos <NOMBRE_REPO>/`
-6. Ejecutar la lógica de `motor_copy_root_to_repo.py` en lotes.
-7. Publicar mediante GitHub sin force.
-8. No copiar ningún archivo que no esté en la allowlist.
-9. Releer `main`.
-10. Verificar la raíz y los siete archivos.
-11. Comparar los seis blob SHA de motores.
-12. Registrar la operación mediante el commit GitHub y su evidencia de read-back; **no crear un ledger adicional**.
-13. Solo entonces declarar `100% PASS ✅`.
-
----
-
-## 11. Fallos fail-closed
-
-- Motor modificado: `MOTOR_CODE_LOCK_GAP`
-- Destino ausente: `DESTINATION_INPUT_GAP`
-- Nombre incorrecto: `DESTINATION_NAME_GAP`
-- Archivo extra en origen: `SOURCE_ALLOWLIST_GAP`
-- Archivo extra en destino: `DESTINATION_ALLOWLIST_GAP`
-- Colisión: `DESTINATION_COLLISION`
-- Hash de copia distinto: `COPY_HASH_MISMATCH`
-- Hash de read-back distinto: `READBACK_HASH_MISMATCH`
-- Branch avanzó durante publicación: no force; releer `main` y reconstruir sobre el nuevo parent.
-
----
-
-## 12. Criterio de cierre
-
-Una operación está cerrada únicamente cuando:
-
-- la raíz existe en `main`;
-- el nombre de la raíz coincide exactamente con el repo;
-- contiene únicamente la allowlist autorizada;
-- los seis motores conservan sus blob SHA canónicos;
-- el skill está presente;
-- no existe ningún archivo extra;
-- la publicación fue sin force;
-- se realizó read-back posterior al commit.
-
-Resultado final permitido:
-
-`100% PASS ✅`
+- NO LFS.
+- NO FORCE PUSH.
+- NO sobreescritura silenciosa.
+- NO destinos recordados de tareas anteriores.
+- NO PASS sin hashes/read-back.
+- NO editar motores para adaptarlos a un repositorio.
+- NO crear motores alternativos si uno falla; registrar GAP y resolver por configuración/entorno sin alterar el código.
