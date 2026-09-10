@@ -1,0 +1,9 @@
+{
+  "node": 25,
+  "component": "Workalendar",
+  "capability": "working_day_calendar",
+  "adapter": "adapter.py",
+  "entry": "is_working_day",
+  "target": "Agente Yaiwes principal/execution-orchestration/classifier-scheduler/workalendar/",
+  "prune": "NOT_NEEDED"
+}
