@@ -6,16 +6,6 @@
   "fleet_count": 18,
   "council12_count": 12,
   "routing": "deterministic_exact_id_then_slot_role",
-  "model_api_router": {
-    "status": "READY_FOR_ACCOUNT_PROBE",
-    "path": "Agente Yaiwes principal/execution-engine-pool/agent-bindings/model_api_router_mvp.py",
-    "policy": "availability_first_then_parallel_dispatch_fail_closed",
-    "providers": ["nvidia", "cerebras", "groq"],
-    "secret_env": ["NVIDIA_API_KEYS", "CEREBRAS_API_KEYS", "GROQ_API_KEYS"],
-    "secret_storage": "ENV_ONLY_NEVER_REPOSITORY",
-    "selection": "live_models_only_then_capability_ranking",
-    "parallel_dispatch": true
-  },
   "source_traceability": {
     "vendored_or_located": 15,
     "external_not_vendored": ["hermes", "muse_glimmer", "goose"],
@@ -48,13 +38,12 @@
   "pre_test_gates": {
     "fleet_registry": "READY",
     "agent_fleet_adapter": "READY",
-    "model_api_router": "READY_ACCOUNT_PROBE_REQUIRED",
     "universal_plug_binding": "READY",
     "unique_agent_ids": "VERIFIED_PREVIOUS_STEP3",
     "council12": "VERIFIED_PREVIOUS_STEP3",
     "fail_closed_without_runtime": "VERIFIED_PREVIOUS_STEP3",
     "external_runtime_values": "OPERATOR_INJECTION_REQUIRED_AT_TEST_TIME"
   },
-  "next_action": "INJECT_AUTHORIZED_PROVIDER_ENV_DISCOVER_MODELS_THEN_RUN_REAL_AGENT_TESTS",
-  "closure_rule": "Repository-side preparation is closed. The model router exposes no secret values and dispatches only through models returned by a successful provider availability probe."
+  "next_action": "INJECT_AUTHORIZED_RUNTIME_ENV_AND_RUN_REAL_AGENT_TESTS",
+  "closure_rule": "Repository-side preparation is closed. A runtime is never marked executed until its configured API/MCP/command is invoked with evidence."
 }
