@@ -1,1 +1,0 @@
-kombu[gcpubsub]>=5.5.0
