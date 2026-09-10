@@ -1,69 +1,75 @@
 {
-  "schema": "yaiwes.watchdog-programming-plan/v4",
+  "schema": "yaiwes.watchdog-programming-plan/v5-strict",
   "updated_at": "2026-09-10",
-  "status": "ACTIVE_3_STEP_SUPERVISOR",
-  "goal": "supervise component integration without adding work outside the three-step contract",
-  "contract": [
-    {"step":1,"name":"DESTINATION_ABC_AND_MOVE","actions":["read_minimum_real_code","decide_A_B_C","select_existing_target","motor4_move_if_needed","hash_readback"],"forbidden":["wire","test","invent_target"]},
-    {"step":2,"name":"PRUNE_IF_NEEDED_AND_FABLES_WIRE","actions":["prune_only_with_evidence","ficha_contract_v2.validar","UniversalPluginBus.enchufar","real_adapter_or_port","WIRING"],"forbidden":["blind_prune","generic_source_probe_as_integration","test_as_close_gate"]},
-    {"step":3,"name":"REAL_TEST","actions":["ficha_validation","import_or_build","fables_mount","real_behavior_positive","failure_path","health_evidence_readback"],"output":"PASS_OR_GAP"}
-  ],
-  "no_step4": true,
-  "failure_rule": "repair_same_node_in_step2_or_step3_and_retest",
+  "status": "ACTIVE_STRICT_3_STEPS",
+  "scope": {
+    "work_root": "Core kernel Yaiwes/",
+    "destination_root": "Agente Yaiwes principal/",
+    "motor_root": "➡️📂motores de descarga extracción copiado movimiento archivos agentes/",
+    "other_write_scope_authorized": false
+  },
   "crazy_wall": "📂 Bitácora stated JSON Craxy wall.json",
   "handoff": "Readme arquitectura Yaiwes/HANDOFF-INTEGRACION-1-20.md",
-  "recovery": "PARCHE-RECUPERACION-CORE-INTEGRACION-WATCHDOG.md",
-  "nodes_total": 27,
-  "node_distribution": {"step1":7,"step2":15,"step3_revalidation":5},
-  "multi_ai": {
-    "agents": ["GROK","SOL","ASTRA"],
-    "rule": "one component equals one node and one owner while claimed",
-    "lock_flow": ["READ_FRESH", "CLAIM_FREE_NODE", "CHECKPOINT_BEFORE", "EXECUTE_CURRENT_STEP", "CHECKPOINT_AFTER", "WRITE_EVIDENCE", "ADVANCE_OR_GAP", "RELEASE"],
-    "claimed_node_action": "SKIP_AND_PICK_ANOTHER_FREE_NODE"
-  },
-  "intake": {
-    "scan_root": "Core kernel Yaiwes/",
-    "on_new_component": "append FREE node at step1 unless component already has node",
-    "known_new_nodes": ["Dagu","Hatchet","PostgreSQL","Redis","Workalendar","gVisor","pgvector"],
-    "known_duplicates_not_new": ["APScheduler","Celery"]
-  },
-  "fables": {
-    "mandatory": true,
-    "repo_state": "PENDING_MATERIALIZATION",
-    "part1": "universal_plugin_bus_v2_integrated.py::UniversalPluginBus.enchufar",
-    "part2": "ficha_contract_v2.py::validar",
-    "rule": "no STEP2 node may close before exact FABLES pieces are materialized and verified"
-  },
-  "watchdog_loop": [
-    "read physical main",
-    "scan intake root for unregistered components",
-    "read Crazy Wall",
-    "detect stale or invalid claims using evidence, not assumption",
-    "surface FREE nodes by current_step",
-    "require checkpoint before edits",
-    "verify evidence after edits",
-    "advance only one node at a time per owner",
-    "repeat until all nodes PASS"
+  "recovery_grok_sol": "PARCHE-RECUPERACION-CORE-INTEGRACION-WATCHDOG.md",
+  "recovery_astra_claude": "PARCHE-RECUPERACION-ASTRA-CLAUDE-YAIWES-3-PASOS.md",
+  "contract": [
+    {
+      "step": 1,
+      "name": "ANALYZE_ABC_DESTINATION",
+      "actions": ["read_minimum_component_code", "decide_A_B_C", "select_exact_existing_target_under_destination_root"],
+      "output": "component -> A|B|C -> exact_target -> short_reason",
+      "forbidden": ["move", "wire", "prune", "test", "create_adapter", "create_motor", "new_architecture"]
+    },
+    {
+      "step": 2,
+      "name": "MOVE_WITH_CANONICAL_MOTOR",
+      "actions": ["use_only_motor_root", "move_from_work_root_to_destination_root", "hash_readback", "skip_if_move_already_verified"],
+      "output": "source -> canonical_motor -> target -> hash_readback",
+      "forbidden": ["wire", "prune", "test", "lfs", "force", "alternate_script", "new_motor"]
+    },
+    {
+      "step": 3,
+      "name": "WIRE_PRUNE_IF_NEEDED_MICROTEST",
+      "actions": ["wire_real_capability", "fables_universal_plug_where_applicable", "minimal_adapter_port_wiring_only", "prune_only_for_concrete_cause", "minimal_functional_microtest", "surgical_repair_and_retest_on_failure"],
+      "output": "PASS_OR_GAP",
+      "forbidden": ["global_refactor", "blind_prune", "generic_wrapper_as_pass", "folder_import_source_probe_as_pass", "new_phase"]
+    }
   ],
-  "minimal_runtime_support": {
-    "time":"APScheduler",
-    "calendar":"Workalendar",
-    "queue":"Celery or Taskiq behind queue boundary",
-    "events_locks":"Redis",
-    "durable":"Hatchet when needed",
-    "multistep":"Dagu when needed",
-    "state":"PostgreSQL",
-    "memory":"pgvector",
-    "sandbox":"gVisor; Firecracker only high-risk"
+  "no_step4": true,
+  "failure_rule": "repair_inside_current_step; return to earlier owning step only when evidence proves destination or move incorrect; never create a new phase",
+  "coordination": {
+    "writers": ["GROK", "SOL", "ASTRA", "CLAUDE"],
+    "one_component_one_node": true,
+    "must_read_fresh_crazy_wall_before_claim": true,
+    "may_claim_only_existing_free_node": true,
+    "ai_may_create_new_work_node": false,
+    "claimed_node_action": "SKIP",
+    "lock_flow": ["READ_FRESH", "CLAIM_EXISTING_FREE_NODE", "CHECKPOINT_BEFORE", "EXECUTE_CURRENT_STEP_ONLY", "CHECKPOINT_AFTER", "WRITE_EVIDENCE", "PASS_OR_GAP", "RELEASE"]
   },
   "anti_dilation": [
-    "no new architecture phase",
-    "no replacement engine unless a concrete GAP proves necessity",
-    "no parallel duplicate component copies",
-    "no broad refactor before failing test",
-    "no documentation task that blocks a runnable node",
-    "no PASS from folder existence or source_probe",
-    "no edit to another AI owner node"
+    "no step4",
+    "no new architecture",
+    "no global refactor",
+    "no benchmarks_or_100x",
+    "no lateral research without concrete gap",
+    "no autonomous search for new components",
+    "no new motors",
+    "no documentation instead of execution",
+    "no blind prune",
+    "no generic wrappers",
+    "no edit to another owner node",
+    "no pass from folder import or source_probe",
+    "no integration writes outside authorized roots"
   ],
-  "close_gate": "all registered nodes PASS with physical evidence and Crazy Wall checkpoints"
+  "watchdog_loop": [
+    "read fresh Crazy Wall",
+    "list existing FREE nodes only",
+    "claim one existing FREE node",
+    "execute current_step only",
+    "write checkpoint and physical evidence",
+    "PASS or concrete GAP",
+    "release",
+    "take next existing FREE node"
+  ],
+  "close_gate": "node PASS only with real evidence from its authorized current step"
 }
