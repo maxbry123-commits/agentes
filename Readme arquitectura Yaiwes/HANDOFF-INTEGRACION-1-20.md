@@ -1,199 +1,173 @@
-# HANDOFF — TAREA 2 · INTEGRACIÓN YAIWES · CONTRATO CANÓNICO DE 3 PASOS
+# HANDOFF — INTEGRACIÓN YAIWES — 27 NODOS — 3 PASOS
 
 **Repositorio:** `maxbry123-commits/agentes`  
 **Rama:** `main`  
-**Estado:** `ACTIVE_LOOP`  
-**Regla:** exactamente 3 pasos. No crear Paso 4 ni fases paralelas.  
-**Actualización:** 2026-09-10
+**Estado:** `ACTIVE_LOOP / 5X_REVIEWED`  
+**Para:** Grok / GPT-5.6 Sol / Astra  
+**Regla:** exactamente 3 pasos. Nada fuera de ellos.
 
-## 1. Objetivo
-
-Integrar los componentes de YAIWES con un proceso corto, verificable y retomable por cualquier agente/modelo. Se elimina sobreingeniería no necesaria: cada componente debe recorrer únicamente **Analizar → Mover/Conectar → Test**.
-
-## 2. Contrato DSL / DAG / Schema
+## 1. Contrato único
 
 ```text
-CONTRACT yaiwes.integration.v3
-INPUT  = componente encontrado o pendiente
-ROOT   = Core kernel Yaiwes/ | Agente Yaiwes principal/
-TARGET = destino canónico dentro de Agente Yaiwes principal/
+POR CADA COMPONENTE = 1 NODO
 
-STEP_1 ANALYZE_CLASSIFY
-  X_RAY(runtime, entrypoint, IO, dependencies, state, security, capability)
-  CLASSIFY(A|B|C)
-  OUTPUT = IntegrationDecision
+PASO 1 — DESTINO A/B/C + MOVE
+PASO 2 — PODAR SOLO SI HACE FALTA + ENCHUFE FABLES
+PASO 3 — TEST REAL
 
-STEP_2 MOVE_WIRE_PRUNE_CONNECT
-  MOVE(source -> canonical_target, Motor4, hash/readback)
-  WIRE(real_adapter + ficha_contract_v2 + WIRING + registry/port)
-  PRUNE(minimal_safe_only)
-  CONNECT(real capability)
-  OUTPUT = WiredComponent
-  TESTS = FORBIDDEN
-
-STEP_3 TEST_REAL_1X1
-  TEST(contract, import/build, real_behavior, mount, health, failure_path, evidence, readback)
-  OUTPUT = PASS | GAP
-  PASS requires physical evidence
+FAIL → reparar el mismo nodo y repetir el paso responsable.
+NO PASO 4.
 ```
 
-DAG canónico:
+### PASO 1 — DESTINO A/B/C + MOVE
+
+Leer únicamente lo necesario del código/README para identificar la función real.
+
+- **A — AGENTE/SUBAGENTE:** tiene goal/lifecycle/tools/context o decisiones autónomas.
+- **B — MOTOR DE TRABAJO:** scheduler, DAG, workflow, queue, workers, durable execution, multi-step o loop.
+- **C — CAPACIDAD:** schema, policy, storage, memory, routing, research, sandbox, validator, herramienta u otra función modular.
+
+Después elegir una raíz **ya existente** dentro de `Agente Yaiwes principal/` que corresponda a esa función y mover con `motor_4_move_batches.py`, hash + read-back. Si el MOVE ya está demostrado, no repetirlo.
+
+Si A/B/C o el destino no se puede demostrar: dejar `GAP_DESTINATION`, no adivinar.
+
+### PASO 2 — PODA MÍNIMA + FABLES OBLIGATORIO
+
+- Conservar upstream.
+- Podar solamente archivos/duplicados demostrados como innecesarios para la capacidad integrada.
+- Cablear mediante el **Enchufe Universal FABLES obligatorio**.
+- FABLES parte 1: `universal_plugin_bus_v2_integrated.py` / `UniversalPluginBus.enchufar()`.
+- FABLES parte 2: `ficha_contract_v2.py` / `validar()` + ficha v2.
+- Crear solamente adapter/port/WIRING que conecte la capacidad real.
+- `source_probe()` o comprobar que existe una carpeta NO es integración.
+- Tests prohibidos como cierre de este paso.
+
+### PASO 3 — TEST REAL
 
 ```text
-[INPUT / Core kernel Yaiwes] → [1 ANALYZE + A/B/C] → [2 MOVE + WIRE + PRUNE + CONNECT] → [3 TEST REAL] → [PASS]
-                                                               ↑                         │
-                                                               └──── GAP REPAIR ─────────┘
-```
-
-Un GAP vuelve al paso donde nació. No crea una fase nueva.
-
-## 3. Opciones A / B / C
-
-### A — SUBAGENT / CHILD
-Usar solamente si el componente mantiene goal/lifecycle/tools/context o decisiones autónomas.
-
-`YAIWES → AgentPort → policy/budget → sandbox/runtime → subagente → result → evidence`
-
-### B — WORKFLOW / DAG / POOL
-Usar cuando el valor real es scheduler, DAG, state-machine, queue, workers, durable execution, multi-step, pipeline o loop.
-
-`TaskClassifier → WorkflowPort/ExecutionPort → motor → state/events → result → evidence`
-
-### C — MODULAR CAPABILITY
-Usar para schema, policy, storage, memory, routing, observability, research utility, sandbox helper, reasoning utility u otra capacidad concreta.
-
-`Capability → Adapter → Ficha/Contract → Registry/Port → YAIWES → evidence`
-
-La clasificación debe salir del X-Ray del componente; queda prohibido asignarla solo por una tabla hardcodeada.
-
-## 4. Regla nueva de intake desde Core kernel Yaiwes
-
-**Todo componente que llegue o aparezca en `Core kernel Yaiwes/` entra automáticamente en TAREA 2.**
-
-Proceso:
-
-```text
-DISCOVER Core kernel Yaiwes/**
-→ identificar componente real
-→ comprobar si ya tiene destino canónico
-→ si no está integrado: STEP_1
-→ STEP_2 usando motor de mover archivos
-→ STEP_3
-→ actualizar evidencia/estado
-```
-
-No se deja un componente operativo duplicado entre `Core kernel Yaiwes/` y `Agente Yaiwes principal/`. Se permite conservar evidencia, manifests o snapshots cuando sean necesarios, pero el runtime owner debe tener un destino canónico.
-
-## 5. Estado físico actual
-
-### Paso 1 MOVE histórico de la tanda 1–20
-
-`VERIFIED_CLOSED` por:
-
-- Workflow `YAIWES Motor4 Final MOVE 20`.
-- Run `34445710787` = `completed/success`.
-- Job `102771861495` = `completed/success`.
-- Motor4 blob SHA `9a21facfe11327cf60a2afca8f415ad52f0ecbe5`.
-- Commit MOVE `a3cf705f58f95cce65d1c230cb00abcab39732b2`.
-- `Read back all 20 from origin main` = success.
-
-Esto demuestra el MOVE de esa tanda. No convierte automáticamente los 20 en integración funcional cerrada.
-
-### Primeros cinco
-
-APScheduler, AWS-Step-Functions-DS-SDK, Ajv, Apache-APISIX y Apache-Airflow conservan adapters/WIRING/fichas reales y evidencia histórica de montaje UniversalPluginBus. En el contrato nuevo se **preservan** y en Paso 3 se revalida comportamiento real; no se sustituyen por wrappers genéricos.
-
-### Componentes 6–20
-
-Argo-Workflows, Azure-Durable-Functions, BAML, Burr, Caddy, Camunda, Cedar, Celery, Cerberus, Cerbos, Chroma, ClawHub, Cloudflare-Workers-SDK, Coconut y CodeUltraFeedback requieren completar/revalidar Paso 1 funcional y Paso 2 real antes de Paso 3.
-
-## 6. Destinos canónicos de la tanda 1–20
-
-| # | Componente | Destino |
-|---:|---|---|
-| 1 | APScheduler | `Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler/` |
-| 2 | AWS-Step-Functions-DS-SDK | `Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk/` |
-| 3 | Ajv | `Agente Yaiwes principal/definition-registry/schema-contracts/ajv/` |
-| 4 | Apache-APISIX | `Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway/` |
-| 5 | Apache-Airflow | `Agente Yaiwes principal/execution-orchestration/dag-executor/apache-airflow/` |
-| 6 | Argo-Workflows | `Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows/` |
-| 7 | Azure-Durable-Functions | `Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions/` |
-| 8 | BAML | `Agente Yaiwes principal/definition-registry/domain-specific-contracts/baml/` |
-| 9 | Burr | `Agente Yaiwes principal/execution-orchestration/state-machine-executor/burr/` |
-| 10 | Caddy | `Agente Yaiwes principal/mesh-routing-collaboration/caddy-gateway/` |
-| 11 | Camunda | `Agente Yaiwes principal/execution-orchestration/state-machine-executor/camunda/` |
-| 12 | Cedar | `Agente Yaiwes principal/definition-registry/authorization-model/cedar/` |
-| 13 | Celery | `Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery/` |
-| 14 | Cerberus | `Agente Yaiwes principal/definition-registry/schema-contracts/cerberus/` |
-| 15 | Cerbos | `Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos/` |
-| 16 | Chroma | `Agente Yaiwes principal/tools-models-memory-knowledge/memory-microservices/chroma/` |
-| 17 | ClawHub | `Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/clawhub/` |
-| 18 | Cloudflare-Workers-SDK | `Agente Yaiwes principal/execution-engine-pool/adapter-layer/cloudflare-workers-sdk/` |
-| 19 | Coconut | `Agente Yaiwes principal/kernel-principal/reasoning-kernel/decision-on-demand/coconut/` |
-| 20 | CodeUltraFeedback | `Agente Yaiwes principal/code-programming-engine/standards-forensic/code-ultrafeedback/` |
-
-## 7. Corrección obligatoria de los workflows antes de continuar
-
-Los archivos actuales `.github/workflows/yaiwes-step2-wire-prune-1-20.yml` y `.github/workflows/yaiwes-step3-test-1-20.yml` **no son gate canónico todavía**.
-
-Motivos:
-
-- Paso 2 usa clasificación A/B/C hardcodeada en lugar de X-Ray real.
-- Para componentes no cableados crea un `source_probe()` genérico que solo prueba presencia de carpeta.
-- La ficha genérica no demuestra IO/capacidad real.
-- La poda por nombre `.github/.circleci/.devcontainer` no está precedida por X-Ray 1×1.
-- Paso 3 puede dar PASS al wrapper/PluginBus sin probar comportamiento upstream real.
-- El trigger de Paso 2 escucha el workflow antiguo `YAIWES STEP 1 - MOVE 1-20`, no el Motor4 final que cerró la tanda.
-
-**Regla:** corregir esos workflows dentro de Paso 2/3; no añadir fases.
-
-## 8. Test mínimo real de Paso 3
-
-Por componente:
-
-```text
-contract valid
-→ adapter imports/builds
-→ adapter llama capacidad real o boundary real
-→ caso positivo
-→ caso inválido/failure path
-→ registry/mount
-→ health/heartbeat si aplica
-→ evidence
-→ readback desde main/runtime
+ficha valida
+→ adapter/import/build
+→ enchufar FABLES
+→ capacidad real: caso positivo
+→ failure path / fail-closed
+→ health/evidence cuando aplique
+→ read-back
 → PASS | GAP
 ```
 
-`source_probe()` por sí solo nunca es prueba funcional.
+Si falla: localizar el código responsable; corregir adapter/código, podar si hace falta o hacer fork cuando sea necesario; repetir el test. Todo ocurre dentro de PASO 2/3.
 
-## 9. Nota de relevo para Grok / GPT-5.6 Sol / Astra
+## 2. Coordinación multi-IA — Crazy Wall
+
+`📂 Bitácora stated JSON Craxy wall.json` es la pizarra compartida.
+
+Cada componente tiene un nodo independiente con:
 
 ```text
-HANDOFF_LOCK = YAIWES-INTEGRATION-3-STEPS
-DO_NOT_RESTART = true
-DO_NOT_ADD_PHASES = true
-CURRENT_GOAL = completar integración funcional con 3 pasos
-
-1. Leer este archivo literal.
-2. Verificar main antes de aceptar estados históricos.
-3. Incorporar cualquier componente nuevo encontrado en Core kernel Yaiwes/.
-4. Ejecutar STEP_1 ANALYZE_CLASSIFY con evidencia; A/B/C no hardcodeado.
-5. STEP_2 usa Motor4 para MOVE cuando haga falta y después adapter/ficha/wiring/registry reales; SIN TESTS.
-6. STEP_3 prueba comportamiento real 1×1; no aceptar source_probe como PASS.
-7. Reparar GAP dentro del paso actual.
-8. No reemplazar los adapters reales de los primeros cinco por wrappers genéricos.
-9. Actualizar STATE/evidence solo después de read-back físico.
+node_id
+component
+owner
+lock
+current_step
+status
+abc
+target
+checkpoint.before
+checkpoint.after
+evidence[]
+history[]
 ```
 
-## 10. Tareas pendientes — lista corta
+Protocolo obligatorio:
 
-1. Corregir Paso 2 para hacer X-Ray real, intake de `Core kernel Yaiwes/`, MOVE con Motor4 y wiring funcional específico.
-2. Completar adapters/ports/fichas/WIRING reales para los pendientes sin destruir los cinco ya integrados.
-3. Corregir Paso 3 para behavior/failure/evidence real y ejecutar 1×1 hasta 20/20 + cualquier nuevo componente incorporado.
+1. Leer Crazy Wall fresco desde `main`.
+2. Elegir un nodo `lock=FREE`.
+3. Escribir `owner=GROK|SOL|ASTRA`, `lock=CLAIMED` y `checkpoint.before` antes de tocar código.
+4. Solo el owner modifica ese nodo/componente.
+5. Ejecutar únicamente el paso actual del nodo.
+6. Escribir `checkpoint.after` + commit/run/test/evidence.
+7. Avanzar `current_step` o cerrar `PASS`.
+8. Liberar `lock=FREE`, `owner=null` al terminar la unidad.
+9. Si un nodo está `CLAIMED`, otra IA toma otro nodo libre. No se pisan.
 
-## 11. Enlaces
+## 3. Estado de los primeros 20
 
-- Este plan TAREA 2: https://github.com/maxbry123-commits/agentes/blob/main/Readme%20arquitectura%20Yaiwes/HANDOFF-INTEGRACION-1-20.md
-- Motor4: https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82motores%20de%20descarga%20extracci%C3%B3n%20copiado%20movimiento%20archivos%20agentes/%E2%9E%A1%EF%B8%8F%F0%9F%93%82motor%20de%20moves%20archivos/motor_4_move_batches.py
-- Run MOVE 20: https://github.com/maxbry123-commits/agentes/actions/runs/34445710787
-- Plan Watchdog TAREA 3: https://github.com/maxbry123-commits/agentes/blob/main/%F0%9F%93%82%20Readme%20plan%20wachdog%20y%20trabajo%20en%20paralelo.md
+MOVE 20/20 ya demostrado por:
+
+- workflow `YAIWES Motor4 Final MOVE 20`
+- run `34445710787`
+- job `102771861495`
+- commit `a3cf705f58f95cce65d1c230cb00abcab39732b2`
+
+Nodos 1–5 — `PENDING_STEP3_REVALIDATION`: APScheduler, AWS-Step-Functions-DS-SDK, Ajv, Apache-APISIX, Apache-Airflow. Preservar integración histórica; revalidar comportamiento real.
+
+Nodos 6–20 — `PENDING_STEP2_FABLES`: Argo-Workflows, Azure-Durable-Functions, BAML, Burr, Caddy, Camunda, Cedar, Celery, Cerberus, Cerbos, Chroma, ClawHub, Cloudflare-Workers-SDK, Coconut, CodeUltraFeedback. MOVE no se repite.
+
+Destinos de los primeros 20 siguen siendo los ya publicados en `Agente Yaiwes principal/`; no cambiarlos sin evidencia de error.
+
+## 4. Nuevos componentes detectados en `Core kernel Yaiwes/`
+
+Se añadieron siete nodos nuevos. Están en **PASO 1** porque primero debe verificarse código/función/destino antes de mover:
+
+| Nodo | Componente | A/B/C candidato | Destino candidato — VERIFICAR ANTES DE MOVE |
+|---:|---|---|---|
+| 21 | Dagu | B | `Agente Yaiwes principal/execution-orchestration/state-machine-executor/dagu/` |
+| 22 | Hatchet | B | `Agente Yaiwes principal/execution-orchestration/state-machine-executor/hatchet/` |
+| 23 | PostgreSQL | C | `Agente Yaiwes principal/state-events-durability/run-state-store/postgresql/` |
+| 24 | Redis | C | `Agente Yaiwes principal/state-events-durability/redis/` |
+| 25 | Workalendar | C | `Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler/workalendar/` |
+| 26 | gVisor | C | `Agente Yaiwes principal/execution-orchestration/container-pod-isolation/gvisor/` |
+| 27 | pgvector | C | `Agente Yaiwes principal/tools-models-memory-knowledge/memory-microservices/pgvector/` |
+
+APScheduler y Celery también existen en `Core kernel Yaiwes/`, pero pertenecen a los primeros 20: no crear nodos duplicados.
+
+## 5. FABLES — regla de integridad
+
+Las dos fuentes entregadas por el usuario son el contrato de cableado obligatorio:
+
+- `ficha_contract_v2.py` — SHA256 entregado/auditado: `759d0d7855d8df106462b966bfc4ee543f24a3e789a27048f253159b58ff8d1a`.
+- `universal_plugin_bus_v2_integrated.py` — SHA256 entregado/auditado: `5e4595a86bfd68a3c1fde70ba614ce7b9ec6ea4d6c867912e836cca33c626fc3`.
+
+En la revisión 5× estos archivos exactos todavía no quedaron demostrados dentro de `main`; por tanto `FABLES_REPO_STATE=PENDING_MATERIALIZATION`. Grok puede trabajar PASO 1 y revalidaciones que no alteren el enchufe, pero ningún nodo de PASO 2 puede declararse cerrado hasta materializar/verificar estas dos piezas exactas.
+
+## 6. Watchdog del trabajo
+
+El Watchdog supervisa el contrato, no añade pasos:
+
+```text
+SCAN Core kernel Yaiwes/
+→ registrar componente nuevo como nodo FREE/PASO1
+→ detectar nodos FREE
+→ IA reclama nodo
+→ checkpoint.before
+→ PASO 1 | PASO 2 | PASO 3
+→ checkpoint.after + evidence
+→ PASS: cerrar
+→ GAP: mantener nodo y repetir paso
+→ liberar lock
+```
+
+Reglas Watchdog: no crear tareas laterales; no descargar reemplazos sin GAP; no aceptar carpeta/README como PASS; no editar nodo de otro owner; no declarar cierre sin evidence/read-back.
+
+## 7. Inicio exacto para Grok
+
+```text
+READ 1: PARCHE-RECUPERACION-CORE-INTEGRACION-WATCHDOG.md
+READ 2: este HANDOFF
+READ 3: 📂 Bitácora stated JSON Craxy wall.json
+READ 4: estado físico actual de main
+
+THEN:
+- toma el primer nodo FREE apropiado;
+- escribe owner=GROK + lock=CLAIMED + checkpoint.before;
+- ejecuta solamente su current_step;
+- actualiza evidence/checkpoint;
+- no inventa Paso 4 ni arquitectura nueva.
+```
+
+## 8. Enlaces
+
+- Handoff: https://github.com/maxbry123-commits/agentes/blob/main/Readme%20arquitectura%20Yaiwes/HANDOFF-INTEGRACION-1-20.md
+- Recovery: https://github.com/maxbry123-commits/agentes/blob/main/PARCHE-RECUPERACION-CORE-INTEGRACION-WATCHDOG.md
+- Crazy Wall: https://github.com/maxbry123-commits/agentes/blob/main/%F0%9F%93%82%20Bit%C3%A1cora%20stated%20JSON%20Craxy%20wall.json
+- Watchdog machine plan: https://github.com/maxbry123-commits/agentes/blob/main/Core%20kernel%20Yaiwes/Crack%20wall%20bit%C3%A1cora%20stated%20JSON/PLAN-WATCHDOG-PROGRAMMING-V2.json
