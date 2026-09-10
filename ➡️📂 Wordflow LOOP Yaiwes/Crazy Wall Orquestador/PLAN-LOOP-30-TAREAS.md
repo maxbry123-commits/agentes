@@ -3,22 +3,21 @@
 Contrato: `tel.workflow/v4` · modo `FAIL_CLOSED_EXECUTION_LOOP` · cola `1×1`.
 Raíz única autorizada: `maxbry123-commits/agentes/➡️📂 Wordflow LOOP Yaiwes/`.
 
-## BLOQUE 3 PASOS — CERRADO
-| Paso | Estado | Ubicación actual |
+## CIERRE FINAL — EXACTAMENTE 3 PASOS
+| Paso | Estado | Evidencia |
 |---|---|---|
-| 1 — Índice | VERIFIED_CLOSED | `➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme indice agentes.md` |
-| 2 — Cableado | VERIFIED_CLOSED_WIRING | `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/` + `wordflow_loop/contracts/ficha.agent_fleet.v2.json` |
-| 3 — verificación histórica | VERIFIED_CLOSED | evidence `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/STEP3_AGENT_FLEET_VERIFY.json`; run `34406268016`; job `102649876845` |
+| 1 — Estructura/rutas | PASS | Todos los artefactos canónicos de este bloque están dentro de `➡️📂 Wordflow LOOP Yaiwes/` |
+| 2 — Tests runtime/router | PASS_LOCAL | fleet 18, Council12, routing, fail-closed 18/18, prioridad/failover y parallel 3/3 |
+| 3 — Persistencia/watchdog | PASS | evidence final + STATE/CHECKPOINT/HANDOFF actualizados; watchdog horario activo |
 
-## FLEET
-18 bindings. Council12=12. Runtimes no configurados fallan cerrado. Hermes, Muse/Glimmer y Goose siguen `EXTERNAL_NOT_VENDORED`.
+Evidence: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/FINAL_3STEP_CLOSURE_TEST_2026-09-10.json` · commit `6c4b10a49fa8de3bd85348f15bd5f5fa461d128c`.
 
-## ROUTER MVP
-`➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/model_api_router_mvp.py`.
-Prioridad global: Kimi → MiniMax → DeepSeek V4 Pro → DeepSeek V4 Flash → GLM 5 → Muse/Glimmer → Qwen 3.8 → GPT-OSS. Verifica disponibilidad y hace failover por API/key/modelo.
+## FLEET + ROUTER
+Fleet=18 · Council12=12. Router: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/model_api_router_mvp.py`.
+Orden: Kimi → MiniMax → DeepSeek V4 Pro → DeepSeek V4 Flash → GLM 5 → Muse/Glimmer → Qwen 3.8 → GPT-OSS. Si una ruta/API falla, agota alternativas del nivel y continúa a la siguiente familia.
 
-## MIGRACIÓN DE ALCANCE
-Commit `2a73aba061db7dfba2b37bf6637babb2e73c4b0d`. Índice retirado del repo motor por `a17e1572b9df41954597fc8c66b390c47800d081`. Registry externo preexistente restaurado al blob `ce40e9afd13fdbea22609fe57807566770dfc1b0`.
+## ESTADO EXTERNO
+`AUTH_PROVIDER_TEST_PENDING`: este cierre no afirma autenticación real NVIDIA/Cerebras/Groq ni ejecución remota de agentes porque el entorno actual no tiene canal saliente autenticado seguro para secretos.
 
-## SIGUIENTE
-Solo pruebas reales de agentes cuando estén autorizadas y existan valores API/MCP/command reales. No existe trabajo autorizado fuera de la raíz Wordflow.
+## CIERRE
+No existe trabajo adicional dentro de este cierre de 3 pasos. Próximo cambio permitido: prueba externa autenticada cuando exista canal seguro, siempre escribiendo únicamente dentro de la raíz autorizada.
