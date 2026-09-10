@@ -1,0 +1,29 @@
+{
+  "contract": "tel.workflow/v4",
+  "component": "model_api_router_mvp",
+  "status": "PASS_DETERMINISTIC_ROUTING_READY_FOR_AUTH_PROBE",
+  "router_commit": "d9c0c556dd27ba0c1b47c61a89b68f5965de1578",
+  "priority": [
+    "kimi_k",
+    "minimax",
+    "deepseek_v4_pro",
+    "deepseek_v4_flash",
+    "glm_5",
+    "meta_glimmer",
+    "qwen_3_8",
+    "gpt_oss"
+  ],
+  "verified": {
+    "priority_mapping_1_to_8": "PASS",
+    "alternate_api_or_key_before_next_model": "PASS",
+    "next_model_after_family_exhaustion": "PASS",
+    "parallel_lane_rotation_inside_same_priority": "PASS",
+    "secrets_removed_from_public_routes": "PASS",
+    "all_discovered_nonpriority_models_retained_as_tail_fallback": "IMPLEMENTED"
+  },
+  "runtime_policy": "models_list -> live inference probe -> dispatch -> on failure mark route unhealthy -> alternate provider/key in same model priority -> next model family -> tail fallback -> fail_closed",
+  "authenticated_account_probe": "NOT_EXECUTED_IN_CURRENT_TOOL_RUNTIME",
+  "authenticated_account_probe_reason": "No safe outbound authenticated provider execution channel is available here and provider keys are never committed to GitHub.",
+  "secret_policy": "ENV_ONLY_NEVER_REPOSITORY_OR_EVIDENCE",
+  "next": "Run discover() with NVIDIA_API_KEYS/CEREBRAS_API_KEYS/GROQ_API_KEYS injected securely, then dispatch real agent tasks."
+}
