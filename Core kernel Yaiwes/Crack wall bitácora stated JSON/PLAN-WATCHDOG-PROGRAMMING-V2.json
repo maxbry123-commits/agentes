@@ -1,83 +1,210 @@
 {
-  "schema": "yaiwes.watchdog-programming-plan/v2",
-  "status": "ACTIVE_LOOP",
+  "schema": "yaiwes.watchdog-programming-plan/v3",
+  "updated_at": "2026-09-10",
+  "status": "ACTIVE_LOOP_COMPONENTS_PRESENT_BUILD_BLOCKED_BY_INTEGRATION",
   "blocked_until": "YAIWES_COMPONENTS_1_20_STEP3_COMPLETE",
+  "integration_boundary": "STEP_2_WIRE_PRUNE_1X1_NO_TESTS",
+  "step1_move": {
+    "status": "VERIFIED_CLOSED",
+    "run": 34445710787,
+    "job": 102771861495,
+    "commit": "a3cf705f58f95cce65d1c230cb00abcab39732b2",
+    "readback_all_20": "success"
+  },
   "handoff_dependency": "Readme arquitectura Yaiwes/HANDOFF-INTEGRACION-1-20.md",
-  "note": "El stack Watchdog de programación continúa únicamente después de completar el contrato de integración 1-20 en tres pasos.",
-  "goal": "Programar y supervisar tareas simples, durables y multi-paso con memoria persistente, sandbox y dos vías de planificación: determinista y adaptativa.",
+  "detailed_handoff": "📂 Readme Handoff core integracion y wachdog.md",
+  "detailed_architecture": "📂 Readme arquitectura Yaiwes.md",
+  "parallel_plan": "📂 Readme plan wachdog y trabajo en paralelo.md",
+  "crazy_wall": "📂 Bitácora stated JSON Craxy wall.json",
+  "recovery_patch": "PARCHE-RECUPERACION-CORE-INTEGRACION-WATCHDOG.md",
+  "note": "Los componentes principales del backend Watchdog ya están físicamente presentes. La construcción/cableado del Watchdog continúa después de completar Paso 2 y Paso 3 de la integración 1-20. No descargar otro orquestador grande sin demostrar un GAP no cubierto.",
+  "goal": "Programar y supervisar tareas simples, durables, multi-paso, DAG, LOOP, research y planificación adaptativa con estado durable, memoria semántica, sandbox, recuperación y paralelismo controlado.",
   "queue": [
-    "Esperar cierre Paso 1 MOVE componentes 1-20",
-    "Esperar cierre Paso 2 cableado/poda 1x1 sin tests",
-    "Esperar cierre Paso 3 tests 1x1",
-    "X-Ray 10 componentes base",
-    "investigar motores de LOOP/cascada/research/replan",
-    "seleccionar 3 OSS por GAP adicional",
-    "investigar UI modular para chat",
-    "definir contratos WatchdogTask/Run/Checkpoint/Approval",
-    "integrar 1x1 y probar",
-    "cablear UniversalPluginBus + health/evidence",
-    "cerrar PENDIENTE solo con read-back"
+    "STEP 1 MOVE 1-20 — VERIFIED_CLOSED",
+    "Completar STEP 2 cableado/poda 1x1 sin tests",
+    "Completar STEP 3 tests 1x1",
+    "Materializar WatchdogDefinition/Run/Step/Checkpoint/EventEnvelope",
+    "Materializar puertos comunes de scheduler, queue, durable, workflow, research, planning, sandbox, state, memory y artifacts",
+    "Integrar owners uno por uno detrás de sus puertos",
+    "Materializar idempotency + leases + heartbeat + retry + timeout + recovery",
+    "E2E mínimo determinista create→persist→schedule→due→queue→execute→verify→next_run",
+    "Agregar durable/multi-step/loop",
+    "Agregar research/adaptive detrás de PRELINE/policy",
+    "Conectar UI modular y event stream",
+    "Cerrar solo con tests, health, evidence y read-back"
   ],
   "base_components": [
     {
       "name": "APScheduler",
       "role": "TIME_AUTHORITY",
-      "state": "PENDING"
+      "physical_state": "PRESENT",
+      "integration_state": "PENDING_PORT_ADAPTER",
+      "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/time-scheduling/apscheduler",
+      "integration": "SchedulerPort owner; registra next_run, cron/date/interval y timezone sin permitir que la UI escriba directamente en el motor"
     },
     {
       "name": "Workalendar",
       "role": "WORK_CALENDAR",
-      "state": "PENDING"
+      "physical_state": "PRESENT",
+      "integration_state": "PENDING_PORT_ADAPTER",
+      "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/work-calendar/workalendar",
+      "integration": "CalendarPolicy; filtra días hábiles, festivos y ventanas permitidas antes de enqueue"
     },
     {
       "name": "Celery",
       "role": "SIMPLE_JOB_WORKERS",
-      "state": "PENDING"
+      "physical_state": "PRESENT_REFERENCE_REQUIRED",
+      "integration_state": "PENDING_QUEUE_PORT_ADAPTER",
+      "path": "Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery",
+      "integration": "QueuePort primary para jobs simples; usar por referencia/adapter y no duplicar el árbol"
     },
     {
       "name": "Redis",
       "role": "EVENT_TRANSPORT",
-      "state": "PENDING"
+      "physical_state": "PRESENT",
+      "integration_state": "PENDING_EVENT_ENVELOPE",
+      "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/event-plane/redis",
+      "integration": "Event plane para streams, locks, leases y heartbeat; no usar como única fuente durable"
     },
     {
       "name": "Hatchet",
       "role": "DURABLE_LONG_JOB",
-      "state": "PENDING"
+      "physical_state": "PRESENT",
+      "integration_state": "PENDING_DURABLE_PORT_ADAPTER",
+      "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/durable-execution/hatchet",
+      "integration": "DurableExecutionPort primary para ejecuciones largas, recovery y waits"
     },
     {
       "name": "Dagu",
       "role": "MULTI_STEP_JOB",
-      "state": "PENDING"
+      "physical_state": "PRESENT",
+      "integration_state": "PENDING_WORKFLOW_PORT_ADAPTER",
+      "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/workflow-multistep/dagu",
+      "integration": "WorkflowPort primary para DAG/tareas multi-step, dependencias y retries por paso"
     },
     {
       "name": "PostgreSQL",
       "role": "DURABLE_SOURCE_OF_TRUTH",
-      "state": "PENDING"
+      "physical_state": "PRESENT",
+      "integration_state": "PENDING_STATE_SCHEMA",
+      "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/persistent-state/postgresql",
+      "integration": "StatePort owner para WatchdogDefinition, Run, Step, leases, idempotency y checkpoint metadata"
     },
     {
       "name": "pgvector",
       "role": "SEMANTIC_MEMORY",
-      "state": "PENDING"
+      "physical_state": "PRESENT",
+      "integration_state": "PENDING_MEMORY_PORT_ADAPTER",
+      "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/persistent-memory/pgvector",
+      "integration": "SemanticMemoryPort; embeddings/retrieval semántico sin sustituir el ledger transaccional"
     },
     {
       "name": "gVisor",
       "role": "SANDBOX_ISOLATION",
-      "state": "PENDING"
+      "physical_state": "PRESENT",
+      "integration_state": "PENDING_SANDBOX_PORT_ADAPTER",
+      "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/sandbox-isolation/gvisor",
+      "integration": "SandboxPort para cargas que requieren aislamiento reforzado"
     },
     {
-      "name": "S3-Compatible-Backblaze-B2",
-      "role": "ARTIFACT_SNAPSHOTS",
-      "state": "PENDING"
+      "name": "RustFS",
+      "role": "S3_COMPATIBLE_ARTIFACT_SNAPSHOTS",
+      "physical_state": "PRESENT",
+      "integration_state": "PENDING_ARTIFACT_PORT_ADAPTER",
+      "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/artifact-storage/rustfs",
+      "integration": "ArtifactPort S3-compatible para snapshots/artefactos; Backblaze B2 se añade como provider adapter si se selecciona"
     }
+  ],
+  "additional_components_present": [
+    {"name": "Rocketry", "role": "SCHEDULER_ALTERNATIVE", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/time-scheduling/rocketry", "integration": "alternativa detrás de SchedulerPort; no ser owner simultáneo sin policy"},
+    {"name": "Taskiq", "role": "QUEUE_ALTERNATIVE", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/queue-execution/taskiq", "integration": "alternativa detrás de QueuePort"},
+    {"name": "DBOS Python", "role": "DURABLE_ALTERNATIVE", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/durable-execution/dbos-python", "integration": "alternativa detrás de DurableExecutionPort"},
+    {"name": "Restate", "role": "DURABLE_ALTERNATIVE", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/durable-execution/restate", "integration": "alternativa detrás de DurableExecutionPort"},
+    {"name": "PocketFlow", "role": "SMALL_LOOP", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/workflow-loop/pocketflow", "integration": "WorkflowPort para loops compactos"},
+    {"name": "Apache Hamilton", "role": "FUNCTIONAL_DAG", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/dag-cascade/apache-hamilton", "integration": "WorkflowPort para DAG funcional/cascada"},
+    {"name": "redun", "role": "DAG_CASCADE_ALTERNATIVE", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/dag-cascade/redun", "integration": "WorkflowPort alternativo para workflows reproducibles"},
+    {"name": "smolagents", "role": "ADAPTIVE_PLANNING", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/adaptive-planning/smolagents", "integration": "PlanningPort subordinado a YAIWES/PRELINE/policy"},
+    {"name": "DeerFlow", "role": "RESEARCH_ENGINE", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/research-engine/deerflow", "integration": "ResearchPort provider"},
+    {"name": "GPT-Researcher", "role": "RESEARCH_ENGINE", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/research-engine/gpt-researcher", "integration": "ResearchPort provider"},
+    {"name": "MindSearch", "role": "RESEARCH_ENGINE", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/research-engine/mindsearch", "integration": "ResearchPort provider"},
+    {"name": "Firecracker", "role": "HIGH_ISOLATION_SANDBOX", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/sandbox-isolation/firecracker", "integration": "SandboxPort high-risk profile"},
+    {"name": "iii-sandbox", "role": "SANDBOX_RUNTIME_CANDIDATE", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/sandbox-runtime/iii-sandbox", "integration": "SandboxPort candidate after X-Ray and behavior verification"}
+  ],
+  "backend_missing_integration_units": [
+    "WatchdogDefinition schema",
+    "WatchdogRun schema",
+    "WatchdogStep schema",
+    "Checkpoint schema",
+    "EventEnvelope",
+    "SchedulerPort",
+    "QueuePort",
+    "DurableExecutionPort",
+    "WorkflowPort",
+    "ResearchPort",
+    "PlanningPort",
+    "SandboxPort",
+    "StatePort",
+    "SemanticMemoryPort",
+    "ArtifactPort",
+    "Backblaze B2 provider adapter only if B2 is selected",
+    "idempotency + lease + heartbeat common contract",
+    "retry + timeout + recovery common policy",
+    "health + evidence + readback gates"
+  ],
+  "frontend": {
+    "repository": "maxbry123-commits/frontend",
+    "index": "📂 Indice fromtend componentes.md",
+    "present": [
+      {"name": "assistant-ui", "state": "EXTRACTED_COMPLETE", "role": "chat/streaming/composer"},
+      {"name": "Dockview", "state": "EXTRACTED_COMPLETE", "role": "dockable workspace/panels"},
+      {"name": "xyflow", "state": "ZIP_ONLY_COMPLETE", "role": "workflow/DAG canvas", "next": "extract and read-back before integration"}
+    ],
+    "not_demonstrated_components": [
+      {"name": "FullCalendar", "role": "calendar/schedule panel"},
+      {"name": "TanStack Table", "role": "queue/runs/evidence tables"},
+      {"name": "react-jsonschema-form", "role": "WatchdogDefinition form from JSON Schema"},
+      {"name": "xterm.js", "role": "logs/sandbox console"},
+      {"name": "Monaco Editor", "role": "DSL/policy/config editor"},
+      {"name": "Apache ECharts", "role": "metrics/health visualization"},
+      {"name": "dnd-kit", "role": "drag/drop steps and task ordering"},
+      {"name": "Frappe Gantt", "role": "optional long-job timeline"}
+    ],
+    "rule": "extend existing UI YAIWES; do not replace chat with another full application"
+  },
+  "routing": {
+    "SIMPLE": "QueuePort -> Celery primary | Taskiq alternative",
+    "DURABLE_LONG": "DurableExecutionPort -> Hatchet primary | DBOS/Restate alternatives",
+    "MULTI_STEP": "WorkflowPort -> Dagu",
+    "SMALL_LOOP": "WorkflowPort -> PocketFlow",
+    "DAG_CASCADE": "WorkflowPort -> Apache Hamilton/redun",
+    "RESEARCH": "ResearchPort -> policy selector -> DeerFlow/GPT-Researcher/MindSearch",
+    "ADAPTIVE": "YAIWES -> PlanningPort -> optional smolagents -> PRELINE/policy -> execution"
+  },
+  "parallelism_controls": [
+    "priority_queue",
+    "persistent_worker_pools",
+    "batching",
+    "sharding",
+    "fan_out_fan_in",
+    "backpressure",
+    "deduplication",
+    "idempotency",
+    "leases",
+    "dead_letter_queue",
+    "queue_depth_scaling",
+    "sandbox_isolation",
+    "agent_model_provider_limits"
   ],
   "acceptance": [
     "schedule persistente y timezone-aware",
+    "calendar policy",
     "priority queue y backpressure",
-    "simple/durable/multi-step routing",
+    "simple/durable/multi-step/loop/research/adaptive routing",
     "checkpoint + resume + idempotency",
     "sandbox aislado + heartbeat + recovery",
     "memoria operativa estructurada sin chain-of-thought privado",
+    "artifacts/snapshots detrás de ArtifactPort",
     "UI con estado, historial, approvals y event stream",
-    "evidencia física y tests reales"
+    "evidencia física, tests reales y read-back"
   ]
 }
