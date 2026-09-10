@@ -90,10 +90,11 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin main
-          git reset --hard origin/main
           SRC='Core kernel Yaiwes/Hatchet'
           DST='Agente Yaiwes principal/execution-orchestration/state-machine-executor/hatchet'
-          test ! -e "$SRC"
-          test -d "$DST"
-          find "$DST" -type f -print -quit | grep -q .
+          if git ls-tree -r --name-only origin/main -- "$SRC" | grep -q .; then
+            echo SOURCE_STILL_PRESENT_ON_ORIGIN_MAIN
+            exit 1
+          fi
+          git ls-tree -r --name-only origin/main -- "$DST" | grep -q .
           echo READBACK_OK "$DST"
