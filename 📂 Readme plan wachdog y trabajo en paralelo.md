@@ -1,132 +1,102 @@
-# 📂 WATCHDOG YAIWES — PLAN OPERATIVO DE 3 PASOS
+# 📂 WATCHDOG YAIWES — MÉTODO ESTRICTO DE 3 PASOS
 
-**Estado:** `ACTIVE_3_STEP_SUPERVISOR`  
-**Fecha:** 2026-09-10  
-**Repositorio:** `maxbry123-commits/agentes`
+**Repositorio:** `maxbry123-commits/agentes`  
+**Estado:** `ACTIVE_STRICT_3_STEPS`
 
-## Objetivo
-
-El Watchdog existe para que Grok, Sol y Astra integren componentes en paralelo sin pisarse y sin abrir trabajo extra. **Cada componente es un nodo independiente en Crazy Wall.**
-
-## Contrato que vigila
+## REGLAS DE ALCANCE
 
 ```text
-PASO 1 — A/B/C + DESTINO + MOVE
-PASO 2 — PODAR SOLO SI HACE FALTA + ENCHUFE FABLES
-PASO 3 — TEST REAL
+WORK_ROOT = Core kernel Yaiwes/
+DESTINATION_ROOT = Agente Yaiwes principal/
+MOTOR_ROOT = ➡️📂motores de descarga extracción copiado movimiento archivos agentes/
 ```
 
-No existe Paso 4. A/B/C no es una fase: solo decide tipo/destino.
+No hay otro lugar de trabajo, destino ni motores autorizados para esta integración.
 
-### PASO 1
+## CRAZY WALL PRIMERO
 
-```text
-read minimum code/README
-→ A autónomo | B motor de trabajo | C capacidad
-→ elegir raíz existente en Agente Yaiwes principal/
-→ Motor4 MOVE si todavía hace falta
-→ hash/read-back
-```
-
-No adivinar destino. Los 20 originales ya tienen MOVE cerrado y no se mueven de nuevo.
-
-### PASO 2
+Antes de cada componente:
 
 ```text
-prune only if evidence says it is needed
-→ ficha_contract_v2.validar()
-→ real adapter/port
-→ UniversalPluginBus.enchufar()
-→ WIRING
-```
-
-El Enchufe Universal FABLES es obligatorio. `source_probe()` y “la carpeta existe” no cierran integración.
-
-### PASO 3
-
-```text
-ficha valid
-→ import/build
-→ FABLES mount
-→ real behavior positive case
-→ failure path
-→ health/evidence/read-back
-→ PASS | GAP
-```
-
-FAIL no crea fase nueva: se corrige el nodo y se repite.
-
-## Crazy Wall — coordinación
-
-Archivo: `📂 Bitácora stated JSON Craxy wall.json`.
-
-Cada nodo guarda `owner`, `lock`, `current_step`, `status`, `abc`, `target`, `checkpoint.before`, `checkpoint.after`, `evidence`, `history`.
-
-```text
-READ FRESH
-→ TAKE FREE NODE
-→ owner=GROK|SOL|ASTRA
-→ lock=CLAIMED
-→ checkpoint.before
-→ execute current_step
+READ 📂 Bitácora stated JSON Craxy wall.json fresco
+→ nodo existente FREE?
+→ CLAIM owner + lock + checkpoint.before
+→ ejecutar SOLO current_step
 → checkpoint.after + evidence
-→ advance/PASS/GAP
-→ release lock
-```
-
-Un nodo reclamado por otra IA se salta.
-
-## Estado actual
-
-- 27 nodos registrados.
-- 5 nodos originales: Paso 3/revalidación.
-- 15 nodos originales: Paso 2/FABLES.
-- 7 componentes nuevos: Paso 1 — Dagu, Hatchet, PostgreSQL, Redis, Workalendar, gVisor, pgvector.
-- APScheduler y Celery encontrados también en Core no se duplican porque ya son nodos originales.
-
-## Intake automático
-
-```text
-SCAN Core kernel Yaiwes/
-→ componente nuevo real?
-→ ya existe nodo? YES = no duplicar
-→ NO = crear nodo FREE/current_step=1
-```
-
-## Watchdog loop
-
-```text
-SCAN
-→ REGISTER
-→ CHECK LOCKS
-→ REQUIRE BEFORE CHECKPOINT
-→ SUPERVISE STEP 1|2|3
-→ REQUIRE AFTER CHECKPOINT + EVIDENCE
-→ ADVANCE | GAP
+→ PASS/GAP
 → RELEASE
-→ REPEAT
 ```
 
-El Watchdog no crea documentos, motores o fases nuevas por iniciativa propia.
+Un nodo `CLAIMED` por otra IA se salta. No crear tareas/nodos por iniciativa propia.
 
-## Componentes mínimos disponibles para el propio Watchdog
+## CONTRATO ÚNICO
 
-Se reutilizan solamente cuando hagan falta: APScheduler (tiempo), Workalendar (calendario), Celery/Taskiq (cola), Redis (eventos/locks), Hatchet (durable), Dagu (multi-step), PostgreSQL (estado), pgvector (memoria), gVisor (sandbox). No son pasos nuevos.
+### PASO 1 📌 — ANALIZAR A/B/C + DESTINO
 
-## Anti-dilatación
+Solo analizar función real y decidir:
+- A agente/subagente;
+- B workflow/DAG/scheduler/queue/worker/runtime/orquestación;
+- C capacidad modular.
 
-- sin nuevas fases;
-- sin refactor global antes de un error real;
-- sin motor sustituto sin GAP demostrado;
-- sin poda ciega;
-- sin duplicar componentes;
-- sin editar nodo de otro owner;
-- sin PASS sin prueba real;
-- sin afirmaciones `100x` sin benchmark.
+Salida: `component -> A|B|C -> target exacto dentro de Agente Yaiwes principal/ -> motivo`.
 
-## Enlaces
+Prohibido mover/cablear/testear en Paso 1.
 
+### PASO 2 📌 — MOVER CON MOTOR
+
+Mover desde `Core kernel Yaiwes/` al target decidido usando únicamente los motores de `➡️📂motores de descarga extracción copiado movimiento archivos agentes/`.
+
+Si ya existe MOVE verificado, no repetir.
+
+Prohibido cablear/podar/testear, LFS, force, scripts alternativos y motores nuevos.
+
+### PASO 3 📌 — CABLEAR + PODA MÍNIMA + MICROTEST
+
+Cablear la capacidad real. FABLES/Enchufe Universal donde aplique. Podar solo si existe causa concreta. Ejecutar microtest funcional mínimo.
+
+FAIL: `causa -> edición quirúrgica/poda mínima/fork solo si necesario -> repetir microtest`.
+
+PASS solo con evidencia real.
+
+## TODO LO DEMÁS = NO_AUTORIZADO
+
+- Paso 4;
+- fases nuevas;
+- arquitectura nueva;
+- refactor global;
+- benchmark/100x;
+- investigación lateral;
+- búsqueda de componentes nuevos por iniciativa propia;
+- documentación que sustituya ejecución;
+- motores nuevos;
+- wrappers genéricos;
+- poda masiva;
+- tocar nodo de otra IA;
+- PASS por presencia/import/source_probe;
+- escribir integración fuera de las tres raíces autorizadas.
+
+## LOOP DEL WATCHDOG
+
+```text
+READ CRAZY WALL
+→ PICK EXISTING FREE NODE
+→ CLAIM
+→ PASO 1 | PASO 2 | PASO 3 según current_step
+→ EVIDENCE
+→ PASS/GAP
+→ RELEASE
+→ NEXT EXISTING FREE NODE
+```
+
+El Watchdog **supervisa**; no inventa trabajo.
+
+## ENLACES
+
+- Work root: https://github.com/maxbry123-commits/agentes/tree/main/Core%20kernel%20Yaiwes
+- Destination: https://github.com/maxbry123-commits/agentes/tree/main/Agente%20Yaiwes%20principal
+- Motors: https://github.com/maxbry123-commits/agentes/tree/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82motores%20de%20descarga%20extracci%C3%B3n%20copiado%20movimiento%20archivos%20agentes
 - Handoff: https://github.com/maxbry123-commits/agentes/blob/main/Readme%20arquitectura%20Yaiwes/HANDOFF-INTEGRACION-1-20.md
-- Recovery: https://github.com/maxbry123-commits/agentes/blob/main/PARCHE-RECUPERACION-CORE-INTEGRACION-WATCHDOG.md
+- Recovery Grok/Sol: https://github.com/maxbry123-commits/agentes/blob/main/PARCHE-RECUPERACION-CORE-INTEGRACION-WATCHDOG.md
+- Recovery Astra/Claude: https://github.com/maxbry123-commits/agentes/blob/main/PARCHE-RECUPERACION-ASTRA-CLAUDE-YAIWES-3-PASOS.md
 - Crazy Wall: https://github.com/maxbry123-commits/agentes/blob/main/%F0%9F%93%82%20Bit%C3%A1cora%20stated%20JSON%20Craxy%20wall.json
 - Machine plan: https://github.com/maxbry123-commits/agentes/blob/main/Core%20kernel%20Yaiwes/Crack%20wall%20bit%C3%A1cora%20stated%20JSON/PLAN-WATCHDOG-PROGRAMMING-V2.json
