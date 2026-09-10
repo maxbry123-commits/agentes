@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-10T20:55:00Z",
+  "updated_at": "2026-09-10T21:35:30Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -11,7 +11,7 @@
   "move_1_20_evidence":{"status":"VERIFIED_CLOSED","run":34445710787,"job":102771861495,"commit":"a3cf705f58f95cce65d1c230cb00abcab39732b2","motor4_blob":"9a21facfe11327cf60a2afca8f415ad52f0ecbe5"},
   "node_defaults":{"owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":[],"history":[]},
   "nodes":[
-    {"id":1,"component":"APScheduler","source":"Core kernel Yaiwes/APScheduler/","current_step":3,"status":"PENDING_STEP3_WIRE_MICROTEST","abc":"B","target":"Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":["move_1_20:VERIFIED_CLOSED"],"history":[]},
+    {"id":1,"component":"APScheduler","source":"Core kernel Yaiwes/APScheduler/","current_step":3,"status":"PENDING_STEP3_WIRE_MICROTEST","abc":"B","target":"Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler/","owner":"SOL","lock":"CLAIMED","checkpoint":{"before":"2026-09-10T21:35:30Z fresh main physical read-back: target populated; WIRING.json blob 22e3ab9892f56924a70305a7f9d2e9d94a105076 and adapter.py blob 09f0d09f4f67478cc68c452c4464ec54955779df present; execute STEP3 only","after":null},"evidence":["move_1_20:VERIFIED_CLOSED","worker:SOL integración 3","step3:preclaim:wiring_blob:22e3ab9892f56924a70305a7f9d2e9d94a105076","step3:preclaim:adapter_blob:09f0d09f4f67478cc68c452c4464ec54955779df"],"history":[{"at":"2026-09-10T21:35:30Z","actor":"SOL","label":"SOL integración 3","event":"CLAIM_STEP3"}]},
     {"id":2,"component":"AWS-Step-Functions-DS-SDK","source":"Core kernel Yaiwes/AWS-Step-Functions-DS-SDK/","current_step":3,"status":"PENDING_STEP3_WIRE_MICROTEST","abc":"B","target":"Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":["move_1_20:VERIFIED_CLOSED"],"history":[]},
     {"id":3,"component":"Ajv","source":"Core kernel Yaiwes/Ajv/","current_step":3,"status":"PENDING_STEP3_WIRE_MICROTEST","abc":"C","target":"Agente Yaiwes principal/definition-registry/schema-contracts/ajv/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":["move_1_20:VERIFIED_CLOSED"],"history":[]},
     {"id":4,"component":"Apache-APISIX","source":"Core kernel Yaiwes/Apache-APISIX/","current_step":3,"status":"PENDING_STEP3_WIRE_MICROTEST","abc":"C","target":"Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway/","owner":null,"lock":"FREE","checkpoint":{"before":null,"after":null},"evidence":["move_1_20:VERIFIED_CLOSED"],"history":[]},
