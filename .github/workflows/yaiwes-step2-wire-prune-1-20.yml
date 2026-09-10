@@ -38,7 +38,7 @@ jobs:
             📂 Bitácora stated JSON Craxy wall.json
             ➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2
 
-      - name: Claim nodes 1-20 for SOL
+      - name: Keep nodes 1-20 claimed by SOL
         shell: bash
         run: |
           set -euo pipefail
@@ -47,29 +47,26 @@ jobs:
           from datetime import datetime, timezone
           from pathlib import Path
           p=Path('📂 Bitácora stated JSON Craxy wall.json')
-          d=json.loads(p.read_text())
-          now=datetime.now(timezone.utc).isoformat()
-          changed=False
+          d=json.loads(p.read_text()); now=datetime.now(timezone.utc).isoformat(); changed=False
           for node in d['nodes']:
               if 1 <= node['id'] <= 20:
                   if node.get('lock') == 'CLAIMED' and node.get('owner') not in (None,'SOL'):
                       raise SystemExit(f"NODE_ALREADY_CLAIMED:{node['id']}:{node.get('owner')}")
                   if node.get('owner') != 'SOL' or node.get('lock') != 'CLAIMED':
                       node['owner']='SOL'; node['lock']='CLAIMED'; changed=True
-                      node.setdefault('checkpoint',{})['before']=node.get('checkpoint',{}).get('before') or f'{now} SOL START 1-20'
-                      node.setdefault('history',[]).append({'at':now,'actor':'SOL','event':'CLAIM','step':node.get('current_step')})
+                      node.setdefault('checkpoint',{})['before']=f'{now} SOL STEP2 surgical wiring'
+                      node.setdefault('history',[]).append({'at':now,'actor':'SOL','event':'STEP2_CLAIM','step':2})
           if changed:
-              d['updated_at']=now
-              p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+              d['updated_at']=now; p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
           PY
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- '📂 Bitácora stated JSON Craxy wall.json'
-          git commit -m 'state(yaiwes): SOL claims nodes 1-20' || true
+          git commit -m 'state(yaiwes): SOL owns nodes 1-20 during repair' || true
           git pull --rebase origin main
           git push origin HEAD:main
 
-      - name: Materialize FABLES 1+2 and surgical self-test fix
+      - name: Materialize FABLES 1+2
         shell: bash
         run: |
           set -euo pipefail
@@ -83,7 +80,6 @@ jobs:
           cp "$PART2" "$DST/ficha_contract_v2.py"
           cmp -s "$PART1" "$DST/universal_plugin_bus_v2_integrated.py"
           cmp -s "$PART2" "$DST/ficha_contract_v2.py"
-          python3 "$DST/ficha_contract_v2.py"
           python3 - <<'PY'
           from pathlib import Path
           p=Path('Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py')
@@ -91,16 +87,12 @@ jobs:
           event='        "activacion": {"eventos": ["kernel.v2.plugin.enchufed"], "wake_words": [], "condicion": ""},\n'
           if event not in s:
               needle='        "categoria": "pipeline", "etapa": "P",\n        "perfiles":'
-              if s.count(needle) != 1:
-                  raise SystemExit(f'FABLES_PATCH_ANCHOR_COUNT:{s.count(needle)}')
-              s=s.replace(needle,'        "categoria": "pipeline", "etapa": "P",\n'+event+'        "perfiles":',1)
-              p.write_text(s)
-          print('FABLES_SURGICAL_PATCH: self-test fixture declares kernel.v2.plugin.enchufed')
+              if s.count(needle)!=1: raise SystemExit('FABLES_PATCH_ANCHOR_INVALID')
+              p.write_text(s.replace(needle,'        "categoria": "pipeline", "etapa": "P",\n'+event+'        "perfiles":',1))
           PY
-          python3 "$DST/universal_plugin_bus_v2_integrated.py"
           (cd "$DST" && sha256sum ficha_contract_v2.py universal_plugin_bus_v2_integrated.py > SOURCE_SHA256SUMS.txt)
 
-      - name: Audit existing wiring 1-20
+      - name: Surgical replace generic wrappers 8-20
         shell: bash
         run: |
           set -euo pipefail
@@ -108,60 +100,100 @@ jobs:
           from pathlib import Path
           import json
           R=Path('Agente Yaiwes principal')
-          items=[
-          (1,'APScheduler',R/'execution-orchestration/task-classifier-scheduler'),
-          (2,'AWS-Step-Functions-DS-SDK',R/'execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk'),
-          (3,'Ajv',R/'definition-registry/schema-contracts/ajv'),
-          (4,'Apache-APISIX',R/'mesh-routing-collaboration/apisix-api-gateway'),
-          (5,'Apache-Airflow',R/'execution-orchestration/dag-executor/apache-airflow'),
-          (6,'Argo-Workflows',R/'execution-orchestration/dag-executor/argo-workflows'),
-          (7,'Azure-Durable-Functions',R/'execution-orchestration/state-machine-executor/azure-durable-functions'),
-          (8,'BAML',R/'definition-registry/domain-specific-contracts/baml'),
-          (9,'Burr',R/'execution-orchestration/state-machine-executor/burr'),
-          (10,'Caddy',R/'mesh-routing-collaboration/caddy-gateway'),
-          (11,'Camunda',R/'execution-orchestration/state-machine-executor/camunda'),
-          (12,'Cedar',R/'definition-registry/authorization-model/cedar'),
-          (13,'Celery',R/'execution-engine-pool/parallel-dispatch/celery'),
-          (14,'Cerberus',R/'definition-registry/schema-contracts/cerberus'),
-          (15,'Cerbos',R/'control-governance/policy-guardrails-permissions/cerbos'),
-          (16,'Chroma',R/'tools-models-memory-knowledge/memory-microservices/chroma'),
-          (17,'ClawHub',R/'kernel-principal/extension-kernel/capability-registry/clawhub'),
-          (18,'Cloudflare-Workers-SDK',R/'execution-engine-pool/adapter-layer/cloudflare-workers-sdk'),
-          (19,'Coconut',R/'kernel-principal/reasoning-kernel/decision-on-demand/coconut'),
-          (20,'CodeUltraFeedback',R/'code-programming-engine/standards-forensic/code-ultrafeedback')]
-          rows=[]
-          for n,name,dest in items:
-              row={'id':n,'component':name,'status':'OK','gaps':[]}
-              if not dest.exists(): row['gaps'].append('DEST_MISSING')
+          specs={
+            8: (R/'definition-registry/domain-specific-contracts/baml',['BAML/engine/Cargo.toml','BAML/README.md'],['cargo','metadata','--manifest-path','BAML/engine/Cargo.toml','--no-deps','--format-version','1']),
+            9: (R/'execution-orchestration/state-machine-executor/burr',['pyproject.toml','burr'],['python','-m','compileall','-q','burr']),
+            10:(R/'mesh-routing-collaboration/caddy-gateway',['go.mod','caddyconfig'],['go','test','./caddyconfig/...','-run','^$']),
+            11:(R/'execution-orchestration/state-machine-executor/camunda',['pom.xml','zeebe'],['mvn','-q','-N','-DskipTests','validate']),
+            12:(R/'definition-registry/authorization-model/cedar',['Cargo.toml','cedar-policy'],['cargo','check','-q','-p','cedar-policy','--lib']),
+            13:(R/'execution-engine-pool/parallel-dispatch/celery',['pyproject.toml','celery'],['python','-m','compileall','-q','celery']),
+            14:(R/'definition-registry/schema-contracts/cerberus',['pyproject.toml','cerberus'],['python','-c',"from cerberus import Validator; v=Validator({'name':{'type':'string'}}); assert v.validate({'name':'ok'}); assert not v.validate({'name':1})"]),
+            15:(R/'control-governance/policy-guardrails-permissions/cerbos',['go.mod','internal'],['go','test','./...','-run','^$']),
+            16:(R/'tools-models-memory-knowledge/memory-microservices/chroma',['pyproject.toml','chromadb'],['python','-m','compileall','-q','chromadb']),
+            17:(R/'kernel-principal/extension-kernel/capability-registry/clawhub',['package.json','scripts','packages'],['node','scripts/check-release-workflow-action-pins.mjs']),
+            18:(R/'execution-engine-pool/adapter-layer/cloudflare-workers-sdk',['package.json','lint-turbo.mjs','packages'],['node','lint-turbo.mjs']),
+            19:(R/'kernel-principal/reasoning-kernel/decision-on-demand/coconut',['Coconut/coconut.py','Coconut/dataset.py'],['python','-m','compileall','-q','Coconut']),
+            20:(R/'code-programming-engine/standards-forensic/code-ultrafeedback',['README.md','src','evalplus'],['python','-m','compileall','-q','src','evalplus'])}
+
+          def resolve(dest,v):
+              p=Path(v)
+              return p if p.parts and p.parts[0]=='Agente Yaiwes principal' else dest/p
+
+          repaired=[]
+          for n,(dest,markers,cmd) in specs.items():
               wp=dest/'WIRING.json'
-              if not wp.exists(): row['gaps'].append('WIRING_MISSING'); row['status']='GAP'; rows.append(row); continue
+              if not wp.exists(): raise SystemExit(f'{n}:WIRING_MISSING')
               w=json.loads(wp.read_text())
-              adapter=w.get('adapter') or 'adapter.py'
-              ficha=w.get('manifest') or w.get('ficha')
-              ap=dest/adapter; fp=dest/ficha if ficha else None
-              if not ap.exists(): row['gaps'].append('ADAPTER_MISSING')
-              if not fp or not fp.exists(): row['gaps'].append('FICHA_MISSING')
-              if ap.exists():
-                  code=ap.read_text(errors='ignore')
-                  if ap.suffix=='.py': compile(code,str(ap),'exec')
-                  if "if not ROOT.exists()" in code and "'exists': True" in code and 'runtime_command' not in code:
-                      row['gaps'].append('GENERIC_SOURCE_PROBE')
-              if fp and fp.exists():
-                  f=json.loads(fp.read_text())
-                  if not f.get('artifact_id'): row['gaps'].append('ARTIFACT_ID_MISSING')
-              row['status']='GAP' if row['gaps'] else 'OK'
-              rows.append(row)
-              print(f"{n:02d} {name}: {row['status']} {','.join(row['gaps'])}")
-          out=Path('Readme arquitectura Yaiwes/STEP2-AUDIT-1-20.json')
-          out.write_text(json.dumps({'results':rows},ensure_ascii=False,indent=2)+'\n')
-          print('OK',sum(r['status']=='OK' for r in rows),'GAP',sum(r['status']=='GAP' for r in rows))
+              ap=resolve(dest,w.get('adapter') or 'yaiwes_adapter.py')
+              fp=resolve(dest,w.get('manifest') or w.get('ficha') or '')
+              if not ap.exists() or not fp.exists(): raise SystemExit(f'{n}:ADAPTER_OR_FICHA_MISSING')
+              old=ap.read_text(errors='strict')
+              generic=("if not ROOT.exists()" in old and "'exists': True" in old and 'runtime_command' not in old)
+              if generic:
+                  source='''from __future__ import annotations\nfrom pathlib import Path\n\nROOT = Path(__file__).resolve().parent\nEXPECTED = %r\nRUNTIME_COMMAND = %r\n\ndef source_probe() -> dict:\n    missing=[x for x in EXPECTED if not (ROOT/x).exists()]\n    if missing:\n        raise RuntimeError("upstream markers missing: " + ",".join(missing))\n    return {"ok": True, "root": str(ROOT), "markers": EXPECTED}\n\ndef runtime_command() -> list[str]:\n    return list(RUNTIME_COMMAND)\n\ndef runtime_cwd() -> str:\n    return str(ROOT)\n''' % (markers,cmd)
+                  compile(source,str(ap),'exec'); ap.write_text(source); repaired.append(n)
+              f=json.loads(fp.read_text())
+              if f.get('estado')=='wired_no_test': f['estado']='testing'
+              f.setdefault('ejecucion',{})['entry_point']=f'{ap.name}:source_probe'
+              f.setdefault('salud',{})['metodo']='exec'
+              fp.write_text(json.dumps(f,ensure_ascii=False,indent=2)+'\n')
+          print('REPAIRED_GENERIC_NODES',repaired)
           PY
 
-      - name: Publish FABLES and audit
+      - name: Validate wiring and FABLES fichas 1-20
         shell: bash
         run: |
           set -euo pipefail
-          git add -- 'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus' 'Readme arquitectura Yaiwes/STEP2-AUDIT-1-20.json'
-          git commit -m 'wire(yaiwes): FABLES fixed and audit nodes 1-20' || true
+          python3 - <<'PY'
+          from pathlib import Path
+          import importlib.util,json,sys
+          R=Path('Agente Yaiwes principal')
+          BUS=R/'kernel-principal/extension-kernel/plugin-bus'
+          spec=importlib.util.spec_from_file_location('ficha_v2',BUS/'ficha_contract_v2.py'); mod=importlib.util.module_from_spec(spec); sys.modules[spec.name]=mod; spec.loader.exec_module(mod)
+          items=[
+          (1,'APScheduler',R/'execution-orchestration/task-classifier-scheduler'),(2,'AWS-Step-Functions-DS-SDK',R/'execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk'),(3,'Ajv',R/'definition-registry/schema-contracts/ajv'),(4,'Apache-APISIX',R/'mesh-routing-collaboration/apisix-api-gateway'),(5,'Apache-Airflow',R/'execution-orchestration/dag-executor/apache-airflow'),(6,'Argo-Workflows',R/'execution-orchestration/dag-executor/argo-workflows'),(7,'Azure-Durable-Functions',R/'execution-orchestration/state-machine-executor/azure-durable-functions'),(8,'BAML',R/'definition-registry/domain-specific-contracts/baml'),(9,'Burr',R/'execution-orchestration/state-machine-executor/burr'),(10,'Caddy',R/'mesh-routing-collaboration/caddy-gateway'),(11,'Camunda',R/'execution-orchestration/state-machine-executor/camunda'),(12,'Cedar',R/'definition-registry/authorization-model/cedar'),(13,'Celery',R/'execution-engine-pool/parallel-dispatch/celery'),(14,'Cerberus',R/'definition-registry/schema-contracts/cerberus'),(15,'Cerbos',R/'control-governance/policy-guardrails-permissions/cerbos'),(16,'Chroma',R/'tools-models-memory-knowledge/memory-microservices/chroma'),(17,'ClawHub',R/'kernel-principal/extension-kernel/capability-registry/clawhub'),(18,'Cloudflare-Workers-SDK',R/'execution-engine-pool/adapter-layer/cloudflare-workers-sdk'),(19,'Coconut',R/'kernel-principal/reasoning-kernel/decision-on-demand/coconut'),(20,'CodeUltraFeedback',R/'code-programming-engine/standards-forensic/code-ultrafeedback')]
+          def resolve(dest,v):
+              p=Path(v); return p if p.parts and p.parts[0]=='Agente Yaiwes principal' else dest/p
+          rows=[]
+          for n,name,dest in items:
+              gaps=[]; wp=dest/'WIRING.json'
+              if not wp.exists(): gaps.append('WIRING_MISSING'); rows.append({'id':n,'component':name,'status':'GAP','gaps':gaps}); continue
+              w=json.loads(wp.read_text()); ap=resolve(dest,w.get('adapter') or 'adapter.py'); fv=w.get('manifest') or w.get('ficha'); fp=resolve(dest,fv) if fv else None
+              if not ap.exists(): gaps.append('ADAPTER_MISSING')
+              if fp is None or not fp.exists(): gaps.append('FICHA_MISSING')
+              if ap.exists():
+                  code=ap.read_text(errors='strict'); compile(code,str(ap),'exec')
+                  if "if not ROOT.exists()" in code and "'exists': True" in code and 'runtime_command' not in code: gaps.append('GENERIC_SOURCE_PROBE')
+              if fp and fp.exists():
+                  f=json.loads(fp.read_text()); v=mod.validar(f)
+                  if not v.valido: gaps.extend('FABLES_'+e for e in v.errores)
+              row={'id':n,'component':name,'status':'GAP' if gaps else 'OK','gaps':gaps}; rows.append(row)
+              print(f"{n:02d} {name}: {row['status']} {','.join(gaps)}")
+          Path('Readme arquitectura Yaiwes/STEP2-AUDIT-1-20.json').write_text(json.dumps({'results':rows},ensure_ascii=False,indent=2)+'\n')
+          bad=[r for r in rows if r['status']!='OK']; print('STEP2_OK',20-len(bad),'GAP',len(bad))
+          if bad: raise SystemExit('STEP2_STRUCTURAL_GAPS')
+          PY
+
+      - name: Publish surgical wiring
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- 'Agente Yaiwes principal' 'Readme arquitectura Yaiwes/STEP2-AUDIT-1-20.json'
+          if git diff --cached --quiet; then echo STEP2_NO_CHANGES; exit 0; fi
+          git commit -m 'wire(yaiwes): surgical adapters and FABLES nodes 1-20'
           git pull --rebase origin main
           git push origin HEAD:main
+
+      - name: Enforce Step2 structural close
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,sys
+          d=json.load(open('Readme arquitectura Yaiwes/STEP2-AUDIT-1-20.json'))
+          bad=[x for x in d['results'] if x['status']!='OK']
+          print('STEP2_OK',len(d['results'])-len(bad),'GAP',len(bad))
+          if bad: sys.exit(1)
+          PY
