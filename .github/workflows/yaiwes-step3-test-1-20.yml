@@ -18,8 +18,7 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout main sparse
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 1
@@ -37,166 +36,95 @@ jobs:
             Readme arquitectura Yaiwes
             📂 Bitácora stated JSON Craxy wall.json
 
-      - name: STEP 3 - real test each component 1x1
+      - name: STEP 3 real tests 1x1
         id: tests
         continue-on-error: true
         shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import copy, importlib.util, inspect, json, subprocess, sys
+          import copy, importlib.util, inspect, json, os, subprocess, sys
           from datetime import datetime, timezone
-
-          ROOT=Path('Agente Yaiwes principal')
-          ARCH=Path('Readme arquitectura Yaiwes/README.md')
-          WALL=Path('📂 Bitácora stated JSON Craxy wall.json')
-          BUS_DIR=ROOT/'kernel-principal/extension-kernel/plugin-bus'
-          sys.path.insert(0,str(BUS_DIR.resolve()))
-
-          def load_module(name,path):
-              spec=importlib.util.spec_from_file_location(name,path)
-              if spec is None or spec.loader is None: raise RuntimeError(f'cannot load {path}')
-              mod=importlib.util.module_from_spec(spec)
-              sys.modules[name]=mod
-              spec.loader.exec_module(mod)
-              return mod
-
-          busmod=load_module('yaiwes_bus',BUS_DIR/'universal_plugin_bus_v2_integrated.py')
-          fichamod=load_module('yaiwes_ficha_v2',BUS_DIR/'ficha_contract_v2.py')
-
+          ROOT=Path('Agente Yaiwes principal'); WALL=Path('📂 Bitácora stated JSON Craxy wall.json')
+          BUS=ROOT/'kernel-principal/extension-kernel/plugin-bus'; sys.path.insert(0,str(BUS.resolve()))
+          RUN_ID=os.environ['RUN_ID']
+          def load(name,path):
+              s=importlib.util.spec_from_file_location(name,path)
+              if s is None or s.loader is None: raise RuntimeError(f'cannot load {path}')
+              m=importlib.util.module_from_spec(s); sys.modules[name]=m; s.loader.exec_module(m); return m
+          busmod=load('yaiwes_bus',BUS/'universal_plugin_bus_v2_integrated.py')
+          fichamod=load('yaiwes_ficha',BUS/'ficha_contract_v2.py')
           items=[
-            (1,'APScheduler',ROOT/'execution-orchestration/task-classifier-scheduler'),
-            (2,'AWS-Step-Functions-DS-SDK',ROOT/'execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk'),
-            (3,'Ajv',ROOT/'definition-registry/schema-contracts/ajv'),
-            (4,'Apache-APISIX',ROOT/'mesh-routing-collaboration/apisix-api-gateway'),
-            (5,'Apache-Airflow',ROOT/'execution-orchestration/dag-executor/apache-airflow'),
-            (6,'Argo-Workflows',ROOT/'execution-orchestration/dag-executor/argo-workflows'),
-            (7,'Azure-Durable-Functions',ROOT/'execution-orchestration/state-machine-executor/azure-durable-functions'),
-            (8,'BAML',ROOT/'definition-registry/domain-specific-contracts/baml'),
-            (9,'Burr',ROOT/'execution-orchestration/state-machine-executor/burr'),
-            (10,'Caddy',ROOT/'mesh-routing-collaboration/caddy-gateway'),
-            (11,'Camunda',ROOT/'execution-orchestration/state-machine-executor/camunda'),
-            (12,'Cedar',ROOT/'definition-registry/authorization-model/cedar'),
-            (13,'Celery',ROOT/'execution-engine-pool/parallel-dispatch/celery'),
-            (14,'Cerberus',ROOT/'definition-registry/schema-contracts/cerberus'),
-            (15,'Cerbos',ROOT/'control-governance/policy-guardrails-permissions/cerbos'),
-            (16,'Chroma',ROOT/'tools-models-memory-knowledge/memory-microservices/chroma'),
-            (17,'ClawHub',ROOT/'kernel-principal/extension-kernel/capability-registry/clawhub'),
-            (18,'Cloudflare-Workers-SDK',ROOT/'execution-engine-pool/adapter-layer/cloudflare-workers-sdk'),
-            (19,'Coconut',ROOT/'kernel-principal/reasoning-kernel/decision-on-demand/coconut'),
-            (20,'CodeUltraFeedback',ROOT/'code-programming-engine/standards-forensic/code-ultrafeedback')]
-
-          def resolve(dest,value):
-              p=Path(value)
-              if p.parts and p.parts[0]=='Agente Yaiwes principal': return p
-              return dest/p
-
+          (1,'APScheduler',ROOT/'execution-orchestration/task-classifier-scheduler'),(2,'AWS-Step-Functions-DS-SDK',ROOT/'execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk'),(3,'Ajv',ROOT/'definition-registry/schema-contracts/ajv'),(4,'Apache-APISIX',ROOT/'mesh-routing-collaboration/apisix-api-gateway'),(5,'Apache-Airflow',ROOT/'execution-orchestration/dag-executor/apache-airflow'),(6,'Argo-Workflows',ROOT/'execution-orchestration/dag-executor/argo-workflows'),(7,'Azure-Durable-Functions',ROOT/'execution-orchestration/state-machine-executor/azure-durable-functions'),(8,'BAML',ROOT/'definition-registry/domain-specific-contracts/baml'),(9,'Burr',ROOT/'execution-orchestration/state-machine-executor/burr'),(10,'Caddy',ROOT/'mesh-routing-collaboration/caddy-gateway'),(11,'Camunda',ROOT/'execution-orchestration/state-machine-executor/camunda'),(12,'Cedar',ROOT/'definition-registry/authorization-model/cedar'),(13,'Celery',ROOT/'execution-engine-pool/parallel-dispatch/celery'),(14,'Cerberus',ROOT/'definition-registry/schema-contracts/cerberus'),(15,'Cerbos',ROOT/'control-governance/policy-guardrails-permissions/cerbos'),(16,'Chroma',ROOT/'tools-models-memory-knowledge/memory-microservices/chroma'),(17,'ClawHub',ROOT/'kernel-principal/extension-kernel/capability-registry/clawhub'),(18,'Cloudflare-Workers-SDK',ROOT/'execution-engine-pool/adapter-layer/cloudflare-workers-sdk'),(19,'Coconut',ROOT/'kernel-principal/reasoning-kernel/decision-on-demand/coconut'),(20,'CodeUltraFeedback',ROOT/'code-programming-engine/standards-forensic/code-ultrafeedback')]
+          def resolve(dest,v):
+              p=Path(v); return p if p.parts and p.parts[0]=='Agente Yaiwes principal' else dest/p
           results=[]
           for n,name,dest in items:
-            try:
-              if not dest.exists(): raise RuntimeError('destination missing')
-              wiring_p=dest/'WIRING.json'
-              if not wiring_p.exists(): raise RuntimeError('WIRING.json missing')
-              wiring=json.loads(wiring_p.read_text())
-              adapter_value=wiring.get('adapter') or 'adapter.py'
-              manifest_value=wiring.get('manifest') or wiring.get('ficha')
-              if not manifest_value: raise RuntimeError('manifest/ficha missing in WIRING')
-              adapter_p=resolve(dest,adapter_value); manifest_p=resolve(dest,manifest_value)
-              if not adapter_p.exists(): raise RuntimeError(f'adapter missing: {adapter_p}')
-              if not manifest_p.exists(): raise RuntimeError(f'manifest missing: {manifest_p}')
-              code=adapter_p.read_text(encoding='utf-8',errors='strict')
-              compile(code,str(adapter_p),'exec')
-              if "if not ROOT.exists()" in code and "'exists': True" in code and 'runtime_command' not in code:
-                  raise RuntimeError('generic source_probe forbidden')
-              manifest=json.loads(manifest_p.read_text())
-
-              verdict=fichamod.validar(manifest)
-              if not verdict.valido: raise RuntimeError('FABLES ficha invalid: '+','.join(verdict.errores))
-              broken=copy.deepcopy(manifest); broken.pop('artifact_id',None)
-              if fichamod.validar(broken).valido: raise RuntimeError('FABLES fail-closed negative test failed')
-
-              module=load_module(f'yaiwes_component_{n}',adapter_p)
-              probe=None
-              for candidate in ('source_probe','capability','health'):
-                  fn=getattr(module,candidate,None)
-                  if callable(fn):
-                      sig=inspect.signature(fn)
-                      required=[p for p in sig.parameters.values() if p.default is inspect._empty and p.kind in (p.POSITIONAL_ONLY,p.POSITIONAL_OR_KEYWORD)]
-                      if not required:
-                          probe=fn(); break
-              if isinstance(probe,dict) and probe.get('ok') is False: raise RuntimeError(f'adapter probe failed: {probe}')
-
-              runtime_detail='adapter-real-surface'
-              runtime_fn=getattr(module,'runtime_command',None)
-              if callable(runtime_fn):
-                  cmd=runtime_fn()
-                  if not isinstance(cmd,(list,tuple)) or not cmd: raise RuntimeError('runtime_command invalid')
-                  cwd_fn=getattr(module,'runtime_cwd',None)
-                  cwd=Path(cwd_fn()) if callable(cwd_fn) else dest
-                  proc=subprocess.run(list(cmd),cwd=str(cwd),text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=300)
-                  if proc.returncode != 0: raise RuntimeError(f"runtime rc={proc.returncode}: {proc.stdout[-1800:]}")
-                  runtime_detail='runtime_command:'+ ' '.join(map(str,cmd))
-
-              bus=busmod.UniversalPluginBus()
-              case=manifest.get('tribunal_case_id','')
-              bus.add_tribunal_approval(case)
-              cand=busmod.ComponentCandidate(source_code=code,language='python',file_paths=[str(adapter_p)])
-              conv=busmod.TargetConventions(language='python',naming_style='snake_case',async_style='mixed',type_system='dynamic')
-              reg=bus.enchufar(manifest,cand,conv,registered_by='STEP3')
-              bus.health.heartbeat(reg.plugin_id)
-              if reg.status.value!='ACTIVE': raise RuntimeError('plugin not ACTIVE')
-              if not bus.check_plugin_health(reg.plugin_id): raise RuntimeError('health false')
-              if not bus.evidence.get(reg.plugin_id): raise RuntimeError('evidence missing')
-              results.append({'n':n,'name':name,'status':'PASS','detail':runtime_detail+' + FABLES valid/fail-closed/mount/health/evidence'})
-              print(f'{n:02d} {name}: PASS {runtime_detail}')
-            except Exception as e:
-              results.append({'n':n,'name':name,'status':'FAIL','detail':f'{type(e).__name__}: {e}'})
-              print(f'{n:02d} {name}: FAIL: {type(e).__name__}: {e}')
-
-          now=datetime.now(timezone.utc).isoformat()
-          wall=json.loads(WALL.read_text())
-          byid={r['n']:r for r in results}
+              try:
+                  w=json.loads((dest/'WIRING.json').read_text()); av=w.get('adapter') or 'adapter.py'; fv=w.get('manifest') or w.get('ficha')
+                  if not fv: raise RuntimeError('manifest/ficha missing')
+                  ap=resolve(dest,av); fp=resolve(dest,fv)
+                  if not ap.exists() or not fp.exists(): raise RuntimeError(f'missing adapter/ficha: {ap} / {fp}')
+                  code=ap.read_text(); compile(code,str(ap),'exec')
+                  if "if not ROOT.exists()" in code and "'exists': True" in code and 'runtime_command' not in code: raise RuntimeError('generic source_probe forbidden')
+                  manifest=json.loads(fp.read_text()); v=fichamod.validar(manifest)
+                  if not v.valido: raise RuntimeError('FABLES ficha invalid:'+','.join(v.errores))
+                  broken=copy.deepcopy(manifest); broken.pop('artifact_id',None)
+                  if fichamod.validar(broken).valido: raise RuntimeError('FABLES fail-closed negative failed')
+                  mod=load(f'yaiwes_component_{n}',ap)
+                  probe=None
+                  for key in ('source_probe','capability','health'):
+                      fn=getattr(mod,key,None)
+                      if callable(fn) and not [p for p in inspect.signature(fn).parameters.values() if p.default is inspect._empty and p.kind in (p.POSITIONAL_ONLY,p.POSITIONAL_OR_KEYWORD)]: probe=fn(); break
+                  if isinstance(probe,dict) and probe.get('ok') is False: raise RuntimeError(f'probe failed:{probe}')
+                  detail='adapter-real-surface'
+                  rf=getattr(mod,'runtime_command',None)
+                  if callable(rf):
+                      cmd=list(rf()); cwd=Path(mod.runtime_cwd()) if callable(getattr(mod,'runtime_cwd',None)) else dest
+                      p=subprocess.run(cmd,cwd=str(cwd),text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=300)
+                      if p.returncode: raise RuntimeError(f"runtime rc={p.returncode}: {p.stdout[-1600:]}")
+                      detail='runtime:'+' '.join(cmd)
+                  bus=busmod.UniversalPluginBus(); case=manifest.get('tribunal_case_id',''); bus.add_tribunal_approval(case)
+                  cand=busmod.ComponentCandidate(source_code=code,language='python',file_paths=[str(ap)])
+                  conv=busmod.TargetConventions(language='python',naming_style='snake_case',async_style='mixed',type_system='dynamic')
+                  reg=bus.enchufar(manifest,cand,conv,registered_by='STEP3'); bus.health.heartbeat(reg.plugin_id)
+                  if reg.status.value!='ACTIVE' or not bus.check_plugin_health(reg.plugin_id) or not bus.evidence.get(reg.plugin_id): raise RuntimeError('FABLES mount/health/evidence failed')
+                  results.append({'n':n,'name':name,'status':'PASS','detail':detail+' + FABLES'})
+                  print(f'{n:02d} {name}: PASS {detail}')
+              except Exception as e:
+                  results.append({'n':n,'name':name,'status':'FAIL','detail':f'{type(e).__name__}: {e}'})
+                  print(f'{n:02d} {name}: FAIL {type(e).__name__}: {e}')
+          now=datetime.now(timezone.utc).isoformat(); wall=json.loads(WALL.read_text()); byid={r['n']:r for r in results}
           for node in wall['nodes']:
               if 1 <= node['id'] <= 20:
-                  r=byid[node['id']]
-                  node.setdefault('checkpoint',{})['after']=f"{now} STEP3 {r['status']} run=${{{{ github.run_id }}}}"
-                  node.setdefault('evidence',[]).append(f"step3-run:${{{{ github.run_id }}}}:{r['status']}")
-                  node.setdefault('history',[]).append({'at':now,'actor':'SOL','event':'STEP3_'+r['status'],'step':3})
-                  if r['status']=='PASS':
-                      node['current_step']=3; node['status']='PASS_STEP3'; node['owner']=None; node['lock']='FREE'
-                  else:
-                      node['current_step']=3; node['status']='GAP_STEP3'; node['owner']='SOL'; node['lock']='CLAIMED'
-          wall['updated_at']=now
-          wall['counts']['closed_current_contract']=sum(1 for node in wall['nodes'] if 1 <= node['id'] <= 20 and node.get('status')=='PASS_STEP3')
-          WALL.write_text(json.dumps(wall,ensure_ascii=False,indent=2)+'\n')
-
-          report=Path('Readme arquitectura Yaiwes/STEP3-TEST-REPORT-1-20.json')
-          report.write_text(json.dumps({'run_id':'${{ github.run_id }}','results':results},indent=2,ensure_ascii=False)+'\n')
+                  r=byid[node['id']]; node.setdefault('checkpoint',{})['after']=f"{now} STEP3 {r['status']} run={RUN_ID}"; node.setdefault('evidence',[]).append(f"step3-run:{RUN_ID}:{r['status']}"); node.setdefault('history',[]).append({'at':now,'actor':'SOL','event':'STEP3_'+r['status'],'step':3})
+                  if r['status']=='PASS': node.update({'current_step':3,'status':'PASS_STEP3','owner':None,'lock':'FREE'})
+                  else: node.update({'current_step':3,'status':'GAP_STEP3','owner':'SOL','lock':'CLAIMED'})
+          wall['updated_at']=now; wall['counts']['closed_current_contract']=sum(1 for x in wall['nodes'] if 1<=x['id']<=20 and x.get('status')=='PASS_STEP3'); WALL.write_text(json.dumps(wall,ensure_ascii=False,indent=2)+'\n')
+          Path('Readme arquitectura Yaiwes/STEP3-TEST-REPORT-1-20.json').write_text(json.dumps({'run_id':RUN_ID,'results':results},ensure_ascii=False,indent=2)+'\n')
           if any(r['status']!='PASS' for r in results): raise SystemExit('STEP3_HAS_FAILURES')
           print('STEP3_ALL_20_PASS')
           PY
 
-      - name: Publish STEP 3 report and Crazy Wall
+      - name: Publish report and Crazy Wall
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- 'Readme arquitectura Yaiwes/STEP3-TEST-REPORT-1-20.json' '📂 Bitácora stated JSON Craxy wall.json'
-          if git diff --cached --quiet; then echo 'STEP3_REPORT_NO_CHANGES'; exit 0; fi
+          git diff --cached --quiet && exit 0
           git commit -m 'test(yaiwes): STEP 3 real results nodes 1-20'
           git pull --rebase origin main
           git push origin HEAD:main
 
-      - name: Enforce all 20 PASS
+      - name: Enforce 20 PASS
         shell: bash
         run: |
           python3 - <<'PY'
           import json,sys
-          d=json.load(open('Readme arquitectura Yaiwes/STEP3-TEST-REPORT-1-20.json'))
-          bad=[r for r in d['results'] if r['status']!='PASS']
-          print('PASS',len(d['results'])-len(bad),'FAIL',len(bad))
-          if bad: sys.exit(1)
+          d=json.load(open('Readme arquitectura Yaiwes/STEP3-TEST-REPORT-1-20.json')); bad=[x for x in d['results'] if x['status']!='PASS']; print('PASS',20-len(bad),'FAIL',len(bad)); sys.exit(bool(bad))
           PY
