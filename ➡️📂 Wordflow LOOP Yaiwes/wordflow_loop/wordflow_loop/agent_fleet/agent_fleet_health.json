@@ -1,14 +1,12 @@
 {
   "contract": "tel.workflow/v4",
   "status": "READY_FOR_REAL_AGENT_TEST",
+  "scope_root": "➡️📂 Wordflow LOOP Yaiwes/",
   "tests_executed_by_this_closure": false,
   "fail_closed": true,
   "fleet_count": 18,
   "council12_count": 12,
-  "source_traceability": {
-    "located": 15,
-    "external_not_vendored": ["hermes", "muse_glimmer", "goose"]
-  },
+  "source_traceability": {"located": 15, "external_not_vendored": ["hermes", "muse_glimmer", "goose"]},
   "previous_step3": {
     "run_id": 34406268016,
     "job_id": 102649876845,
@@ -16,12 +14,12 @@
     "conclusion": "success",
     "wiring_verified": true,
     "fail_closed_verified": true,
-    "evidence": "Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/wordflow-loop-evidence/STEP3_AGENT_FLEET_VERIFY.json"
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/STEP3_AGENT_FLEET_VERIFY.json"
   },
   "runtime_readiness": {
     "adapter": "READY",
     "registry": "READY",
-    "universal_plug": "READY",
+    "plugin_registration": "READY",
     "runtime_env_values": "REQUIRED_AT_REAL_TEST_TIME",
     "missing_runtime_behavior": "FAIL_CLOSED"
   },
