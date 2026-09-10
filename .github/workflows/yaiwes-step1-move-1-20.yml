@@ -18,7 +18,7 @@ jobs:
   move:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout exact MOVE surfaces
+      - name: Checkout MOVE surfaces
         uses: actions/checkout@v4
         with:
           ref: main
@@ -29,6 +29,7 @@ jobs:
           sparse-checkout: |
             /.github/workflows/yaiwes-step1-move-1-20.yml
             /➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py
+            /➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/yaiwes_move_20_with_motor4.py
             /Core kernel Yaiwes/Componentes recuperados A/APScheduler/
             /Core kernel Yaiwes/Componentes recuperados A/AWS-Step-Functions-DS-SDK/
             /Core kernel Yaiwes/Componentes recuperados A/Ajv/
@@ -92,133 +93,21 @@ jobs:
             /Agente Yaiwes principal/kernel-principal/reasoning-kernel/decision-on-demand/coconut/
             /Agente Yaiwes principal/code-programming-engine/standards-forensic/code-ultrafeedback/
 
-      - name: Validate canonical immutable motor
+      - name: Verify exact canonical Motor4
         shell: bash
         run: |
           set -euo pipefail
           MOTOR='➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py'
-          test -f "$MOTOR"
-          ACTUAL=$(git hash-object "$MOTOR")
-          test "$ACTUAL" = '9a21facfe11327cf60a2afca8f415ad52f0ecbe5'
-          echo "MOTOR4_BLOB_SHA=$ACTUAL"
+          test "$(git hash-object "$MOTOR")" = '9a21facfe11327cf60a2afca8f415ad52f0ecbe5'
+          echo MOTOR4_EXACT_SHA_VERIFIED
 
-      - name: MOVE and deduplicate 1-20 by canonical motor4
+      - name: Move all 20 through Motor4
         shell: bash
         run: |
           set -euo pipefail
-          MOTOR='➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py'
-          ROOT='Agente Yaiwes principal'
-          REPORT="$RUNNER_TEMP/motor4-move-1-20.tsv"
-          : > "$REPORT"
+          python3 '➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/yaiwes_move_20_with_motor4.py'
 
-          find_source() {
-            local name="$1" p
-            for p in \
-              "Core kernel Yaiwes/Componentes recuperados B/$name/$name" \
-              "Core kernel Yaiwes/Componentes recuperados B/$name" \
-              "Core kernel Yaiwes/Componentes recuperados A/$name/$name" \
-              "Core kernel Yaiwes/Componentes recuperados A/$name" \
-              "Core kernel Yaiwes/$name"
-            do
-              if [ -d "$p" ] && find "$p" -type f -print -quit | grep -q .; then
-                printf '%s' "$p"
-                return 0
-              fi
-            done
-            return 1
-          }
-
-          preserve_conflicts() {
-            local src="$1" dest="$2" name="$3"
-            python3 - "$src" "$dest" "$name" <<'PY'
-          from pathlib import Path
-          import hashlib, shutil, sys
-          src, dst, name = map(Path, sys.argv[1:])
-          preserve = dst / '.yaiwes-pre-move-preserved'
-          def sha(p):
-              h=hashlib.sha256()
-              with p.open('rb') as f:
-                  for b in iter(lambda:f.read(1024*1024), b''): h.update(b)
-              return h.hexdigest()
-          count=0
-          for s in sorted((p for p in src.rglob('*') if p.is_file()), key=lambda p:p.relative_to(src).as_posix()):
-              rel=s.relative_to(src)
-              d=dst/rel
-              if not d.exists() or not d.is_file() or sha(s)==sha(d):
-                  continue
-              keep=preserve/rel
-              keep.parent.mkdir(parents=True, exist_ok=True)
-              if keep.exists():
-                  if keep.is_file() and sha(keep)==sha(d):
-                      d.unlink()
-                  else:
-                      keep=keep.with_name(keep.name+'.'+sha(d)[:12])
-                      keep.parent.mkdir(parents=True, exist_ok=True)
-                      shutil.move(str(d), str(keep))
-              else:
-                  shutil.move(str(d), str(keep))
-              print(f'PRESERVED_DEST_CONFLICT {name} {rel} -> {keep}')
-              count += 1
-          print(f'PRESERVED_DEST_CONFLICTS_TOTAL {name} {count}')
-          PY
-          }
-
-          move_one() {
-            local n="$1" name="$2" dest="$3" src='' state out
-            if src=$(find_source "$name"); then
-              mkdir -p "$dest"
-              preserve_conflicts "$src" "$dest" "$name"
-              state="$RUNNER_TEMP/motor4-${n}.json"
-              rm -f "$state"
-              out=$(SOURCE_DIR="$src" DEST_DIR="$dest" STATE_FILE="$state" BATCH_SIZE=100 COLLISION_POLICY=fail python3 "$MOTOR")
-              echo "$out"
-              if ! python3 - "$out" <<'PY'
-          import json,sys
-          x=json.loads(sys.argv[1])
-          assert x['verdict']=='VERIFIED_CLOSED', x
-          assert x['failed']==0 and x['pending']==0 and x['source_files_remaining']==0, x
-          PY
-              then
-                echo '--- MOTOR4 GAP STATE ---'
-                cat "$state"
-                return 1
-              fi
-              printf '%s\t%s\tMOVED_OR_DEDUP_VERIFIED\t%s\t%s\n' "$n" "$name" "$dest" "$src" | tee -a "$REPORT"
-            elif [ -d "$dest" ] && find "$dest" -type f -print -quit | grep -q .; then
-              printf '%s\t%s\tDEST_ONLY_VERIFIED\t%s\n' "$n" "$name" "$dest" | tee -a "$REPORT"
-            else
-              printf '%s\t%s\tSOURCE_AND_DEST_GAP\t%s\n' "$n" "$name" "$dest" | tee -a "$REPORT"
-              return 1
-            fi
-          }
-
-          move_one 1  'APScheduler' "$ROOT/execution-orchestration/task-classifier-scheduler"
-          move_one 2  'AWS-Step-Functions-DS-SDK' "$ROOT/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk"
-          move_one 3  'Ajv' "$ROOT/definition-registry/schema-contracts/ajv"
-          move_one 4  'Apache-APISIX' "$ROOT/mesh-routing-collaboration/apisix-api-gateway"
-          move_one 5  'Apache-Airflow' "$ROOT/execution-orchestration/dag-executor/apache-airflow"
-          move_one 6  'Argo-Workflows' "$ROOT/execution-orchestration/dag-executor/argo-workflows"
-          move_one 7  'Azure-Durable-Functions' "$ROOT/execution-orchestration/state-machine-executor/azure-durable-functions"
-          move_one 8  'BAML' "$ROOT/definition-registry/domain-specific-contracts/baml"
-          move_one 9  'Burr' "$ROOT/execution-orchestration/state-machine-executor/burr"
-          move_one 10 'Caddy' "$ROOT/mesh-routing-collaboration/caddy-gateway"
-          move_one 11 'Camunda' "$ROOT/execution-orchestration/state-machine-executor/camunda"
-          move_one 12 'Cedar' "$ROOT/definition-registry/authorization-model/cedar"
-          move_one 13 'Celery' "$ROOT/execution-engine-pool/parallel-dispatch/celery"
-          move_one 14 'Cerberus' "$ROOT/definition-registry/schema-contracts/cerberus"
-          move_one 15 'Cerbos' "$ROOT/control-governance/policy-guardrails-permissions/cerbos"
-          move_one 16 'Chroma' "$ROOT/tools-models-memory-knowledge/memory-microservices/chroma"
-          move_one 17 'ClawHub' "$ROOT/kernel-principal/extension-kernel/capability-registry/clawhub"
-          move_one 18 'Cloudflare-Workers-SDK' "$ROOT/execution-engine-pool/adapter-layer/cloudflare-workers-sdk"
-          move_one 19 'Coconut' "$ROOT/kernel-principal/reasoning-kernel/decision-on-demand/coconut"
-          move_one 20 'CodeUltraFeedback' "$ROOT/code-programming-engine/standards-forensic/code-ultrafeedback"
-
-          echo '--- MOTOR4 REPORT ---'
-          cat "$REPORT"
-          test "$(wc -l < "$REPORT")" -eq 20
-          ! grep -q $'\tSOURCE_AND_DEST_GAP\t' "$REPORT"
-
-      - name: Publish MOVE batch to main
+      - name: Commit and push physical MOVE
         shell: bash
         run: |
           set -euo pipefail
@@ -226,46 +115,52 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A -- 'Core kernel Yaiwes' 'Agente Yaiwes principal'
           if git diff --cached --quiet; then
-            echo 'NO_NEW_MOVE_CHANGES_DESTINATIONS_ALREADY_CANONICAL'
+            echo MOVE_ALREADY_CANONICAL_NO_DELTA
             exit 0
           fi
-          git commit -m 'move(yaiwes): motor4 canonical batch move and source dedup 1-20'
-          git fetch origin main
-          git rebase origin/main
-          git push origin HEAD:main
-          echo "MOVE_COMMIT=$(git rev-parse HEAD)"
+          git commit -m 'move(yaiwes): Motor4 batch MOVE components 1-20 to final destinations'
+          for attempt in 1 2 3 4; do
+            git fetch origin main
+            if git rebase origin/main && git push origin HEAD:main; then
+              echo "MOVE_COMMIT=$(git rev-parse HEAD)"
+              exit 0
+            fi
+            git rebase --abort || true
+            sleep $((attempt * 3))
+          done
+          echo MOVE_PUSH_FAILED_AFTER_RETRIES >&2
+          exit 1
 
-      - name: Read-back destinations from main
+      - name: Canonical read-back from main
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin main
           git reset --hard origin/main
-          paths=(
-            'Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler'
-            'Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk'
-            'Agente Yaiwes principal/definition-registry/schema-contracts/ajv'
-            'Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway'
-            'Agente Yaiwes principal/execution-orchestration/dag-executor/apache-airflow'
-            'Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows'
-            'Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions'
-            'Agente Yaiwes principal/definition-registry/domain-specific-contracts/baml'
-            'Agente Yaiwes principal/execution-orchestration/state-machine-executor/burr'
-            'Agente Yaiwes principal/mesh-routing-collaboration/caddy-gateway'
-            'Agente Yaiwes principal/execution-orchestration/state-machine-executor/camunda'
-            'Agente Yaiwes principal/definition-registry/authorization-model/cedar'
-            'Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery'
-            'Agente Yaiwes principal/definition-registry/schema-contracts/cerberus'
-            'Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos'
-            'Agente Yaiwes principal/tools-models-memory-knowledge/memory-microservices/chroma'
-            'Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/clawhub'
-            'Agente Yaiwes principal/execution-engine-pool/adapter-layer/cloudflare-workers-sdk'
-            'Agente Yaiwes principal/kernel-principal/reasoning-kernel/decision-on-demand/coconut'
-            'Agente Yaiwes principal/code-programming-engine/standards-forensic/code-ultrafeedback'
-          )
-          for p in "${paths[@]}"; do
+          while IFS= read -r p; do
             test -d "$p"
             find "$p" -type f -print -quit | grep -q .
             echo "READBACK_OK $p"
-          done
-          echo 'MOTOR4_MOVE_20_READBACK=VERIFIED_CLOSED'
+          done <<'EOF'
+          Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler
+          Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk
+          Agente Yaiwes principal/definition-registry/schema-contracts/ajv
+          Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway
+          Agente Yaiwes principal/execution-orchestration/dag-executor/apache-airflow
+          Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows
+          Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions
+          Agente Yaiwes principal/definition-registry/domain-specific-contracts/baml
+          Agente Yaiwes principal/execution-orchestration/state-machine-executor/burr
+          Agente Yaiwes principal/mesh-routing-collaboration/caddy-gateway
+          Agente Yaiwes principal/execution-orchestration/state-machine-executor/camunda
+          Agente Yaiwes principal/definition-registry/authorization-model/cedar
+          Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery
+          Agente Yaiwes principal/definition-registry/schema-contracts/cerberus
+          Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos
+          Agente Yaiwes principal/tools-models-memory-knowledge/memory-microservices/chroma
+          Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/clawhub
+          Agente Yaiwes principal/execution-engine-pool/adapter-layer/cloudflare-workers-sdk
+          Agente Yaiwes principal/kernel-principal/reasoning-kernel/decision-on-demand/coconut
+          Agente Yaiwes principal/code-programming-engine/standards-forensic/code-ultrafeedback
+          EOF
+          echo MOTOR4_MOVE_20_CANONICAL_READBACK=VERIFIED_CLOSED
