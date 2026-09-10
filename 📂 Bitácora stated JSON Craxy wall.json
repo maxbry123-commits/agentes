@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-10T20:36:15Z",
+  "updated_at": "2026-09-10T20:37:55Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -593,14 +593,14 @@
       "component": "Hatchet",
       "source": "Core kernel Yaiwes/Hatchet/",
       "current_step": 3,
-      "status": "GAP",
+      "status": "PASS",
       "abc": "B",
       "target": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/hatchet/",
-      "owner": "SOL",
-      "lock": "CLAIMED",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-10T19:23:23Z source_exists:Core kernel Yaiwes/Hatchet/; physical read-back confirms populated upstream tree on main",
-        "after": "STEP3 GAP run 34526818346: real Hatchet embedded DAG and FABLES wiring PASS (input 20, double 40, plus_one 41, L2+L3+L4), but STEP3 closure failed after local evidence commit because git rebase refused an unstaged runner worktree change. StrategyDelta: preserve same microtest and hard-reset tracked runner drift after evidence commit before rebase/push."
+        "after": "STEP3 PASS: FABLES UniversalPluginBus wired yaiwes.orchestration.hatchet; real Hatchet embedded engine executed same DAG double->plus_one from real adapter file with input 20 and outputs 40/41; evidence committed and origin/main read-back PASS; prune NOT_NEEDED."
       },
       "evidence": [
         "worker:SOL integración 1",
@@ -619,7 +619,17 @@
         "step3:run3:FABLES:PASS ACTIVE L2_build+L3_runtime+L4_feature",
         "step3:gap_run:34526818346",
         "step3:gap_exact:evidence-publish rebase blocked by unstaged runner worktree changes",
-        "step3:strategy_delta:git status then reset --hard HEAD after evidence commit before rebase"
+        "step3:strategy_delta:git status then reset --hard HEAD after evidence commit before rebase",
+        "step3:adapter_commit:aaf44166c075c3a07c2746923601e06870a762f8",
+        "step3:ficha_commit:1ccffdd5f220801ac4b0a9d6e0c095885b2937be",
+        "step3:runner_commit:21b555a027a4552c7a95319a12d412746590c019",
+        "step3:evidence_commit:7197b4a6ce53e4a81a8bbe31ceb596b1cf15586c",
+        "step3:run:34527326938",
+        "step3:route:FABLES->Hatchet adapter(real file)->embedded engine->worker->DAG",
+        "step3:microtest:PASS input=20 double=40 plus_one=41",
+        "step3:evidence:L2_build+L3_runtime+L4_feature",
+        "step3:prune:NOT_NEEDED",
+        "step3:readback:source-absent+adapter+ficha+evidence PASS"
       ],
       "history": [
         {
@@ -654,9 +664,16 @@
           "label": "SOL integración 1",
           "event": "STEP3_GAP_EVIDENCE_PUBLISH",
           "run": 34526818346
+        },
+        {
+          "at": "2026-09-10T20:37:55Z",
+          "actor": "SOL",
+          "label": "SOL integración 1",
+          "event": "STEP3_PASS_RELEASE",
+          "run": 34527326938
         }
       ],
-      "next_action": "STEP3_RETRY_SAME_MICROTEST_CLEAN_WORKTREE_EVIDENCE_PUBLISH"
+      "next_action": "COMPLETE"
     },
     {
       "id": 23,
