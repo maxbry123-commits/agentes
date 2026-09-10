@@ -1,0 +1,168 @@
+name: YAIWES Motor4 Final MOVE 20
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/yaiwes-motor4-move-20-final.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-motor4-final-move-20
+  cancel-in-progress: false
+
+jobs:
+  move20:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact component surfaces
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 2
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-motor4-move-20-final.yml
+            /➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py
+            /➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/yaiwes_move_20_with_motor4.py
+            /Core kernel Yaiwes/Componentes recuperados A/APScheduler/
+            /Core kernel Yaiwes/Componentes recuperados A/AWS-Step-Functions-DS-SDK/
+            /Core kernel Yaiwes/Componentes recuperados A/Ajv/
+            /Core kernel Yaiwes/Componentes recuperados A/Apache-APISIX/
+            /Core kernel Yaiwes/Componentes recuperados A/Apache-Airflow/
+            /Core kernel Yaiwes/Componentes recuperados A/Argo-Workflows/
+            /Core kernel Yaiwes/Componentes recuperados A/Azure-Durable-Functions/
+            /Core kernel Yaiwes/Componentes recuperados A/BAML/
+            /Core kernel Yaiwes/Componentes recuperados A/Burr/
+            /Core kernel Yaiwes/Componentes recuperados A/Caddy/
+            /Core kernel Yaiwes/Componentes recuperados A/Camunda/
+            /Core kernel Yaiwes/Componentes recuperados A/Cedar/
+            /Core kernel Yaiwes/Componentes recuperados A/Celery/
+            /Core kernel Yaiwes/Componentes recuperados A/Cerberus/
+            /Core kernel Yaiwes/Componentes recuperados A/Cerbos/
+            /Core kernel Yaiwes/Componentes recuperados A/Chroma/
+            /Core kernel Yaiwes/Componentes recuperados A/ClawHub/
+            /Core kernel Yaiwes/Componentes recuperados A/Cloudflare-Workers-SDK/
+            /Core kernel Yaiwes/Componentes recuperados A/Coconut/
+            /Core kernel Yaiwes/Componentes recuperados A/CodeUltraFeedback/
+            /Core kernel Yaiwes/Componentes recuperados B/APScheduler/
+            /Core kernel Yaiwes/Componentes recuperados B/AWS-Step-Functions-DS-SDK/
+            /Core kernel Yaiwes/Componentes recuperados B/Ajv/
+            /Core kernel Yaiwes/Componentes recuperados B/Apache-APISIX/
+            /Core kernel Yaiwes/Componentes recuperados B/Apache-Airflow/
+            /Core kernel Yaiwes/Componentes recuperados B/Argo-Workflows/
+            /Core kernel Yaiwes/Componentes recuperados B/Azure-Durable-Functions/
+            /Core kernel Yaiwes/Componentes recuperados B/BAML/
+            /Core kernel Yaiwes/Componentes recuperados B/Burr/
+            /Core kernel Yaiwes/Componentes recuperados B/Caddy/
+            /Core kernel Yaiwes/Componentes recuperados B/Camunda/
+            /Core kernel Yaiwes/Componentes recuperados B/Cedar/
+            /Core kernel Yaiwes/Componentes recuperados B/Celery/
+            /Core kernel Yaiwes/Componentes recuperados B/Cerberus/
+            /Core kernel Yaiwes/Componentes recuperados B/Cerbos/
+            /Core kernel Yaiwes/Componentes recuperados B/Chroma/
+            /Core kernel Yaiwes/Componentes recuperados B/ClawHub/
+            /Core kernel Yaiwes/Componentes recuperados B/Cloudflare-Workers-SDK/
+            /Core kernel Yaiwes/Componentes recuperados B/Coconut/
+            /Core kernel Yaiwes/Componentes recuperados B/CodeUltraFeedback/
+            /Core kernel Yaiwes/APScheduler/
+            /Core kernel Yaiwes/Celery/
+            /Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler/
+            /Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk/
+            /Agente Yaiwes principal/definition-registry/schema-contracts/ajv/
+            /Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway/
+            /Agente Yaiwes principal/execution-orchestration/dag-executor/apache-airflow/
+            /Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows/
+            /Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions/
+            /Agente Yaiwes principal/definition-registry/domain-specific-contracts/baml/
+            /Agente Yaiwes principal/execution-orchestration/state-machine-executor/burr/
+            /Agente Yaiwes principal/mesh-routing-collaboration/caddy-gateway/
+            /Agente Yaiwes principal/execution-orchestration/state-machine-executor/camunda/
+            /Agente Yaiwes principal/definition-registry/authorization-model/cedar/
+            /Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery/
+            /Agente Yaiwes principal/definition-registry/schema-contracts/cerberus/
+            /Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos/
+            /Agente Yaiwes principal/tools-models-memory-knowledge/memory-microservices/chroma/
+            /Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/clawhub/
+            /Agente Yaiwes principal/execution-engine-pool/adapter-layer/cloudflare-workers-sdk/
+            /Agente Yaiwes principal/kernel-principal/reasoning-kernel/decision-on-demand/coconut/
+            /Agente Yaiwes principal/code-programming-engine/standards-forensic/code-ultrafeedback/
+
+      - name: Verify Motor4 immutable SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          MOTOR='➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py'
+          test "$(git hash-object "$MOTOR")" = '9a21facfe11327cf60a2afca8f415ad52f0ecbe5'
+          echo MOTOR4_SHA_VERIFIED
+
+      - name: Execute MOVE 1-20
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 '➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/yaiwes_move_20_with_motor4.py'
+
+      - name: Publish physical MOVE to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- 'Core kernel Yaiwes' 'Agente Yaiwes principal'
+          if git diff --cached --quiet; then
+            echo MOVE_ALREADY_CANONICAL_NO_DELTA
+          else
+            git commit -m 'move(yaiwes): Motor4 batch MOVE components 1-20 to final destinations'
+            ok=0
+            for attempt in 1 2 3 4; do
+              git fetch origin main
+              if git rebase origin/main && git push origin HEAD:main; then
+                ok=1
+                break
+              fi
+              git rebase --abort || true
+              sleep $((attempt * 3))
+            done
+            test "$ok" -eq 1
+            echo "MOVE_COMMIT=$(git rev-parse HEAD)"
+          fi
+
+      - name: Read back all 20 from origin main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git reset --hard origin/main
+          paths=(
+            'Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler'
+            'Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk'
+            'Agente Yaiwes principal/definition-registry/schema-contracts/ajv'
+            'Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway'
+            'Agente Yaiwes principal/execution-orchestration/dag-executor/apache-airflow'
+            'Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows'
+            'Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions'
+            'Agente Yaiwes principal/definition-registry/domain-specific-contracts/baml'
+            'Agente Yaiwes principal/execution-orchestration/state-machine-executor/burr'
+            'Agente Yaiwes principal/mesh-routing-collaboration/caddy-gateway'
+            'Agente Yaiwes principal/execution-orchestration/state-machine-executor/camunda'
+            'Agente Yaiwes principal/definition-registry/authorization-model/cedar'
+            'Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery'
+            'Agente Yaiwes principal/definition-registry/schema-contracts/cerberus'
+            'Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos'
+            'Agente Yaiwes principal/tools-models-memory-knowledge/memory-microservices/chroma'
+            'Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/clawhub'
+            'Agente Yaiwes principal/execution-engine-pool/adapter-layer/cloudflare-workers-sdk'
+            'Agente Yaiwes principal/kernel-principal/reasoning-kernel/decision-on-demand/coconut'
+            'Agente Yaiwes principal/code-programming-engine/standards-forensic/code-ultrafeedback'
+          )
+          for p in "${paths[@]}"; do
+            test -d "$p"
+            find "$p" -type f -print -quit | grep -q .
+            echo "READBACK_OK $p"
+          done
+          echo MOTOR4_MOVE_20_CANONICAL_READBACK=VERIFIED_CLOSED
