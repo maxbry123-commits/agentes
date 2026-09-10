@@ -63,6 +63,66 @@ jobs:
           test "$(git hash-object "$FICHA_CODE")" = 'a72508027cc2458553ef6a2255a9aa33d9a77a21'
           echo CANONICAL_FABLES_BUS_OK
 
+      - name: Record prior STEP3 GAP in Crazy Wall
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          ok=0
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            python3 - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          path=os.environ['WALL']
+          with open(path,encoding='utf-8') as f:
+              data=json.load(f)
+          node=next(n for n in data['nodes'] if n['id']==22)
+          if node.get('owner')!='SOL' or node.get('lock')!='CLAIMED' or node.get('current_step')!=3:
+              raise SystemExit(f"LOCK_OR_STEP_CHANGED:{node.get('owner')}:{node.get('lock')}:{node.get('current_step')}")
+          now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
+          node['status']='GAP'
+          node.setdefault('checkpoint',{})['after']=(
+              'STEP3 GAP run 34525906867: Hatchet embedded engine started, but multiprocessing spawn failed because '
+              'the microtest parent was <stdin>; child could not reopen /home/runner/work/agentes/agentes/<stdin>, '
+              'worker died and workflow run was cancelled. StrategyDelta: execute same adapter/DAG from its real .py path.'
+          )
+          evidence=node.setdefault('evidence',[])
+          items=[
+              'step3:gap_run:34525906867',
+              'step3:gap_exact:multiprocessing.spawn FileNotFoundError:<stdin>',
+              'step3:gap_effect:Hatchet workflow run cancelled after worker spawn failure',
+              'step3:strategy_delta:execute same DAG from real hatchet_adapter.py path'
+          ]
+          for item in items:
+              if item not in evidence:
+                  evidence.append(item)
+          if not any(h.get('event')=='STEP3_GAP_STDIN_SPAWN' and h.get('run')==34525906867 for h in node.setdefault('history',[])):
+              node['history'].append({'at':now,'actor':'SOL','label':'SOL integración 1','event':'STEP3_GAP_STDIN_SPAWN','run':34525906867})
+          node['next_action']='STEP3_RETRY_REAL_FILE_SPAWN_SAME_MICROTEST'
+          data['updated_at']=now
+          with open(path,'w',encoding='utf-8') as f:
+              json.dump(data,f,ensure_ascii=False,indent=2)
+              f.write('\n')
+          PY
+            git add -- "$WALL"
+            if ! git diff --cached --quiet; then
+              git commit -m 'crazy-wall: record Hatchet N22 STEP3 stdin-spawn GAP'
+              if git push origin HEAD:main; then
+                ok=1
+                break
+              fi
+            else
+              ok=1
+              break
+            fi
+            sleep $((attempt * 2))
+          done
+          test "$ok" -eq 1
+          echo N22_GAP_RECORDED
+
       - name: Install Hatchet SDK from moved target
         shell: bash
         run: |
@@ -75,9 +135,9 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import hashlib
-          import importlib.util
           import json
           import os
+          import subprocess
           import sys
           from pathlib import Path
 
@@ -104,11 +164,22 @@ jobs:
           bus.health.heartbeat(reg.plugin_id)
           assert bus.check_plugin_health(reg.plugin_id)
 
-          spec=importlib.util.spec_from_file_location('yaiwes_hatchet_n22', adapter_path)
-          assert spec and spec.loader
-          adapter=importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(adapter)
-          result=adapter.run_microtest(root)
+          proc=subprocess.run(
+              [sys.executable, str(adapter_path), str(root)],
+              cwd=root,
+              text=True,
+              stdout=subprocess.PIPE,
+              stderr=subprocess.STDOUT,
+              timeout=180,
+          )
+          print(proc.stdout, end='')
+          if proc.returncode != 0:
+              raise RuntimeError(f'HATCHET_REAL_FILE_RUN_FAILED:{proc.returncode}')
+          marker='YAIWES_HATCHET_RESULT='
+          payload=next((line[len(marker):] for line in proc.stdout.splitlines() if line.startswith(marker)), None)
+          if payload is None:
+              raise RuntimeError('HATCHET_RESULT_MARKER_MISSING')
+          result=json.loads(payload)
           assert result['status']=='PASS', result
           assert result['result']['double']=={'value':40}, result
           assert result['result']['plus_one']=={'value':41}, result
@@ -122,7 +193,7 @@ jobs:
               'node':22,
               'worker':'SOL integración 1',
               'status':'PASS',
-              'route':'UniversalPluginBus/FABLES -> Hatchet adapter -> embedded engine -> worker -> DAG(double -> plus_one)',
+              'route':'UniversalPluginBus/FABLES -> Hatchet adapter(real file) -> embedded engine -> worker -> DAG(double -> plus_one)',
               'plugin_id':reg.plugin_id,
               'microtest':'embedded_two_task_dag',
               'input':20,
@@ -171,7 +242,7 @@ jobs:
           git fetch origin main
           test -z "$(git ls-tree -r --name-only origin/main -- 'Core kernel Yaiwes/Hatchet')"
           test -n "$(git ls-tree -r --name-only origin/main -- "$TARGET")"
-          test "$(git show "origin/main:$ADAPTER" | sha256sum | awk '{print $1}')" = 'f4b0626be30fc6aa55dfab5214fa50c84c7fe4c93fa28d2185ae2efb49ae8c4c'
+          test "$(git show "origin/main:$ADAPTER" | sha256sum | awk '{print $1}')" = 'b65e2a815d17c80c94086a12da418bc89de7afceb066395a1a88df6b378056c5'
           git show "origin/main:$FICHA" | grep -Fq 'yaiwes.orchestration.hatchet'
           git show "origin/main:$EVIDENCE" | grep -Fq 'embedded_two_task_dag'
           git show "origin/main:$EVIDENCE" | grep -Fq '"value": 41'
@@ -201,17 +272,17 @@ jobs:
           node['current_step']=3
           node.setdefault('checkpoint',{})['after']=(
               'STEP3 PASS: FABLES UniversalPluginBus wired yaiwes.orchestration.hatchet; '
-              'real Hatchet embedded engine executed DAG double->plus_one with input 20 and outputs 40/41; '
+              'real Hatchet embedded engine executed DAG double->plus_one from real adapter file with input 20 and outputs 40/41; '
               'read-back PASS; prune NOT_NEEDED'
           )
           evidence=node.setdefault('evidence',[])
           items=[
-              'step3:adapter_commit:d55d9c8bc4d1445a59be090a27ebf57788c21952',
-              'step3:ficha_commit:d6cf21f9d2edaf9ef164c15c30b6cca32aa5e49d',
+              'step3:adapter_commit:aaf44166c075c3a07c2746923601e06870a762f8',
+              'step3:ficha_commit:1ccffdd5f220801ac4b0a9d6e0c095885b2937be',
               f"step3:runner_commit:{os.environ['GITHUB_SHA']}",
               f"step3:evidence_commit:{os.environ.get('EVIDENCE_COMMIT','unknown')}",
               f"step3:run:{os.environ['GITHUB_RUN_ID']}",
-              'step3:route:FABLES->Hatchet adapter->embedded engine->worker->DAG',
+              'step3:route:FABLES->Hatchet adapter(real file)->embedded engine->worker->DAG',
               'step3:microtest:PASS input=20 double=40 plus_one=41',
               'step3:evidence:L2_build+L3_runtime+L4_feature',
               'step3:prune:NOT_NEEDED',
