@@ -1,224 +1,61 @@
 {
-  "schema": "yaiwes.component-integration-review/v2",
+  "schema": "yaiwes.component-integration-state/v3",
   "updated_at": "2026-09-10",
-  "mode": "FAIL_CLOSED_LOOP",
-  "source_of_truth_order": [
-    "physical_repo_state",
-    "fresh_readback_from_main",
-    "runtime_test_health_evidence",
-    "current_chat_input",
-    "historical_ledger",
-    "inference"
-  ],
-  "audit_root": "Core kernel Yaiwes/",
-  "canonical_architecture": "Readme arquitectura Yaiwes/README.md",
-  "detailed_architecture": "📂 Readme arquitectura Yaiwes.md",
-  "physical_target": "Agente Yaiwes principal/",
-  "method_doc": "Core kernel Yaiwes/Readme de integración de componentes arquitectura Yaiwes/README.md",
-  "historical_ledger": "Core kernel Yaiwes/Crack wall bitácora stated JSON.md",
-  "crazy_wall_current": "📂 Bitácora stated JSON Craxy wall.json",
-  "core_watchdog_handoff": "📂 Readme Handoff core integracion y wachdog.md",
-  "watchdog_parallel_plan": "📂 Readme plan wachdog y trabajo en paralelo.md",
+  "mode": "FAIL_CLOSED_3_STEPS_MULTI_AI",
+  "source_of_truth_order": ["physical_repo_state", "fresh_readback_from_main", "runtime_test_evidence", "crazy_wall", "handoff", "inference"],
+  "repository": "maxbry123-commits/agentes",
+  "physical_target_root": "Agente Yaiwes principal/",
+  "intake_root": "Core kernel Yaiwes/",
+  "handoff": "Readme arquitectura Yaiwes/HANDOFF-INTEGRACION-1-20.md",
   "recovery_patch": "PARCHE-RECUPERACION-CORE-INTEGRACION-WATCHDOG.md",
-  "rule": "historical VERIFIED_CLOSED claims require physical revalidation before acceptance",
-  "components_total": 20,
-  "verified_closed_full_integration": [
-    "APScheduler",
-    "AWS-Step-Functions-DS-SDK",
-    "Ajv",
-    "Apache-APISIX",
-    "Apache-Airflow"
-  ],
-  "step1_move_verified_components": [
-    "APScheduler",
-    "AWS-Step-Functions-DS-SDK",
-    "Ajv",
-    "Apache-APISIX",
-    "Apache-Airflow",
-    "Argo-Workflows",
-    "Azure-Durable-Functions",
-    "BAML",
-    "Burr",
-    "Caddy",
-    "Camunda",
-    "Cedar",
-    "Celery",
-    "Cerberus",
-    "Cerbos",
-    "Chroma",
-    "ClawHub",
-    "Cloudflare-Workers-SDK",
-    "Coconut",
-    "CodeUltraFeedback"
-  ],
-  "current_boundary": "STEP_2_WIRE_PRUNE_1X1_NO_TESTS",
-  "status_by_component": {
-    "APScheduler": "FULL_VERIFIED_CLOSED_HISTORICAL_AND_STEP1_MOVE_REVALIDATED",
-    "AWS-Step-Functions-DS-SDK": "FULL_VERIFIED_CLOSED_HISTORICAL_AND_STEP1_MOVE_REVALIDATED",
-    "Ajv": "FULL_VERIFIED_CLOSED_HISTORICAL_AND_STEP1_MOVE_REVALIDATED",
-    "Apache-APISIX": "FULL_VERIFIED_CLOSED_HISTORICAL_AND_STEP1_MOVE_REVALIDATED",
-    "Apache-Airflow": "FULL_VERIFIED_CLOSED_HISTORICAL_AND_STEP1_MOVE_REVALIDATED",
-    "Argo-Workflows": "STEP1_MOVE_VERIFIED_STEP2_PENDING",
-    "Azure-Durable-Functions": "STEP1_MOVE_VERIFIED_STEP2_PENDING",
-    "BAML": "STEP1_MOVE_VERIFIED_STEP2_PENDING",
-    "Burr": "STEP1_MOVE_VERIFIED_STEP2_PENDING",
-    "Caddy": "STEP1_MOVE_VERIFIED_STEP2_PENDING",
-    "Camunda": "STEP1_MOVE_VERIFIED_STEP2_PENDING",
-    "Cedar": "STEP1_MOVE_VERIFIED_STEP2_PENDING",
-    "Celery": "STEP1_MOVE_VERIFIED_STEP2_PENDING",
-    "Cerberus": "STEP1_MOVE_VERIFIED_STEP2_PENDING",
-    "Cerbos": "STEP1_MOVE_VERIFIED_STEP2_PENDING",
-    "Chroma": "STEP1_MOVE_VERIFIED_STEP2_PENDING",
-    "ClawHub": "STEP1_MOVE_VERIFIED_STEP2_PENDING",
-    "Cloudflare-Workers-SDK": "STEP1_MOVE_VERIFIED_STEP2_PENDING",
-    "Coconut": "STEP1_MOVE_VERIFIED_STEP2_PENDING",
-    "CodeUltraFeedback": "STEP1_MOVE_VERIFIED_STEP2_PENDING"
-  },
-  "step1_move_evidence": {
-    "status": "VERIFIED_CLOSED",
-    "engine": "motor_4_move_batches.py",
-    "engine_blob_sha": "9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
-    "workflow": ".github/workflows/yaiwes-motor4-move-20-final.yml",
-    "run": 34445710787,
-    "job": 102771861495,
-    "run_conclusion": "success",
-    "execute_move_step": "success",
-    "publish_to_main_step": "success",
-    "readback_all_20_step": "success",
-    "move_commit": "a3cf705f58f95cce65d1c230cb00abcab39732b2"
-  },
-  "first_five_historical_evidence": {
-    "true_move_commit": "fe25fc78e38f24c14d64fd5b51ce0feab668a102",
-    "pre_move_real_bus_run": 34090833967,
-    "post_move_real_bus_run": 34090968435,
-    "post_move_bus_result": "SUCCESS_10X",
-    "architecture_append_main_commit": "50e8061a34e56c311d19204adfc2ab3ff75594a8",
-    "architecture_append_run": 34091902593
-  },
-  "integration_rule": {
-    "contract": [
-      "STEP_1_MOVE_1_20",
-      "STEP_2_WIRE_PRUNE_1X1_NO_TESTS",
-      "STEP_3_TEST_1X1"
-    ],
-    "step1": "VERIFIED_CLOSED",
-    "step2": "PENDING_CURRENT_BOUNDARY",
-    "step3": "PENDING",
+  "crazy_wall": "📂 Bitácora stated JSON Craxy wall.json",
+  "watchdog_plan": "Core kernel Yaiwes/Crack wall bitácora stated JSON/PLAN-WATCHDOG-PROGRAMMING-V2.json",
+  "components_total": 27,
+  "contract": {
+    "steps": ["STEP_1_DESTINATION_ABC_AND_MOVE", "STEP_2_PRUNE_IF_NEEDED_AND_FABLES_WIRE", "STEP_3_REAL_TEST"],
     "no_step4": true,
-    "gap_policy": "repair inside current step and repeat",
-    "step2_tests_forbidden": true
+    "gap_policy": "repair_same_node_in_owning_step_then_repeat",
+    "abc_is_decision_not_phase": true,
+    "fables_mandatory_step2": true,
+    "prune_only_if_needed": true,
+    "close_requires_real_test_evidence": true
   },
-  "abc_classification": {
-    "A": {
-      "name": "SUBAGENT_CHILD",
-      "rule": "own goal/lifecycle/tools/context/autonomous decisions",
-      "integration": "AgentPort -> policy/budget -> isolated runtime -> normalized result -> evidence"
-    },
-    "B": {
-      "name": "WORKFLOW_DAG_POOL",
-      "rule": "scheduler/DAG/state-machine/queue/workers/durable/multistep/loop",
-      "integration": "TaskClassifier -> WorkflowPort or ExecutionPort -> engine -> normalized result -> evidence"
-    },
-    "C": {
-      "name": "MODULAR_CAPABILITY",
-      "rule": "single capability such as validation/policy/storage/memory/routing/research/sandbox helper",
-      "integration": "Adapter -> Ficha/Contract -> Registry -> UniversalPluginBus or Port -> evidence"
-    }
+  "abc": {
+    "A": "autonomous agent/subagent with own goal/lifecycle/tools/context/decisions",
+    "B": "scheduler/DAG/workflow/queue/workers/durable/multi-step/loop engine",
+    "C": "modular capability such as schema/policy/storage/memory/routing/research/sandbox/validator/tool"
   },
-  "watchdog_programming_system_v2": {
-    "status": "COMPONENTS_PHYSICALLY_AVAILABLE_INTEGRATION_PENDING",
-    "task_id": "YAIWES-WATCHDOG-PROGRAMMING-V2",
-    "destination": "Core kernel Yaiwes/Backend watchdog workflow adaptativo",
-    "blocked_until": "YAIWES_COMPONENTS_1_20_STEP3_COMPLETE",
-    "plan": "Core kernel Yaiwes/Crack wall bitácora stated JSON/PLAN-WATCHDOG-PROGRAMMING-V2.json",
-    "memory_doc": "Core kernel Yaiwes/readme-memoria.md",
-    "components": [
-      {"name": "APScheduler", "role": "TIME_AUTHORITY", "physical_status": "PRESENT", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/time-scheduling/apscheduler"},
-      {"name": "Workalendar", "role": "WORK_CALENDAR", "physical_status": "PRESENT", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/work-calendar/workalendar"},
-      {"name": "Celery", "role": "SIMPLE_JOB_WORKERS", "physical_status": "PRESENT_REFERENCE_REQUIRED", "path": "Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery"},
-      {"name": "Redis", "role": "EVENT_TRANSPORT", "physical_status": "PRESENT", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/event-plane/redis"},
-      {"name": "Hatchet", "role": "DURABLE_LONG_JOB", "physical_status": "PRESENT", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/durable-execution/hatchet"},
-      {"name": "Dagu", "role": "MULTI_STEP_JOB", "physical_status": "PRESENT", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/workflow-multistep/dagu"},
-      {"name": "PostgreSQL", "role": "DURABLE_SOURCE_OF_TRUTH", "physical_status": "PRESENT", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/persistent-state/postgresql"},
-      {"name": "pgvector", "role": "SEMANTIC_MEMORY", "physical_status": "PRESENT", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/persistent-memory/pgvector"},
-      {"name": "gVisor", "role": "SANDBOX_ISOLATION", "physical_status": "PRESENT", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/sandbox-isolation/gvisor"},
-      {"name": "S3-Compatible-Artifact-Storage", "role": "ARTIFACT_SNAPSHOTS", "physical_status": "RUSTFS_PRESENT_B2_BINDING_NOT_DEMONSTRATED", "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/artifact-storage/rustfs"}
-    ],
-    "additional_components_present": [
-      "Rocketry",
-      "Taskiq",
-      "DBOS Python",
-      "Restate",
-      "PocketFlow",
-      "Apache Hamilton",
-      "redun",
-      "smolagents",
-      "DeerFlow",
-      "GPT-Researcher",
-      "MindSearch",
-      "Firecracker",
-      "iii-sandbox"
-    ],
-    "integration_units_missing": [
-      "WatchdogDefinition",
-      "WatchdogRun",
-      "WatchdogStep",
-      "Checkpoint",
-      "EventEnvelope",
-      "SchedulerPort",
-      "QueuePort",
-      "DurableExecutionPort",
-      "WorkflowPort",
-      "ResearchPort",
-      "PlanningPort",
-      "SandboxPort",
-      "StatePort",
-      "SemanticMemoryPort",
-      "ArtifactPort",
-      "Backblaze B2 provider adapter if selected",
-      "idempotency lease heartbeat retry timeout recovery contracts",
-      "health evidence readback gates"
-    ],
-    "lanes": {
-      "deterministic": "user strict workflow -> DSL/DAG/schema/system contract -> deterministic execution",
-      "adaptive": "goal -> YAIWES reasoning -> plan/research -> preline/policy -> controlled execution -> observe -> replan if required"
-    },
-    "source_of_truth": "physical_repo_state"
+  "original_20": {
+    "move_status": "VERIFIED_CLOSED_20_OF_20",
+    "move_run": 34445710787,
+    "move_job": 102771861495,
+    "move_commit": "a3cf705f58f95cce65d1c230cb00abcab39732b2",
+    "motor4_blob": "9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
+    "step3_revalidation_nodes": [1,2,3,4,5],
+    "step2_fables_nodes": [6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
   },
-  "watchdog_frontend": {
-    "repository": "maxbry123-commits/frontend",
-    "index": "📂 Indice fromtend componentes.md",
-    "present": [
-      {"name": "assistant-ui", "state": "EXTRACTED_COMPLETE"},
-      {"name": "Dockview", "state": "EXTRACTED_COMPLETE"},
-      {"name": "xyflow", "state": "ZIP_ONLY_COMPLETE_EXTRACTION_REQUIRED"}
-    ],
-    "not_demonstrated": [
-      "FullCalendar",
-      "TanStack Table",
-      "react-jsonschema-form",
-      "xterm.js",
-      "Monaco Editor",
-      "Apache ECharts",
-      "dnd-kit",
-      "Frappe Gantt"
-    ]
+  "new_root_components": [
+    {"node":21,"name":"Dagu","source":"Core kernel Yaiwes/Dagu/","state":"STEP1_PENDING_VERIFY_DESTINATION"},
+    {"node":22,"name":"Hatchet","source":"Core kernel Yaiwes/Hatchet/","state":"STEP1_PENDING_VERIFY_DESTINATION"},
+    {"node":23,"name":"PostgreSQL","source":"Core kernel Yaiwes/PostgreSQL/","state":"STEP1_PENDING_VERIFY_DESTINATION"},
+    {"node":24,"name":"Redis","source":"Core kernel Yaiwes/Redis/","state":"STEP1_PENDING_VERIFY_DESTINATION"},
+    {"node":25,"name":"Workalendar","source":"Core kernel Yaiwes/Workalendar/","state":"STEP1_PENDING_VERIFY_DESTINATION"},
+    {"node":26,"name":"gVisor","source":"Core kernel Yaiwes/gVisor/","state":"STEP1_PENDING_VERIFY_DESTINATION"},
+    {"node":27,"name":"pgvector","source":"Core kernel Yaiwes/pgvector/","state":"STEP1_PENDING_VERIFY_DESTINATION"}
+  ],
+  "duplicates_not_new_nodes": ["APScheduler", "Celery"],
+  "fables": {
+    "status": "MANDATORY_STEP2_PENDING_REPO_MATERIALIZATION",
+    "part1": {"file":"universal_plugin_bus_v2_integrated.py","entry":"UniversalPluginBus.enchufar","sha256":"5e4595a86bfd68a3c1fde70ba614ce7b9ec6ea4d6c867912e836cca33c626fc3"},
+    "part2": {"file":"ficha_contract_v2.py","entry":"validar","sha256":"759d0d7855d8df106462b966bfc4ee543f24a3e789a27048f253159b58ff8d1a"}
   },
-  "integration_1_20_handoff": {
-    "status": "ACTIVE_LOOP_STEP2",
-    "handoff": "Readme arquitectura Yaiwes/HANDOFF-INTEGRACION-1-20.md",
-    "detailed_handoff": "📂 Readme Handoff core integracion y wachdog.md",
-    "current_step": "STEP_2_WIRE_PRUNE_1X1_NO_TESTS",
-    "step1_status": "VERIFIED_CLOSED",
-    "step1_final_workflow": ".github/workflows/yaiwes-motor4-move-20-final.yml",
-    "step1_final_run": 34445710787,
-    "step1_final_job": 102771861495,
-    "step1_move_commit": "a3cf705f58f95cce65d1c230cb00abcab39732b2",
-    "step2_workflow": ".github/workflows/yaiwes-step2-wire-prune-1-20.yml",
-    "step2_status": "PENDING",
-    "step3_workflow": ".github/workflows/yaiwes-step3-test-1-20.yml",
-    "step3_status": "PENDING",
-    "rule": "no extra phases; continue in LOOP until steps 1,2,3 complete"
+  "collaboration": {
+    "agents": ["GROK", "SOL", "ASTRA"],
+    "coordination": "one_component_one_node",
+    "claim": "FREE -> owner+CLAIMED+checkpoint.before",
+    "release": "checkpoint.after+evidence+advance -> FREE",
+    "rule": "never edit a node claimed by another owner"
   },
-  "next_delta": "Execute STEP 2 wire/prune 1x1 without tests using X-Ray and A/B/C; then STEP 3 tests 1x1. Keep Watchdog construction blocked until integration contract closes, while using the refreshed physical Watchdog inventory for planning."
+  "counts": {"step1_pending":7,"step2_pending":15,"step3_revalidation":5,"closed_under_current_contract":0},
+  "next_action": "read recovery+handoff+crazy wall from main, claim one FREE node, execute only its current_step"
 }
