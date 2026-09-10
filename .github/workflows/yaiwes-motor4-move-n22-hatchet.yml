@@ -68,7 +68,9 @@ jobs:
           DST='Agente Yaiwes principal/execution-orchestration/state-machine-executor/hatchet'
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          if ! git ls-files "$SRC" | grep -q . && git ls-files "$DST" | grep -q .; then
+          SRC_TRACKED="$(git ls-files -- "$SRC")"
+          DST_TRACKED="$(git ls-files -- "$DST")"
+          if [ -z "$SRC_TRACKED" ] && [ -n "$DST_TRACKED" ]; then
             echo MOVE_ALREADY_CANONICAL_NO_DELTA
           else
             git add -A -- "$SRC" "$DST"
@@ -98,9 +100,8 @@ jobs:
           git fetch origin main
           SRC='Core kernel Yaiwes/Hatchet'
           DST='Agente Yaiwes principal/execution-orchestration/state-machine-executor/hatchet'
-          if git ls-tree -r --name-only origin/main -- "$SRC" | grep -q .; then
-            echo SOURCE_STILL_PRESENT_ON_ORIGIN_MAIN
-            exit 1
-          fi
-          git ls-tree -r --name-only origin/main -- "$DST" | grep -q .
+          SRC_REMOTE="$(git ls-tree -r --name-only origin/main -- "$SRC")"
+          DST_REMOTE="$(git ls-tree -r --name-only origin/main -- "$DST")"
+          test -z "$SRC_REMOTE"
+          test -n "$DST_REMOTE"
           echo READBACK_OK "$DST"
