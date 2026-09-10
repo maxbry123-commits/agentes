@@ -1,41 +1,165 @@
 {
   "contract": "tel.workflow/v4",
-  "wiring_step": 3,
+  "wiring_step": 2,
   "canonical_bus_path": "Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py",
   "canonical_bus_blob": "59fd1e10b65a2b92a282508afe07790fec26af27",
   "canonical_ficha_blob": "b27f14b4d64f77bccf53a893c49b6f20bd58e745",
-  "active_count": 12,
-  "wired_unverified_count": 0,
+  "active_count": 11,
   "merkle_root": "787cd7e83e58144b",
   "registrations": [
-    {"slug":"langgraph","plugin_id":"yaiwes.loop.langgraph","slot":1,"status":"ACTIVE","role":"recurrent_graph_checkpoint","source_path":"Agente Yaiwes principal/execution-orchestration/dag-executor/langgraph/SOURCE_COMMIT.txt","source_proof":"81bf17b23123e4ef8b9d5f49fa09a0122fc2edd1","health":true,"evidence_levels":["L2_build"],"contract_fingerprint":"c4c16ac51a4f81cf"},
-    {"slug":"temporal_python","plugin_id":"yaiwes.loop.temporal_python","slot":2,"status":"ACTIVE","role":"durable_execution_replay","source_path":"Agente Yaiwes principal/execution-orchestration/state-machine-executor/temporal-python-sdk/SOURCE_COMMIT.txt","source_proof":"22a9e41fd857261ee0a9bb5ce57f439d93e7f88d","health":true,"evidence_levels":["L2_build"],"contract_fingerprint":"510bed42bdda8a25"},
-    {"slug":"prefect","plugin_id":"yaiwes.loop.prefect","slot":3,"status":"ACTIVE","role":"flow_state_retry","source_path":"Agente Yaiwes principal/execution-orchestration/dag-executor/prefect/SOURCE_COMMIT.txt","source_proof":"6a6fe4e24cc456be30dd570aeeb1dbb6b6bef286","health":true,"evidence_levels":["L2_build"],"contract_fingerprint":"93deb08647884ca1"},
-    {"slug":"hatchet_python","plugin_id":"yaiwes.loop.hatchet_python","slot":4,"status":"ACTIVE","role":"durable_task_orchestration","source_path":"Agente Yaiwes principal/execution-orchestration/dag-executor/hatchet-python-sdk/SOURCE_COMMIT.txt","source_proof":"086a63f2245416296de288a944aad1b8357e63e9","health":true,"evidence_levels":["L2_build"],"contract_fingerprint":"b69346654246c239"},
-    {"slug":"redun","plugin_id":"yaiwes.loop.redun","slot":5,"status":"ACTIVE","role":"dag_scheduler_cache","source_path":"Agente Yaiwes principal/execution-orchestration/dag-executor/redun/SOURCE_COMMIT.txt","source_proof":"49a299b223bc345b999aaa40daa6876f105089e1","health":true,"evidence_levels":["L2_build"],"contract_fingerprint":"e3c0fb655e8e58b8"},
-    {"slug":"loop_engineer","plugin_id":"yaiwes.loop.loop_engineer","slot":6,"status":"ACTIVE","role":"serial_loop_runtime_recovery","source_path":"Agente Yaiwes principal/execution-orchestration/deterministic-execution/loop-engineer/SOURCE_COMMIT.txt","source_proof":"0ca97d7c7e8a2e20e986d18e273c6171a2684d30","health":true,"evidence_levels":["L2_build"],"contract_fingerprint":"9d7b76457207b597"},
-    {"slug":"capability_registration","plugin_id":"yaiwes.runtime.capability_registration","slot":7,"status":"ACTIVE","role":"capability_registry_registration","source_path":"Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/capability_registration.py","source_proof":"d205e86d0379844162e612317b2737ed8b62ece9","health":true,"evidence_levels":["L2_build"],"contract_fingerprint":"e72eb738d94922b5"},
-    {"slug":"classifier_hook","plugin_id":"yaiwes.runtime.classifier_hook","slot":8,"status":"ACTIVE","role":"classifier_scheduler_hook","source_path":"Agente Yaiwes principal/execution-orchestration/classifier-scheduler/classifier_hook.py","source_proof":"fa48204b973eccf4fa66d3b322932399995df5bb","health":true,"evidence_levels":["L2_build"],"contract_fingerprint":"ffb12ba4dbc6aed0"},
-    {"slug":"instance_pool","plugin_id":"yaiwes.runtime.instance_pool","slot":9,"status":"ACTIVE","role":"execution_instance_pool","source_path":"Agente Yaiwes principal/execution-engine-pool/instance_pool.py","source_proof":"cf537a34515baac2cc9919c59ca40c4c09da0672","health":true,"evidence_levels":["L2_build"],"contract_fingerprint":"b278d870965c0133"},
-    {"slug":"programming_instance","plugin_id":"yaiwes.runtime.programming_instance","slot":10,"status":"ACTIVE","role":"programming_pipeline_instance","source_path":"Agente Yaiwes principal/execution-orchestration/programming-pipeline/programming_instance.py","source_proof":"1dd88384765a182f1f299bfeb119d42ac00ec324","health":true,"evidence_levels":["L2_build","L3_runtime"],"contract_fingerprint":"4f29775aee8bbdc8"},
-    {"slug":"usage_metering","plugin_id":"yaiwes.runtime.usage_metering","slot":11,"status":"ACTIVE","role":"runtime_usage_metering","source_path":"Agente Yaiwes principal/observability/usage_metering.py","source_proof":"d4f1393d1430cafc80540562e38ed548f034a087","health":true,"evidence_levels":["L2_build"],"contract_fingerprint":"b3c7a255d5230b76"},
     {
-      "slug":"agent_fleet",
-      "plugin_id":"yaiwes.runtime.agent_fleet",
-      "slot":12,
-      "status":"ACTIVE",
-      "role":"deterministic_agent_routing",
-      "source_path":"Agente Yaiwes principal/execution-engine-pool/agent-bindings/agent_fleet_adapter.py",
-      "source_proof":"3e88678073c895899ab05dac0dd1c0ecee3c817e",
-      "registry_path":"Agente Yaiwes principal/execution-engine-pool/agent-bindings/agent_fleet_registry.json",
-      "ficha_path":"Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/wordflow-loop-contracts/ficha.agent_fleet.v2.json",
-      "health":true,
-      "evidence_levels":["L2_build","L3_runtime"],
-      "evidence_path":"Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/wordflow-loop-evidence/STEP3_AGENT_FLEET_VERIFY.json",
-      "verification_run":34406268016,
-      "verification_job":102649876845,
-      "runtime_note":"Wiring/routing/fail-closed verified; external agent runtimes were intentionally unconfigured in GitHub Actions and are not claimed executed.",
-      "contract_fingerprint":"0c09051c74ffc43e"
+      "slug": "langgraph",
+      "plugin_id": "yaiwes.loop.langgraph",
+      "slot": 1,
+      "status": "ACTIVE",
+      "role": "recurrent_graph_checkpoint",
+      "source_path": "Agente Yaiwes principal/execution-orchestration/dag-executor/langgraph/SOURCE_COMMIT.txt",
+      "source_proof": "81bf17b23123e4ef8b9d5f49fa09a0122fc2edd1",
+      "health": true,
+      "evidence_levels": [
+        "L2_build"
+      ],
+      "contract_fingerprint": "c4c16ac51a4f81cf"
+    },
+    {
+      "slug": "temporal_python",
+      "plugin_id": "yaiwes.loop.temporal_python",
+      "slot": 2,
+      "status": "ACTIVE",
+      "role": "durable_execution_replay",
+      "source_path": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/temporal-python-sdk/SOURCE_COMMIT.txt",
+      "source_proof": "22a9e41fd857261ee0a9bb5ce57f439d93e7f88d",
+      "health": true,
+      "evidence_levels": [
+        "L2_build"
+      ],
+      "contract_fingerprint": "510bed42bdda8a25"
+    },
+    {
+      "slug": "prefect",
+      "plugin_id": "yaiwes.loop.prefect",
+      "slot": 3,
+      "status": "ACTIVE",
+      "role": "flow_state_retry",
+      "source_path": "Agente Yaiwes principal/execution-orchestration/dag-executor/prefect/SOURCE_COMMIT.txt",
+      "source_proof": "6a6fe4e24cc456be30dd570aeeb1dbb6b6bef286",
+      "health": true,
+      "evidence_levels": [
+        "L2_build"
+      ],
+      "contract_fingerprint": "93deb08647884ca1"
+    },
+    {
+      "slug": "hatchet_python",
+      "plugin_id": "yaiwes.loop.hatchet_python",
+      "slot": 4,
+      "status": "ACTIVE",
+      "role": "durable_task_orchestration",
+      "source_path": "Agente Yaiwes principal/execution-orchestration/dag-executor/hatchet-python-sdk/SOURCE_COMMIT.txt",
+      "source_proof": "086a63f2245416296de288a944aad1b8357e63e9",
+      "health": true,
+      "evidence_levels": [
+        "L2_build"
+      ],
+      "contract_fingerprint": "b69346654246c239"
+    },
+    {
+      "slug": "redun",
+      "plugin_id": "yaiwes.loop.redun",
+      "slot": 5,
+      "status": "ACTIVE",
+      "role": "dag_scheduler_cache",
+      "source_path": "Agente Yaiwes principal/execution-orchestration/dag-executor/redun/SOURCE_COMMIT.txt",
+      "source_proof": "49a299b223bc345b999aaa40daa6876f105089e1",
+      "health": true,
+      "evidence_levels": [
+        "L2_build"
+      ],
+      "contract_fingerprint": "e3c0fb655e8e58b8"
+    },
+    {
+      "slug": "loop_engineer",
+      "plugin_id": "yaiwes.loop.loop_engineer",
+      "slot": 6,
+      "status": "ACTIVE",
+      "role": "serial_loop_runtime_recovery",
+      "source_path": "Agente Yaiwes principal/execution-orchestration/deterministic-execution/loop-engineer/SOURCE_COMMIT.txt",
+      "source_proof": "0ca97d7c7e8a2e20e986d18e273c6171a2684d30",
+      "health": true,
+      "evidence_levels": [
+        "L2_build"
+      ],
+      "contract_fingerprint": "9d7b76457207b597"
+    },
+    {
+      "slug": "capability_registration",
+      "plugin_id": "yaiwes.runtime.capability_registration",
+      "slot": 7,
+      "status": "ACTIVE",
+      "role": "capability_registry_registration",
+      "source_path": "Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/capability_registration.py",
+      "source_proof": "d205e86d0379844162e612317b2737ed8b62ece9",
+      "health": true,
+      "evidence_levels": [
+        "L2_build"
+      ],
+      "contract_fingerprint": "e72eb738d94922b5"
+    },
+    {
+      "slug": "classifier_hook",
+      "plugin_id": "yaiwes.runtime.classifier_hook",
+      "slot": 8,
+      "status": "ACTIVE",
+      "role": "classifier_scheduler_hook",
+      "source_path": "Agente Yaiwes principal/execution-orchestration/classifier-scheduler/classifier_hook.py",
+      "source_proof": "fa48204b973eccf4fa66d3b322932399995df5bb",
+      "health": true,
+      "evidence_levels": [
+        "L2_build"
+      ],
+      "contract_fingerprint": "ffb12ba4dbc6aed0"
+    },
+    {
+      "slug": "instance_pool",
+      "plugin_id": "yaiwes.runtime.instance_pool",
+      "slot": 9,
+      "status": "ACTIVE",
+      "role": "execution_instance_pool",
+      "source_path": "Agente Yaiwes principal/execution-engine-pool/instance_pool.py",
+      "source_proof": "cf537a34515baac2cc9919c59ca40c4c09da0672",
+      "health": true,
+      "evidence_levels": [
+        "L2_build"
+      ],
+      "contract_fingerprint": "b278d870965c0133"
+    },
+    {
+      "slug": "programming_instance",
+      "plugin_id": "yaiwes.runtime.programming_instance",
+      "slot": 10,
+      "status": "ACTIVE",
+      "role": "programming_pipeline_instance",
+      "source_path": "Agente Yaiwes principal/execution-orchestration/programming-pipeline/programming_instance.py",
+      "source_proof": "1dd88384765a182f1f299bfeb119d42ac00ec324",
+      "health": true,
+      "evidence_levels": [
+        "L2_build"
+      ],
+      "contract_fingerprint": "4f29775aee8bbdc8"
+    },
+    {
+      "slug": "usage_metering",
+      "plugin_id": "yaiwes.runtime.usage_metering",
+      "slot": 11,
+      "status": "ACTIVE",
+      "role": "runtime_usage_metering",
+      "source_path": "Agente Yaiwes principal/observability/usage_metering.py",
+      "source_proof": "d4f1393d1430cafc80540562e38ed548f034a087",
+      "health": true,
+      "evidence_levels": [
+        "L2_build"
+      ],
+      "contract_fingerprint": "b3c7a255d5230b76"
     }
   ]
 }
