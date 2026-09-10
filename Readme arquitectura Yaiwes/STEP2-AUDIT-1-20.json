@@ -1,0 +1,162 @@
+{
+  "results": [
+    {
+      "id": 1,
+      "component": "APScheduler",
+      "status": "OK",
+      "gaps": []
+    },
+    {
+      "id": 2,
+      "component": "AWS-Step-Functions-DS-SDK",
+      "status": "GAP",
+      "gaps": [
+        "ADAPTER_MISSING",
+        "FICHA_MISSING"
+      ]
+    },
+    {
+      "id": 3,
+      "component": "Ajv",
+      "status": "GAP",
+      "gaps": [
+        "ADAPTER_MISSING",
+        "FICHA_MISSING"
+      ]
+    },
+    {
+      "id": 4,
+      "component": "Apache-APISIX",
+      "status": "GAP",
+      "gaps": [
+        "ADAPTER_MISSING",
+        "FICHA_MISSING"
+      ]
+    },
+    {
+      "id": 5,
+      "component": "Apache-Airflow",
+      "status": "GAP",
+      "gaps": [
+        "ADAPTER_MISSING",
+        "FICHA_MISSING"
+      ]
+    },
+    {
+      "id": 6,
+      "component": "Argo-Workflows",
+      "status": "OK",
+      "gaps": []
+    },
+    {
+      "id": 7,
+      "component": "Azure-Durable-Functions",
+      "status": "OK",
+      "gaps": []
+    },
+    {
+      "id": 8,
+      "component": "BAML",
+      "status": "GAP",
+      "gaps": [
+        "GENERIC_SOURCE_PROBE"
+      ]
+    },
+    {
+      "id": 9,
+      "component": "Burr",
+      "status": "GAP",
+      "gaps": [
+        "GENERIC_SOURCE_PROBE"
+      ]
+    },
+    {
+      "id": 10,
+      "component": "Caddy",
+      "status": "GAP",
+      "gaps": [
+        "GENERIC_SOURCE_PROBE"
+      ]
+    },
+    {
+      "id": 11,
+      "component": "Camunda",
+      "status": "GAP",
+      "gaps": [
+        "GENERIC_SOURCE_PROBE"
+      ]
+    },
+    {
+      "id": 12,
+      "component": "Cedar",
+      "status": "GAP",
+      "gaps": [
+        "GENERIC_SOURCE_PROBE"
+      ]
+    },
+    {
+      "id": 13,
+      "component": "Celery",
+      "status": "GAP",
+      "gaps": [
+        "GENERIC_SOURCE_PROBE"
+      ]
+    },
+    {
+      "id": 14,
+      "component": "Cerberus",
+      "status": "GAP",
+      "gaps": [
+        "GENERIC_SOURCE_PROBE"
+      ]
+    },
+    {
+      "id": 15,
+      "component": "Cerbos",
+      "status": "GAP",
+      "gaps": [
+        "GENERIC_SOURCE_PROBE"
+      ]
+    },
+    {
+      "id": 16,
+      "component": "Chroma",
+      "status": "GAP",
+      "gaps": [
+        "GENERIC_SOURCE_PROBE"
+      ]
+    },
+    {
+      "id": 17,
+      "component": "ClawHub",
+      "status": "GAP",
+      "gaps": [
+        "GENERIC_SOURCE_PROBE"
+      ]
+    },
+    {
+      "id": 18,
+      "component": "Cloudflare-Workers-SDK",
+      "status": "GAP",
+      "gaps": [
+        "GENERIC_SOURCE_PROBE"
+      ]
+    },
+    {
+      "id": 19,
+      "component": "Coconut",
+      "status": "GAP",
+      "gaps": [
+        "GENERIC_SOURCE_PROBE"
+      ]
+    },
+    {
+      "id": 20,
+      "component": "CodeUltraFeedback",
+      "status": "GAP",
+      "gaps": [
+        "GENERIC_SOURCE_PROBE"
+      ]
+    }
+  ]
+}

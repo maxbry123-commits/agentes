@@ -12,7 +12,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional, Set, Tuple
 
@@ -191,7 +191,7 @@ class HotSwapManager:
         self._shadows: Dict[str, ShadowInstance] = {}; self._lock = threading.RLock()
     def shadow_load(self, plugin_id: str, candidate: ComponentCandidate, slot: int) -> ShadowInstance:
         with self._lock:
-            s = ShadowInstance(plugin_id, candidate, slot, datetime.now(UTC))
+            s = ShadowInstance(plugin_id, candidate, slot, datetime.utcnow())
             self._shadows[plugin_id] = s; return s
     def run_shadow_tests(self, shadow: ShadowInstance) -> bool:
         return all([self._test_import(shadow), self._test_symbols(shadow), self._test_safe(shadow)])
@@ -230,7 +230,7 @@ class PluginRegistry:
             if plugin_id in self._plugins and self._plugins[plugin_id].status == PluginStatus.ACTIVE:
                 raise PluginBusError(f"{plugin_id} already active")
             slot = self._next_slot; self._next_slot += 1
-            reg = PluginRegistration(plugin_id, PluginStatus.ACTIVE, datetime.now(UTC), registered_by, contract, native, slot, ficha=ficha)
+            reg = PluginRegistration(plugin_id, PluginStatus.ACTIVE, datetime.utcnow(), registered_by, contract, native, slot, ficha=ficha)
             self._plugins[plugin_id] = reg; self._slots[slot] = reg; self._update_merkle(); return reg
     def update_history(self, pid: str, ver: str) -> None:
         with self._lock:
@@ -290,10 +290,10 @@ class TelemetryEmitter:
         self._spans: List[Dict[str, Any]] = []; self._lock = threading.RLock()
     def emit_span(self, name: str, plugin_id: str, duration_ms: float, status: str = "ok") -> None:
         with self._lock:
-            self._spans.append({"name": name, "plugin_id": plugin_id, "duration_ms": duration_ms, "status": status, "ts": datetime.now(UTC).isoformat()})
+            self._spans.append({"name": name, "plugin_id": plugin_id, "duration_ms": duration_ms, "status": status, "ts": datetime.utcnow().isoformat()})
     def emit_metric(self, plugin_id: str, metric: str, value: float) -> None:
         with self._lock:
-            self._spans.append({"type": "metric", "plugin_id": plugin_id, "metric": metric, "value": value, "ts": datetime.now(UTC).isoformat()})
+            self._spans.append({"type": "metric", "plugin_id": plugin_id, "metric": metric, "value": value, "ts": datetime.utcnow().isoformat()})
     def get_spans(self) -> List[Dict[str, Any]]:
         with self._lock: return self._spans[:]
 
@@ -305,7 +305,7 @@ class EvidenceCollector:
         self._evidence: Dict[str, List[Dict[str, Any]]] = {}; self._lock = threading.RLock()
     def collect(self, plugin_id: str, level: EvidenceLevel, data: Any) -> None:
         with self._lock:
-            self._evidence.setdefault(plugin_id, []).append({"level": level.value, "data": str(data)[:500], "ts": datetime.now(UTC).isoformat()})
+            self._evidence.setdefault(plugin_id, []).append({"level": level.value, "data": str(data)[:500], "ts": datetime.utcnow().isoformat()})
     def get(self, plugin_id: str) -> List[Dict[str, Any]]:
         with self._lock: return self._evidence.get(plugin_id, [])
 
@@ -316,11 +316,11 @@ class HealthMonitor:
     def __init__(self) -> None:
         self._heartbeats: Dict[str, datetime] = {}; self._lock = threading.RLock()
     def heartbeat(self, plugin_id: str) -> None:
-        with self._lock: self._heartbeats[plugin_id] = datetime.now(UTC)
+        with self._lock: self._heartbeats[plugin_id] = datetime.utcnow()
     def is_healthy(self, plugin_id: str, interval_s: int = 30) -> bool:
         with self._lock:
             last = self._heartbeats.get(plugin_id)
-            return last is not None and (datetime.now(UTC) - last).total_seconds() < interval_s
+            return last is not None and (datetime.utcnow() - last).total_seconds() < interval_s
     def check_all(self, registry: PluginRegistry, default_interval: int = 30) -> Dict[str, bool]:
         return {p.plugin_id: self.is_healthy(p.plugin_id, p.ficha.salud.heartbeat_interval_s if p.ficha else default_interval) for p in registry.list_active()}
 
@@ -486,7 +486,7 @@ class UniversalPluginBus:
         return False
 
     def _emit_event(self, event_type: str, payload: Dict[str, Any]) -> None:
-        self._event_bus.append({"type": event_type, "payload": payload, "timestamp": datetime.now(UTC).isoformat()})
+        self._event_bus.append({"type": event_type, "payload": payload, "timestamp": datetime.utcnow().isoformat()})
 
 
 # ── Tests ──
@@ -502,8 +502,8 @@ def _run_tests() -> None:
         "seguridad": {"sandbox": "process", "limites": {"timeout_ms": 5000}},
         "firma": {"gpg_key_id": "ABC123"},
         "categoria": "pipeline", "etapa": "P",
+        "activacion": {"eventos": ["kernel.v2.plugin.enchufed"], "wake_words": [], "condicion": ""},
         "perfiles": {"n0": {"habilitada": True, "iteraciones": 1, "simulaciones": 0, "criticas": 0, "muestras_k": 1}},
-        "activacion": {"eventos": ["kernel.v2.plugin.enchufed"], "wake_words": ["evolucionar"]},
         "presupuesto": {"n0": {"max_tokens": 10000, "max_ms": 5000, "max_costo_usd": 0.1}},
         "telemetria": {"metricas": ["tiempo", "errores"], "span_otel": True},
         "evidencia": {"produce": ["L2_build", "L3_runtime"], "destino": "runtime/evidence/"},
@@ -569,4 +569,3 @@ def _run_tests() -> None:
 
 if __name__ == "__main__":
     _run_tests()
-
