@@ -27,6 +27,7 @@ jobs:
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             /.github/workflows/yaiwes-motor4-move-n22-hatchet.yml
+            /📂 Bitácora stated JSON Craxy wall.json
             /➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py
             /Core kernel Yaiwes/Hatchet/
             /Agente Yaiwes principal/execution-orchestration/state-machine-executor/hatchet/
@@ -105,3 +106,71 @@ jobs:
           test -z "$SRC_REMOTE"
           test -n "$DST_REMOTE"
           echo READBACK_OK "$DST"
+
+      - name: Checkpoint Crazy Wall STEP2
+        shell: bash
+        env:
+          WALL: '📂 Bitácora stated JSON Craxy wall.json'
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          ok=0
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            python3 - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+
+          path = os.environ['WALL']
+          with open(path, 'r', encoding='utf-8') as f:
+              data = json.load(f)
+          node = next(n for n in data['nodes'] if n['id'] == 22)
+          if node.get('owner') != 'SOL' or node.get('lock') != 'CLAIMED' or node.get('current_step') != 2:
+              raise SystemExit(f"LOCK_OR_STEP_CHANGED:{node.get('owner')}:{node.get('lock')}:{node.get('current_step')}")
+          now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+          node['current_step'] = 3
+          node['status'] = 'PASS'
+          node.setdefault('checkpoint', {})['after'] = (
+              'STEP2 PASS: canonical Motor4 MOVE commit 7559b7b79f93a3104cf17ad632b790ab497d6d42; '
+              'origin/main source absent; target populated; idempotent runner read-back PASS'
+          )
+          evidence = node.setdefault('evidence', [])
+          for item in [
+              'step2:motor4_blob:9a21facfe11327cf60a2afca8f415ad52f0ecbe5',
+              'step2:move_commit:7559b7b79f93a3104cf17ad632b790ab497d6d42',
+              'step2:runner_fix_commit:78d54b14d3e75654d5378abacdcd72c6096c25a5',
+              f"step2:readback_run:{os.environ['GITHUB_RUN_ID']}",
+              'step2:readback:origin/main source absent destination populated'
+          ]:
+              if item not in evidence:
+                  evidence.append(item)
+          node.setdefault('history', []).append({
+              'at': now,
+              'actor': 'SOL',
+              'label': 'SOL integración 1',
+              'event': 'STEP2_PASS',
+              'run': int(os.environ['GITHUB_RUN_ID'])
+          })
+          node['next_action'] = 'STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST'
+          data['updated_at'] = now
+          with open(path, 'w', encoding='utf-8') as f:
+              json.dump(data, f, ensure_ascii=False, indent=2)
+              f.write('\n')
+          PY
+            git add -- "$WALL"
+            if git diff --cached --quiet; then
+              echo WALL_ALREADY_CHECKPOINTED
+              ok=1
+              break
+            fi
+            git commit -m 'crazy-wall: SOL integración 1 Hatchet STEP2 PASS'
+            if git push origin HEAD:main; then
+              ok=1
+              break
+            fi
+            sleep $((attempt * 2))
+          done
+          test "$ok" -eq 1
