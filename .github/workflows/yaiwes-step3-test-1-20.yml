@@ -1,6 +1,10 @@
 name: YAIWES STEP 3 - TEST 1-20
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/yaiwes-step3-test-1-20.yml'
   workflow_run:
     workflows: ['YAIWES STEP 2 - WIRE PRUNE 1-20 NO TESTS']
     types: [completed]
@@ -15,7 +19,7 @@ concurrency:
 
 jobs:
   test-1x1:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
