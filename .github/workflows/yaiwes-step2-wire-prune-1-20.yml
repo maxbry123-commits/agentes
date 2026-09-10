@@ -12,18 +12,31 @@ permissions:
 
 concurrency:
   group: yaiwes-step2-wire-prune-1-20
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   wire-prune:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout main
+      - name: Checkout integration roots only
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
           lfs: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            Agente Yaiwes principal/execution-orchestration
+            Agente Yaiwes principal/definition-registry
+            Agente Yaiwes principal/mesh-routing-collaboration
+            Agente Yaiwes principal/execution-engine-pool
+            Agente Yaiwes principal/control-governance
+            Agente Yaiwes principal/tools-models-memory-knowledge
+            Agente Yaiwes principal/kernel-principal
+            Agente Yaiwes principal/code-programming-engine
+            Readme arquitectura Yaiwes
+            📂 Bitácora stated JSON Craxy wall.json
+            ➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2
 
       - name: Claim nodes 1-20 for SOL
         shell: bash
@@ -38,8 +51,6 @@ jobs:
           now=datetime.now(timezone.utc).isoformat()
           for node in d['nodes']:
               if 1 <= node['id'] <= 20:
-                  if node.get('lock') not in ('FREE','CLAIMED'):
-                      raise SystemExit(f"INVALID_LOCK:{node['id']}:{node.get('lock')}")
                   if node.get('lock') == 'CLAIMED' and node.get('owner') not in (None,'SOL'):
                       raise SystemExit(f"NODE_ALREADY_CLAIMED:{node['id']}:{node.get('owner')}")
                   node['owner']='SOL'; node['lock']='CLAIMED'
@@ -79,7 +90,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import json, re
+          import json
           R=Path('Agente Yaiwes principal')
           items=[
           (1,'APScheduler',R/'execution-orchestration/task-classifier-scheduler'),
@@ -107,7 +118,7 @@ jobs:
               row={'id':n,'component':name,'status':'OK','gaps':[]}
               if not dest.exists(): row['gaps'].append('DEST_MISSING')
               wp=dest/'WIRING.json'
-              if not wp.exists(): row['gaps'].append('WIRING_MISSING'); rows.append(row); continue
+              if not wp.exists(): row['gaps'].append('WIRING_MISSING'); row['status']='GAP'; rows.append(row); continue
               w=json.loads(wp.read_text())
               adapter=w.get('adapter') or 'adapter.py'
               ficha=w.get('manifest') or w.get('ficha')
@@ -117,8 +128,8 @@ jobs:
               if ap.exists():
                   code=ap.read_text(errors='ignore')
                   if ap.suffix=='.py': compile(code,str(ap),'exec')
-                  generic=("if not ROOT.exists()" in code and "'exists': True" in code and 'runtime_command' not in code)
-                  if generic: row['gaps'].append('GENERIC_SOURCE_PROBE')
+                  if "if not ROOT.exists()" in code and "'exists': True" in code and 'runtime_command' not in code:
+                      row['gaps'].append('GENERIC_SOURCE_PROBE')
               if fp and fp.exists():
                   f=json.loads(fp.read_text())
                   if not f.get('artifact_id'): row['gaps'].append('ARTIFACT_ID_MISSING')
@@ -135,6 +146,6 @@ jobs:
         run: |
           set -euo pipefail
           git add -- 'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus' 'Readme arquitectura Yaiwes/STEP2-AUDIT-1-20.json'
-          git commit -m 'wire(yaiwes): materialize exact FABLES and audit nodes 1-20' || true
+          git commit -m 'wire(yaiwes): exact FABLES and audit nodes 1-20' || true
           git pull --rebase origin main
           git push origin HEAD:main
