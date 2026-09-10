@@ -102,7 +102,7 @@ jobs:
           test "$ACTUAL" = '9a21facfe11327cf60a2afca8f415ad52f0ecbe5'
           echo "MOTOR4_BLOB_SHA=$ACTUAL"
 
-      - name: MOVE 1-20 by canonical motor4 batches
+      - name: MOVE and deduplicate 1-20 by canonical motor4
         shell: bash
         run: |
           set -euo pipefail
@@ -112,8 +112,7 @@ jobs:
           : > "$REPORT"
 
           find_source() {
-            local name="$1"
-            local p
+            local name="$1" p
             for p in \
               "Core kernel Yaiwes/Componentes recuperados B/$name/$name" \
               "Core kernel Yaiwes/Componentes recuperados B/$name" \
@@ -130,25 +129,14 @@ jobs:
           }
 
           move_one() {
-            local n="$1" name="$2" dest="$3"
-            if [ -d "$dest" ] && find "$dest" -type f -print -quit | grep -q .; then
-              printf '%s\t%s\tALREADY_AT_DESTINATION\t%s\n' "$n" "$name" "$dest" | tee -a "$REPORT"
-              return 0
-            fi
-
-            local src
-            src=$(find_source "$name") || {
-              printf '%s\t%s\tSOURCE_GAP\t%s\n' "$n" "$name" "$dest" | tee -a "$REPORT"
-              return 1
-            }
-
-            mkdir -p "$dest"
-            local state="$RUNNER_TEMP/motor4-${n}.json"
-            rm -f "$state"
-            local out
-            out=$(SOURCE_DIR="$src" DEST_DIR="$dest" STATE_FILE="$state" BATCH_SIZE=100 COLLISION_POLICY=fail python3 "$MOTOR")
-            echo "$out"
-            python3 - "$out" <<'PY'
+            local n="$1" name="$2" dest="$3" src='' state out
+            if src=$(find_source "$name"); then
+              mkdir -p "$dest"
+              state="$RUNNER_TEMP/motor4-${n}.json"
+              rm -f "$state"
+              out=$(SOURCE_DIR="$src" DEST_DIR="$dest" STATE_FILE="$state" BATCH_SIZE=100 COLLISION_POLICY=fail python3 "$MOTOR")
+              echo "$out"
+              python3 - "$out" <<'PY'
           import json,sys
           x=json.loads(sys.argv[1])
           assert x['verdict']=='VERIFIED_CLOSED', x
@@ -156,7 +144,13 @@ jobs:
           assert x['pending']==0, x
           assert x['source_files_remaining']==0, x
           PY
-            printf '%s\t%s\tMOVED_VERIFIED\t%s\t%s\n' "$n" "$name" "$dest" "$src" | tee -a "$REPORT"
+              printf '%s\t%s\tMOVED_OR_DEDUP_VERIFIED\t%s\t%s\n' "$n" "$name" "$dest" "$src" | tee -a "$REPORT"
+            elif [ -d "$dest" ] && find "$dest" -type f -print -quit | grep -q .; then
+              printf '%s\t%s\tDEST_ONLY_VERIFIED\t%s\n' "$n" "$name" "$dest" | tee -a "$REPORT"
+            else
+              printf '%s\t%s\tSOURCE_AND_DEST_GAP\t%s\n' "$n" "$name" "$dest" | tee -a "$REPORT"
+              return 1
+            fi
           }
 
           move_one 1  'APScheduler' "$ROOT/execution-orchestration/task-classifier-scheduler"
@@ -183,7 +177,7 @@ jobs:
           echo '--- MOTOR4 REPORT ---'
           cat "$REPORT"
           test "$(wc -l < "$REPORT")" -eq 20
-          ! grep -q $'\tSOURCE_GAP\t' "$REPORT"
+          ! grep -q $'\tSOURCE_AND_DEST_GAP\t' "$REPORT"
 
       - name: Publish MOVE batch to main
         shell: bash
@@ -193,16 +187,16 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A -- 'Core kernel Yaiwes' 'Agente Yaiwes principal'
           if git diff --cached --quiet; then
-            echo 'NO_NEW_MOVE_CHANGES_ALL_DESTINATIONS_ALREADY_PRESENT'
+            echo 'NO_NEW_MOVE_CHANGES_DESTINATIONS_ALREADY_CANONICAL'
             exit 0
           fi
-          git commit -m 'move(yaiwes): motor4 batch move components 1-20 to canonical destinations'
+          git commit -m 'move(yaiwes): motor4 canonical batch move and source dedup 1-20'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
           echo "MOVE_COMMIT=$(git rev-parse HEAD)"
 
-      - name: Read-back destinations
+      - name: Read-back destinations from main
         shell: bash
         run: |
           set -euo pipefail
