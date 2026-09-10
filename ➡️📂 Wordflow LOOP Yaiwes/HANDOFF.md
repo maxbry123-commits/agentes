@@ -1,48 +1,33 @@
-# HANDOFF — Wordflow LOOP Yaiwes — AGENT FLEET
+# HANDOFF — Wordflow LOOP Yaiwes — CIERRE FINAL 3 PASOS
 
 Contrato: `tel.workflow/v4`  
 Modo: `FAIL_CLOSED_EXECUTION_LOOP`  
-Raíz única autorizada de escritura: `➡️📂 Wordflow LOOP Yaiwes/`  
-Estado: `READY_FOR_REAL_AGENT_TEST`.
+Raíz única autorizada de escritura: `maxbry123-commits/agentes/➡️📂 Wordflow LOOP Yaiwes/`  
+Estado: `LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING`.
 
-## STEP1 ✅
-El índice quedó canónico dentro del Wordflow:
-`➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme indice agentes.md`.
-La copia que yo había escrito en `maxbry123-commits/Agentes-motores-Wordflow-YAIWES` fue retirada en el commit `a17e1572b9df41954597fc8c66b390c47800d081`; ese repo queda como fuente de lectura/trazabilidad.
+## PASO 1 ✅ CIERRE DE ESTRUCTURA
+Todo el bloque operativo de esta tarea quedó canónico dentro de `➡️📂 Wordflow LOOP Yaiwes/`: índice, fleet adapter, registry, health, ready manifest, plugin registration, Ficha v2, router MVP, workflows archivados, evidence, STATE/CHECKPOINT/PLAN/RECOVERY/BITÁCORA/README. La migración principal fue `2a73aba061db7dfba2b37bf6637babb2e73c4b0d`. Las copias externas creadas por este bloque fueron retiradas y el registry externo preexistente fue restaurado a `ce40e9afd13fdbea22609fe57807566770dfc1b0`.
 
-## STEP2 ✅
-18 bindings / Council12=12. Rutas canónicas actuales:
-- Adapter: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_adapter.py`
-- Registry: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_registry.json`
-- Health: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_health.json`
-- Ready manifest: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/AGENT_FLEET_READY_FOR_TEST.json`
-- Plugin registration local: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_plugin_registration.json`
+## PASO 2 ✅ PRUEBAS
+Se ejecutaron pruebas locales contra el código actual: fleet=18, IDs únicos=18, Council12=12, routing writer→OpenCode, repair→OpenHands, flow_review→Claude Code, research→Goose, fallback_coder→OpenDev, fail-closed sin runtime=18/18 y rechazo de invoke no configurado=PASS.
+
+Router MVP probado con inventario simulado controlado para verificar lógica sin exponer secretos: prioridad `Kimi → MiniMax → DeepSeek V4 Pro → DeepSeek V4 Flash → GLM 5 → Muse/Glimmer → Qwen 3.8 → GPT-OSS`=PASS; caída Kimi→MiniMax=PASS; rotación de rutas del mismo nivel=PASS; parallel dispatch 3/3=PASS; claves excluidas de rutas públicas=PASS.
+
+Evidencia final: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/FINAL_3STEP_CLOSURE_TEST_2026-09-10.json` · commit `6c4b10a49fa8de3bd85348f15bd5f5fa461d128c`.
+
+## PASO 3 ✅ PERSISTENCIA + WATCHDOG
+STATE y CHECKPOINT fueron promovidos a cierre final. Watchdog horario activado con alcance exclusivo a `➡️📂 Wordflow LOOP Yaiwes/` y prohibición explícita de escribir fuera de esa raíz.
+
+## LÍMITE DE LA EVIDENCIA
+No se marca PASS_REAL de NVIDIA/Cerebras/Groq ni ejecución remota de los agentes desde este entorno porque no existe un canal saliente autenticado seguro para inyectar las claves. Estado correcto: `AUTH_PROVIDER_TEST_PENDING`.
+
+## RUTAS CANÓNICAS
+- Fleet: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/`
+- Router: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/model_api_router_mvp.py`
 - Ficha: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/contracts/ficha.agent_fleet.v2.json`
+- Evidence final: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/FINAL_3STEP_CLOSURE_TEST_2026-09-10.json`
+- STATE: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/STATE.json`
+- CHECKPOINT: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/CHECKPOINT.json`
 
-El registry preexistente fuera del Wordflow fue restaurado al blob previo `ce40e9afd13fdbea22609fe57807566770dfc1b0`; no conserva el binding agent_fleet escrito por este bloque.
-
-Fleet: OpenCode, OpenHands, Claude Code, MiMo Code, Codex, SmolAgents, Hermes, OpenClaw, Aider, Muse/Glimmer, Kimi, Qwen, Cline, Goose, Agent-Zero, OpenDev, Research Agent Lab, MiroThinker.
-
-## STEP3 HISTÓRICO ✅
-Run `34406268016`; job `102649876845`; head `05ce5fc43a599da1ae9e80f485450d52aede07a1`; `completed/success`.
-La evidencia histórica fue movida a:
-`➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/STEP3_AGENT_FLEET_VERIFY.json`.
-El YAML histórico fue movido fuera de `.github/workflows` a:
-`➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/workflows/wordflow-agent-fleet-step3.yml`.
-Por tanto no queda activo como GitHub Action desde esa copia archivada.
-
-## ROUTER MVP
-Ruta canónica única:
-`➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/model_api_router_mvp.py`.
-Prioridad: Kimi → MiniMax → DeepSeek V4 Pro → DeepSeek V4 Flash → GLM 5 → Muse/Glimmer → Qwen 3.8 → GPT-OSS; disponibilidad primero, failover de API/key y luego siguiente familia.
-
-## MIGRACIÓN DE ALCANCE
-Commit principal: `2a73aba061db7dfba2b37bf6637babb2e73c4b0d`.
-Manifiesto: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/SCOPE_MIGRATION_2026-09-09.json`.
-Rutas externas creadas por este bloque: retiradas. Archivos preexistentes externos modificados por el bloque: restaurados.
-
-## GAPs HONESTOS
-Hermes, Muse/Glimmer y Goose siguen `EXTERNAL_NOT_VENDORED`. Los runtimes externos requieren API/MCP/command real para poder afirmar ejecución remota. No se afirma PASS_REAL de esos runtimes hasta probarlos.
-
-## REGLA
-No escribir ni modificar para este Wordflow fuera de `maxbry123-commits/agentes/➡️📂 Wordflow LOOP Yaiwes/`. No existe Paso 4 en el bloque anterior.
+## REGLA FINAL
+No escribir ni modificar para este Wordflow fuera de `➡️📂 Wordflow LOOP Yaiwes/`. El bloque de cierre de 3 pasos está terminado localmente. Solo falta prueba autenticada externa para convertir el estado en `PASS_REAL_EXTERNAL`.
