@@ -127,6 +127,7 @@ jobs:
           git add -- 'Readme arquitectura Yaiwes/STEP3-TEST-REPORT-1-20.json' '📂 Bitácora stated JSON Craxy wall.json'
           git diff --cached --quiet && exit 0
           git commit -m 'test(yaiwes): STEP 3 real results nodes 1-20'
+          git restore --worktree -- .
           git pull --rebase origin main
           git push origin HEAD:main
 
