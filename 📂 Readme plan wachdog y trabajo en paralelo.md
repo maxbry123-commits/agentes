@@ -1,75 +1,117 @@
-# 📂 README PLAN WATCHDOG Y TRABAJO EN PARALELO
+# 📂 TAREA 3 — PLAN WATCHDOG · PARALELISMO + SANDBOX + MEMORIA
 
 **Estado:** `ACTIVE_DESIGN / IMPLEMENTATION_PENDING`  
 **Fecha:** 2026-09-10  
-**Repositorio:** `maxbry123-commits/agentes`
-
----
+**Repositorio:** `maxbry123-commits/agentes`  
+**Regla:** 3 pasos de trabajo. Las capacidades internas no crean fases nuevas.
 
 ## 1. Objetivo
 
-Construir un Watchdog programable dentro de YAIWES que pueda registrar, programar, ejecutar, supervisar, recuperar y cerrar tareas simples, largas, multi-paso, DAG, LOOP, research y planificación adaptativa, manteniendo memoria/estado durable y ejecución paralela controlada.
+Construir el Watchdog programable de YAIWES con el mínimo sistema que permita:
 
-El sistema debe poder manejar cientos de Watchdogs pendientes sin convertir cada Watchdog en un proceso permanente. La entidad Watchdog es durable en datos; el cómputo se asigna solamente cuando existe trabajo pendiente o un evento due.
+- programar tareas;
+- ejecutarlas en paralelo bajo límites;
+- mantener estado y memoria persistentes;
+- aislar ejecución en sandbox;
+- recuperar trabajos después de fallo;
+- demostrar el resultado con evidence/read-back.
 
----
+No se acepta una cifra `100x` como requisito ni como hecho hasta medirla en benchmark real. Los documentos MAX/Mavis aportan patrones y código de referencia, pero la aceptación del Watchdog se basa en comportamiento medido y tests.
 
-## 2. Principio de ownership
-
-Cada responsabilidad debe tener un owner lógico y alternativas detrás de un puerto común.
+## 2. Contrato único de 3 pasos
 
 ```text
-TIME AUTHORITY       → APScheduler
-WORK CALENDAR        → Workalendar
-SIMPLE WORKERS       → Celery (Taskiq alternativa)
-EVENT PLANE          → Redis
-DURABLE EXECUTION    → Hatchet (DBOS/Restate alternativas)
-MULTI-STEP           → Dagu
-SMALL LOOP           → PocketFlow
-FUNCTIONAL DAG       → Apache Hamilton/redun
-ADAPTIVE PLANNING    → YAIWES + smolagents subordinado
-RESEARCH             → ResearchPort → DeerFlow | GPT-Researcher | MindSearch
-DURABLE STATE        → PostgreSQL
-SEMANTIC MEMORY      → pgvector
-SANDBOX ISOLATION    → gVisor / Firecracker según riesgo
-SANDBOX RUNTIME      → iii-sandbox tras X-Ray
-ARTIFACT STORAGE     → RustFS por ArtifactPort S3-compatible
-EXTERNAL B2          → adapter S3/Backblaze B2 opcional
+CONTRACT yaiwes.watchdog.minimax.v1
+
+STEP_1 ANALYZE_AND_DEFINE
+  definir Job/Watchdog schema
+  definir DSL + DAG
+  elegir owner por capacidad
+  elegir puertos/adapters mínimos
+  OUTPUT = ContractPack
+
+STEP_2 WIRE_AND_RUN
+  conectar scheduler + queue + workers
+  conectar state + memory + artifacts
+  conectar sandbox + durable/workflow engines
+  conectar parallel runtime
+  ejecutar por contracts
+  OUTPUT = RunnableWatchdog
+  TESTS = FORBIDDEN como gate de cierre
+
+STEP_3 TEST_AND_CLOSE
+  test simple + parallel + recovery + sandbox + memory
+  evidence + readback
+  OUTPUT = PASS | GAP
 ```
 
-No activar dos owners simultáneos para la misma responsabilidad sin una política explícita de routing/fallback.
+DAG:
 
----
+```text
+[1 SCHEMA/DSL/OWNERS] → [2 WIRE RUNTIME] → [3 TEST E2E] → [PASS]
+          ↑                    ↑                │
+          └──────────── GAP REPAIR ────────────┘
+```
 
-## 3. Contratos a materializar
+## 3. MINIMAX — núcleo mínimo que maximiza capacidad
+
+Solo estos bloques son obligatorios para la primera versión:
+
+1. **JobContract / WatchdogDefinition** — contrato uniforme `validate → execute → checkpoint → resume → cleanup`.
+2. **Registry + Factory/Capability resolver** — resolver capacidades sin `if` gigantes ni creación directa acoplada.
+3. **SchedulerPort** — APScheduler como time authority; Workalendar como política de calendario.
+4. **QueuePort + Priority Queue** — Celery primary o Taskiq alternativa; prioridad y límites de concurrencia.
+5. **Persistent Worker Pools** — separar I/O, CPU, coding/sandbox, research y durable jobs solo cuando el recurso lo justifique.
+6. **Parallel Runtime** — fan-out/fan-in, batching, async pipeline, backpressure y dedup.
+7. **State/Memory/Artifacts** — PostgreSQL + pgvector + Redis event/lease plane + RustFS/S3-compatible.
+8. **SandboxPort** — gVisor por defecto para aislamiento reforzado; Firecracker solo para perfil high-risk; iii-sandbox queda candidato hasta X-Ray.
+9. **Recovery** — idempotency key, lease, heartbeat, checkpoint, retry/timeout y DLQ cuando sea necesaria.
+10. **Evidence/Health** — cada cierre produce estado verificable y read-back.
+
+Todo lo demás es opcional hasta demostrar un GAP.
+
+## 4. Componentes físicos ya presentes
+
+### Owners/candidatos principales
+
+```text
+TIME              → APScheduler
+CALENDAR          → Workalendar
+SIMPLE QUEUE      → Celery | Taskiq
+EVENT/LEASE       → Redis
+DURABLE           → Hatchet | DBOS Python | Restate
+MULTI-STEP        → Dagu
+SMALL LOOP        → PocketFlow
+DAG               → Apache Hamilton | redun
+RESEARCH          → DeerFlow | GPT-Researcher | MindSearch
+ADAPTIVE PLAN     → YAIWES + optional smolagents
+STATE             → PostgreSQL
+SEMANTIC MEMORY   → pgvector
+SANDBOX           → gVisor | Firecracker | iii-sandbox candidate
+ARTIFACTS         → RustFS / S3-compatible
+```
+
+Regla de ownership: un owner activo por responsabilidad; alternativas detrás del mismo port.
+
+## 5. Schemas mínimos
 
 ### WatchdogDefinition
-
-Campos mínimos:
 
 ```text
 watchdog_id
 name
 goal
-mode: deterministic|adaptive
+mode
 schedule
 timezone
-calendar_policy
 priority
 concurrency_group
 max_concurrency
-agent_selector
-model_selector
-tool_policy
-workflow_selector
+capability
 sandbox_profile
 timeout
 retry_policy
-heartbeat_policy
 checkpoint_policy
-approval_policy
-budget_policy
-notification_policy
 status
 created_at
 updated_at
@@ -81,22 +123,19 @@ updated_at
 run_id
 watchdog_id
 scheduled_for
-started_at
-finished_at
 status
 attempt
 idempotency_key
 lease_owner
 lease_expires_at
-selected_engine
-selected_agent
-selected_model
+worker_id
 sandbox_id
 checkpoint_id
 result_ref
 evidence_ref
 error_class
-next_action
+started_at
+finished_at
 ```
 
 ### WatchdogStep
@@ -104,7 +143,6 @@ next_action
 ```text
 step_id
 run_id
-parent_step_id
 dependencies
 state
 input_ref
@@ -124,479 +162,290 @@ step_id
 state_version
 artifact_snapshot
 memory_snapshot_ref
-created_at
 resume_token
 integrity_hash
+created_at
 ```
 
----
-
-## 4. Flujo de creación
+### EventEnvelope
 
 ```text
-USER/CHAT
-→ Watchdog Creator
-→ WatchdogDefinition JSON Schema
-→ VALIDATOR
-→ POLICY/SHERIFF
-→ PERSIST PostgreSQL
-→ REGISTER APScheduler
-→ RETURN WATCHDOG_ID + NEXT_RUN
-```
-
-La UI no escribe directamente en el scheduler. La UI envía una definición al backend; el backend valida, persiste y después registra el schedule.
-
----
-
-## 5. Flujo de ejecución
-
-```text
-APScheduler DUE
-→ CREATE RUN
-→ GENERATE IDEMPOTENCY KEY
-→ ACQUIRE LEASE
-→ APPLY CALENDAR POLICY
-→ PRIORITY QUEUE
-→ CLASSIFY
-→ SELECT ENGINE
-→ BUILD CONTEXT PACK
-→ CREATE/RESUME SANDBOX
-→ PRELINE/POLICY
-→ EXECUTE
-→ HEARTBEAT
-→ CHECKPOINT
-→ VERIFY
-→ SAVE RESULT + EVIDENCE
-→ RELEASE LEASE
-→ RESCHEDULE / COMPLETE
-```
-
----
-
-## 6. Clasificador de tareas
-
-### SIMPLE
-
-Características: una función, job corto, retries simples, poca coordinación.
-
-Ruta:
-
-`QueuePort → Celery`
-
-Fallback/alternativa permitida:
-
-`QueuePort → Taskiq`
-
-### DURABLE_LONG
-
-Características: trabajo largo, necesidad de reanudación/retries durable, espera externa, actividad multi-minuto/hora.
-
-Ruta primaria:
-
-`DurableExecutionPort → Hatchet`
-
-Alternativas:
-
-`DBOS Python` o `Restate`, solamente bajo policy/benchmark y sin acoplar el workflow a su API nativa.
-
-### MULTI_STEP
-
-Características: dependencias, varios pasos, retries por paso, ramas y orden explícito.
-
-Ruta:
-
-`WorkflowPort → Dagu`
-
-### SMALL_LOOP
-
-Características: secuencia compacta con condición/repetición local.
-
-Ruta:
-
-`WorkflowPort → PocketFlow`
-
-### DAG/CASCADE
-
-Características: funciones dependientes, pipeline reproducible, cascada de transformaciones.
-
-Ruta:
-
-`WorkflowPort → Apache Hamilton | redun`
-
-### RESEARCH
-
-Ruta:
-
-`ResearchPort → policy selector → DeerFlow | GPT-Researcher | MindSearch`
-
-### ADAPTIVE
-
-Ruta:
-
-```text
-GOAL
-→ YAIWES planner
-→ optional smolagents capability
-→ research if needed
-→ PRELINE
-→ policy/budget
-→ deterministic action dispatch
-→ observe
-→ verify
-→ replan only if required
-```
-
----
-
-## 7. Planificación determinista y adaptativa
-
-### Determinista
-
-El usuario define pasos o un contrato estricto.
-
-```text
-INPUT
-→ DSL
-→ DAG
-→ SCHEMA
-→ VALIDATE
-→ SCHEDULE
-→ EXECUTE
-→ VERIFY
-```
-
-No existe libertad del modelo para modificar el orden fuera de las condiciones declaradas.
-
-### Adaptativa
-
-El usuario define un objetivo y restricciones.
-
-```text
-GOAL
-→ STATE/MEMORY/EVIDENCE
-→ PLAN
-→ RESEARCH
-→ REFUTE
-→ PRELINE
-→ EXECUTE
-→ OBSERVE
-→ VERIFY
-→ REPLAN?
-```
-
-El replan debe conservar `goal_lock`, presupuesto, permisos, seguridad y criterio de cierre.
-
----
-
-## 8. Arquitectura de paralelismo
-
-### Regla
-
-`500 Watchdogs registrados` puede significar `10 workers activos`, no 500 procesos.
-
-### Cola
-
-Cada job entra con:
-
-```text
-priority
+event_id
+event_type
 watchdog_id
 run_id
-project_id
-resource_class
-agent/model requirement
-estimated_cost
-deadline
-concurrency_group
+step_id
+created_at
+payload_ref
 idempotency_key
+trace_id
 ```
 
-### Pools
+## 6. Job ABI mínimo
 
-Separar al menos:
+Referencia obligatoria para no convertir cada componente en un mini-sistema operativo:
 
-- CPU/light jobs;
-- network/API jobs;
-- coding/sandbox jobs;
-- research jobs;
-- long-running durable jobs;
-- high-risk isolated jobs.
+```python
+from abc import ABC, abstractmethod
 
-### Backpressure
+class Job(ABC):
+    @abstractmethod
+    def validate(self): ...
 
-Cuando la cola supera límites:
+    @abstractmethod
+    def execute(self): ...
 
-1. no crear procesos ilimitados;
-2. mantener job durable en PostgreSQL/queue;
-3. aplicar priority/deadline;
-4. limitar fan-out;
-5. retrasar low-priority;
-6. escalar pool si la infraestructura lo permite;
-7. conservar métricas `queue_depth`, `oldest_wait`, `active_workers`.
+    @abstractmethod
+    def checkpoint(self): ...
 
-### Fan-out/Fan-in
+    @abstractmethod
+    def resume(self): ...
+
+    @abstractmethod
+    def cleanup(self): ...
+```
+
+El Registry resuelve la implementación por capacidad. El Scheduler no conoce internals del plugin/job.
+
+## 7. Runtime paralelo mínimo
+
+Las funciones tomadas como referencia del documento Mavis Parallel se incorporan como capacidades, no como servicios separados obligatorios:
 
 ```text
-PARENT RUN
-→ SPLIT N INDEPENDENT UNITS
-→ ENQUEUE WITH SAME GROUP
-→ EXECUTE UNDER CONCURRENCY LIMIT
-→ COLLECT RESULTS
-→ VERIFY EACH
-→ CONSOLIDATE
-→ CONTINUE PARENT
+PersistentPool
+PriorityTaskQueue
+SmartCache
+SmartBatcher
+StreamingResult
+AsyncPipeline
+DedupExecutor
 ```
 
-### Sharding
+Aplicación:
 
-Sharding recomendado por `project_id`, `workspace_id` o `watchdog_id` para evitar que una tarea monopolice toda la capacidad.
+```text
+I/O independent tasks → async/fan-out
+CPU-bound             → process workers
+external API           → batching cuando API lo soporta
+large output           → streaming + backpressure
+repeated request       → dedup/cache
+mixed workloads        → priority queue + bounded pools
+```
 
----
+No multiplicar factores teóricos para declarar rendimiento. Medir `throughput`, `p95/p99`, `queue_depth`, `oldest_wait`, `failure_rate`, `memory_peak` y costo por job.
 
-## 9. Idempotencia y leases
+## 8. Estado, memoria y artefactos
 
-Todo run programado debe tener una clave reproducible:
+### PostgreSQL
 
-`watchdog_id + scheduled_for + schedule_version`.
+Fuente durable de verdad para:
 
-Antes de ejecutar:
+- definitions;
+- runs/steps;
+- state machine;
+- leases/idempotency metadata;
+- checkpoints;
+- final state;
+- audit/evidence references.
 
-1. consultar si la clave ya está completada;
-2. adquirir lease;
-3. registrar owner y expiry;
-4. renovar mediante heartbeat;
-5. si el worker muere, permitir recuperación cuando expire el lease;
-6. nunca ejecutar dos veces una acción no idempotente sin policy explícita.
+### pgvector
 
----
+Memoria semántica y retrieval. No sustituye las tablas transaccionales.
 
-## 10. Heartbeat
+### Redis
 
-El heartbeat debe diferenciar:
+Eventos, queue support, cache, locks/leases/heartbeat y coordinación efímera. No es fuente durable única.
 
-- worker vivo;
-- run vivo;
-- sandbox vivo;
-- conexión de motor durable viva.
+### RustFS / S3
 
-La ausencia de heartbeat no significa automáticamente `FAIL`; primero comprobar lease, estado remoto y checkpoint.
+Snapshots, outputs, adjuntos y artefactos grandes. Backblaze B2 se conecta únicamente como provider S3-compatible si se selecciona.
 
----
+### Capas de recuperación
 
-## 11. Recovery
+```text
+STATE      → PostgreSQL
+MEMORY     → PostgreSQL + pgvector
+ARTIFACTS  → RustFS/S3
+FAST COORD → Redis
+```
+
+## 9. Sandbox
+
+```text
+LOW_RISK        → sandbox runtime estándar aislado
+MEDIUM_RISK     → gVisor
+HIGH_RISK       → Firecracker
+SPECIAL_RUNTIME → iii-sandbox solo después de X-Ray/test
+```
+
+Todo sandbox recibe solo:
+
+- `job/run id`;
+- input autorizado;
+- capability/tool policy;
+- workspace asignado;
+- límites CPU/RAM/time;
+- secrets mínimos por lease;
+- checkpoint/artifact refs necesarios.
+
+No montar repositorios completos ni secretos globales por defecto.
+
+## 10. Recovery
+
+```text
+FAIL/STALE
+→ freeze evidence
+→ check lease + heartbeat
+→ read checkpoint
+→ check idempotency
+→ retry if safe
+→ resume same worker/engine OR route fallback through same Port
+→ verify
+→ persist result
+```
 
 Estados mínimos:
 
 ```text
-PENDING
-QUEUED
-LEASED
-RUNNING
-WAITING
-PAUSED
-RETRYING
-RECOVERING
-COMPLETED
-FAILED
-CANCELLED
+PENDING → QUEUED → LEASED → RUNNING → COMPLETED
+                         ├→ WAITING
+                         ├→ RETRYING
+                         ├→ RECOVERING
+                         ├→ FAILED
+                         └→ CANCELLED
 ```
 
-Recovery:
+## 11. Patrones aceptados de los dos documentos adjuntos
+
+Se incorporan como biblioteca técnica:
+
+- fan-out/fan-in;
+- batching;
+- sharding solo cuando exista presión medida;
+- priority queues;
+- persistent worker pools;
+- async pipelines;
+- backpressure;
+- deduplication;
+- idempotency keys;
+- checkpoints/resume;
+- DLQ;
+- outbox cuando se necesite consistencia DB→evento;
+- cache LRU/mmap donde exista relectura real;
+- streaming de outputs grandes;
+- sandbox isolation;
+- durable state;
+- semantic memory;
+- artifact snapshots.
+
+Quedan **fuera del MVP** hasta GAP/benchmark: multi-region active-active, predictive autoscaling, time-wheel propio, CDC complejo, DNS failover propio, varios schedulers activos y nuevas bases de datos redundantes.
+
+Fuentes 1×1 incorporadas al plan:
+
+- `Core kernel Yaiwes/Backend watchdog workflow adaptativo/fuentes/📌MAX-SYSTEM-100X-FINAL-1.md`
+- `Core kernel Yaiwes/Backend watchdog workflow adaptativo/fuentes/📌MAVIS-PARALLEL-100X.md`
+
+## 12. Flujo operativo
 
 ```text
-DETECT STALE/FAIL
-→ FREEZE EVIDENCE
-→ CLASSIFY FAILURE
-→ CHECK IDEMPOTENCY
-→ CHECK CHECKPOINT
-→ RETRY SAME ENGINE?
-   ├─ YES → RESUME
-   └─ NO  → STRATEGY DELTA / FALLBACK ENGINE
-→ VERIFY
-→ CONTINUE
-```
-
-No hacer reset completo si existe checkpoint válido.
-
----
-
-## 12. Memoria y estado
-
-### PostgreSQL
-
-Guardar definiciones, schedules, runs, steps, leases, idempotency, policy versions, checkpoint metadata y estado final.
-
-### Redis
-
-Usar para transporte/eventos/locks/leases/heartbeats y datos efímeros de coordinación. No utilizarlo como única fuente durable.
-
-### pgvector
-
-Guardar embeddings/referencias semánticas, no reemplazar los records transaccionales.
-
-### Artifact storage
-
-RustFS expone el puerto S3-compatible para artefactos y snapshots. Si se usa Backblaze B2, añadir provider adapter al mismo `ArtifactPort`, sin cambiar a los consumidores.
-
----
-
-## 13. Sandbox y trabajo en paralelo
-
-Cada ejecución de código debe recibir un `sandbox_profile`:
-
-```text
-LOW_RISK        → runtime aislado estándar
-MEDIUM_RISK     → gVisor
-HIGH_RISK       → Firecracker/microVM
-SPECIAL_RUNTIME → iii-sandbox después de validación
-```
-
-El sandbox debe recibir únicamente el context pack y recursos autorizados. No montar todo el repositorio ni secretos globales por defecto.
-
----
-
-## 14. Backend a integrar
-
-### Presentes y seleccionados
-
-- APScheduler — time authority.
-- Workalendar — calendar policy.
-- Celery — simple workers desde el execution pool existente.
-- Redis — event plane.
-- Hatchet — durable owner candidato.
-- Dagu — multi-step owner candidato.
-- PostgreSQL — durable state.
-- pgvector — semantic memory.
-- gVisor — sandbox isolation.
-- RustFS — S3-compatible artifacts.
-
-### Presentes como alternativas/capacidades
-
-- Rocketry.
-- Taskiq.
-- DBOS Python.
-- Restate.
-- PocketFlow.
-- Apache Hamilton.
-- redun.
-- smolagents.
-- DeerFlow.
-- GPT-Researcher.
-- MindSearch.
-- Firecracker.
-- iii-sandbox.
-
-### Backend faltante
-
-No se requiere descargar otro gran motor para iniciar. Se debe construir/cablear la capa de ports/adapters/contracts. Si el proveedor final será Backblaze B2, falta materializar el adapter/configuración B2 sobre S3.
-
----
-
-## 15. Frontend del Watchdog
-
-### Ya disponible
-
-- assistant-ui — chat/streaming/composer.
-- Dockview — workspace/panel docking.
-- xyflow — artefacto disponible pero debe extraerse y validarse antes de usarlo como código real.
-
-### A incorporar/verificar
-
-- FullCalendar — calendar/schedule view.
-- TanStack Table — queue/runs/evidence.
-- RJSF — WatchdogDefinition form.
-- xterm.js — logs/sandbox terminal.
-- Monaco Editor — DSL/config/policy editor.
-- ECharts — observability metrics.
-- dnd-kit — drag/drop de pasos/tareas.
-- Frappe Gantt — timeline opcional.
-
-### Integración UI
-
-```text
-assistant-ui → shell conversacional
-Dockview → panel manager
-FullCalendar → schedule panel
-xyflow → workflow panel
-RJSF → definition editor
-TanStack Table → runs/queue panel
-xterm.js → logs panel
-Monaco → advanced config panel
-ECharts → metrics panel
-```
-
-La UI consume APIs/event streams del backend; no accede directamente a PostgreSQL, Redis o motores internos.
-
----
-
-## 16. Gates de construcción
-
-### Gate 1 — Contratos
-
-No conectar motores hasta fijar `WatchdogDefinition`, `Run`, `Step`, `Checkpoint`, `EventEnvelope`, `Evidence`.
-
-### Gate 2 — Ports
-
-Crear puertos para scheduler, queue, durable, workflow, research, planning, state, memory, sandbox, artifacts.
-
-### Gate 3 — Adapters
-
-Conectar un owner por puerto y comprobar que la API nativa no fuga al resto del sistema.
-
-### Gate 4 — Persistencia
-
-Persistir definición/run/checkpoint/idempotency antes de activar scheduling real.
-
-### Gate 5 — E2E mínimo
-
-```text
-create watchdog
-→ persist
-→ schedule
-→ due
-→ queue
-→ execute simple no-op/test task
-→ heartbeat
+USER/CHAT
+→ WatchdogDefinition
+→ schema + policy/sheriff
+→ PostgreSQL
+→ APScheduler + Workalendar
+→ DUE
+→ WatchdogRun + idempotency key
+→ priority queue
+→ capability/task classifier
+→ bounded worker pool
+→ acquire lease
+→ sandbox
+→ load state/memory/artifacts
+→ execute
+→ heartbeat/checkpoint
 → verify
-→ complete
-→ next_run
+→ evidence/artifact
+→ complete | retry | recover
+→ next run
 ```
 
-### Gate 6 — Durable/multi-step
+## 13. Paralelismo controlado
 
-Probar recovery y multi-step solamente después del E2E mínimo.
+`N Watchdogs registrados != N procesos activos`.
 
-### Gate 7 — Adaptive/research
+Cada job usa al menos:
 
-Agregar planificación adaptativa/research después de que el carril determinista sea estable.
+```text
+priority
+resource_class
+concurrency_group
+max_concurrency
+idempotency_key
+timeout
+```
 
-### Gate 8 — UI
+Fan-out solo en unidades independientes. Fan-in espera únicamente los resultados requeridos por el DAG. La cola debe ejercer backpressure en lugar de crear procesos ilimitados.
 
-Conectar UI cuando backend contract/API/event stream estén definidos. UI no debe retrasar ni gobernar el kernel.
+## 14. Tareas pendientes reales
 
----
+1. Materializar los 5 schemas: Definition, Run, Step, Checkpoint, EventEnvelope.
+2. Materializar Ports mínimos: Scheduler, Queue, Durable, Workflow, State, Memory, Sandbox, Artifact; Research/Planning solo si los carriles los usan.
+3. Implementar Job ABI + Registry/Factory/Capability resolver.
+4. Conectar APScheduler/Workalendar, Celery/Taskiq, PostgreSQL/Redis/pgvector/RustFS y un sandbox profile.
+5. Integrar PersistentPool + PriorityQueue + batching/dedup/backpressure/streaming donde aplique.
+6. Integrar Hatchet/Dagu detrás de ports después del E2E simple.
+7. Testear simple → parallel → recovery → memory → sandbox → durable/multi-step.
+8. Conectar UI/event stream después de estabilizar el backend contract.
 
-## 17. Criterio de finalización del Watchdog
+## 15. Criterio de cierre
 
-No se considera completo hasta que existan pruebas reales para:
+Paso 3 debe demostrar como mínimo:
 
-1. create/update/delete/disable WatchdogDefinition;
-2. persistencia después de restart;
-3. timezone y calendar policy;
-4. ejecución exactly-once lógica mediante idempotency;
-5. retry;
-6. timeout;
-7. heartbeat/lease recovery;
-8. checkpoint/resume;
-9. parallel queue + backpressure;
-10. simple job;
-11. durable job;
-12. multi-step job;
-13. small loop;
-14. research job;
-15. adaptive replan;
-16. sandbox isolation;
-17. artifacts;
-18. memory/state recovery;
-19. UI live status/event stream;
-20. read-back de evidencia y cierre fail-closed.
+```text
+create definition
+persist/restart/readback
+schedule/timezone
+priority/concurrency
+simple job
+parallel bounded jobs
+idempotency
+retry + timeout
+lease/heartbeat recovery
+checkpoint/resume
+memory write/read
+artifact snapshot/readback
+sandbox isolation
+failure path
+final evidence
+```
+
+Research/adaptive/multi-step se prueban cuando se habilitan como capability; no bloquean el MVP si no forman parte del primer carril activado.
+
+## 16. Nota de relevo para Grok / GPT-5.6 Sol / Astra
+
+```text
+HANDOFF_LOCK = YAIWES-WATCHDOG-MINIMAX-3-STEPS
+READ_FIRST = this file + CONTRATO-MINIMAX-WATCHDOG-PARALELO-SANDBOX-MEMORIA.md
+DO_NOT_ADD_PHASES = true
+DO_NOT_CLAIM_100X_WITHOUT_BENCHMARK = true
+
+CURRENT_STATE:
+- backend OSS components are physically present
+- integration/contracts are pending
+- Task 2 component integration must close real behavior gates
+- Watchdog runtime must remain behind ports
+
+NEXT:
+1. STEP_1 schemas/DSL/ports
+2. STEP_2 wire minimal owners + parallel runtime + state/memory/sandbox
+3. STEP_3 E2E evidence/readback
+
+Do not replace a port with a provider-specific API in consumers.
+Do not add infrastructure unless a measured GAP requires it.
+```
+
+## 17. Enlaces
+
+- Plan TAREA 3: https://github.com/maxbry123-commits/agentes/blob/main/%F0%9F%93%82%20Readme%20plan%20wachdog%20y%20trabajo%20en%20paralelo.md
+- Contrato MINIMAX: https://github.com/maxbry123-commits/agentes/blob/main/Core%20kernel%20Yaiwes/Backend%20watchdog%20workflow%20adaptativo/CONTRATO-MINIMAX-WATCHDOG-PARALELO-SANDBOX-MEMORIA.md
+- Plan TAREA 2: https://github.com/maxbry123-commits/agentes/blob/main/Readme%20arquitectura%20Yaiwes/HANDOFF-INTEGRACION-1-20.md
