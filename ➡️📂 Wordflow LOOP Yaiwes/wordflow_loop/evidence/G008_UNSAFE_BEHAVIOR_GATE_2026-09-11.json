@@ -1,0 +1,37 @@
+{
+  "schema": "yaiwes.evidence/v1",
+  "gap": "G-008",
+  "owner": "SOL_1",
+  "result": "CLOSED_VERIFIED_LOCAL",
+  "research": {
+    "reuse": "runtime/src/core/file_audit_contract.py",
+    "finding": "Existing FileAuditContract deterministically detects dangerous calls and emits BLOCK_AND_REVIEW, but no second gate proved a replacement candidate was re-audited clean before downstream execution gates.",
+    "motor_required": false
+  },
+  "implementation": {
+    "contract": "yaiwes.unsafe_behavior_gate/v1",
+    "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/unsafe_behavior_gate.py",
+    "module_blob": "aa9eeaef92ef89bee2dc62de02c05b23864a84e1",
+    "tests": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_unsafe_behavior_gate.py",
+    "tests_blob": "4bf3db1e784bf7c361e61133ddc31860088fbbce",
+    "properties": [
+      "risky source must change",
+      "every original risk requires explicit benign substitution and justification",
+      "candidate is independently re-audited",
+      "candidate with any remaining risk is rejected",
+      "passing pre-execution gate never grants execution permission",
+      "sandbox/reviewer remains mandatory"
+    ]
+  },
+  "verification": {
+    "module_readback": "PASS",
+    "tests_readback": "PASS",
+    "local_equivalent_pytest": "PASS_5_OF_5",
+    "repo_github_actions_pytest_execution": "NOT_CLAIMED"
+  },
+  "safety": {
+    "execution_authorized": false,
+    "deployment_authorized": false,
+    "requires_sandbox_review": true
+  }
+}
