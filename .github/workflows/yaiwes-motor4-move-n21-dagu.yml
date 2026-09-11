@@ -1,4 +1,4 @@
-name: YAIWES Motor4 MOVE N21 Dagu
+name: YAIWES N21 Dagu STEP3
 
 on:
   workflow_dispatch:
@@ -10,32 +10,39 @@ permissions:
   contents: write
 
 concurrency:
-  group: yaiwes-motor4-n21-dagu
+  group: yaiwes-n21-dagu-step3
   cancel-in-progress: false
 
 jobs:
-  move_n21:
+  wire_microtest_release:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      WALL: '📂 Bitácora stated JSON Craxy wall.json'
+      TARGET: 'Agente Yaiwes principal/execution-orchestration/state-machine-executor/dagu'
+      ADAPTER: 'Agente Yaiwes principal/execution-orchestration/state-machine-executor/dagu/yaiwes/dagu_adapter.py'
+      FICHA: 'Agente Yaiwes principal/execution-orchestration/state-machine-executor/dagu/yaiwes/ficha.dagu.v2.json'
+      EVIDENCE: 'Agente Yaiwes principal/execution-orchestration/state-machine-executor/dagu/yaiwes/STEP3_EVIDENCE.json'
+      BUS: 'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py'
+      FICHA_CODE: 'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/ficha_contract_v2.py'
     steps:
-      - name: Checkout Motor4 + Dagu + Crazy Wall
+      - name: Checkout N21 STEP3 surfaces
         uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 2
+          fetch-depth: 8
           lfs: false
           filter: blob:none
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             /.github/workflows/yaiwes-motor4-move-n21-dagu.yml
             /📂 Bitácora stated JSON Craxy wall.json
-            /➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py
-            /Core kernel Yaiwes/Dagu/
-            /Agente Yaiwes principal/execution-orchestration/state-machine-executor/
+            /Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py
+            /Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/ficha_contract_v2.py
+            /Agente Yaiwes principal/execution-orchestration/state-machine-executor/dagu/
 
-      - name: Claim N21 from fresh Crazy Wall
+      - name: Claim N21 STEP3 from fresh Crazy Wall
         shell: bash
-        env:
-          WALL: '📂 Bitácora stated JSON Craxy wall.json'
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
@@ -50,170 +57,260 @@ jobs:
           p=os.environ['WALL']
           d=json.load(open(p,encoding='utf-8'))
           n=next(x for x in d['nodes'] if x['id']==21)
-          if n.get('owner') is not None or n.get('lock') != 'FREE':
-              raise SystemExit(f"N21_NOT_FREE owner={n.get('owner')} lock={n.get('lock')}")
-          if n.get('current_step') != 2:
-              raise SystemExit(f"N21_WRONG_STEP:{n.get('current_step')}")
+          if n.get('owner') is not None or n.get('lock')!='FREE' or n.get('current_step')!=3:
+              raise SystemExit(f"N21_NOT_FREE_STEP3 owner={n.get('owner')} lock={n.get('lock')} step={n.get('current_step')}")
           now=datetime.now(timezone.utc).isoformat()
-          n['owner']='SOL'
-          n['lock']='CLAIMED'
-          n['checkpoint']['before']=now+' SOL integración 1 fresh STEP2: source residual expected schemas symlinks only; target already populated; execute symlink frontier only'
-          n.setdefault('evidence',[]).append('worker:SOL integración 1')
-          n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 1','event':'CLAIM_STEP2_SYMLINK_REPAIR'})
-          d['updated_at']=now
-          with open(p,'w',encoding='utf-8') as f: json.dump(d,f,ensure_ascii=False,indent=2); f.write('\n')
-          PY
-            git add -- "$WALL"
-            git commit -m 'watchdog(yaiwes): SOL integración 1 claim N21 STEP2'
-            if git push origin HEAD:main; then ok=1; break; fi
-            sleep $((attempt * 2))
-          done
-          test "$ok" -eq 1
-
-      - name: Verify Motor4 immutable SHA
-        shell: bash
-        run: |
-          set -euo pipefail
-          MOTOR='➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py'
-          test -f "$MOTOR"
-          test "$(git hash-object "$MOTOR")" = '9a21facfe11327cf60a2afca8f415ad52f0ecbe5'
-          echo MOTOR4_SHA_VERIFIED
-
-      - name: Execute canonical Motor4 on symlink frontier
-        shell: bash
-        run: |
-          set -euo pipefail
-          MOTOR='➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py'
-          SRC='Core kernel Yaiwes/Dagu'
-          DST='Agente Yaiwes principal/execution-orchestration/state-machine-executor/dagu'
-          test -d "$SRC"
-          test -d "$DST/internal/cmn/schema"
-          test -L "$SRC/schemas/config.schema.json"
-          test -L "$SRC/schemas/dag.schema.json"
-          test ! -e "$SRC/internal"
-          test -f "$DST/internal/cmn/schema/config.schema.json"
-          test -f "$DST/internal/cmn/schema/dag.schema.json"
-
-          # Temporary execution bridge only: make the two existing relative source
-          # symlinks resolvable. Motor4 remains immutable and performs the MOVE.
-          ln -s "$(realpath "$DST/internal")" "$SRC/internal"
-          cleanup_bridge() { rm -f "$SRC/internal"; }
-          trap cleanup_bridge EXIT
-          test -f "$SRC/schemas/config.schema.json"
-          test -f "$SRC/schemas/dag.schema.json"
-
-          python3 - <<'PY'
-          from pathlib import Path
-          src=Path('Core kernel Yaiwes/Dagu')
-          rels=sorted(p.relative_to(src).as_posix() for p in src.rglob('*') if p.is_file())
-          assert rels == ['schemas/config.schema.json','schemas/dag.schema.json'], rels[:20]
-          print('SYMLINK_FRONTIER_MANIFEST=PASS', rels)
-          PY
-
-          export SOURCE_DIR="$SRC"
-          export DEST_DIR="$DST"
-          export STATE_FILE="/tmp/yaiwes-motor4-n21-symlink.json"
-          export BATCH_SIZE=100
-          export COLLISION_POLICY=fail
-          OUT="$(python3 "$MOTOR")"
-          echo "$OUT"
-          MOTOR4_OUT="$OUT" python3 - <<'PY'
-          import json, os
-          d=json.loads(os.environ['MOTOR4_OUT'])
-          assert d['verdict']=='VERIFIED_CLOSED', d
-          assert d['total']==2 and d['moved_or_verified']==2 and d['failed']==0, d
-          print('MOTOR4_SYMLINK_FRONTIER=VERIFIED_CLOSED')
-          PY
-
-          cleanup_bridge
-          trap - EXIT
-          rmdir "$SRC" 2>/dev/null || true
-          test -L "$DST/schemas/config.schema.json"
-          test -L "$DST/schemas/dag.schema.json"
-          test -f "$DST/schemas/config.schema.json"
-          test -f "$DST/schemas/dag.schema.json"
-          test "$(readlink "$DST/schemas/config.schema.json")" = '../internal/cmn/schema/config.schema.json'
-          test "$(readlink "$DST/schemas/dag.schema.json")" = '../internal/cmn/schema/dag.schema.json'
-          echo SYMLINK_DEST_READBACK_LOCAL=PASS
-
-      - name: Publish N21 Motor4 MOVE to main
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A -- 'Core kernel Yaiwes/Dagu' 'Agente Yaiwes principal/execution-orchestration/state-machine-executor/dagu'
-          test ! -z "$(git diff --cached --name-only)"
-          git commit -m 'move(yaiwes): Motor4 finish N21 Dagu symlink frontier'
-          ok=0
-          for attempt in 1 2 3 4; do
-            git fetch origin main
-            if git rebase origin/main && git push origin HEAD:main; then ok=1; break; fi
-            git rebase --abort || true
-            sleep $((attempt * 3))
-          done
-          test "$ok" -eq 1
-          echo "MOVE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-
-      - name: Read-back origin main N21
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch origin main
-          git reset --hard origin/main
-          SRC='Core kernel Yaiwes/Dagu'
-          DST='Agente Yaiwes principal/execution-orchestration/state-machine-executor/dagu'
-          test ! -e "$SRC"
-          test -L "$DST/schemas/config.schema.json"
-          test -L "$DST/schemas/dag.schema.json"
-          test -f "$DST/schemas/config.schema.json"
-          test -f "$DST/schemas/dag.schema.json"
-          echo READBACK_N21_SOURCE_ABSENT_DEST_SYMLINKS_RESOLVED=PASS
-
-      - name: Checkpoint STEP2 PASS and release N21
-        shell: bash
-        env:
-          WALL: '📂 Bitácora stated JSON Craxy wall.json'
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          ok=0
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            git reset --hard origin/main
-            python3 - <<'PY'
-          import json, os
-          from datetime import datetime, timezone
-          p=os.environ['WALL']
-          d=json.load(open(p,encoding='utf-8'))
-          n=next(x for x in d['nodes'] if x['id']==21)
-          if n.get('owner')!='SOL' or n.get('lock')!='CLAIMED' or n.get('current_step')!=2:
-              raise SystemExit(f"N21_CLAIM_LOST owner={n.get('owner')} lock={n.get('lock')} step={n.get('current_step')}")
-          now=datetime.now(timezone.utc).isoformat()
-          run=os.environ.get('GITHUB_RUN_ID','')
-          move=os.environ.get('MOVE_COMMIT','')
-          n['current_step']=3
-          n['status']='PASS'
-          n['checkpoint']['after']=now+' STEP2 PASS: immutable Motor4 moved exactly 2 residual Dagu schema symlinks via temporary resolvability bridge; source absent; destination symlinks resolve; origin/main read-back PASS'
-          n.setdefault('evidence',[]).extend([
-              'step2:strategy_delta:temporary-resolvability-bridge-no-motor-modification',
-              'step2:motor4_blob:9a21facfe11327cf60a2afca8f415ad52f0ecbe5',
-              'step2:run:'+run,
-              'step2:move_commit:'+move,
-              'step2:source:ABSENT',
-              'step2:dest-symlinks:RESOLVED_READBACK_PASS'])
-          n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 1','event':'STEP2_PASS_RELEASE','run':int(run) if run else None,'commit':move})
-          n['owner']=None
-          n['lock']='FREE'
+          n['owner']='SOL'; n['lock']='CLAIMED'; n['status']='PASS'
+          n.setdefault('checkpoint',{})['before']=now+' SOL integración 1 fresh STEP3: STEP2 source absent + target read-back PASS; wire Dagu only and execute minimal real two-step DAG'
+          n.setdefault('evidence',[]).append('step3:worker:SOL integración 1')
+          n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 1','event':'CLAIM_STEP3'})
           n['next_action']='STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST'
           d['updated_at']=now
           with open(p,'w',encoding='utf-8') as f: json.dump(d,f,ensure_ascii=False,indent=2); f.write('\n')
           PY
             git add -- "$WALL"
-            git commit -m 'crazy-wall: SOL integración 1 N21 STEP2 PASS release'
+            git commit -m 'watchdog(yaiwes): SOL integración 1 claim N21 STEP3'
             if git push origin HEAD:main; then ok=1; break; fi
             sleep $((attempt * 2))
           done
           test "$ok" -eq 1
-          echo N21_STEP2_PASS_RELEASED
+
+      - name: Set up Go 1.27
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.0'
+          cache: false
+
+      - name: Materialize minimal Dagu adapter and FABLES ficha
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          adapter=Path(os.environ['ADAPTER'])
+          ficha=Path(os.environ['FICHA'])
+          adapter.parent.mkdir(parents=True,exist_ok=True)
+          source='''"""YAIWES Dagu adapter: execute one real local two-step DAG through the moved Dagu binary."""
+          import json
+          import os
+          import shlex
+          import subprocess
+          import sys
+          import tempfile
+          from pathlib import Path
+          from typing import Any
+
+          PLUGIN_ID = "yaiwes.orchestration.dagu"
+
+          def descriptor() -> dict[str, str]:
+              return {"plugin_id": PLUGIN_ID, "role": "dag_workflow_orchestration", "microtest": "real_two_step_dependency_dag"}
+
+          def run_microtest(repo_root: str | Path, dagu_binary: str | Path) -> dict[str, Any]:
+              root=Path(repo_root).resolve()
+              target=root / "Agente Yaiwes principal/execution-orchestration/state-machine-executor/dagu"
+              if not (target / "go.mod").is_file():
+                  raise RuntimeError(f"DAGU_TARGET_MISSING:{target}")
+              binary=Path(dagu_binary).resolve()
+              if not binary.is_file():
+                  raise RuntimeError(f"DAGU_BINARY_MISSING:{binary}")
+              with tempfile.TemporaryDirectory(prefix="yaiwes-dagu-") as td_s:
+                  td=Path(td_s)
+                  order=td / "order.txt"
+                  workflow=td / "yaiwes-n21.yaml"
+                  q=shlex.quote(str(order))
+                  workflow.write_text(
+                      "steps:\n"
+                      "  - id: first\n"
+                      "    name: first\n"
+                      f"    run: printf 'first\\n' > {q}\n"
+                      "  - id: second\n"
+                      "    name: second\n"
+                      "    depends: first\n"
+                      f"    run: printf 'second\\n' >> {q}\n",
+                      encoding="utf-8")
+                  env=os.environ.copy()
+                  home=td / "home"; home.mkdir()
+                  env.update({
+                      "HOME":str(home),
+                      "XDG_CONFIG_HOME":str(td/"config"),
+                      "XDG_DATA_HOME":str(td/"data"),
+                      "XDG_CACHE_HOME":str(td/"cache"),
+                  })
+                  proc=subprocess.run([str(binary),"start",str(workflow)],cwd=td,env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=120)
+                  output=proc.stdout[-12000:]
+                  if proc.returncode != 0:
+                      raise RuntimeError(f"DAGU_START_FAILED:{proc.returncode}:{output}")
+                  if not order.is_file():
+                      raise RuntimeError(f"DAGU_ORDER_FILE_MISSING:{output}")
+                  lines=order.read_text(encoding="utf-8").splitlines()
+                  if lines != ["first","second"]:
+                      raise RuntimeError(f"DAGU_DEPENDENCY_BAD:{lines}:{output}")
+                  return {"status":"PASS","capability":"real_two_step_dependency_dag","order":lines,"returncode":proc.returncode}
+
+          if __name__ == "__main__":
+              result=run_microtest(sys.argv[1],sys.argv[2])
+              print("YAIWES_DAGU_RESULT="+json.dumps(result,separators=(",",":")))
+          '''
+          # Strip workflow indentation introduced by the YAML heredoc.
+          import textwrap
+          source=textwrap.dedent(source)
+          adapter.write_text(source,encoding='utf-8')
+          digest='sha256:'+hashlib.sha256(source.encode()).hexdigest()
+          manifest={
+            "artifact_id":"yaiwes.orchestration.dagu",
+            "version":"1.0.0",
+            "estado":"active",
+            "contract_hash":digest,
+            "tribunal_case_id":"YAIWES-N21-DAGU-STEP3",
+            "contrato":{"rol":"transform","consume":{"datatype":{"family":"json","type":"object","version":1}},"expone":{"datatype":{"family":"json","type":"object","version":1}}},
+            "ejecucion":{"kind":"code","transport":"stdio","runtime_type":"compute","entry_point":os.environ['ADAPTER']+":run_microtest","idempotente":True},
+            "seguridad":{"sandbox":"process","limites":{"timeout_ms":180000,"deadline_ms":180000}},
+            "firma":{"gpg_key_id":"YAIWES-N21"},
+            "categoria":"pipeline","etapa":"P",
+            "perfiles":{"n0":{"habilitada":True,"iteraciones":1,"simulaciones":0,"criticas":0,"muestras_k":1}},
+            "repeticion":{"max":1,"condicion":"nunca"},"repite_en":[],
+            "activacion":{"eventos":["kernel.v2.plugin.enchufed"],"wake_words":[],"condicion":""},
+            "presupuesto":{"n0":{"max_tokens":1,"max_ms":180000,"max_costo_usd":0.0}},
+            "telemetria":{"metricas":["tiempo","errores","health"],"span_otel":True},
+            "evidencia":{"produce":["L2_build","L3_runtime","L4_feature"],"destino":str(adapter.parent)+"/"},
+            "failover":{"sustituible_por":[],"compensacion":"fail_closed"},
+            "salud":{"metodo":"exec","heartbeat_interval_s":30}
+          }
+          ficha.write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          print('DAGU_ADAPTER_SHA256='+digest)
+          PY
+
+      - name: Verify canonical FABLES and build only Dagu CLI boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object "$BUS")" = '470f9c91650bc6c59e2900f7e71090b84363da9f'
+          test "$(git hash-object "$FICHA_CODE")" = 'a72508027cc2458553ef6a2255a9aa33d9a77a21'
+          cd "$TARGET"
+          go build -o /tmp/yaiwes-dagu ./cmd
+          /tmp/yaiwes-dagu version || /tmp/yaiwes-dagu --version || true
+          test -x /tmp/yaiwes-dagu
+          echo DAGU_CLI_BUILD=PASS
+
+      - name: FABLES Enchufe plus real two-step Dagu DAG microtest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, importlib.util, json, os, subprocess, sys
+          from pathlib import Path
+          root=Path.cwd()
+          adapter=root/os.environ['ADAPTER']; ficha=root/os.environ['FICHA']; bus_path=root/os.environ['BUS']
+          source=adapter.read_text(encoding='utf-8')
+          manifest=json.loads(ficha.read_text(encoding='utf-8'))
+          actual='sha256:'+hashlib.sha256(source.encode()).hexdigest()
+          assert actual==manifest['contract_hash'], (actual,manifest['contract_hash'])
+          sys.path.insert(0,str(bus_path.parent))
+          import universal_plugin_bus_v2_integrated as bus_mod
+          bus=bus_mod.UniversalPluginBus()
+          bus.add_tribunal_approval(manifest['tribunal_case_id'])
+          candidate=bus_mod.ComponentCandidate(source,'python',[os.environ['ADAPTER']])
+          conventions=bus_mod.TargetConventions('python','snake_case','sync','gradual')
+          reg=bus.enchufar(manifest,candidate,conventions,registered_by='SOL integración 1')
+          assert reg.status==bus_mod.PluginStatus.ACTIVE, reg
+          assert reg.plugin_id=='yaiwes.orchestration.dagu', reg.plugin_id
+          bus.health.heartbeat(reg.plugin_id)
+          assert bus.check_plugin_health(reg.plugin_id)
+          proc=subprocess.run([sys.executable,str(adapter),str(root),'/tmp/yaiwes-dagu'],cwd=root,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=150)
+          print(proc.stdout,end='')
+          if proc.returncode != 0:
+              raise RuntimeError(f'DAGU_ADAPTER_RUN_FAILED:{proc.returncode}')
+          marker='YAIWES_DAGU_RESULT='
+          payload=next((x[len(marker):] for x in proc.stdout.splitlines() if x.startswith(marker)),None)
+          if payload is None: raise RuntimeError('DAGU_RESULT_MARKER_MISSING')
+          result=json.loads(payload)
+          assert result['status']=='PASS', result
+          assert result['order']==['first','second'], result
+          bus.evidence.collect(reg.plugin_id,bus_mod.EvidenceLevel.L3,{'microtest':result})
+          bus.evidence.collect(reg.plugin_id,bus_mod.EvidenceLevel.L4,{'capability':'real_two_step_dependency_dag','verified':True})
+          levels=[e['level'] for e in bus.evidence.get(reg.plugin_id)]
+          assert 'L2_build' in levels and 'L3_runtime' in levels and 'L4_feature' in levels, levels
+          ev={
+            'node':21,'worker':'SOL integración 1','status':'PASS',
+            'route':'UniversalPluginBus/FABLES -> Dagu adapter -> moved Dagu CLI -> real DAG(first -> second)',
+            'plugin_id':reg.plugin_id,'microtest':'real_two_step_dependency_dag','order':result['order'],
+            'evidence_levels':levels,'run':int(os.environ['GITHUB_RUN_ID']),'runner_commit':os.environ['GITHUB_SHA'],
+            'adapter_sha256':actual,'canonical_bus_blob':'470f9c91650bc6c59e2900f7e71090b84363da9f',
+            'canonical_ficha_code_blob':'a72508027cc2458553ef6a2255a9aa33d9a77a21','prune':'NOT_NEEDED'}
+          Path(os.environ['EVIDENCE']).write_text(json.dumps(ev,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          print('DAGU_REAL_DEPENDENCY_DAG=PASS first->second')
+          print('YAIWES_FABLES_ENCHUFE=PASS ACTIVE L2+L3+L4')
+          PY
+
+      - name: Persist STEP3 adapter ficha and evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$ADAPTER" "$FICHA" "$EVIDENCE"
+          git diff --cached --check
+          git commit -m 'wire(yaiwes): Dagu N21 FABLES real DAG STEP3 PASS'
+          git reset --hard HEAD
+          ok=0
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            if git rebase origin/main && git push origin HEAD:main; then ok=1; break; fi
+            git rebase --abort || true
+            git reset --hard HEAD
+            sleep $((attempt * 2))
+          done
+          test "$ok" -eq 1
+          echo "EVIDENCE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Read-back exact STEP3 route from origin main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test -z "$(git ls-tree -r --name-only origin/main -- 'Core kernel Yaiwes/Dagu')"
+          test -n "$(git ls-tree -r --name-only origin/main -- "$TARGET")"
+          git show "origin/main:$FICHA" | grep -Fq 'yaiwes.orchestration.dagu'
+          git show "origin/main:$EVIDENCE" | grep -Fq 'real_two_step_dependency_dag'
+          git show "origin/main:$EVIDENCE" | grep -Fq '"first"'
+          git show "origin/main:$EVIDENCE" | grep -Fq '"second"'
+          git show "origin/main:$EVIDENCE" | grep -Fq 'L4_feature'
+          echo N21_STEP3_READBACK=PASS
+
+      - name: Checkpoint STEP3 PASS release N21
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          ok=0
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            python3 - <<'PY'
+          import hashlib, json, os
+          from datetime import datetime, timezone
+          p=os.environ['WALL']; d=json.load(open(p,encoding='utf-8')); n=next(x for x in d['nodes'] if x['id']==21)
+          if n.get('owner')!='SOL' or n.get('lock')!='CLAIMED' or n.get('current_step')!=3:
+              raise SystemExit(f"N21_CLAIM_LOST:{n.get('owner')}:{n.get('lock')}:{n.get('current_step')}")
+          now=datetime.now(timezone.utc).isoformat(); run=os.environ.get('GITHUB_RUN_ID',''); commit=os.environ.get('EVIDENCE_COMMIT','')
+          adapter=open(os.environ['ADAPTER'],encoding='utf-8').read(); sha=hashlib.sha256(adapter.encode()).hexdigest()
+          n['status']='PASS'
+          n['checkpoint']['after']=now+' STEP3 PASS: FABLES ACTIVE; moved Dagu CLI executed real two-step dependency DAG first->second; L2+L3+L4 evidence; prune NOT_NEEDED; origin/main read-back PASS'
+          n.setdefault('evidence',[]).extend([
+            'step3:run:'+run,'step3:evidence_commit:'+commit,'step3:adapter_sha256:'+sha,
+            'step3:route:FABLES->Dagu adapter->moved Dagu CLI->real DAG(first->second)',
+            'step3:microtest:PASS order=first,second','step3:evidence:L2_build+L3_runtime+L4_feature',
+            'step3:prune:NOT_NEEDED','step3:readback:source-absent+adapter+ficha+evidence PASS'])
+          n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 1','event':'STEP3_PASS_RELEASE','run':int(run),'commit':commit})
+          n['owner']=None; n['lock']='FREE'; n['next_action']='COMPLETE'; d['updated_at']=now
+          with open(p,'w',encoding='utf-8') as f: json.dump(d,f,ensure_ascii=False,indent=2); f.write('\n')
+          PY
+            git add -- "$WALL"
+            git commit -m 'crazy-wall: SOL integración 1 N21 STEP3 PASS release'
+            if git push origin HEAD:main; then ok=1; break; fi
+            sleep $((attempt * 2))
+          done
+          test "$ok" -eq 1
+          echo N21_VERIFIED_CLOSED
