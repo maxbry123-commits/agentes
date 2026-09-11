@@ -1,0 +1,44 @@
+{
+  "contract": "tel.workflow/v4",
+  "gap": "G-013",
+  "component_contract": "yaiwes.truth_reconciliation/v1",
+  "status": "IMPLEMENTED_VERIFIED_LOCAL_PENDING_CANONICAL_RECONCILIATION",
+  "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
+  "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/source_truth_reconciler.py",
+  "module_blob": "9c188b2d7acdf63c94c46c46158f54c6ee55eef5",
+  "tests": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_source_truth_reconciler.py",
+  "tests_blob": "79a4e3b3f642bd115184d4dbef169cdd1eb5bc6b",
+  "local_equivalent_test": {
+    "result": "PASS_5_OF_5",
+    "runner": "python -m pytest -q on exact authored module/test content in isolated temporary directory",
+    "cases": [
+      "consistent truths",
+      "drift detection plus exact reconciliation plan",
+      "STATE/CHECKPOINT anchor conflict fails closed",
+      "missing required truth fails closed",
+      "JSON/Markdown checkpoint parsing"
+    ]
+  },
+  "repo_test_execution": "NOT_CLAIMED",
+  "github_actions_execution": "NOT_CLAIMED",
+  "external_provider_execution": "NOT_CLAIMED",
+  "write_authority": false,
+  "policy": {
+    "anchors": ["STATE", "CHECKPOINT"],
+    "required_truths": ["README", "STATE", "CHECKPOINT", "BITACORA", "GAPS", "HANDOFF", "PLAN", "RECOVERY"],
+    "anchor_conflict": "FAIL_CLOSED_CONFLICT",
+    "missing_truth": "FAIL_CLOSED_MISSING_TRUTH",
+    "document_drift": "DRIFT_RECONCILE_REQUIRED",
+    "consistent": "CONSISTENT"
+  },
+  "fresh_drift_observed_before_implementation": {
+    "STATE": "WFLOOP-CODE-GRAPH-20260911-0009",
+    "CHECKPOINT": "WFLOOP-CODE-GRAPH-20260911-0009",
+    "README": "WFLOOP-CODE-GRAPH-20260911-0008",
+    "HANDOFF": "WFLOOP-CODE-GRAPH-20260911-0008",
+    "PLAN": "WFLOOP-CODE-GRAPH-20260911-0008",
+    "RECOVERY": "WFLOOP-CODE-GRAPH-20260911-0008"
+  },
+  "closure_decision": "DO_NOT_CLOSE_UNTIL_ALL_CANONICAL_TRUTHS_ARE_RECONCILED_AND_READ_BACK",
+  "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING"
+}
