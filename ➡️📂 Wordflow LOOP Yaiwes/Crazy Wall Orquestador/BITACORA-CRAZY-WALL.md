@@ -287,3 +287,17 @@ Snapshot de implementación y prueba: `31ebeee2130b71976f9a655ff9ae3bee3dd8c3e3`
 - Evidence: `wordflow_loop/evidence/G014_AGENT_MEMORY_PREINJECTION_2026-09-11.json`. TASK-NODES actualizado mediante SHA/CAS a `G-014 PASS`, versión 3.
 
 Resultado: `G-014 CLOSED_VERIFIED_LOCAL`. `AUTH_PROVIDER_TEST_PENDING` y ejecución real de agentes remotos permanecen abiertos.
+
+
+# ASTRA-GPT-LOOP — CIERRE LOCAL G-015 — 2026-09-11 22:57Z
+
+Nodo independiente reclamado y cerrado por `ASTRA_GPT_LOOP`; G-013 de SOL_1 y G-018 de SOL_2 no fueron modificados.
+
+- GAP comprobado: `runtime/src/core/goals12.py` solo evaluaba 12 gates genéricos booleanos; no modelaba separadamente los 12 objetivos de entrada y 12 de salida literales del Director ni exigía evidencia por cada control.
+- Corrección compatible: se conservaron `GOALS12/evaluate_goals12` y se añadió contrato `yaiwes.goals12/v1`, constantes literales input/output, runner determinista y hash SHA-256 canónico.
+- Gates ejecutables: 12 input + 12 output + Council12 + simulaciones NORMAL/LIMIT/ADVERSARIAL + mínimo 3 refutaciones + cross-check; cada elemento exige `evidence_refs`. El resultado mantiene `execution_authorized=false`.
+- Read-back de main: módulo blob `480172f7c773e94d28904f6ee45dc1bfb1e718fe`; schema blob `89971fdb8ea2bf984fa9348cc1b10ab6cfb3ce1c`; tests blob `82f8e26a2e4aee9667733796cf3982eea4b8dc20`.
+- Ejecución Python local real: `PASS_6_OF_6`, incluidas pruebas negativas, binding de evidencia/hash y compatibilidad del evaluador anterior. `pytest` completo no ejecutado porque el paquete no está instalado.
+- Evidence: `wordflow_loop/evidence/G015_GOALS12_INPUT_OUTPUT_RUNNER_2026-09-11.json`, commit `0414a047d92b4e6bffc07c060463dbfe3ca14392`; TASK-NODES cierre SHA/CAS commit `15ca3401c043b733c1d44ed9105631b6d7125de6`.
+
+Resultado: `G-015 CLOSED_VERIFIED_LOCAL`. No se reclama PASS de proveedores externos, pytest global ni cierre global del Wordflow.
