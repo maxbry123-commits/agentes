@@ -15,6 +15,7 @@ jobs:
         with:
           sparse-checkout: |
             Agente Yaiwes principal/execution-orchestration/classifier-scheduler/workalendar
+            Agente Yaiwes principal/execution-orchestration/classifier-scheduler/classifier_hook.py
           sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v5
         with:
@@ -24,14 +25,21 @@ jobs:
         run: |
           pip install python-dateutil lunardate convertdate pyluach
           pip install -e .
-      - name: Microtest is_working_day
-        working-directory: Agente Yaiwes principal/execution-orchestration/classifier-scheduler/workalendar
+      - name: Microtest adapter + port + hook gate
+        working-directory: Agente Yaiwes principal/execution-orchestration/classifier-scheduler
         run: |
           python - <<'PY'
-          from adapter import is_working_day
-          thu = is_working_day('2026-09-10')
-          sat = is_working_day('2026-09-12')
-          assert thu['working'] is True, thu
-          assert sat['working'] is False, sat
-          print('N25_MICROTEST_PASS', thu, sat)
+          import importlib.util
+          from pathlib import Path
+          root = Path('workalendar')
+          spec = importlib.util.spec_from_file_location('n25_port', root/'yaiwes_workalendar_port.py')
+          port = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(port)
+          thu = port.working_day_gate({'schedule_date':'2026-09-10'})
+          sat = port.working_day_gate({'schedule_date':'2026-09-12'})
+          assert thu['allowed'] is True, thu
+          assert sat['allowed'] is False, sat
+          src = Path('classifier_hook.py').read_text()
+          assert 'working_day_gate' in src and 'yaiwes_workalendar_port' in src
+          print('N25_HOOK_PATH_PASS', thu, sat)
           PY

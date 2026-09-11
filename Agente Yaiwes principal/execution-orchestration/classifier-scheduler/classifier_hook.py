@@ -1,26 +1,20 @@
 """
 Punto de decision: cuando un workflow debe abrir una instancia del motor
 de programacion, y con que perfil, segun la complejidad de la tarea.
-
-Esto vive conceptualmente en task_classifier + reasoning-kernel; se
-entrega como funcion pura para integrarla en el classifier real sin
-rediseñar el resto del loop. Si el pool esta lleno, NO se detiene el
-sistema: devuelve None para que el llamador decida encolar o probar
-otro engine_binding (fallback-chain-resolver).
 """
+
+from pathlib import Path
+import importlib.util
 
 from instance_pool import ConcurrencyCapExceeded, InstancePoolManager
 from programming_instance import ApiSlot, ProgrammingInstance
-
 
 TRIVIAL = "trivial"
 MEDIA = "media"
 ALTA = "alta"
 CRITICA = "critica"
-
 BLAST_RADIUS_ALTA = 5
 BLAST_RADIUS_MEDIA = 2
-
 _PROFILE_BY_COMPLEXITY = {
     TRIVIAL: "fast",
     MEDIA: "fast",
@@ -28,19 +22,21 @@ _PROFILE_BY_COMPLEXITY = {
     CRITICA: "strict_forensic",
 }
 
+def _workalendar_port():
+    p = Path(__file__).resolve().parent / "workalendar" / "yaiwes_workalendar_port.py"
+    spec = importlib.util.spec_from_file_location("n25_workalendar_port", p)
+    mod = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    spec.loader.exec_module(mod)
+    return mod
+
+def working_day_gate(task: dict) -> dict:
+    return _workalendar_port().working_day_gate(task)
 
 def requires_programming(task: dict) -> bool:
-    """Determina si una tarea necesita el motor de programacion de code.
-
-    Regla minima explicita, no heuristica oculta: la tarea debe declarar
-    kind == 'code'. Ajustar aqui si task_classifier usa otra convencion.
-    """
     return task.get("kind") == "code"
 
-
 def classify_complexity(task: dict) -> str:
-    """Clasifica complejidad segun blast_radius y criticality_tag ya
-    definidos en el task_classifier existente del repo."""
     blast_radius = task.get("estimated_blast_radius", 1)
     critical = task.get("criticality_tag", False)
     if critical:
@@ -51,7 +47,6 @@ def classify_complexity(task: dict) -> str:
         return MEDIA
     return TRIVIAL
 
-
 def dispatch_to_engine(
     task: dict,
     tenant_id: str,
@@ -59,15 +54,13 @@ def dispatch_to_engine(
     api_slot: ApiSlot,
     engine_binding: str,
     pool: InstancePoolManager,
-) -> ProgrammingInstance | None:
-    """Decide y abre una instancia si la tarea lo requiere.
-
-    Devuelve None si la tarea no es de programacion (el workflow sigue su
-    propio camino normal), o si el pool esta lleno (el llamador decide el
-    siguiente paso: encolar, reintentar, o probar otro engine_binding).
-    """
+):
     if not requires_programming(task):
         return None
+    if task.get("schedule_date"):
+        gate = working_day_gate(task)
+        if not gate.get("allowed"):
+            return None
     complexity = classify_complexity(task)
     profile = _PROFILE_BY_COMPLEXITY[complexity]
     instance = ProgrammingInstance(
