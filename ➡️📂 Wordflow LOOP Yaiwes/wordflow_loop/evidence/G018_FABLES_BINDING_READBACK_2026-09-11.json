@@ -1,0 +1,50 @@
+{
+  "gap": "G-018",
+  "owner": "SOL_1",
+  "status": "IMPLEMENTED_READBACK_VERIFIED_PENDING_REPO_TEST",
+  "contract": "yaiwes.fables_binding/v1",
+  "canonical_binding_id": "UNIVERSAL_PLUGIN_BUS",
+  "source_proof": {
+    "bus_original_upload_sha256": "5e4595a86bfd68a3c1fde70ba614ce7b9ec6ea4d6c867912e836cca33c626fc3",
+    "ficha_original_upload_sha256": "759d0d7855d8df106462b966bfc4ee543f24a3e789a27048f253159b58ff8d1a",
+    "bus_adapted_blob": "865327d6f5d63bc735aeec7338fa2e7bfb810e23",
+    "ficha_adapted_blob": "a5ec565f63dccd6d67f33ddf35458b33d88e865c"
+  },
+  "binding_gate": {
+    "path": "runtime/src/core/fables_binding_gate.py",
+    "blob": "516e639fc64d048a6bc922a4021c933985867a4b",
+    "registry_binding_verified_by_contract": true,
+    "ficha_v2_verified_by_contract": true,
+    "dynamic_exec_candidate_rejected_by_ast_gate": true,
+    "execution_authorized": false,
+    "deployment_authorized": false
+  },
+  "generation_policy": {
+    "path": "runtime/src/core/code_generation_policy.py",
+    "blob": "384633550b995aae1187806017fb16b9411f0eed",
+    "literal_only_binding_removed": true,
+    "calls_verify_canonical_fables_binding": true,
+    "execution_authorized": false,
+    "deployment_authorized": false
+  },
+  "test": {
+    "path": "runtime/tests/test_fables_binding_gate.py",
+    "blob": "2729c653ba4b945b1e3ca20017bbdf1ae5669306",
+    "commit": "845be9efa9f6d336e18875e91be5e05ef8207220",
+    "assertions_cover": [
+      "exact_source_provenance",
+      "canonical_registry_binding",
+      "Ficha_v2",
+      "unsafe_dynamic_execution_rejection",
+      "generation_policy_uses_verified_binding",
+      "execution_and_deployment_remain_fail_closed"
+    ],
+    "repo_pytest_execution": "NOT_CLAIMED"
+  },
+  "github_actions": {
+    "runs_on_test_commit": 6,
+    "relevance": "GLOBAL_WORKFLOWS_NOT_UNIT_TEST_RUNNER",
+    "decision": "DO_NOT_TREAT_GLOBAL_FAILURES_AS_G018_TEST_FAILURE_OR_PASS"
+  },
+  "closure_decision": "DO_NOT_CLOSE_UNTIL_REPRODUCIBLE_TEST_EXECUTION_OR_EQUIVALENT_LOCAL_EXECUTION_IS_EVIDENCED"
+}
