@@ -1,61 +1,27 @@
 {
   "schema": "yaiwes.component-integration-state/v3",
-  "updated_at": "2026-09-10",
+  "updated_at": "2026-09-11T02:32:00Z",
   "mode": "FAIL_CLOSED_3_STEPS_MULTI_AI",
   "source_of_truth_order": ["physical_repo_state", "fresh_readback_from_main", "runtime_test_evidence", "crazy_wall", "handoff", "inference"],
   "repository": "maxbry123-commits/agentes",
   "physical_target_root": "Agente Yaiwes principal/",
   "intake_root": "Core kernel Yaiwes/",
   "handoff": "Readme arquitectura Yaiwes/HANDOFF-INTEGRACION-1-20.md",
-  "recovery_patch": "PARCHE-RECUPERACION-CORE-INTEGRACION-WATCHDOG.md",
   "crazy_wall": "📂 Bitácora stated JSON Craxy wall.json",
-  "watchdog_plan": "Core kernel Yaiwes/Crack wall bitácora stated JSON/PLAN-WATCHDOG-PROGRAMMING-V2.json",
   "components_total": 27,
-  "contract": {
-    "steps": ["STEP_1_DESTINATION_ABC_AND_MOVE", "STEP_2_PRUNE_IF_NEEDED_AND_FABLES_WIRE", "STEP_3_REAL_TEST"],
-    "no_step4": true,
-    "gap_policy": "repair_same_node_in_owning_step_then_repeat",
-    "abc_is_decision_not_phase": true,
-    "fables_mandatory_step2": true,
-    "prune_only_if_needed": true,
-    "close_requires_real_test_evidence": true
-  },
-  "abc": {
-    "A": "autonomous agent/subagent with own goal/lifecycle/tools/context/decisions",
-    "B": "scheduler/DAG/workflow/queue/workers/durable/multi-step/loop engine",
-    "C": "modular capability such as schema/policy/storage/memory/routing/research/sandbox/validator/tool"
-  },
-  "original_20": {
-    "move_status": "VERIFIED_CLOSED_20_OF_20",
-    "move_run": 34445710787,
-    "move_job": 102771861495,
-    "move_commit": "a3cf705f58f95cce65d1c230cb00abcab39732b2",
-    "motor4_blob": "9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
-    "step3_revalidation_nodes": [1,2,3,4,5],
-    "step2_fables_nodes": [6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
-  },
+  "contract": {"steps":["STEP_1_ANALYZE_ABC_DESTINATION","STEP_2_MOVE_WITH_CANONICAL_MOTOR","STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"],"no_step4":true,"gap_policy":"repair exact GAP; external/runner FLAG -> release and continue safe assigned node","fables_inside_step3":true,"prune_only_if_needed":true,"close_requires_real_test_evidence":true},
+  "original_20": {"move_status":"VERIFIED_CLOSED_20_OF_20","move_run":34445710787,"move_job":102771861495,"move_commit":"a3cf705f58f95cce65d1c230cb00abcab39732b2","motor4_blob":"9a21facfe11327cf60a2afca8f415ad52f0ecbe5"},
   "new_root_components": [
-    {"node":21,"name":"Dagu","source":"Core kernel Yaiwes/Dagu/","state":"STEP1_PENDING_VERIFY_DESTINATION"},
-    {"node":22,"name":"Hatchet","source":"Core kernel Yaiwes/Hatchet/","state":"STEP1_PENDING_VERIFY_DESTINATION"},
-    {"node":23,"name":"PostgreSQL","source":"Core kernel Yaiwes/PostgreSQL/","state":"STEP1_PENDING_VERIFY_DESTINATION"},
-    {"node":24,"name":"Redis","source":"Core kernel Yaiwes/Redis/","state":"STEP1_PENDING_VERIFY_DESTINATION"},
-    {"node":25,"name":"Workalendar","source":"Core kernel Yaiwes/Workalendar/","state":"STEP1_PENDING_VERIFY_DESTINATION"},
-    {"node":26,"name":"gVisor","source":"Core kernel Yaiwes/gVisor/","state":"STEP1_PENDING_VERIFY_DESTINATION"},
-    {"node":27,"name":"pgvector","source":"Core kernel Yaiwes/pgvector/","state":"STEP1_PENDING_VERIFY_DESTINATION"}
+    {"node":21,"name":"Dagu","state":"GAP_STEP2_SYMLINK_MOTOR4_LIMITATION"},
+    {"node":22,"name":"Hatchet","state":"COMPLETE"},
+    {"node":23,"name":"PostgreSQL","state":"GAP_STEP2_MOTOR_INVOCATION_PERSISTENCE"},
+    {"node":24,"name":"Redis","state":"COMPLETE"},
+    {"node":25,"name":"Workalendar","state":"COMPLETE","evidence":{"motor4_move_commit":"a97b5d8804ed76996027dbb254af3ad70b9f4c80","runner_blob":"95dc147d9e987c14aa6a562321a9b47fe6fcbc0f","source_readback":404,"target_readme_blob":"eba08068458f2a058c041d1b4027af948602dde3","verify_run":34545474663,"verify_job":103097034441,"microtest":"working_day_gate 2026-09-10=True;2026-09-12=False"}},
+    {"node":26,"name":"gVisor","state":"GAP_STEP2_MOTOR_INVOCATION"},
+    {"node":27,"name":"pgvector","state":"GAP_STEP2_MOTOR_INVOCATION"}
   ],
-  "duplicates_not_new_nodes": ["APScheduler", "Celery"],
-  "fables": {
-    "status": "MANDATORY_STEP2_PENDING_REPO_MATERIALIZATION",
-    "part1": {"file":"universal_plugin_bus_v2_integrated.py","entry":"UniversalPluginBus.enchufar","sha256":"5e4595a86bfd68a3c1fde70ba614ce7b9ec6ea4d6c867912e836cca33c626fc3"},
-    "part2": {"file":"ficha_contract_v2.py","entry":"validar","sha256":"759d0d7855d8df106462b966bfc4ee543f24a3e789a27048f253159b58ff8d1a"}
-  },
-  "collaboration": {
-    "agents": ["GROK", "SOL", "ASTRA"],
-    "coordination": "one_component_one_node",
-    "claim": "FREE -> owner+CLAIMED+checkpoint.before",
-    "release": "checkpoint.after+evidence+advance -> FREE",
-    "rule": "never edit a node claimed by another owner"
-  },
-  "counts": {"step1_pending":7,"step2_pending":15,"step3_revalidation":5,"closed_under_current_contract":0},
-  "next_action": "read recovery+handoff+crazy wall from main, claim one FREE node, execute only its current_step"
+  "counts": {"closed_under_current_contract":23,"gap_step2":4},
+  "publish_flags": [{"artifact":"📂 Bitácora stated JSON Craxy wall.json","node":25,"type":"WORKFLOW_PUBLISH_FAIL","cause":"connector payload limit truncates full-file replacement; corrupt provisional blob validated and never committed","component_state":"PASS"}],
+  "sol_integracion_2_queue": [27,26],
+  "next_action": "N27 fresh readback -> CLAIM only if Crazy Wall write is safely persisted -> current_step 2; then N26."
 }
