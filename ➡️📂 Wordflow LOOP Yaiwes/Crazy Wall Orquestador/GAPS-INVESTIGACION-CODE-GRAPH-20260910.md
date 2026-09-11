@@ -6,9 +6,8 @@ Fecha de apertura: 2026-09-10.
 Regla: **todo punto inicia como GAP hasta existir evidencia de investigación + decisión arquitectónica + implementación cuando corresponda + test/read-back + actualización de STATE/CHECKPOINT/BITÁCORA/HANDOFF/README**.
 
 ## G-001 — Raíz anclada de CODE GRAPH
-Estado: `GAP_OPEN`.
-Crear dentro del Wordflow una raíz de trabajo para recibir archivos/componentes y construir un grafo cableado del proceso completo. Debe representar archivos, requisitos, capacidades, tareas, dependencias, destinos arquitectónicos, agentes, sandbox, validaciones, evidencias, deployment y estados del LOOP. No puede crear un segundo orquestador aislado; debe integrarse al contrato y a la persistencia existentes.
-Cierre: raíz canónica + contrato de nodos/aristas + serialización determinista + test.
+Estado: `CLOSED_VERIFIED_LOCAL`.
+Raíz canónica: `wordflow_loop/code_graph/`. Implementación: `runtime/src/core/code_graph_workspace.py` blob `6fe57e6c4233532623a8de589892de2d28897cb9`; tests `runtime/tests/test_code_graph_workspace.py` blob `c7f00e3155d22c559907d50af31bf95403a5eb68`; README workspace blob `2462785b8ee5a5d358d94bd5f5e504ffeec1ee17`; evidence `wordflow_loop/evidence/G001_CODE_GRAPH_WORKSPACE_2026-09-10.json`. Define nodos/aristas del proceso, serialización JSON canónica, SHA-256, validación fail-closed y proyección de `depends_on` al manifest existente de `DAGEngine`. No crea un segundo orquestador ni fuente de verdad paralela. Simulación local equivalente: `PASS_5_OF_5_ASSERTIONS`; `repo_pytest_execution=NOT_CLAIMED`.
 
 ## G-002 — Ask Council + auditoría del archivo de entrada
 Estado: `GAP_OPEN`.
