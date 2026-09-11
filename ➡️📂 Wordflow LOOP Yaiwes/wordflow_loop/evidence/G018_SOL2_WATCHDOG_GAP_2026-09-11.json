@@ -8,7 +8,7 @@
     "task_nodes_status": "CLAIMED",
     "claimed_by": "SOL_2",
     "step_1_research": "RUNNING",
-    "concurrent_foreign_node": "G-030 PASS by SOL_1; no collision"
+    "concurrent_foreign_node": "G-009 CLAIMED by SOL_1; G-030 PASS by SOL_1; no collision"
   },
   "research": {
     "canonical_binding_id": "UNIVERSAL_PLUGIN_BUS",
@@ -46,12 +46,22 @@
     "local_clone_attempt": "BLOCKED_DNS_COULD_NOT_RESOLVE_GITHUB_COM",
     "closure_decision": "DO_NOT_CLOSE_G018"
   },
+  "fresh_main_readback": {
+    "main_head": "1130024fab313c074e3610acfadb331175e52732",
+    "main_head_message": "audit: Astra records reproduced G013 anchor drift without changing Sol nodes",
+    "handoff_blob": "d1635f5d7dd075e85af59a0bf7fa21a4d2cf4f1d",
+    "binding_gate_blob": "516e639fc64d048a6bc922a4021c933985867a4b",
+    "test_blob": "2729c653ba4b945b1e3ca20017bbdf1ae5669306",
+    "g018_claim_preserved": true
+  },
   "progress_this_cycle": [
-    "fresh HANDOFF confirms G-018 is next 1x1 node",
-    "fresh TASK-NODES confirms G-018 remains claimed_by SOL_2",
-    "fresh source read-back confirms binding gate, Ficha v2, canonical bus and test blobs unchanged",
-    "GitHub Actions lookup for the exact test commit found six push runs and no successful run; no reproducible G-018 pytest evidence exists yet"
+    "fresh HANDOFF still selects G-018 as the next 1x1 node",
+    "fresh TASK-NODES still assigns G-018 exclusively to SOL_2",
+    "fresh main advanced due Astra G013 audit without modifying Sol nodes",
+    "fresh source read-back confirms binding gate and G-018 test blobs unchanged",
+    "fresh local pytest attempt could not clone GitHub because the execution container has no GitHub DNS/network access",
+    "the six existing push workflows on the test commit still provide no successful G-018 unit-test execution"
   ],
-  "next_action": "Execute runtime/tests/test_fables_binding_gate.py reproducibly against current main and capture PASS/FAIL. No motor is required unless acquisition/copy/move becomes necessary.",
+  "next_action": "Execute runtime/tests/test_fables_binding_gate.py in a reproducible runner with access to current main and capture PASS/FAIL. Keep G-018 claimed by SOL_2 and do not unblock G-006 until that evidence exists.",
   "rules": ["NO_LFS", "NO_FORCE", "NO_PARALLEL_BUS", "FAIL_CLOSED"]
 }
