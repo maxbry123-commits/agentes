@@ -1,0 +1,40 @@
+{
+  "contract": "tel.workflow/v4",
+  "gap": "G-004",
+  "status": "CLOSED_VERIFIED_LOCAL",
+  "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/placement_classifier.py",
+  "module_blob": "69698ad30ba1903e0780efcea1952a3737aeb23e",
+  "tests": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_placement_classifier.py",
+  "tests_blob": "bf1c26f49edf668ee05584b2a357324af0fc4d8d",
+  "decision_space": [
+    "A_KERNEL",
+    "B_EXTENSION_KERNEL",
+    "C_REASONING_LAYER",
+    "D_WORDFLOW",
+    "E_POOL",
+    "F_TOOLS",
+    "G_OTHER",
+    "PLACEMENT_REVIEW_REQUIRED"
+  ],
+  "criteria": [
+    "privilege",
+    "lifecycle",
+    "execution_type",
+    "statefulness",
+    "latency",
+    "kernel_invariant",
+    "reasoning",
+    "agent_chain",
+    "fanout",
+    "reusable_tool",
+    "external_io",
+    "explicit_other_justification"
+  ],
+  "fail_closed": {
+    "weak_or_conflicting_signals": "PLACEMENT_REVIEW_REQUIRED",
+    "other_without_location_and_justification": "PLACEMENT_REVIEW_REQUIRED"
+  },
+  "local_equivalent_microtest": "PASS_10_OF_10_ASSERTIONS",
+  "github_actions_or_external_runtime": "NOT_CLAIMED",
+  "external_auth": "AUTH_PROVIDER_TEST_PENDING"
+}
