@@ -1,0 +1,54 @@
+{
+  "contract": "tel.workflow/v4",
+  "gap": "G-002",
+  "status": "CLOSED_VERIFIED_LOCAL",
+  "scope": "maxbry123-commits/agentes/➡️📂 Wordflow LOOP Yaiwes/",
+  "implementation": {
+    "module": "runtime/src/core/file_audit_contract.py",
+    "module_blob": "e6624c0b39421a01d54cf0615920073c5dd1ee0f",
+    "tests": "runtime/tests/test_file_audit_contract.py",
+    "tests_blob": "d490a7e15205c37a0f476e6e4c0de7f9429f36c6"
+  },
+  "capabilities": [
+    "deterministic source descriptor validation",
+    "format detection for Python/JSON/YAML/Markdown/text",
+    "Python AST architecture/symbol/dependency extraction",
+    "Markdown section extraction",
+    "structured requirements output",
+    "dangerous-call and suspicious-text risk gates",
+    "Ask Council schema normalization",
+    "Council output advisory only; never execution authority",
+    "canonical JSON serialization",
+    "SHA-256 source fingerprint"
+  ],
+  "fail_closed": [
+    "SOURCE_DESCRIPTOR_INCOMPLETE",
+    "SOURCE_FILENAME_MUST_BE_BASENAME",
+    "AUDIT_TEXT_REQUIRED",
+    "INVALID_JSON",
+    "PYTHON_SYNTAX_INVALID",
+    "COUNCIL_SCHEMA_INVALID",
+    "COUNCIL_FINDING_INVALID",
+    "COUNCIL_CONFIDENCE_INVALID",
+    "COUNCIL_EVIDENCE_REFS_INVALID",
+    "COUNCIL_DISSENT_INVALID"
+  ],
+  "local_equivalent_simulation": {
+    "status": "PASS_5_OF_5_ASSERTIONS",
+    "assertions": [
+      "safe Python detected",
+      "eval() produces DANGEROUS_CALL:eval",
+      "invalid JSON fails",
+      "path traversal filename rejected by basename rule",
+      "EXECUTE_NOW is not an allowed Council verdict"
+    ],
+    "repo_test_execution": "NOT_CLAIMED"
+  },
+  "readback": {
+    "module": "PASS",
+    "tests": "PASS"
+  },
+  "external_provider_execution": "NOT_CLAIMED",
+  "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
+  "next_gap": "G-005"
+}
