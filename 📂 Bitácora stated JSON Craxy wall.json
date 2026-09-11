@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-11T07:11:18.611943+00:00",
+  "updated_at": "2026-09-11T07:13:56.321031+00:00",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1453,8 +1453,14 @@
     "position": "POOL_BELOW_YAIWES_AGENT",
     "kernel_hold_exemption_for_this_directive": true,
     "required_microtest": "go test ./common/backoff -run ^$ -count=1",
-    "status": "SCHEDULED_BY_WORKFLOW",
-    "workflow": ".github/workflows/yaiwes-temporal-full-pool-step3.yml"
+    "status": "VERIFIED_CLOSED",
+    "workflow": ".github/workflows/yaiwes-temporal-full-pool-step3.yml",
+    "verified_at": "2026-09-11T07:13:56.321031+00:00",
+    "run": 34573361099,
+    "integration_commit": "1cbc955e27a47c532db2cf7fe781b97ae773b44b",
+    "physical_readback": "PASS target/go.mod + target/common/backoff",
+    "microtest": "PASS go test ./common/backoff -run ^$ -count=1",
+    "verified_by": "SOL integración 1"
   },
   "sol_loop_persistence": {
     "workers": [
@@ -1488,6 +1494,14 @@
       "at": "2026-09-11T04:26:54.937093+00:00",
       "actor": "ChatGPT/SOL",
       "event": "APPROVE_KERNEL_HOLD_TEMPORAL_POOL_SOL_1_2_4_PERSISTENT_LOOP"
+    },
+    {
+      "at": "2026-09-11T07:13:56.321031+00:00",
+      "actor": "SOL",
+      "label": "SOL integración 1",
+      "event": "TEMPORAL_POOL_VERIFIED_CLOSED",
+      "run": 34573361099,
+      "commit": "1cbc955e27a47c532db2cf7fe781b97ae773b44b"
     }
   ]
 }
