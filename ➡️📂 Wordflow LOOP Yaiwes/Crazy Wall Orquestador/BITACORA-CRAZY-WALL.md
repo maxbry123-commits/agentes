@@ -235,3 +235,16 @@ Snapshot base auditado: `1dc764da4013150473e42b8b43262e19b99ab36e`; read-back tr
 - El reconciliador detecta correctamente `ANCHOR_CHECKPOINT_CONFLICT`; no requiere parche. El GAP está en la persistencia parcial del ciclo: tras cerrar un nodo debe actualizarse/verificarse el conjunto canónico o conservarse el checkpoint anterior.
 
 Resultado: G-013 sigue abierto por drift reproducible. No se tocaron G-009, G-011 ni G-018; no se declara PASS global.
+
+
+# ASTRA-GPT-LOOP — GAP DE CABLEADO G-013 — 2026-09-11 16:54Z
+
+Snapshot auditado: `37e4c4f3cfd1e29ba7d89ab3ac1170f37b031608`.
+
+- STATE continúa en 0010; CHECKPOINT avanzó a 0014 con G-011, mientras TASK-NODES aún registra G-011 y G-013 como PENDING.
+- Ejecución real del reconciliador blob `fb93ce9ee5b86439b0ba36ef72c404134d1984b1` sobre las ocho fuentes completas: `FAIL_CLOSED_CONFLICT / ANCHOR_CHECKPOINT_CONFLICT / write_authorized=false`, exit 0.
+- Auditoría completa de los 80 archivos Python bajo `runtime/src` y `runtime/tests`: las únicas referencias a `source_truth_reconciler`, `build_record` o `validate_reconciliation_plan` están en el propio módulo y en `test_source_truth_reconciler.py`. No existe caller de producción ni gate de cierre cableado.
+- G-013 no es solo drift documental: el reconciliador está implementado pero no conectado al proceso que publica cierres/checkpoints. Esto explica que cada cierre parcial vuelva a romper las fuentes.
+- Corrección mínima pendiente: el cierre de nodo debe invocar el gate sobre las ocho fuentes y rechazar publicación si no produce un conjunto consistente; añadir prueba de integración que intente publicar un CHECKPOINT aislado y confirme rechazo.
+
+Resultado: `G-013 IMPLEMENTED_NOT_WIRED / OPEN`. No se tocaron nodos de SOL_1/SOL_2 ni se declaró PASS global.
