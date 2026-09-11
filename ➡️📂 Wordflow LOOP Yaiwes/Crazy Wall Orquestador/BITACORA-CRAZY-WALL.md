@@ -162,3 +162,28 @@ G-013 queda `IMPLEMENTED_VERIFIED_LOCAL_PENDING_CANONICAL_RECONCILIATION`, no CL
 
 ## Estado del grupo
 30 GAPs · 7 CLOSED (`G-001`, `G-002`, `G-003`, `G-004`, `G-005`, `G-010`, `G-020`) · `G-006 BLOCKED_DEPENDENCY_G018` · `G-013 IN_RESEARCH_IMPLEMENTED` · externos `AUTH_PROVIDER_TEST_PENDING` · Graphiti/Graphology todavía NO integrados · Fables G-018 sigue en investigación y no se crea bus paralelo.
+
+# ASTRA-GPT-LOOP — REVISIÓN 2026-09-11
+Rol: revisión de objetivos literales, arquitectura y Wordflow conforme a PARCHE-ASTRA-GPT-LOOP.md. Watchdog horario creado y habilitado en este ciclo. No se reclaman nodos de SOL_1/SOL_2.
+
+## G-013 — conflicto de anchors y parser incompatible con histórico
+- STATE.json blob `6bcae3a6364fbf5795a64bd2f9b465d7eb7b0d7c`: checkpoint_id termina en 0010.
+- CHECKPOINT.json blob `c70d3801cafaed86726a0d83274dae836e751ad6`: checkpoint_id termina en 0009.
+- HANDOFF blob `9b63d8eff94c388bf102349608d88fbd04c4e989` y README arquitectura blob `6a46697d13fe26a4c67e62ac28d42e2e21551f6e` todavía apuntan a 0008/G-006.
+- Reconciliador leído completo: `runtime/src/core/source_truth_reconciler.py`, blob `9c188b2d7acdf63c94c46c46158f54c6ee55eef5`. `_checkpoint_from_text` exige exactamente un checkpoint distinto en todo el documento. BITACORA blob `4accf326ab21c5629b3e49cca0372669622001f0` contiene siete checkpoints históricos distintos.
+- Reproducción Python real en memoria con el módulo exacto y contenido completo de esa BITACORA: `REPRODUCED_REAL_INPUT: expected exactly one canonical checkpoint reference, got 7`. Proyección del conflicto 0010/0009 a TruthRecord: `FAIL_CLOSED_CONFLICT`, `ANCHOR_CHECKPOINT_CONFLICT`, `write_authorized=false`. Exit code 0; no se reclama pytest, Actions ni ejecución de proveedores.
+- Tests existentes blob `79a4e3b3f642bd115184d4dbef169cdd1eb5bc6b` prueban Markdown sintético con una sola referencia; no cubren la bitácora histórica real.
+- Corrección justificada para el ejecutor de G-013: separar referencia activa explícita de referencias históricas, rechazar marcadores activos contradictorios, conservar historial y añadir regresión con BITACORA real; reconciliar anchors con evidencia del ciclo válido, sin elegir automáticamente el ID mayor. G-013 permanece abierto; no se sustituye el reconciliador ni se toma el nodo activo.
+
+## G-019 — enlaces de método declarados restaurados devuelven 404
+README Wordflow blob `e95067810c5b4d31dd59d7349e49a1aade2ec3cb` afirma restauradas tres rutas obligatorias de AGENTS.md (blob `dd52aa1fd452724dd72ecee41e740ca0a5fdb860`). Lectura fresca de main devuelve NOT_FOUND/404 para:
+- `PIPELINE/00_METODO_TRABAJO_Y_ARQUITECTURA.md`
+- `PIPELINE/FORENSIC_CODE_AUDIT.md`
+- `PIPELINE/ADVANCED_ENGINEERING_STANDARD_V3.md`
+Hallazgo limitado a estas rutas exactas; no demuestra ausencia del código o de las fuentes en otras ubicaciones. Investigar relocalización/historial dentro del nodo existente. No restaurar fuera de la raíz de escritura autorizada.
+
+## Cruce de objetivos y límites
+Leídos objetivos Partes 1–4, plan de 11 pasos, arquitectura y Wordflow. La separación Council asesor/control determinista, REUSE previo a GENERATE y Fables como entrada única es consistente documentalmente. Implementación integral no certificada. G-006 conserva bloqueo de binding Fables; G-017/G-022 y AUTH_PROVIDER_TEST_PENDING siguen sin cierre real. STATE ya indica fuente Fables localizada pero binding no verificado: no confundir fuente localizada con integración.
+
+Refutaciones: (1) actualizar solo HANDOFF no resuelve conflicto STATE/CHECKPOINT; (2) borrar checkpoints históricos para satisfacer el parser violaría conservación del historial; (3) pruebas sintéticas y referencias Fables no prueban integración real.
+Resultado de esta revisión: GAP confirmado en G-013 y rutas rotas asociadas a G-019; sin nuevos componentes, sin cierre global y sin cambios en nodos ajenos.
