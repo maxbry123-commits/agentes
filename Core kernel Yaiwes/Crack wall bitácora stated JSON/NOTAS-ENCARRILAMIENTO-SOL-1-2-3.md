@@ -27,11 +27,11 @@ y esperar decisión del usuario. No integrar kernel sin aprobación.
 ## SOL integración 1
 
 ### Nodo primario: N21 Dagu
-- Estado vigente: `GAP`, `current_step=2`, `owner=null`, `lock=FREE`.
+- Estado coordinado vigente por read-back físico: `current_step=3`; STEP2 MOVE ya materializado.
 - STEP1 ya decidido: `B`; destino `Agente Yaiwes principal/execution-orchestration/state-machine-executor/dagu/`.
-- GAP exacto: fuente residual `schemas/` contiene dos symlinks relativos rotos; Motor4 canónico usa `rglob(...).is_file()` y no los incluye.
-- `next_action`: continuar únicamente STEP2 con ejecución Motor4 canónica autorizada que resuelva la frontera symlink.
-- Instrucción mínima: read-back físico primero; NO repetir STEP1 ni trabajo ya verificado; si no existe ejecución autorizada, persistir FLAG, liberar y no invadir lanes ajenos.
+- Evidencia mínima STEP2: `Core kernel Yaiwes/Dagu/README.md` devuelve 404 y el destino Dagu está poblado en `main`.
+- `next_action`: reclamar N21 únicamente si sigue `FREE` y ejecutar solo STEP3: cableado/poda mínima si una causa concreta lo exige + microtest funcional mínimo de la frontera real.
+- Instrucción mínima: NO repetir STEP1 ni STEP2; read-back del destino primero; separar `COMPONENT_FAIL` de `PUBLISH/WORKFLOW_FAIL`; cerrar solo con evidencia real y liberar.
 - Fallback reservado: ninguno mientras N27/N26 pertenezcan a SOL2 y N23 a SOL3.
 
 ## SOL integración 2
@@ -85,9 +85,10 @@ y esperar decisión del usuario. No integrar kernel sin aprobación.
 
 N21–N27: 7 nodos.
 Cerrados: 3 — N22 Hatchet, N24 Redis, N25 Workalendar.
-GAP STEP2: 4 — N21 Dagu, N23 PostgreSQL, N26 gVisor, N27 pgvector.
-Claims vigentes observados en el estado persistido: ninguno; los cuatro GAP están `owner=null`, `lock=FREE`.
-Colas: SOL1 -> N21; SOL2 -> N27, fallback N26; SOL3 -> N23.
+STEP3 pendiente: 1 — N21 Dagu; STEP2 ya verificado físicamente y no debe repetirse.
+GAP STEP2: 3 — N23 PostgreSQL, N26 gVisor, N27 pgvector.
+Claims vigentes observados en el estado persistido: ninguno; los GAP N23/N26/N27 están `owner=null`, `lock=FREE`; N21 debe revalidar `FREE` en Crazy Wall justo antes de claim STEP3.
+Colas: SOL1 -> N21 STEP3; SOL2 -> N27, fallback N26; SOL3 -> N23.
 
 ## SINCRONIZACIÓN
 
