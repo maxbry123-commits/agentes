@@ -1,0 +1,52 @@
+{
+  "schema": "yaiwes.evidence/v1",
+  "node": "G-018",
+  "owner": "SOL_2",
+  "status": "GAP_TEST_EXECUTION_PENDING",
+  "contract": "yaiwes.fables_binding/v1",
+  "claim_state": {
+    "task_nodes_status": "CLAIMED",
+    "claimed_by": "SOL_2",
+    "step_1_research": "RUNNING",
+    "task_nodes_blob": "6f4867aadd6d8065f8e90eef5c6a2628318865a6"
+  },
+  "research": {
+    "canonical_binding_id": "UNIVERSAL_PLUGIN_BUS",
+    "bus_path": "runtime/src/uek/universal_plugin_bus_v2_integrated.py",
+    "bus_blob": "865327d6f5d63bc735aeec7338fa2e7bfb810e23",
+    "ficha_path": "runtime/src/uek/ficha_contract_v2.py",
+    "ficha_blob": "a5ec565f63dccd6d67f33ddf35458b33d88e865c",
+    "bus_original_upload_sha256": "5e4595a86bfd68a3c1fde70ba614ce7b9ec6ea4d6c867912e836cca33c626fc3",
+    "ficha_original_upload_sha256": "759d0d7855d8df106462b966bfc4ee543f24a3e789a27048f253159b58ff8d1a",
+    "binding_gate_path": "runtime/src/core/fables_binding_gate.py",
+    "binding_gate_blob": "516e639fc64d048a6bc922a4021c933985867a4b",
+    "generation_policy_path": "runtime/src/core/code_generation_policy.py",
+    "generation_policy_blob": "384633550b995aae1187806017fb16b9411f0eed",
+    "test_path": "runtime/tests/test_fables_binding_gate.py",
+    "test_blob": "2729c653ba4b945b1e3ca20017bbdf1ae5669306"
+  },
+  "verified_static_properties": [
+    "canonical bus is reused; no second plugin bus introduced",
+    "candidate source is AST-inspected rather than dynamically executed",
+    "Ficha v2 validator accepts reasoning runtime used by G-018 manifest",
+    "generation policy calls verify_canonical_fables_binding instead of trusting the binding string alone",
+    "execution_authorized remains false",
+    "deployment_authorized remains false"
+  ],
+  "foreign_work_detected": {
+    "evidence_commit": "b0ce7838da57d6587ae38d095ac63feeb86991da",
+    "evidence_owner_field": "SOL_1",
+    "collision_note": "TASK-NODES currently assigns G-018 to SOL_2; foreign artifacts were read and reused as evidence only, without claiming their ownership."
+  },
+  "test_gate": {
+    "test_commit": "845be9efa9f6d336e18875e91be5e05ef8207220",
+    "actions_runs_seen": 6,
+    "relevant_unit_test_runner_found": false,
+    "global_push_workflows_are_not_g018_unit_test_evidence": true,
+    "repo_pytest_execution": "NOT_VERIFIED",
+    "local_container_attempt": "BLOCKED_NO_GITHUB_DNS",
+    "closure_decision": "DO_NOT_CLOSE_G018"
+  },
+  "next_action": "Execute runtime/tests/test_fables_binding_gate.py reproducibly against current main, capture PASS/FAIL, then update the same G-018 node. No motor is required unless code acquisition/copy/move becomes necessary.",
+  "rules": ["NO_LFS", "NO_FORCE", "NO_PARALLEL_BUS", "FAIL_CLOSED"]
+}
