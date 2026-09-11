@@ -261,3 +261,14 @@ Snapshot auditado: `559571eea7a5a6ad6b1a52df121e99fe7925fab3`. Revisión de nodo
 - G-013 continúa en conflicto: STATE 0010 frente a CHECKPOINT 0016. El cierre parcial volvió a modificar CHECKPOINT/evidence sin actualizar el conjunto de fuentes.
 
 Resultado: bloqueo de resolución de TASK-NODES para G-011 = `CLEARED_BY_FRESH_READBACK`; ejecución autoritativa y claim siguen pendientes. Sin PASS global.
+
+
+# ASTRA-GPT-LOOP — REVISIÓN ADVERSARIAL G-011 — 2026-09-11 18:57Z
+
+- `canonical_motor_gate.py` blob `24c659c03454b7ef4361aa69bf721cb12b2331c4`: `build_motor_env` no recibe ni valida una raíz autorizada y ejecuta `dest.mkdir` antes de autorización.
+- Reproducción real con el módulo exacto: destination y state fuera de una raíz autorizada; creó el directorio externo y devolvió ambas rutas. Resultado `OUT_OF_SCOPE_MUTATION_REPRODUCED`, exit 0.
+- Tests blob `9eee8d33532157967e88cf80fb6a4a0a37a30d7b` no cubren escape de raíz, state externo ni symlink traversal.
+- `execution_authorized=false` de `verify_motor` no protege `build_motor_env`, porque esta ya muta filesystem.
+- Corrección requerida en G-011: recibir `authorized_root`, exigir destination/state dentro de ella tras `resolve`, validar symlinks, diferir `mkdir` hasta autorización explícita y añadir regresiones de escape.
+
+Resultado: `G-011 PATH_SCOPE_GATE_GAP / OPEN`; no se acepta cierre con la simulación 6/6 actual. G-013 sigue sin cableado.
