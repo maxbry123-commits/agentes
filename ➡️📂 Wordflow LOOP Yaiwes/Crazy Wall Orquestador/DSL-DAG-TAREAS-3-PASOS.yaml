@@ -1,0 +1,33 @@
+schema: yaiwes.crazywall-dag/v1
+project: Wordflow LOOP Yaiwes
+mode: fail-closed
+source_of_truth: Crazy Wall Orquestador/TASK-NODES.json
+
+roles:
+  executors: [SOL_1, SOL_2, SOL_ORCHESTRATOR]
+  checker: ASTRA_GPT
+
+node:
+  required: [id, task, status, claimed_by, depends_on, allowed_scope, steps, evidence, gaps, version]
+  status: [PENDING, CLAIMED, RUNNING, PASS, FAIL, BLOCKED]
+  claim_rule: "solo PENDING y dependencias PASS; un ejecutor reclama un solo nodo a la vez"
+  collision_rule: "claimed_by != null bloquea a otros ejecutores; cambio exige version esperada"
+  checker_rule: "ASTRA_GPT revisa objetivos/arquitectura/evidencia; no reclama nodos de ejecucion"
+
+steps:
+  - id: 1_RESEARCH
+    literal: "Investigar antes de trabajar cómo hacer exactamente la tarea, revisar lo que ya existe y elegir REUSE antes de crear code."
+  - id: 2_MOTOR
+    literal: "Si hay descarga/extracción/copia/movimiento, usar únicamente el motor canónico autorizado; no LFS, no force, no overwrite silencioso, con hash/read-back."
+  - id: 3_WIRE_TEST
+    literal: "Cablear solo el delta mínimo mediante Ficha/Fables cuando aplique y ejecutar test/evidencia; PASS solo con verificación falsificable."
+
+rules:
+  - no_extra_tasks
+  - no_scope_escalation
+  - no_parallel_claim_by_same_executor
+  - no_pass_without_evidence
+  - no_duplicate_component_download
+  - reuse_before_generate
+  - astra_reviews_after_execution
+  - update_same_node_not_create_shadow_state
