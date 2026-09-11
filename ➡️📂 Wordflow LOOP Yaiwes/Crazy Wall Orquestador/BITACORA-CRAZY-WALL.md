@@ -48,7 +48,7 @@ STATE/CHECKPOINT/HANDOFF/PLAN/RECOVERY alineados con fase activa. Evidence `CODE
 Localizados tres contratos Chat-B en `runtime/docs/`: T001, T007, T011. Definen ejecución determinista, REUSE>PATCH>ADAPT>GENERATE, sandbox, evidence, Tribunal y traceability. No se localizó artefacto Chat-A en el árbol runtime auditado; G-016 permanece `GAP_IN_RESEARCH` hasta búsqueda completa o NOT_FOUND probado.
 
 ## CG-0012 — Sandbox no demostrado
-`runtime/src/uek/sandbox_manager.py` blob `e26d955331d5a9df8c7408377bab9924d308abef` retorna un descriptor con status `READY`, policy/memory y un ID; no crea aislamiento de proceso/filesystem/network/time/memory y `release_sandbox()` retorna `True`. G-022 permanece abierto; `READY` no es evidencia de aislamiento.
+`runtime/src/uek/sandbox_manager.py` blob `e26d955331d5a9df8c7408377bab9924d308abef` retorna un descriptor con status `READY`, policy/memory y un ID; no crea aislamiento de process/filesystem/network/time/memory y `release_sandbox()` retorna `True`. G-022 permanece abierto; `READY` no es evidencia de aislamiento.
 
 ## CG-0013 — Deployment/installation con PASS estático
 `runtime/src/install/installation_engine.py` blob `af525da2cf3409a30fe2633c934d8ccb45cbda50` avanza su FSM pero emite `valid=true`, `invariants_passed=36`, `health_check=PASS` y hash fijo sin ejecutar checks reales. G-017 permanece abierto y esos PASS no se aceptan como evidencia.
@@ -59,5 +59,19 @@ No se localizaron motores canónicos en top-level del LOOP/wordflow_loop auditad
 ## CG-0015 — Evidence + checkpoint
 Evidence `wordflow_loop/evidence/CG01_REUSE_AUDIT_2026-09-10.json`. Checkpoint `WFLOOP-CODE-GRAPH-20260910-0003`. Próximo nodo: localizar Fables/Ficha y completar source map.
 
+# CICLO CG-CYCLE-0004 — G-003 TASK GRAPH
+
+## CG-0016 — Reutilización del DAG existente
+Auditado `runtime/src/core/dag_engine.py` blob `ed4361e9e2ca93e6744f9946d2334bf55b3ef63a`: usa `graphlib.TopologicalSorter`, valida dependencias, detecta ciclos y genera batches deterministas. Decisión: REUSE; prohibido introducir otro orquestador para G-003.
+
+## CG-0017 — Implementación G-003
+Creado `runtime/src/core/code_task_graph.py`, blob `91fd7779b2e8c27e3dd7f282847df1e2e4ab4f62`. Normaliza tareas con task_id/source/capability/owner/dependencies/priority/destination/sandbox/tests/evidence/idempotency/retry/status y mantiene `director_tasks` y `generated_tasks` separados.
+
+## CG-0018 — Tests + fail-closed
+Creado `runtime/tests/test_code_task_graph.py`, blob `882eb17b4289c747adf3850407e8a6a13b80ae65`. Cubre separación Director/generadas, orden topológico, dependencia inexistente fail-closed y ciclo fail-closed. Microtest equivalente ejecutado: `PASS_5_OF_5_ASSERTIONS`. No se reclama GitHub Actions ni runtime externo.
+
+## CG-0019 — Evidence + cierre
+Evidence `wordflow_loop/evidence/G003_TASK_GRAPH_2026-09-10.json`. `G-003 CLOSED_VERIFIED_LOCAL`. Checkpoint `WFLOOP-CODE-GRAPH-20260910-0004`. Próximo nodo 1×1: `G-004` clasificador determinista de ubicación arquitectónica.
+
 ## Estado del grupo
-30 GAPs · 2 CLOSED_VERIFIED (`G-010`, `G-020`) · externos `AUTH_PROVIDER_TEST_PENDING` · Graphiti/Graphology todavía NO integrados.
+30 GAPs · 3 CLOSED (`G-003`, `G-010`, `G-020`) · externos `AUTH_PROVIDER_TEST_PENDING` · Graphiti/Graphology todavía NO integrados · G-018 Fables sigue `GAP_IN_RESEARCH` sin source proof exacto dentro del LOOP.
