@@ -14,7 +14,7 @@ Prioridad: `Kimi → MiniMax → DeepSeek V4 Pro → DeepSeek V4 Flash → GLM 5
 
 # FASE ACTIVA — CODE_GRAPH_ARCHITECTURE_PROGRAMMING_LOOP
 Checkpoint canónico: `WFLOOP-CODE-GRAPH-20260911-0010`.  
-Nodo activo: `CG13_SOURCE_TRUTH_RECONCILIATION_G013`.  
+Nodo activo: `CG18_FABLES_CANONICAL_BINDING_G018`.  
 Ledger: `Crazy Wall Orquestador/GAPS-INVESTIGACION-CODE-GRAPH-20260910.md`.
 
 Pipeline operativo autorizado:
@@ -69,8 +69,8 @@ Estado: `GAP_OPEN`.
 Convertir lista del Director en cola determinista y usar motores canónicos con allowlist, CRC/hash, bloqueo de path traversal/symlinks cuando aplique, persistencia y read-back antes de PASS.
 
 ## G-013 — Fuentes de verdad
-Estado: `IN_RESEARCH_IMPLEMENTED_PENDING_FULL_RECONCILIATION`.
-Contrato `yaiwes.truth_reconciliation/v1` en `runtime/src/core/source_truth_reconciler.py`. STATE/CHECKPOINT son anchors y un conflicto entre ambos falla cerrado. El parser fue corregido para documentos históricos: admite un único marcador explícito `Checkpoint canónico:` aunque existan referencias históricas y falla cerrado ante marcadores canónicos conflictivos. Tests ampliados. Cierre requiere alinear y hacer read-back de README/STATE/CHECKPOINT/BITÁCORA/GAPS/HANDOFF/PLAN/RECOVERY al checkpoint `0010`.
+Estado: `CLOSED_VERIFIED_LOCAL`.
+Contrato `yaiwes.truth_reconciliation/v1` en `runtime/src/core/source_truth_reconciler.py`, blob `fb93ce9ee5b86439b0ba36ef72c404134d1984b1`; tests blob `f39cb13a84d1dbb7fcb1c1467f712bf003a431df`. STATE/CHECKPOINT son anchors; conflicto falla cerrado. El parser histórico acepta un único marcador explícito `Checkpoint canónico:` y rechaza marcadores canónicos contradictorios. Read-back 8/8 de README/STATE/CHECKPOINT/BITÁCORA/GAPS/HANDOFF/PLAN/RECOVERY; simulación equivalente 7/7; evidence `wordflow_loop/evidence/G013_CANONICAL_RECONCILIATION_2026-09-11.json`; `repo_pytest_execution=NOT_CLAIMED`.
 
 ## G-014 — `agente-readme-memoria.md` de los 18 agentes
 Estado: `GAP_OPEN`.
@@ -89,8 +89,8 @@ Estado: `GAP_OPEN`.
 Cadena requerida `validate → prepare/build → sandbox → tests → reviewer → promote → checkpoint → rollback/compensation`. `runtime/src/install/installation_engine.py` contiene campos PASS/health estáticos, no aceptados como prueba real.
 
 ## G-018 — Enchufe Universal Fables
-Estado: `GAP_IN_RESEARCH`.
-Debe confirmarse source proof canónico + Ficha/Contract. Todo módulo nuevo se registra/cablea por ese ABI; prohibidos buses paralelos o integraciones ad hoc.
+Estado: `GAP_IN_RESEARCH` · siguiente nodo 1×1.
+Debe confirmarse source proof canónico + Ficha/Contract + registro/test. Todo módulo nuevo se registra/cablea por ese ABI; prohibidos buses paralelos o integraciones ad hoc.
 
 ## G-019 — Auditoría global del Wordflow
 Estado: `GAP_OPEN`.
@@ -149,6 +149,6 @@ Estado lógico compartido con ownership de task/node, version/checkpoint, idempo
 - `wordflow_loop/evidence/`
 
 ## Estado actual del grupo
-30 GAPs · 7 cerrados: `G-001`, `G-002`, `G-003`, `G-004`, `G-005`, `G-010`, `G-020`.  
-Nodo actual: `G-013`. `G-006` permanece bloqueado por `G-018`.  
+30 GAPs · 8 cerrados: `G-001`, `G-002`, `G-003`, `G-004`, `G-005`, `G-010`, `G-013`, `G-020`.  
+Nodo actual: `G-018`. `G-006` permanece bloqueado por `G-018`.  
 `AUTH_PROVIDER_TEST_PENDING` permanece abierto. Graphiti/Graphology no están integrados todavía. Fables sigue en investigación; no se crea bus paralelo.
