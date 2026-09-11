@@ -18,24 +18,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      HF_TOKEN_A: ${{ secrets.HF_TOKEN }}
-      HF_TOKEN_B: ${{ secrets.HF_API_TOKEN }}
+      HF_SECRET_A: ${{ secrets.HF_TOKEN }}
+      HF_SECRET_B: ${{ secrets.HF_API_TOKEN }}
+      HF_VAR_A: ${{ vars.HF_TOKEN }}
+      HF_VAR_B: ${{ vars.HF_API_TOKEN }}
       SPACE_REPO: COMAND-CENTER-1/yaiwes-ui-factory
       SOURCE_REF: f4117830f2141ce8363aff694b3fb513b20b02ca
       RAW_ROOT: https://raw.githubusercontent.com/maxbry123-commits/frontend/f4117830f2141ce8363aff694b3fb513b20b02ca/UI%20YAIWES/watchdog%20UI%20YAIWES/%E2%9E%A1%EF%B8%8F%20Astra%20plan%20f%C3%A1brica%20UI%20YAIWES/Frontend/factory-v0
     steps:
-      - name: Resolve authorized HF write token without exposing it
+      - name: Resolve authorized HF write credential without exposing it
         shell: bash
         run: |
           set -euo pipefail
           token=''
           source_name=''
-          if [ -n "$HF_TOKEN_A" ]; then token="$HF_TOKEN_A"; source_name='HF_TOKEN'; fi
-          if [ -z "$token" ] && [ -n "$HF_TOKEN_B" ]; then token="$HF_TOKEN_B"; source_name='HF_API_TOKEN'; fi
-          if [ -z "$token" ]; then echo 'HF_WRITE_SECRET_MISSING'; exit 2; fi
+          if [ -n "$HF_SECRET_A" ]; then token="$HF_SECRET_A"; source_name='secrets.HF_TOKEN'; fi
+          if [ -z "$token" ] && [ -n "$HF_SECRET_B" ]; then token="$HF_SECRET_B"; source_name='secrets.HF_API_TOKEN'; fi
+          if [ -z "$token" ] && [ -n "$HF_VAR_A" ]; then token="$HF_VAR_A"; source_name='vars.HF_TOKEN'; fi
+          if [ -z "$token" ] && [ -n "$HF_VAR_B" ]; then token="$HF_VAR_B"; source_name='vars.HF_API_TOKEN'; fi
+          if [ -z "$token" ]; then echo 'HF_WRITE_CREDENTIAL_MISSING'; exit 2; fi
           echo "::add-mask::$token"
           printf 'HF_PUBLISH_TOKEN=%s\n' "$token" >> "$GITHUB_ENV"
-          echo "HF_SECRET_SOURCE=$source_name"
+          echo "HF_CREDENTIAL_SOURCE=$source_name"
 
       - name: Package exact verified Factory V0
         shell: bash
