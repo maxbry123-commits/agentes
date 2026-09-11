@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-11T03:34:36.570625+00:00",
+  "updated_at": "2026-09-11T03:37:26.190733+00:00",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -727,14 +727,14 @@
       "component": "Dagu",
       "source": "Core kernel Yaiwes/Dagu/",
       "current_step": 3,
-      "status": "GAP",
+      "status": "PASS",
       "abc": "B",
       "target": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/dagu/",
-      "owner": "SOL",
-      "lock": "CLAIMED",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-11T03:34:36.570625+00:00 SOL integración 1 STEP3 retry: same real DAG; surgical adapter escape correction only",
-        "after": "STEP3 GAP run 34558634272: Dagu CLI build PASS; generated adapter failed before functional microtest with SyntaxError unterminated string literal line 30 caused by newline escaping in runner materialization."
+        "after": "2026-09-11T03:37:26.190733+00:00 STEP3 PASS: FABLES ACTIVE; moved Dagu CLI executed real two-step dependency DAG first->second; L2+L3+L4 evidence; prune NOT_NEEDED; origin/main read-back PASS"
       },
       "evidence": [
         "commit:b348db14774ecba416857bee1e387d12c91b98c7",
@@ -765,7 +765,15 @@
         "step3:gap_run:34558634272",
         "step3:cli_build:PASS",
         "step3:gap_exact:dagu_adapter.py SyntaxError unterminated string literal line 30",
-        "step3:strategy_delta:preserve-generated-source-backslashes-and-repeat-same-DAG"
+        "step3:strategy_delta:preserve-generated-source-backslashes-and-repeat-same-DAG",
+        "step3:run:34558943576",
+        "step3:evidence_commit:e0b1b0c42bfaccf8f6b4b9aa4d812993db98d871",
+        "step3:adapter_sha256:71e2da5885f583a975916376b5a47afea9cac835889413a2e5032881d186ce7b",
+        "step3:route:FABLES->Dagu adapter->moved Dagu CLI->real DAG(first->second)",
+        "step3:microtest:PASS order=first,second",
+        "step3:evidence:L2_build+L3_runtime+L4_feature",
+        "step3:prune:NOT_NEEDED",
+        "step3:readback:source-absent+adapter+ficha+evidence PASS"
       ],
       "history": [
         {
@@ -821,9 +829,17 @@
           "label": "SOL integración 1",
           "event": "STEP3_GAP_ADAPTER_ESCAPE",
           "run": 34558634272
+        },
+        {
+          "at": "2026-09-11T03:37:26.190733+00:00",
+          "actor": "SOL",
+          "label": "SOL integración 1",
+          "event": "STEP3_PASS_RELEASE",
+          "run": 34558943576,
+          "commit": "e0b1b0c42bfaccf8f6b4b9aa4d812993db98d871"
         }
       ],
-      "next_action": "STEP3_RETRY_SAME_REAL_DAG_AFTER_ADAPTER_ESCAPE_FIX"
+      "next_action": "COMPLETE"
     },
     {
       "id": 22,
