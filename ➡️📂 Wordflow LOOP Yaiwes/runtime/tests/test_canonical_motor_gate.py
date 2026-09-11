@@ -7,6 +7,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+import pytest
+
 from runtime.src.core.canonical_motor_gate import build_motor_env, verify_motor
 
 
@@ -43,7 +45,13 @@ def test_copy_motor_blob_and_readback(tmp_path: Path) -> None:
     payload.write_text("yaiwes-g011-copy\n", encoding="utf-8")
     expected = sha256(payload)
 
-    env = build_motor_env(source, dest, tmp_path / "copy-state.json")
+    env = build_motor_env(
+        source,
+        dest,
+        tmp_path / "copy-state.json",
+        authorized_root=tmp_path,
+        mutation_authorized=True,
+    )
     result = run_motor(root / str(verified["motor_path"]), env)
 
     copied = dest / "sample.txt"
@@ -67,7 +75,13 @@ def test_move_motor_blob_and_readback(tmp_path: Path) -> None:
     payload.write_text("yaiwes-g011-move\n", encoding="utf-8")
     expected = sha256(payload)
 
-    env = build_motor_env(source, dest, tmp_path / "move-state.json")
+    env = build_motor_env(
+        source,
+        dest,
+        tmp_path / "move-state.json",
+        authorized_root=tmp_path,
+        mutation_authorized=True,
+    )
     result = run_motor(root / str(verified["motor_path"]), env)
 
     moved = dest / "sample.txt"
@@ -81,18 +95,102 @@ def test_move_motor_blob_and_readback(tmp_path: Path) -> None:
 
 def test_gate_fails_closed_on_invalid_inputs(tmp_path: Path) -> None:
     root = repo_root()
-    try:
+    with pytest.raises(ValueError, match="^UNSUPPORTED_MOTOR_OPERATION$"):
         verify_motor(root, "delete")
-    except ValueError as exc:
-        assert str(exc) == "UNSUPPORTED_MOTOR_OPERATION"
-    else:
-        raise AssertionError("unsupported motor must fail closed")
 
     source = tmp_path / "same"
     source.mkdir()
-    try:
-        build_motor_env(source, source, tmp_path / "state.json")
-    except ValueError as exc:
-        assert str(exc) == "SOURCE_DESTINATION_COLLISION"
-    else:
-        raise AssertionError("same source/destination must fail closed")
+    with pytest.raises(ValueError, match="^SOURCE_DESTINATION_COLLISION$"):
+        build_motor_env(
+            source,
+            source,
+            tmp_path / "state.json",
+            authorized_root=tmp_path,
+            mutation_authorized=True,
+        )
+
+
+def test_gate_requires_authorized_root_and_explicit_mutation(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    dest = tmp_path / "dest"
+
+    with pytest.raises(ValueError, match="^AUTHORIZED_ROOT_REQUIRED$"):
+        build_motor_env(source, dest, tmp_path / "state.json")
+    assert not dest.exists()
+
+    with pytest.raises(PermissionError, match="^MUTATION_NOT_AUTHORIZED$"):
+        build_motor_env(
+            source,
+            dest,
+            tmp_path / "state.json",
+            authorized_root=tmp_path,
+        )
+    assert not dest.exists()
+
+
+def test_gate_rejects_destination_and_state_escape_without_mutation(tmp_path: Path) -> None:
+    authorized = tmp_path / "authorized"
+    authorized.mkdir()
+    source = tmp_path / "source"
+    source.mkdir()
+    outside_dest = tmp_path / "outside-dest"
+
+    with pytest.raises(ValueError, match="^DEST_DIR_OUTSIDE_AUTHORIZED_ROOT$"):
+        build_motor_env(
+            source,
+            outside_dest,
+            authorized / "state.json",
+            authorized_root=authorized,
+            mutation_authorized=True,
+        )
+    assert not outside_dest.exists()
+
+    safe_dest = authorized / "dest"
+    outside_state = tmp_path / "outside-state.json"
+    with pytest.raises(ValueError, match="^STATE_FILE_OUTSIDE_AUTHORIZED_ROOT$"):
+        build_motor_env(
+            source,
+            safe_dest,
+            outside_state,
+            authorized_root=authorized,
+            mutation_authorized=True,
+        )
+    assert not safe_dest.exists()
+    assert not outside_state.exists()
+
+
+def test_gate_rejects_symlink_escape_without_mutation(tmp_path: Path) -> None:
+    authorized = tmp_path / "authorized"
+    outside = tmp_path / "outside"
+    authorized.mkdir()
+    outside.mkdir()
+    source = tmp_path / "source"
+    source.mkdir()
+
+    escape_link = authorized / "escape"
+    escape_link.symlink_to(outside, target_is_directory=True)
+    escaped_dest = escape_link / "dest"
+
+    with pytest.raises(ValueError, match="^DEST_DIR_OUTSIDE_AUTHORIZED_ROOT$"):
+        build_motor_env(
+            source,
+            escaped_dest,
+            authorized / "state.json",
+            authorized_root=authorized,
+            mutation_authorized=True,
+        )
+    assert not (outside / "dest").exists()
+
+    safe_dest = authorized / "dest"
+    escaped_state = escape_link / "state.json"
+    with pytest.raises(ValueError, match="^STATE_FILE_OUTSIDE_AUTHORIZED_ROOT$"):
+        build_motor_env(
+            source,
+            safe_dest,
+            escaped_state,
+            authorized_root=authorized,
+            mutation_authorized=True,
+        )
+    assert not safe_dest.exists()
+    assert not (outside / "state.json").exists()
