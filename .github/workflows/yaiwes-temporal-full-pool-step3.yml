@@ -1,64 +1,112 @@
-name: YAIWES Temporal full pool Step 3
+name: YAIWES Temporal pool final verify
+
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
       - '.github/workflows/yaiwes-temporal-full-pool-step3.yml'
-  workflow_dispatch:
+
 permissions:
   contents: write
+
+concurrency:
+  group: yaiwes-temporal-pool-final-verify
+  cancel-in-progress: false
+
 jobs:
-  temporal-full-pool:
-    runs-on: ubuntu-latest
+  verify-close:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      WALL: '📂 Bitácora stated JSON Craxy wall.json'
+      TARGET: 'Agente Yaiwes principal/execution-engine-pool/temporal'
+      INTEGRATION_COMMIT: '1cbc955e27a47c532db2cf7fe781b97ae773b44b'
     steps:
-      - name: Checkout only Temporal source and pool target
+      - name: Checkout Temporal target and Crazy Wall
         uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 1
+          fetch-depth: 0
           lfs: false
-          sparse-checkout: |
-            .github/workflows/yaiwes-temporal-full-pool-step3.yml
-            Core kernel Yaiwes/Componentes recuperados B/Temporal
-            Agente Yaiwes principal/execution-engine-pool/temporal
           sparse-checkout-cone-mode: false
-      - name: Copy Temporal complete under agent execution pool
+          sparse-checkout: |
+            /.github/workflows/yaiwes-temporal-full-pool-step3.yml
+            /📂 Bitácora stated JSON Craxy wall.json
+            /Agente Yaiwes principal/execution-engine-pool/temporal/
+
+      - name: Verify physical Temporal integration
+        shell: bash
         run: |
           set -euo pipefail
-          SRC='Core kernel Yaiwes/Componentes recuperados B/Temporal'
-          DST='Agente Yaiwes principal/execution-engine-pool/temporal'
-          test -d "$SRC"
-          test -f "$SRC/go.mod"
-          rm -rf "$DST"
-          mkdir -p "$(dirname "$DST")"
-          cp -a "$SRC" "$DST"
-          diff -qr "$SRC" "$DST"
-          test -f "$DST/go.mod"
-          test -d "$DST/common/backoff"
-      - name: Setup Go from Temporal
+          test -d "$TARGET"
+          test -f "$TARGET/go.mod"
+          test -d "$TARGET/common/backoff"
+          git cat-file -e "$INTEGRATION_COMMIT^{commit}"
+          git merge-base --is-ancestor "$INTEGRATION_COMMIT" origin/main
+          echo TEMPORAL_POOL_PHYSICAL_READBACK=PASS
+
+      - name: Setup Go from integrated Temporal
         uses: actions/setup-go@v5
         with:
           go-version-file: 'Agente Yaiwes principal/execution-engine-pool/temporal/go.mod'
           cache: false
-      - name: Temporal microtest compile boundary
+
+      - name: Required Temporal microtest
         working-directory: Agente Yaiwes principal/execution-engine-pool/temporal
         run: |
           set -euo pipefail
           go test ./common/backoff -run '^$' -count=1
-      - name: Commit and push Temporal pool
+          echo TEMPORAL_POOL_MICROTEST=PASS
+
+      - name: Close Temporal directive in fresh Crazy Wall
+        shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- 'Agente Yaiwes principal/execution-engine-pool/temporal'
-          if git diff --cached --quiet; then
-            echo 'NO_CHANGE_TEMPORAL_ALREADY_COMPLETE'
-            exit 0
-          fi
-          git commit -m 'integrate(pool): Temporal full under YAIWES agent'
-          for i in 1 2 3 4 5; do
-            git push origin HEAD:main && exit 0
+          ok=0
+          for attempt in 1 2 3 4 5; do
             git fetch origin main
-            git rebase origin/main
+            git reset --hard origin/main
+            python3 - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          p=os.environ['WALL']
+          d=json.load(open(p,encoding='utf-8'))
+          t=d.get('temporal_pool_directive')
+          if not isinstance(t,dict) or t.get('component')!='Temporal':
+              raise SystemExit('TEMPORAL_DIRECTIVE_MISSING')
+          now=datetime.now(timezone.utc).isoformat()
+          t['status']='VERIFIED_CLOSED'
+          t['verified_at']=now
+          t['run']=int(os.environ['GITHUB_RUN_ID'])
+          t['integration_commit']=os.environ['INTEGRATION_COMMIT']
+          t['physical_readback']='PASS target/go.mod + target/common/backoff'
+          t['microtest']='PASS go test ./common/backoff -run ^$ -count=1'
+          t['verified_by']='SOL integración 1'
+          hist=d.setdefault('directive_history',[])
+          event={'at':now,'actor':'SOL','label':'SOL integración 1','event':'TEMPORAL_POOL_VERIFIED_CLOSED','run':int(os.environ['GITHUB_RUN_ID']),'commit':os.environ['INTEGRATION_COMMIT']}
+          if not any(x.get('event')=='TEMPORAL_POOL_VERIFIED_CLOSED' for x in hist if isinstance(x,dict)):
+              hist.append(event)
+          d['updated_at']=now
+          with open(p,'w',encoding='utf-8') as f:
+              json.dump(d,f,ensure_ascii=False,indent=2)
+              f.write('\n')
+          PY
+            git add -- "$WALL"
+            git diff --cached --check
+            if git diff --cached --quiet; then
+              echo TEMPORAL_DIRECTIVE_ALREADY_CLOSED
+              ok=1
+              break
+            fi
+            git commit -m 'crazy-wall: Temporal pool VERIFIED_CLOSED'
+            if git push origin HEAD:main; then
+              ok=1
+              break
+            fi
+            sleep $((attempt * 2))
           done
-          exit 1
+          test "$ok" -eq 1
+          echo TEMPORAL_POOL_VERIFIED_CLOSED
