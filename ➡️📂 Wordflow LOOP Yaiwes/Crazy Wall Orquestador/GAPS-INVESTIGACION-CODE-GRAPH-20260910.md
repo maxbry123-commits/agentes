@@ -16,14 +16,12 @@ Cada archivo recibido debe pasar por análisis de formato, contenido, arquitectu
 Cierre: contrato de auditoría + salida estructurada + simulaciones + evidencia.
 
 ## G-003 — Generador determinista de lista de tareas de código
-Estado: `GAP_OPEN`.
-Transformar requisitos/arquitectura en tareas atómicas con `task_id`, dependencia, prioridad, capability, owner/rol, inputs, outputs, destino propuesto, riesgo, sandbox requerido, test, evidence y estado. Debe soportar tareas entregadas por el Director y tareas generadas por el propio LOOP, sin mezclarlas silenciosamente.
-Cierre: schema + DAG válido + cola reproducible + test de orden topológico.
+Estado: `CLOSED_VERIFIED_LOCAL`.
+Transforma requisitos/arquitectura en tareas atómicas con `task_id`, dependencia, prioridad, capability, owner/rol, inputs, outputs, destino propuesto, riesgo, sandbox requerido, test, evidence y estado, manteniendo separadas tareas del Director y tareas generadas. Implementación: `runtime/src/core/code_task_graph.py`; evidence `wordflow_loop/evidence/G003_TASK_GRAPH_2026-09-10.json`.
 
 ## G-004 — Clasificador de destino arquitectónico
-Estado: `GAP_OPEN`.
-Analizar dónde debe vivir el código usando la arquitectura real de YAIWES. Opciones mínimas obligatorias: A Kernel; B Extension Kernel; C Reasoning Layer; D Wordflow dentro de la cadena del agente; E Pool; F Tools; G otras ubicaciones justificadas. La decisión debe basarse en función, nivel de privilegio, acoplamiento, estado, tipo de ejecución, seguridad, latencia, lifecycle y dependencias; no en el nombre del archivo.
-Cierre: reglas deterministas + matriz de decisión + reason codes + posibilidad de `PLACEMENT_REVIEW_REQUIRED`.
+Estado: `CLOSED_VERIFIED_LOCAL`.
+Analiza dónde debe vivir el código usando función, privilegio, lifecycle, estado, tipo de ejecución, seguridad, latencia, acoplamiento y dependencias. Opciones: A Kernel; B Extension Kernel; C Reasoning Layer; D Wordflow; E Pool; F Tools; G otras ubicaciones justificadas. Implementación: `runtime/src/core/placement_classifier.py`, blob `69698ad30ba1903e0780efcea1952a3737aeb23e`; tests `runtime/tests/test_placement_classifier.py`, blob `bf1c26f49edf668ee05584b2a357324af0fc4d8d`; evidence `wordflow_loop/evidence/G004_PLACEMENT_CLASSIFIER_2026-09-10.json`; simulación local equivalente `PASS_10_OF_10_ASSERTIONS`. Señales débiles/conflictivas o G sin ubicación+justificación => `PLACEMENT_REVIEW_REQUIRED`. No se reclama runtime externo.
 
 ## G-005 — Investigación previa a creación/adaptación de código
 Estado: `GAP_OPEN`.
@@ -51,9 +49,8 @@ Si una pieza no mejora capacidades, duplica funcionalidad sin beneficio, degrada
 Cierre: plantilla GAP + reviewer independiente.
 
 ## G-010 — Watchdog horario supervisor del Wordflow
-Estado: `GAP_OPEN`.
+Estado: `CLOSED_VERIFIED`.
 Cada hora revisar tareas, GAPs, bloqueos, estado de grafos/DAG, integridad de contratos, evidencia, colas, agentes, router, sandbox y persistencia. Resolver automáticamente solo lo autorizado y determinista; no inventar PASS. Informar al Director de cambios materiales.
-Cierre: automation activa + prompt alineado + no escrituras fuera de la raíz.
 
 ## G-011 — Pipeline de recepción de componentes + motor de copiar/mover
 Estado: `GAP_OPEN`.
@@ -101,9 +98,8 @@ Revisar lo existente para detectar capacidades ya construidas, duplicados, pieza
 Cierre: inventario/capability map + GAP ledger reconciliado.
 
 ## G-020 — 12 fuentes web/comunidad para arquitectura
-Estado: `GAP_OPEN`.
-Mantener un catálogo mínimo de 12 fuentes útiles para agentes arquitectos: documentación oficial, repos/discussions, Stack Overflow/Software Engineering, comunidades de herramientas relevantes. Cada fuente debe indicar tema, autoridad y cuándo consultarla.
-Cierre: `community_sources.json` + links verificados.
+Estado: `CLOSED_VERIFIED`.
+Catálogo: `wordflow_loop/research/community_sources.json`; 12 fuentes verificadas con tema/autoridad/uso.
 
 ## G-021 — Cola + paralelismo controlado
 Estado: `GAP_OPEN`.
@@ -147,7 +143,7 @@ Cierre: investigación + copy exacta mediante motor + integración visual/serial
 
 ## G-029 — Motor de planificación organizada de tareas
 Estado: `GAP_IN_RESEARCH`.
-Evaluar componentes existentes en el repo auditor: Dagster, Prefect, Argo Workflows, Inngest, Trigger.dev, Restate, Airflow, orquestador existente y alternativas ligeras. Elegir por compatibilidad con el LOOP actual, durable state, dependencies, parallelism, idempotency, deployment footprint y no duplicación de la fundación ya existente (LangGraph/Temporal/Prefect/Hatchet/redun históricos).
+Evaluar componentes existentes en el repo auditor: Dagster, Prefect, Argo Workflows, Inngest, Trigger.dev, Restate, Airflow, orquestador existente y alternativas ligeras. Elegir por compatibilidad con el LOOP actual, durable state, dependencies, parallelism, idempotency, deployment footprint y no duplicación de la fundación ya existente.
 Cierre: matriz comparativa + decisión REUSE existente antes de añadir otro framework.
 
 ## G-030 — Crazy Wall compartido por agentes
