@@ -73,5 +73,19 @@ Creado `runtime/tests/test_code_task_graph.py`, blob `882eb17b4289c747adf3850407
 ## CG-0019 — Evidence + cierre
 Evidence `wordflow_loop/evidence/G003_TASK_GRAPH_2026-09-10.json`. `G-003 CLOSED_VERIFIED_LOCAL`. Checkpoint `WFLOOP-CODE-GRAPH-20260910-0004`. Próximo nodo 1×1: `G-004` clasificador determinista de ubicación arquitectónica.
 
+# CICLO CG-CYCLE-0005 — G-004 PLACEMENT
+
+## CG-0020 — Matriz determinista A–G
+Creado `runtime/src/core/placement_classifier.py`, blob `69698ad30ba1903e0780efcea1952a3737aeb23e`. Usa señales explícitas de privilegio, lifecycle, tipo de ejecución, estado, latencia, invariantes kernel, razonamiento, cadena de agente, fan-out, tool reuse, I/O y justificación de otras capas. No usa nombre de archivo ni LLM.
+
+## CG-0021 — Fail-closed de ambigüedad
+Se implementó `PLACEMENT_REVIEW_REQUIRED` cuando faltan señales suficientes, existe empate/conflicto o una ubicación G no trae `other_location + other_justification`.
+
+## CG-0022 — Tests y evidencia
+Tests: `runtime/tests/test_placement_classifier.py`, blob `bf1c26f49edf668ee05584b2a357324af0fc4d8d`. Simulación local equivalente: `PASS_10_OF_10_ASSERTIONS`, cubriendo A/B/C/D/E/F/G, conflicto, señal débil y G sin justificación. Evidence: `wordflow_loop/evidence/G004_PLACEMENT_CLASSIFIER_2026-09-10.json`. No se reclama GitHub Actions ni runtime externo.
+
+## CG-0023 — Cierre y siguiente nodo
+`G-004 CLOSED_VERIFIED_LOCAL`. Checkpoint `WFLOOP-CODE-GRAPH-20260910-0005`. Siguiente nodo 1×1: `G-001` raíz anclada/contrato/serialización CODE GRAPH. `AUTH_PROVIDER_TEST_PENDING` continúa abierto.
+
 ## Estado del grupo
-30 GAPs · 3 CLOSED (`G-003`, `G-010`, `G-020`) · externos `AUTH_PROVIDER_TEST_PENDING` · Graphiti/Graphology todavía NO integrados · G-018 Fables sigue `GAP_IN_RESEARCH` sin source proof exacto dentro del LOOP.
+30 GAPs · 4 CLOSED (`G-003`, `G-004`, `G-010`, `G-020`) · externos `AUTH_PROVIDER_TEST_PENDING` · Graphiti/Graphology todavía NO integrados · Fables G-018 sigue en investigación y no se crea bus paralelo.
