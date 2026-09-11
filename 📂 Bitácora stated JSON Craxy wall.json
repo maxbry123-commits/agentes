@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-10T22:31:41.010979+00:00",
+  "updated_at": "2026-09-11T02:33:27.063146+00:00",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -460,7 +460,7 @@
       "lock": "FREE",
       "checkpoint": {
         "before": null,
-        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=34537194559"
+        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=345371945559"
       },
       "evidence": [
         "move_1_20:VERIFIED_CLOSED",
@@ -494,7 +494,7 @@
         "move_1_20:VERIFIED_CLOSED",
         "step3-run:34537194559:PASS"
       ],
-      "history": [
+        "history": [
         {
           "at": "2026-09-10T22:31:41.010979+00:00",
           "actor": "➡️ sol osquestador plan",
@@ -516,7 +516,7 @@
       "lock": "FREE",
       "checkpoint": {
         "before": null,
-        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=34537194559"
+        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=345371945559"
       },
       "evidence": [
         "move_1_20:VERIFIED_CLOSED",
@@ -544,7 +544,7 @@
       "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-10T20:10:00Z prior STEP3 run 34472888878 used go test ./... -run ^$ and failed in unrelated generated test helpers; internal/validator package compiled successfully in same log",
-        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=34537194559"
+        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=345371945559"
       },
       "evidence": [
         "move_1_20:VERIFIED_CLOSED",
@@ -570,8 +570,7 @@
           "actor": "➡️ sol osquestador plan",
           "event": "STEP3_PASS",
           "step": 3
-        }
-      ],
+        ],
       "next_action": "COMPLETE"
     },
     {
@@ -586,7 +585,7 @@
       "lock": "FREE",
       "checkpoint": {
         "before": null,
-        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=34537194559"
+        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=345371945559"
       },
       "evidence": [
         "move_1_20:VERIFIED_CLOSED",
@@ -613,8 +612,8 @@
       "owner": null,
       "lock": "FREE",
       "checkpoint": {
-        "before": "2026-09-10T20:12:00Z prior STEP3 run 34472888878 failed because check-release-workflow-action-pins.mjs imports declared dependency yaml@2.9.0 but node_modules was absent",
-        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=34537194559"
+        "before": "2026-09-10T20:12:00Z prior STEP3 run 344728888878 failed because check-release-workflow-action-pins.mjs imports declared dependency yaml@2.9.0 but node_modules was absent",
+        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=345371945559"
       },
       "evidence": [
         "move_1_20:VERIFIED_CLOSED",
@@ -650,7 +649,7 @@
       "lock": "FREE",
       "checkpoint": {
         "before": null,
-        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=34537194559"
+        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=345371945559"
       },
       "evidence": [
         "move_1_20:VERIFIED_CLOSED",
@@ -706,13 +705,13 @@
       "lock": "FREE",
       "checkpoint": {
         "before": null,
-        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=34537194559"
+        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=345371945559"
       },
       "evidence": [
         "move_1_20:VERIFIED_CLOSED",
         "step3-run:34537194559:PASS"
       ],
-      "history": [
+        "history": [
         {
           "at": "2026-09-10T22:31:41.010979+00:00",
           "actor": "➡️ sol osquestador plan",
@@ -757,7 +756,7 @@
       ],
       "history": [
         {
-          "at": "2026-09-10T11:16:00Z",
+          "at": "2026-09-11T11:16:00Z",
           "actor": "GROK",
           "event": "CLAIM"
         },
@@ -806,8 +805,8 @@
         "step1:target-tree state-machine-executor contains temporal-python-sdk,d agu,camunda,azure-durable-functions",
         "step2:motor4_blob:9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
         "step2:move_commit:7559b7b79f93a3104cf17ad632b790ab497d6d42",
-        "step2:runner_fix_commit:78d54b14d3e75654d5378abacdcd72c6096c25a5",
-        "step2:readback_run:34522647891",
+       "step2:runner_fix_commit:78d54b14d3e75654d5378abacdcd72c6096c25a5",
+       "step2:readback_run:34522647891",
         "step2:readback:origin/main source absent destination populated",
         "step3:gap_run:34525906867",
         "step3:gap_exact:multiprocessing.spawn FileNotFoundError:<stdin>",
@@ -819,15 +818,15 @@
         "step3:gap_exact:evidence-publish rebase blocked by unstaged runner worktree changes",
         "step3:strategy_delta:git status then reset --hard HEAD after evidence commit before rebase",
         "step3:adapter_commit:aaf44166c075c3a07c2746923601e06870a762f8",
-        "step3:ficha_commit:1ccffdd5f220801ac4b0a9d6e0c095885b2937be",
+       "step3:ficha_commit:1ccffdd5f220801ac4b0a9d6e0c095885b2937be",
         "step3:runner_commit:21b555a027a4552c7a95319a12d412746590c019",
         "step3:evidence_commit:5f4d5fbaccaa82fad7a7998c08bc3490ba4105f8",
-        "step3:run:34527326938",
+       "step3:run:34527326938",
         "step3:route:FABLES->Hatchet adapter(real file)->embedded engine->worker->DAG",
         "step3:microtest:PASS input=20 double=40 plus_one=41",
-        "step3:evidence:L2_build+L3_runtime+L4_feature",
+       "step3:evidence:L2_build+L3_runtime+L4_feature",
         "step3:prune:NOT_NEEDED",
-        "step3:readback:source-absent+adapter+ficha+evidence PASS"
+       "step3:readback:source-absent+adapter+ficha+evidence PASS"
       ],
       "history": [
         {
@@ -884,8 +883,8 @@
       "owner": null,
       "lock": "FREE",
       "checkpoint": {
-        "before": "2026-09-10T20:14:00Z fresh physical read-back: source Core kernel Yaiwes/PostgreSQL/ exists and is populated; exact target Agente Yaiwes principal/state-events-durability/run-state-store/postgresql/ is absent on main (404)",
-        "after": "2026-09-10T20:44:00Z STEP2 GAP fail-closed: fresh main still has populated PostgreSQL source and exact target remains 404; no n23 Motor4 runner exists. Canonical Motor4 HF sandbox job 6aa3074c5527934177ec24ee succeeded for 7682 files with aggregate SHA 4078b790994f4fc80470a5a3e5528a2bdc3d8f223b25af20c942b6089a4ae8b8, but HF has no GitHub/GH token environment so it cannot persist to main. MOVE not executed; released for safe-loop continuation."
+        "before": "2026-09-11T02:24:14.829441+00:00 SOL integración 3 reactivation: source PostgreSQL populated; exact target 404; GitHub search found no authorized N23 Motor4 runner; STEP2 only",
+        "after": "2026-09-11T02:33:27.063146+00:00 STEP2 GA MOTOR_INVOCATION_GAP: source PostgreSQL remains populated; exact target remains 404; fresh GitHub search finds no authorized yaiwes-motor4-move-n23-postgresql runner/dispatch. Prior canonical Motor4 HF sandbox PASS processed 7682 files but did not persist to origin/main. MOVE NOT EXECUTED; fail-closed release."
       },
       "evidence": [
         "worker:SOL integración 3",
@@ -904,7 +903,14 @@
         "step2:hf_motor4_job:6aa3074c5527934177ec24ee:PASS:7682-files:aggregate_sha=4078b790994f4fc80470a5a3e5528a2bdc3d8f223b25af20c942b6089a4ae8b8",
         "step2:hf-credential-probe-job:6aa316815527934177ec29f4:NO_MATCHING_ENV_NAMES",
         "step2:strategy_delta_hf_push:UNAVAILABLE_NO_GITHUB_CREDENTIAL",
-        "step2:PASS_REFUTED_SOURCE_PRESENT_TARGET_404"
+        "step2:PASS_REFUTED_SOURCE_PRESENT_TARGET_404",
+        "reactivation:claim_commit:8f9e528fedbd1b014f96259e7f7c9e9632be7984",
+        "reactivation:source-populated-readback",
+        "reactivation:target-404-readback",
+        "reactivation:search:no-authorized-n23-motor4-runner",
+        "reactivation:step2-gap:MOTOR_INVOCATION_GAP",
+        "reactivation:MOVE_NOT_EXECUTED_FAIL_CLOSED",
+        "reactivation:claim_blob_invalid_json_detected_and_rebuilt_from_valid_parent:8b5281cec495c3ea5316ed1b56f71fcb5da35036"
       ],
       "history": [
         {
@@ -936,6 +942,19 @@
           "actor": "SOL",
           "label": "SOL integración 3",
           "event": "STEP2_GAP_RESEARCH_RELEASE"
+        },
+        {
+          "at": "2026-09-11T02:24:14.829441+00:00",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "REACTIVATION_CLAIM_STEP2",
+          "commit": "8f9e528fedbd1b014f96259e7f7c9e9632be7984"
+        },
+        {
+          "at": "2026-09-11T02:33:27.063146+00:00",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "REACTIVATION_STEP2_GAP_RELEASE"
         }
       ],
       "next_action": "WAIT_EXISTING_AUTHORIZED_N23_MOTOR4_RUNNER_OR_DISPATCH; FLAG_AND_CONTINUE_SAFE_FREE_NODE"
@@ -1108,7 +1127,7 @@
         "step2:other_write_scope_authorized=false",
         "step2:MOVE_NOT_EXECUTED_FAIL_CLOSED"
       ],
-      "history": [
+        "history": [
         {
           "at": "2026-09-10T20:00:00Z",
           "actor": "SOL",
