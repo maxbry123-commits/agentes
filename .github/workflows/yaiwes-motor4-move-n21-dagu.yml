@@ -1,4 +1,4 @@
-name: YAIWES SOL1 N26 gVisor STEP3 RETRY2
+name: YAIWES SOL1 N26 gVisor STEP3 RETRY3
 
 on:
   workflow_dispatch:
@@ -43,7 +43,7 @@ jobs:
             /Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/ficha_contract_v2.py
             /Agente Yaiwes principal/execution-orchestration/container-pod-isolation/gvisor/
 
-      - name: Resume N26 STEP3 claim and record exact sandbox GAP
+      - name: Resume N26 STEP3 claim and record exact parser GAP
         shell: bash
         run: |
           set -euo pipefail
@@ -60,16 +60,16 @@ jobs:
           if n.get('component')!='gVisor' or n.get('current_step')!=3 or n.get('owner')!='SOL' or n.get('lock')!='CLAIMED':
               raise SystemExit(f"N26_CLAIM_NOT_RESUMABLE:{n.get('component')}:{n.get('current_step')}:{n.get('owner')}:{n.get('lock')}")
           now=datetime.now(timezone.utc).isoformat(); n['status']='GAP'
-          n.setdefault('checkpoint',{})['after']='STEP3 GAP run 34562490975: canonical runsc build PASS from identical no-space workspace; real rootless ptrace sandbox blocked by GitHub hosted runner policy: re-executing /proc/self/exe permission denied. StrategyDelta: same runsc binary and same ptrace/network-none feature test inside ephemeral privileged CI container; no gVisor source changes.'
+          n.setdefault('checkpoint',{})['after']='STEP3 GAP run 34564949176: canonical runsc build PASS; real gVisor ptrace network-none sandbox executed and emitted 41, but adapter merged Docker pull stderr with stdout and rejected the otherwise-correct feature result. StrategyDelta: keep identical test and separate stdout/stderr; no gVisor source changes.'
           ev=n.setdefault('evidence',[])
-          for item in ['step3:build_run:34562490975:PASS','step3:gap_run:34562490975','step3:gap_exact:GitHub-hosted-runner blocks rootless runsc /proc/self/exe reexec permission denied','step3:strategy_delta:same_runsc_real_ptrace_test_inside_ephemeral_privileged_CI_container']:
+          for item in ['step3:build_run:34564949176:PASS','step3:runtime_run:34564949176:real_runsc_emitted_41','step3:gap_run:34564949176','step3:gap_exact:adapter_merged_docker_pull_stderr_with_sandbox_stdout','step3:strategy_delta:separate_stdout_stderr_same_real_runsc_test']:
               if item not in ev: ev.append(item)
-          n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 1','event':'STEP3_GAP_ROOTLESS_HOST_POLICY_STRATEGY_DELTA','run':34562490975})
-          n['next_action']='STEP3_RETRY_REAL_RUNSC_PTRACE_IN_EPHEMERAL_PRIVILEGED_CI_CONTAINER'; d['updated_at']=now
+          n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 1','event':'STEP3_GAP_OUTPUT_PARSER_STRATEGY_DELTA','run':34564949176})
+          n['next_action']='STEP3_RETRY_SAME_REAL_RUNSC_TEST_SEPARATE_STDOUT_STDERR'; d['updated_at']=now
           with open(p,'w',encoding='utf-8') as f: json.dump(d,f,ensure_ascii=False,indent=2); f.write('\n')
           PY
             git add -- "$WALL"
-            git commit -m 'crazy-wall: N26 record rootless host-policy GAP'
+            git commit -m 'crazy-wall: N26 record runtime output parser GAP'
             if git push origin HEAD:main; then ok=1; break; fi
             sleep $((attempt * 2))
           done
@@ -111,11 +111,14 @@ jobs:
                   "--sidecar-usage-policy=LEGACY_DEPRECATED_SLOW_EMBEDDED_FALLBACK",
                   "do","--quiet","/bin/sh","-c","printf 41",
               ]
-              proc=subprocess.run(cmd,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=240)
-              output=proc.stdout
-              if proc.returncode != 0: raise RuntimeError(f"RUNSC_DO_FAILED:{proc.returncode}:{output[-12000:]}")
-              value=output.strip()
-              if value != "41": raise RuntimeError(f"RUNSC_SANDBOX_OUTPUT_BAD:{value!r}:{output[-12000:]}")
+              proc=subprocess.run(cmd,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=240)
+              stdout=proc.stdout
+              stderr=proc.stderr
+              if proc.returncode != 0:
+                  raise RuntimeError(f"RUNSC_DO_FAILED:{proc.returncode}:stdout={stdout[-4000:]}:stderr={stderr[-8000:]}")
+              value=stdout.strip()
+              if value != "41":
+                  raise RuntimeError(f"RUNSC_SANDBOX_OUTPUT_BAD:{value!r}:stderr={stderr[-8000:]}")
               return {"status":"PASS","capability":"runsc_do_privileged_ci_ptrace","value":41,"returncode":proc.returncode,"network":"none","platform":"ptrace","rootless":False,"ci_outer_container_privileged":True}
           if __name__ == "__main__":
               result=run_microtest(sys.argv[1]); print("YAIWES_GVISOR_RESULT="+json.dumps(result,separators=(",",":")))
@@ -140,6 +143,7 @@ jobs:
           make copy TARGETS=//runsc DESTINATION=/tmp/yaiwes-gvisor-bin
           test -x "$RUNSC_BIN"
           "$RUNSC_BIN" --version
+          docker pull ubuntu:24.04 >/dev/null
           echo GVISOR_RUNSC_BUILD=PASS
 
       - name: FABLES Enchufe plus real runsc sandbox microtest in CI container
@@ -205,7 +209,7 @@ jobs:
           p=os.environ['WALL']; d=json.load(open(p,encoding='utf-8')); n=next(x for x in d['nodes'] if x['id']==26)
           if n.get('owner')!='SOL' or n.get('lock')!='CLAIMED' or n.get('current_step')!=3: raise SystemExit(f"N26_CLAIM_LOST:{n.get('owner')}:{n.get('lock')}:{n.get('current_step')}")
           now=datetime.now(timezone.utc).isoformat(); run=os.environ.get('GITHUB_RUN_ID',''); commit=os.environ.get('EVIDENCE_COMMIT',''); sha=hashlib.sha256(open(os.environ['ADAPTER'],encoding='utf-8').read().encode()).hexdigest()
-          n['status']='PASS'; n.setdefault('checkpoint',{})['after']=now+' STEP3 PASS: FABLES ACTIVE; identical moved gVisor tree built in no-space ephemeral workspace with canonical Makefile/Bazel; real runsc ptrace network-none sandbox executed /bin/sh printf 41 inside privileged ephemeral CI outer container because GitHub host blocks rootless self-reexec; L2+L3+L4; prune NOT_NEEDED; origin/main read-back PASS'
+          n['status']='PASS'; n.setdefault('checkpoint',{})['after']=now+' STEP3 PASS: FABLES ACTIVE; identical moved gVisor tree built in no-space ephemeral workspace with canonical Makefile/Bazel; real runsc ptrace network-none sandbox executed /bin/sh printf 41 inside privileged ephemeral CI outer container because GitHub host blocks rootless self-reexec; stdout/stderr separated; L2+L3+L4; prune NOT_NEEDED; origin/main read-back PASS'
           ev=n.setdefault('evidence',[])
           for item in ['step3:run:'+run,'step3:evidence_commit:'+commit,'step3:adapter_sha256:'+sha,'step3:build_strategy:identical_no-space_ephemeral_workspace+canonical_Makefile_Bazel','step3:route:FABLES->gVisor adapter->runsc->ephemeral privileged CI container->ptrace network-none sandbox','step3:microtest:PASS runsc do sandbox output=41','step3:evidence:L2_build+L3_runtime+L4_feature','step3:prune:NOT_NEEDED','step3:readback:source_absent+adapter+ficha+evidence PASS']:
               if item not in ev: ev.append(item)
