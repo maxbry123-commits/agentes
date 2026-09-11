@@ -1,10 +1,10 @@
 {
-  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260910-0004",
+  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260910-0005",
   "contract": "tel.workflow/v4",
   "mode": "FAIL_CLOSED_EXECUTION_LOOP",
   "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
   "status": "ACTIVE_LOOP_CODE_GRAPH_RESEARCH",
-  "current_node": "CG02_PLACEMENT_CLASSIFIER_G004",
+  "current_node": "CG03_CODE_GRAPH_ROOT_G001",
   "queue": "DAG_DEPENDENCIES_PLUS_PARALLEL_INDEPENDENT",
   "historical_closure": {
     "status": "LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING",
@@ -13,22 +13,20 @@
   "active_phase": {
     "name": "CODE_GRAPH_ARCHITECTURE_PROGRAMMING_LOOP",
     "gaps_total": 30,
-    "gaps_closed": 3,
-    "closed": ["G-003", "G-010", "G-020"],
-    "in_research": ["G-016", "G-018", "G-023", "G-027", "G-028", "G-029"],
-    "g003_evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G003_TASK_GRAPH_2026-09-10.json"
+    "gaps_closed": 4,
+    "closed": ["G-003", "G-004", "G-010", "G-020"],
+    "in_research": ["G-016", "G-018", "G-023", "G-027", "G-028", "G-029"]
   },
   "verified_this_cycle": {
-    "task_graph_module_blob": "91fd7779b2e8c27e3dd7f282847df1e2e4ab4f62",
-    "task_graph_tests_blob": "882eb17b4289c747adf3850407e8a6a13b80ae65",
-    "reused_dag_blob": "ed4361e9e2ca93e6744f9946d2334bf55b3ef63a",
-    "director_generated_separation": "PASS",
-    "missing_dependency_fail_closed": "PASS",
-    "cycle_fail_closed": "PASS",
-    "local_equivalent_microtest": "PASS_5_OF_5_ASSERTIONS",
+    "g004_module_blob": "69698ad30ba1903e0780efcea1952a3737aeb23e",
+    "g004_tests_blob": "bf1c26f49edf668ee05584b2a357324af0fc4d8d",
+    "g004_evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G004_PLACEMENT_CLASSIFIER_2026-09-10.json",
+    "destinations": ["A_KERNEL","B_EXTENSION_KERNEL","C_REASONING_LAYER","D_WORDFLOW","E_POOL","F_TOOLS","G_OTHER"],
+    "ambiguous_fail_closed": "PLACEMENT_REVIEW_REQUIRED",
+    "local_equivalent_microtest": "PASS_10_OF_10_ASSERTIONS",
     "external_runtime": "NOT_CLAIMED"
   },
   "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
-  "next_action": "G004_DETERMINISTIC_PLACEMENT_CLASSIFIER",
+  "next_action": "G001_ANCHORED_CODE_GRAPH_WORKSPACE",
   "recovery_entrypoint": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md"
 }
