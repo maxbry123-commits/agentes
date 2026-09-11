@@ -58,6 +58,7 @@ jobs:
           { echo "/$WF"; echo "/Core kernel Yaiwes/COPY_SYNC_SHARD_1.json"; while IFS= read -r n; do [ -n "$n" ] && echo "/Core kernel Yaiwes/$n/"; done < ../missing.txt; } > .git/info/sparse-checkout
           git checkout main
           cd ..
+          mkdir -p "target/$TARGET_ROOT"
           if [ -s missing.txt ]; then
             git clone --filter=blob:none --no-checkout https://github.com/${SOURCE_REPO}.git source
             cd source
