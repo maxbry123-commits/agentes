@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-11T04:15:57.736933+00:00",
+  "updated_at": "2026-09-11T04:16:21.777697+00:00",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1230,15 +1230,15 @@
       "id": 27,
       "component": "pgvector",
       "source": "Core kernel Yaiwes/pgvector/",
-      "current_step": 2,
-      "status": "GAP",
+      "current_step": 3,
+      "status": "PASS",
       "abc": "C",
       "target": "Agente Yaiwes principal/tools-models-memory-knowledge/memory-microservices/pgvector/",
-      "owner": "SOL",
-      "lock": "CLAIMED",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-11T04:15:57.736933+00:00 SOL integración 1 user-extended loop: N27 STEP2 claim; canonical Motor4 only; no manual move/LFS",
-        "after": "STEP2 GAP: canonical Motor4 verified but no existing reusable pgvector/generic Motor4 runner was found; existing N21 Dagu and N22 Hatchet runners are hard-coded and yaiwes-3step-move uses manual git mv; MOVE not executed"
+        "after": "2026-09-11T04:16:21.777697+00:00 STEP2 PASS: immutable canonical Motor4 moved pgvector to memory-microservices; source absent + target README origin/main read-back PASS"
       },
       "evidence": [
         "worker:SOL integración 2",
@@ -1249,7 +1249,11 @@
         "step2:yaiwes-motor4-move-n22-hatchet.yml hardcoded N22 and owned by other integration",
         "step2:yaiwes-3step-move.yml uses manual git mv, not canonical Motor4",
         "step2:MOVE_NOT_EXECUTED_FAIL_CLOSED",
-        "step2:worker:SOL integración 1:user_scope_extension"
+        "step2:worker:SOL integración 1:user_scope_extension",
+        "step2:run:34561536713",
+        "step2:move_commit:ade703e1db5e1e232324167e661ffaaa88a55fd7",
+        "step2:motor4:VERIFIED_CLOSED",
+        "step2:readback:source_absent+target_populated+README_PASS"
       ],
       "history": [
         {
@@ -1275,9 +1279,17 @@
           "actor": "SOL",
           "label": "SOL integración 1",
           "event": "CLAIM_STEP2_USER_SCOPE_EXTENSION"
+        },
+        {
+          "at": "2026-09-11T04:16:21.777697+00:00",
+          "actor": "SOL",
+          "label": "SOL integración 1",
+          "event": "STEP2_PASS_RELEASE",
+          "run": 34561536713,
+          "commit": "ade703e1db5e1e232324167e661ffaaa88a55fd7"
         }
       ],
-      "next_action": "STEP_2_MOVE_WITH_CANONICAL_MOTOR"
+      "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
     }
   ],
   "counts": {
