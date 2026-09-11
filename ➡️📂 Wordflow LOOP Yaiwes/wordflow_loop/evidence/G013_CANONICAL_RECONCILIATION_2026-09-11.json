@@ -1,0 +1,43 @@
+{
+  "contract": "yaiwes.truth_reconciliation/v1",
+  "gap": "G-013",
+  "owner": "SOL_1",
+  "canonical_checkpoint": "WFLOOP-CODE-GRAPH-20260911-0010",
+  "result": "CONSISTENT_VERIFIED_LOCAL",
+  "truth_sources": {
+    "STATE": {"git_blob_sha": "6bcae3a6364fbf5795a64bd2f9b465d7eb7b0d7c", "checkpoint": "WFLOOP-CODE-GRAPH-20260911-0010"},
+    "CHECKPOINT": {"git_blob_sha": "060dfc36e60c0322febb894f20c7277bedb68f5e", "checkpoint": "WFLOOP-CODE-GRAPH-20260911-0010"},
+    "README": {"git_blob_sha": "bc447fa7e222112ba171f3d86ed9b64026823f14", "checkpoint": "WFLOOP-CODE-GRAPH-20260911-0010"},
+    "BITACORA": {"git_blob_sha": "c010ace756ffedfd6de07f89c8f7884bbabbbf14", "checkpoint": "WFLOOP-CODE-GRAPH-20260911-0010"},
+    "GAPS": {"git_blob_sha": "7f7e7e9f0d956ed5614d1cd923067e1502625208", "checkpoint": "WFLOOP-CODE-GRAPH-20260911-0010"},
+    "HANDOFF": {"git_blob_sha": "e1822486ed88a3526432605c87d1bb98dd666f9e", "checkpoint": "WFLOOP-CODE-GRAPH-20260911-0010"},
+    "PLAN": {"git_blob_sha": "3a3f5e8f78d8c3338782ee5a8514a28d193bb58d", "checkpoint": "WFLOOP-CODE-GRAPH-20260911-0010"},
+    "RECOVERY": {"git_blob_sha": "b559e7d6e0d32aa4b68567abc783e0af7076aa8f", "checkpoint": "WFLOOP-CODE-GRAPH-20260911-0010"}
+  },
+  "reconciler": {
+    "module": "runtime/src/core/source_truth_reconciler.py",
+    "git_blob_sha": "fb93ce9ee5b86439b0ba36ef72c404134d1984b1",
+    "tests": "runtime/tests/test_source_truth_reconciler.py",
+    "tests_git_blob_sha": "f39cb13a84d1dbb7fcb1c1467f712bf003a431df",
+    "historical_parser_fix": "EXPLICIT_CANONICAL_MARKER_WITH_CONFLICT_FAIL_CLOSED"
+  },
+  "verification": {
+    "readback": "PASS_8_OF_8",
+    "local_equivalent_simulation": "PASS_7_OF_7",
+    "reconciliation_status": "CONSISTENT",
+    "drift": [],
+    "conflicts": [],
+    "missing": [],
+    "write_authorized_by_reconciler": false,
+    "repo_pytest_execution": "NOT_CLAIMED",
+    "github_actions_test_pass": "NOT_CLAIMED",
+    "external_provider_execution": "NOT_CLAIMED"
+  },
+  "concurrency": {
+    "optimistic_sha_updates": true,
+    "observed_409_conflict": true,
+    "conflict_handling": "REFETCH_AND_RETRY_NO_BLIND_OVERWRITE"
+  },
+  "decision": "G013_ELIGIBLE_FOR_CLOSED_VERIFIED_LOCAL",
+  "next_dependency": "G-018_FABLES_CANONICAL_BINDING_BEFORE_G-006"
+}
