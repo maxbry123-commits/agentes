@@ -2,12 +2,18 @@
 
 Generation is a last resort after the reuse selector returns GENERATE.
 This module never executes or deploys generated code and never lets an LLM
-authorize its own output.
+authorize its own output. The FABLES requirement is verified through the
+canonical G-018 binding gate; a string literal alone is not proof.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Tuple
+
+from runtime.src.core.fables_binding_gate import (
+    CANONICAL_BINDING_ID,
+    verify_canonical_fables_binding,
+)
 
 PLACEMENTS = {
     "A_KERNEL",
@@ -77,14 +83,23 @@ def authorize_generation(req: GenerationRequest) -> GenerationDecision:
         return GenerationDecision(False, ("PLACEMENT_NOT_APPROVED",), False)
     if not _safe_relative_path(req.target_path):
         return GenerationDecision(False, ("TARGET_PATH_NOT_AUTHORIZED_RELATIVE",), False)
-    if req.fables_binding != "UNIVERSAL_PLUGIN_BUS":
+    if req.fables_binding != CANONICAL_BINDING_ID:
         return GenerationDecision(False, ("FABLES_BINDING_REQUIRED",), False)
+
+    binding = verify_canonical_fables_binding()
+    if not binding.verified:
+        return GenerationDecision(
+            False,
+            ("FABLES_BINDING_NOT_VERIFIED",) + binding.reason_codes,
+            False,
+        )
 
     reasons = [
         "REUSE_EXHAUSTED",
         "PLACEMENT_APPROVED",
         "CONTRACT_PRESENT",
-        "FABLES_BINDING_DECLARED",
+        "FABLES_BINDING_VERIFIED",
+        *binding.reason_codes,
     ]
     if req.requested_by_llm:
         reasons.append("LLM_MAY_DRAFT_BUT_CANNOT_AUTHORIZE_EXECUTION")
