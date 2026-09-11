@@ -7,10 +7,11 @@
 En CADA activación del Watchdog, SOL integración 1 / 2 / 3 debe:
 1. leer `📂 Bitácora stated JSON Craxy wall.json` fresco desde `main`;
 2. leer esta nota fresca;
-3. ejecutar únicamente `current_step/next_action` del nodo asignado abajo si sigue `FREE`;
-4. si ese nodo aparece `CLAIMED` por otro owner, NO tocarlo: pasar únicamente al fallback asignado si también está `FREE`.
+3. leer `Core kernel Yaiwes/Crack wall bitácora stated JSON/STATE.json` cuando Crazy Wall tenga un `PUBLISH/TRANSPORT GAP` explícito;
+4. ejecutar únicamente `current_step/next_action` del nodo asignado abajo si sigue `FREE`;
+5. si ese nodo aparece `CLAIMED` por otro owner, NO tocarlo: pasar únicamente al fallback asignado si también está `FREE`.
 
-Crazy Wall fresco manda sobre esta nota. No reinterpretar ni inventar trabajo.
+Crazy Wall fresco manda salvo GAP de publicación explícitamente persistido; en ese caso usar read-back físico + runtime evidence + STATE para no repetir trabajo ya verificado. No reinterpretar ni inventar trabajo.
 
 Contrato único: `STEP1 analizar A/B/C+destino -> STEP2 mover con motor canónico -> STEP3 cablear/podar solo si hace falta+microtest`.
 No crear Paso 4, no inventar nodos, no reutilizar estado cacheado, no tocar `CLAIMED`, no crear motores alternativos, no declarar PASS sin evidencia.
@@ -26,67 +27,68 @@ y esperar decisión del usuario. No integrar kernel sin aprobación.
 ## SOL integración 1
 
 ### Nodo primario: N21 Dagu
-- Estado fresco: `GAP`, `current_step=2`, `owner=null`, `lock=FREE`.
+- Estado vigente: `GAP`, `current_step=2`, `owner=null`, `lock=FREE`.
 - STEP1 ya decidido: `B`; destino `Agente Yaiwes principal/execution-orchestration/state-machine-executor/dagu/`.
 - GAP exacto: fuente residual `schemas/` contiene dos symlinks relativos rotos; Motor4 canónico usa `rglob(...).is_file()` y no los incluye.
-- `next_action` literal: `STEP_2_REQUIRES_AUTHORIZED_SYMLINK_AWARE_EXECUTION_WITH_CANONICAL_MOTOR4; FLAG_AND_CONTINUE_SAFE_FREE_NODE`.
-- Instrucción mínima: read-back físico primero; NO repetir STEP1 ni el MOVE ya verificado del resto; reparar únicamente la frontera symlink mediante ejecución autorizada del Motor4. Si no existe esa ejecución autorizada, persistir FLAG y soltar el nodo.
-- Fallback seguro asignado: N25 Workalendar, solo si sigue `FREE`.
+- `next_action`: continuar únicamente STEP2 con ejecución Motor4 canónica autorizada que resuelva la frontera symlink.
+- Instrucción mínima: read-back físico primero; NO repetir STEP1 ni trabajo ya verificado; si no existe ejecución autorizada, persistir FLAG, liberar y no invadir lanes ajenos.
+- Fallback reservado: ninguno mientras N27/N26 pertenezcan a SOL2 y N23 a SOL3.
 
 ## SOL integración 2
 
-### Nodo primario: N25 Workalendar
-- Estado fresco: `GAP`, `current_step=2`, `owner=null`, `lock=FREE`.
-- STEP1 ya decidido: `C`; destino `Agente Yaiwes principal/execution-orchestration/classifier-scheduler/workalendar/`.
-- GAP exacto: no existe runner N25 ni runner Motor4 genérico reutilizable autorizado.
-- `next_action` literal: `STEP_2_MOVE_WITH_CANONICAL_MOTOR_REQUIRES_EXISTING_AUTHORIZED_RUNNER_OR_DISPATCH`.
-- Instrucción mínima: verificar read-back y disponibilidad de runner/dispatch autorizado; si sigue ausente, FLAG y liberar, sin crear workflow/motor alternativo.
-- Fallback 1: N26 gVisor, solo si `FREE`.
-- Fallback 2: N27 pgvector, solo si `FREE`.
+### Nodo primario actual: N27 pgvector
+- Estado vigente: `GAP`, `current_step=2`, `owner=null`, `lock=FREE`.
+- STEP1 ya decidido: `C`; destino `Agente Yaiwes principal/tools-models-memory-knowledge/memory-microservices/pgvector/`.
+- GAP exacto: runners N21/N22 son hard-coded y `yaiwes-3step-move.yml` usa `git mv`, no Motor4 canónico; runner/dispatch N27 autorizado ausente en el último read-back persistido.
+- Instrucción mínima: comprobar primero read-back y existencia de runner/dispatch Motor4 autorizado; si sigue ausente, FLAG + release, sin crear workflow/motor alternativo.
+- Fallback único: N26 gVisor, solo si sigue `FREE`.
 
 ### N26 gVisor
 - `GAP/STEP2/FREE`, `C`, destino `Agente Yaiwes principal/execution-orchestration/container-pod-isolation/gvisor/`.
-- GAP: no existe runner N26 ni Motor4 genérico reutilizable; `other_write_scope_authorized=false`.
-- Acción: comprobar solo runner/dispatch autorizado; si no existe, FLAG + release.
+- GAP: no existe runner N26 ni Motor4 genérico reutilizable autorizado; `other_write_scope_authorized=false`.
+- Acción mínima: comprobar únicamente runner/dispatch autorizado; si no existe, FLAG + release.
 
-### N27 pgvector
-- `GAP/STEP2/FREE`, `C`, destino `Agente Yaiwes principal/tools-models-memory-knowledge/memory-microservices/pgvector/`.
-- GAP: runners N21/N22 son hard-coded y `yaiwes-3step-move.yml` usa `git mv`, no Motor4 canónico.
-- Acción: comprobar solo runner/dispatch autorizado; si no existe, FLAG + release.
+### N25 Workalendar — CLOSED, NO REABRIR
+- Estado verificado más fresco en STATE: `COMPLETE`.
+- Evidencia: Motor4 move commit `a97b5d8804ed76996027dbb254af3ad70b9f4c80`; source read-back `404`; target README blob `eba08068458f2a058c041d1b4027af948602dde3`; verify run `34545474663`, job `103097034441`; microtest `working_day_gate 2026-09-10=True; 2026-09-12=False`.
+- Crazy Wall conserva un registro GAP antiguo por `WORKFLOW_PUBLISH_FAIL`; NO repetir STEP1/STEP2/STEP3 de N25.
 
 ## SOL integración 3
 
 ### Nodo primario: N23 PostgreSQL
-- Estado fresco: `GAP`, `current_step=2`, `owner=null`, `lock=FREE`.
+- Estado vigente: `GAP`, `current_step=2`, `owner=null`, `lock=FREE`.
 - STEP1 ya decidido: `C`; destino `Agente Yaiwes principal/state-events-durability/run-state-store/postgresql/`.
 - Read-back vigente: source poblado; target exacto ausente/404.
 - Motor4 HF procesó 7682 archivos y produjo aggregate SHA `4078b790994f4fc80470a5a3e5528a2bdc3d8f223b25af20c942b6089a4ae8b8`, pero no pudo persistir a `main` por ausencia de credencial GitHub.
-- `next_action` literal: `WAIT_EXISTING_AUTHORIZED_N23_MOTOR4_RUNNER_OR_DISPATCH; FLAG_AND_CONTINUE_SAFE_FREE_NODE`.
+- `next_action`: `WAIT_EXISTING_AUTHORIZED_N23_MOTOR4_RUNNER_OR_DISPATCH; FLAG_AND_CONTINUE_SAFE_FREE_NODE`.
 - Instrucción mínima: NO repetir STEP1 ni declarar MOVE; comprobar si apareció runner/dispatch N23 autorizado. Si no, persistir FLAG y liberar.
-- Fallback seguro: ninguno reservado; no invadir N21/N25/N26/N27 mientras estén asignados a SOL1/SOL2.
+- Fallback reservado: ninguno; no invadir N21/N27/N26.
 
 ## NODOS CERRADOS — NO REABRIR
 
 - N1–N20 = `VERIFIED_CLOSED`; no tocar.
-- N22 Hatchet = `PASS`, owner=null, lock=FREE; COMPLETE; no tocar.
-- N24 Redis = `PASS`, owner=null, lock=FREE; COMPLETE; no tocar.
+- N22 Hatchet = `COMPLETE`; no tocar.
+- N24 Redis = `COMPLETE`; no tocar.
+- N25 Workalendar = `COMPLETE`; no tocar aunque Crazy Wall siga mostrando el GAP antiguo mientras persista el fallo de publicación.
 
 ## FAST PATH
 
 1. Read-back físico fresco primero.
-2. No repetir STEP1/STEP2 ya verificados.
+2. No repetir STEP1/STEP2/STEP3 ya verificados.
 3. Reparar solo el GAP exacto de `current_step`.
 4. STEP3: microtest mínimo de la frontera real.
 5. Separar `COMPONENT_FAIL` de `PUBLISH/WORKFLOW_FAIL`.
-6. Si un GAP sigue bloqueado: FLAG + release + fallback seguro asignado; nunca invadir otro lane.
+6. Un `PUBLISH/WORKFLOW_FAIL` no reabre un componente con runtime/microtest y read-back ya verificados.
+7. Si un GAP sigue bloqueado: FLAG + release + fallback seguro asignado; nunca invadir otro lane.
 
 ## INVENTARIO ACTUAL
 
 N21–N27: 7 nodos.
-Cerrados: 2 — N22 Hatchet, N24 Redis.
-GAP STEP2: 5 — N21 Dagu, N23 PostgreSQL, N25 Workalendar, N26 gVisor, N27 pgvector.
-Claims frescos observados al coordinar: ninguno; los cinco GAP estaban `owner=null`, `lock=FREE`.
+Cerrados: 3 — N22 Hatchet, N24 Redis, N25 Workalendar.
+GAP STEP2: 4 — N21 Dagu, N23 PostgreSQL, N26 gVisor, N27 pgvector.
+Claims vigentes observados en el estado persistido: ninguno; los cuatro GAP están `owner=null`, `lock=FREE`.
+Colas: SOL1 -> N21; SOL2 -> N27, fallback N26; SOL3 -> N23.
 
 ## SINCRONIZACIÓN
 
-`Crazy Wall fresco -> lane de esta nota -> owner/lock/current_step/next_action -> claim solo si FREE -> checkpoint.before -> ejecutar un paso -> verificar/refutar -> checkpoint.after/evidence -> PASS/GAP -> release`.
+`Crazy Wall fresco -> detectar PUBLISH/WORKFLOW_FAIL si existe -> read-back/runtime evidence/STATE -> lane de esta nota -> owner/lock/current_step/next_action -> claim solo si FREE -> checkpoint.before -> ejecutar un paso -> verificar/refutar -> checkpoint.after/evidence -> PASS/GAP -> release`.
