@@ -17,10 +17,10 @@ Regla de cierre: investigación/provenance + decisión + implementación cuando 
 `CLOSED_VERIFIED_LOCAL`. `runtime/src/core/placement_classifier.py`, blob `69698ad30ba1903e0780efcea1952a3737aeb23e`; fallback `PLACEMENT_REVIEW_REQUIRED`; evidence `G004_PLACEMENT_CLASSIFIER_2026-09-10.json`.
 
 ## G-005 — Investigación/reutilización previa a code
-`GAP_OPEN` · siguiente nodo 1×1. Política `REUSE > PATCH > ADAPT > GENERATE`. Cierre: catálogo de hasta 10 opciones pertinentes con source/licencia/mantenimiento/compatibilidad/riesgo/footprint + decision record/selector + evidence.
+`CLOSED_VERIFIED_LOCAL`. `runtime/src/core/reuse_selector.py` blob `bc7f4805fc7f13e6de0341b84c533d4b7fb6b044` aplica selector determinista `REUSE > PATCH > ADAPT > GENERATE`; valida source URL/licencia/mantenimiento/compatibilidad/riesgo/footprint, máximo 10 candidatos, IDs únicos y fail-closed de catálogo. Catálogo `wordflow_loop/research/reuse_catalog_g005.json` blob `2367f7ed8c7e1ece1d724f15f6494d5ff56543f8` con 8 opciones: 4 capacidades locales + Graphiti + Graphology + NetworkX + Tree-sitter. Licencias externas verificadas contra upstream: Graphiti Apache-2.0, Graphology MIT, NetworkX BSD-3-Clause, Tree-sitter MIT. Tests `runtime/tests/test_reuse_selector.py` blob `1bcd0fca22d1238d28add1880e882e7af863ad52`; read-back PASS; `repo_pytest_execution=NOT_CLAIMED`; simulación equivalente `PASS_3_OF_3_DECISIONS`. Evidence `wordflow_loop/evidence/G005_REUSE_SELECTOR_2026-09-11.json`. No se instaló/copió ningún componente externo.
 
 ## G-006 — Creación de code nuevo
-`GAP_OPEN`. Solo si G-005 demuestra que no existe pieza adecuada. Cierre: ABI/Protocol + módulo mínimo + tests + registro/cableado Fables.
+`GAP_OPEN` · siguiente nodo 1×1. Solo si G-005 demuestra que no existe pieza adecuada. Cierre: ABI/Protocol + módulo mínimo + tests + registro/cableado Fables.
 
 ## G-007 — Ingesta de code existente
 `GAP_OPEN`. Evaluar REUSE/PATCH/ADAPT, conservar provenance; copiar/mover solo con motores canónicos y read-back. Cierre: source proof + decisión + destino + test.
@@ -41,7 +41,7 @@ Regla de cierre: investigación/provenance + decisión + implementación cuando 
 `GAP_OPEN`. Cierre: intake schema + queue + adapter a motores + CRC/hash/path safety/read-back.
 
 ## G-013 — Fuentes de verdad
-`GAP_OPEN`. Core truths reconciliadas manualmente hasta checkpoint `0007`; falta reconciliador automático + drift/conflict test.
+`GAP_OPEN`. Core truths reconciliadas manualmente hasta checkpoint `0008`; PLAN/RECOVERY presentaron drift histórico detectado durante el ciclo G-005 y se reconciliarán al nuevo checkpoint; falta reconciliador automático + drift/conflict test.
 
 ## G-014 — Memoria de 18 agentes
 `GAP_OPEN`. Cierre: 18 `agente-readme-memoria.md` + loader determinista + test pre-injection.
@@ -83,16 +83,16 @@ Regla de cierre: investigación/provenance + decisión + implementación cuando 
 `GAP_OPEN`. Cierre: stack visual + data schema + adapter/prototype cuando gates lo autoricen.
 
 ## G-027 — Graphiti
-`GAP_IN_RESEARCH`. Candidato a contexto/provenance/memoria temporal, no scheduler. Cierre: investigación + copia exacta con motor + adapter + sandbox test.
+`GAP_IN_RESEARCH`. Candidato a contexto/provenance/memoria temporal, no scheduler. G-005 confirma licencia Apache-2.0 y decisión preliminar `ADAPT`; sigue abierto hasta copia exacta con motor + adapter + sandbox test.
 
 ## G-028 — Graphology
-`GAP_IN_RESEARCH`. Candidato a graph object/algoritmos/layout/visualización, no durable execution. Cierre: investigación + copia exacta + serializer/visual integration si aporta valor.
+`GAP_IN_RESEARCH`. Candidato a graph object/algoritmos/layout/visualización, no durable execution. G-005 confirma licencia MIT y decisión preliminar `ADAPT`; sigue abierto hasta investigación + copia exacta + serializer/visual integration si aporta valor.
 
 ## G-029 — Planificación organizada
-`GAP_IN_RESEARCH`. Default REUSE=`runtime/src/core/dag_engine.py`; comparar frameworks solo contra gaps no cubiertos. Cierre: matriz comparativa + decisión.
+`GAP_IN_RESEARCH`. Default REUSE=`runtime/src/core/dag_engine.py`; G-005 confirma que DAGEngine local gana para capability `dag` frente a NetworkX por compatibilidad nativa/footprint. Comparar frameworks solo contra gaps no cubiertos. Cierre: matriz comparativa + decisión.
 
 ## G-030 — Crazy Wall multiagente
 `GAP_OPEN`. Cierre: ownership/version/checkpoint/idempotency + optimistic concurrency/merge conflict protocol + tests.
 
-## Estado del grupo tras checkpoint 0007
-30 GAPs. Cerrados: `G-001`, `G-002`, `G-003`, `G-004`, `G-010`, `G-020` = 6. En investigación: `G-016`, `G-018`, `G-023`, `G-027`, `G-028`, `G-029`. Siguiente: `G-005`. `AUTH_PROVIDER_TEST_PENDING` permanece abierto; Graphiti/Graphology no integrados; no se crea bus paralelo.
+## Estado del grupo tras checkpoint 0008
+30 GAPs. Cerrados: `G-001`, `G-002`, `G-003`, `G-004`, `G-005`, `G-010`, `G-020` = 7. En investigación: `G-016`, `G-018`, `G-023`, `G-027`, `G-028`, `G-029`. Siguiente: `G-006`. `AUTH_PROVIDER_TEST_PENDING` permanece abierto; Graphiti/Graphology no integrados; no se crea bus paralelo.
