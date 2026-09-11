@@ -1,0 +1,61 @@
+{
+  "schema": "yaiwes.g011-evidence/v1",
+  "contract": "tel.workflow/v4",
+  "gap": "G-011",
+  "owner": "SOL_1",
+  "status": "IMPLEMENTED_READBACK_VERIFIED_PENDING_REPRODUCIBLE_TEST_AND_TASK_NODE_CAS",
+  "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
+  "research": {
+    "motor_code_lock": "➡️📂motores de descarga extracción copiado movimiento archivos agentes/MOTOR-CODE-LOCK.json",
+    "motor_code_lock_blob": "18196ecdd1379a17d763b3e2d0857534f5fdef14",
+    "copy_motor": "➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de copiar archivos/motor_3_copy_batches.py",
+    "copy_motor_blob": "3689924361ce4a1a9fde4ae2b6f6009c37a6042d",
+    "move_motor": "➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py",
+    "move_motor_blob": "9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
+    "canonical_blobs_preserved": true,
+    "motor_source_rewritten": false
+  },
+  "wire": {
+    "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/canonical_motor_gate.py",
+    "module_blob": "24c659c03454b7ef4361aa69bf721cb12b2331c4",
+    "contract": "yaiwes.canonical_motor_gate/v1",
+    "properties": [
+      "verifies Git blob SHA before motor use",
+      "explicit source/destination/state runtime inputs",
+      "collision policy fail",
+      "rejects source==destination",
+      "does not rewrite canonical motor code",
+      "execution_authorized=false by gate"
+    ]
+  },
+  "test": {
+    "path": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_canonical_motor_gate.py",
+    "blob": "9eee8d33532157967e88cf80fb6a4a0a37a30d7b",
+    "covers": [
+      "copy motor canonical blob",
+      "copy destination SHA-256 read-back and source preservation",
+      "move motor canonical blob",
+      "move destination SHA-256 read-back and source removal",
+      "unsupported operation fail-closed",
+      "source/destination collision fail-closed"
+    ],
+    "repo_pytest_execution": "NOT_CLAIMED",
+    "verdict": "TEST_DEFINED_READBACK_VERIFIED_NOT_EXECUTED_BY_REPO_RUNNER"
+  },
+  "task_node": {
+    "fresh_precondition": "G-011 PENDING claimed_by=null version=1",
+    "task_nodes_blob_before": "78a5dafbd3cbf5c6ae03dfa82a0351dc97335bd0",
+    "claim_persisted": false,
+    "reason": "Do not rewrite the whole concurrent TASK-NODES ledger without a safe field-level CAS mutation; fail closed instead of risking foreign-node overwrite."
+  },
+  "closure": {
+    "closed": false,
+    "remaining": [
+      "execute reproducible G-011 test in an authoritative runner",
+      "persist SOL_1 ownership/status through safe TASK-NODES CAS",
+      "only then mark three steps PASS and advance gaps_closed"
+    ],
+    "execution_authorized": false,
+    "deployment_authorized": false
+  }
+}
