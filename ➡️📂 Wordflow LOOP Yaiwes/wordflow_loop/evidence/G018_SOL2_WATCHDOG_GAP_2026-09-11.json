@@ -2,13 +2,13 @@
   "schema": "yaiwes.evidence/v1",
   "node": "G-018",
   "owner": "SOL_2",
-  "status": "GAP_TEST_EXECUTION_PENDING",
+  "status": "GAP_EXACT_BLOB_TEST_RECONSTRUCTION_PENDING",
   "contract": "yaiwes.fables_binding/v1",
   "claim_state": {
     "task_nodes_status": "CLAIMED",
     "claimed_by": "SOL_2",
     "step_1_research": "RUNNING",
-    "concurrent_foreign_nodes": "G-008 PASS by SOL_1; G-009 PASS by SOL_1; G-030 PASS by SOL_1; G-011 active under SOL_1 evidence stream; no collision"
+    "concurrent_foreign_nodes": "G-008 PASS by SOL_1; G-009 PASS by SOL_1; G-030 PASS by SOL_1; G-011 advanced independently by SOL_1; no collision"
   },
   "research": {
     "canonical_binding_id": "UNIVERSAL_PLUGIN_BUS",
@@ -35,38 +35,46 @@
   ],
   "test_gate": {
     "test_commit": "845be9efa9f6d336e18875e91be5e05ef8207220",
-    "actions_runs_seen_for_previous_evidence_commit": 6,
-    "actions_success_runs_seen": 0,
-    "repo_pytest_execution": "NOT_VERIFIED",
-    "local_clone_attempt": "BLOCKED_DNS_COULD_NOT_RESOLVE_GITHUB_COM",
-    "closure_decision": "DO_NOT_CLOSE_G018"
+    "repo_pytest_execution": "NOT_YET_VERIFIED",
+    "local_network_checkout": "BLOCKED_DNS_COULD_NOT_RESOLVE_GITHUB_COM",
+    "new_verified_runner_pattern": {
+      "source": "SOL_1 G-011 exact-blob execution evidence commit c58d7cc4c2b4dfd8fa002e67a8be80d12af0186b",
+      "method": "reconstruct byte-exact files from GitHub read-back, verify computed Git blob SHA, then run PYTHONPATH=. python -m pytest -q <exact test>",
+      "applicability_to_g018": true,
+      "required_g018_blobs": [
+        "865327d6f5d63bc735aeec7338fa2e7bfb810e23",
+        "a5ec565f63dccd6d67f33ddf35458b33d88e865c",
+        "516e639fc64d048a6bc922a4021c933985867a4b",
+        "384633550b995aae1187806017fb16b9411f0eed",
+        "2729c653ba4b945b1e3ca20017bbdf1ae5669306"
+      ],
+      "state": "RECONSTRUCTION_PENDING"
+    },
+    "closure_decision": "DO_NOT_CLOSE_G018_UNTIL_EXACT_BLOB_PYTEST_PASS_OR_FAIL_IS_CAPTURED"
   },
   "runner_audit": {
-    "existing_workflow_checked": ".github/workflows/yaiwes-3step-programming-trigger.yml",
-    "workflow_blob": "8966076b38e53153a3c47515c01718a918d10789",
+    "existing_workflow_checked": ".github/workflows/yaiwes-3step-wire.yml",
+    "workflow_blob": "4f518328d0f622d1d60c78508b504da53049e96b",
     "result": "NOT_APPLICABLE_TO_G018",
-    "reason": "workflow sparse-checkout and test body target Agente Yaiwes principal programming runtime, not runtime/tests/test_fables_binding_gate.py",
-    "fresh_recursive_tree_audit": "NO_G018_OR_FABLES_SPECIFIC_WORKFLOW_FOUND_ON_MAIN",
-    "fresh_tree_head": "559571eea7a5a6ad6b1a52df121e99fe7925fab3",
+    "reason": "workflow sparse-checkout and execution target Agente Yaiwes principal wiring paths, not Wordflow LOOP Yaiwes/runtime/tests/test_fables_binding_gate.py",
     "scope_decision": "DO_NOT_CREATE_OR_EDIT_DOT_GITHUB_WORKFLOW_OUTSIDE_AUTHORIZED_WRITE_ROOT"
   },
   "fresh_main_readback": {
-    "main_head": "559571eea7a5a6ad6b1a52df121e99fe7925fab3",
-    "main_head_message": "sol1: checkpoint G-011 runner probe fail-closed",
+    "latest_observed_commit": "129916713392cb8a1da17838e0f8fe6ea79ea609",
+    "latest_observed_message": "SOL_1 G-011: advance checkpoint after exact-blob pytest PASS",
     "handoff_blob": "d1635f5d7dd075e85af59a0bf7fa21a4d2cf4f1d",
-    "task_nodes_blob": "6f4867aadd6d8065f8e90eef5c6a2628318865a6",
     "test_blob": "2729c653ba4b945b1e3ca20017bbdf1ae5669306",
     "g018_claim_preserved": true
   },
   "progress_this_cycle": [
-    "fresh PARCHE, HANDOFF and Crazy Wall were read from main",
-    "fresh TASK-NODES still assigns G-018 exclusively to SOL_2 with 1_RESEARCH RUNNING",
+    "fresh PARCHE, HANDOFF, Crazy Wall and TASK-NODES were read from main",
+    "TASK-NODES still assigns G-018 exclusively to SOL_2 with 1_RESEARCH RUNNING",
     "G-006 remains blocked by G-018 and was not touched",
-    "current main head is independent G-011 work from SOL_1 and does not collide with G-018",
-    "recursive main-tree audit found no G-018/Fables-specific workflow runner",
-    "existing YAIWES 3-Step programming runner remains not applicable to runtime/tests/test_fables_binding_gate.py",
-    "no workflow was created or edited outside the authorized Wordflow LOOP Yaiwes root"
+    "fresh Fables gate, generation policy, Ficha v2, canonical bus and exact pytest blobs were read back",
+    "existing yaiwes-3step-wire workflow was verified not applicable to G-018",
+    "SOL_1 provided a verified exact-blob local pytest pattern on G-011 that can be reused for G-018 without editing workflows",
+    "direct local network checkout remains blocked by DNS, so G-018 exact blobs must be reconstructed from GitHub read-back before executing pytest"
   ],
-  "next_action": "Execute runtime/tests/test_fables_binding_gate.py in a reproducible authorized runner that can test current main and capture PASS/FAIL. Keep G-018 claimed by SOL_2 and do not unblock G-006 until that evidence exists.",
+  "next_action": "Reconstruct the five G-018 files byte-exact from GitHub read-back, verify each computed Git blob SHA against the recorded blob, run PYTHONPATH=. python -m pytest -q runtime/tests/test_fables_binding_gate.py, persist PASS/FAIL, and only then advance G-018.",
   "rules": ["NO_LFS", "NO_FORCE", "NO_PARALLEL_BUS", "FAIL_CLOSED"]
 }
