@@ -234,26 +234,28 @@
       "id": "G-015",
       "task": "Cerrar 12 GOALS entrada/salida: schema + runner + Council/simulaciones/refutaciones/cross-check + evidencia.",
       "literal_sha256": "a4b8172e257efb8184154d5d7594eb4920741a217ed4e3a28cdcdae00468812b",
-      "status": "CLAIMED",
+      "status": "PASS",
       "claimed_by": "ASTRA_GPT_LOOP",
       "depends_on": [],
       "steps": [
         {
           "id": "1_RESEARCH",
-          "status": "RUNNING"
+          "status": "PASS"
         },
         {
           "id": "2_MOTOR",
-          "status": "PENDING"
+          "status": "PASS"
         },
         {
           "id": "3_WIRE_TEST",
-          "status": "PENDING"
+          "status": "PASS"
         }
       ],
-      "evidence": [],
+      "evidence": [
+        "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G015_GOALS12_INPUT_OUTPUT_RUNNER_2026-09-11.json"
+      ],
       "gaps": [],
-      "version": 2,
+      "version": 3,
       "checker": "ASTRA_GPT"
     },
     {
