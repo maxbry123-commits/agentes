@@ -5,6 +5,7 @@
   "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
   "status": "ACTIVE_LOOP_CODE_GRAPH_RESEARCH",
   "current_node": "CG13_SOURCE_TRUTH_RECONCILIATION_G013",
+  "claimed_by": "SOL_1",
   "queue": "DAG_DEPENDENCIES_PLUS_PARALLEL_INDEPENDENT",
   "historical_closure": {
     "status": "LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING",
