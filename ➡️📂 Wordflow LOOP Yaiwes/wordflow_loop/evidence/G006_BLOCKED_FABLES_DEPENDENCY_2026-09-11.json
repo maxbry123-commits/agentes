@@ -1,0 +1,34 @@
+{
+  "contract": "tel.workflow/v4",
+  "mode": "FAIL_CLOSED_EXECUTION_LOOP",
+  "gap_id": "G-006",
+  "status": "BLOCKED_DEPENDENCY_G018",
+  "observed_at": "2026-09-11",
+  "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
+  "module": {
+    "path": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/code_generation_policy.py",
+    "blob_sha": "0e46a02a874b329a216cc219fe3429e9feae41a6",
+    "read_back": "PASS",
+    "behavior": "deterministic generation authorization only; execution_authorized=false and deployment_authorized=false"
+  },
+  "verification": {
+    "reuse_gate_required": true,
+    "placement_gate_required": true,
+    "safe_relative_target_required": true,
+    "llm_self_authorization": false,
+    "test_file": "NOT_FOUND",
+    "repo_test_execution": "NOT_CLAIMED",
+    "fables_source_proof": "NOT_VERIFIED",
+    "fables_registry_binding": "NOT_VERIFIED",
+    "ficha_contract_binding": "NOT_VERIFIED"
+  },
+  "blocking_reason": "G-006 closure requires ABI/Protocol + minimal module + tests + canonical Fables/Ficha registration. The current module only compares fables_binding to the literal UNIVERSAL_PLUGIN_BUS; this is not evidence of the canonical Enchufe Universal Fables/Ficha and cannot satisfy G-018.",
+  "decision": "DO_NOT_CLOSE_G006",
+  "dependency": "G-018",
+  "external_auth": "AUTH_PROVIDER_TEST_PENDING",
+  "prohibited_claims": [
+    "PASS_REAL_EXTERNAL",
+    "FABLES_INTEGRATED",
+    "G006_CLOSED"
+  ]
+}
