@@ -4,8 +4,8 @@
   "mode": "FAIL_CLOSED_EXECUTION_LOOP",
   "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
   "status": "ACTIVE_LOOP_CODE_GRAPH_RESEARCH",
-  "current_node": "CG18_FABLES_CANONICAL_BINDING_G018",
-  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260911-0010",
+  "current_node": "G013_SOURCE_TRUTH_RECONCILIATION",
+  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260911-0019",
   "queue_mode": "DAG_DEPENDENCIES_PLUS_PARALLEL_INDEPENDENT",
   "historical_local_closure": {
     "status": "LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING",
@@ -17,11 +17,11 @@
     "director_approved": true,
     "gap_ledger": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/GAPS-INVESTIGACION-CODE-GRAPH-20260910.md",
     "gaps_total": 30,
-    "gaps_closed": 8,
-    "gaps_closed_ids": ["G-001", "G-002", "G-003", "G-004", "G-005", "G-010", "G-013", "G-020"],
+    "gaps_closed": 11,
+    "gaps_closed_ids": ["G-001", "G-002", "G-003", "G-004", "G-005", "G-008", "G-009", "G-010", "G-011", "G-020", "G-030"],
     "gaps_blocked": ["G-006"],
-    "gaps_in_research": ["G-016", "G-018", "G-023", "G-027", "G-028", "G-029"],
-    "gaps_open": ["G-007","G-008","G-009","G-011","G-012","G-014","G-015","G-017","G-019","G-021","G-022","G-024","G-025","G-026","G-030"],
+    "gaps_in_research": ["G-013", "G-016", "G-018", "G-023", "G-027", "G-028", "G-029"],
+    "gaps_open": ["G-007","G-012","G-014","G-015","G-017","G-019","G-021","G-022","G-024","G-025","G-026"],
     "write_scope_enforced": true
   },
   "g001_code_graph_workspace": {
@@ -50,18 +50,29 @@
   "g004_placement_classifier": {"status":"CLOSED_VERIFIED_LOCAL","module":"➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/placement_classifier.py","module_blob":"69698ad30ba1903e0780efcea1952a3737aeb23e","tests_blob":"bf1c26f49edf668ee05584b2a357324af0fc4d8d","evidence":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G004_PLACEMENT_CLASSIFIER_2026-09-10.json","microtest":"PASS_10_OF_10_ASSERTIONS"},
   "g005_reuse_selector": {"status":"CLOSED_VERIFIED_LOCAL","module":"➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/reuse_selector.py","module_blob":"bc7f4805fc7f13e6de0341b84c533d4b7fb6b044","tests":"➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_reuse_selector.py","tests_blob":"1bcd0fca22d1238d28add1880e882e7af863ad52","catalog":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/research/reuse_catalog_g005.json","catalog_blob":"2367f7ed8c7e1ece1d724f15f6494d5ff56543f8","catalog_count":8,"evidence":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G005_REUSE_SELECTOR_2026-09-11.json","local_equivalent_simulation":"PASS_3_OF_3_DECISIONS","repo_test_execution":"NOT_CLAIMED","external_install_or_copy":"NONE"},
   "g006_code_generation": {"status":"BLOCKED_DEPENDENCY_G018","module":"➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/code_generation_policy.py","module_blob":"0e46a02a874b329a216cc219fe3429e9feae41a6","test_file":"NOT_FOUND","fables_source_proof":"SOURCE_LOCATED_USER_UPLOAD_AND_OSQUESTADOR_PENDING_BINDING","fables_registry_binding":"NOT_VERIFIED","ficha_contract_binding":"NOT_VERIFIED","evidence":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G006_BLOCKED_FABLES_DEPENDENCY_2026-09-11.json","decision":"DO_NOT_CLOSE_G006"},
+  "g011_canonical_motor_gate": {
+    "status": "VERIFIED_CLOSED",
+    "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/canonical_motor_gate.py",
+    "module_blob": "def0ccc402d4e9797ff7ac30a92c1993aec47914",
+    "tests": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_canonical_motor_gate.py",
+    "tests_blob": "55a6e4fda73010cad2359f5e0ad9307bd44fc815",
+    "microtest": "PASS_6_OF_6",
+    "task_nodes_close_commit": "7a28a968c6fc311058e5794a5651639fe23985e6",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G011_CANONICAL_COPY_MOVE_MOTORS_2026-09-11.json"
+  },
   "g013_source_truth_reconciliation": {
-    "status": "CLOSED_VERIFIED_LOCAL",
+    "status": "CLAIMED_RECONCILING_CHECKPOINT_0019",
+    "owner": "SOL_1",
     "contract": "yaiwes.truth_reconciliation/v1",
     "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/source_truth_reconciler.py",
-    "module_blob": "fb93ce9ee5b86439b0ba36ef72c404134d1984b1",
+    "module_blob": "83d122456cecc4155481301f317fb953461a707f",
     "tests": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_source_truth_reconciler.py",
-    "tests_blob": "f39cb13a84d1dbb7fcb1c1467f712bf003a431df",
-    "local_equivalent_test": "PASS_7_OF_7",
-    "truth_readback": "PASS_8_OF_8",
-    "repo_test_execution": "NOT_CLAIMED",
+    "tests_blob": "09a7219226d8e677155255dd505426373fd6f2c0",
+    "prior_checkpoint": "WFLOOP-CODE-GRAPH-20260911-0010",
+    "target_checkpoint": "WFLOOP-CODE-GRAPH-20260911-0019",
+    "gap": "SOURCE_OF_TRUTH_DRIFT",
     "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G013_CANONICAL_RECONCILIATION_2026-09-11.json",
-    "closure": "CONSISTENT_VERIFIED_LOCAL"
+    "closure": "PENDING_RECONCILER_AND_TEST_READBACK"
   },
   "graphify_mvp": {
     "status": "SOURCE_ACQUIRED_VERIFIED_AND_PROMPT_BOUND_PENDING_RUNTIME_FABLES_ADAPTER",
@@ -83,19 +94,19 @@
     "next_gate": "THIN_ADAPTER_PLUS_FICHA_V2_PLUS_FABLES_PLUS_SANDBOX"
   },
   "source_of_truth_reconciliation": {
-    "status": "CONSISTENT_VERIFIED_LOCAL",
-    "canonical_checkpoint": "WFLOOP-CODE-GRAPH-20260911-0010",
-    "drift_detected_this_cycle": [],
+    "status": "RECONCILING",
+    "canonical_checkpoint": "WFLOOP-CODE-GRAPH-20260911-0019",
+    "drift_detected_this_cycle": ["STATE_0010", "CHECKPOINT_0018", "README_0010", "HANDOFF_0010", "PLAN_0010", "RECOVERY_0010", "BITACORA_0010", "GAPS_0010"],
     "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G013_CANONICAL_RECONCILIATION_2026-09-11.json",
-    "G-013": "CLOSED_VERIFIED_LOCAL"
+    "G-013": "CLAIMED_SOL_1"
   },
-  "reuse_audit": {"chat_b_contracts":["runtime/docs/T001_CHAT_B_CONTRACT.md","runtime/docs/T007_CHAT_B_CONTRACT.md","runtime/docs/T011_CHAT_B_CONTRACT.md"],"chat_a_conversion":"NOT_YET_LOCATED","sandbox":"LOGICAL_DESCRIPTOR_ONLY_G022_OPEN","installation_deployment":"STATIC_PASS_FIELDS_G017_OPEN","canonical_motors_inside_loop":"NOT_YET_CLOSED_BY_READBACK_G011_OPEN","agent_memory_exact_name":"NOT_YET_LOCATED_G014_OPEN"},
+  "reuse_audit": {"chat_b_contracts":["runtime/docs/T001_CHAT_B_CONTRACT.md","runtime/docs/T007_CHAT_B_CONTRACT.md","runtime/docs/T011_CHAT_B_CONTRACT.md"],"chat_a_conversion":"NOT_YET_LOCATED","sandbox":"LOGICAL_DESCRIPTOR_ONLY_G022_OPEN","installation_deployment":"STATIC_PASS_FIELDS_G017_OPEN","canonical_motors_inside_loop":"VERIFIED_CLOSED_G011","agent_memory_exact_name":"NOT_YET_LOCATED_G014_OPEN"},
   "research_confirmed": {"graphify_source":"maxbry123-commits/osquestador-auditor/Graphify","graphiti_source":"maxbry123-commits/osquestador-auditor/graphiti","graphology_source":"maxbry123-commits/osquestador-auditor/graphology","community_sources":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/research/community_sources.json","community_sources_count":12,"reuse_catalog":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/research/reuse_catalog_g005.json","canonical_motor_source":"maxbry123-commits/frontend/main/➡️📂motores de descarga extracción copiado movimiento archivos fromtend/","motor_policy":"COPY_ONLY_IMMUTABLE_READBACK_REQUIRED"},
   "agent_fleet": {"fleet_count":18,"council12_count":12,"router_status":"LOCAL_PASS_EXTERNAL_AUTH_PENDING"},
   "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
   "next_actions": [
-    "G-018: verify Fables/Ficha source proof, canonical registry binding and tests before unblocking G-006",
-    "Graphify: create only a thin adapter/Ficha v2/Fables binding and sandbox gate; do not copy 883 source files into kernel and do not replace DAGEngine",
+    "G-013: reconcile all eight truth anchors to checkpoint 0019, run reconciler and tests, persist evidence, close only after read-back",
+    "G-018 remains claimed by SOL_2: do not touch",
     "Keep G-022 open until enforceable sandbox isolation exists",
     "Keep G-017 open until deployment/health gates execute real checks"
   ]
