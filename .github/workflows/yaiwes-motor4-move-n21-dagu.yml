@@ -2,6 +2,9 @@ name: YAIWES Motor4 MOVE N21 Dagu
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-motor4-move-n21-dagu.yml'
 
 permissions:
   contents: write
@@ -14,7 +17,7 @@ jobs:
   move_n21:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout Motor4 + Dagu surfaces
+      - name: Checkout Motor4 + Dagu + Crazy Wall
         uses: actions/checkout@v4
         with:
           ref: main
@@ -24,9 +27,48 @@ jobs:
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             /.github/workflows/yaiwes-motor4-move-n21-dagu.yml
+            /📂 Bitácora stated JSON Craxy wall.json
             /➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py
             /Core kernel Yaiwes/Dagu/
             /Agente Yaiwes principal/execution-orchestration/state-machine-executor/
+
+      - name: Claim N21 from fresh Crazy Wall
+        shell: bash
+        env:
+          WALL: '📂 Bitácora stated JSON Craxy wall.json'
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          ok=0
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            python3 - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          p=os.environ['WALL']
+          d=json.load(open(p,encoding='utf-8'))
+          n=next(x for x in d['nodes'] if x['id']==21)
+          if n.get('owner') is not None or n.get('lock') != 'FREE':
+              raise SystemExit(f"N21_NOT_FREE owner={n.get('owner')} lock={n.get('lock')}")
+          if n.get('current_step') != 2:
+              raise SystemExit(f"N21_WRONG_STEP:{n.get('current_step')}")
+          now=datetime.now(timezone.utc).isoformat()
+          n['owner']='SOL'
+          n['lock']='CLAIMED'
+          n['checkpoint']['before']=now+' SOL integración 1 fresh STEP2: source residual expected schemas symlinks only; target already populated; execute symlink frontier only'
+          n.setdefault('evidence',[]).append('worker:SOL integración 1')
+          n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 1','event':'CLAIM_STEP2_SYMLINK_REPAIR'})
+          d['updated_at']=now
+          with open(p,'w',encoding='utf-8') as f: json.dump(d,f,ensure_ascii=False,indent=2); f.write('\n')
+          PY
+            git add -- "$WALL"
+            git commit -m 'watchdog(yaiwes): SOL integración 1 claim N21 STEP2'
+            if git push origin HEAD:main; then ok=1; break; fi
+            sleep $((attempt * 2))
+          done
+          test "$ok" -eq 1
 
       - name: Verify Motor4 immutable SHA
         shell: bash
@@ -37,7 +79,7 @@ jobs:
           test "$(git hash-object "$MOTOR")" = '9a21facfe11327cf60a2afca8f415ad52f0ecbe5'
           echo MOTOR4_SHA_VERIFIED
 
-      - name: Execute Motor4 MOVE N21 Dagu
+      - name: Execute canonical Motor4 on symlink frontier
         shell: bash
         run: |
           set -euo pipefail
@@ -45,46 +87,133 @@ jobs:
           SRC='Core kernel Yaiwes/Dagu'
           DST='Agente Yaiwes principal/execution-orchestration/state-machine-executor/dagu'
           test -d "$SRC"
-          mkdir -p "$DST"
+          test -d "$DST/internal/cmn/schema"
+          test -L "$SRC/schemas/config.schema.json"
+          test -L "$SRC/schemas/dag.schema.json"
+          test ! -e "$SRC/internal"
+          test -f "$DST/internal/cmn/schema/config.schema.json"
+          test -f "$DST/internal/cmn/schema/dag.schema.json"
+
+          # Temporary execution bridge only: make the two existing relative source
+          # symlinks resolvable. Motor4 remains immutable and performs the MOVE.
+          ln -s "$(realpath "$DST/internal")" "$SRC/internal"
+          cleanup_bridge() { rm -f "$SRC/internal"; }
+          trap cleanup_bridge EXIT
+          test -f "$SRC/schemas/config.schema.json"
+          test -f "$SRC/schemas/dag.schema.json"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          src=Path('Core kernel Yaiwes/Dagu')
+          rels=sorted(p.relative_to(src).as_posix() for p in src.rglob('*') if p.is_file())
+          assert rels == ['schemas/config.schema.json','schemas/dag.schema.json'], rels[:20]
+          print('SYMLINK_FRONTIER_MANIFEST=PASS', rels)
+          PY
+
           export SOURCE_DIR="$SRC"
           export DEST_DIR="$DST"
-          export STATE_FILE="/tmp/yaiwes-motor4-n21.json"
+          export STATE_FILE="/tmp/yaiwes-motor4-n21-symlink.json"
           export BATCH_SIZE=100
           export COLLISION_POLICY=fail
-          python3 "$MOTOR"
+          OUT="$(python3 "$MOTOR")"
+          echo "$OUT"
+          MOTOR4_OUT="$OUT" python3 - <<'PY'
+          import json, os
+          d=json.loads(os.environ['MOTOR4_OUT'])
+          assert d['verdict']=='VERIFIED_CLOSED', d
+          assert d['total']==2 and d['moved_or_verified']==2 and d['failed']==0, d
+          print('MOTOR4_SYMLINK_FRONTIER=VERIFIED_CLOSED')
+          PY
 
-      - name: Publish N21 MOVE to main
+          cleanup_bridge
+          trap - EXIT
+          rmdir "$SRC" 2>/dev/null || true
+          test -L "$DST/schemas/config.schema.json"
+          test -L "$DST/schemas/dag.schema.json"
+          test -f "$DST/schemas/config.schema.json"
+          test -f "$DST/schemas/dag.schema.json"
+          test "$(readlink "$DST/schemas/config.schema.json")" = '../internal/cmn/schema/config.schema.json'
+          test "$(readlink "$DST/schemas/dag.schema.json")" = '../internal/cmn/schema/dag.schema.json'
+          echo SYMLINK_DEST_READBACK_LOCAL=PASS
+
+      - name: Publish N21 Motor4 MOVE to main
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A -- 'Core kernel Yaiwes/Dagu' 'Agente Yaiwes principal/execution-orchestration/state-machine-executor/dagu'
-          if git diff --cached --quiet; then
-            echo MOVE_ALREADY_CANONICAL_NO_DELTA
-          else
-            git commit -m 'move(yaiwes): Motor4 MOVE N21 Dagu to state-machine-executor/dagu'
-            ok=0
-            for attempt in 1 2 3 4; do
-              git fetch origin main
-              if git rebase origin/main && git push origin HEAD:main; then
-                ok=1
-                break
-              fi
-              git rebase --abort || true
-              sleep $((attempt * 3))
-            done
-            test "$ok" -eq 1
-            echo "MOVE_COMMIT=$(git rev-parse HEAD)"
-          fi
+          test ! -z "$(git diff --cached --name-only)"
+          git commit -m 'move(yaiwes): Motor4 finish N21 Dagu symlink frontier'
+          ok=0
+          for attempt in 1 2 3 4; do
+            git fetch origin main
+            if git rebase origin/main && git push origin HEAD:main; then ok=1; break; fi
+            git rebase --abort || true
+            sleep $((attempt * 3))
+          done
+          test "$ok" -eq 1
+          echo "MOVE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      - name: Read-back dest N21
+      - name: Read-back origin main N21
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin main
           git reset --hard origin/main
+          SRC='Core kernel Yaiwes/Dagu'
           DST='Agente Yaiwes principal/execution-orchestration/state-machine-executor/dagu'
-          test -d "$DST"
-          find "$DST" -type f -print -quit | grep -q .
-          echo READBACK_OK "$DST"
+          test ! -e "$SRC"
+          test -L "$DST/schemas/config.schema.json"
+          test -L "$DST/schemas/dag.schema.json"
+          test -f "$DST/schemas/config.schema.json"
+          test -f "$DST/schemas/dag.schema.json"
+          echo READBACK_N21_SOURCE_ABSENT_DEST_SYMLINKS_RESOLVED=PASS
+
+      - name: Checkpoint STEP2 PASS and release N21
+        shell: bash
+        env:
+          WALL: '📂 Bitácora stated JSON Craxy wall.json'
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          ok=0
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            python3 - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          p=os.environ['WALL']
+          d=json.load(open(p,encoding='utf-8'))
+          n=next(x for x in d['nodes'] if x['id']==21)
+          if n.get('owner')!='SOL' or n.get('lock')!='CLAIMED' or n.get('current_step')!=2:
+              raise SystemExit(f"N21_CLAIM_LOST owner={n.get('owner')} lock={n.get('lock')} step={n.get('current_step')}")
+          now=datetime.now(timezone.utc).isoformat()
+          run=os.environ.get('GITHUB_RUN_ID','')
+          move=os.environ.get('MOVE_COMMIT','')
+          n['current_step']=3
+          n['status']='PASS'
+          n['checkpoint']['after']=now+' STEP2 PASS: immutable Motor4 moved exactly 2 residual Dagu schema symlinks via temporary resolvability bridge; source absent; destination symlinks resolve; origin/main read-back PASS'
+          n.setdefault('evidence',[]).extend([
+              'step2:strategy_delta:temporary-resolvability-bridge-no-motor-modification',
+              'step2:motor4_blob:9a21facfe11327cf60a2afca8f415ad52f0ecbe5',
+              'step2:run:'+run,
+              'step2:move_commit:'+move,
+              'step2:source:ABSENT',
+              'step2:dest-symlinks:RESOLVED_READBACK_PASS'])
+          n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 1','event':'STEP2_PASS_RELEASE','run':int(run) if run else None,'commit':move})
+          n['owner']=None
+          n['lock']='FREE'
+          n['next_action']='STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST'
+          d['updated_at']=now
+          with open(p,'w',encoding='utf-8') as f: json.dump(d,f,ensure_ascii=False,indent=2); f.write('\n')
+          PY
+            git add -- "$WALL"
+            git commit -m 'crazy-wall: SOL integración 1 N21 STEP2 PASS release'
+            if git push origin HEAD:main; then ok=1; break; fi
+            sleep $((attempt * 2))
+          done
+          test "$ok" -eq 1
+          echo N21_STEP2_PASS_RELEASED
