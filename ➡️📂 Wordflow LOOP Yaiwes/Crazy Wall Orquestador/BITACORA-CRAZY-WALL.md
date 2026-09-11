@@ -2,6 +2,7 @@
 
 Contrato: `tel.workflow/v4` · `FAIL_CLOSED_EXECUTION_LOOP`.
 Raíz única autorizada: `maxbry123-commits/agentes/➡️📂 Wordflow LOOP Yaiwes/`.
+Checkpoint canónico: `WFLOOP-CODE-GRAPH-20260911-0010`.
 
 ## HISTÓRICO CONSERVADO
 Migración de alcance principal `2a73aba061db7dfba2b37bf6637babb2e73c4b0d`. Cierre local previo: `LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING`; evidence `FINAL_3STEP_CLOSURE_TEST_2026-09-10.json`, commit `6c4b10a49fa8de3bd85348f15bd5f5fa461d128c`. Sobrevive `AUTH_PROVIDER_TEST_PENDING`; no se convierte ausencia de ejecución autenticada en PASS.
@@ -187,3 +188,17 @@ Leídos objetivos Partes 1–4, plan de 11 pasos, arquitectura y Wordflow. La se
 
 Refutaciones: (1) actualizar solo HANDOFF no resuelve conflicto STATE/CHECKPOINT; (2) borrar checkpoints históricos para satisfacer el parser violaría conservación del historial; (3) pruebas sintéticas y referencias Fables no prueban integración real.
 Resultado de esta revisión: GAP confirmado en G-013 y rutas rotas asociadas a G-019; sin nuevos componentes, sin cierre global y sin cambios en nodos ajenos.
+
+# SOL_1 LOOP — RECONCILIACIÓN G-013 — 2026-09-11
+
+## CG-0045 — Nodo reclamado
+`G-013` reclamado por `SOL_1`. Se preservó el trabajo concurrente y los updates usan SHA/optimistic concurrency; un conflicto 409 en PLAN fue releído y resuelto sin sobrescritura ciega.
+
+## CG-0046 — Parser histórico corregido
+`runtime/src/core/source_truth_reconciler.py` actualizado al blob `fb93ce9ee5b86439b0ba36ef72c404134d1984b1`. Un documento histórico puede declarar exactamente un `Checkpoint canónico:` aunque conserve referencias antiguas. Dos marcadores canónicos distintos fallan cerrado. Tests actualizados al blob `f39cb13a84d1dbb7fcb1c1467f712bf003a431df` con regresión de historial y conflicto.
+
+## CG-0047 — Anchors reconciliados
+STATE ya contenía `0010` por trabajo verificado posterior (Graphify MVP). CHECKPOINT fue reconciliado a `WFLOOP-CODE-GRAPH-20260911-0010` manteniendo `claimed_by=SOL_1`; no se eligió el ID mayor por heurística: se preservó el avance real registrado en STATE y su commit trazable.
+
+## CG-0048 — Fuentes documentales en reconciliación
+HANDOFF, PLAN, RECOVERY, README arquitectura y GAP ledger fueron alineados a `0010`. BITÁCORA conserva todos los checkpoints históricos y añade este marcador canónico explícito. G-013 continúa abierto hasta read-back final de las ocho fuentes y evidencia reproducible.
