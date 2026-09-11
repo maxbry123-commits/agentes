@@ -18,32 +18,46 @@ Confirmados dentro del LOOP: README arquitectura, HANDOFF, GUIA MAESTRA, PLAN pr
 Fuente solo lectura: `maxbry123-commits/osquestador-auditor`.
 - `graphiti/`: framework de temporal/context graphs para agentes; entities/facts/episodes/provenance, actualización incremental, hybrid retrieval, tipos Pydantic, MCP y REST/FastAPI. Candidato a contexto/provenance/memoria temporal; no scheduler DAG.
 - `graphology/`: Graph object JS/TS; grafos directed/undirected/mixed, algoritmos/layouts/traversals/eventos; backend usado por Sigma.js. Candidato a mapa/visualización; no durable runtime.
-- También observados como candidatos, sin integrar por presencia: GraphRAG, FalkorDB, Neo4j, Dagster, Prefect, Argo Workflows, Inngest, Trigger.dev, Restate, Airflow, Excalidraw.
 
 ## CG-0004 — Skill canónico de motores leído
-Origen corroborado: `maxbry123-commits/frontend/main/➡️📂motores de descarga extracción copiado movimiento archivos fromtend/`.
-Reglas: motores inmutables; código exacto; blob SHA igual; destino explícito; allowlist 7 archivos; no LFS; no force; no sobrescritura silenciosa; read-back obligatorio; modificación → `MOTOR_CODE_LOCK_GAP`.
+Origen corroborado: `maxbry123-commits/frontend/main/➡️📂motores de descarga extracción copiado movimiento archivos fromtend/`. Motores inmutables, blobs preservados, destino explícito, no LFS/force, read-back obligatorio.
 
 ## CG-0005 — GAP ledger publicado
-`Crazy Wall Orquestador/GAPS-INVESTIGACION-CODE-GRAPH-20260910.md` contiene 30 GAPs detallados y criterios de cierre. G-016/G-018/G-023/G-027/G-028/G-029 están en investigación.
+30 GAPs con criterio de cierre reproducible.
 
-## CG-0006 — Documentos del Director incorporados como fuente de diseño
-`📌MAVIS-PARALLEL-100X.md`: evaluar pool persistente, priority queue, cache, batching, streaming/backpressure, async pipeline, dedup, Job ABI/registry/FSM/sandbox/capability routing; rendimiento 100x = hipótesis hasta benchmark.
-`📌MAX-SYSTEM-100X-FINAL-1.md`: evaluar fan-out/fan-in, sharding, idempotency/DLQ, outbox/CDC, multi-pool, durable execution, recovery y multi-sandbox; reutilizar la fundación LOOP antes de sumar infraestructura.
+## CG-0006 — Documentos del Director incorporados
+Mavis/Max System quedan como fuente de patrones; cualquier afirmación de aceleración queda hipótesis hasta benchmark.
 
 # CICLO CG-CYCLE-0002 — SUPERVISIÓN + RECONCILIACIÓN
 
 ## CG-0007 — Drift detectado
-README arquitectura y STATE ya estaban en `CODE_GRAPH_ARCHITECTURE_PROGRAMMING_LOOP`, pero CHECKPOINT/HANDOFF/PLAN/RECOVERY todavía describían únicamente el cierre local anterior. Se clasifica como inconsistencia de fuentes de verdad; no se borra histórico.
+README/STATE estaban en fase CODE GRAPH mientras CHECKPOINT/HANDOFF/PLAN/RECOVERY seguían en cierre anterior.
 
-## CG-0008 — G-010 cerrado verificado
-Watchdog CODE GRAPH activo y limitado exclusivamente a la raíz autorizada. Prompt alineado con `tel.workflow/v4`, fail-closed, GAP 1×1, DAG, Fables, sandbox, agentes, evidencia y persistencia. Estado: `G-010 CLOSED_VERIFIED`.
+## CG-0008 — G-010 CLOSED_VERIFIED
+Watchdog CODE GRAPH activo y limitado a la raíz autorizada.
 
-## CG-0009 — G-020 cerrado verificado
-`wordflow_loop/research/community_sources.json` existe con 12 fuentes, URL, autoridad, `use_for` y política de consulta. Blob verificado `5c03a6a13b5df868f21eb6f744fcc20489c4d183`. Fuentes oficiales y comunitarias fueron rechecadas en el ciclo. Estado: `G-020 CLOSED_VERIFIED`.
+## CG-0009 — G-020 CLOSED_VERIFIED
+`wordflow_loop/research/community_sources.json` contiene 12 fuentes; blob `5c03a6a13b5df868f21eb6f744fcc20489c4d183`.
 
-## CG-0010 — Persistencia del ciclo
-Evidence: `wordflow_loop/evidence/CODE_GRAPH_CYCLE_0002_2026-09-10.json`. STATE y CHECKPOINT avanzan a `WFLOOP-CODE-GRAPH-20260910-0002`; HANDOFF/PLAN/RECOVERY se alinean con la fase activa.
+## CG-0010 — Reconciliación persistida
+STATE/CHECKPOINT/HANDOFF/PLAN/RECOVERY alineados con fase activa. Evidence `CODE_GRAPH_CYCLE_0002_2026-09-10.json`.
+
+# CG01_REUSE_AUDIT — HALLAZGOS
+
+## CG-0011 — Chat A↔B
+Localizados tres contratos Chat-B en `runtime/docs/`: T001, T007, T011. Definen ejecución determinista, REUSE>PATCH>ADAPT>GENERATE, sandbox, evidence, Tribunal y traceability. No se localizó artefacto Chat-A en el árbol runtime auditado; G-016 permanece `GAP_IN_RESEARCH` hasta búsqueda completa o NOT_FOUND probado.
+
+## CG-0012 — Sandbox no demostrado
+`runtime/src/uek/sandbox_manager.py` blob `e26d955331d5a9df8c7408377bab9924d308abef` retorna un descriptor con status `READY`, policy/memory y un ID; no crea aislamiento de proceso/filesystem/network/time/memory y `release_sandbox()` retorna `True`. G-022 permanece abierto; `READY` no es evidencia de aislamiento.
+
+## CG-0013 — Deployment/installation con PASS estático
+`runtime/src/install/installation_engine.py` blob `af525da2cf3409a30fe2633c934d8ccb45cbda50` avanza su FSM pero emite `valid=true`, `invariants_passed=36`, `health_check=PASS` y hash fijo sin ejecutar checks reales. G-017 permanece abierto y esos PASS no se aceptan como evidencia.
+
+## CG-0014 — Motores y memorias
+No se localizaron motores canónicos en top-level del LOOP/wordflow_loop auditado ni archivos exactos `agente-readme-memoria`; G-011 y G-014 permanecen abiertos hasta read-back exacto.
+
+## CG-0015 — Evidence + checkpoint
+Evidence `wordflow_loop/evidence/CG01_REUSE_AUDIT_2026-09-10.json`. Checkpoint `WFLOOP-CODE-GRAPH-20260910-0003`. Próximo nodo: localizar Fables/Ficha y completar source map.
 
 ## Estado del grupo
-GAPs totales: 30. Cerrados verificados: 2 (`G-010`, `G-020`). Externo: `AUTH_PROVIDER_TEST_PENDING`. Próximo nodo: `CG01_REUSE_AUDIT`.
+30 GAPs · 2 CLOSED_VERIFIED (`G-010`, `G-020`) · externos `AUTH_PROVIDER_TEST_PENDING` · Graphiti/Graphology todavía NO integrados.
