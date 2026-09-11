@@ -3,7 +3,7 @@
   "contract": "tel.workflow/v4",
   "gap": "G-011",
   "owner": "SOL_1",
-  "status": "PATH_SCOPE_GATE_REPAIRED_TEST_PASS_PENDING_TASK_NODE_CLOSE",
+  "status": "VERIFIED_CLOSED",
   "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
   "research": {
     "motor_code_lock": "➡️📂motores de descarga extracción copiado movimiento archivos agentes/MOTOR-CODE-LOCK.json",
@@ -70,16 +70,14 @@
   },
   "task_node": {
     "claim_commit": "ff291c2ef43fa7ef44e2bfe9e83fc2dfa4271830",
-    "claim": "G-011 CLAIMED by SOL_1 version=2",
-    "gap_registered": "PATH_SCOPE_GATE_GAP",
+    "close_commit": "7a28a968c6fc311058e5794a5651639fe23985e6",
+    "readback": "G-011 PASS claimed_by=SOL_1 steps=PASS/PASS/PASS gaps=[] version=3",
     "task_nodes_path": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/TASK-NODES.json"
   },
   "closure": {
-    "closed": false,
-    "remaining": [
-      "fresh TASK-NODES CAS to PASS all G-011 steps and clear PATH_SCOPE_GATE_GAP",
-      "Crazy Wall read-back"
-    ],
+    "closed": true,
+    "remaining": [],
+    "path_scope_gate_gap": "CLOSED_VERIFIED",
     "execution_authorized": false,
     "deployment_authorized": false
   }
