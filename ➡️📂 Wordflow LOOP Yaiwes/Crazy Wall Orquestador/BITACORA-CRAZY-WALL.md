@@ -146,5 +146,19 @@ El módulo compara `fables_binding` contra el literal `UNIVERSAL_PLUGIN_BUS`, pe
 ## CG-0040 — Cola independiente segura
 Como G-006 depende de G-018, la cola avanza únicamente a nodo independiente seguro `G-013` para reconciliación automática de fuentes de verdad. Checkpoint `WFLOOP-CODE-GRAPH-20260911-0009`.
 
+# CICLO CG-CYCLE-0010 — G-013 RECONCILIADOR DE FUENTES — 2026-09-11
+
+## CG-0041 — Drift fresco confirmado
+Relectura: STATE/CHECKPOINT estaban en `0009`, mientras README/HANDOFF/PLAN/RECOVERY seguían en `0008`. No se eligió silenciosamente una fuente; G-013 permanece abierto.
+
+## CG-0042 — Implementación determinista
+Creado `runtime/src/core/source_truth_reconciler.py`, blob `9c188b2d7acdf63c94c46c46158f54c6ee55eef5`, contrato `yaiwes.truth_reconciliation/v1`. STATE y CHECKPOINT son anchors; conflicto entre ambos => `FAIL_CLOSED_CONFLICT`; fuente requerida ausente => `FAIL_CLOSED_MISSING_TRUTH`; documento desfasado => `DRIFT_RECONCILE_REQUIRED`. El módulo nunca autoriza escritura por sí mismo.
+
+## CG-0043 — Tests + evidencia
+Tests `runtime/tests/test_source_truth_reconciler.py`, blob `79a4e3b3f642bd115184d4dbef169cdd1eb5bc6b`. Simulación local exacta: `PASS_5_OF_5`; repo pytest/GitHub Actions no reclamados. Evidence `wordflow_loop/evidence/G013_SOURCE_TRUTH_RECONCILER_2026-09-11.json`.
+
+## CG-0044 — Estado fail-closed
+G-013 queda `IMPLEMENTED_VERIFIED_LOCAL_PENDING_CANONICAL_RECONCILIATION`, no CLOSED. Próximo paso 1×1: reconciliar README/HANDOFF/PLAN/RECOVERY y todas las fuentes requeridas, read-back y solo entonces cerrar G-013.
+
 ## Estado del grupo
-30 GAPs · 7 CLOSED (`G-001`, `G-002`, `G-003`, `G-004`, `G-005`, `G-010`, `G-020`) · `G-006 BLOCKED_DEPENDENCY_G018` · externos `AUTH_PROVIDER_TEST_PENDING` · Graphiti/Graphology todavía NO integrados · Fables G-018 sigue en investigación y no se crea bus paralelo.
+30 GAPs · 7 CLOSED (`G-001`, `G-002`, `G-003`, `G-004`, `G-005`, `G-010`, `G-020`) · `G-006 BLOCKED_DEPENDENCY_G018` · `G-013 IN_RESEARCH_IMPLEMENTED` · externos `AUTH_PROVIDER_TEST_PENDING` · Graphiti/Graphology todavía NO integrados · Fables G-018 sigue en investigación y no se crea bus paralelo.
