@@ -25,11 +25,12 @@ Estado: `G-002 GAP_OPEN`.
 
 ## 3 — Generación de tareas de code
 La arquitectura extraída se descompone en tareas atómicas. Cada tarea tendrá `task_id`, dependencia, prioridad, capability, rol/owner, entradas, salidas, destino candidato, sandbox requerido, tests, evidencia, retry/idempotency y estado. Deben distinguirse explícitamente las tareas entregadas por el Director de las generadas automáticamente.
-Estado: `G-003 GAP_OPEN`.
+Estado: `G-003 CLOSED_VERIFIED_LOCAL`.
+Implementación: `runtime/src/core/code_task_graph.py` blob `91fd7779b2e8c27e3dd7f282847df1e2e4ab4f62`; tests `runtime/tests/test_code_task_graph.py` blob `882eb17b4289c747adf3850407e8a6a13b80ae65`; reutiliza `runtime/src/core/dag_engine.py` blob `ed4361e9e2ca93e6744f9946d2334bf55b3ef63a`. Evidence: `wordflow_loop/evidence/G003_TASK_GRAPH_2026-09-10.json`. Verificación local equivalente: `PASS_5_OF_5_ASSERTIONS`; no se reclama ejecución externa/GitHub Actions.
 
 ## 4 — Decisión de ubicación en la arquitectura YAIWES
 El sistema estudiará función y límites del código para elegir entre: A Kernel; B Extension Kernel; C Reasoning Layer; D Wordflow en la cadena del agente; E Pool; F Tools; G otra ubicación justificable. La decisión usa privilegio, lifecycle, estado, latencia, acoplamiento, seguridad, dependencias y capacidad; nunca solo nombre de archivo.
-Estado: `G-004 GAP_OPEN`.
+Estado: `G-004 GAP_OPEN` — siguiente nodo 1×1.
 
 ## 5 — Investigación técnica antes de crear code
 Política obligatoria `REUSE > PATCH > ADAPT > GENERATE`. Antes de crear se investigan librerías Python/YAML/schema/RAG/grafo/seguridad/colas/sandbox/deploy pertinentes. Cuando haya selección de biblioteca, comparar hasta 10 opciones útiles registrando fuente, licencia, compatibilidad, mantenimiento, riesgo e integración.
@@ -53,7 +54,7 @@ Estado: `G-009 GAP_OPEN`.
 
 ## 10 — Watchdog horario del Wordflow
 Cada hora auditar tareas, GAPs, bloqueos, DAG/grafo, agentes, router, sandbox, evidencias y coherencia de STATE/CHECKPOINT/HANDOFF/README. Resolver únicamente lo autorizado y verificable. Nunca convertir ausencia de evidencia en PASS.
-Estado: `G-010 GAP_OPEN` hasta actualizar la automatización de esta fase.
+Estado: `G-010 CLOSED_VERIFIED`.
 
 ## 11 — Recepción de componentes y motores de copiar/mover
 Entrada obligatoria `source + destination`. El motor canónico se conserva byte-a-byte, ejecuta copia/movimiento con destino explícito, hash/read-back y fail-closed. Después se analiza el componente y se cablea en el destino que determine la arquitectura. `Core kernel Yaiwes/` y otros repos se usan como fuentes de lectura/adquisición; no son destinos de escritura de esta fase.
@@ -85,7 +86,7 @@ Estado: `G-017 GAP_OPEN`.
 
 ## 18 — Enchufe Universal Fables único
 Confirmar físicamente código canónico + Ficha/Contract. Todo módulo nuevo se integra a través de ese ABI/plug; prohibido crear buses o rutas de integración paralelas.
-Estado: `G-018 GAP_IN_RESEARCH`.
+Estado: `G-018 GAP_IN_RESEARCH` — búsquedas actuales dentro del LOOP no han producido source proof exacto; no se crea sustituto.
 
 ## 19 — Auditoría global del Wordflow
 Inventariar capacidades existentes y encontrar duplicados, piezas huérfanas, rutas rotas, documentación obsoleta, code no utilizado y GAPs reales. Regla: no rehacer trabajo ya verificado.
@@ -93,7 +94,7 @@ Estado: `G-019 GAP_OPEN`.
 
 ## 20 — 12 direcciones de comunidad/desarrollo
 Crear catálogo de al menos 12 fuentes verificadas para investigación de arquitectura/programación. Debe indicar URL, tema, autoridad/uso y cuándo un agente debe consultar la fuente antes de decidir.
-Estado: `G-020 GAP_OPEN`.
+Estado: `G-020 CLOSED_VERIFIED` — `wordflow_loop/research/community_sources.json` blob `5c03a6a13b5df868f21eb6f744fcc20489c4d183`.
 
 ## 21 — Cola + ejecución paralela
 Implementar/usar prioridades, dependencias DAG, fan-out/fan-in, pools por concern, dedup, idempotency keys, límites de concurrencia y backpressure. Solo nodos sin dependencia entre sí corren en paralelo; tareas bloqueadas esperan evidencia de sus dependencias.
@@ -101,7 +102,7 @@ Estado: `G-021 GAP_OPEN`.
 
 ## 22 — Sandbox → segundo agente → deploy
 Antes de ejecutar code candidato: sandbox con límites de filesystem/network/time/memory. Después un agente distinto valida tests/evidence. Solo entonces gate determinista de promoción/deployment.
-Estado: `G-022 GAP_OPEN`.
+Estado: `G-022 GAP_OPEN`; el descriptor actual no prueba aislamiento físico.
 
 ## 23 — Hugging Face: dataset + skills bridge
 Verificar con acceso/conector real los datasets, modelos, Spaces y skills disponibles. No asumir acceso a secretos por existir referencias. Crear bridge determinista que inyecte recursos/skills aprobados antes de la tarea sin exponer tokens.
@@ -129,7 +130,7 @@ Estado: `G-028 GAP_IN_RESEARCH`.
 
 ## 29 — Planificación organizada de tareas
 Investigar piezas existentes en el repo auditor (Dagster, Prefect, Argo Workflows, Inngest, Trigger.dev, Restate, Airflow, `orchestrator`) y compararlas con la fundación Wordflow ya existente (LangGraph/Temporal/Prefect/Hatchet/redun históricos). Prohibido añadir otro orquestador si no cierra una capacidad no cubierta.
-Estado: `G-029 GAP_IN_RESEARCH`.
+Estado: `G-029 GAP_IN_RESEARCH`; para G-003 se decidió REUSE del DAG local, no añadir orquestador.
 
 ## 30 — Crazy Wall compartido por agentes
 Los agentes deben compartir un estado lógico sin pisarse: task ownership, node ownership, versión/checkpoint, idempotency y reglas de merge/conflict. Al cerrar un grupo de GAPs/tareas se conserva evidencia/historial y se abre el siguiente grupo. El operador/supervisor reconcilia cada hora.
@@ -139,6 +140,7 @@ Estado: `G-030 GAP_OPEN`.
 - `osquestador-auditor` contiene Graphiti y Graphology, además de candidatos GraphRAG/FalkorDB/Neo4j y motores de planificación/visualización. Presencia ≠ selección.
 - Skill canónico de motores leído: `COPY_ONLY / IMMUTABLE_MOTORS`, allowlist exacta de 7 archivos, blobs fijos, destino explícito, no LFS, no force y read-back obligatorio.
 - Fuente canónica indicada por el skill: `maxbry123-commits/frontend/main/➡️📂motores de descarga extracción copiado movimiento archivos fromtend/`.
+- `runtime/src/core/dag_engine.py` ya cubre DAG topológico determinista, ciclos y batches paralelos; G-003 lo reutiliza.
 
 # Persistencia y reglas de esta fase
 - GAP ledger: `Crazy Wall Orquestador/GAPS-INVESTIGACION-CODE-GRAPH-20260910.md`.
