@@ -1,0 +1,156 @@
+name: YAIWES Core complete component inventory audit
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/yaiwes-core-complete-inventory-audit.yml'
+      - 'Core kernel Yaiwes/**'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: yaiwes-core-complete-inventory
+  cancel-in-progress: false
+jobs:
+  inventory:
+    if: ${{ !startsWith(github.event.head_commit.message, 'inventory(core):') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout audit outputs and Crazy Wall
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          sparse-checkout: |
+            .github/workflows/yaiwes-core-complete-inventory-audit.yml
+            📂 Bitácora stated JSON Craxy wall.json
+            Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json
+            Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.md
+          sparse-checkout-cone-mode: false
+      - name: Generate complete inventory with README-derived function
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WALL: '📂 Bitácora stated JSON Craxy wall.json'
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64, json, os, re, urllib.parse, urllib.request
+          from datetime import datetime, timezone
+          repo=os.environ['GITHUB_REPOSITORY']; token=os.environ['GH_TOKEN']; root='Core kernel Yaiwes'
+          headers={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','User-Agent':'yaiwes-core-inventory'}
+          def api(path, ref='main'):
+              url=f'https://api.github.com/repos/{repo}/contents/'+urllib.parse.quote(path,safe='/')+'?ref='+urllib.parse.quote(ref,safe='')
+              req=urllib.request.Request(url,headers=headers)
+              try:
+                  with urllib.request.urlopen(req,timeout=30) as r: return json.load(r)
+              except Exception:
+                  return None
+          def list_dirs(path):
+              data=api(path)
+              return [x for x in (data or []) if isinstance(x,dict) and x.get('type')=='dir']
+          def read_readme(path):
+              items=api(path)
+              if not isinstance(items,list): return None,None
+              candidates=[]
+              for x in items:
+                  if x.get('type')=='file' and x.get('name','').lower() in ('readme.md','readme.rst','readme','readme.txt'):
+                      candidates.append(x)
+              if not candidates: return None,None
+              x=sorted(candidates,key=lambda z: {'readme.md':0,'readme.rst':1,'readme':2,'readme.txt':3}.get(z['name'].lower(),9))[0]
+              raw=api(x['path'])
+              if not isinstance(raw,dict) or 'content' not in raw: return x['path'],None
+              try: text=base64.b64decode(raw['content']).decode('utf-8','replace')
+              except Exception: return x['path'],None
+              return x['path'],text
+          def summary(text,name):
+              if not text: return 'README_FUNCTION_NOT_FOUND'
+              lines=text.replace('\r','').split('\n')
+              paras=[]; cur=[]
+              in_code=False
+              for ln in lines[:240]:
+                  s=ln.strip()
+                  if s.startswith('```'): in_code=not in_code; continue
+                  if in_code: continue
+                  if not s:
+                      if cur:
+                          paras.append(' '.join(cur)); cur=[]
+                      continue
+                  if s.startswith(('#','!','[','<','>','---','===')): continue
+                  if re.match(r'^[-*+]\s+',s) or re.match(r'^\d+[.)]\s+',s): continue
+                  if 'badge' in s.lower() or 'shields.io' in s.lower(): continue
+                  cur.append(re.sub(r'\[(.*?)\]\([^)]*\)',r'\1',s))
+              if cur: paras.append(' '.join(cur))
+              for p in paras:
+                  p=re.sub(r'<[^>]+>',' ',p); p=re.sub(r'\s+',' ',p).strip()
+                  if len(p)>=35:
+                      return p[:420]
+              return f'{name}: README present but no descriptive paragraph was safely extracted.'
+          wall={}
+          try:
+              with open(os.environ['WALL'],encoding='utf-8') as f: wall=json.load(f)
+          except Exception: pass
+          node_by_name={str(n.get('component','')).casefold():n for n in wall.get('nodes',[]) if isinstance(n,dict)}
+          buckets=[('ROOT',root)]
+          for b in ('Componentes recuperados A','Componentes recuperados B'):
+              if api(f'{root}/{b}') is not None: buckets.append((b,f'{root}/{b}'))
+          infrastructure={'Crack wall bitácora stated JSON','Download code Yaiwes','Download code','Metodo de trabajo','Método de trabajo','Readme de integración de componentes arquitectura Yaiwes','Refactoria','TASK-GAPS','agente-yaiwes','agents','code-programming-engine','control-layer','extensions','groups','memory','scripts','tools','wordflow','workflows archivados 2026-09-04','Componentes recuperados A','Componentes recuperados B'}
+          seen=set(); comps=[]
+          for bucket,path in buckets:
+              for x in list_dirs(path):
+                  name=x['name']
+                  if bucket=='ROOT' and name in infrastructure: continue
+                  key=name.casefold()
+                  if key in seen: continue
+                  seen.add(key)
+                  cpath=x['path']; rp,txt=read_readme(cpath); fn=summary(txt,name)
+                  low=(name+' '+fn).lower()
+                  signals=[]
+                  explicit_names={'semantic-kernel','minix3','sel4','gvisor'}
+                  if name.casefold() in explicit_names: signals.append('EXPLICIT_KERNEL_COMPONENT')
+                  for kw in ('microkernel','application kernel','semantic kernel','operating system kernel','os kernel','reasoning kernel'):
+                      if kw in low: signals.append(kw.upper().replace(' ','_'))
+                  kernel=bool(signals)
+                  node=node_by_name.get(key,{})
+                  comps.append({
+                    'name':name,'path':cpath,'bucket':bucket,'readme':rp,'function_source':fn,
+                    'kernel_signal':kernel,'kernel_signals':sorted(set(signals)),
+                    'kernel_policy':'HOLD_KERNEL_MATERIAL_ONLY_INTEGRATE_NON_KERNEL_REMAINDER' if kernel else 'INTEGRATE_BY_STRICT_3_STEPS',
+                    'wall_node_id':node.get('id'),'wall_status':node.get('status'),'wall_current_step':node.get('current_step'),'wall_target':node.get('target')
+                  })
+          comps.sort(key=lambda c:c['name'].casefold())
+          now=datetime.now(timezone.utc).isoformat()
+          report={'schema':'yaiwes.core-component-inventory/v1','generated_at':now,'repository':repo,'root':root,'component_count':len(comps),'kernel_signal_count':sum(c['kernel_signal'] for c in comps),'components':comps}
+          os.makedirs(root,exist_ok=True)
+          with open(f'{root}/CORE-KERNEL-COMPONENT-INVENTORY.json','w',encoding='utf-8') as f: json.dump(report,f,ensure_ascii=False,indent=2); f.write('\n')
+          with open(f'{root}/CORE-KERNEL-COMPONENT-INVENTORY.md','w',encoding='utf-8') as f:
+              f.write('# Core kernel YAIWES — inventario completo de componentes\n\n')
+              f.write(f'- Generado: `{now}`\n- Componentes únicos: **{len(comps)}**\n- Señal de kernel: **{sum(c["kernel_signal"] for c in comps)}**\n\n')
+              f.write('Regla aprobada: material de kernel => **HOLD solo de ese material**; el resto del componente sigue integración estricta de 3 pasos.\n\n')
+              for i,c in enumerate(comps,1):
+                  f.write(f'## {i}. {c["name"]}\n')
+                  f.write(f'- Ruta: `{c["path"]}`\n- Grupo: `{c["bucket"]}`\n')
+                  f.write(f'- Función (extraída de README): {c["function_source"]}\n')
+                  f.write(f'- Kernel: **{"HOLD_KERNEL_MATERIAL" if c["kernel_signal"] else "NO"}**')
+                  if c['kernel_signals']: f.write(' — '+', '.join(c['kernel_signals']))
+                  f.write('\n')
+                  if c['wall_node_id'] is not None:
+                      f.write(f'- Crazy Wall: nodo `{c["wall_node_id"]}`, paso `{c["wall_current_step"]}`, estado `{c["wall_status"]}`, destino `{c["wall_target"]}`\n')
+                  else: f.write('- Crazy Wall: sin nodo registrado todavía.\n')
+                  f.write('\n')
+          print(f'COMPONENTS={len(comps)} KERNEL_SIGNALS={sum(c["kernel_signal"] for c in comps)}')
+          PY
+      - name: Commit inventory with race-safe retry
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- 'Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json' 'Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.md'
+          git diff --cached --quiet && exit 0
+          git commit -m 'inventory(core): refresh complete YAIWES component catalog'
+          for i in 1 2 3 4 5; do
+            git push origin HEAD:main && exit 0
+            git fetch origin main
+            git rebase origin/main
+          done
+          exit 1
