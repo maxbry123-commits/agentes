@@ -206,7 +206,7 @@
       "id": "G-014",
       "task": "Cerrar memoria de 18 agentes: 18 memorias + loader determinista + test de pre-injection.",
       "literal_sha256": "f9a85425811be290e701b7e93fc02eb5988c70e773a7508ccf51f84b60ceb332",
-      "status": "CLAIMED",
+      "status": "PASS",
       "claimed_by": "ASTRA_GPT_LOOP",
       "depends_on": [],
       "steps": [
@@ -216,18 +216,18 @@
         },
         {
           "id": "2_MOTOR",
-          "status": "RUNNING"
+          "status": "PASS"
         },
         {
           "id": "3_WIRE_TEST",
-          "status": "PENDING"
+          "status": "PASS"
         }
       ],
-      "evidence": [],
-      "gaps": [
-        "MEMORY_LOADER_NOT_WIRED_TO_AGENT_INVOKE"
+      "evidence": [
+        "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G014_AGENT_MEMORY_PREINJECTION_2026-09-11.json"
       ],
-      "version": 2,
+      "gaps": [],
+      "version": 3,
       "checker": "ASTRA_GPT"
     },
     {
