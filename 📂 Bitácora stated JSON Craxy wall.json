@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-11T05:22:12.652808+00:00",
+  "updated_at": "2026-09-11T05:32:58.058785+00:00",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1185,14 +1185,14 @@
       "component": "gVisor",
       "source": "Core kernel Yaiwes/gVisor/",
       "current_step": 3,
-      "status": "GAP",
+      "status": "PASS",
       "abc": "C",
       "target": "Agente Yaiwes principal/execution-orchestration/container-pod-isolation/gvisor/",
-      "owner": "SOL",
-      "lock": "CLAIMED",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-11T04:28:57.839533+00:00 SOL integración 1 N26 STEP3: STEP2 Motor4/read-back PASS; build moved runsc and execute real rootless ptrace sandbox command",
-        "after": "STEP3 GAP run 34564949176: canonical runsc build PASS; real gVisor ptrace network-none sandbox executed and emitted 41, but adapter merged Docker pull stderr with stdout and rejected the otherwise-correct feature result. StrategyDelta: keep identical test and separate stdout/stderr; no gVisor source changes."
+        "after": "2026-09-11T05:32:58.058785+00:00 STEP3 PASS: FABLES ACTIVE; identical moved gVisor tree built in no-space ephemeral workspace with canonical Makefile/Bazel; real runsc ptrace network-none sandbox executed /bin/sh printf 41 inside privileged ephemeral CI outer container because GitHub host blocks rootless self-reexec; stdout/stderr separated; L2+L3+L4; prune NOT_NEEDED; origin/main read-back PASS"
       },
       "evidence": [
         "worker:SOL integración 2",
@@ -1221,7 +1221,16 @@
         "step3:runtime_run:34564949176:real_runsc_emitted_41",
         "step3:gap_run:34564949176",
         "step3:gap_exact:adapter_merged_docker_pull_stderr_with_sandbox_stdout",
-        "step3:strategy_delta:separate_stdout_stderr_same_real_runsc_test"
+        "step3:strategy_delta:separate_stdout_stderr_same_real_runsc_test",
+        "step3:run:34565671367",
+        "step3:evidence_commit:7731709fb8552406dbbab08496a65553f145b231",
+        "step3:adapter_sha256:7649f3ddcd6144662d6b80559e714eaca223c468f9d559cebe6739ab28912591",
+        "step3:build_strategy:identical_no-space_ephemeral_workspace+canonical_Makefile_Bazel",
+        "step3:route:FABLES->gVisor adapter->runsc->ephemeral privileged CI container->ptrace network-none sandbox",
+        "step3:microtest:PASS runsc do sandbox output=41",
+        "step3:evidence:L2_build+L3_runtime+L4_feature",
+        "step3:prune:NOT_NEEDED",
+        "step3:readback:source_absent+adapter+ficha+evidence PASS"
       ],
       "history": [
         {
@@ -1282,9 +1291,17 @@
           "label": "SOL integración 1",
           "event": "STEP3_GAP_OUTPUT_PARSER_STRATEGY_DELTA",
           "run": 34564949176
+        },
+        {
+          "at": "2026-09-11T05:32:58.058785+00:00",
+          "actor": "SOL",
+          "label": "SOL integración 1",
+          "event": "STEP3_PASS_RELEASE",
+          "run": 34565671367,
+          "commit": "7731709fb8552406dbbab08496a65553f145b231"
         }
       ],
-      "next_action": "STEP3_RETRY_SAME_REAL_RUNSC_TEST_SEPARATE_STDOUT_STDERR"
+      "next_action": "COMPLETE"
     },
     {
       "id": 27,
