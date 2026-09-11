@@ -1,5 +1,5 @@
 {
-  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260911-0014",
+  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260911-0015",
   "contract": "tel.workflow/v4",
   "mode": "FAIL_CLOSED_EXECUTION_LOOP",
   "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
@@ -21,10 +21,11 @@
   },
   "verified_this_cycle": {
     "gap": "G-011",
-    "result": "IMPLEMENTED_READBACK_VERIFIED_PENDING_REPRODUCIBLE_TEST_AND_TASK_NODE_CAS",
+    "result": "LOCAL_EQUIVALENT_SIMULATION_PASS_PENDING_AUTHORITATIVE_RUNNER_AND_TASK_NODE_CAS",
     "owner": "SOL_1",
     "task_nodes_claim_persisted": false,
     "task_nodes_blob_observed": "78a5dafbd3cbf5c6ae03dfa82a0351dc97335bd0",
+    "task_nodes_observed_state": "G-011 PENDING claimed_by=null version=1; G-018 CLAIMED by SOL_2",
     "contract": "yaiwes.canonical_motor_gate/v1",
     "motor_code_lock_blob": "18196ecdd1379a17d763b3e2d0857534f5fdef14",
     "copy_motor_blob": "3689924361ce4a1a9fde4ae2b6f6009c37a6042d",
@@ -34,15 +35,16 @@
     "tests": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_canonical_motor_gate.py",
     "tests_blob": "9eee8d33532157967e88cf80fb6a4a0a37a30d7b",
     "repo_pytest_execution": "NOT_CLAIMED",
+    "local_equivalent_simulation": "PASS_6_OF_6_EQUIVALENT_ASSERTIONS",
     "motor_source_rewritten": false,
     "execution_authorized": false,
     "deployment_authorized": false,
     "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G011_CANONICAL_COPY_MOVE_MOTORS_2026-09-11.json",
-    "evidence_commit": "d7bc1fec3cc1e95d49726fa37f48b81f2558e253",
-    "decision": "G011_REMAINS_OPEN_FAIL_CLOSED_UNTIL_AUTHORITATIVE_TEST_AND_SAFE_TASK_NODE_CAS"
+    "evidence_commit": "42b6e5ae2ea69de231edccfb78291830fa3d9e82",
+    "decision": "G011_REMAINS_OPEN_FAIL_CLOSED_UNTIL_AUTHORITATIVE_REPO_TEST_AND_SAFE_TASK_NODE_CAS"
   },
   "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
-  "next_action": "G011_EXECUTE_REPRODUCIBLE_COPY_MOVE_TEST_AND_PERSIST_SAFE_TASK_NODE_CAS_BEFORE_CLOSURE; DO_NOT_TOUCH_G018_WHILE_CLAIMED_BY_SOL_2",
+  "next_action": "G011_RUN_AUTHORITATIVE_REPO_TEST_AND_PERSIST_SAFE_TASK_NODE_CAS; DO_NOT_TOUCH_G018_WHILE_CLAIMED_BY_SOL_2",
   "blocked_dependency": "G006_REQUIRES_G018_CANONICAL_FABLES_FICHA_PROOF",
   "recovery_entrypoint": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md"
 }
