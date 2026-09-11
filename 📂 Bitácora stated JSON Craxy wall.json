@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-10T22:31:41.010979+00:00",
+  "updated_at": "2026-09-11T03:26:28.764385+00:00",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -730,10 +730,10 @@
       "status": "GAP",
       "abc": "B",
       "target": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/dagu/",
-      "owner": null,
-      "lock": "FREE",
+      "owner": "SOL",
+      "lock": "CLAIMED",
       "checkpoint": {
-        "before": "2026-09-10T20:13:00Z fresh revalidation: target populated but source still contains schemas/, specs/, tools.go and ui/; target contains AGENTS.md.moving; prior STEP2 source-absent evidence contradicted by fresh main",
+        "before": "2026-09-11T03:26:28.764385+00:00 SOL integración 1 fresh STEP2: source residual expected schemas symlinks only; target already populated; execute symlink frontier only",
         "after": "2026-09-10T20:22:00Z STEP2 GAP: source reduced to schemas/ only; residual config.schema.json and dag.schema.json are broken relative symlinks. Their targets exist under destination internal/cmn/schema. Immutable Motor4 manifests only rglob entries where is_file(), so broken symlinks are excluded and cannot be claimed moved/verified."
       },
       "evidence": [
@@ -753,7 +753,8 @@
         "step2:dest-config:READBACK_OK",
         "step2:dest-dag:6d0eb99af63760aa745f2e14f6f9dc6c85e884d4",
         "step2:motor4-is_file-excludes-broken-symlink",
-        "step2:VERIFIED_CLOSED_REFUTED"
+        "step2:VERIFIED_CLOSED_REFUTED",
+        "worker:SOL integración 1"
       ],
       "history": [
         {
@@ -782,6 +783,12 @@
           "actor": "SOL",
           "label": "SOL integración 2",
           "event": "STEP2_GAP_SYMLINK_LIMITATION_RELEASE"
+        },
+        {
+          "at": "2026-09-11T03:26:28.764385+00:00",
+          "actor": "SOL",
+          "label": "SOL integración 1",
+          "event": "CLAIM_STEP2_SYMLINK_REPAIR"
         }
       ],
       "next_action": "STEP_2_REQUIRES_AUTHORIZED_SYMLINK_AWARE_EXECUTION_WITH_CANONICAL_MOTOR4; FLAG_AND_CONTINUE_SAFE_FREE_NODE"
