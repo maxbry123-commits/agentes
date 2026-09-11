@@ -101,5 +101,19 @@ Tests `runtime/tests/test_code_graph_workspace.py`, blob `c7f00e3155d22c559907d5
 ## CG-0027 — Read-back + cierre
 README del workspace blob `2462785b8ee5a5d358d94bd5f5e504ffeec1ee17`. Evidence `wordflow_loop/evidence/G001_CODE_GRAPH_WORKSPACE_2026-09-10.json`. `G-001 CLOSED_VERIFIED_LOCAL`. Checkpoint `WFLOOP-CODE-GRAPH-20260910-0006`. Próximo nodo 1×1: `G-002` Ask Council + auditoría determinista de archivo.
 
+# CICLO CG-CYCLE-0007 — G-002 FILE AUDIT + ASK COUNCIL
+
+## CG-0028 — Auditor determinista de entrada
+Creado `runtime/src/core/file_audit_contract.py`, blob `e6624c0b39421a01d54cf0615920073c5dd1ee0f`. Contrato `yaiwes.file_audit/v1`: valida source/provenance/basename, genera SHA-256, detecta formato y extrae arquitectura, interfaces, dependencias, capacidades, riesgos y requisitos estructurados.
+
+## CG-0029 — Council normalizado y sin autoridad ejecutiva
+El Council admite únicamente verdicts `ADOPT|ADAPT|REJECT|RESEARCH_MORE`, findings tipados, evidence refs, confidence 0..1 y dissent_count válido. Schema inválido falla cerrado. El resultado mantiene siempre `executable_action_authorized=false`; ninguna respuesta LLM/Council puede ejecutar, desplegar, escribir o usar red por sí sola.
+
+## CG-0030 — Riesgos + tests + read-back
+El auditor identifica `eval`, `exec`, `compile`, `os.system`, `subprocess.Popen`, `subprocess.run` y marcadores textuales inseguros; crea `risk_gate=BLOCK_AND_REVIEW`. Tests `runtime/tests/test_file_audit_contract.py`, blob `d490a7e15205c37a0f476e6e4c0de7f9429f36c6`, cubren 8 escenarios. Read-back módulo/tests PASS. Simulación local equivalente ejecutada: `PASS_5_OF_5_ASSERTIONS`; `repo_test_execution=NOT_CLAIMED`.
+
+## CG-0031 — Cierre G-002
+Evidence `wordflow_loop/evidence/G002_FILE_AUDIT_COUNCIL_2026-09-10.json`. `G-002 CLOSED_VERIFIED_LOCAL`. Checkpoint `WFLOOP-CODE-GRAPH-20260910-0007`. Siguiente nodo 1×1: `G-005` investigación/reutilización previa a generación.
+
 ## Estado del grupo
-30 GAPs · 5 CLOSED (`G-001`, `G-003`, `G-004`, `G-010`, `G-020`) · externos `AUTH_PROVIDER_TEST_PENDING` · Graphiti/Graphology todavía NO integrados · Fables G-018 sigue en investigación y no se crea bus paralelo.
+30 GAPs · 6 CLOSED (`G-001`, `G-002`, `G-003`, `G-004`, `G-010`, `G-020`) · externos `AUTH_PROVIDER_TEST_PENDING` · Graphiti/Graphology todavía NO integrados · Fables G-018 sigue en investigación y no se crea bus paralelo.
