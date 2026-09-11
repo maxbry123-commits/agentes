@@ -87,5 +87,19 @@ Tests: `runtime/tests/test_placement_classifier.py`, blob `bf1c26f49edf668ee0558
 ## CG-0023 — Cierre y siguiente nodo
 `G-004 CLOSED_VERIFIED_LOCAL`. Checkpoint `WFLOOP-CODE-GRAPH-20260910-0005`. Siguiente nodo 1×1: `G-001` raíz anclada/contrato/serialización CODE GRAPH. `AUTH_PROVIDER_TEST_PENDING` continúa abierto.
 
+# CICLO CG-CYCLE-0006 — G-001 CODE GRAPH WORKSPACE
+
+## CG-0024 — Raíz anclada
+Creada `wordflow_loop/code_graph/` como workspace canónico del grafo. No es un segundo orquestador y no introduce otra fuente de verdad; STATE/CHECKPOINT/Crazy Wall siguen siendo persistencia del LOOP.
+
+## CG-0025 — Contrato determinista
+Creado `runtime/src/core/code_graph_workspace.py`, blob `6fe57e6c4233532623a8de589892de2d28897cb9`. Define 13 tipos de nodo, 14 tipos de arista, serialización JSON canónica, SHA-256 y proyección `depends_on` al contrato existente de `DAGEngine`.
+
+## CG-0026 — Fail-closed + test
+Tests `runtime/tests/test_code_graph_workspace.py`, blob `c7f00e3155d22c559907d50af31bf95403a5eb68`. Simulación local equivalente `PASS_5_OF_5_ASSERTIONS`: serialización/hash estable, proyección DAG, missing endpoint fail-closed y payload no serializable fail-closed. `repo_pytest_execution=NOT_CLAIMED`.
+
+## CG-0027 — Read-back + cierre
+README del workspace blob `2462785b8ee5a5d358d94bd5f5e504ffeec1ee17`. Evidence `wordflow_loop/evidence/G001_CODE_GRAPH_WORKSPACE_2026-09-10.json`. `G-001 CLOSED_VERIFIED_LOCAL`. Checkpoint `WFLOOP-CODE-GRAPH-20260910-0006`. Próximo nodo 1×1: `G-002` Ask Council + auditoría determinista de archivo.
+
 ## Estado del grupo
-30 GAPs · 4 CLOSED (`G-003`, `G-004`, `G-010`, `G-020`) · externos `AUTH_PROVIDER_TEST_PENDING` · Graphiti/Graphology todavía NO integrados · Fables G-018 sigue en investigación y no se crea bus paralelo.
+30 GAPs · 5 CLOSED (`G-001`, `G-003`, `G-004`, `G-010`, `G-020`) · externos `AUTH_PROVIDER_TEST_PENDING` · Graphiti/Graphology todavía NO integrados · Fables G-018 sigue en investigación y no se crea bus paralelo.
