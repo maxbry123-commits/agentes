@@ -4,8 +4,8 @@
   "mode": "FAIL_CLOSED_EXECUTION_LOOP",
   "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
   "status": "ACTIVE_LOOP_CODE_GRAPH_RESEARCH",
-  "current_node": "CG01_REUSE_AUDIT_CONTINUE_FABLES_AND_SOURCE_MAP",
-  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260910-0003",
+  "current_node": "CG02_PLACEMENT_CLASSIFIER_G004",
+  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260910-0004",
   "queue_mode": "DAG_DEPENDENCIES_PLUS_PARALLEL_INDEPENDENT",
   "historical_local_closure": {
     "status": "LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING",
@@ -17,15 +17,15 @@
     "director_approved": true,
     "gap_ledger": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/GAPS-INVESTIGACION-CODE-GRAPH-20260910.md",
     "gaps_total": 30,
-    "gaps_closed": 2,
-    "gaps_closed_ids": ["G-010", "G-020"],
+    "gaps_closed": 3,
+    "gaps_closed_ids": ["G-003", "G-010", "G-020"],
     "gaps_in_research": ["G-016", "G-018", "G-023", "G-027", "G-028", "G-029"],
-    "gaps_open": ["G-001","G-002","G-003","G-004","G-005","G-006","G-007","G-008","G-009","G-011","G-012","G-013","G-014","G-015","G-017","G-019","G-021","G-022","G-024","G-025","G-026","G-030"],
+    "gaps_open": ["G-001","G-002","G-004","G-005","G-006","G-007","G-008","G-009","G-011","G-012","G-013","G-014","G-015","G-017","G-019","G-021","G-022","G-024","G-025","G-026","G-030"],
     "write_scope_enforced": true
   },
   "source_of_truth_reconciliation": {
-    "status": "RECONCILED_FOR_ACTIVE_PHASE",
-    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/CODE_GRAPH_CYCLE_0002_2026-09-10.json",
+    "status": "RECONCILED_FOR_ACTIVE_PHASE_WITH_G003_EVIDENCE",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G003_TASK_GRAPH_2026-09-10.json",
     "G-013": "OPEN_PENDING_AUTOMATIC_RECONCILIATION_POLICY_TEST"
   },
   "reuse_audit": {
@@ -36,6 +36,16 @@
     "installation_deployment": "STATIC_PASS_FIELDS_G017_OPEN",
     "canonical_motors_inside_loop": "NOT_YET_LOCATED_G011_OPEN",
     "agent_memory_exact_name": "NOT_YET_LOCATED_G014_OPEN"
+  },
+  "g003_task_graph": {
+    "status": "CLOSED_VERIFIED_LOCAL",
+    "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/code_task_graph.py",
+    "module_blob": "91fd7779b2e8c27e3dd7f282847df1e2e4ab4f62",
+    "tests": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_code_task_graph.py",
+    "tests_blob": "882eb17b4289c747adf3850407e8a6a13b80ae65",
+    "reused_dag_blob": "ed4361e9e2ca93e6744f9946d2334bf55b3ef63a",
+    "microtest": "PASS_5_OF_5_ASSERTIONS",
+    "github_actions_test": "NOT_CLAIMED"
   },
   "research_confirmed": {
     "graphiti_source": "maxbry123-commits/osquestador-auditor/graphiti",
@@ -48,10 +58,10 @@
   "agent_fleet": {"fleet_count":18,"council12_count":12,"router_status":"LOCAL_PASS_EXTERNAL_AUTH_PENDING"},
   "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
   "next_actions": [
-    "Continue CG01 to locate Fables/Ficha exact canonical artifact and wiring",
+    "G-004: implement deterministic placement classifier with reason codes and review fallback",
+    "Continue search for exact canonical Fables artifact without creating a parallel bus",
     "Search remaining project documents for Chat-A conversion before deciding G-016 NOT_FOUND",
     "Keep G-022 open until sandbox creates enforceable process/filesystem/network/time/memory isolation",
-    "Keep G-017 open until deployment/health gates execute real checks instead of static PASS values",
-    "Do not claim motors/agent-memory/Graphiti/Graphology integration until exact read-back evidence exists"
+    "Keep G-017 open until deployment/health gates execute real checks instead of static PASS values"
   ]
 }
