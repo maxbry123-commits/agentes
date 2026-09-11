@@ -1,0 +1,114 @@
+name: Astra Publish YAIWES Factory Static Space
+
+on:
+  push:
+    paths:
+      - '.github/workflows/astra-yaiwes-hf-static-publish.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: astra-yaiwes-hf-static-publish
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      SPACE_REPO: COMAND-CENTER-1/yaiwes-ui-factory
+      SOURCE_REF: f4117830f2141ce8363aff694b3fb513b20b02ca
+      RAW_ROOT: https://raw.githubusercontent.com/maxbry123-commits/frontend/f4117830f2141ce8363aff694b3fb513b20b02ca/UI%20YAIWES/watchdog%20UI%20YAIWES/%E2%9E%A1%EF%B8%8F%20Astra%20plan%20f%C3%A1brica%20UI%20YAIWES/Frontend/factory-v0
+    steps:
+      - name: Verify authorized HF write token without exposing it
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$HF_TOKEN" ]; then echo 'HF_TOKEN_MISSING'; exit 2; fi
+          echo "::add-mask::$HF_TOKEN"
+          echo 'HF_TOKEN_PRESENT=YES'
+
+      - name: Package exact verified Factory V0
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf _space
+          mkdir -p _space/src
+          curl -fsSL "$RAW_ROOT/index.html" -o _space/index.html
+          curl -fsSL "$RAW_ROOT/styles.css" -o _space/styles.css
+          for f in app.js actions.js state.js backend-adapter.js; do
+            curl -fsSL "$RAW_ROOT/src/$f" -o "_space/src/$f"
+          done
+          cat > _space/README.md <<'EOF'
+          ---
+          title: YAIWES UI Factory
+          emoji: 🏭
+          colorFrom: indigo
+          colorTo: purple
+          sdk: static
+          pinned: false
+          ---
+
+          # YAIWES UI Factory
+          Visual Static Space for the YAIWES UI Factory.
+          Verified source SHA: `f4117830f2141ce8363aff694b3fb513b20b02ca`.
+          EOF
+          grep -q 'YAIWES UI Factory' _space/index.html
+          echo "PACKAGE_FILES=$(find _space -type f | wc -l)"
+          sha256sum _space/index.html _space/styles.css _space/src/*.js
+          echo 'PACKAGE_VERIFY=PASS'
+
+      - name: Create/update public Hugging Face Static Space
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet --disable-pip-version-check 'huggingface_hub>=0.28,<2'
+          python - <<'PY'
+          import os
+          from huggingface_hub import HfApi, create_repo
+          token=os.environ['HF_TOKEN']
+          repo=os.environ['SPACE_REPO']
+          api=HfApi(token=token)
+          me=api.whoami()
+          print('HF_AUTH_ACCOUNT=' + str(me.get('name') or me.get('fullname') or 'UNKNOWN'))
+          url=create_repo(repo_id=repo, repo_type='space', space_sdk='static', private=False, exist_ok=True, token=token)
+          print('HF_SPACE_REPO_URL=' + str(url))
+          commit=api.upload_folder(repo_id=repo, repo_type='space', folder_path='_space', commit_message='Publish YAIWES UI Factory static preview')
+          print('HF_SPACE_UPLOAD_COMMIT=' + str(commit))
+          info=api.space_info(repo_id=repo)
+          print('HF_SPACE_SUBDOMAIN=' + str(getattr(info,'subdomain',None)))
+          runtime=getattr(info,'runtime',None)
+          print('HF_SPACE_STAGE=' + str(getattr(runtime,'stage','UNKNOWN')))
+          PY
+
+      - name: Verify persistent visual URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import time, urllib.request
+          urls=[
+            ('https://huggingface.co/spaces/COMAND-CENTER-1/yaiwes-ui-factory','YAIWES'),
+            ('https://comand-center-1-yaiwes-ui-factory.hf.space/','YAIWES UI Factory'),
+          ]
+          for url,marker in urls:
+            last=None
+            for i in range(36):
+              try:
+                req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0'})
+                with urllib.request.urlopen(req,timeout=15) as r:
+                  body=r.read().decode('utf-8','ignore')
+                  print(f'HTTP_CHECK url={url} status={r.status} bytes={len(body)} attempt={i+1}')
+                  if r.status==200 and marker in body:
+                    print('HTTP_READBACK_PASS='+url)
+                    break
+              except Exception as e:
+                last=repr(e)
+              time.sleep(5)
+            else:
+              raise SystemExit(f'URL_VERIFY_FAILED {url} last={last}')
+          print('HF_STATIC_SPACE_PUBLISH=PASS')
+          PY
