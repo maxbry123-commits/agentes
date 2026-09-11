@@ -1,33 +1,38 @@
-# HANDOFF — Wordflow LOOP Yaiwes — CIERRE FINAL 3 PASOS
+# HANDOFF — Wordflow LOOP Yaiwes
 
 Contrato: `tel.workflow/v4`  
 Modo: `FAIL_CLOSED_EXECUTION_LOOP`  
-Raíz única autorizada de escritura: `maxbry123-commits/agentes/➡️📂 Wordflow LOOP Yaiwes/`  
-Estado: `LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING`.
+Raíz única autorizada de escritura: `maxbry123-commits/agentes/➡️📂 Wordflow LOOP Yaiwes/`
 
-## PASO 1 ✅ CIERRE DE ESTRUCTURA
-Todo el bloque operativo de esta tarea quedó canónico dentro de `➡️📂 Wordflow LOOP Yaiwes/`: índice, fleet adapter, registry, health, ready manifest, plugin registration, Ficha v2, router MVP, workflows archivados, evidence, STATE/CHECKPOINT/PLAN/RECOVERY/BITÁCORA/README. La migración principal fue `2a73aba061db7dfba2b37bf6637babb2e73c4b0d`. Las copias externas creadas por este bloque fueron retiradas y el registry externo preexistente fue restaurado a `ce40e9afd13fdbea22609fe57807566770dfc1b0`.
+## Histórico conservado
+El cierre local anterior permanece válido: fleet=18, Council12=12, routing/fail-closed local y router MVP fueron probados localmente. Evidencia: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/FINAL_3STEP_CLOSURE_TEST_2026-09-10.json` · commit `6c4b10a49fa8de3bd85348f15bd5f5fa461d128c`.
 
-## PASO 2 ✅ PRUEBAS
-Se ejecutaron pruebas locales contra el código actual: fleet=18, IDs únicos=18, Council12=12, routing writer→OpenCode, repair→OpenHands, flow_review→Claude Code, research→Goose, fallback_coder→OpenDev, fail-closed sin runtime=18/18 y rechazo de invoke no configurado=PASS.
+Estado externo histórico y actual: `AUTH_PROVIDER_TEST_PENDING`. No se afirma PASS_REAL de proveedores/APIs o agentes remotos sin ejecución autenticada real.
 
-Router MVP probado con inventario simulado controlado para verificar lógica sin exponer secretos: prioridad `Kimi → MiniMax → DeepSeek V4 Pro → DeepSeek V4 Flash → GLM 5 → Muse/Glimmer → Qwen 3.8 → GPT-OSS`=PASS; caída Kimi→MiniMax=PASS; rotación de rutas del mismo nivel=PASS; parallel dispatch 3/3=PASS; claves excluidas de rutas públicas=PASS.
+# Fase activa — CODE_GRAPH_ARCHITECTURE_PROGRAMMING_LOOP
+Estado: `ACTIVE_LOOP_CODE_GRAPH_RESEARCH`  
+Checkpoint: `WFLOOP-CODE-GRAPH-20260910-0002`  
+Nodo: `CG01_REUSE_AUDIT`.
 
-Evidencia final: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/FINAL_3STEP_CLOSURE_TEST_2026-09-10.json` · commit `6c4b10a49fa8de3bd85348f15bd5f5fa461d128c`.
+Pipeline objetivo:
+`archivo/componente → Ask Council/auditoría → arquitectura → requisitos → director_tasks + generated_tasks → DAG/cola → placement A|B|C|D|E|F|G → REUSE>PATCH>ADAPT>GENERATE → sandbox → reviewer independiente → deployment determinista → evidencia → STATE/CHECKPOINT`.
 
-## PASO 3 ✅ PERSISTENCIA + WATCHDOG
-STATE y CHECKPOINT fueron promovidos a cierre final. Watchdog horario activado con alcance exclusivo a `➡️📂 Wordflow LOOP Yaiwes/` y prohibición explícita de escribir fuera de esa raíz.
+## GAP status verificado
+- `G-010 CLOSED_VERIFIED`: Watchdog CODE GRAPH activo, fail-closed y limitado a la raíz autorizada.
+- `G-020 CLOSED_VERIFIED`: catálogo de 12 fuentes en `wordflow_loop/research/community_sources.json`, blob `5c03a6a13b5df868f21eb6f744fcc20489c4d183`.
+- En investigación: `G-016`, `G-018`, `G-023`, `G-027`, `G-028`, `G-029`.
+- Restantes permanecen abiertos hasta evidencia reproducible.
 
-## LÍMITE DE LA EVIDENCIA
-No se marca PASS_REAL de NVIDIA/Cerebras/Groq ni ejecución remota de los agentes desde este entorno porque no existe un canal saliente autenticado seguro para inyectar las claves. Estado correcto: `AUTH_PROVIDER_TEST_PENDING`.
+Evidencia del ciclo: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/CODE_GRAPH_CYCLE_0002_2026-09-10.json`.
 
-## RUTAS CANÓNICAS
-- Fleet: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/`
-- Router: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/model_api_router_mvp.py`
-- Ficha: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/contracts/ficha.agent_fleet.v2.json`
-- Evidence final: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/FINAL_3STEP_CLOSURE_TEST_2026-09-10.json`
-- STATE: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/STATE.json`
-- CHECKPOINT: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/CHECKPOINT.json`
+## Hallazgo de coherencia
+README/STATE ya habían abierto la nueva fase mientras CHECKPOINT/HANDOFF/PLAN/RECOVERY seguían describiendo solo el cierre anterior. El ciclo 0002 inicia la reconciliación sin borrar ni reinterpretar el histórico.
 
-## REGLA FINAL
-No escribir ni modificar para este Wordflow fuera de `➡️📂 Wordflow LOOP Yaiwes/`. El bloque de cierre de 3 pasos está terminado localmente. Solo falta prueba autenticada externa para convertir el estado en `PASS_REAL_EXTERNAL`.
+## Reglas de continuación
+1. No escribir fuera de `➡️📂 Wordflow LOOP Yaiwes/`.
+2. No cerrar GAP por presencia de archivo.
+3. Motores de descargar/extraer/copiar/mover: únicamente canónicos, inmutables, destino explícito, hash/read-back, no LFS, no force.
+4. Todo módulo nuevo entra por Enchufe Universal Fables/Ficha; no buses paralelos.
+5. LLM solo en análisis/generación/Council; DAG/routing/gates/state/sandbox/hash/deploy permanecen deterministas.
+6. Graphiti y Graphology siguen en investigación; no se declara integración hasta copia exacta/adaptador/test/read-back.
+7. Próximo nodo: `CG01_REUSE_AUDIT` para Chat A↔B, Fables, deployment, sandbox, memorias y motores.
