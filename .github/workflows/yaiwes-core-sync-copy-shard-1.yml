@@ -1,0 +1,90 @@
+name: YAIWES Core sync copy shard 1
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/yaiwes-core-sync-copy-shard-1.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+env:
+  SOURCE_REPO: maxbry123-commits/Agentes-motores-Wordflow-YAIWES
+  SOURCE_REF: 1a238c5ac2aca0b0c2acd3141b67ac2f366c1963
+  SOURCE_ROOT: Core kernel razonamiento repo para Yaiwes
+  TARGET_ROOT: Core kernel Yaiwes
+  SHARD: '1'
+  SHARDS: '3'
+jobs:
+  sync-copy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discover missing components for shard 1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, urllib.parse, urllib.request
+          token=os.environ['GH_TOKEN']; src_repo=os.environ['SOURCE_REPO']; ref=os.environ['SOURCE_REF']
+          sroot=os.environ['SOURCE_ROOT']; troot=os.environ['TARGET_ROOT']; shard=int(os.environ['SHARD']); shards=int(os.environ['SHARDS'])
+          def get(repo,path,ref=None):
+              q='?ref='+urllib.parse.quote(ref,safe='') if ref else ''
+              url=f'https://api.github.com/repos/{repo}/contents/'+urllib.parse.quote(path,safe='/')+q
+              req=urllib.request.Request(url,headers={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(req) as r: return json.load(r)
+          src=[x['name'] for x in get(src_repo,sroot,ref) if x['type']=='dir']
+          present=set()
+          for x in get(os.environ['GITHUB_REPOSITORY'],troot):
+              if x['type']=='dir': present.add(x['name'])
+          for bucket in ('Componentes recuperados A','Componentes recuperados B'):
+              try:
+                  for x in get(os.environ['GITHUB_REPOSITORY'],f'{troot}/{bucket}'):
+                      if x['type']=='dir': present.add(x['name'])
+              except Exception: pass
+          missing=sorted(set(src)-present)
+          selected=[n for i,n in enumerate(missing) if i%shards==shard]
+          open('missing.txt','w').write(''.join(n+'\n' for n in selected))
+          report={'source_repo':src_repo,'source_ref':ref,'source_root':sroot,'target_root':troot,'source_components':len(src),'present_component_names':len(present),'missing_total':len(missing),'shard':shard,'shards':shards,'selected':selected}
+          open('report.json','w').write(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+          print(json.dumps(report,ensure_ascii=False))
+          PY
+      - name: Sparse clone source and target then copy
+        run: |
+          set -euo pipefail
+          WF='.github/workflows/yaiwes-core-sync-copy-shard-1.yml'
+          git clone --filter=blob:none --no-checkout --depth=1 --branch main https://github.com/${GITHUB_REPOSITORY}.git target
+          cd target
+          git sparse-checkout init --no-cone
+          { echo "/$WF"; echo "/Core kernel Yaiwes/COPY_SYNC_SHARD_1.json"; while IFS= read -r n; do [ -n "$n" ] && echo "/Core kernel Yaiwes/$n/"; done < ../missing.txt; } > .git/info/sparse-checkout
+          git checkout main
+          cd ..
+          if [ -s missing.txt ]; then
+            git clone --filter=blob:none --no-checkout https://github.com/${SOURCE_REPO}.git source
+            cd source
+            git sparse-checkout init --no-cone
+            while IFS= read -r n; do [ -n "$n" ] && echo "/Core kernel razonamiento repo para Yaiwes/$n/"; done < ../missing.txt > .git/info/sparse-checkout
+            git checkout "$SOURCE_REF"
+            cd ..
+            while IFS= read -r n; do
+              [ -n "$n" ] || continue
+              test -d "source/$SOURCE_ROOT/$n"
+              test ! -e "target/$TARGET_ROOT/$n"
+              cp -a "source/$SOURCE_ROOT/$n" "target/$TARGET_ROOT/$n"
+            done < missing.txt
+          fi
+          cp report.json "target/$TARGET_ROOT/COPY_SYNC_SHARD_1.json"
+      - name: Commit and publish shard 1
+        working-directory: target
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- 'Core kernel Yaiwes'
+          git diff --cached --quiet && exit 0
+          git commit -m 'copy(core): sync missing reasoning components shard 1/3'
+          for i in 1 2 3 4 5; do
+            git push origin HEAD:main && exit 0
+            git fetch origin main
+            git rebase origin/main
+          done
+          exit 1
