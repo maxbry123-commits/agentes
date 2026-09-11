@@ -37,9 +37,14 @@ class AgentFleetAdapter:
     otherwise the first registry slot declaring the requested role is selected.
     """
 
-    def __init__(self, registry_path: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        registry_path: str | Path | None = None,
+        memory_root: str | Path | None = None,
+    ) -> None:
         default = Path(__file__).with_name("agent_fleet_registry.json")
         self.registry_path = Path(registry_path) if registry_path else default
+        self.memory_root = Path(memory_root) if memory_root else Path(__file__).with_name("memory")
         payload = json.loads(self.registry_path.read_text(encoding="utf-8"))
         self.contract = payload.get("contract")
         if self.contract != "tel.workflow/v4":
@@ -54,6 +59,34 @@ class AgentFleetAdapter:
 
     def list_agents(self) -> list[dict[str, Any]]:
         return [dict(item) for item in self._raw]
+
+    def build_invocation_payload(self, agent_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Inject the selected agent memory before its task contract."""
+        if not isinstance(payload, dict) or not payload:
+            raise AgentBindingError("NON_EMPTY_TASK_PAYLOAD_REQUIRED")
+        self.resolve(agent_id=agent_id)
+        try:
+            from runtime.src.core.agent_memory_loader import (
+                AgentMemoryError,
+                build_pre_execution_context,
+                load_agent_memory,
+            )
+        except (ImportError, ModuleNotFoundError) as exc:
+            raise AgentBindingError("MEMORY_LOADER_UNAVAILABLE") from exc
+        try:
+            memory = load_agent_memory(self.memory_root, agent_id)
+            task_contract = json.dumps(
+                payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            )
+            context = build_pre_execution_context(memory, task_contract)
+        except AgentMemoryError as exc:
+            raise AgentBindingError(f"MEMORY_PREINJECTION_FAILED:{agent_id}:{exc}") from exc
+        return {
+            "agent_id": agent_id,
+            "memory_sha256": memory.sha256,
+            "pre_execution_context": context,
+            "task_payload": dict(payload),
+        }
 
     def resolve(self, *, agent_id: str | None = None, role: str | None = None) -> dict[str, Any]:
         if agent_id:
@@ -93,6 +126,7 @@ class AgentFleetAdapter:
         STEP2 never calls this method. STEP3 owns execution verification.
         """
         item = self.resolve(agent_id=agent_id)
+        prepared_payload = self.build_invocation_payload(agent_id, payload)
         transport = item.get("transport")
         if transport == "command_env":
             env_name = item.get("command_env")
@@ -101,7 +135,7 @@ class AgentFleetAdapter:
                 raise AgentBindingError(f"RUNTIME_UNAVAILABLE:{agent_id}:{env_name}")
             proc = subprocess.run(
                 [*shlex.split(raw)],
-                input=json.dumps(payload),
+                input=json.dumps(prepared_payload),
                 text=True,
                 capture_output=True,
                 timeout=timeout_s,
@@ -119,7 +153,12 @@ class AgentFleetAdapter:
             token = os.environ.get(token_env or "") if token_env else None
             if token:
                 headers["Authorization"] = f"Bearer {token}"
-            req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers=headers, method="POST")
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(prepared_payload).encode(),
+                headers=headers,
+                method="POST",
+            )
             with urllib.request.urlopen(req, timeout=timeout_s) as response:  # nosec B310 - URL is operator-configured
                 body = response.read().decode()
             return {"agent_id": agent_id, "status": response.status, "body": body}
