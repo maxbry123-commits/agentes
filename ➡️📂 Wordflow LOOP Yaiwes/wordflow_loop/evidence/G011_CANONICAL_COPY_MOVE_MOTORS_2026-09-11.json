@@ -3,7 +3,7 @@
   "contract": "tel.workflow/v4",
   "gap": "G-011",
   "owner": "SOL_1",
-  "status": "EXACT_BLOB_LOCAL_PYTEST_PASS_PENDING_TASK_NODE_CAS",
+  "status": "PATH_SCOPE_GATE_REPAIRED_TEST_PASS_PENDING_TASK_NODE_CLOSE",
   "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
   "research": {
     "motor_code_lock": "➡️📂motores de descarga extracción copiado movimiento archivos agentes/MOTOR-CODE-LOCK.json",
@@ -14,74 +14,71 @@
     "move_motor_blob": "9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
     "canonical_blobs_preserved": true,
     "motor_source_rewritten": false,
-    "github_readback": "PASS"
+    "github_readback": "PASS",
+    "adversarial_gap": "build_motor_env allowed destination/state outside an authorized root and mkdir occurred before explicit mutation authorization"
   },
   "wire": {
     "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/canonical_motor_gate.py",
-    "module_blob": "24c659c03454b7ef4361aa69bf721cb12b2331c4",
+    "module_blob_before": "24c659c03454b7ef4361aa69bf721cb12b2331c4",
+    "module_blob_after": "def0ccc402d4e9797ff7ac30a92c1993aec47914",
+    "patch_commit": "1332c78428094e7fb74916a37935758179a39e49",
     "contract": "yaiwes.canonical_motor_gate/v1",
     "properties": [
-      "verifies Git blob SHA before motor use",
-      "explicit source/destination/state runtime inputs",
-      "collision policy fail",
-      "rejects source==destination",
-      "does not rewrite canonical motor code",
-      "execution_authorized=false by gate"
+      "verifies canonical motor Git blob SHA before motor use",
+      "requires authorized_root",
+      "resolves destination and state path before mutation",
+      "rejects destination outside authorized_root",
+      "rejects state file outside authorized_root",
+      "rejects symlink traversal that resolves outside authorized_root",
+      "requires explicit mutation_authorized=true",
+      "performs no destination mkdir before all gates pass",
+      "preserves canonical motor source blobs"
     ]
   },
   "test": {
     "path": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_canonical_motor_gate.py",
-    "blob": "9eee8d33532157967e88cf80fb6a4a0a37a30d7b",
+    "blob_before": "9eee8d33532157967e88cf80fb6a4a0a37a30d7b",
+    "blob_after": "55a6e4fda73010cad2359f5e0ad9307bd44fc815",
+    "test_commit": "6054cbf88feb39ce4bf4869935ed799fdc2cdbf8",
     "covers": [
-      "copy motor canonical blob",
-      "copy destination SHA-256 read-back and source preservation",
-      "move motor canonical blob",
-      "move destination SHA-256 read-back and source removal",
+      "copy motor canonical blob and SHA-256 read-back",
+      "move motor canonical blob and SHA-256 read-back",
       "unsupported operation fail-closed",
-      "source/destination collision fail-closed"
+      "source/destination collision fail-closed",
+      "authorized root required",
+      "explicit mutation authorization required with no pre-mutation mkdir",
+      "destination root escape rejected without mutation",
+      "state-file root escape rejected without mutation",
+      "destination symlink escape rejected without mutation",
+      "state-file symlink escape rejected without mutation"
     ],
-    "exact_blob_local_pytest": {
-      "materialization": "GitHub read-back contents reconstructed byte-exact for canonical motors; computed Git blob SHA matched locked blobs before pytest",
+    "exact_topology_local_pytest": {
       "copy_computed_blob": "3689924361ce4a1a9fde4ae2b6f6009c37a6042d",
       "move_computed_blob": "9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
       "command": "PYTHONPATH=. python -m pytest -q runtime/tests/test_canonical_motor_gate.py",
-      "result": "3 passed in 1.64s",
-      "verdict": "PASS_3_OF_3",
-      "scope": "LOCAL_TOOL_RUN_EXACT_REPO_BLOBS_NOT_GITHUB_ACTIONS"
+      "working_directory_shape": "<repo>/➡️📂 Wordflow LOOP Yaiwes",
+      "result": "6 passed in 3.03s",
+      "verdict": "PASS_6_OF_6",
+      "scope": "LOCAL_TOOL_RUN_EXACT_MAIN_CONTENT_AND_LOCKED_MOTOR_BLOBS"
     },
-    "local_equivalent_simulation": {
-      "copy_sha256_readback": "PASS",
-      "copy_source_preserved": "PASS",
-      "move_sha256_readback": "PASS",
-      "move_source_removed": "PASS",
-      "unsupported_motor_fail_closed": "PASS",
-      "source_destination_collision_fail_closed": "PASS",
-      "verdict": "PASS_6_OF_6_EQUIVALENT_ASSERTIONS"
-    },
-    "verdict": "EXACT_BLOB_LOCAL_PYTEST_PASS"
-  },
-  "runner_probe_2026_09_11": {
-    "main_head_observed": "feb291df8cf21e89ac506479dbabf84a338b8d7d",
-    "github_actions_run_id": 34625014062,
-    "github_actions_workflow": ".github/workflows/yaiwes-handoff-link-readme.yml",
-    "github_actions_conclusion": "failure",
-    "github_actions_jobs_total": 0,
-    "qualifies_as_g011_authoritative_test": false,
-    "decision": "Do not use unrelated workflow as G-011 evidence. Exact-blob local pytest is separately recorded."
+    "harness_correction": {
+      "first_attempt": "4 passed, 2 failed because reconstructed runtime was one directory too high and repo_root() pointed at /tmp",
+      "classification": "TEST_HARNESS_PATH_GAP_NOT_REPO_CODE_FAILURE",
+      "strategy_delta": "reconstructed exact repository topology and reran unchanged tests",
+      "second_attempt": "PASS_6_OF_6"
+    }
   },
   "task_node": {
-    "fresh_precondition": "G-011 PENDING claimed_by=null version=1; G-018 CLAIMED by SOL_2",
-    "task_nodes_path": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/TASK-NODES.json",
-    "task_nodes_blob_observed": "78a5dafbd3cbf5c6ae03dfa82a0351dc97335bd0",
-    "path_resolved": true,
-    "claim_persisted": false,
-    "reason": "Path is now resolved, but shared one-line ledger requires complete-content CAS replacement. Fail closed until a byte-complete fresh read can be safely patched without overwriting concurrent nodes."
+    "claim_commit": "ff291c2ef43fa7ef44e2bfe9e83fc2dfa4271830",
+    "claim": "G-011 CLAIMED by SOL_1 version=2",
+    "gap_registered": "PATH_SCOPE_GATE_GAP",
+    "task_nodes_path": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/TASK-NODES.json"
   },
   "closure": {
     "closed": false,
     "remaining": [
-      "persist SOL_1 ownership/status for G-011 through safe SHA/CAS on TASK-NODES.json",
-      "after successful CAS, mark G-011 steps PASS and advance gaps_closed"
+      "fresh TASK-NODES CAS to PASS all G-011 steps and clear PATH_SCOPE_GATE_GAP",
+      "Crazy Wall read-back"
     ],
     "execution_authorized": false,
     "deployment_authorized": false
