@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-11T04:17:49.330746+00:00",
+  "updated_at": "2026-09-11T04:20:36.875849+00:00",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1234,11 +1234,11 @@
       "status": "PASS",
       "abc": "C",
       "target": "Agente Yaiwes principal/tools-models-memory-knowledge/memory-microservices/pgvector/",
-      "owner": "SOL",
-      "lock": "CLAIMED",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-11T04:17:49.330746+00:00 SOL integración 1 N27 STEP3: STEP2 Motor4/read-back PASS; build pgvector against moved PostgreSQL and execute CREATE EXTENSION + vector query",
-        "after": "2026-09-11T04:16:21.777697+00:00 STEP2 PASS: immutable canonical Motor4 moved pgvector to memory-microservices; source absent + target README origin/main read-back PASS"
+        "after": "2026-09-11T04:20:36.875849+00:00 STEP3 PASS: FABLES ACTIVE; pgvector built from moved source against moved PostgreSQL; CREATE EXTENSION vector + vector_dims/distance query returned 3|0; L2+L3+L4; prune NOT_NEEDED; read-back PASS"
       },
       "evidence": [
         "worker:SOL integración 2",
@@ -1253,7 +1253,15 @@
         "step2:run:34561536713",
         "step2:move_commit:ade703e1db5e1e232324167e661ffaaa88a55fd7",
         "step2:motor4:VERIFIED_CLOSED",
-        "step2:readback:source_absent+target_populated+README_PASS"
+        "step2:readback:source_absent+target_populated+README_PASS",
+        "step3:run:34561651844",
+        "step3:evidence_commit:4de1315443a68ecd5ffb16bd6249acec72b22307",
+        "step3:adapter_sha256:eb5a0cc0ef2c7eb1a8b47e2ef290165172363e4456cfc0095b3d3ed99f2332ce",
+        "step3:route:FABLES->pgvector adapter->moved PostgreSQL->moved pgvector->CREATE EXTENSION->vector query",
+        "step3:microtest:PASS vector query=3|0",
+        "step3:evidence:L2_build+L3_runtime+L4_feature",
+        "step3:prune:NOT_NEEDED",
+        "step3:readback:source_absent+adapter+ficha+evidence PASS"
       ],
       "history": [
         {
@@ -1293,9 +1301,17 @@
           "actor": "SOL",
           "label": "SOL integración 1",
           "event": "CLAIM_STEP3_USER_SCOPE_EXTENSION"
+        },
+        {
+          "at": "2026-09-11T04:20:36.875849+00:00",
+          "actor": "SOL",
+          "label": "SOL integración 1",
+          "event": "STEP3_PASS_RELEASE",
+          "run": 34561651844,
+          "commit": "4de1315443a68ecd5ffb16bd6249acec72b22307"
         }
       ],
-      "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
+      "next_action": "COMPLETE"
     }
   ],
   "counts": {
