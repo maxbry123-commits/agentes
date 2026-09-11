@@ -1,0 +1,31 @@
+{
+  "node": 26,
+  "worker": "SOL integración 1",
+  "status": "PASS",
+  "route": "UniversalPluginBus/FABLES -> gVisor adapter -> identical moved tree -> canonical Makefile/Bazel -> runsc -> ephemeral privileged CI container -> ptrace network-none gVisor sandbox -> /bin/sh printf 41",
+  "plugin_id": "yaiwes.isolation.gvisor",
+  "microtest": "runsc_do_privileged_ci_ptrace",
+  "result": {
+    "status": "PASS",
+    "capability": "runsc_do_privileged_ci_ptrace",
+    "value": 41,
+    "returncode": 0,
+    "network": "none",
+    "platform": "ptrace",
+    "rootless": false,
+    "ci_outer_container_privileged": true
+  },
+  "evidence_levels": [
+    "L2_build",
+    "L3_runtime",
+    "L4_feature"
+  ],
+  "run": 34565671367,
+  "runner_commit": "4abee3593898a58a469eac827a9d5909210944e6",
+  "adapter_sha256": "sha256:7649f3ddcd6144662d6b80559e714eaca223c468f9d559cebe6739ab28912591",
+  "canonical_bus_blob": "470f9c91650bc6c59e2900f7e71090b84363da9f",
+  "canonical_ficha_code_blob": "a72508027cc2458553ef6a2255a9aa33d9a77a21",
+  "prune": "NOT_NEEDED",
+  "build_strategy": "identical_no_space_ephemeral_workspace",
+  "ci_runtime_strategy": "privileged_outer_container_only_for_host_policy"
+}
