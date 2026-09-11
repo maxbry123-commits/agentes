@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.watchdog-programming-plan/v6-fastpath",
-  "updated_at": "2026-09-10",
+  "updated_at": "2026-09-11",
   "status": "ACTIVE_STRICT_3_STEPS",
   "coordinator": "➡️ sol osquestador plan",
   "scope": {
@@ -94,9 +94,9 @@
   "queue": {
     "new_nodes_after_1_20": 7,
     "range": "N21-N27",
-    "closed": ["N22 Hatchet", "N24 Redis"],
-    "pending_gap": ["N21 Dagu", "N23 PostgreSQL", "N25 Workalendar", "N26 gVisor", "N27 pgvector"],
-    "pending_count": 5
+    "closed": ["N21 Dagu", "N22 Hatchet", "N23 PostgreSQL", "N24 Redis", "N25 Workalendar", "N26 gVisor", "N27 pgvector"],
+    "pending_gap": [],
+    "pending_count": 0
   },
   "anti_dilation": [
     "no step4",
