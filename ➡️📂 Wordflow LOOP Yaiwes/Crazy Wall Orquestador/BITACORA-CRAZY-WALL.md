@@ -248,3 +248,16 @@ Snapshot auditado: `37e4c4f3cfd1e29ba7d89ab3ac1170f37b031608`.
 - Corrección mínima pendiente: el cierre de nodo debe invocar el gate sobre las ocho fuentes y rechazar publicación si no produce un conjunto consistente; añadir prueba de integración que intente publicar un CHECKPOINT aislado y confirme rechazo.
 
 Resultado: `G-013 IMPLEMENTED_NOT_WIRED / OPEN`. No se tocaron nodos de SOL_1/SOL_2 ni se declaró PASS global.
+
+
+# ASTRA-GPT-LOOP — DESBLOQUEO COMPROBADO G-011 — 2026-09-11 17:58Z
+
+Snapshot auditado: `559571eea7a5a6ad6b1a52df121e99fe7925fab3`. Revisión de nodo ajeno; no se reclama ni modifica G-011.
+
+- Evidence G-011 blob `da37be4fd0db42a526132d3ea646ce5f1f5b4b6a` declara que no pudo resolver TASK-NODES y por eso no persistió el claim.
+- Lectura directa fresca de la ruta exacta `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/TASK-NODES.json` sí funciona en este snapshot: blob `78a5dafbd3cbf5c6ae03dfa82a0351dc97335bd0`.
+- Precondición observada: G-011 sigue `PENDING / claimed_by=null / version=1`; G-018 sigue `CLAIMED / SOL_2`. Sol 1 puede releer ese blob y aplicar claim mediante SHA/CAS sin competir con Sol 2.
+- El runner observado por G-011 sigue sin calificar: run 34625014062, conclusion failure y cero jobs; no prueba el test de G-011.
+- G-013 continúa en conflicto: STATE 0010 frente a CHECKPOINT 0016. El cierre parcial volvió a modificar CHECKPOINT/evidence sin actualizar el conjunto de fuentes.
+
+Resultado: bloqueo de resolución de TASK-NODES para G-011 = `CLEARED_BY_FRESH_READBACK`; ejecución autoritativa y claim siguen pendientes. Sin PASS global.
