@@ -1,16 +1,32 @@
 {
-  "checkpoint_id":"WFLOOP-FINAL-3STEP-20260910",
-  "contract":"tel.workflow/v4",
-  "mode":"FAIL_CLOSED_EXECUTION_LOOP",
-  "authorized_write_root":"➡️📂 Wordflow LOOP Yaiwes/",
-  "status":"LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING",
-  "current_node":"FINAL_3STEP_CLOSED_LOCAL_TESTS",
-  "queue":"1x1",
-  "steps":{"1":{"status":"PASS_SCOPE_AND_STRUCTURE"},"2":{"status":"PASS_RUNTIME_LOGIC","fleet_count":18,"council12":12,"fail_closed":"18/18","router_priority":"PASS","router_failover":"PASS","parallel_dispatch":"3/3"},"3":{"status":"PASS_PERSISTENCE_AND_WATCHDOG","watchdog":"ACTIVE_HOURLY"}},
-  "evidence":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/FINAL_3STEP_CLOSURE_TEST_2026-09-10.json",
-  "evidence_commit":"6c4b10a49fa8de3bd85348f15bd5f5fa461d128c",
-  "migration":{"main_commit":"2a73aba061db7dfba2b37bf6637babb2e73c4b0d","source_index_cleanup_commit":"a17e1572b9df41954597fc8c66b390c47800d081","external_registry_restored_blob":"ce40e9afd13fdbea22609fe57807566770dfc1b0"},
-  "gaps":["Hermes/Muse-Glimmer/Goose external_not_vendored","Authenticated provider/API and remote agent execution not available from current safe execution channel"],
-  "next_action":"AUTH_PROVIDER_REAL_TEST_ONLY_WHEN_SAFE_CHANNEL_AVAILABLE",
-  "recovery_entrypoint":"➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md"
+  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260910-0002",
+  "contract": "tel.workflow/v4",
+  "mode": "FAIL_CLOSED_EXECUTION_LOOP",
+  "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
+  "status": "ACTIVE_LOOP_CODE_GRAPH_RESEARCH",
+  "current_node": "CG01_REUSE_AUDIT",
+  "queue": "DAG_DEPENDENCIES_PLUS_PARALLEL_INDEPENDENT",
+  "historical_closure": {
+    "checkpoint_id": "WFLOOP-FINAL-3STEP-20260910",
+    "status": "LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/FINAL_3STEP_CLOSURE_TEST_2026-09-10.json",
+    "evidence_commit": "6c4b10a49fa8de3bd85348f15bd5f5fa461d128c"
+  },
+  "active_phase": {
+    "name": "CODE_GRAPH_ARCHITECTURE_PROGRAMMING_LOOP",
+    "gaps_total": 30,
+    "gaps_closed": 2,
+    "closed": ["G-010", "G-020"],
+    "in_research": ["G-016", "G-018", "G-023", "G-027", "G-028", "G-029"],
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/CODE_GRAPH_CYCLE_0002_2026-09-10.json"
+  },
+  "verified_this_cycle": {
+    "watchdog_scope": "AUTHORIZED_ROOT_ONLY",
+    "community_sources_count": 12,
+    "community_sources_blob_sha": "5c03a6a13b5df868f21eb6f744fcc20489c4d183",
+    "source_of_truth_drift": "DETECTED"
+  },
+  "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
+  "next_action": "CG01_REUSE_AUDIT_AND_SOURCE_OF_TRUTH_RECONCILIATION",
+  "recovery_entrypoint": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md"
 }
