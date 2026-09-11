@@ -1,4 +1,4 @@
-name: YAIWES Workalendar N25 Reconcile Verify
+name: YAIWES Workalendar N25 STEP3 Retry
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  reconcile_verify_release:
+  verify_release:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -26,9 +26,8 @@ jobs:
       FICHA_CODE: 'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/ficha_contract_v2.py'
       FICHA: 'Agente Yaiwes principal/execution-orchestration/classifier-scheduler/workalendar/yaiwes/ficha.workalendar.v2.json'
       EVIDENCE: 'Agente Yaiwes principal/execution-orchestration/classifier-scheduler/workalendar/yaiwes/STEP3_EVIDENCE.json'
-      MOVE_COMMIT: 'a97b5d8804ed76996027dbb254af3ad70b9f4c80'
     steps:
-      - name: Checkout N25 integration surfaces
+      - name: Checkout N25 STEP3 surfaces
         uses: actions/checkout@v4
         with:
           ref: main
@@ -47,98 +46,23 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Claim N25 STEP2 from fresh Crazy Wall
+      - name: Verify N25 STEP3 claim is still held
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          ok=0
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            git reset --hard origin/main
-            test -z "$(git ls-tree -r --name-only origin/main -- "$SOURCE")"
-            test -n "$(git ls-tree -r --name-only origin/main -- "$TARGET")"
-            test -f "$TARGET/README.md"
-            test -f "$TARGET/adapter.py"
-            test -f "$TARGET/yaiwes_workalendar_port.py"
-            test -f "$TARGET/WIRING.json"
-            git cat-file -e "$MOVE_COMMIT^{commit}"
-            git merge-base --is-ancestor "$MOVE_COMMIT" origin/main
-            python3 - <<'PY'
+          git fetch origin main
+          git reset --hard origin/main
+          python3 - <<'PY'
           import json, os
-          from datetime import datetime, timezone
-          p=os.environ['WALL']; d=json.load(open(p,encoding='utf-8')); n=next(x for x in d['nodes'] if x['id']==25)
-          if n.get('component')!='Workalendar' or n.get('current_step')!=2 or n.get('owner') is not None or n.get('lock')!='FREE':
-              raise SystemExit(f"N25_NOT_CLAIMABLE:{n.get('component')}:{n.get('current_step')}:{n.get('owner')}:{n.get('lock')}")
-          now=datetime.now(timezone.utc).isoformat()
-          n['owner']='SOL'; n['lock']='CLAIMED'; n['status']='IN_PROGRESS'
-          n.setdefault('checkpoint',{})['before']=now+' fresh physical read-back: source absent; target populated; canonical Motor4 move commit a97b5d8804ed76996027dbb254af3ad70b9f4c80 is ancestor of main; recover stale STEP2 only, do not repeat MOVE'
-          n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 1','event':'CLAIM_STEP2_STALE_STATE_RECONCILIATION'})
-          n['next_action']='STEP2_RECONCILE_EXISTING_MOTOR4_MOVE_READBACK'; d['updated_at']=now
-          with open(p,'w',encoding='utf-8') as f: json.dump(d,f,ensure_ascii=False,indent=2); f.write('\n')
+          p=os.environ['WALL']
+          d=json.load(open(p,encoding='utf-8'))
+          n=next(x for x in d['nodes'] if x['id']==25)
+          if n.get('component')!='Workalendar' or n.get('current_step')!=3 or n.get('owner')!='SOL' or n.get('lock')!='CLAIMED':
+              raise SystemExit(f"N25_STEP3_CLAIM_LOST:{n.get('component')}:{n.get('current_step')}:{n.get('owner')}:{n.get('lock')}")
+          print('N25_STEP3_CLAIM=HELD')
           PY
-            git add -- "$WALL"
-            git commit -m 'crazy-wall: claim N25 stale STEP2 reconciliation'
-            if git push origin HEAD:main; then ok=1; break; fi
-            sleep $((attempt * 2))
-          done
-          test "$ok" -eq 1
-
-      - name: Recover N25 STEP2 PASS and release to STEP3
-        shell: bash
-        run: |
-          set -euo pipefail
-          ok=0
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main; git reset --hard origin/main
-            test -z "$(git ls-tree -r --name-only origin/main -- "$SOURCE")"
-            test -n "$(git ls-tree -r --name-only origin/main -- "$TARGET")"
-            python3 - <<'PY'
-          import json, os
-          from datetime import datetime, timezone
-          p=os.environ['WALL']; d=json.load(open(p,encoding='utf-8')); n=next(x for x in d['nodes'] if x['id']==25)
-          if n.get('owner')!='SOL' or n.get('lock')!='CLAIMED' or n.get('current_step')!=2:
-              raise SystemExit(f"N25_STEP2_CLAIM_LOST:{n.get('owner')}:{n.get('lock')}:{n.get('current_step')}")
-          now=datetime.now(timezone.utc).isoformat(); n['current_step']=3; n['status']='PASS_STEP2'; n['owner']=None; n['lock']='FREE'
-          n.setdefault('checkpoint',{})['after']=now+' STEP2 PASS recovered from physical main: source absent; target populated; canonical Motor4 move commit a97b5d8804ed76996027dbb254af3ad70b9f4c80; no MOVE repeated'
-          ev=n.setdefault('evidence',[])
-          for item in ['step2:worker:SOL integración 1:stale_state_reconciliation','step2:canonical_motor4_move_commit:a97b5d8804ed76996027dbb254af3ad70b9f4c80','step2:readback:source_absent+target_populated+adapter+port+WIRING','step2:MOVE_NOT_REPEATED']:
-              if item not in ev: ev.append(item)
-          n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 1','event':'STEP2_PASS_RECOVERED_RELEASE','commit':'a97b5d8804ed76996027dbb254af3ad70b9f4c80'})
-          n['next_action']='STEP_3_WIRE_FABLES_MICROTEST'; d['updated_at']=now
-          with open(p,'w',encoding='utf-8') as f: json.dump(d,f,ensure_ascii=False,indent=2); f.write('\n')
-          PY
-            git add -- "$WALL"; git commit -m 'crazy-wall: N25 recover STEP2 PASS and release'
-            if git push origin HEAD:main; then ok=1; break; fi
-            sleep $((attempt * 2))
-          done
-          test "$ok" -eq 1
-
-      - name: Claim N25 STEP3 from fresh Crazy Wall
-        shell: bash
-        run: |
-          set -euo pipefail
-          ok=0
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main; git reset --hard origin/main
-            python3 - <<'PY'
-          import json, os
-          from datetime import datetime, timezone
-          p=os.environ['WALL']; d=json.load(open(p,encoding='utf-8')); n=next(x for x in d['nodes'] if x['id']==25)
-          if n.get('component')!='Workalendar' or n.get('current_step')!=3 or n.get('owner') is not None or n.get('lock')!='FREE':
-              raise SystemExit(f"N25_STEP3_NOT_CLAIMABLE:{n.get('current_step')}:{n.get('owner')}:{n.get('lock')}")
-          now=datetime.now(timezone.utc).isoformat(); n['owner']='SOL'; n['lock']='CLAIMED'; n['status']='IN_PROGRESS'
-          n.setdefault('checkpoint',{})['before']=now+' N25 STEP3: existing adapter+WIRING+port; execute FABLES and real weekday/weekend classifier gate microtest'
-          n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 1','event':'CLAIM_STEP3'})
-          n['next_action']='STEP3_FABLES_REAL_WORKING_DAY_GATE'; d['updated_at']=now
-          with open(p,'w',encoding='utf-8') as f: json.dump(d,f,ensure_ascii=False,indent=2); f.write('\n')
-          PY
-            git add -- "$WALL"; git commit -m 'crazy-wall: claim N25 STEP3'
-            if git push origin HEAD:main; then ok=1; break; fi
-            sleep $((attempt * 2))
-          done
-          test "$ok" -eq 1
+          test -z "$(git ls-tree -r --name-only origin/main -- "$SOURCE")"
+          test -n "$(git ls-tree -r --name-only origin/main -- "$TARGET")"
 
       - name: Install Workalendar from moved target
         working-directory: Agente Yaiwes principal/execution-orchestration/classifier-scheduler/workalendar
@@ -154,41 +78,101 @@ jobs:
           python3 - <<'PY'
           import hashlib, importlib.util, json, os, sys
           from pathlib import Path
-          root=Path.cwd(); target=root/os.environ['TARGET']; adapter=target/'adapter.py'; port_path=target/'yaiwes_workalendar_port.py'; wiring=target/'WIRING.json'; hook=root/os.environ['HOOK']; bus_path=root/os.environ['BUS']
-          for p in [adapter,port_path,wiring,hook,bus_path,root/os.environ['FICHA_CODE']]:
+          root=Path.cwd()
+          target=root/os.environ['TARGET']
+          adapter=target/'adapter.py'
+          port_path=target/'yaiwes_workalendar_port.py'
+          wiring=target/'WIRING.json'
+          hook=root/os.environ['HOOK']
+          bus_path=root/os.environ['BUS']
+          ficha_code=root/os.environ['FICHA_CODE']
+          for p in [adapter,port_path,wiring,hook,bus_path,ficha_code]:
               assert p.is_file(), p
-          source=adapter.read_text(encoding='utf-8'); digest='sha256:'+hashlib.sha256(source.encode()).hexdigest()
-          ficha=target/'yaiwes'/'ficha.workalendar.v2.json'; ficha.parent.mkdir(parents=True,exist_ok=True)
-          manifest={"artifact_id":"yaiwes.scheduler.workalendar","version":"1.0.0","estado":"active","contract_hash":digest,"tribunal_case_id":"YAIWES-N25-WORKALENDAR-STEP3","contrato":{"rol":"service","consume":{"datatype":{"family":"json","type":"object","version":1}},"expone":{"datatype":{"family":"json","type":"object","version":1}}},"ejecucion":{"kind":"code","transport":"stdio","runtime_type":"compute","entry_point":os.environ['TARGET']+"/adapter.py:is_working_day","idempotente":True},"seguridad":{"sandbox":"process","limites":{"timeout_ms":120000,"deadline_ms":120000}},"firma":{"gpg_key_id":"YAIWES-N25"},"categoria":"pipeline","etapa":"P","perfiles":{"n0":{"habilitada":True,"iteraciones":1,"simulaciones":0,"criticas":0,"muestras_k":1}},"repeticion":{"max":1,"condicion":"nunca"},"repite_en":[],"activacion":{"eventos":["kernel.v2.plugin.enchufed"],"wake_words":[],"condicion":""},"presupuesto":{"n0":{"max_tokens":1,"max_ms":120000,"max_costo_usd":0.0}},"telemetria":{"metricas":["tiempo","errores","health"],"span_otel":True},"evidencia":{"produce":["L2_build","L3_runtime","L4_feature"],"destino":str(ficha.parent)+"/"},"failover":{"sustituible_por":[],"compensacion":"fail_closed"},"salud":{"metodo":"exec","heartbeat_interval_s":30}}
+          source=adapter.read_text(encoding='utf-8')
+          digest='sha256:'+hashlib.sha256(source.encode()).hexdigest()
+          ficha=Path(os.environ['FICHA'])
+          ficha.parent.mkdir(parents=True,exist_ok=True)
+          manifest={
+              'artifact_id':'yaiwes.scheduler.workalendar','version':'1.0.0','estado':'active',
+              'contract_hash':digest,'tribunal_case_id':'YAIWES-N25-WORKALENDAR-STEP3',
+              'contrato':{'rol':'service','consume':{'datatype':{'family':'json','type':'object','version':1}},'expone':{'datatype':{'family':'json','type':'object','version':1}}},
+              'ejecucion':{'kind':'code','transport':'stdio','runtime_type':'compute','entry_point':os.environ['TARGET']+'/adapter.py:is_working_day','idempotente':True},
+              'seguridad':{'sandbox':'process','limites':{'timeout_ms':120000,'deadline_ms':120000}},
+              'firma':{'gpg_key_id':'YAIWES-N25'},'categoria':'pipeline','etapa':'P',
+              'perfiles':{'n0':{'habilitada':True,'iteraciones':1,'simulaciones':0,'criticas':0,'muestras_k':1}},
+              'repeticion':{'max':1,'condicion':'nunca'},'repite_en':[],
+              'activacion':{'eventos':['kernel.v2.plugin.enchufed'],'wake_words':[],'condicion':''},
+              'presupuesto':{'n0':{'max_tokens':1,'max_ms':120000,'max_costo_usd':0.0}},
+              'telemetria':{'metricas':['tiempo','errores','health'],'span_otel':True},
+              'evidencia':{'produce':['L2_build','L3_runtime','L4_feature'],'destino':str(ficha.parent)+'/'},
+              'failover':{'sustituible_por':[],'compensacion':'fail_closed'},
+              'salud':{'metodo':'exec','heartbeat_interval_s':30}
+          }
           ficha.write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-          sys.path.insert(0,str(bus_path.parent)); import universal_plugin_bus_v2_integrated as bus_mod
-          bus=bus_mod.UniversalPluginBus(); bus.add_tribunal_approval(manifest['tribunal_case_id']); candidate=bus_mod.ComponentCandidate(source,'python',[str(adapter.relative_to(root))]); conventions=bus_mod.TargetConventions('python','snake_case','sync','gradual')
-          reg=bus.enchufar(manifest,candidate,conventions,registered_by='SOL integración 1'); assert reg.status==bus_mod.PluginStatus.ACTIVE and reg.plugin_id=='yaiwes.scheduler.workalendar'; bus.health.heartbeat(reg.plugin_id); assert bus.check_plugin_health(reg.plugin_id)
-          spec=importlib.util.spec_from_file_location('n25_port',port_path); port=importlib.util.module_from_spec(spec); assert spec and spec.loader; spec.loader.exec_module(port)
-          thu=port.working_day_gate({'schedule_date':'2026-09-10'}); sat=port.working_day_gate({'schedule_date':'2026-09-12'})
-          assert thu['allowed'] is True, thu; assert sat['allowed'] is False, sat
-          w=json.loads(wiring.read_text(encoding='utf-8')); assert w['node']==25 and w['adapter']=='adapter.py' and w['entry']=='is_working_day' and w['prune']=='NOT_NEEDED', w
-          hook_src=hook.read_text(encoding='utf-8'); assert 'working_day_gate' in hook_src and 'yaiwes_workalendar_port' in hook_src
-          bus.evidence.collect(reg.plugin_id,bus_mod.EvidenceLevel.L3,{'weekday':thu,'weekend':sat}); bus.evidence.collect(reg.plugin_id,bus_mod.EvidenceLevel.L4,{'capability':'working_day_classifier_gate','verified':True}); levels=[e['level'] for e in bus.evidence.get(reg.plugin_id)]; assert 'L2_build' in levels and 'L3_runtime' in levels and 'L4_feature' in levels, levels
-          evidence={'node':25,'worker':'SOL integración 1','status':'PASS','route':'UniversalPluginBus/FABLES -> Workalendar adapter -> yaiwes_workalendar_port -> classifier_hook','plugin_id':reg.plugin_id,'microtest':'2026-09-10 allowed; 2026-09-12 blocked','weekday':thu,'weekend':sat,'evidence_levels':levels,'run':int(os.environ['GITHUB_RUN_ID']),'runner_commit':os.environ['GITHUB_SHA'],'adapter_sha256':digest,'wiring_sha256':'sha256:'+hashlib.sha256(wiring.read_bytes()).hexdigest(),'port_sha256':'sha256:'+hashlib.sha256(port_path.read_bytes()).hexdigest(),'prune':'NOT_NEEDED'}
+          sys.path.insert(0,str(bus_path.parent))
+          import universal_plugin_bus_v2_integrated as bus_mod
+          bus=bus_mod.UniversalPluginBus()
+          bus.add_tribunal_approval(manifest['tribunal_case_id'])
+          candidate=bus_mod.ComponentCandidate(source,'python',[str(adapter.relative_to(root))])
+          conventions=bus_mod.TargetConventions('python','snake_case','sync','gradual')
+          reg=bus.enchufar(manifest,candidate,conventions,registered_by='SOL integración 1')
+          assert reg.status==bus_mod.PluginStatus.ACTIVE and reg.plugin_id=='yaiwes.scheduler.workalendar'
+          bus.health.heartbeat(reg.plugin_id)
+          assert bus.check_plugin_health(reg.plugin_id)
+          spec=importlib.util.spec_from_file_location('n25_port',port_path)
+          port=importlib.util.module_from_spec(spec)
+          assert spec and spec.loader
+          spec.loader.exec_module(port)
+          thu=port.working_day_gate({'schedule_date':'2026-09-10'})
+          sat=port.working_day_gate({'schedule_date':'2026-09-12'})
+          assert thu['allowed'] is True, thu
+          assert sat['allowed'] is False, sat
+          w=json.loads(wiring.read_text(encoding='utf-8'))
+          assert w['node']==25 and w['adapter']=='adapter.py' and w['entry']=='is_working_day' and w['prune']=='NOT_NEEDED', w
+          hook_src=hook.read_text(encoding='utf-8')
+          assert 'working_day_gate' in hook_src and 'yaiwes_workalendar_port' in hook_src
+          bus.evidence.collect(reg.plugin_id,bus_mod.EvidenceLevel.L3,{'weekday':thu,'weekend':sat})
+          bus.evidence.collect(reg.plugin_id,bus_mod.EvidenceLevel.L4,{'capability':'working_day_classifier_gate','verified':True})
+          levels=[e['level'] for e in bus.evidence.get(reg.plugin_id)]
+          assert 'L2_build' in levels and 'L3_runtime' in levels and 'L4_feature' in levels, levels
+          evidence={
+              'node':25,'worker':'SOL integración 1','status':'PASS',
+              'route':'UniversalPluginBus/FABLES -> Workalendar adapter -> yaiwes_workalendar_port -> classifier_hook',
+              'plugin_id':reg.plugin_id,'microtest':'2026-09-10 allowed; 2026-09-12 blocked',
+              'weekday':thu,'weekend':sat,'evidence_levels':levels,
+              'run':int(os.environ['GITHUB_RUN_ID']),'runner_commit':os.environ['GITHUB_SHA'],
+              'adapter_sha256':digest,
+              'wiring_sha256':'sha256:'+hashlib.sha256(wiring.read_bytes()).hexdigest(),
+              'port_sha256':'sha256:'+hashlib.sha256(port_path.read_bytes()).hexdigest(),
+              'prune':'NOT_NEEDED'
+          }
           Path(os.environ['EVIDENCE']).write_text(json.dumps(evidence,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-          print('N25_WORKALENDAR_REAL_GATE=PASS weekday_allowed=True weekend_allowed=False'); print('YAIWES_FABLES_ENCHUFE=PASS ACTIVE L2+L3+L4')
+          print('N25_WORKALENDAR_REAL_GATE=PASS weekday_allowed=True weekend_allowed=False')
+          print('YAIWES_FABLES_ENCHUFE=PASS ACTIVE L2+L3+L4')
           PY
 
-      - name: Persist N25 STEP3 evidence
+      - name: Persist N25 STEP3 evidence with clean worktree
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- "$FICHA" "$EVIDENCE"
           git diff --cached --check
           git commit -m 'wire(yaiwes): N25 Workalendar FABLES STEP3 evidence'
-          echo "EVIDENCE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo 'N25 worktree before cleanup:'
+          git status --short
+          git reset --hard HEAD
           ok=0
           for attempt in 1 2 3 4 5; do
             git fetch origin main
-            if git rebase origin/main && git push origin HEAD:main; then ok=1; break; fi
-            git rebase --abort || true; sleep $((attempt * 2))
+            if git rebase origin/main && git push origin HEAD:main; then
+              echo "EVIDENCE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+              ok=1
+              break
+            fi
+            git rebase --abort || true
+            sleep $((attempt * 2))
           done
           test "$ok" -eq 1
 
@@ -209,27 +193,51 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           ok=0
           for attempt in 1 2 3 4 5; do
-            git fetch origin main; git reset --hard origin/main
+            git fetch origin main
+            git reset --hard origin/main
             python3 - <<'PY'
-          import hashlib, json, os
+          import json, os
           from datetime import datetime, timezone
-          p=os.environ['WALL']; d=json.load(open(p,encoding='utf-8')); n=next(x for x in d['nodes'] if x['id']==25)
+          p=os.environ['WALL']
+          d=json.load(open(p,encoding='utf-8'))
+          n=next(x for x in d['nodes'] if x['id']==25)
           if n.get('owner')!='SOL' or n.get('lock')!='CLAIMED' or n.get('current_step')!=3:
               raise SystemExit(f"N25_STEP3_CLAIM_LOST:{n.get('owner')}:{n.get('lock')}:{n.get('current_step')}")
-          now=datetime.now(timezone.utc).isoformat(); run=os.environ['GITHUB_RUN_ID']; commit=os.environ.get('EVIDENCE_COMMIT','')
-          n['status']='PASS'; n['owner']=None; n['lock']='FREE'; n['next_action']='COMPLETE'
-          n.setdefault('checkpoint',{})['after']=now+' STEP3 PASS: existing Workalendar adapter/WIRING/port wired through FABLES ACTIVE; real weekday gate 2026-09-10 allowed and Saturday 2026-09-12 blocked; classifier hook verified; L2+L3+L4; prune NOT_NEEDED; origin/main read-back PASS'
+          now=datetime.now(timezone.utc).isoformat()
+          run=os.environ['GITHUB_RUN_ID']
+          commit=os.environ.get('EVIDENCE_COMMIT','')
+          n['status']='PASS'
+          n['owner']=None
+          n['lock']='FREE'
+          n['next_action']='COMPLETE'
+          n.setdefault('checkpoint',{})['after']=now+' STEP3 PASS: Workalendar adapter/WIRING/port wired through FABLES ACTIVE; real weekday gate 2026-09-10 allowed and Saturday 2026-09-12 blocked; classifier hook verified; L2+L3+L4; prune NOT_NEEDED; origin/main read-back PASS'
           ev=n.setdefault('evidence',[])
-          for item in ['step3:worker:SOL integración 1','step3:run:'+run,'step3:evidence_commit:'+commit,'step3:route:FABLES->Workalendar adapter->yaiwes_workalendar_port->classifier_hook','step3:microtest:PASS weekday_allowed=True weekend_allowed=False','step3:evidence:L2_build+L3_runtime+L4_feature','step3:prune:NOT_NEEDED','step3:readback:source_absent+ficha+evidence PASS']:
+          items=[
+              'step3:worker:SOL integración 1','step3:run:'+run,'step3:evidence_commit:'+commit,
+              'step3:route:FABLES->Workalendar adapter->yaiwes_workalendar_port->classifier_hook',
+              'step3:microtest:PASS weekday_allowed=True weekend_allowed=False',
+              'step3:evidence:L2_build+L3_runtime+L4_feature','step3:prune:NOT_NEEDED',
+              'step3:readback:source_absent+ficha+evidence PASS'
+          ]
+          for item in items:
               if item not in ev: ev.append(item)
           n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 1','event':'STEP3_PASS_RELEASE','run':int(run),'commit':commit})
           d['updated_at']=now
-          with open(p,'w',encoding='utf-8') as f: json.dump(d,f,ensure_ascii=False,indent=2); f.write('\n')
+          d.setdefault('counts',{})['closed_current_contract']=sum(1 for x in d['nodes'] if x.get('next_action')=='COMPLETE')
+          with open(p,'w',encoding='utf-8') as f:
+              json.dump(d,f,ensure_ascii=False,indent=2)
+              f.write('\n')
           PY
-            git add -- "$WALL"; git commit -m 'crazy-wall: SOL integración 1 N25 STEP3 PASS release'
-            if git push origin HEAD:main; then ok=1; break; fi
+            git add -- "$WALL"
+            git commit -m 'crazy-wall: SOL integración 1 N25 STEP3 PASS release'
+            if git push origin HEAD:main; then
+              ok=1
+              break
+            fi
             sleep $((attempt * 2))
           done
           test "$ok" -eq 1
