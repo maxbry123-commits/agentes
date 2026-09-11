@@ -52,17 +52,27 @@
     },
     "verdict": "LOCAL_EQUIVALENT_PASS_REPO_RUNNER_NOT_EXECUTED"
   },
+  "runner_probe_2026_09_11": {
+    "main_head_observed": "feb291df8cf21e89ac506479dbabf84a338b8d7d",
+    "github_actions_run_id": 34625014062,
+    "github_actions_workflow": ".github/workflows/yaiwes-handoff-link-readme.yml",
+    "github_actions_conclusion": "failure",
+    "github_actions_jobs_total": 0,
+    "qualifies_as_g011_authoritative_test": false,
+    "local_fresh_checkout_attempt": "BLOCKED_ENVIRONMENT_DNS_GITHUB_COM_UNRESOLVABLE",
+    "decision": "DO_NOT_CLAIM_REPO_PYTEST_PASS"
+  },
   "task_node": {
-    "fresh_precondition": "G-011 PENDING claimed_by=null version=1",
+    "fresh_precondition": "G-011 PENDING claimed_by=null version=1; G-018 CLAIMED by SOL_2",
     "task_nodes_blob_before": "78a5dafbd3cbf5c6ae03dfa82a0351dc97335bd0",
     "claim_persisted": false,
-    "reason": "TASK-NODES is a concurrent shared ledger and this connector exposes whole-file replacement rather than field-level CAS; fail closed instead of risking overwrite of foreign nodes."
+    "reason": "Shared TASK-NODES path was not resolvable through the current contents view; fail closed rather than replace an unidentified shared ledger."
   },
   "closure": {
     "closed": false,
     "remaining": [
       "execute repository test in an authoritative runner or accepted repo execution path",
-      "persist SOL_1 ownership/status through safe TASK-NODES CAS",
+      "resolve current TASK-NODES path and persist SOL_1 ownership/status through SHA/CAS",
       "only then mark three steps PASS and advance gaps_closed"
     ],
     "execution_authorized": false,
