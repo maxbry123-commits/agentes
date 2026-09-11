@@ -1,0 +1,28 @@
+{
+  "schema": "yaiwes.evidence/v1",
+  "component": "browser_use",
+  "status": "ADAPTER_IMPLEMENTED_RUNTIME_PENDING",
+  "source": {
+    "repo": "browser-use/browser-use",
+    "version": "0.13.10",
+    "commit": "5c892e013a73e6622e6f50336e1eb0aa2c4405f2",
+    "tree_sha256": "f4763ae4e5d2d8d1b79081de3ba5e4bf8568fcb5f2a346ddeff0482d02935a4c",
+    "osquestador_publish_commit": "133384f08151949a024975afd1223b8262f081c4",
+    "acquisition": "VERIFIED_CLOSED"
+  },
+  "wordflow": {
+    "adapter": "wordflow_loop/adapters/browser_use_adapter.py",
+    "ficha": "wordflow_loop/contracts/ficha.browser_use.v2.json",
+    "test": "runtime/tests/test_browser_use_adapter.py"
+  },
+  "verification": {
+    "method": "local equivalent using current ficha_contract_v2 validation rules and adapter behavior",
+    "assertions": 4,
+    "passed": 4,
+    "checks": ["ficha_testing_valid", "entry_point_pinned", "execution_fail_closed", "reject_file_scheme"],
+    "repo_pytest_execution": "NOT_CLAIMED",
+    "fables_runtime_registration": "PENDING_G018",
+    "sandbox_runtime": "PENDING_G022"
+  },
+  "verdict": "PASS_LOCAL_EQUIVALENT_RUNTIME_GATES_PENDING"
+}
