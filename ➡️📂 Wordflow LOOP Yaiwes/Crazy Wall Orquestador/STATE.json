@@ -4,8 +4,8 @@
   "mode": "FAIL_CLOSED_EXECUTION_LOOP",
   "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
   "status": "ACTIVE_LOOP_CODE_GRAPH_RESEARCH",
-  "current_node": "CG03_CODE_GRAPH_ROOT_G001",
-  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260910-0005",
+  "current_node": "CG04_ASK_COUNCIL_AUDIT_G002",
+  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260910-0006",
   "queue_mode": "DAG_DEPENDENCIES_PLUS_PARALLEL_INDEPENDENT",
   "historical_local_closure": {
     "status": "LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING",
@@ -17,14 +17,27 @@
     "director_approved": true,
     "gap_ledger": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/GAPS-INVESTIGACION-CODE-GRAPH-20260910.md",
     "gaps_total": 30,
-    "gaps_closed": 4,
-    "gaps_closed_ids": ["G-003", "G-004", "G-010", "G-020"],
+    "gaps_closed": 5,
+    "gaps_closed_ids": ["G-001", "G-003", "G-004", "G-010", "G-020"],
     "gaps_in_research": ["G-016", "G-018", "G-023", "G-027", "G-028", "G-029"],
-    "gaps_open": ["G-001","G-002","G-005","G-006","G-007","G-008","G-009","G-011","G-012","G-013","G-014","G-015","G-017","G-019","G-021","G-022","G-024","G-025","G-026","G-030"],
+    "gaps_open": ["G-002","G-005","G-006","G-007","G-008","G-009","G-011","G-012","G-013","G-014","G-015","G-017","G-019","G-021","G-022","G-024","G-025","G-026","G-030"],
     "write_scope_enforced": true
   },
+  "g001_code_graph_workspace": {
+    "status": "CLOSED_VERIFIED_LOCAL",
+    "workspace": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/code_graph/",
+    "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/code_graph_workspace.py",
+    "module_blob": "6fe57e6c4233532623a8de589892de2d28897cb9",
+    "tests": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_code_graph_workspace.py",
+    "tests_blob": "c7f00e3155d22c559907d50af31bf95403a5eb68",
+    "workspace_readme_blob": "2462785b8ee5a5d358d94bd5f5e504ffeec1ee17",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G001_CODE_GRAPH_WORKSPACE_2026-09-10.json",
+    "local_equivalent_simulation": "PASS_5_OF_5_ASSERTIONS",
+    "repo_pytest_execution": "NOT_CLAIMED",
+    "parallel_orchestrator_created": false
+  },
   "source_of_truth_reconciliation": {
-    "status": "RECONCILED_THROUGH_CHECKPOINT_0005_CORE_TRUTHS",
+    "status": "RECONCILED_THROUGH_CHECKPOINT_0006_CORE_TRUTHS",
     "G-013": "OPEN_PENDING_AUTOMATIC_RECONCILIATION_POLICY_TEST"
   },
   "g003_task_graph": {
@@ -64,7 +77,7 @@
   "agent_fleet": {"fleet_count":18,"council12_count":12,"router_status":"LOCAL_PASS_EXTERNAL_AUTH_PENDING"},
   "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
   "next_actions": [
-    "G-001: create anchored CODE GRAPH workspace/contract/serializer without parallel orchestration",
+    "G-002: deterministic file-audit contract plus Council-normalized structured output",
     "Continue exact Fables source proof search; do not create a parallel bus",
     "Keep G-022 open until enforceable sandbox isolation exists",
     "Keep G-017 open until deployment/health gates execute real checks"
