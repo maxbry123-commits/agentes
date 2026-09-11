@@ -7,27 +7,33 @@ Raíz única autorizada: `maxbry123-commits/agentes/➡️📂 Wordflow LOOP Yai
 El cierre local de 3 pasos se conserva como evidencia histórica y no se repite: fleet=18, Council12=12, fail-closed local, router prioridad/failover y persistencia fueron probados. `AUTH_PROVIDER_TEST_PENDING` continúa abierto para ejecución autenticada externa.
 
 # Plan activo — CODE_GRAPH_ARCHITECTURE_PROGRAMMING_LOOP
-Checkpoint: `WFLOOP-CODE-GRAPH-20260910-0005`  
-Nodo actual: `CG03_CODE_GRAPH_ROOT_G001`.
+Checkpoint: `WFLOOP-CODE-GRAPH-20260911-0008`  
+Nodo actual: `CG06_NEW_CODE_POLICY_G006`.
 
-## Cola determinista
-1. `CG03_CODE_GRAPH_ROOT_G001`: cerrar G-001 con raíz anclada, contrato de nodos/aristas y serialización determinista reutilizando DAG/task graph existentes; no crear orquestador paralelo.
-2. `CG03_INPUT_AUDIT_G002`: auditoría/Ask Council normalizada a schema determinista.
-3. `CG04_REUSE_CODE_G005_G009`: investigación previa, REUSE>PATCH>ADAPT>GENERATE, ingesta code, seguridad y NO_VALUE_GAP.
-4. `CG04_SAFETY_EXECUTION`: G-008/G-017/G-022/G-024 — seguridad, sandbox, reviewer, deploy y separación determinismo/LLM.
-5. `CG05_FABLES_AND_MEMORY`: G-014/G-018/G-030 — memorias de 18 agentes, Fables único y Crazy Wall concurrency.
-6. `CG06_ACQUISITION`: G-011/G-012 — motores canónicos, intake list y read-back.
-7. `CG07_GRAPH_CONTEXT_VISUAL`: G-026/G-027/G-028/G-029 — UI/Graphiti/Graphology/planificación solo si no duplican capacidades existentes.
-8. `CG08_HF_BRIDGE`: G-023 — inventario/bridge solo con acceso real y sin exposición de secretos.
+## Cola determinista actualizada
+1. `G-006`: política/contrato de creación de code nuevo. Solo puede abrir generación cuando G-005 devuelve `GENERATE`; LLM propone, gates deterministas aceptan/rechazan; integración posterior únicamente por Fables/Ficha.
+2. `G-007/G-008/G-009`: ingesta de code existente, seguridad/neutralización y `NO_VALUE_GAP`.
+3. `G-017/G-022/G-024`: deployment real, sandbox enforceable, reviewer y separación determinismo/LLM.
+4. `G-014/G-018/G-030`: memorias 18 agentes, Fables único y Crazy Wall concurrency.
+5. `G-011/G-012`: motores canónicos, intake de componentes/listas, hash/read-back.
+6. `G-026/G-027/G-028/G-029`: UI/Graphiti/Graphology/planificación solo ante GAP concreto y sin duplicar DAGEngine.
+7. `G-023`: HF bridge solo con acceso real y sin exponer secretos.
+8. `G-013`: reconciliador automático de fuentes de verdad + drift/conflict tests; permanece abierto aunque el drift documental de este ciclo se corrigió manualmente.
 
 ## Cerrados verificados
-- `G-003`: task graph determinista; evidence `wordflow_loop/evidence/G003_TASK_GRAPH_2026-09-10.json`.
-- `G-004`: placement classifier A–G + `PLACEMENT_REVIEW_REQUIRED`; module blob `69698ad30ba1903e0780efcea1952a3737aeb23e`; tests blob `bf1c26f49edf668ee05584b2a357324af0fc4d8d`; evidence `wordflow_loop/evidence/G004_PLACEMENT_CLASSIFIER_2026-09-10.json`.
+- `G-001`: CODE GRAPH workspace determinista.
+- `G-002`: auditoría de archivo + Council normalizado sin autoridad ejecutiva.
+- `G-003`: task graph determinista; `director_tasks` y `generated_tasks` separados.
+- `G-004`: placement classifier A–G + `PLACEMENT_REVIEW_REQUIRED`.
+- `G-005`: reuse selector `runtime/src/core/reuse_selector.py` blob `bc7f4805fc7f13e6de0341b84c533d4b7fb6b044`; catálogo `reuse_catalog_g005.json` blob `2367f7ed8c7e1ece1d724f15f6494d5ff56543f8`; evidence `G005_REUSE_SELECTOR_2026-09-11.json`.
 - `G-010`: Watchdog supervisor.
 - `G-020`: 12 fuentes de comunidad/desarrollo.
+
+## Política G-005 vigente
+`REUSE > PATCH > ADAPT > GENERATE`. Máximo 10 candidatos por decisión; source/licencia/mantenimiento/compatibilidad/riesgo/footprint obligatorios. Candidato externo requiere `ADAPT`, nunca ejecución directa. Para `dag`, `DAGEngine` local es REUSE por defecto; NetworkX no reemplaza scheduler sin GAP demostrado. Graphiti/Graphology siguen en investigación y no están integrados.
 
 ## Paralelismo permitido
 Fan-out solo entre tareas independientes y con ownership explícito. Dependencias bloqueantes del DAG no se saltan. Mantener `director_tasks` y `generated_tasks` separados; dedup/idempotency/backpressure obligatorios antes de aumentar concurrencia.
 
 ## Regla de cierre
-Cada GAP requiere source/provenance + decisión + implementación cuando corresponda + test/simulación + read-back/commit + persistencia. Presencia de archivo no equivale a PASS.
+Cada GAP requiere source/provenance + decisión + implementación cuando corresponda + test/simulación + read-back/commit + persistencia. Presencia de archivo no equivale a PASS. `AUTH_PROVIDER_TEST_PENDING` permanece abierto hasta evidencia autenticada real.
