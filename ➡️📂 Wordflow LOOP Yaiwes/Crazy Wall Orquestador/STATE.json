@@ -1,22 +1,45 @@
 {
-  "contract":"tel.workflow/v4",
-  "project":"Wordflow LOOP Yaiwes",
-  "mode":"FAIL_CLOSED_EXECUTION_LOOP",
-  "authorized_write_root":"➡️📂 Wordflow LOOP Yaiwes/",
-  "status":"LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING",
-  "current_node":"FINAL_3STEP_CLOSED_LOCAL_TESTS",
-  "checkpoint_id":"WFLOOP-FINAL-3STEP-20260910",
-  "queue":"1x1",
-  "three_step_patch":{"step1":"VERIFIED_CLOSED","step2":"VERIFIED_CLOSED_WIRING","step3":"LOCAL_TESTS_PASS"},
-  "step1":{"index_repo":"maxbry123-commits/agentes","index_path":"➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme indice agentes.md","historical_source_commit":"ba9596c5716f34926e23186330609d4238bd8ccd","source_repo_copy_removed_commit":"a17e1572b9df41954597fc8c66b390c47800d081"},
-  "step2":{"fleet_count":18,"council12":12,"adapter":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_adapter.py","registry":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_registry.json","health":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_health.json","ready_manifest":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/AGENT_FLEET_READY_FOR_TEST.json","ficha":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/contracts/ficha.agent_fleet.v2.json","plugin_registration":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_plugin_registration.json","router":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/model_api_router_mvp.py"},
-  "step3_previous_verification":{"workflow_archive":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/workflows/wordflow-agent-fleet-step3.yml","evidence":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/STEP3_AGENT_FLEET_VERIFY.json","run_id":34406268016,"job_id":102649876845,"head_sha":"05ce5fc43a599da1ae9e80f485450d52aede07a1","conclusion":"success"},
-  "final_3step_closure":{"evidence":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/FINAL_3STEP_CLOSURE_TEST_2026-09-10.json","evidence_commit":"6c4b10a49fa8de3bd85348f15bd5f5fa461d128c","fleet_tests":"PASS","router_priority_failover_tests":"PASS","parallel_dispatch_tests":"PASS","fail_closed_18_of_18":"PASS","external_provider_auth":"PENDING_REAL_SAFE_CHANNEL","watchdog":"ACTIVE_HOURLY"},
-  "agent_fleet":{"plugin_id":"yaiwes.runtime.agent_fleet","local_registration":"ACTIVE","fleet_count":18,"council12_count":12,"agents":["opencode","openhands","claude_code","mimo_code","codex","smolagents","hermes","openclaw","aider","muse_glimmer","kimi_k","qwen_code","cline","goose","agent_zero","opendev","research_agent_lab","mirothinker"],"source_located_count":15,"external_not_vendored":["hermes","muse_glimmer","goose"],"source_traceability":"CLOSED_NO_FAKE_PATHS","external_runtime_execution":"NOT_YET_CLAIMED","runtime_values":"INJECT_AUTHORIZED_ENV_AT_TEST_TIME","missing_runtime_behavior":"FAIL_CLOSED"},
-  "scope_migration":{"commit":"2a73aba061db7dfba2b37bf6637babb2e73c4b0d","manifest":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/SCOPE_MIGRATION_2026-09-09.json","external_preexisting_plugin_registry_restored_blob":"ce40e9afd13fdbea22609fe57807566770dfc1b0"},
-  "runtime_gates":{"http":["YAIWES_CLAUDE_CODE_URL","YAIWES_MIMO_CODE_URL","YAIWES_OPENCLAW_URL"],"command":["YAIWES_OPENCODE_COMMAND","YAIWES_OPENHANDS_COMMAND","YAIWES_CODEX_COMMAND","YAIWES_SMOLAGENTS_COMMAND","YAIWES_HERMES_COMMAND","YAIWES_AIDER_COMMAND","YAIWES_MUSE_GLIMMER_COMMAND","YAIWES_KIMI_COMMAND","YAIWES_QWEN_COMMAND","YAIWES_CLINE_COMMAND","YAIWES_GOOSE_COMMAND","YAIWES_AGENT_ZERO_COMMAND","YAIWES_OPENDEV_COMMAND","YAIWES_RESEARCH_AGENT_LAB_COMMAND","YAIWES_MIROTHINKER_COMMAND"]},
-  "hugging_face":{"status":"IN_PROGRESS_EXTERNAL_PER_DIRECTOR","action":"WAIT_FOR_DIRECTOR_READY_SIGNAL"},
-  "remaining_before_pass_real_external":["Authenticated NVIDIA/Cerebras/Groq provider probe and real external agent execution through an authorized safe runtime channel"],
-  "next_action":"AUTH_PROVIDER_REAL_TEST_ONLY_WHEN_SAFE_CHANNEL_AVAILABLE",
-  "closure_rule":"Repository structure and local deterministic runtime logic are closed with PASS evidence. External provider/runtime PASS_REAL remains evidence-gated."
+  "contract": "tel.workflow/v4",
+  "project": "Wordflow LOOP Yaiwes",
+  "mode": "FAIL_CLOSED_EXECUTION_LOOP",
+  "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
+  "status": "ACTIVE_LOOP_CODE_GRAPH_RESEARCH",
+  "current_node": "CG00_REQUIREMENTS_AND_GAP_LEDGER_OPEN",
+  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260910-0001",
+  "queue_mode": "DAG_DEPENDENCIES_PLUS_PARALLEL_INDEPENDENT",
+  "historical_local_closure": {
+    "status": "LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/FINAL_3STEP_CLOSURE_TEST_2026-09-10.json",
+    "commit": "6c4b10a49fa8de3bd85348f15bd5f5fa461d128c"
+  },
+  "new_phase": {
+    "name": "CODE_GRAPH_ARCHITECTURE_PROGRAMMING_LOOP",
+    "director_approved": true,
+    "gap_ledger": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/GAPS-INVESTIGACION-CODE-GRAPH-20260910.md",
+    "gaps_total": 30,
+    "gaps_closed": 0,
+    "gaps_in_research": ["G-016", "G-018", "G-023", "G-027", "G-028", "G-029"],
+    "gaps_open": ["G-001","G-002","G-003","G-004","G-005","G-006","G-007","G-008","G-009","G-010","G-011","G-012","G-013","G-014","G-015","G-017","G-019","G-020","G-021","G-022","G-024","G-025","G-026","G-030"],
+    "write_scope_enforced": true
+  },
+  "research_confirmed": {
+    "graphiti_source": "maxbry123-commits/osquestador-auditor/graphiti",
+    "graphology_source": "maxbry123-commits/osquestador-auditor/graphology",
+    "canonical_motor_source": "maxbry123-commits/frontend/main/➡️📂motores de descarga extracción copiado movimiento archivos fromtend/",
+    "motor_policy": "COPY_ONLY_IMMUTABLE_READBACK_REQUIRED"
+  },
+  "source_documents": ["📌MAVIS-PARALLEL-100X.md","📌MAX-SYSTEM-100X-FINAL-1.md"],
+  "agent_fleet": {
+    "fleet_count": 18,
+    "council12_count": 12,
+    "router_status": "LOCAL_PASS_EXTERNAL_AUTH_PENDING"
+  },
+  "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
+  "next_actions": [
+    "Audit existing Wordflow for ChatA/ChatB, deployment, Fables, sandbox and agent-memory artifacts",
+    "Inspect canonical copy/download/move motor code and copy immutable motor root into authorized Wordflow root",
+    "Research Graphiti/Graphology/planning/visual stack and 12 community sources",
+    "Verify Hugging Face connected resources without exposing secrets",
+    "Build deterministic CODE_GRAPH contracts and queue only after reuse audit"
+  ]
 }
