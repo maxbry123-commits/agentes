@@ -1,0 +1,14 @@
+name: YAIWES Acquisition Watchdog Auditor — neutralized
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  neutralized:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm neutralized non-canonical workflow
+        run: echo "Neutralized intentionally; canonical watchdog/auditor remains authoritative."
