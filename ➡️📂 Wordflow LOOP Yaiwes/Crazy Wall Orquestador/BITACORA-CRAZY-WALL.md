@@ -132,5 +132,19 @@ Tests `runtime/tests/test_reuse_selector.py`, blob `1bcd0fca22d1238d28add1880e88
 ## CG-0036 — Cierre y drift
 `G-005 CLOSED_VERIFIED_LOCAL`. Durante la relectura se detectó que PLAN y RECOVERY aún señalaban checkpoint `0005`; se registra como drift de G-013 y se reconcilia sin cerrar G-013, porque falta el reconciliador automático. Nuevo checkpoint `WFLOOP-CODE-GRAPH-20260911-0008`. Siguiente nodo 1×1: `G-006` política de creación de código nuevo posterior al gate de reutilización.
 
+# CICLO CG-CYCLE-0009 — G-006 FAIL-CLOSED DEPENDENCY — 2026-09-11
+
+## CG-0037 — Implementación encontrada fuera de las fuentes de verdad
+Read-back de `runtime/src/core/code_generation_policy.py`, blob `0e46a02a874b329a216cc219fe3429e9feae41a6`. El módulo exige decisión `GENERATE`, placement aprobado, path relativo seguro y declara `execution_authorized=false`/`deployment_authorized=false`. No se encontró `runtime/tests/test_code_generation_policy.py`.
+
+## CG-0038 — Fables no demostrado
+El módulo compara `fables_binding` contra el literal `UNIVERSAL_PLUGIN_BUS`, pero no existe en esta evidencia source proof del Enchufe Universal Fables/Ficha, registro canónico ni Ficha/ABI validada. Presencia de una cadena no equivale a integración. `G-018` continúa `GAP_IN_RESEARCH`.
+
+## CG-0039 — Decisión fail-closed
+`G-006` pasa a `BLOCKED_DEPENDENCY_G018`, no a CLOSED. Evidence `wordflow_loop/evidence/G006_BLOCKED_FABLES_DEPENDENCY_2026-09-11.json`, commit de evidencia `54225b0992271fdd2c2fef3a3c708c4b1cb9da90`. No se reclama pytest ni PASS externo.
+
+## CG-0040 — Cola independiente segura
+Como G-006 depende de G-018, la cola avanza únicamente a nodo independiente seguro `G-013` para reconciliación automática de fuentes de verdad. Checkpoint `WFLOOP-CODE-GRAPH-20260911-0009`.
+
 ## Estado del grupo
-30 GAPs · 7 CLOSED (`G-001`, `G-002`, `G-003`, `G-004`, `G-005`, `G-010`, `G-020`) · externos `AUTH_PROVIDER_TEST_PENDING` · Graphiti/Graphology todavía NO integrados · Fables G-018 sigue en investigación y no se crea bus paralelo.
+30 GAPs · 7 CLOSED (`G-001`, `G-002`, `G-003`, `G-004`, `G-005`, `G-010`, `G-020`) · `G-006 BLOCKED_DEPENDENCY_G018` · externos `AUTH_PROVIDER_TEST_PENDING` · Graphiti/Graphology todavía NO integrados · Fables G-018 sigue en investigación y no se crea bus paralelo.
