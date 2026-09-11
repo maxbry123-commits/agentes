@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-11T04:20:36.875849+00:00",
+  "updated_at": "2026-09-11T04:22:04.210773+00:00",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1188,10 +1188,10 @@
       "status": "GAP",
       "abc": "C",
       "target": "Agente Yaiwes principal/execution-orchestration/container-pod-isolation/gvisor/",
-      "owner": null,
-      "lock": "FREE",
+      "owner": "SOL",
+      "lock": "CLAIMED",
       "checkpoint": {
-        "before": "2026-09-10T20:00:00Z source_exists:Core kernel Yaiwes/gVisor/; physical read-back confirms populated upstream tree with Bazel config, build metadata and source directories",
+        "before": "2026-09-11T04:22:04.210773+00:00 SOL integración 1 user-extended loop: N26 STEP2 claim; canonical Motor4 only; source populated; target exact path pending",
         "after": "STEP2 GAP: canonical Motor4 verified; no N26 gVisor runner and no reusable generic Motor4 runner exists on main; creating a new workflow is outside authorized write scope; MOVE not executed"
       },
       "evidence": [
@@ -1202,7 +1202,8 @@
         "step2:n26-runner:404",
         "step2:no-reusable-generic-Motor4-runner",
         "step2:other_write_scope_authorized=false",
-        "step2:MOVE_NOT_EXECUTED_FAIL_CLOSED"
+        "step2:MOVE_NOT_EXECUTED_FAIL_CLOSED",
+        "step2:worker:SOL integración 1:user_scope_extension"
       ],
       "history": [
         {
@@ -1222,9 +1223,15 @@
           "actor": "SOL",
           "label": "SOL integración 2",
           "event": "STEP2_GAP_FAIL_CLOSED_RELEASE"
+        },
+        {
+          "at": "2026-09-11T04:22:04.210773+00:00",
+          "actor": "SOL",
+          "label": "SOL integración 1",
+          "event": "CLAIM_STEP2_USER_SCOPE_EXTENSION"
         }
       ],
-      "next_action": "STEP_2_MOVE_WITH_CANONICAL_MOTOR_REQUIRES_EXISTING_AUTHORIZED_RUNNER_OR_DISPATCH"
+      "next_action": "STEP_2_MOVE_WITH_CANONICAL_MOTOR"
     },
     {
       "id": 27,
