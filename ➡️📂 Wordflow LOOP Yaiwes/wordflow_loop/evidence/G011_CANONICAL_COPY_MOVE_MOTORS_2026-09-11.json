@@ -3,7 +3,7 @@
   "contract": "tel.workflow/v4",
   "gap": "G-011",
   "owner": "SOL_1",
-  "status": "IMPLEMENTED_READBACK_VERIFIED_PENDING_REPRODUCIBLE_TEST_AND_TASK_NODE_CAS",
+  "status": "LOCAL_EQUIVALENT_SIMULATION_PASS_PENDING_AUTHORITATIVE_RUNNER_AND_TASK_NODE_CAS",
   "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
   "research": {
     "motor_code_lock": "➡️📂motores de descarga extracción copiado movimiento archivos agentes/MOTOR-CODE-LOCK.json",
@@ -13,7 +13,8 @@
     "move_motor": "➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py",
     "move_motor_blob": "9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
     "canonical_blobs_preserved": true,
-    "motor_source_rewritten": false
+    "motor_source_rewritten": false,
+    "github_readback": "PASS"
   },
   "wire": {
     "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/canonical_motor_gate.py",
@@ -40,18 +41,27 @@
       "source/destination collision fail-closed"
     ],
     "repo_pytest_execution": "NOT_CLAIMED",
-    "verdict": "TEST_DEFINED_READBACK_VERIFIED_NOT_EXECUTED_BY_REPO_RUNNER"
+    "local_equivalent_simulation": {
+      "copy_sha256_readback": "PASS",
+      "copy_source_preserved": "PASS",
+      "move_sha256_readback": "PASS",
+      "move_source_removed": "PASS",
+      "unsupported_motor_fail_closed": "PASS",
+      "source_destination_collision_fail_closed": "PASS",
+      "verdict": "PASS_6_OF_6_EQUIVALENT_ASSERTIONS"
+    },
+    "verdict": "LOCAL_EQUIVALENT_PASS_REPO_RUNNER_NOT_EXECUTED"
   },
   "task_node": {
     "fresh_precondition": "G-011 PENDING claimed_by=null version=1",
     "task_nodes_blob_before": "78a5dafbd3cbf5c6ae03dfa82a0351dc97335bd0",
     "claim_persisted": false,
-    "reason": "Do not rewrite the whole concurrent TASK-NODES ledger without a safe field-level CAS mutation; fail closed instead of risking foreign-node overwrite."
+    "reason": "TASK-NODES is a concurrent shared ledger and this connector exposes whole-file replacement rather than field-level CAS; fail closed instead of risking overwrite of foreign nodes."
   },
   "closure": {
     "closed": false,
     "remaining": [
-      "execute reproducible G-011 test in an authoritative runner",
+      "execute repository test in an authoritative runner or accepted repo execution path",
       "persist SOL_1 ownership/status through safe TASK-NODES CAS",
       "only then mark three steps PASS and advance gaps_closed"
     ],
