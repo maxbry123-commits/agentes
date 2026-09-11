@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.component-integration-state/v3",
-  "updated_at": "2026-09-11T02:32:00Z",
+  "updated_at": "2026-09-11T02:34:00Z",
   "mode": "FAIL_CLOSED_3_STEPS_MULTI_AI",
   "source_of_truth_order": ["physical_repo_state", "fresh_readback_from_main", "runtime_test_evidence", "crazy_wall", "handoff", "inference"],
   "repository": "maxbry123-commits/agentes",
@@ -16,12 +16,16 @@
     {"node":22,"name":"Hatchet","state":"COMPLETE"},
     {"node":23,"name":"PostgreSQL","state":"GAP_STEP2_MOTOR_INVOCATION_PERSISTENCE"},
     {"node":24,"name":"Redis","state":"COMPLETE"},
-    {"node":25,"name":"Workalendar","state":"COMPLETE","evidence":{"motor4_move_commit":"a97b5d8804ed76996027dbb254af3ad70b9f4c80","runner_blob":"95dc147d9e987c14aa6a562321a9b47fe6fcbc0f","source_readback":404,"target_readme_blob":"eba08068458f2a058c041d1b4027af948602dde3","verify_run":34545474663,"verify_job":103097034441,"microtest":"working_day_gate 2026-09-10=True;2026-09-12=False"}},
-    {"node":26,"name":"gVisor","state":"GAP_STEP2_MOTOR_INVOCATION"},
-    {"node":27,"name":"pgvector","state":"GAP_STEP2_MOTOR_INVOCATION"}
+    {"node":25,"name":"Workalendar","state":"COMPLETE","evidence":{"motor4_move_commit":"a97b5d8804ed76996027dbb254af3ad70b9f4c80","runner_blob":"95dc147d9e987c14aa6a562321a9b47fe6fcbc0f","source_readback":404,"target_readme_blob":"eba08068458f2a058c041d1b4027af948602dde3","verify_run":34545474663,"verify_job":103097034441,"microtest":"working_day_gate 2026-09-10=True; 2026-09-12=False"}},
+    {"node":26,"name":"gVisor","state":"GAP_STEP2_MOTOR_INVOCATION","evidence":{"source_readme_blob":"47713235046cf83bf892a23898b8c924126567a9","target_readback":404,"runner_readback":404,"motor4_move_commit_search":"NONE"}},
+    {"node":27,"name":"pgvector","state":"GAP_STEP2_MOTOR_INVOCATION","evidence":{"source_readme_blob":"bcb7edaf91d2bb005675d378bb0ed495cc279c82","target_readback":404,"runner_readback":404,"motor4_move_commit_search":"NONE"}}
   ],
   "counts": {"closed_under_current_contract":23,"gap_step2":4},
   "publish_flags": [{"artifact":"📂 Bitácora stated JSON Craxy wall.json","node":25,"type":"WORKFLOW_PUBLISH_FAIL","cause":"connector payload limit truncates full-file replacement; corrupt provisional blob validated and never committed","component_state":"PASS"}],
   "sol_integracion_2_queue": [27,26],
-  "next_action": "N27 fresh readback -> CLAIM only if Crazy Wall write is safely persisted -> current_step 2; then N26."
+  "sol_integracion_2_verified_gaps": [
+    {"node":27,"gap":"MOTOR_INVOCATION_GAP","claim_executed":false,"reason":"Crazy Wall cannot yet be safely updated for CLAIM; source present, target/runner absent"},
+    {"node":26,"gap":"MOTOR_INVOCATION_GAP","claim_executed":false,"reason":"Crazy Wall cannot yet be safely updated for CLAIM; source present, target/runner absent"}
+  ],
+  "next_action": "Retry safe Crazy Wall publisher only; do not repeat N25. When publication path works: CLAIM N27 -> STEP2; then N26."
 }
