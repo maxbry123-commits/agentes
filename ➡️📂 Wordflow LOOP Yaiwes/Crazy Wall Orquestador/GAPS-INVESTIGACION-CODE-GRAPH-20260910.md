@@ -42,7 +42,7 @@ Regla de cierre: investigación/provenance + decisión + implementación cuando 
 `GAP_OPEN`. Cierre: intake schema + queue + adapter a motores + CRC/hash/path safety/read-back.
 
 ## G-013 — Fuentes de verdad
-`IN_RESEARCH_IMPLEMENTED_PENDING_FULL_RECONCILIATION`. Contrato `yaiwes.truth_reconciliation/v1`; STATE/CHECKPOINT son anchors. El parser acepta un único marcador explícito `Checkpoint canónico:` para documentos con historial y falla cerrado ante marcadores canónicos conflictivos. Módulo blob `fb93ce9ee5b86439b0ba36ef72c404134d1984b1`; tests blob `f39cb13a84d1dbb7fcb1c1467f712bf003a431df`. Cierre pendiente de read-back consistente de README/STATE/CHECKPOINT/BITACORA/GAPS/HANDOFF/PLAN/RECOVERY en `0010`.
+`CLOSED_VERIFIED_LOCAL`. Contrato `yaiwes.truth_reconciliation/v1`; STATE/CHECKPOINT son anchors. El parser acepta un único marcador explícito `Checkpoint canónico:` para documentos con historial y falla cerrado ante marcadores canónicos conflictivos. Módulo blob `fb93ce9ee5b86439b0ba36ef72c404134d1984b1`; tests blob `f39cb13a84d1dbb7fcb1c1467f712bf003a431df`. Read-back `PASS_8_OF_8`; simulación equivalente `PASS_7_OF_7`; evidence `wordflow_loop/evidence/G013_CANONICAL_RECONCILIATION_2026-09-11.json`; `repo_pytest_execution=NOT_CLAIMED`.
 
 ## G-014 — Memoria de 18 agentes
 `GAP_OPEN`. Cierre: 18 `agente-readme-memoria.md` + loader determinista + test pre-injection.
@@ -57,7 +57,7 @@ Regla de cierre: investigación/provenance + decisión + implementación cuando 
 `GAP_OPEN`. Installation engine actual contiene PASS/health estáticos no aceptados. Cierre: validate/build/sandbox/tests/reviewer/promote/checkpoint/rollback con checks reales.
 
 ## G-018 — Enchufe Universal Fables
-`GAP_IN_RESEARCH`. Cierre: source proof canónico + Ficha/contract + registro/test; prohibidos buses paralelos.
+`GAP_IN_RESEARCH` · siguiente nodo 1×1. Cierre: source proof canónico + Ficha/contract + registro/test; prohibidos buses paralelos.
 
 ## G-019 — Auditoría global Wordflow
 `GAP_OPEN`. Cierre: inventario/capability map + duplicados/huérfanos/rutas rotas/code no usado + ledger reconciliado.
@@ -96,4 +96,4 @@ Regla de cierre: investigación/provenance + decisión + implementación cuando 
 `GAP_OPEN`. Cierre: ownership/version/checkpoint/idempotency + optimistic concurrency/merge conflict protocol + tests.
 
 ## Estado del grupo tras checkpoint 0010
-30 GAPs. Cerrados: `G-001`, `G-002`, `G-003`, `G-004`, `G-005`, `G-010`, `G-020` = 7. En investigación: `G-013`, `G-016`, `G-018`, `G-023`, `G-027`, `G-028`, `G-029`. `G-006` está bloqueado por G-018. `AUTH_PROVIDER_TEST_PENDING` permanece abierto; Graphiti/Graphology no integrados; no se crea bus paralelo.
+30 GAPs. Cerrados: `G-001`, `G-002`, `G-003`, `G-004`, `G-005`, `G-010`, `G-013`, `G-020` = 8. En investigación: `G-016`, `G-018`, `G-023`, `G-027`, `G-028`, `G-029`. `G-006` está bloqueado por G-018. Siguiente nodo: `G-018`. `AUTH_PROVIDER_TEST_PENDING` permanece abierto; Graphiti/Graphology no integrados; no se crea bus paralelo.
