@@ -4,8 +4,8 @@
   "mode": "FAIL_CLOSED_EXECUTION_LOOP",
   "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
   "status": "ACTIVE_LOOP_CODE_GRAPH_RESEARCH",
-  "current_node": "CG05_REUSE_RESEARCH_G005",
-  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260910-0007",
+  "current_node": "CG06_NEW_CODE_POLICY_G006",
+  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260911-0008",
   "queue_mode": "DAG_DEPENDENCIES_PLUS_PARALLEL_INDEPENDENT",
   "historical_local_closure": {
     "status": "LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING",
@@ -17,10 +17,10 @@
     "director_approved": true,
     "gap_ledger": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/GAPS-INVESTIGACION-CODE-GRAPH-20260910.md",
     "gaps_total": 30,
-    "gaps_closed": 6,
-    "gaps_closed_ids": ["G-001", "G-002", "G-003", "G-004", "G-010", "G-020"],
+    "gaps_closed": 7,
+    "gaps_closed_ids": ["G-001", "G-002", "G-003", "G-004", "G-005", "G-010", "G-020"],
     "gaps_in_research": ["G-016", "G-018", "G-023", "G-027", "G-028", "G-029"],
-    "gaps_open": ["G-005","G-006","G-007","G-008","G-009","G-011","G-012","G-013","G-014","G-015","G-017","G-019","G-021","G-022","G-024","G-025","G-026","G-030"],
+    "gaps_open": ["G-006","G-007","G-008","G-009","G-011","G-012","G-013","G-014","G-015","G-017","G-019","G-021","G-022","G-024","G-025","G-026","G-030"],
     "write_scope_enforced": true
   },
   "g001_code_graph_workspace": {
@@ -60,8 +60,23 @@
     "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G004_PLACEMENT_CLASSIFIER_2026-09-10.json",
     "microtest": "PASS_10_OF_10_ASSERTIONS"
   },
+  "g005_reuse_selector": {
+    "status": "CLOSED_VERIFIED_LOCAL",
+    "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/reuse_selector.py",
+    "module_blob": "bc7f4805fc7f13e6de0341b84c533d4b7fb6b044",
+    "tests": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_reuse_selector.py",
+    "tests_blob": "1bcd0fca22d1238d28add1880e882e7af863ad52",
+    "catalog": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/research/reuse_catalog_g005.json",
+    "catalog_blob": "2367f7ed8c7e1ece1d724f15f6494d5ff56543f8",
+    "catalog_count": 8,
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G005_REUSE_SELECTOR_2026-09-11.json",
+    "local_equivalent_simulation": "PASS_3_OF_3_DECISIONS",
+    "repo_test_execution": "NOT_CLAIMED",
+    "external_install_or_copy": "NONE"
+  },
   "source_of_truth_reconciliation": {
-    "status": "RECONCILED_THROUGH_CHECKPOINT_0007_CORE_TRUTHS",
+    "status": "RECONCILED_THROUGH_CHECKPOINT_0008_CORE_TRUTHS",
+    "drift_detected_this_cycle": ["PLAN checkpoint 0005", "RECOVERY checkpoint 0005"],
     "G-013": "OPEN_PENDING_AUTOMATIC_RECONCILIATION_POLICY_TEST"
   },
   "reuse_audit": {
@@ -77,13 +92,14 @@
     "graphology_source": "maxbry123-commits/osquestador-auditor/graphology",
     "community_sources": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/research/community_sources.json",
     "community_sources_count": 12,
+    "reuse_catalog": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/research/reuse_catalog_g005.json",
     "canonical_motor_source": "maxbry123-commits/frontend/main/➡️📂motores de descarga extracción copiado movimiento archivos fromtend/",
     "motor_policy": "COPY_ONLY_IMMUTABLE_READBACK_REQUIRED"
   },
   "agent_fleet": {"fleet_count":18,"council12_count":12,"router_status":"LOCAL_PASS_EXTERNAL_AUTH_PENDING"},
   "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
   "next_actions": [
-    "G-005: research/reuse catalog and deterministic selection record before code generation",
+    "G-006: define deterministic authorization policy for code generation after G-005 research gate",
     "Continue exact Fables source proof search; do not create a parallel bus",
     "Keep G-022 open until enforceable sandbox isolation exists",
     "Keep G-017 open until deployment/health gates execute real checks"
