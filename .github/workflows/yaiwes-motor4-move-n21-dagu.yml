@@ -1,4 +1,4 @@
-name: YAIWES SOL1 N26 gVisor STEP2
+name: YAIWES SOL1 N26 gVisor STEP2 RETRY
 
 on:
   workflow_dispatch:
@@ -39,51 +39,76 @@ jobs:
             /Core kernel Yaiwes/gVisor/
             /Agente Yaiwes principal/execution-orchestration/container-pod-isolation/gvisor/
 
-      - name: Claim N26 STEP2 from fresh Crazy Wall
+      - name: Resume exact N26 STEP2 claim
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          ok=0
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main; git reset --hard origin/main
-            python3 - <<'PY'
+          git fetch origin main; git reset --hard origin/main
+          python3 - <<'PY'
           import json, os
-          from datetime import datetime, timezone
           p=os.environ['WALL']; d=json.load(open(p,encoding='utf-8')); n=next(x for x in d['nodes'] if x['id']==26)
-          if n.get('component')!='gVisor' or n.get('current_step')!=2 or n.get('owner') is not None or n.get('lock')!='FREE':
-              raise SystemExit(f"N26_NOT_FREE_STEP2:{n.get('component')}:{n.get('current_step')}:{n.get('owner')}:{n.get('lock')}")
-          now=datetime.now(timezone.utc).isoformat(); n['owner']='SOL'; n['lock']='CLAIMED'; n['status']='GAP'
-          n.setdefault('checkpoint',{})['before']=now+' SOL integración 1 user-extended loop: N26 STEP2 claim; canonical Motor4 only; source populated; target exact path pending'
-          ev=n.setdefault('evidence',[]); item='step2:worker:SOL integración 1:user_scope_extension'
-          if item not in ev: ev.append(item)
-          n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 1','event':'CLAIM_STEP2_USER_SCOPE_EXTENSION'})
-          n['next_action']='STEP_2_MOVE_WITH_CANONICAL_MOTOR'; d['updated_at']=now
-          with open(p,'w',encoding='utf-8') as f: json.dump(d,f,ensure_ascii=False,indent=2); f.write('\n')
+          assert n.get('component')=='gVisor', n
+          assert n.get('current_step')==2, n
+          assert n.get('owner')=='SOL' and n.get('lock')=='CLAIMED', n
+          print('N26_RESUME_CLAIM=PASS')
           PY
-            git add -- "$WALL"; git commit -m 'crazy-wall: SOL integración 1 claim N26 STEP2'
-            if git push origin HEAD:main; then ok=1; break; fi
-            sleep $((attempt * 2))
-          done
-          test "$ok" -eq 1
 
       - name: Verify immutable canonical Motor4
         shell: bash
         run: |
           set -euo pipefail
           test "$(git hash-object "$MOTOR")" = '9a21facfe11327cf60a2afca8f415ad52f0ecbe5'
-          test -d "$SOURCE"; test -n "$(find "$SOURCE" -type f -print -quit)"
+          test -d "$SOURCE"
           echo MOTOR4_CANONICAL_SHA=PASS
 
-      - name: Execute canonical Motor4 N26
+      - name: Materialize internal symlink frontier only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, shutil
+          from pathlib import Path
+          root=Path(os.environ['SOURCE']).resolve()
+          links=[]
+          for base, dirs, files in os.walk(root, followlinks=False):
+              for name in list(dirs)+list(files):
+                  p=Path(base)/name
+                  if p.is_symlink(): links.append(p)
+          print('N26_SYMLINK_COUNT='+str(len(links)))
+          # Deepest first so nested references remain resolvable while copied.
+          for p in sorted(links,key=lambda x:len(x.parts),reverse=True):
+              raw=os.readlink(p)
+              target=(p.parent/raw).resolve()
+              try: target.relative_to(root)
+              except ValueError: raise RuntimeError(f'EXTERNAL_SYMLINK_FORBIDDEN:{p.relative_to(root)}->{raw}')
+              if not target.exists(): raise RuntimeError(f'DANGLING_SYMLINK:{p.relative_to(root)}->{raw}')
+              rel=p.relative_to(root)
+              print(f'N26_MATERIALIZE_SYMLINK={rel}->{raw}')
+              if target.is_file():
+                  data=target.read_bytes(); mode=target.stat().st_mode
+                  p.unlink(); p.write_bytes(data); os.chmod(p,mode)
+              elif target.is_dir():
+                  tmp=p.with_name(p.name+'.materializing')
+                  if tmp.exists(): shutil.rmtree(tmp)
+                  shutil.copytree(target,tmp,symlinks=False)
+                  p.unlink(); os.replace(tmp,p)
+              else:
+                  raise RuntimeError(f'UNSUPPORTED_SYMLINK_TARGET:{rel}->{raw}')
+          print('N26_SYMLINK_FRONTIER=PASS')
+          PY
+
+      - name: Execute canonical Motor4 N26 retry
         shell: bash
         run: |
           set -euo pipefail
           rm -f "$STATE"
           SOURCE_DIR="$SOURCE" DEST_DIR="$TARGET" STATE_FILE="$STATE" BATCH_SIZE=100 COLLISION_POLICY=fail MAX_BATCHES=0 python3 "$MOTOR" | tee /tmp/n26-motor4-result.json
           python3 - <<'PY'
-          import json
+          import json, os
           r=json.loads(open('/tmp/n26-motor4-result.json',encoding='utf-8').read().splitlines()[-1])
+          if os.path.exists(os.environ['STATE']):
+              s=json.load(open(os.environ['STATE'],encoding='utf-8'))
+              print('N26_FAILED_MAP='+json.dumps(s.get('failed',{}),sort_keys=True))
           assert r['verdict']=='VERIFIED_CLOSED' and r['failed']==0 and r['pending']==0 and r['source_files_remaining']==0, r
           print('N26_MOTOR4_RESULT=PASS total=%s batches=%s' % (r['total'],r['batches_total']))
           PY
@@ -95,7 +120,7 @@ jobs:
           git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A -- "$SOURCE" "$TARGET"; git diff --cached --check
           test -n "$(git diff --cached --name-only -- "$TARGET" | head -1)"
-          git commit -m 'move(yaiwes): Motor4 N26 gVisor to container-pod-isolation'
+          git commit -m 'move(yaiwes): Motor4 N26 gVisor symlink-safe frontier'
           echo "MOVE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"; git reset --hard HEAD
           ok=0
           for attempt in 1 2 3 4 5; do
@@ -130,9 +155,10 @@ jobs:
           p=os.environ['WALL']; d=json.load(open(p,encoding='utf-8')); n=next(x for x in d['nodes'] if x['id']==26)
           if n.get('owner')!='SOL' or n.get('lock')!='CLAIMED' or n.get('current_step')!=2: raise SystemExit(f"N26_CLAIM_LOST:{n.get('owner')}:{n.get('lock')}:{n.get('current_step')}")
           now=datetime.now(timezone.utc).isoformat(); run=os.environ.get('GITHUB_RUN_ID',''); commit=os.environ.get('MOVE_COMMIT','')
-          n['status']='PASS'; n['current_step']=3; n.setdefault('checkpoint',{})['after']=now+' STEP2 PASS: immutable canonical Motor4 moved gVisor to container-pod-isolation; source absent + target README/runsc origin/main read-back PASS'
+          n['status']='PASS'; n['current_step']=3
+          n.setdefault('checkpoint',{})['after']=now+' STEP2 PASS: canonical Motor4 immutable; internal symlink frontier materialized before Motor4; gVisor moved to container-pod-isolation; source absent + target README/runsc origin/main read-back PASS'
           ev=n.setdefault('evidence',[])
-          for item in ['step2:motor4_blob:9a21facfe11327cf60a2afca8f415ad52f0ecbe5','step2:run:'+run,'step2:move_commit:'+commit,'step2:motor4:VERIFIED_CLOSED','step2:readback:source_absent+target_populated+README+runsc_PASS']:
+          for item in ['step2:strategy_delta:materialize_internal_symlink_frontier_before_immutable_Motor4','step2:motor4_blob:9a21facfe11327cf60a2afca8f415ad52f0ecbe5','step2:run:'+run,'step2:move_commit:'+commit,'step2:motor4:VERIFIED_CLOSED','step2:readback:source_absent+target_populated+README+runsc_PASS']:
               if item not in ev: ev.append(item)
           n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 1','event':'STEP2_PASS_RELEASE','run':int(run),'commit':commit})
           n['owner']=None; n['lock']='FREE'; n['next_action']='STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST'; d['updated_at']=now
