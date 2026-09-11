@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-11T04:09:30.514475+00:00",
+  "updated_at": "2026-09-11T04:10:10.614316+00:00",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -932,15 +932,15 @@
       "id": 23,
       "component": "PostgreSQL",
       "source": "Core kernel Yaiwes/PostgreSQL/",
-      "current_step": 2,
-      "status": "GAP",
+      "current_step": 3,
+      "status": "PASS",
       "abc": "C",
       "target": "Agente Yaiwes principal/state-events-durability/run-state-store/postgresql/",
-      "owner": "SOL",
-      "lock": "CLAIMED",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-11T04:09:30.514475+00:00 SOL integración 1 user-extended loop: fresh N23 STEP2 claim; execute existing canonical Motor4 only; source populated, target previously absent",
-        "after": "2026-09-10T20:44:00Z STEP2 GAP fail-closed: fresh main still has populated PostgreSQL source and exact target remains 404; no n23 Motor4 runner exists. Canonical Motor4 HF sandbox job 6aa3074c5527934177ec24ee succeeded for 7682 files with aggregate SHA 4078b790994f4fc80470a5a3e5528a2bdc3d8f223b25af20c942b6089a4ae8b8, but HF has no GitHub/GH token environment so it cannot persist to main. MOVE not executed; released for safe-loop continuation."
+        "after": "2026-09-11T04:10:10.614316+00:00 STEP2 PASS: canonical Motor4 immutable SHA verified; PostgreSQL moved source->run-state-store; origin/main source absent, target populated, README read-back PASS"
       },
       "evidence": [
         "worker:SOL integración 3",
@@ -960,7 +960,11 @@
         "step2:hf-credential-probe-job:6aa316815527934177ec29f4:NO_MATCHING_ENV_NAMES",
         "step2:strategy_delta_hf_push:UNAVAILABLE_NO_GITHUB_CREDENTIAL",
         "step2:PASS_REFUTED_SOURCE_PRESENT_TARGET_404",
-        "step2:worker:SOL integración 1:user_scope_extension"
+        "step2:worker:SOL integración 1:user_scope_extension",
+        "step2:run:34561107291",
+        "step2:move_commit:e6e080dbcac153a44cb4d8dc490ef8c0d2665f7b",
+        "step2:motor4:VERIFIED_CLOSED",
+        "step2:readback:source_absent+target_populated+README_PASS"
       ],
       "history": [
         {
@@ -998,9 +1002,17 @@
           "actor": "SOL",
           "label": "SOL integración 1",
           "event": "CLAIM_STEP2_USER_SCOPE_EXTENSION"
+        },
+        {
+          "at": "2026-09-11T04:10:10.614316+00:00",
+          "actor": "SOL",
+          "label": "SOL integración 1",
+          "event": "STEP2_PASS_RELEASE",
+          "run": 34561107291,
+          "commit": "e6e080dbcac153a44cb4d8dc490ef8c0d2665f7b"
         }
       ],
-      "next_action": "STEP_2_MOVE_WITH_CANONICAL_MOTOR"
+      "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
     },
     {
       "id": 24,
