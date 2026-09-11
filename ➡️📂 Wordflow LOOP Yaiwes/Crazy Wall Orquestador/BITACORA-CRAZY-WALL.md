@@ -202,3 +202,9 @@ STATE ya contenía `0010` por trabajo verificado posterior (Graphify MVP). CHECK
 
 ## CG-0048 — Fuentes documentales en reconciliación
 HANDOFF, PLAN, RECOVERY, README arquitectura y GAP ledger fueron alineados a `0010`. BITÁCORA conserva todos los checkpoints históricos y añade este marcador canónico explícito. G-013 continúa abierto hasta read-back final de las ocho fuentes y evidencia reproducible.
+
+## CG-0049 — Read-back y simulación final
+Read-back fresco de las 8 fuentes requeridas confirmó checkpoint `0010` y blobs esperados. Simulación determinista equivalente del contrato: `PASS_7_OF_7`, resultado `CONSISTENT`, sin drift/conflicts/missing y `write_authorized=false`. Evidencia: `wordflow_loop/evidence/G013_CANONICAL_RECONCILIATION_2026-09-11.json`. `repo_pytest_execution=NOT_CLAIMED`; workflows globales fallidos no se interpretaron como fallo del reconciliador.
+
+## CG-0050 — Cierre G-013 y avance seguro
+`G-013 CLOSED_VERIFIED_LOCAL`. STATE/CHECKPOINT registran 8 GAPs cerrados y avanzan la cola al nodo `CG18_FABLES_CANONICAL_BINDING_G018`. `G-006` permanece `BLOCKED_DEPENDENCY_G018`; no se declara Fables integrado ni se crea bus paralelo.
