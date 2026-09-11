@@ -4,8 +4,8 @@
   "mode": "FAIL_CLOSED_EXECUTION_LOOP",
   "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
   "status": "ACTIVE_LOOP_CODE_GRAPH_RESEARCH",
-  "current_node": "CG00_REQUIREMENTS_AND_GAP_LEDGER_OPEN",
-  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260910-0001",
+  "current_node": "CG01_REUSE_AUDIT",
+  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260910-0002",
   "queue_mode": "DAG_DEPENDENCIES_PLUS_PARALLEL_INDEPENDENT",
   "historical_local_closure": {
     "status": "LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING",
@@ -17,14 +17,22 @@
     "director_approved": true,
     "gap_ledger": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/GAPS-INVESTIGACION-CODE-GRAPH-20260910.md",
     "gaps_total": 30,
-    "gaps_closed": 0,
+    "gaps_closed": 2,
+    "gaps_closed_ids": ["G-010", "G-020"],
     "gaps_in_research": ["G-016", "G-018", "G-023", "G-027", "G-028", "G-029"],
-    "gaps_open": ["G-001","G-002","G-003","G-004","G-005","G-006","G-007","G-008","G-009","G-010","G-011","G-012","G-013","G-014","G-015","G-017","G-019","G-020","G-021","G-022","G-024","G-025","G-026","G-030"],
+    "gaps_open": ["G-001","G-002","G-003","G-004","G-005","G-006","G-007","G-008","G-009","G-011","G-012","G-013","G-014","G-015","G-017","G-019","G-021","G-022","G-024","G-025","G-026","G-030"],
     "write_scope_enforced": true
+  },
+  "source_of_truth_reconciliation": {
+    "status": "IN_PROGRESS",
+    "detected_drift": "CHECKPOINT/HANDOFF/PLAN/RECOVERY lagged behind README/STATE after phase opening",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/CODE_GRAPH_CYCLE_0002_2026-09-10.json"
   },
   "research_confirmed": {
     "graphiti_source": "maxbry123-commits/osquestador-auditor/graphiti",
     "graphology_source": "maxbry123-commits/osquestador-auditor/graphology",
+    "community_sources": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/research/community_sources.json",
+    "community_sources_count": 12,
     "canonical_motor_source": "maxbry123-commits/frontend/main/➡️📂motores de descarga extracción copiado movimiento archivos fromtend/",
     "motor_policy": "COPY_ONLY_IMMUTABLE_READBACK_REQUIRED"
   },
@@ -36,10 +44,9 @@
   },
   "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
   "next_actions": [
-    "Audit existing Wordflow for ChatA/ChatB, deployment, Fables, sandbox and agent-memory artifacts",
-    "Inspect canonical copy/download/move motor code and copy immutable motor root into authorized Wordflow root",
-    "Research Graphiti/Graphology/planning/visual stack and 12 community sources",
-    "Verify Hugging Face connected resources without exposing secrets",
-    "Build deterministic CODE_GRAPH contracts and queue only after reuse audit"
+    "Complete CG01 reuse audit for Chat A/B, deployment, Fables, sandbox and agent-memory artifacts",
+    "Reconcile remaining source-of-truth files and close G-013 only after read-back",
+    "Inspect canonical motor availability inside the authorized Wordflow root before closing G-011",
+    "Do not claim Graphiti/Graphology integration until exact-copy/read-back evidence exists"
   ]
 }
