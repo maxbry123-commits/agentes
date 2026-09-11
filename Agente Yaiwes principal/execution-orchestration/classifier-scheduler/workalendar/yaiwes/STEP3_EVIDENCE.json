@@ -1,0 +1,33 @@
+{
+  "node": 25,
+  "worker": "SOL integración 1",
+  "status": "PASS",
+  "route": "UniversalPluginBus/FABLES -> Workalendar adapter -> yaiwes_workalendar_port -> classifier_hook",
+  "plugin_id": "yaiwes.scheduler.workalendar",
+  "microtest": "2026-09-10 allowed; 2026-09-12 blocked",
+  "weekday": {
+    "date": "2026-09-10",
+    "calendar": "usa.core.UnitedStates",
+    "working": true,
+    "source": "/home/runner/work/agentes/agentes/Agente Yaiwes principal/execution-orchestration/classifier-scheduler/workalendar",
+    "allowed": true
+  },
+  "weekend": {
+    "date": "2026-09-12",
+    "calendar": "usa.core.UnitedStates",
+    "working": false,
+    "source": "/home/runner/work/agentes/agentes/Agente Yaiwes principal/execution-orchestration/classifier-scheduler/workalendar",
+    "allowed": false
+  },
+  "evidence_levels": [
+    "L2_build",
+    "L3_runtime",
+    "L4_feature"
+  ],
+  "run": 34573172962,
+  "runner_commit": "b3305cb9b9f73015ea70a207ca414cefa5d96bf6",
+  "adapter_sha256": "sha256:605ccf23fdb6cf9fce19736967c7f4d0a8f173ae3837bff8218e21b32a87ab4e",
+  "wiring_sha256": "sha256:4d9ac4c3c87d8e189ba570c8ba54ba4c2c4020bde05d0832ff6eae7c5d8b41ad",
+  "port_sha256": "sha256:7f5884504619c7710ada64c1ad132d431621933243534d49aeac5d33c864bdbf",
+  "prune": "NOT_NEEDED"
+}
