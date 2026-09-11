@@ -11,8 +11,8 @@ Estado externo histórico y actual: `AUTH_PROVIDER_TEST_PENDING`. No se afirma P
 
 # Fase activa — CODE_GRAPH_ARCHITECTURE_PROGRAMMING_LOOP
 Estado: `ACTIVE_LOOP_CODE_GRAPH_RESEARCH`  
-Checkpoint: `WFLOOP-CODE-GRAPH-20260911-0008`  
-Nodo: `CG06_NEW_CODE_POLICY_G006`.
+Checkpoint canónico: `WFLOOP-CODE-GRAPH-20260911-0010`  
+Nodo: `CG13_SOURCE_TRUTH_RECONCILIATION_G013`.
 
 Pipeline objetivo:
 `archivo/componente → Ask Council/auditoría → arquitectura → requisitos → director_tasks + generated_tasks → DAG/cola → placement A|B|C|D|E|F|G → REUSE>PATCH>ADAPT>GENERATE → sandbox → reviewer independiente → deployment determinista → evidencia → STATE/CHECKPOINT`.
@@ -25,14 +25,14 @@ Pipeline objetivo:
 - `G-005 CLOSED_VERIFIED_LOCAL`: selector `runtime/src/core/reuse_selector.py`, blob `bc7f4805fc7f13e6de0341b84c533d4b7fb6b044`, catálogo `wordflow_loop/research/reuse_catalog_g005.json` blob `2367f7ed8c7e1ece1d724f15f6494d5ff56543f8`, tests blob `1bcd0fca22d1238d28add1880e882e7af863ad52`, evidence `wordflow_loop/evidence/G005_REUSE_SELECTOR_2026-09-11.json`. Política `REUSE > PATCH > ADAPT > GENERATE`, máximo 10 candidatos, source/licencia/mantenimiento/compatibilidad/riesgo/footprint obligatorios, read-back PASS, `repo_pytest_execution=NOT_CLAIMED`. No se instaló/copió código externo.
 - `G-010 CLOSED_VERIFIED`: Watchdog CODE GRAPH activo y limitado a la raíz autorizada.
 - `G-020 CLOSED_VERIFIED`: 12 fuentes de investigación en `wordflow_loop/research/community_sources.json`.
-- En investigación: `G-016`, `G-018`, `G-023`, `G-027`, `G-028`, `G-029`.
+- En investigación: `G-013`, `G-016`, `G-018`, `G-023`, `G-027`, `G-028`, `G-029`.
 
 ## Reutilización clave
 `runtime/src/core/dag_engine.py` sigue siendo el DAG topológico determinista y gana como `REUSE` para capability `dag`; NetworkX queda referencia externa, no reemplazo. Graphiti queda `ADAPT` únicamente para contexto temporal/provenance/memoria; Graphology `ADAPT` únicamente para grafo/visualización cuando exista GAP concreto. No se añade scheduler paralelo.
 
 ## GAPs críticos abiertos
-- `G-006`: siguiente nodo 1×1; creación de code nuevo solo tras resultado `GENERATE` de G-005 y gates deterministas.
-- `G-013`: durante este ciclo se detectó drift en PLAN/RECOVERY (checkpoint 0005); documentación reconciliada manualmente a 0008, pero falta reconciliador automático + test.
+- `G-006 BLOCKED_DEPENDENCY_G018`: la política de generación existe, pero no puede cerrarse hasta source proof + Ficha/registro Fables verificados.
+- `G-013`: reconciliador automático implementado; parser corregido para fuentes históricas; falta reconciliar/read-back de todas las fuentes requeridas antes de cierre.
 - `G-018`: Fables requiere source proof exacto; no crear bus paralelo.
 - `G-022`: sandbox actual no demuestra aislamiento físico de filesystem/network/time/memory.
 - `G-017`: installation/deployment contiene PASS/health estáticos no aceptados como prueba real.
@@ -46,4 +46,4 @@ Pipeline objetivo:
 4. Todo módulo nuevo entra por Enchufe Universal Fables/Ficha; no buses paralelos.
 5. LLM solo en análisis/generación/Council; DAG/routing/gates/state/sandbox/hash/deploy permanecen deterministas.
 6. Graphiti y Graphology siguen en investigación; no se declara integración hasta copia exacta/adaptador/test/read-back.
-7. Próximo nodo 1×1: `G-006` — política y contrato de generación de code nuevo posterior al gate G-005.
+7. Próximo nodo 1×1: `G-013` — reconciliar todas las fuentes requeridas y hacer read-back; después reevaluar cola sin saltar dependencias.
