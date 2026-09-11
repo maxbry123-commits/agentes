@@ -16,25 +16,24 @@
     "gaps_closed": 7,
     "closed": ["G-001", "G-002", "G-003", "G-004", "G-005", "G-010", "G-020"],
     "blocked": ["G-006"],
-    "in_research": ["G-016", "G-018", "G-023", "G-027", "G-028", "G-029"]
+    "in_research": ["G-013", "G-016", "G-018", "G-023", "G-027", "G-028", "G-029"]
   },
   "verified_this_cycle": {
-    "gap": "G-006",
-    "result": "BLOCKED_DEPENDENCY_G018",
-    "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/code_generation_policy.py",
-    "module_blob": "0e46a02a874b329a216cc219fe3429e9feae41a6",
-    "module_readback": "PASS",
-    "test_file": "NOT_FOUND",
+    "gap": "G-013",
+    "result": "IMPLEMENTED_VERIFIED_LOCAL_PENDING_CANONICAL_RECONCILIATION",
+    "contract": "yaiwes.truth_reconciliation/v1",
+    "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/source_truth_reconciler.py",
+    "module_blob": "9c188b2d7acdf63c94c46c46158f54c6ee55eef5",
+    "tests": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_source_truth_reconciler.py",
+    "tests_blob": "79a4e3b3f642bd115184d4dbef169cdd1eb5bc6b",
+    "local_equivalent_test": "PASS_5_OF_5",
     "repo_test_execution": "NOT_CLAIMED",
-    "fables_source_proof": "NOT_VERIFIED",
-    "fables_registry_binding": "NOT_VERIFIED",
-    "ficha_contract_binding": "NOT_VERIFIED",
-    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G006_BLOCKED_FABLES_DEPENDENCY_2026-09-11.json",
-    "commit": "54225b0992271fdd2c2fef3a3c708c4b1cb9da90",
-    "decision": "DO_NOT_CLOSE_G006"
+    "fresh_drift": "STATE/CHECKPOINT=0009; README/HANDOFF/PLAN/RECOVERY=0008",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G013_SOURCE_TRUTH_RECONCILER_2026-09-11.json",
+    "decision": "DO_NOT_CLOSE_G013_UNTIL_FULL_TRUTH_RECONCILIATION_AND_READBACK"
   },
   "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
-  "next_action": "G013_SOURCE_TRUTH_RECONCILIATION_AS_INDEPENDENT_SAFE_NODE",
+  "next_action": "G013_RECONCILE_ALL_REQUIRED_TRUTHS_AND_READBACK",
   "blocked_dependency": "G006_REQUIRES_G018_CANONICAL_FABLES_FICHA_PROOF",
   "recovery_entrypoint": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md"
 }
