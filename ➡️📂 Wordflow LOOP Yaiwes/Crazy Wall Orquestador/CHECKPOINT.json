@@ -1,5 +1,5 @@
 {
-  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260911-0009",
+  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260911-0010",
   "contract": "tel.workflow/v4",
   "mode": "FAIL_CLOSED_EXECUTION_LOOP",
   "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
@@ -24,12 +24,12 @@
     "result": "IMPLEMENTED_VERIFIED_LOCAL_PENDING_CANONICAL_RECONCILIATION",
     "contract": "yaiwes.truth_reconciliation/v1",
     "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/source_truth_reconciler.py",
-    "module_blob": "9c188b2d7acdf63c94c46c46158f54c6ee55eef5",
+    "module_blob": "fb93ce9ee5b86439b0ba36ef72c404134d1984b1",
     "tests": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_source_truth_reconciler.py",
-    "tests_blob": "79a4e3b3f642bd115184d4dbef169cdd1eb5bc6b",
-    "local_equivalent_test": "PASS_5_OF_5",
+    "tests_blob": "f39cb13a84d1dbb7fcb1c1467f712bf003a431df",
+    "local_equivalent_test": "PENDING_RERUN_AFTER_PARSER_FIX",
     "repo_test_execution": "NOT_CLAIMED",
-    "fresh_drift": "STATE/CHECKPOINT=0009; README/HANDOFF/PLAN/RECOVERY=0008",
+    "fresh_drift": "STATE=0010; CHECKPOINT reconciled to 0010; README/HANDOFF/PLAN/RECOVERY/BITACORA/GAPS pending reconciliation",
     "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G013_SOURCE_TRUTH_RECONCILER_2026-09-11.json",
     "decision": "DO_NOT_CLOSE_G013_UNTIL_FULL_TRUTH_RECONCILIATION_AND_READBACK"
   },
