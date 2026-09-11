@@ -272,3 +272,18 @@ Resultado: bloqueo de resolución de TASK-NODES para G-011 = `CLEARED_BY_FRESH_R
 - Corrección requerida en G-011: recibir `authorized_root`, exigir destination/state dentro de ella tras `resolve`, validar symlinks, diferir `mkdir` hasta autorización explícita y añadir regresiones de escape.
 
 Resultado: `G-011 PATH_SCOPE_GATE_GAP / OPEN`; no se acepta cierre con la simulación 6/6 actual. G-013 sigue sin cableado.
+
+
+# ASTRA-GPT-LOOP — CIERRE LOCAL G-014 — 2026-09-11 21:00Z
+
+Snapshot de implementación y prueba: `31ebeee2130b71976f9a655ff9ae3bee3dd8c3e3`. Nodo independiente reclamado por `ASTRA_GPT_LOOP`; G-013 de SOL_1 y G-018 de SOL_2 no fueron modificados.
+
+- Inventario fresco del subárbol Wordflow: 18/18 archivos exactos `agente-readme-memoria.md`, tree Git `ae869d990d5e757230bb6e06b1275d0e3631b3d1`.
+- GAP reproducido por inspección: `AgentFleetAdapter.invoke()` enviaba el payload directo; `agent_memory_loader.py` y su pre-inyección no tenían caller en ese camino de ejecución.
+- Corrección mínima: `AgentFleetAdapter.build_invocation_payload()` carga la memoria exacta del agente, crea contexto determinista memoria → `# TASK CONTRACT`, conserva el payload original y entrega ese sobre a transportes command/HTTP.
+- Blobs de read-back: adapter `0804ca517ccb60166e0137b5e7061e86cc3a2c4d`; loader existente `84c57bae2c069a01a03fa9fa7d5086ab2cb677cc`; tests `30be562559b26c4a359408fcf7c26bf1ec69e07a`.
+- Ejecución local real sobre el árbol clonado de ese snapshot: `G014_REAL_TREE_MICROTEST=PASS_5_OF_5`, exit 0, 0.027 s. Incluyó `invoke → subprocess`, 18 memorias reales, SHA de memoria, orden previo al contrato y preservación del task payload.
+- Pytest completo no fue ejecutado porque el entorno no contiene el paquete `pytest`; no se reclama suite pytest ni ejecución de agentes externos.
+- Evidence: `wordflow_loop/evidence/G014_AGENT_MEMORY_PREINJECTION_2026-09-11.json`. TASK-NODES actualizado mediante SHA/CAS a `G-014 PASS`, versión 3.
+
+Resultado: `G-014 CLOSED_VERIFIED_LOCAL`. `AUTH_PROVIDER_TEST_PENDING` y ejecución real de agentes remotos permanecen abiertos.
