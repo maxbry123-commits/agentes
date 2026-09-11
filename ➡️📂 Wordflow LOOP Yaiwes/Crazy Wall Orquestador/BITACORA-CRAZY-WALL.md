@@ -115,5 +115,22 @@ El auditor identifica `eval`, `exec`, `compile`, `os.system`, `subprocess.Popen`
 ## CG-0031 — Cierre G-002
 Evidence `wordflow_loop/evidence/G002_FILE_AUDIT_COUNCIL_2026-09-10.json`. `G-002 CLOSED_VERIFIED_LOCAL`. Checkpoint `WFLOOP-CODE-GRAPH-20260910-0007`. Siguiente nodo 1×1: `G-005` investigación/reutilización previa a generación.
 
+# CICLO CG-CYCLE-0008 — G-005 REUSE RESEARCH + SELECTOR — 2026-09-11
+
+## CG-0032 — Catálogo previo a generación
+Creado `wordflow_loop/research/reuse_catalog_g005.json`, blob `2367f7ed8c7e1ece1d724f15f6494d5ff56543f8`, con 8 candidatos y metadatos obligatorios: source/licencia/mantenimiento/compatibilidad/riesgo/footprint/capabilities. Incluye cuatro capacidades locales y cuatro opciones externas solo como referencias de adopción.
+
+## CG-0033 — Licencias upstream verificadas
+Graphiti=`Apache-2.0` blob licencia `5feb0d9d299a1107adfa8331306b13cc0eff2d78`; Graphology=`MIT` blob `158967c8da93f1ea5ab5ac8efa7d7269392a0737`; NetworkX=`BSD-3-Clause` blob `02547fc890c22287c5cacfc4ec6bfc384e6ce785`; Tree-sitter=`MIT` blob `971b81f9a86c0c91827e225aeac9159a13bfd3c1`. No se instaló ni copió código externo.
+
+## CG-0034 — Selector determinista
+Creado `runtime/src/core/reuse_selector.py`, blob `bc7f4805fc7f13e6de0341b84c533d4b7fb6b044`. Valida catálogo, limita a 10 candidatos, exige URL/licencia/campos de decisión, rechaza IDs duplicados y clasifica `REUSE|PATCH|ADAPT|GENERATE|RESEARCH_MORE` mediante reglas deterministas. Para capability `dag`, DAGEngine local gana como `REUSE`; Graphiti queda `ADAPT` solo para contexto temporal/provenance, no scheduler.
+
+## CG-0035 — Tests/read-back/evidence
+Tests `runtime/tests/test_reuse_selector.py`, blob `1bcd0fca22d1238d28add1880e882e7af863ad52`; read-back módulo/tests/catálogo PASS. Simulación local equivalente `PASS_3_OF_3_DECISIONS`; `repo_pytest_execution=NOT_CLAIMED`. Evidence `wordflow_loop/evidence/G005_REUSE_SELECTOR_2026-09-11.json`.
+
+## CG-0036 — Cierre y drift
+`G-005 CLOSED_VERIFIED_LOCAL`. Durante la relectura se detectó que PLAN y RECOVERY aún señalaban checkpoint `0005`; se registra como drift de G-013 y se reconcilia sin cerrar G-013, porque falta el reconciliador automático. Nuevo checkpoint `WFLOOP-CODE-GRAPH-20260911-0008`. Siguiente nodo 1×1: `G-006` política de creación de código nuevo posterior al gate de reutilización.
+
 ## Estado del grupo
-30 GAPs · 6 CLOSED (`G-001`, `G-002`, `G-003`, `G-004`, `G-010`, `G-020`) · externos `AUTH_PROVIDER_TEST_PENDING` · Graphiti/Graphology todavía NO integrados · Fables G-018 sigue en investigación y no se crea bus paralelo.
+30 GAPs · 7 CLOSED (`G-001`, `G-002`, `G-003`, `G-004`, `G-005`, `G-010`, `G-020`) · externos `AUTH_PROVIDER_TEST_PENDING` · Graphiti/Graphology todavía NO integrados · Fables G-018 sigue en investigación y no se crea bus paralelo.
