@@ -4,8 +4,8 @@
   "mode": "FAIL_CLOSED_EXECUTION_LOOP",
   "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
   "status": "ACTIVE_LOOP_CODE_GRAPH_RESEARCH",
-  "current_node": "CG06_NEW_CODE_POLICY_G006",
-  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260911-0008",
+  "current_node": "CG13_SOURCE_TRUTH_RECONCILIATION_G013",
+  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260911-0009",
   "queue_mode": "DAG_DEPENDENCIES_PLUS_PARALLEL_INDEPENDENT",
   "historical_local_closure": {
     "status": "LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING",
@@ -19,8 +19,9 @@
     "gaps_total": 30,
     "gaps_closed": 7,
     "gaps_closed_ids": ["G-001", "G-002", "G-003", "G-004", "G-005", "G-010", "G-020"],
+    "gaps_blocked": ["G-006"],
     "gaps_in_research": ["G-016", "G-018", "G-023", "G-027", "G-028", "G-029"],
-    "gaps_open": ["G-006","G-007","G-008","G-009","G-011","G-012","G-013","G-014","G-015","G-017","G-019","G-021","G-022","G-024","G-025","G-026","G-030"],
+    "gaps_open": ["G-007","G-008","G-009","G-011","G-012","G-013","G-014","G-015","G-017","G-019","G-021","G-022","G-024","G-025","G-026","G-030"],
     "write_scope_enforced": true
   },
   "g001_code_graph_workspace": {
@@ -74,9 +75,20 @@
     "repo_test_execution": "NOT_CLAIMED",
     "external_install_or_copy": "NONE"
   },
+  "g006_code_generation": {
+    "status": "BLOCKED_DEPENDENCY_G018",
+    "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/code_generation_policy.py",
+    "module_blob": "0e46a02a874b329a216cc219fe3429e9feae41a6",
+    "test_file": "NOT_FOUND",
+    "fables_source_proof": "NOT_VERIFIED",
+    "fables_registry_binding": "NOT_VERIFIED",
+    "ficha_contract_binding": "NOT_VERIFIED",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G006_BLOCKED_FABLES_DEPENDENCY_2026-09-11.json",
+    "decision": "DO_NOT_CLOSE_G006"
+  },
   "source_of_truth_reconciliation": {
-    "status": "RECONCILED_THROUGH_CHECKPOINT_0008_CORE_TRUTHS",
-    "drift_detected_this_cycle": ["PLAN checkpoint 0005", "RECOVERY checkpoint 0005"],
+    "status": "RECONCILED_THROUGH_CHECKPOINT_0009_CORE_TRUTHS",
+    "drift_detected_this_cycle": ["G-006 module exists without test/Fables proof and was absent from truth state"],
     "G-013": "OPEN_PENDING_AUTOMATIC_RECONCILIATION_POLICY_TEST"
   },
   "reuse_audit": {
@@ -99,8 +111,8 @@
   "agent_fleet": {"fleet_count":18,"council12_count":12,"router_status":"LOCAL_PASS_EXTERNAL_AUTH_PENDING"},
   "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
   "next_actions": [
-    "G-006: define deterministic authorization policy for code generation after G-005 research gate",
-    "Continue exact Fables source proof search; do not create a parallel bus",
+    "G-013: build deterministic truth reconciliation/drift policy as independent safe node",
+    "G-018: continue exact Fables source proof search; G-006 remains blocked until verified Fables/Ficha registration exists",
     "Keep G-022 open until enforceable sandbox isolation exists",
     "Keep G-017 open until deployment/health gates execute real checks"
   ]
