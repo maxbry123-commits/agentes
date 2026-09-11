@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-11T06:09:17.910913+00:00",
+  "updated_at": "2026-09-11T07:11:18.611943+00:00",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1139,14 +1139,14 @@
       "component": "Workalendar",
       "source": "Core kernel Yaiwes/Workalendar/",
       "current_step": 3,
-      "status": "IN_PROGRESS",
+      "status": "PASS",
       "abc": "C",
       "target": "Agente Yaiwes principal/execution-orchestration/classifier-scheduler/workalendar/",
-      "owner": "SOL",
-      "lock": "CLAIMED",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-11T06:09:17.910913+00:00 N25 STEP3: existing adapter+WIRING+port; execute FABLES and real weekday/weekend classifier gate microtest",
-        "after": "2026-09-11T06:09:05.834246+00:00 STEP2 PASS recovered from physical main: source absent; target populated; canonical Motor4 move commit a97b5d8804ed76996027dbb254af3ad70b9f4c80; no MOVE repeated"
+        "after": "2026-09-11T07:11:18.611943+00:00 STEP3 PASS: Workalendar adapter/WIRING/port wired through FABLES ACTIVE; real weekday gate 2026-09-10 allowed and Saturday 2026-09-12 blocked; classifier hook verified; L2+L3+L4; prune NOT_NEEDED; origin/main read-back PASS"
       },
       "evidence": [
         "worker:SOL integración 2",
@@ -1160,7 +1160,15 @@
         "step2:worker:SOL integración 1:stale_state_reconciliation",
         "step2:canonical_motor4_move_commit:a97b5d8804ed76996027dbb254af3ad70b9f4c80",
         "step2:readback:source_absent+target_populated+adapter+port+WIRING",
-        "step2:MOVE_NOT_REPEATED"
+        "step2:MOVE_NOT_REPEATED",
+        "step3:worker:SOL integración 1",
+        "step3:run:34573172962",
+        "step3:evidence_commit:6fab7a121c342c6224af32bb18e4e833da02859a",
+        "step3:route:FABLES->Workalendar adapter->yaiwes_workalendar_port->classifier_hook",
+        "step3:microtest:PASS weekday_allowed=True weekend_allowed=False",
+        "step3:evidence:L2_build+L3_runtime+L4_feature",
+        "step3:prune:NOT_NEEDED",
+        "step3:readback:source_absent+ficha+evidence PASS"
       ],
       "history": [
         {
@@ -1199,9 +1207,17 @@
           "actor": "SOL",
           "label": "SOL integración 1",
           "event": "CLAIM_STEP3"
+        },
+        {
+          "at": "2026-09-11T07:11:18.611943+00:00",
+          "actor": "SOL",
+          "label": "SOL integración 1",
+          "event": "STEP3_PASS_RELEASE",
+          "run": 34573172962,
+          "commit": "6fab7a121c342c6224af32bb18e4e833da02859a"
         }
       ],
-      "next_action": "STEP3_FABLES_REAL_WORKING_DAY_GATE"
+      "next_action": "COMPLETE"
     },
     {
       "id": 26,
@@ -1415,7 +1431,7 @@
     }
   ],
   "counts": {
-    "closed_current_contract": 20
+    "closed_current_contract": 27
   },
   "kernel_hold_policy": {
     "approved": true,
