@@ -8,7 +8,7 @@
     "task_nodes_status": "CLAIMED",
     "claimed_by": "SOL_2",
     "step_1_research": "RUNNING",
-    "task_nodes_blob": "6f4867aadd6d8065f8e90eef5c6a2628318865a6"
+    "concurrent_foreign_node": "G-030 PASS by SOL_1; no collision"
   },
   "research": {
     "canonical_binding_id": "UNIVERSAL_PLUGIN_BUS",
@@ -33,20 +33,25 @@
     "execution_authorized remains false",
     "deployment_authorized remains false"
   ],
-  "foreign_work_detected": {
-    "evidence_commit": "b0ce7838da57d6587ae38d095ac63feeb86991da",
-    "evidence_owner_field": "SOL_1",
-    "collision_note": "TASK-NODES currently assigns G-018 to SOL_2; foreign artifacts were read and reused as evidence only, without claiming their ownership."
-  },
   "test_gate": {
     "test_commit": "845be9efa9f6d336e18875e91be5e05ef8207220",
-    "actions_runs_seen": 6,
+    "actions_runs_seen_for_test_commit": 6,
+    "actions_success_runs_seen": 0,
+    "first_observed_run_id": 34593575484,
+    "first_observed_run_name": ".github/workflows/yaiwes-core-complete-inventory-audit.yml",
+    "first_observed_run_conclusion": "failure",
     "relevant_unit_test_runner_found": false,
     "global_push_workflows_are_not_g018_unit_test_evidence": true,
     "repo_pytest_execution": "NOT_VERIFIED",
-    "local_container_attempt": "BLOCKED_NO_GITHUB_DNS",
+    "local_clone_attempt": "BLOCKED_DNS_COULD_NOT_RESOLVE_GITHUB_COM",
     "closure_decision": "DO_NOT_CLOSE_G018"
   },
-  "next_action": "Execute runtime/tests/test_fables_binding_gate.py reproducibly against current main, capture PASS/FAIL, then update the same G-018 node. No motor is required unless code acquisition/copy/move becomes necessary.",
+  "progress_this_cycle": [
+    "fresh HANDOFF confirms G-018 is next 1x1 node",
+    "fresh TASK-NODES confirms G-018 remains claimed_by SOL_2",
+    "fresh source read-back confirms binding gate, Ficha v2, canonical bus and test blobs unchanged",
+    "GitHub Actions lookup for the exact test commit found six push runs and no successful run; no reproducible G-018 pytest evidence exists yet"
+  ],
+  "next_action": "Execute runtime/tests/test_fables_binding_gate.py reproducibly against current main and capture PASS/FAIL. No motor is required unless acquisition/copy/move becomes necessary.",
   "rules": ["NO_LFS", "NO_FORCE", "NO_PARALLEL_BUS", "FAIL_CLOSED"]
 }
