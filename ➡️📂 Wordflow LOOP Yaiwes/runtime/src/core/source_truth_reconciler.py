@@ -11,6 +11,10 @@ REQUIRED_TRUTHS = (
 )
 ANCHORS = ("STATE", "CHECKPOINT")
 _CHECKPOINT_RE = re.compile(r"WFLOOP-CODE-GRAPH-\d{8}-\d{4}")
+_CANONICAL_CHECKPOINT_RE = re.compile(
+    r"Checkpoint\s+can[oó]nico\s*:\s*`?(WFLOOP-CODE-GRAPH-\d{8}-\d{4})`?",
+    re.IGNORECASE,
+)
 
 class TruthReconciliationError(ValueError):
     pass
@@ -35,9 +39,19 @@ class ReconciliationReport:
         return asdict(self)
 
 def _checkpoint_from_text(text: str) -> str:
+    canonical_matches = sorted(set(_CANONICAL_CHECKPOINT_RE.findall(text)))
+    if len(canonical_matches) > 1:
+        raise TruthReconciliationError(
+            f"conflicting canonical checkpoint markers: {len(canonical_matches)}"
+        )
+    if len(canonical_matches) == 1:
+        return canonical_matches[0]
+
     matches = sorted(set(_CHECKPOINT_RE.findall(text)))
     if len(matches) != 1:
-        raise TruthReconciliationError(f"expected exactly one canonical checkpoint reference, got {len(matches)}")
+        raise TruthReconciliationError(
+            "expected one checkpoint reference or one explicit 'Checkpoint canónico' marker"
+        )
     return matches[0]
 
 def _checkpoint_from_json(text: str) -> str:
