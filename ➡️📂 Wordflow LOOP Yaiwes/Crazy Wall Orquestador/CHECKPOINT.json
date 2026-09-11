@@ -1,10 +1,10 @@
 {
-  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260910-0003",
+  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260910-0004",
   "contract": "tel.workflow/v4",
   "mode": "FAIL_CLOSED_EXECUTION_LOOP",
   "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
   "status": "ACTIVE_LOOP_CODE_GRAPH_RESEARCH",
-  "current_node": "CG01_REUSE_AUDIT_CONTINUE_FABLES_AND_SOURCE_MAP",
+  "current_node": "CG02_PLACEMENT_CLASSIFIER_G004",
   "queue": "DAG_DEPENDENCIES_PLUS_PARALLEL_INDEPENDENT",
   "historical_closure": {
     "status": "LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING",
@@ -13,21 +13,22 @@
   "active_phase": {
     "name": "CODE_GRAPH_ARCHITECTURE_PROGRAMMING_LOOP",
     "gaps_total": 30,
-    "gaps_closed": 2,
-    "closed": ["G-010", "G-020"],
+    "gaps_closed": 3,
+    "closed": ["G-003", "G-010", "G-020"],
     "in_research": ["G-016", "G-018", "G-023", "G-027", "G-028", "G-029"],
-    "reuse_audit_evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/CG01_REUSE_AUDIT_2026-09-10.json"
+    "g003_evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G003_TASK_GRAPH_2026-09-10.json"
   },
   "verified_this_cycle": {
-    "truth_sources": "RECONCILED_FOR_ACTIVE_PHASE",
-    "chat_b_contracts": 3,
-    "chat_a_conversion": "NOT_YET_LOCATED",
-    "sandbox_isolation": "NOT_PROVEN",
-    "deployment_health": "STATIC_PASS_NOT_ACCEPTED",
-    "motors_inside_loop": "NOT_YET_LOCATED",
-    "agent_memories": "NOT_YET_LOCATED"
+    "task_graph_module_blob": "91fd7779b2e8c27e3dd7f282847df1e2e4ab4f62",
+    "task_graph_tests_blob": "882eb17b4289c747adf3850407e8a6a13b80ae65",
+    "reused_dag_blob": "ed4361e9e2ca93e6744f9946d2334bf55b3ef63a",
+    "director_generated_separation": "PASS",
+    "missing_dependency_fail_closed": "PASS",
+    "cycle_fail_closed": "PASS",
+    "local_equivalent_microtest": "PASS_5_OF_5_ASSERTIONS",
+    "external_runtime": "NOT_CLAIMED"
   },
   "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
-  "next_action": "LOCATE_FABLES_AND_CONTINUE_REUSE_AUDIT",
+  "next_action": "G004_DETERMINISTIC_PLACEMENT_CLASSIFIER",
   "recovery_entrypoint": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md"
 }
