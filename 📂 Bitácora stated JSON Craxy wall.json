@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-11T04:24:34.033018+00:00",
+  "updated_at": "2026-09-11T04:26:54.937093+00:00",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1336,5 +1336,62 @@
   ],
   "counts": {
     "closed_current_contract": 20
-  }
+  },
+  "kernel_hold_policy": {
+    "approved": true,
+    "rule": "IF_KERNEL_MATERIAL_DETECTED_HOLD_ONLY_KERNEL_MATERIAL_AND_INTEGRATE_ALL_NON_KERNEL_REMAINDER",
+    "kernel_material_status": "HOLD_KERNEL_REVIEW",
+    "non_kernel_remainder_status": "CONTINUE_STRICT_3_STEPS",
+    "preserve_single_yaiwes_head": true,
+    "do_not_replace_yaiwes_kernel": true,
+    "whole_component_hold_by_default": false,
+    "minimum_unit_of_hold": "kernel-specific file/module/subtree when separable",
+    "inseparable_kernel_case": "HOLD_COMPONENT_AND_RECORD_EXACT_REASON",
+    "approved_at": "2026-09-11T04:26:54.937093+00:00"
+  },
+  "temporal_pool_directive": {
+    "component": "Temporal",
+    "mode": "FULL_COMPONENT_INTEGRATION",
+    "source": "Core kernel Yaiwes/Componentes recuperados B/Temporal/",
+    "target": "Agente Yaiwes principal/execution-engine-pool/temporal/",
+    "position": "POOL_BELOW_YAIWES_AGENT",
+    "kernel_hold_exemption_for_this_directive": true,
+    "required_microtest": "go test ./common/backoff -run ^$ -count=1",
+    "status": "SCHEDULED_BY_WORKFLOW",
+    "workflow": ".github/workflows/yaiwes-temporal-full-pool-step3.yml"
+  },
+  "sol_loop_persistence": {
+    "workers": [
+      "SOL_1",
+      "SOL_2",
+      "SOL_4"
+    ],
+    "mode": "ACTIVE_LOOP_CODA_PERSISTENCE_UNTIL_ALL_COMPONENTS_COMPLETE",
+    "must_remain_active_while_pending_exists": true,
+    "read_fresh_wall_each_iteration": true,
+    "claim_free_component_only": true,
+    "strict_steps": [
+      "STEP_1_ANALYZE_ABC_DESTINATION",
+      "STEP_2_MOVE_OR_COPY_WITH_AUTHORIZED_MOTOR",
+      "STEP_3_WIRE_PRUNE_ONLY_IF_NEEDED_MICROTEST"
+    ],
+    "gap_rule": "FIX_ONLY_MINIMUM_EXACT_GAP_INSIDE_CURRENT_STEP_RETEST_AND_CONTINUE",
+    "blocked_rule": "RELEASE_LOCK_CONTINUE_OTHER_FREE_COMPONENT_AND_RETRY_BLOCKED_COMPONENT_LATER",
+    "forbidden": [
+      "STOP_WITH_PENDING_COMPONENTS",
+      "CREATE_STEP_4",
+      "UNRELATED_REFACTOR",
+      "UNREQUESTED_ARCHITECTURE"
+    ],
+    "stop_condition": "ALL_COMPONENTS_COMPLETE_AND_PHYSICALLY_VERIFIED",
+    "coda_persistence": true,
+    "updated_at": "2026-09-11T04:26:54.937093+00:00"
+  },
+  "directive_history": [
+    {
+      "at": "2026-09-11T04:26:54.937093+00:00",
+      "actor": "ChatGPT/SOL",
+      "event": "APPROVE_KERNEL_HOLD_TEMPORAL_POOL_SOL_1_2_4_PERSISTENT_LOOP"
+    }
+  ]
 }
