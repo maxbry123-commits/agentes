@@ -4,8 +4,8 @@
   "mode": "FAIL_CLOSED_EXECUTION_LOOP",
   "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
   "status": "ACTIVE_LOOP_CODE_GRAPH_RESEARCH",
-  "current_node": "CG01_REUSE_AUDIT",
-  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260910-0002",
+  "current_node": "CG01_REUSE_AUDIT_CONTINUE_FABLES_AND_SOURCE_MAP",
+  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260910-0003",
   "queue_mode": "DAG_DEPENDENCIES_PLUS_PARALLEL_INDEPENDENT",
   "historical_local_closure": {
     "status": "LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING",
@@ -24,9 +24,18 @@
     "write_scope_enforced": true
   },
   "source_of_truth_reconciliation": {
-    "status": "IN_PROGRESS",
-    "detected_drift": "CHECKPOINT/HANDOFF/PLAN/RECOVERY lagged behind README/STATE after phase opening",
-    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/CODE_GRAPH_CYCLE_0002_2026-09-10.json"
+    "status": "RECONCILED_FOR_ACTIVE_PHASE",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/CODE_GRAPH_CYCLE_0002_2026-09-10.json",
+    "G-013": "OPEN_PENDING_AUTOMATIC_RECONCILIATION_POLICY_TEST"
+  },
+  "reuse_audit": {
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/CG01_REUSE_AUDIT_2026-09-10.json",
+    "chat_b_contracts": ["runtime/docs/T001_CHAT_B_CONTRACT.md","runtime/docs/T007_CHAT_B_CONTRACT.md","runtime/docs/T011_CHAT_B_CONTRACT.md"],
+    "chat_a_conversion": "NOT_YET_LOCATED",
+    "sandbox": "LOGICAL_DESCRIPTOR_ONLY_G022_OPEN",
+    "installation_deployment": "STATIC_PASS_FIELDS_G017_OPEN",
+    "canonical_motors_inside_loop": "NOT_YET_LOCATED_G011_OPEN",
+    "agent_memory_exact_name": "NOT_YET_LOCATED_G014_OPEN"
   },
   "research_confirmed": {
     "graphiti_source": "maxbry123-commits/osquestador-auditor/graphiti",
@@ -36,17 +45,13 @@
     "canonical_motor_source": "maxbry123-commits/frontend/main/➡️📂motores de descarga extracción copiado movimiento archivos fromtend/",
     "motor_policy": "COPY_ONLY_IMMUTABLE_READBACK_REQUIRED"
   },
-  "source_documents": ["📌MAVIS-PARALLEL-100X.md","📌MAX-SYSTEM-100X-FINAL-1.md"],
-  "agent_fleet": {
-    "fleet_count": 18,
-    "council12_count": 12,
-    "router_status": "LOCAL_PASS_EXTERNAL_AUTH_PENDING"
-  },
+  "agent_fleet": {"fleet_count":18,"council12_count":12,"router_status":"LOCAL_PASS_EXTERNAL_AUTH_PENDING"},
   "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
   "next_actions": [
-    "Complete CG01 reuse audit for Chat A/B, deployment, Fables, sandbox and agent-memory artifacts",
-    "Reconcile remaining source-of-truth files and close G-013 only after read-back",
-    "Inspect canonical motor availability inside the authorized Wordflow root before closing G-011",
-    "Do not claim Graphiti/Graphology integration until exact-copy/read-back evidence exists"
+    "Continue CG01 to locate Fables/Ficha exact canonical artifact and wiring",
+    "Search remaining project documents for Chat-A conversion before deciding G-016 NOT_FOUND",
+    "Keep G-022 open until sandbox creates enforceable process/filesystem/network/time/memory isolation",
+    "Keep G-017 open until deployment/health gates execute real checks instead of static PASS values",
+    "Do not claim motors/agent-memory/Graphiti/Graphology integration until exact read-back evidence exists"
   ]
 }
