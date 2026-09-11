@@ -1,0 +1,42 @@
+{
+  "artifact_id": "yaiwes.browser_use",
+  "version": "0.13.10",
+  "estado": "testing",
+  "categoria": "transversal",
+  "etapa": "T",
+  "contrato": {
+    "rol": "service",
+    "consume": null,
+    "expone": null,
+    "input_map": {"task": "string", "start_url": "http(s)|null"},
+    "output_map": {"runtime_request": "dict"}
+  },
+  "ejecucion": {
+    "kind": "tool",
+    "transport": "importlib",
+    "runtime_type": "agent",
+    "entry_point": "browser_use.Agent",
+    "llm_ratio": 0.0,
+    "idempotente": false,
+    "max_steps": 50,
+    "allowed_actions": ["browser.navigate", "browser.read", "browser.interact"]
+  },
+  "seguridad": {
+    "sandbox": "container",
+    "permisos": ["network", "browser"],
+    "limites": {"timeout_ms": 300000, "deadline_ms": 300000}
+  },
+  "firma": {
+    "gpg_key_id": "PENDIENTE",
+    "revocation_ref": "contracts/revocation_list.json"
+  },
+  "repeticion": {"max": 1, "condicion": "nunca", "backoff": "1000*2^n+rand(0,1000)"},
+  "repite_en": [],
+  "activacion": {"eventos": [], "wake_words": [], "condicion": "node.requires_browser == true"},
+  "presupuesto": {},
+  "telemetria": {"metricas": ["tiempo", "errores", "reintentos"], "span_otel": true},
+  "evidencia": {"produce": ["adapter_request", "sandbox_result", "review_result"], "destino": "wordflow_loop/evidence/"},
+  "failover": {"sustituible_por": ["yaiwes.playwright"], "compensacion": "fallback_to_deterministic_browser_when_agent_browser_not_required"},
+  "salud": {"metodo": "ninguno", "heartbeat_interval_s": 30},
+  "trazas": {"task_id_requerido": true, "trace_id_requerido": true}
+}
