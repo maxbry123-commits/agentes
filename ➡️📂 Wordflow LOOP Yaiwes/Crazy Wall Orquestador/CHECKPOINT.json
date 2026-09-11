@@ -1,10 +1,10 @@
 {
-  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260910-0005",
+  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260910-0006",
   "contract": "tel.workflow/v4",
   "mode": "FAIL_CLOSED_EXECUTION_LOOP",
   "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
   "status": "ACTIVE_LOOP_CODE_GRAPH_RESEARCH",
-  "current_node": "CG03_CODE_GRAPH_ROOT_G001",
+  "current_node": "CG04_ASK_COUNCIL_AUDIT_G002",
   "queue": "DAG_DEPENDENCIES_PLUS_PARALLEL_INDEPENDENT",
   "historical_closure": {
     "status": "LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING",
@@ -13,20 +13,22 @@
   "active_phase": {
     "name": "CODE_GRAPH_ARCHITECTURE_PROGRAMMING_LOOP",
     "gaps_total": 30,
-    "gaps_closed": 4,
-    "closed": ["G-003", "G-004", "G-010", "G-020"],
+    "gaps_closed": 5,
+    "closed": ["G-001", "G-003", "G-004", "G-010", "G-020"],
     "in_research": ["G-016", "G-018", "G-023", "G-027", "G-028", "G-029"]
   },
   "verified_this_cycle": {
-    "g004_module_blob": "69698ad30ba1903e0780efcea1952a3737aeb23e",
-    "g004_tests_blob": "bf1c26f49edf668ee05584b2a357324af0fc4d8d",
-    "g004_evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G004_PLACEMENT_CLASSIFIER_2026-09-10.json",
-    "destinations": ["A_KERNEL","B_EXTENSION_KERNEL","C_REASONING_LAYER","D_WORDFLOW","E_POOL","F_TOOLS","G_OTHER"],
-    "ambiguous_fail_closed": "PLACEMENT_REVIEW_REQUIRED",
-    "local_equivalent_microtest": "PASS_10_OF_10_ASSERTIONS",
-    "external_runtime": "NOT_CLAIMED"
+    "gap": "G-001",
+    "workspace": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/code_graph/",
+    "module_blob": "6fe57e6c4233532623a8de589892de2d28897cb9",
+    "tests_blob": "c7f00e3155d22c559907d50af31bf95403a5eb68",
+    "workspace_readme_blob": "2462785b8ee5a5d358d94bd5f5e504ffeec1ee17",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G001_CODE_GRAPH_WORKSPACE_2026-09-10.json",
+    "local_equivalent_simulation": "PASS_5_OF_5_ASSERTIONS",
+    "repo_pytest_execution": "NOT_CLAIMED",
+    "parallel_orchestrator_created": false
   },
   "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
-  "next_action": "G001_ANCHORED_CODE_GRAPH_WORKSPACE",
+  "next_action": "G002_ASK_COUNCIL_FILE_AUDIT_CONTRACT",
   "recovery_entrypoint": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md"
 }
