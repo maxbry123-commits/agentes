@@ -13,8 +13,8 @@ Router: `wordflow_loop/wordflow_loop/model_api_router_mvp.py`.
 Prioridad: `Kimi → MiniMax → DeepSeek V4 Pro → DeepSeek V4 Flash → GLM 5 → Muse/Glimmer → Qwen 3.8 → GPT-OSS`; dentro de una familia se agotan rutas/API antes de bajar. El GAP externo `AUTH_PROVIDER_TEST_PENDING` continúa abierto hasta prueba autenticada real.
 
 # FASE ACTIVA — CODE_GRAPH_ARCHITECTURE_PROGRAMMING_LOOP
-Checkpoint canónico: `WFLOOP-CODE-GRAPH-20260911-0008`.  
-Nodo activo: `CG06_NEW_CODE_POLICY_G006`.  
+Checkpoint canónico: `WFLOOP-CODE-GRAPH-20260911-0010`.  
+Nodo activo: `CG13_SOURCE_TRUTH_RECONCILIATION_G013`.  
 Ledger: `Crazy Wall Orquestador/GAPS-INVESTIGACION-CODE-GRAPH-20260910.md`.
 
 Pipeline operativo autorizado:
@@ -41,8 +41,8 @@ Estado: `CLOSED_VERIFIED_LOCAL`.
 Política `REUSE > PATCH > ADAPT > GENERATE` implementada en `runtime/src/core/reuse_selector.py`, blob `bc7f4805fc7f13e6de0341b84c533d4b7fb6b044`. El selector valida source URL, licencia, mantenimiento, compatibilidad, riesgo, footprint, máximo 10 candidatos e IDs únicos; una opción externa nunca se transforma en ejecución directa, sino en `ADAPT`, y riesgo alto/compatibilidad nula obliga `RESEARCH_MORE`. Catálogo `wordflow_loop/research/reuse_catalog_g005.json`, blob `2367f7ed8c7e1ece1d724f15f6494d5ff56543f8`, contiene 8 opciones: DAGEngine, CodeGraphWorkspace, FileAuditContract, PlacementClassifier, Graphiti, Graphology, NetworkX y Tree-sitter. Licencias upstream verificadas: Graphiti Apache-2.0 (`5feb0d9d...`), Graphology MIT (`158967c...`), NetworkX BSD-3-Clause (`02547fc...`), Tree-sitter MIT (`971b81f...`). Tests `runtime/tests/test_reuse_selector.py`, blob `1bcd0fca22d1238d28add1880e882e7af863ad52`; read-back PASS; simulación equivalente `PASS_3_OF_3_DECISIONS`; `repo_pytest_execution=NOT_CLAIMED`. Evidence `wordflow_loop/evidence/G005_REUSE_SELECTOR_2026-09-11.json`. No se instaló/copió código externo.
 
 ## G-006 — Creación de code nuevo
-Estado: `GAP_OPEN` y siguiente nodo 1×1.
-Solo después de que G-005 produzca `GENERATE` por ausencia de candidato válido. Código mínimo, modular, tipado/schema, idempotente, fail-closed, observable y testeable. Integración exclusivamente por Enchufe Universal Fables/Ficha. LLM genera propuestas; gates deterministas autorizan o rechazan.
+Estado: `BLOCKED_DEPENDENCY_G018`.
+La política existe, pero solo puede cerrar después de que G-018 demuestre source proof + Ficha/contract + registro/test de Fables. Solo después de que G-005 produzca `GENERATE` por ausencia de candidato válido. Código mínimo, modular, tipado/schema, idempotente, fail-closed, observable y testeable. Integración exclusivamente por Enchufe Universal Fables/Ficha. LLM genera propuestas; gates deterministas autorizan o rechazan.
 
 ## G-007 — Archivo que ya contiene code ejecutable
 Estado: `GAP_OPEN`.
@@ -69,8 +69,8 @@ Estado: `GAP_OPEN`.
 Convertir lista del Director en cola determinista y usar motores canónicos con allowlist, CRC/hash, bloqueo de path traversal/symlinks cuando aplique, persistencia y read-back antes de PASS.
 
 ## G-013 — Fuentes de verdad
-Estado: `GAP_OPEN`.
-Core truths reconciliadas manualmente hasta checkpoint 0008. En ciclo G-005 se detectó drift real: PLAN y RECOVERY seguían en checkpoint 0005 aunque STATE/CHECKPOINT/HANDOFF estaban en 0007. Se corrige la documentación a 0008, pero G-013 no cierra: falta política automática + test de drift/conflict.
+Estado: `IN_RESEARCH_IMPLEMENTED_PENDING_FULL_RECONCILIATION`.
+Contrato `yaiwes.truth_reconciliation/v1` en `runtime/src/core/source_truth_reconciler.py`. STATE/CHECKPOINT son anchors y un conflicto entre ambos falla cerrado. El parser fue corregido para documentos históricos: admite un único marcador explícito `Checkpoint canónico:` aunque existan referencias históricas y falla cerrado ante marcadores canónicos conflictivos. Tests ampliados. Cierre requiere alinear y hacer read-back de README/STATE/CHECKPOINT/BITÁCORA/GAPS/HANDOFF/PLAN/RECOVERY al checkpoint `0010`.
 
 ## G-014 — `agente-readme-memoria.md` de los 18 agentes
 Estado: `GAP_OPEN`.
@@ -150,5 +150,5 @@ Estado lógico compartido con ownership de task/node, version/checkpoint, idempo
 
 ## Estado actual del grupo
 30 GAPs · 7 cerrados: `G-001`, `G-002`, `G-003`, `G-004`, `G-005`, `G-010`, `G-020`.  
-Siguiente nodo: `G-006`.  
+Nodo actual: `G-013`. `G-006` permanece bloqueado por `G-018`.  
 `AUTH_PROVIDER_TEST_PENDING` permanece abierto. Graphiti/Graphology no están integrados todavía. Fables sigue en investigación; no se crea bus paralelo.
