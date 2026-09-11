@@ -1,4 +1,7 @@
+import importlib.util
+import json
 from pathlib import Path
+import sys
 
 import pytest
 
@@ -40,3 +43,45 @@ def test_pre_execution_context_injects_memory_before_task(tmp_path):
     context = build_pre_execution_context(memory, "TASK=T-001")
     assert context.index("agent_id") < context.index("# TASK CONTRACT")
     assert "TASK=T-001" in context
+
+
+def test_real_fleet_injects_memory_before_runtime_task(tmp_path, monkeypatch):
+    project_root = Path(__file__).resolve().parents[2]
+    memory_root = (
+        project_root
+        / "wordflow_loop"
+        / "wordflow_loop"
+        / "agent_fleet"
+        / "memory"
+    )
+    memories = verify_all_memories(memory_root)
+    assert len(memories) == 18
+
+    adapter_path = (
+        project_root
+        / "wordflow_loop"
+        / "wordflow_loop"
+        / "agent_fleet"
+        / "agent_fleet_adapter.py"
+    )
+    registry_path = adapter_path.with_name("agent_fleet_registry.json")
+    spec = importlib.util.spec_from_file_location("g014_agent_fleet_adapter", adapter_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    echo_script = tmp_path / "echo_stdin.py"
+    echo_script.write_text("import sys\nprint(sys.stdin.read())\n", encoding="utf-8")
+    monkeypatch.setenv("YAIWES_OPENCODE_COMMAND", f"{sys.executable} {echo_script}")
+
+    fleet = module.AgentFleetAdapter(registry_path, memory_root=memory_root)
+    result = fleet.invoke("opencode", {"task_id": "G-014"})
+    received = json.loads(result["stdout"])
+    context = received["pre_execution_context"]
+
+    assert received["agent_id"] == "opencode"
+    assert received["memory_sha256"] == memories["opencode"].sha256
+    assert context.index("agent_id: `opencode`") < context.index("# TASK CONTRACT")
+    assert '"task_id":"G-014"' in context
+    assert received["task_payload"] == {"task_id": "G-014"}
