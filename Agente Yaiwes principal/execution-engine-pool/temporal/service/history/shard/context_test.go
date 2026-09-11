@@ -1,0 +1,1324 @@
+package shard
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"math/rand"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
+	enumspb "go.temporal.io/api/enums/v1"
+	"go.temporal.io/server/api/historyservice/v1"
+	persistencespb "go.temporal.io/server/api/persistence/v1"
+	"go.temporal.io/server/chasm"
+	"go.temporal.io/server/common"
+	"go.temporal.io/server/common/backoff"
+	"go.temporal.io/server/common/clock"
+	"go.temporal.io/server/common/cluster"
+	"go.temporal.io/server/common/definition"
+	"go.temporal.io/server/common/dynamicconfig"
+	"go.temporal.io/server/common/headers"
+	"go.temporal.io/server/common/metrics"
+	"go.temporal.io/server/common/metrics/metricstest"
+	"go.temporal.io/server/common/namespace"
+	"go.temporal.io/server/common/persistence"
+	"go.temporal.io/server/common/primitives/timestamp"
+	historyi "go.temporal.io/server/service/history/interfaces"
+	"go.temporal.io/server/service/history/tasks"
+	"go.temporal.io/server/service/history/tests"
+	"go.uber.org/mock/gomock"
+	"google.golang.org/protobuf/types/known/timestamppb"
+)
+
+type (
+	contextSuite struct {
+		suite.Suite
+		*require.Assertions
+
+		controller           *gomock.Controller
+		shardID              int32
+		mockShard            *ContextTest
+		mockClusterMetadata  *cluster.MockMetadata
+		mockShardManager     *persistence.MockShardManager
+		mockExecutionManager *persistence.MockExecutionManager
+		mockNamespaceCache   *namespace.MockRegistry
+		mockHistoryEngine    *historyi.MockEngine
+
+		timeSource *clock.EventTimeSource
+	}
+)
+
+func TestShardContextSuite(t *testing.T) {
+	s := &contextSuite{}
+	suite.Run(t, s)
+}
+
+// SetupSubTest rebinds the embedded assertions so an s.Run failure reports against the subtest.
+func (s *contextSuite) SetupSubTest() {
+	s.Assertions = require.New(s.T())
+}
+
+func (s *contextSuite) SetupTest() {
+	s.Assertions = require.New(s.T())
+
+	s.controller = gomock.NewController(s.T())
+
+	s.shardID = 1
+	s.timeSource = clock.NewEventTimeSource()
+	shardContext := NewTestContextWithTimeSource(
+		s.controller,
+		&persistencespb.ShardInfo{
+			ShardId: s.shardID,
+			RangeId: 1,
+		},
+		tests.NewDynamicConfig(),
+		s.timeSource,
+	)
+	s.mockShard = shardContext
+
+	shardContext.Resource.HostInfoProvider.EXPECT().HostInfo().Return(shardContext.Resource.GetHostInfo()).AnyTimes()
+
+	s.mockNamespaceCache = shardContext.Resource.NamespaceCache
+	s.mockNamespaceCache.EXPECT().GetNamespaceByID(tests.NamespaceID).Return(tests.LocalNamespaceEntry, nil).AnyTimes()
+
+	s.mockClusterMetadata = shardContext.Resource.ClusterMetadata
+	s.mockClusterMetadata.EXPECT().GetClusterID().Return(cluster.TestCurrentClusterInitialFailoverVersion).AnyTimes()
+	s.mockClusterMetadata.EXPECT().GetCurrentClusterName().Return(cluster.TestCurrentClusterName).AnyTimes()
+	s.mockClusterMetadata.EXPECT().GetAllClusterInfo().Return(cluster.TestAllClusterInfo).AnyTimes()
+
+	s.mockExecutionManager = shardContext.Resource.ExecutionMgr
+	s.mockShardManager = shardContext.Resource.ShardMgr
+	s.mockHistoryEngine = historyi.NewMockEngine(s.controller)
+	shardContext.engineFuture.Set(s.mockHistoryEngine, nil)
+}
+
+func (s *contextSuite) TestOverwriteScheduledTaskTimestamp() {
+	now := time.Now()
+	s.timeSource.Update(now)
+	maxReadLevel := s.mockShard.GetQueueExclusiveHighReadWatermark(tasks.CategoryTimer)
+
+	now = now.Add(time.Minute)
+	s.timeSource.Update(now)
+
+	workflowKey := definition.NewWorkflowKey(
+		tests.NamespaceID.String(),
+		tests.WorkflowID,
+		tests.RunID,
+	)
+	fakeTask := tasks.NewFakeTask(
+		workflowKey,
+		tasks.CategoryTimer,
+		time.Time{},
+	)
+	testTasks := map[tasks.Category][]tasks.Task{
+		tasks.CategoryTimer: {fakeTask},
+	}
+
+	s.mockExecutionManager.EXPECT().AddHistoryTasks(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	s.mockHistoryEngine.EXPECT().NotifyNewTasks(testTasks).AnyTimes()
+
+	testCases := []struct {
+		taskTimestamp     time.Time
+		expectedTimestamp time.Time
+	}{
+		{
+			// task timestamp is lower than both scheduled queue max read level and now
+			// should be overwritten to be later than both
+			taskTimestamp:     maxReadLevel.FireTime.Add(-time.Minute),
+			expectedTimestamp: now.Add(common.ScheduledTaskMinPrecision).Truncate(common.ScheduledTaskMinPrecision),
+		},
+		{
+			// task timestamp is lower than now but higher than scheduled queue max read level
+			// should still be overwritten to be later than both
+			taskTimestamp:     now.Add(-time.Minute),
+			expectedTimestamp: now.Add(common.ScheduledTaskMinPrecision).Truncate(common.ScheduledTaskMinPrecision),
+		},
+		{
+			// task timestamp is later than both now and scheduled queue max read level
+			// should not be overwritten
+			taskTimestamp:     now.Add(time.Minute),
+			expectedTimestamp: now.Add(time.Minute).Add(common.ScheduledTaskMinPrecision).Truncate(common.ScheduledTaskMinPrecision),
+		},
+	}
+
+	for _, tc := range testCases {
+		fakeTask.SetVisibilityTime(tc.taskTimestamp)
+		err := s.mockShard.AddTasks(
+			context.Background(),
+			&persistence.AddHistoryTasksRequest{
+				ShardID:     s.mockShard.GetShardID(),
+				NamespaceID: workflowKey.NamespaceID,
+				WorkflowID:  workflowKey.WorkflowID,
+				ArchetypeID: chasm.WorkflowArchetypeID,
+				Tasks:       testTasks,
+			},
+		)
+		s.NoError(err)
+		fmt.Println(fakeTask.GetVisibilityTime())
+		fmt.Println(tc.expectedTimestamp)
+		s.True(fakeTask.GetVisibilityTime().After(now))
+		s.True(fakeTask.GetVisibilityTime().After(maxReadLevel.FireTime))
+		s.True(fakeTask.GetVisibilityTime().Equal(tc.expectedTimestamp))
+	}
+}
+
+func (s *contextSuite) TestAddTasks_Success() {
+	testTasks := map[tasks.Category][]tasks.Task{
+		tasks.CategoryTransfer:    {&tasks.ActivityTask{}},           // Just for testing purpose. In the real code ActivityTask can't be passed to shardContext.AddTasks.
+		tasks.CategoryTimer:       {&tasks.ActivityRetryTimerTask{}}, // Just for testing purpose. In the real code ActivityRetryTimerTask can't be passed to shardContext.AddTasks.
+		tasks.CategoryReplication: {&tasks.HistoryReplicationTask{}}, // Just for testing purpose. In the real code HistoryReplicationTask can't be passed to shardContext.AddTasks.
+		tasks.CategoryVisibility:  {&tasks.DeleteExecutionVisibilityTask{}},
+	}
+
+	addTasksRequest := &persistence.AddHistoryTasksRequest{
+		ShardID:     s.mockShard.GetShardID(),
+		NamespaceID: tests.NamespaceID.String(),
+		WorkflowID:  tests.WorkflowID,
+		ArchetypeID: chasm.WorkflowArchetypeID,
+
+		Tasks: testTasks,
+	}
+
+	s.mockExecutionManager.EXPECT().AddHistoryTasks(gomock.Any(), addTasksRequest).Return(nil)
+	s.mockHistoryEngine.EXPECT().NotifyNewTasks(testTasks)
+
+	err := s.mockShard.AddTasks(context.Background(), addTasksRequest)
+	s.NoError(err)
+}
+
+func (s *contextSuite) TestDeleteWorkflowExecution_Success() {
+	workflowKey := definition.WorkflowKey{
+		NamespaceID: tests.NamespaceID.String(),
+		WorkflowID:  tests.WorkflowID,
+		RunID:       tests.RunID,
+	}
+	branchToken := []byte("branchToken")
+	stage := tasks.DeleteWorkflowExecutionStageNone
+
+	s.mockExecutionManager.EXPECT().AddHistoryTasks(gomock.Any(), gomock.Any()).Return(nil)
+	s.mockHistoryEngine.EXPECT().NotifyNewTasks(gomock.Any())
+	s.mockExecutionManager.EXPECT().DeleteCurrentWorkflowExecution(gomock.Any(), gomock.Any()).Return(nil)
+	s.mockExecutionManager.EXPECT().DeleteWorkflowExecution(gomock.Any(), gomock.Any()).Return(nil)
+	s.mockExecutionManager.EXPECT().DeleteHistoryBranch(gomock.Any(), gomock.Any()).Return(nil)
+
+	err := s.mockShard.DeleteWorkflowExecution(
+		context.Background(),
+		workflowKey,
+		chasm.WorkflowArchetypeID,
+		tests.Version,
+		branchToken,
+		0,
+		time.Time{},
+		time.Time{},
+		&stage,
+		false,
+	)
+
+	s.NoError(err)
+	s.Equal(tasks.DeleteWorkflowExecutionStageCurrent|tasks.DeleteWorkflowExecutionStageMutableState|tasks.DeleteWorkflowExecutionStageHistory|tasks.DeleteWorkflowExecutionStageVisibility|tasks.DeleteWorkflowExecutionStageReplication, stage)
+}
+
+func (s *contextSuite) TestDeleteWorkflowExecution_Continue_Success() {
+	workflowKey := definition.WorkflowKey{
+		NamespaceID: tests.NamespaceID.String(),
+		WorkflowID:  tests.WorkflowID,
+		RunID:       tests.RunID,
+	}
+	branchToken := []byte("branchToken")
+
+	s.mockExecutionManager.EXPECT().DeleteCurrentWorkflowExecution(gomock.Any(), gomock.Any()).Return(nil)
+	s.mockExecutionManager.EXPECT().DeleteWorkflowExecution(gomock.Any(), gomock.Any()).Return(nil)
+	s.mockExecutionManager.EXPECT().DeleteHistoryBranch(gomock.Any(), gomock.Any()).Return(nil)
+	stage := tasks.DeleteWorkflowExecutionStageVisibility
+	err := s.mockShard.DeleteWorkflowExecution(
+		context.Background(),
+		workflowKey,
+		chasm.WorkflowArchetypeID,
+		tests.Version,
+		branchToken,
+		0,
+		time.Time{},
+		time.Time{},
+		&stage,
+		false,
+	)
+	s.NoError(err)
+	s.Equal(tasks.DeleteWorkflowExecutionStageCurrent|tasks.DeleteWorkflowExecutionStageMutableState|tasks.DeleteWorkflowExecutionStageHistory|tasks.DeleteWorkflowExecutionStageVisibility|tasks.DeleteWorkflowExecutionStageReplication, stage)
+
+	s.mockExecutionManager.EXPECT().DeleteWorkflowExecution(gomock.Any(), gomock.Any()).Return(nil)
+	s.mockExecutionManager.EXPECT().DeleteHistoryBranch(gomock.Any(), gomock.Any()).Return(nil)
+	stage = tasks.DeleteWorkflowExecutionStageVisibility | tasks.DeleteWorkflowExecutionStageCurrent
+	err = s.mockShard.DeleteWorkflowExecution(
+		context.Background(),
+		workflowKey,
+		chasm.WorkflowArchetypeID,
+		tests.Version,
+		branchToken,
+		0,
+		time.Time{},
+		time.Time{},
+		&stage,
+		false,
+	)
+	s.NoError(err)
+	s.Equal(tasks.DeleteWorkflowExecutionStageCurrent|tasks.DeleteWorkflowExecutionStageMutableState|tasks.DeleteWorkflowExecutionStageHistory|tasks.DeleteWorkflowExecutionStageVisibility|tasks.DeleteWorkflowExecutionStageReplication, stage)
+
+	s.mockExecutionManager.EXPECT().DeleteHistoryBranch(gomock.Any(), gomock.Any()).Return(nil)
+	stage = tasks.DeleteWorkflowExecutionStageVisibility | tasks.DeleteWorkflowExecutionStageCurrent | tasks.DeleteWorkflowExecutionStageMutableState
+	err = s.mockShard.DeleteWorkflowExecution(
+		context.Background(),
+		workflowKey,
+		chasm.WorkflowArchetypeID,
+		tests.Version,
+		branchToken,
+		0,
+		time.Time{},
+		time.Time{},
+		&stage,
+		false,
+	)
+	s.NoError(err)
+	s.Equal(tasks.DeleteWorkflowExecutionStageCurrent|tasks.DeleteWorkflowExecutionStageMutableState|tasks.DeleteWorkflowExecutionStageHistory|tasks.DeleteWorkflowExecutionStageVisibility|tasks.DeleteWorkflowExecutionStageReplication, stage)
+}
+
+func (s *contextSuite) TestDeleteWorkflowExecution_ErrorAndContinue_Success() {
+	workflowKey := definition.WorkflowKey{
+		NamespaceID: tests.NamespaceID.String(),
+		WorkflowID:  tests.WorkflowID,
+		RunID:       tests.RunID,
+	}
+	branchToken := []byte("branchToken")
+
+	s.mockExecutionManager.EXPECT().AddHistoryTasks(gomock.Any(), gomock.Any()).Return(nil)
+	s.mockHistoryEngine.EXPECT().NotifyNewTasks(gomock.Any())
+	s.mockExecutionManager.EXPECT().DeleteCurrentWorkflowExecution(gomock.Any(), gomock.Any()).Return(errors.New("some error"))
+	stage := tasks.DeleteWorkflowExecutionStageNone
+	err := s.mockShard.DeleteWorkflowExecution(
+		context.Background(),
+		workflowKey,
+		chasm.WorkflowArchetypeID,
+		tests.Version,
+		branchToken,
+		0,
+		time.Time{},
+		time.Time{},
+		&stage,
+		false,
+	)
+	s.Error(err)
+	s.Equal(tasks.DeleteWorkflowExecutionStageVisibility|tasks.DeleteWorkflowExecutionStageReplication, stage)
+
+	s.mockExecutionManager.EXPECT().DeleteCurrentWorkflowExecution(gomock.Any(), gomock.Any()).Return(nil)
+	s.mockExecutionManager.EXPECT().DeleteWorkflowExecution(gomock.Any(), gomock.Any()).Return(errors.New("some error"))
+	err = s.mockShard.DeleteWorkflowExecution(
+		context.Background(),
+		workflowKey,
+		chasm.WorkflowArchetypeID,
+		tests.Version,
+		branchToken,
+		0,
+		time.Time{},
+		time.Time{},
+		&stage,
+		false,
+	)
+	s.Error(err)
+	s.Equal(tasks.DeleteWorkflowExecutionStageVisibility|tasks.DeleteWorkflowExecutionStageReplication|tasks.DeleteWorkflowExecutionStageCurrent, stage)
+
+	s.mockExecutionManager.EXPECT().DeleteWorkflowExecution(gomock.Any(), gomock.Any()).Return(nil)
+	s.mockExecutionManager.EXPECT().DeleteHistoryBranch(gomock.Any(), gomock.Any()).Return(errors.New("some error"))
+	err = s.mockShard.DeleteWorkflowExecution(
+		context.Background(),
+		workflowKey,
+		chasm.WorkflowArchetypeID,
+		tests.Version,
+		branchToken,
+		0,
+		time.Time{},
+		time.Time{},
+		&stage,
+		false,
+	)
+	s.Error(err)
+	s.Equal(tasks.DeleteWorkflowExecutionStageCurrent|tasks.DeleteWorkflowExecutionStageMutableState|tasks.DeleteWorkflowExecutionStageVisibility|tasks.DeleteWorkflowExecutionStageReplication, stage)
+
+	s.mockExecutionManager.EXPECT().DeleteHistoryBranch(gomock.Any(), gomock.Any()).Return(nil)
+	err = s.mockShard.DeleteWorkflowExecution(
+		context.Background(),
+		workflowKey,
+		chasm.WorkflowArchetypeID,
+		tests.Version,
+		branchToken,
+		0,
+		time.Time{},
+		time.Time{},
+		&stage,
+		false,
+	)
+	s.NoError(err)
+	s.Equal(tasks.DeleteWorkflowExecutionStageCurrent|tasks.DeleteWorkflowExecutionStageMutableState|tasks.DeleteWorkflowExecutionStageVisibility|tasks.DeleteWorkflowExecutionStageHistory|tasks.DeleteWorkflowExecutionStageReplication, stage)
+}
+
+func (s *contextSuite) TestDeleteWorkflowExecution_EmitsReplicationTaskWhenWorkflowActiveInCurrentCluster() {
+	lastWriteVersion := tests.Version + 100
+	captured := s.runDeleteWorkflowExecutionForReplicationCheck(cluster.TestCurrentClusterName, lastWriteVersion)
+
+	replicationTasks := captured.Tasks[tasks.CategoryReplication]
+	s.Require().Len(replicationTasks, 1, "expected a DeleteExecutionReplicationTask when workflow is active in current cluster")
+	deleteTask, ok := replicationTasks[0].(*tasks.DeleteExecutionReplicationTask)
+	s.True(ok, "task should be *DeleteExecutionReplicationTask")
+	s.Equal(captured.WorkflowID, deleteTask.WorkflowID)
+	s.Equal(captured.NamespaceID, deleteTask.NamespaceID)
+	s.Equal(lastWriteVersion, deleteTask.Version)
+}
+
+func (s *contextSuite) TestDeleteWorkflowExecution_NoReplicationTaskWhenWorkflowActiveInOtherCluster() {
+	captured := s.runDeleteWorkflowExecutionForReplicationCheck(cluster.TestAlternativeClusterName, tests.Version)
+
+	s.Empty(captured.Tasks[tasks.CategoryReplication],
+		"expected no DeleteExecutionReplicationTask when workflow is active in another cluster")
+}
+
+func (s *contextSuite) runDeleteWorkflowExecutionForReplicationCheck(
+	workflowActiveCluster string,
+	lastWriteVersion int64,
+) *persistence.AddHistoryTasksRequest {
+	nsID := namespace.NewID()
+	nsEntry := namespace.NewGlobalNamespaceForTest(
+		&persistencespb.NamespaceInfo{Id: nsID.String(), Name: "global-ns-for-delete-replication"},
+		&persistencespb.NamespaceConfig{Retention: timestamp.DurationFromDays(1)},
+		&persistencespb.NamespaceReplicationConfig{
+			ActiveClusterName: workflowActiveCluster,
+			Clusters: []string{
+				cluster.TestCurrentClusterName,
+				cluster.TestAlternativeClusterName,
+			},
+		},
+		tests.Version,
+	)
+	s.mockNamespaceCache.EXPECT().GetNamespaceByID(nsID).Return(nsEntry, nil).AnyTimes()
+
+	workflowKey := definition.WorkflowKey{
+		NamespaceID: nsID.String(),
+		WorkflowID:  tests.WorkflowID,
+		RunID:       tests.RunID,
+	}
+
+	var captured *persistence.AddHistoryTasksRequest
+	s.mockExecutionManager.EXPECT().AddHistoryTasks(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, req *persistence.AddHistoryTasksRequest) error {
+			captured = req
+			return nil
+		})
+	s.mockHistoryEngine.EXPECT().NotifyNewTasks(gomock.Any())
+	s.mockExecutionManager.EXPECT().DeleteCurrentWorkflowExecution(gomock.Any(), gomock.Any()).Return(nil)
+	s.mockExecutionManager.EXPECT().DeleteWorkflowExecution(gomock.Any(), gomock.Any()).Return(nil)
+	s.mockExecutionManager.EXPECT().DeleteHistoryBranch(gomock.Any(), gomock.Any()).Return(nil)
+
+	stage := tasks.DeleteWorkflowExecutionStageNone
+	err := s.mockShard.DeleteWorkflowExecution(
+		context.Background(),
+		workflowKey,
+		chasm.WorkflowArchetypeID,
+		lastWriteVersion,
+		[]byte("branchToken"),
+		0,
+		time.Time{},
+		time.Time{},
+		&stage,
+		false,
+	)
+	s.NoError(err)
+	s.Require().NotNil(captured, "AddHistoryTasks was never called")
+	return captured
+}
+
+func (s *contextSuite) TestDeleteWorkflowExecution_DeleteVisibilityTaskNotifiction() {
+	workflowKey := definition.WorkflowKey{
+		NamespaceID: tests.NamespaceID.String(),
+		WorkflowID:  tests.WorkflowID,
+		RunID:       tests.RunID,
+	}
+	branchToken := []byte("branchToken")
+	stage := tasks.DeleteWorkflowExecutionStageNone
+
+	// add task fails with error that suggests operation can't possibly succeed, no task notification
+	s.mockExecutionManager.EXPECT().AddHistoryTasks(gomock.Any(), gomock.Any()).Return(persistence.ErrPersistenceSystemLimitExceeded).Times(1)
+	err := s.mockShard.DeleteWorkflowExecution(
+		context.Background(),
+		workflowKey,
+		chasm.WorkflowArchetypeID,
+		tests.Version,
+		branchToken,
+		0,
+		time.Time{},
+		time.Time{},
+		&stage,
+		false,
+	)
+	s.Error(err)
+	s.Equal(tasks.DeleteWorkflowExecutionStageNone, stage)
+
+	// add task succeeds but second operation fails, send task notification
+	s.mockExecutionManager.EXPECT().AddHistoryTasks(gomock.Any(), gomock.Any()).Return(nil).Times(1)
+	s.mockHistoryEngine.EXPECT().NotifyNewTasks(gomock.Any()).Times(1)
+	s.mockExecutionManager.EXPECT().DeleteCurrentWorkflowExecution(gomock.Any(), gomock.Any()).Return(persistence.ErrPersistenceSystemLimitExceeded).Times(1)
+	err = s.mockShard.DeleteWorkflowExecution(
+		context.Background(),
+		workflowKey,
+		chasm.WorkflowArchetypeID,
+		tests.Version,
+		branchToken,
+		0,
+		time.Time{},
+		time.Time{},
+		&stage,
+		false,
+	)
+	s.Error(err)
+	s.Equal(tasks.DeleteWorkflowExecutionStageVisibility|tasks.DeleteWorkflowExecutionStageReplication, stage)
+}
+
+func (s *contextSuite) TestAcquireShardOwnershipLostErrorIsNotRetried() {
+	s.mockShard.state = contextStateAcquiring
+	s.mockShard.acquireShardRetryPolicy = backoff.NewExponentialRetryPolicy(time.Nanosecond).
+		WithMaximumAttempts(5)
+	s.mockShardManager.EXPECT().UpdateShard(gomock.Any(), gomock.Any()).
+		Return(&persistence.ShardOwnershipLostError{}).Times(1)
+
+	s.mockShard.acquireShard()
+
+	s.Equal(contextStateStopping, s.mockShard.state)
+}
+
+func (s *contextSuite) TestAcquireShardNonOwnershipLostErrorIsRetried() {
+	s.mockShard.state = contextStateAcquiring
+	s.mockShard.acquireShardRetryPolicy = backoff.NewExponentialRetryPolicy(time.Nanosecond).
+		WithMaximumAttempts(5)
+	s.mockShardManager.EXPECT().UpdateShard(gomock.Any(), gomock.Any()).
+		Return(fmt.Errorf("temp error")).Times(5)
+
+	s.mockShard.acquireShard()
+
+	s.Equal(contextStateStopping, s.mockShard.state)
+}
+
+func (s *contextSuite) TestAcquireShardEventuallySucceeds() {
+	s.mockShard.state = contextStateAcquiring
+	s.mockShard.acquireShardRetryPolicy = backoff.NewExponentialRetryPolicy(time.Nanosecond).
+		WithMaximumAttempts(5)
+	s.mockShardManager.EXPECT().UpdateShard(gomock.Any(), gomock.Any()).
+		Return(fmt.Errorf("temp error")).Times(3)
+	s.mockShardManager.EXPECT().UpdateShard(gomock.Any(), gomock.Any()).
+		Return(nil).Times(1)
+	s.mockHistoryEngine.EXPECT().NotifyNewTasks(gomock.Any()).MinTimes(1)
+
+	s.mockShard.acquireShard()
+
+	s.Equal(contextStateAcquired, s.mockShard.state)
+}
+
+func (s *contextSuite) TestAcquireShardNoError() {
+	s.mockShard.state = contextStateAcquiring
+	s.mockShard.acquireShardRetryPolicy = backoff.NewExponentialRetryPolicy(time.Nanosecond).
+		WithMaximumAttempts(5)
+	s.mockShardManager.EXPECT().UpdateShard(gomock.Any(), gomock.Any()).
+		Return(nil).Times(1)
+	s.mockHistoryEngine.EXPECT().NotifyNewTasks(gomock.Any()).MinTimes(1)
+
+	s.mockShard.acquireShard()
+
+	s.Equal(contextStateAcquired, s.mockShard.state)
+}
+
+func (s *contextSuite) TestHandoverNamespace() {
+	s.mockHistoryEngine.EXPECT().NotifyNewTasks(gomock.Any()).Times(1)
+
+	namespaceEntry := namespace.NewGlobalNamespaceForTest(
+		&persistencespb.NamespaceInfo{Id: tests.NamespaceID.String(), Name: tests.Namespace.String()},
+		&persistencespb.NamespaceConfig{
+			Retention: timestamp.DurationFromDays(1),
+		},
+		&persistencespb.NamespaceReplicationConfig{
+			ActiveClusterName: cluster.TestCurrentClusterName,
+			Clusters: []string{
+				cluster.TestCurrentClusterName,
+				cluster.TestAlternativeClusterName,
+			},
+			State: enumspb.REPLICATION_STATE_HANDOVER,
+		},
+		tests.Version,
+	)
+	s.mockShard.UpdateHandoverNamespace(namespaceEntry, false)
+	_, handoverNS, err := s.mockShard.GetReplicationStatus([]string{})
+	s.NoError(err)
+
+	handoverInfo, ok := handoverNS[namespaceEntry.Name().String()]
+	s.True(ok)
+	s.Equal(
+		s.mockShard.taskKeyManager.getExclusiveReaderHighWatermark(tasks.CategoryReplication).TaskID-1,
+		handoverInfo.HandoverReplicationTaskId,
+	)
+
+	// make shard status invalid
+	// ideally we should use s.mockShard.transition() method
+	// but that will cause shard trying to re-acquire the shard in the background
+	s.mockShard.stateLock.Lock()
+	s.mockShard.state = contextStateAcquiring
+	s.mockShard.stateLock.Unlock()
+
+	// note: no mock for NotifyNewTasks
+
+	s.mockShard.UpdateHandoverNamespace(namespaceEntry, false)
+	_, handoverNS, err = s.mockShard.GetReplicationStatus([]string{})
+	s.NoError(err)
+
+	handoverInfo, ok = handoverNS[namespaceEntry.Name().String()]
+	s.True(ok)
+	s.Equal(
+		s.mockShard.taskKeyManager.getExclusiveReaderHighWatermark(tasks.CategoryReplication).TaskID-1,
+		handoverInfo.HandoverReplicationTaskId,
+	)
+
+	// delete namespace
+	s.mockShard.UpdateHandoverNamespace(namespaceEntry, true)
+	_, handoverNS, err = s.mockShard.GetReplicationStatus([]string{})
+	s.NoError(err)
+
+	_, ok = handoverNS[namespaceEntry.Name().String()]
+	s.False(ok)
+}
+
+func (s *contextSuite) TestUpdateGetRemoteClusterInfo_Legacy_8_4() {
+	clusterMetadata := cluster.NewMockMetadata(s.controller)
+	clusterMetadata.EXPECT().GetClusterID().Return(cluster.TestCurrentClusterInitialFailoverVersion).AnyTimes()
+	clusterMetadata.EXPECT().GetCurrentClusterName().Return(cluster.TestCurrentClusterName).AnyTimes()
+	clusterMetadata.EXPECT().GetAllClusterInfo().Return(map[string]cluster.ClusterInformation{
+		cluster.TestCurrentClusterName: {
+			Enabled:                true,
+			InitialFailoverVersion: cluster.TestCurrentClusterInitialFailoverVersion,
+			RPCAddress:             cluster.TestCurrentClusterFrontendAddress,
+			ShardCount:             8,
+		},
+		cluster.TestAlternativeClusterName: {
+			Enabled:                true,
+			InitialFailoverVersion: cluster.TestAlternativeClusterInitialFailoverVersion,
+			RPCAddress:             cluster.TestAlternativeClusterFrontendAddress,
+			ShardCount:             4,
+		},
+	}).AnyTimes()
+	s.mockShard.clusterMetadata = clusterMetadata
+
+	ackTaskID := rand.Int63()
+	ackTimestamp := time.Unix(0, rand.Int63())
+	s.mockShard.UpdateRemoteClusterInfo(
+		cluster.TestAlternativeClusterName,
+		ackTaskID,
+		ackTimestamp,
+	)
+	remoteAckStatus, _, err := s.mockShard.GetReplicationStatus([]string{cluster.TestAlternativeClusterName})
+	s.NoError(err)
+	s.Equal(map[string]*historyservice.ShardReplicationStatusPerCluster{
+		cluster.TestAlternativeClusterName: {
+			AckedTaskId:             ackTaskID,
+			AckedTaskVisibilityTime: timestamppb.New(ackTimestamp),
+		},
+	}, remoteAckStatus)
+}
+
+func (s *contextSuite) TestUpdateGetRemoteClusterInfo_Legacy_4_8() {
+	clusterMetadata := cluster.NewMockMetadata(s.controller)
+	clusterMetadata.EXPECT().GetClusterID().Return(cluster.TestCurrentClusterInitialFailoverVersion).AnyTimes()
+	clusterMetadata.EXPECT().GetCurrentClusterName().Return(cluster.TestCurrentClusterName).AnyTimes()
+	clusterMetadata.EXPECT().GetAllClusterInfo().Return(map[string]cluster.ClusterInformation{
+		cluster.TestCurrentClusterName: {
+			Enabled:                true,
+			InitialFailoverVersion: cluster.TestCurrentClusterInitialFailoverVersion,
+			RPCAddress:             cluster.TestCurrentClusterFrontendAddress,
+			ShardCount:             4,
+		},
+		cluster.TestAlternativeClusterName: {
+			Enabled:                true,
+			InitialFailoverVersion: cluster.TestAlternativeClusterInitialFailoverVersion,
+			RPCAddress:             cluster.TestAlternativeClusterFrontendAddress,
+			ShardCount:             8,
+		},
+	}).AnyTimes()
+	s.mockShard.clusterMetadata = clusterMetadata
+
+	ackTaskID := rand.Int63()
+	ackTimestamp := time.Unix(0, rand.Int63())
+	s.mockShard.UpdateRemoteClusterInfo(
+		cluster.TestAlternativeClusterName,
+		ackTaskID,
+		ackTimestamp,
+	)
+	remoteAckStatus, _, err := s.mockShard.GetReplicationStatus([]string{cluster.TestAlternativeClusterName})
+	s.NoError(err)
+	s.Equal(map[string]*historyservice.ShardReplicationStatusPerCluster{
+		cluster.TestAlternativeClusterName: {
+			AckedTaskId:             ackTaskID,
+			AckedTaskVisibilityTime: timestamppb.New(ackTimestamp),
+		},
+	}, remoteAckStatus)
+}
+
+func (s *contextSuite) TestUpdateGetRemoteReaderInfo_8_4() {
+	clusterMetadata := cluster.NewMockMetadata(s.controller)
+	clusterMetadata.EXPECT().GetClusterID().Return(cluster.TestCurrentClusterInitialFailoverVersion).AnyTimes()
+	clusterMetadata.EXPECT().GetCurrentClusterName().Return(cluster.TestCurrentClusterName).AnyTimes()
+	clusterMetadata.EXPECT().GetAllClusterInfo().Return(map[string]cluster.ClusterInformation{
+		cluster.TestCurrentClusterName: {
+			Enabled:                true,
+			InitialFailoverVersion: cluster.TestCurrentClusterInitialFailoverVersion,
+			RPCAddress:             cluster.TestCurrentClusterFrontendAddress,
+			ShardCount:             8,
+		},
+		cluster.TestAlternativeClusterName: {
+			Enabled:                true,
+			InitialFailoverVersion: cluster.TestAlternativeClusterInitialFailoverVersion,
+			RPCAddress:             cluster.TestAlternativeClusterFrontendAddress,
+			ShardCount:             4,
+		},
+	}).AnyTimes()
+	s.mockShard.clusterMetadata = clusterMetadata
+
+	ackTaskID := rand.Int63()
+	ackTimestamp := time.Unix(0, rand.Int63())
+	err := s.mockShard.UpdateRemoteReaderInfo(
+		ReplicationReaderIDFromClusterShardID(
+			cluster.TestAlternativeClusterInitialFailoverVersion,
+			1,
+		),
+		ackTaskID,
+		ackTimestamp,
+	)
+	s.NoError(err)
+	remoteAckStatus, _, err := s.mockShard.GetReplicationStatus([]string{cluster.TestAlternativeClusterName})
+	s.NoError(err)
+	s.Equal(map[string]*historyservice.ShardReplicationStatusPerCluster{
+		cluster.TestAlternativeClusterName: {
+			AckedTaskId:             ackTaskID,
+			AckedTaskVisibilityTime: timestamppb.New(ackTimestamp),
+		},
+	}, remoteAckStatus)
+}
+
+func (s *contextSuite) TestUpdateGetRemoteReaderInfo_4_8() {
+	clusterMetadata := cluster.NewMockMetadata(s.controller)
+	clusterMetadata.EXPECT().GetClusterID().Return(cluster.TestCurrentClusterInitialFailoverVersion).AnyTimes()
+	clusterMetadata.EXPECT().GetCurrentClusterName().Return(cluster.TestCurrentClusterName).AnyTimes()
+	clusterMetadata.EXPECT().GetAllClusterInfo().Return(map[string]cluster.ClusterInformation{
+		cluster.TestCurrentClusterName: {
+			Enabled:                true,
+			InitialFailoverVersion: cluster.TestCurrentClusterInitialFailoverVersion,
+			RPCAddress:             cluster.TestCurrentClusterFrontendAddress,
+			ShardCount:             4,
+		},
+		cluster.TestAlternativeClusterName: {
+			Enabled:                true,
+			InitialFailoverVersion: cluster.TestAlternativeClusterInitialFailoverVersion,
+			RPCAddress:             cluster.TestAlternativeClusterFrontendAddress,
+			ShardCount:             8,
+		},
+	}).AnyTimes()
+	s.mockShard.clusterMetadata = clusterMetadata
+
+	ack1TaskID := rand.Int63()
+	ack1Timestamp := time.Unix(0, rand.Int63())
+	err := s.mockShard.UpdateRemoteReaderInfo(
+		ReplicationReaderIDFromClusterShardID(
+			cluster.TestAlternativeClusterInitialFailoverVersion,
+			1, // maps to local shard 1
+		),
+		ack1TaskID,
+		ack1Timestamp,
+	)
+	s.NoError(err)
+	ack5TaskID := rand.Int63()
+	ack5Timestamp := time.Unix(0, rand.Int63())
+	err = s.mockShard.UpdateRemoteReaderInfo(
+		ReplicationReaderIDFromClusterShardID(
+			cluster.TestAlternativeClusterInitialFailoverVersion,
+			5, // maps to local shard 1
+		),
+		ack5TaskID,
+		ack5Timestamp,
+	)
+	s.NoError(err)
+
+	ackTaskID := ack1TaskID
+	ackTimestamp := ack1Timestamp
+	if ackTaskID > ack5TaskID {
+		ackTaskID = ack5TaskID
+		ackTimestamp = ack5Timestamp
+	}
+
+	remoteAckStatus, _, err := s.mockShard.GetReplicationStatus([]string{cluster.TestAlternativeClusterName})
+	s.NoError(err)
+	s.Equal(map[string]*historyservice.ShardReplicationStatusPerCluster{
+		cluster.TestAlternativeClusterName: {
+			AckedTaskId:             ackTaskID,
+			AckedTaskVisibilityTime: timestamppb.New(ackTimestamp),
+		},
+	}, remoteAckStatus)
+}
+
+func (s *contextSuite) TestShardStopReasonAssertOwnership() {
+	s.mockShard.state = contextStateAcquired
+	s.mockShardManager.EXPECT().AssertShardOwnership(gomock.Any(), gomock.Any()).
+		Return(&persistence.ShardOwnershipLostError{}).Times(1)
+
+	err := s.mockShard.AssertOwnership(context.Background())
+	s.Error(err)
+
+	s.False(s.mockShard.IsValid())
+	s.True(s.mockShard.stoppedForOwnershipLost())
+}
+
+func (s *contextSuite) TestShardStopReasonShardRead() {
+	s.mockShard.state = contextStateAcquired
+	s.mockExecutionManager.EXPECT().GetCurrentExecution(gomock.Any(), gomock.Any()).
+		Return(nil, &persistence.ShardOwnershipLostError{}).Times(1)
+
+	_, err := s.mockShard.GetCurrentExecution(context.Background(), nil)
+	s.Error(err)
+
+	s.False(s.mockShard.IsValid())
+	s.True(s.mockShard.stoppedForOwnershipLost())
+}
+
+func (s *contextSuite) TestShardStopReasonAcquireShard() {
+	s.mockShard.state = contextStateAcquiring
+	s.mockShardManager.EXPECT().UpdateShard(gomock.Any(), gomock.Any()).
+		Return(&persistence.ShardOwnershipLostError{}).Times(1)
+
+	s.mockShard.acquireShard()
+
+	s.Equal(contextStateStopping, s.mockShard.state)
+	s.False(s.mockShard.IsValid())
+	s.True(s.mockShard.stoppedForOwnershipLost())
+}
+
+func (s *contextSuite) TestShardStopReasonUnload() {
+	s.mockShard.state = contextStateAcquired
+
+	s.mockShard.UnloadForOwnershipLost()
+
+	s.Equal(contextStateStopping, s.mockShard.state)
+	s.False(s.mockShard.IsValid())
+	s.True(s.mockShard.stoppedForOwnershipLost())
+}
+
+func (s *contextSuite) TestShardStopReasonCloseShard() {
+	s.mockShard.state = contextStateAcquired
+	s.mockHistoryEngine.EXPECT().Stop().Times(1)
+
+	s.mockShard.FinishStop()
+
+	s.False(s.mockShard.IsValid())
+	s.False(s.mockShard.stoppedForOwnershipLost())
+}
+
+func (s *contextSuite) TestUpdateShardInfo_CallbackIsInvoked_EvenWhenNotPersisted() {
+	s.mockShard.state = contextStateAcquired
+
+	var timesCalled int
+	callback := func() {
+		timesCalled++
+	}
+
+	s.mockShardManager.EXPECT().UpdateShard(gomock.Any(), gomock.Any()).
+		Return(nil).Times(1)
+	err := s.mockShard.updateShardInfo(0, callback)
+	s.NoError(err)
+
+	// No time has passed and too few tasks completed: shouldn't update the database
+	s.mockShardManager.EXPECT().UpdateShard(gomock.Any(), gomock.Any()).
+		Return(nil).Times(0)
+	err = s.mockShard.updateShardInfo(0, callback)
+	s.NoError(err)
+
+	s.Equal(2, timesCalled)
+}
+
+func (s *contextSuite) TestUpdateShardInfo_PersistsAfterInterval_RegardlessOfTasksCompleted() {
+	s.mockShard.state = contextStateAcquired
+
+	// We only expect the first and third calls to updateShardInfo to hit the database
+
+	var timesCalled int
+	callback := func() {
+		timesCalled++
+	}
+
+	s.mockShardManager.EXPECT().UpdateShard(gomock.Any(), gomock.Any()).
+		Return(nil).Times(1)
+	err := s.mockShard.updateShardInfo(0, callback)
+	s.NoError(err)
+
+	// No time has passed: shouldn't update the database.
+	s.mockShardManager.EXPECT().UpdateShard(gomock.Any(), gomock.Any()).
+		Return(nil).Times(0)
+	err = s.mockShard.updateShardInfo(0, callback)
+	s.NoError(err)
+
+	s.mockShardManager.EXPECT().UpdateShard(gomock.Any(), gomock.Any()).
+		Return(nil).Times(1)
+	s.timeSource.Update(time.Now().Add(s.mockShard.config.ShardUpdateMinInterval()))
+	err = s.mockShard.updateShardInfo(0, callback)
+	s.NoError(err)
+	s.Equal(3, timesCalled)
+}
+
+func (s *contextSuite) TestUpdateShardInfo_PersistsBeforeInterval_WhenEnoughTasksCompleted() {
+	s.mockShard.state = contextStateAcquired
+	var timesCalled int
+	callback := func() {
+		timesCalled++
+	}
+	s.mockShardManager.EXPECT().UpdateShard(gomock.Any(), gomock.Any()).
+		Return(nil).Times(1)
+	tasksNecessaryForUpdate := s.mockShard.config.ShardUpdateMinTasksCompleted()
+	err := s.mockShard.updateShardInfo(tasksNecessaryForUpdate, callback)
+	s.NoError(err)
+
+	// No time has passed and too few tasks completed: shouldn't update
+	s.mockShardManager.EXPECT().UpdateShard(gomock.Any(), gomock.Any()).
+		Return(nil).Times(0)
+	err = s.mockShard.updateShardInfo(tasksNecessaryForUpdate-1, callback)
+	s.NoError(err)
+	s.Equal(2, timesCalled, "Should call provided callback even when not persisting updates")
+
+	s.mockShardManager.EXPECT().UpdateShard(gomock.Any(), gomock.Any()).
+		Return(nil).Times(1)
+	err = s.mockShard.updateShardInfo(1, callback)
+	s.NoError(err)
+	s.Equal(3, timesCalled)
+}
+
+func (s *contextSuite) TestUpdateShardInfo_OnlyPersistsAfterInterval_WhenTaskCheckingDisabled() {
+	s.mockShard.state = contextStateAcquired
+
+	// Anything less than one disables the task counting logic
+	s.mockShard.config.ShardUpdateMinTasksCompleted = func() int { return 0 }
+
+	var timesCalled int
+	callback := func() {
+		timesCalled++
+	}
+
+	// Initial call to set the last called time
+	s.mockShardManager.EXPECT().UpdateShard(gomock.Any(), gomock.Any()).
+		Return(nil).Times(1)
+	err := s.mockShard.updateShardInfo(0, callback)
+	s.NoError(err)
+	s.Equal(1, timesCalled)
+
+	// Not enough time passed and with task tracking disabled, this is ignored
+	s.mockShardManager.EXPECT().UpdateShard(gomock.Any(), gomock.Any()).
+		Return(nil).Times(0)
+	err = s.mockShard.updateShardInfo(10000000, callback)
+	s.NoError(err)
+	s.Equal(2, timesCalled, "Should call provided callback even when not persisting updates")
+
+	// Time passes
+	s.mockShardManager.EXPECT().UpdateShard(gomock.Any(), gomock.Any()).
+		Return(nil).Times(1)
+	s.timeSource.Update(time.Now().Add(s.mockShard.config.ShardUpdateMinInterval()))
+	err = s.mockShard.updateShardInfo(0, callback)
+	s.NoError(err)
+	s.Equal(3, timesCalled)
+}
+
+func (s *contextSuite) TestUpdateShardInfo_FailsUnlessShardAcquired() {
+	for _, state := range []contextState{
+		contextStateInitialized, contextStateAcquiring, contextStateStopping, contextStateStopped,
+	} {
+		s.mockShard.state = state
+		s.Error(s.mockShard.updateShardInfo(0, func() {
+			s.Fail("Should not have called update callback when in state %v", state)
+		}))
+
+	}
+	// This is the only state we should succeed in
+	s.mockShard.state = contextStateAcquired
+	s.mockShardManager.EXPECT().UpdateShard(gomock.Any(), gomock.Any()).
+		Return(nil).Times(1)
+	var called bool
+	s.NoError(s.mockShard.updateShardInfo(0, func() {
+		called = true
+	}))
+	s.True(called)
+}
+
+func (s *contextSuite) TestUpdateShardInfo_FirstUpdate() {
+
+	s.mockShard.config.ShardUpdateMinInterval = func() time.Duration { return 5 * time.Minute }
+	s.mockShard.config.ShardFirstUpdateInterval = func() time.Duration { return 10 * time.Second }
+	s.timeSource.Update(time.Now())
+
+	s.mockShard.initLastUpdatesTime()
+	s.mockShard.tasksCompletedSinceLastUpdate = 1
+	_any := gomock.Any()
+	s.mockShardManager.EXPECT().UpdateShard(_any, _any).Times(0)
+
+	// updating too early
+	var called bool
+	updateFunc := func() { called = true }
+
+	err := s.mockShard.updateShardInfo(1, updateFunc)
+
+	s.NoError(err)
+	s.True(called)
+	s.Equal(2, s.mockShard.tasksCompletedSinceLastUpdate)
+
+	// update after ShardFirstUpdateInterval
+	s.mockShard.initLastUpdatesTime()
+	s.timeSource.Update(time.Now().Add(s.mockShard.config.ShardFirstUpdateInterval() + 10*time.Second))
+	called = false
+	s.mockShardManager.EXPECT().UpdateShard(_any, _any).Return(nil).Times(1)
+	err = s.mockShard.updateShardInfo(1, updateFunc)
+
+	s.NoError(err)
+	s.True(called)
+	s.Equal(0, s.mockShard.tasksCompletedSinceLastUpdate)
+
+	// update again. This time update will not work since shard lastUpdate time was set during previous update
+	s.timeSource.Update(time.Now().Add(s.mockShard.config.ShardFirstUpdateInterval() + 15*time.Second))
+	called = false
+	s.mockShardManager.EXPECT().UpdateShard(_any, _any).Times(0)
+	err = s.mockShard.updateShardInfo(1, updateFunc)
+
+	s.NoError(err)
+	s.True(called)
+	s.Equal(1, s.mockShard.tasksCompletedSinceLastUpdate)
+
+	// now move past last updated interval. This time hard info should be updated/persisted
+	s.timeSource.Update(s.mockShard.lastUpdated.Add(s.mockShard.config.ShardUpdateMinInterval() + 10*time.Second))
+	called = false
+	s.mockShardManager.EXPECT().UpdateShard(_any, _any).Return(nil).Times(1)
+	err = s.mockShard.updateShardInfo(1, updateFunc)
+
+	s.NoError(err)
+	s.True(called)
+	s.Equal(0, s.mockShard.tasksCompletedSinceLastUpdate)
+}
+
+func (s *contextSuite) TestUpdateShardInfo_RecordsSizeMetrics() {
+	s.mockShard.state = contextStateAcquired
+	s.setImmediateAckLevels(map[int32]int64{
+		int32(tasks.CategoryIDTransfer): 100,
+		int32(tasks.CategoryIDTimer):    200,
+	})
+
+	expectedTransferSize := int64(s.mockShard.shardInfo.QueueStates[int32(tasks.CategoryIDTransfer)].Size())
+	expectedTimerSize := int64(s.mockShard.shardInfo.QueueStates[int32(tasks.CategoryIDTimer)].Size())
+
+	s.mockShardManager.EXPECT().UpdateShard(gomock.Any(), gomock.Any()).Return(nil).Times(1)
+
+	captureHandler := metricstest.NewCaptureHandler()
+	s.mockShard.SetMetricsHandler(captureHandler)
+	capture := captureHandler.StartCapture()
+	defer captureHandler.StopCapture(capture)
+
+	err := s.mockShard.updateShardInfo(0, func() {})
+	s.NoError(err)
+
+	snapshot := capture.Snapshot()
+
+	shardInfoSizeRecordings := snapshot[metrics.ShardInfoSize.Name()]
+	s.Require().Len(shardInfoSizeRecordings, 1)
+	s.GreaterOrEqual(shardInfoSizeRecordings[0].Value.(int64), expectedTransferSize)
+	s.GreaterOrEqual(shardInfoSizeRecordings[0].Value.(int64), expectedTimerSize)
+
+	queueStateSizeRecordings := snapshot[metrics.QueueStateSize.Name()]
+	s.Require().Len(queueStateSizeRecordings, 2)
+
+	sizeByCategory := make(map[string]int64, len(queueStateSizeRecordings))
+	for _, recording := range queueStateSizeRecordings {
+		sizeByCategory[recording.Tags["task_category"]] = recording.Value.(int64)
+	}
+	s.Equal(map[string]int64{
+		tasks.CategoryTransfer.Name(): expectedTransferSize,
+		tasks.CategoryTimer.Name():    expectedTimerSize,
+	}, sizeByCategory)
+}
+
+func (s *contextSuite) TestUpdateShardInfo_RecordsQueueStateSizeTotal() {
+	s.mockShard.state = contextStateAcquired
+	s.setImmediateAckLevels(map[int32]int64{
+		int32(tasks.CategoryIDTransfer): 100,
+		int32(tasks.CategoryIDTimer):    200,
+	})
+
+	expectedTransferSize := int64(s.mockShard.shardInfo.QueueStates[int32(tasks.CategoryIDTransfer)].Size())
+	expectedTimerSize := int64(s.mockShard.shardInfo.QueueStates[int32(tasks.CategoryIDTimer)].Size())
+
+	s.mockShardManager.EXPECT().UpdateShard(gomock.Any(), gomock.Any()).Return(nil).Times(1)
+
+	captureHandler := metricstest.NewCaptureHandler()
+	s.mockShard.SetMetricsHandler(captureHandler)
+	capture := captureHandler.StartCapture()
+	defer captureHandler.StopCapture(capture)
+
+	err := s.mockShard.updateShardInfo(0, func() {})
+	s.NoError(err)
+
+	snapshot := capture.Snapshot()
+	recordings := snapshot[metrics.QueueStateSizeTotal.Name()]
+	s.Require().Len(recordings, 2)
+
+	sizeByCategory := make(map[string]int64, len(recordings))
+	for _, recording := range recordings {
+		sizeByCategory[recording.Tags["task_category"]] = recording.Value.(int64)
+	}
+	s.Equal(map[string]int64{
+		tasks.CategoryTransfer.Name(): expectedTransferSize,
+		tasks.CategoryTimer.Name():    expectedTimerSize,
+	}, sizeByCategory)
+}
+
+func (s *contextSuite) TestUpdateShardInfo_DoesNotRecordSizeMetrics_WhenThrottled() {
+	s.mockShard.state = contextStateAcquired
+
+	// First call always persists, establishing lastUpdated.
+	s.mockShardManager.EXPECT().UpdateShard(gomock.Any(), gomock.Any()).Return(nil).Times(1)
+	s.NoError(s.mockShard.updateShardInfo(0, func() {}))
+
+	captureHandler := metricstest.NewCaptureHandler()
+	s.mockShard.SetMetricsHandler(captureHandler)
+	capture := captureHandler.StartCapture()
+	defer captureHandler.StopCapture(capture)
+
+	// No time has passed and too few tasks completed: shouldn't persist, and shouldn't record size.
+	s.mockShardManager.EXPECT().UpdateShard(gomock.Any(), gomock.Any()).Times(0)
+	s.NoError(s.mockShard.updateShardInfo(0, func() {}))
+
+	snapshot := capture.Snapshot()
+	s.Empty(snapshot[metrics.ShardInfoSize.Name()])
+	s.Empty(snapshot[metrics.QueueStateSize.Name()])
+	s.Empty(snapshot[metrics.QueueStateSizeTotal.Name()])
+}
+
+// setImmediateAckLevels replaces the shard's queue states so each given immediate category has its
+// ack level at the given task id, i.e. a backlog of everything above it.
+func (s *contextSuite) setImmediateAckLevels(ackLevelByCategoryID map[int32]int64) {
+	queueStates := make(map[int32]*persistencespb.QueueState, len(ackLevelByCategoryID))
+	for categoryID, taskID := range ackLevelByCategoryID {
+		queueStates[categoryID] = &persistencespb.QueueState{
+			ExclusiveReaderHighWatermark: ConvertToPersistenceTaskKey(tasks.NewImmediateKey(taskID)),
+		}
+	}
+	s.mockShard.shardInfo.QueueStates = queueStates
+}
+
+// expectOldestTaskRead returns a task of the requested category with the given age.
+func (s *contextSuite) expectOldestTaskRead(now time.Time, age time.Duration) {
+	s.mockExecutionManager.EXPECT().GetHistoryTasks(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *persistence.GetHistoryTasksRequest) (*persistence.GetHistoryTasksResponse, error) {
+			return &persistence.GetHistoryTasksResponse{Tasks: []tasks.Task{
+				tasks.NewFakeTask(definition.WorkflowKey{}, req.TaskCategory, now.Add(-age)),
+			}}, nil
+		}).Times(1)
+}
+
+func (s *contextSuite) captureShardInfoMetrics() metricstest.CaptureSnapshot {
+	captureHandler := metricstest.NewCaptureHandler()
+	s.mockShard.SetMetricsHandler(captureHandler)
+	capture := captureHandler.StartCapture()
+	defer captureHandler.StopCapture(capture)
+	s.mockShard.emitShardInfoMetricsLogs()
+	return capture.Snapshot()
+}
+
+func (s *contextSuite) TestEmitShardInfoMetricsLogs_ImmediateBacklogAge() {
+	now := s.timeSource.Now()
+	highWatermark := s.mockShard.taskKeyManager.getExclusiveReaderHighWatermark(tasks.CategoryTransfer)
+	s.setImmediateAckLevels(map[int32]int64{int32(tasks.CategoryIDTransfer): 100})
+	s.mockExecutionManager.EXPECT().GetHistoryTasks(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *persistence.GetHistoryTasksRequest) (*persistence.GetHistoryTasksResponse, error) {
+			// Read window is [persisted ack level, reader high watermark).
+			s.Equal(tasks.NewImmediateKey(100), req.InclusiveMinTaskKey)
+			s.Equal(highWatermark, req.ExclusiveMaxTaskKey)
+			return &persistence.GetHistoryTasksResponse{Tasks: []tasks.Task{
+				tasks.NewFakeTask(definition.WorkflowKey{}, req.TaskCategory, now.Add(-time.Hour)),
+			}}, nil
+		}).Times(1)
+
+	snap := s.captureShardInfoMetrics()
+
+	recordings := snap[metrics.ShardInfoImmediateQueueBacklogAge.Name()]
+	s.Require().Len(recordings, 1)
+	s.Equal(time.Hour, recordings[0].Value.(time.Duration))
+	// Tags must match the count metric so the two line up.
+	s.Equal(metrics.ShardInfoScope, recordings[0].Tags["operation"])
+	s.Equal(tasks.CategoryTransfer.Name(), recordings[0].Tags["task_category"])
+}
+
+func (s *contextSuite) TestEmitShardInfoMetricsLogs_ImmediateBacklogAge_PerCategory() {
+	now := s.timeSource.Now()
+	s.setImmediateAckLevels(map[int32]int64{
+		int32(tasks.CategoryIDTransfer):   100,
+		int32(tasks.CategoryIDVisibility): 100,
+	})
+	s.mockExecutionManager.EXPECT().GetHistoryTasks(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *persistence.GetHistoryTasksRequest) (*persistence.GetHistoryTasksResponse, error) {
+			age := time.Hour
+			if req.TaskCategory.ID() == tasks.CategoryIDVisibility {
+				age = time.Minute
+			}
+			return &persistence.GetHistoryTasksResponse{Tasks: []tasks.Task{
+				tasks.NewFakeTask(definition.WorkflowKey{}, req.TaskCategory, now.Add(-age)),
+			}}, nil
+		}).Times(2)
+
+	snap := s.captureShardInfoMetrics()
+
+	recordings := snap[metrics.ShardInfoImmediateQueueBacklogAge.Name()]
+	s.Require().Len(recordings, 2)
+	ageByCategory := make(map[string]time.Duration, len(recordings))
+	for _, recording := range recordings {
+		ageByCategory[recording.Tags["task_category"]] = recording.Value.(time.Duration)
+	}
+	s.Require().Len(ageByCategory, 2, "each category must be tagged with its own name")
+	s.Equal(time.Hour, ageByCategory[tasks.CategoryTransfer.Name()])
+	s.Equal(time.Minute, ageByCategory[tasks.CategoryVisibility.Name()])
+}
+
+func (s *contextSuite) TestEmitShardInfoMetricsLogs_FutureVisibilityTime_ClampedToZero() {
+	now := s.timeSource.Now()
+	s.setImmediateAckLevels(map[int32]int64{int32(tasks.CategoryIDTransfer): 100})
+	// A host with a fast clock must not produce a negative age.
+	s.expectOldestTaskRead(now, -time.Minute)
+
+	snap := s.captureShardInfoMetrics()
+
+	recordings := snap[metrics.ShardInfoImmediateQueueBacklogAge.Name()]
+	s.Require().Len(recordings, 1)
+	s.Equal(time.Duration(0), recordings[0].Value.(time.Duration))
+}
+
+func (s *contextSuite) TestEmitShardInfoMetricsLogs_ReadFindsNothing_NoSample() {
+	s.setImmediateAckLevels(map[int32]int64{int32(tasks.CategoryIDTransfer): 100})
+	// The backlog drained between the ack level being persisted and the read. Reporting anything here
+	// would date the age from the zero time.
+	s.mockExecutionManager.EXPECT().GetHistoryTasks(gomock.Any(), gomock.Any()).
+		Return(&persistence.GetHistoryTasksResponse{}, nil).Times(1)
+
+	snap := s.captureShardInfoMetrics()
+
+	s.Empty(snap[metrics.ShardInfoImmediateQueueBacklogAge.Name()])
+}
+
+func (s *contextSuite) TestEmitShardInfoMetricsLogs_OneCategoryReadFails_OthersStillReported() {
+	now := s.timeSource.Now()
+	s.setImmediateAckLevels(map[int32]int64{
+		int32(tasks.CategoryIDTransfer):   100,
+		int32(tasks.CategoryIDVisibility): 100,
+	})
+	// Ordered on the mock rather than the category, because queue states are iterated in map order.
+	gomock.InOrder(
+		s.mockExecutionManager.EXPECT().GetHistoryTasks(gomock.Any(), gomock.Any()).
+			Return(nil, errors.New("persistence unavailable")),
+		s.mockExecutionManager.EXPECT().GetHistoryTasks(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, req *persistence.GetHistoryTasksRequest) (*persistence.GetHistoryTasksResponse, error) {
+				return &persistence.GetHistoryTasksResponse{Tasks: []tasks.Task{
+					tasks.NewFakeTask(definition.WorkflowKey{}, req.TaskCategory, now.Add(-time.Hour)),
+				}}, nil
+			}),
+	)
+
+	snap := s.captureShardInfoMetrics()
+
+	s.Len(snap[metrics.ShardInfoImmediateQueueBacklogAge.Name()], 1)
+}
+
+func (s *contextSuite) TestEmitShardInfoMetricsLogs_ScheduledCategory_NotRead() {
+	now := s.timeSource.Now()
+	s.setImmediateAckLevels(map[int32]int64{int32(tasks.CategoryIDTransfer): 100})
+	// Scheduled keys already carry a timestamp, so only the immediate category is read.
+	s.mockShard.shardInfo.QueueStates[int32(tasks.CategoryIDTimer)] = &persistencespb.QueueState{
+		ExclusiveReaderHighWatermark: ConvertToPersistenceTaskKey(tasks.NewKey(now.Add(-time.Hour), 0)),
+	}
+	s.expectOldestTaskRead(now, time.Hour)
+
+	snap := s.captureShardInfoMetrics()
+
+	s.Len(snap[metrics.ShardInfoScheduledQueueLagTimer.Name()], 1)
+	s.Len(snap[metrics.ShardInfoImmediateQueueBacklogAge.Name()], 1)
+}
+
+// The three tests below each pin a reason the age is not read. They set no GetHistoryTasks
+// expectation, so a read would fail them, and they assert the count metric still reports.
+
+func (s *contextSuite) TestEmitShardInfoMetricsLogs_CaughtUp_NoRead() {
+	highWatermark := s.mockShard.taskKeyManager.getExclusiveReaderHighWatermark(tasks.CategoryTransfer)
+	s.setImmediateAckLevels(map[int32]int64{int32(tasks.CategoryIDTransfer): highWatermark.TaskID})
+
+	snap := s.captureShardInfoMetrics()
+
+	s.Empty(snap[metrics.ShardInfoImmediateQueueBacklogAge.Name()])
+	s.Len(snap[metrics.ShardInfoImmediateQueueLagHistogram.Name()], 1)
+}
+
+func (s *contextSuite) TestEmitShardInfoMetricsLogs_BacklogAgeDisabled_NoRead() {
+	s.setImmediateAckLevels(map[int32]int64{int32(tasks.CategoryIDTransfer): 100})
+	s.mockShard.config.EmitImmediateQueueBacklogAge = dynamicconfig.GetBoolPropertyFn(false)
+
+	snap := s.captureShardInfoMetrics()
+
+	s.Empty(snap[metrics.ShardInfoImmediateQueueBacklogAge.Name()])
+	s.Len(snap[metrics.ShardInfoImmediateQueueLagHistogram.Name()], 1)
+}
+
+func (s *contextSuite) TestEmitShardInfoMetricsLogs_ShuttingDown_NoRead() {
+	s.setImmediateAckLevels(map[int32]int64{int32(tasks.CategoryIDTransfer): 100})
+	s.mockShard.lifecycleCancel()
+
+	snap := s.captureShardInfoMetrics()
+
+	s.Empty(snap[metrics.ShardInfoImmediateQueueBacklogAge.Name()])
+	s.Len(snap[metrics.ShardInfoImmediateQueueLagHistogram.Name()], 1)
+}
+
+func (s *contextSuite) TestOldestImmediateTaskVisibilityTime() {
+	now := s.timeSource.Now()
+	minKey, maxKey := tasks.NewImmediateKey(100), tasks.NewImmediateKey(1000)
+
+	s.Run("returns the oldest task's visibility time", func() {
+		s.mockExecutionManager.EXPECT().GetHistoryTasks(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, req *persistence.GetHistoryTasksRequest) (*persistence.GetHistoryTasksResponse, error) {
+				s.Equal(s.shardID, req.ShardID)
+				s.Equal(tasks.CategoryTransfer, req.TaskCategory)
+				s.Equal(minKey, req.InclusiveMinTaskKey)
+				s.Equal(maxKey, req.ExclusiveMaxTaskKey)
+				s.Equal(1, req.BatchSize)
+				// Shed before real task loading rather than sharing its priority.
+				s.Equal(headers.CallerTypePreemptable, headers.GetCallerInfo(ctx).CallerType)
+				return &persistence.GetHistoryTasksResponse{Tasks: []tasks.Task{
+					&tasks.ActivityTask{VisibilityTimestamp: now.Add(-time.Hour)},
+				}}, nil
+			}).Times(1)
+		got, ok := s.mockShard.oldestImmediateTaskVisibilityTime(tasks.CategoryTransfer, minKey, maxKey)
+		s.True(ok)
+		s.Equal(now.Add(-time.Hour), got)
+	})
+
+	s.Run("reports nothing when the backlog drained before the read", func() {
+		s.mockExecutionManager.EXPECT().GetHistoryTasks(gomock.Any(), gomock.Any()).
+			Return(&persistence.GetHistoryTasksResponse{}, nil).Times(1)
+		_, ok := s.mockShard.oldestImmediateTaskVisibilityTime(tasks.CategoryTransfer, minKey, maxKey)
+		s.False(ok)
+	})
+
+	s.Run("reports nothing on read failure", func() {
+		s.mockExecutionManager.EXPECT().GetHistoryTasks(gomock.Any(), gomock.Any()).
+			Return(nil, errors.New("persistence unavailable")).Times(1)
+		_, ok := s.mockShard.oldestImmediateTaskVisibilityTime(tasks.CategoryTransfer, minKey, maxKey)
+		s.False(ok)
+	})
+}

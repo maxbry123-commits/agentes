@@ -1,0 +1,217 @@
+package persistencetests
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/stretchr/testify/require"
+	enumsspb "go.temporal.io/server/api/enums/v1"
+	replicationspb "go.temporal.io/server/api/replication/v1"
+	"go.temporal.io/server/common/debug"
+	"go.temporal.io/server/common/persistence"
+	"golang.org/x/sync/errgroup"
+)
+
+type (
+	// QueuePersistenceSuite contains queue persistence tests
+	QueuePersistenceSuite struct {
+		*TestBase
+		// override suite.Suite.Assertions with require.Assertions; this means that s.NotNil(nil) will stop the test,
+		// not merely log an error
+		*require.Assertions
+
+		ctx    context.Context
+		cancel context.CancelFunc
+	}
+)
+
+// SetupSuite implementation
+func (s *QueuePersistenceSuite) SetupSuite() {
+}
+
+// SetupTest implementation
+func (s *QueuePersistenceSuite) SetupTest() {
+	// Have to define our overridden assertions in the test setup. If we did it earlier, s.T() will return nil
+	s.Assertions = require.New(s.T())
+	s.ctx, s.cancel = context.WithTimeout(context.Background(), 30*time.Second*debug.TimeoutMultiplier)
+}
+
+func (s *QueuePersistenceSuite) TearDownTest() {
+	s.cancel()
+}
+
+// TearDownSuite implementation
+func (s *QueuePersistenceSuite) TearDownSuite() {
+	s.TearDownWorkflowStore()
+}
+
+// TestNamespaceReplicationQueue tests namespace replication queue operations
+func (s *QueuePersistenceSuite) TestNamespaceReplicationQueue() {
+	numMessages := 100
+	concurrentSenders := 10
+
+	messageChan := make(chan *replicationspb.ReplicationTask)
+
+	taskType := enumsspb.REPLICATION_TASK_TYPE_NAMESPACE_TASK
+	go func() {
+		for i := range numMessages {
+			messageChan <- &replicationspb.ReplicationTask{
+				TaskType: taskType,
+				Attributes: &replicationspb.ReplicationTask_NamespaceTaskAttributes{
+					NamespaceTaskAttributes: &replicationspb.NamespaceTaskAttributes{
+						Id: fmt.Sprintf("message-%v", i),
+					},
+				},
+			}
+		}
+		close(messageChan)
+	}()
+
+	var group errgroup.Group
+
+	for senderNum := range concurrentSenders {
+		group.Go(func() error {
+			var publishErr error
+			for message := range messageChan {
+				err := s.Publish(s.ctx, message)
+				if err != nil && publishErr == nil {
+					id := message.Attributes.(*replicationspb.ReplicationTask_NamespaceTaskAttributes).NamespaceTaskAttributes.Id
+					publishErr = fmt.Errorf("enqueue message failed when sender %d tried to send %s: %w", senderNum, id, err)
+				}
+			}
+			return publishErr
+		})
+	}
+
+	s.NoError(group.Wait())
+
+	result, lastRetrievedMessageID, err := s.GetReplicationMessages(s.ctx, persistence.EmptyQueueMessageID, numMessages)
+	s.NoError(err, "GetReplicationMessages failed.")
+	s.Len(result, numMessages)
+	s.Equal(int64(numMessages-1), lastRetrievedMessageID)
+	for i, task := range result {
+		s.Equal(int64(i), task.SourceTaskId)
+	}
+}
+
+// TestQueueMetadataOperations tests queue metadata operations
+func (s *QueuePersistenceSuite) TestQueueMetadataOperations() {
+	clusterAckLevels, err := s.GetAckLevels(s.ctx)
+	s.Require().NoError(err)
+	s.Empty(clusterAckLevels)
+
+	err = s.UpdateAckLevel(s.ctx, 10, "test1")
+	s.Require().NoError(err)
+
+	clusterAckLevels, err = s.GetAckLevels(s.ctx)
+	s.Require().NoError(err)
+	s.Len(clusterAckLevels, 1)
+	s.Equal(int64(10), clusterAckLevels["test1"])
+
+	err = s.UpdateAckLevel(s.ctx, 20, "test1")
+	s.Require().NoError(err)
+
+	clusterAckLevels, err = s.GetAckLevels(s.ctx)
+	s.Require().NoError(err)
+	s.Len(clusterAckLevels, 1)
+	s.Equal(int64(20), clusterAckLevels["test1"])
+
+	err = s.UpdateAckLevel(s.ctx, 25, "test2")
+	s.Require().NoError(err)
+
+	clusterAckLevels, err = s.GetAckLevels(s.ctx)
+	s.Require().NoError(err)
+	s.Len(clusterAckLevels, 2)
+	s.Equal(int64(20), clusterAckLevels["test1"])
+	s.Equal(int64(25), clusterAckLevels["test2"])
+}
+
+// TestNamespaceReplicationDLQ tests namespace DLQ operations
+func (s *QueuePersistenceSuite) TestNamespaceReplicationDLQ() {
+	maxMessageID := int64(100)
+	numMessages := 100
+	concurrentSenders := 10
+
+	messageChan := make(chan *replicationspb.ReplicationTask)
+
+	taskType := enumsspb.REPLICATION_TASK_TYPE_NAMESPACE_TASK
+	go func() {
+		for i := range numMessages {
+			messageChan <- &replicationspb.ReplicationTask{
+				TaskType: taskType,
+				Attributes: &replicationspb.ReplicationTask_NamespaceTaskAttributes{
+					NamespaceTaskAttributes: &replicationspb.NamespaceTaskAttributes{
+						Id: fmt.Sprintf("message-%v", i),
+					},
+				},
+			}
+		}
+		close(messageChan)
+	}()
+
+	var group errgroup.Group
+
+	for senderNum := range concurrentSenders {
+		group.Go(func() error {
+			var publishErr error
+			for message := range messageChan {
+				err := s.PublishToNamespaceDLQ(s.ctx, message)
+				if err != nil && publishErr == nil {
+					id := message.Attributes.(*replicationspb.ReplicationTask_NamespaceTaskAttributes).NamespaceTaskAttributes.Id
+					publishErr = fmt.Errorf("enqueue message failed when sender %d tried to send %s: %w", senderNum, id, err)
+				}
+			}
+			return publishErr
+		})
+	}
+
+	s.NoError(group.Wait())
+
+	result1, token, err := s.GetMessagesFromNamespaceDLQ(s.ctx, persistence.EmptyQueueMessageID, maxMessageID, numMessages/2, nil)
+	s.NoError(err, "GetReplicationMessages failed.")
+	s.NotNil(token)
+	result2, token, err := s.GetMessagesFromNamespaceDLQ(s.ctx, persistence.EmptyQueueMessageID, maxMessageID, numMessages, token)
+	s.NoError(err, "GetReplicationMessages failed.")
+	s.Empty(token)
+	s.Equal(len(result1)+len(result2), numMessages)
+	_, nextToken, err := s.GetMessagesFromNamespaceDLQ(s.ctx, persistence.EmptyQueueMessageID, 1<<63-1, numMessages, nil)
+	s.NoError(err, "GetReplicationMessages failed.")
+	s.NotEmpty(nextToken)
+
+	lastMessageID := result2[len(result2)-1].SourceTaskId
+	err = s.DeleteMessageFromNamespaceDLQ(s.ctx, lastMessageID)
+	s.NoError(err)
+	result3, token, err := s.GetMessagesFromNamespaceDLQ(s.ctx, persistence.EmptyQueueMessageID, maxMessageID, numMessages, token)
+	s.NoError(err, "GetReplicationMessages failed.")
+	s.Empty(token)
+	s.Equal(len(result3), numMessages-1)
+
+	err = s.RangeDeleteMessagesFromNamespaceDLQ(s.ctx, persistence.EmptyQueueMessageID, lastMessageID)
+	s.NoError(err)
+	result4, token, err := s.GetMessagesFromNamespaceDLQ(s.ctx, persistence.EmptyQueueMessageID, maxMessageID, numMessages, token)
+	s.NoError(err, "GetReplicationMessages failed.")
+	s.Empty(token)
+	s.Empty(result4)
+}
+
+// TestNamespaceDLQMetadataOperations tests queue metadata operations
+func (s *QueuePersistenceSuite) TestNamespaceDLQMetadataOperations() {
+	ackLevel, err := s.GetNamespaceDLQAckLevel(s.ctx)
+	s.Require().NoError(err)
+	s.Equal(persistence.EmptyQueueMessageID, ackLevel)
+
+	err = s.UpdateNamespaceDLQAckLevel(s.ctx, 10)
+	s.NoError(err)
+
+	ackLevel, err = s.GetNamespaceDLQAckLevel(s.ctx)
+	s.Require().NoError(err)
+	s.Equal(int64(10), ackLevel)
+
+	err = s.UpdateNamespaceDLQAckLevel(s.ctx, 1)
+	s.NoError(err)
+
+	ackLevel, err = s.GetNamespaceDLQAckLevel(s.ctx)
+	s.Require().NoError(err)
+	s.Equal(int64(10), ackLevel)
+}
