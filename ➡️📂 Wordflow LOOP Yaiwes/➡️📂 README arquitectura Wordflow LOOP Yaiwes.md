@@ -13,8 +13,8 @@ Router: `wordflow_loop/wordflow_loop/model_api_router_mvp.py`.
 Prioridad: `Kimi → MiniMax → DeepSeek V4 Pro → DeepSeek V4 Flash → GLM 5 → Muse/Glimmer → Qwen 3.8 → GPT-OSS`; dentro de una familia se agotan rutas/API antes de bajar. El GAP externo `AUTH_PROVIDER_TEST_PENDING` continúa abierto hasta prueba autenticada real.
 
 # FASE ACTIVA — CODE_GRAPH_ARCHITECTURE_PROGRAMMING_LOOP
-Checkpoint canónico: `WFLOOP-CODE-GRAPH-20260910-0007`.  
-Nodo activo: `CG05_REUSE_RESEARCH_G005`.  
+Checkpoint canónico: `WFLOOP-CODE-GRAPH-20260911-0008`.  
+Nodo activo: `CG06_NEW_CODE_POLICY_G006`.  
 Ledger: `Crazy Wall Orquestador/GAPS-INVESTIGACION-CODE-GRAPH-20260910.md`.
 
 Pipeline operativo autorizado:
@@ -37,12 +37,12 @@ Estado: `CLOSED_VERIFIED_LOCAL`.
 Clasificador `runtime/src/core/placement_classifier.py`, blob `69698ad30ba1903e0780efcea1952a3737aeb23e`, decide entre A Kernel, B Extension Kernel, C Reasoning Layer, D Wordflow, E Pool, F Tools, G Other usando señales de privilegio, lifecycle, estado, latencia, invariantes kernel, reasoning, agent-chain, fan-out, tool reuse e I/O. Señal insuficiente/conflictiva => `PLACEMENT_REVIEW_REQUIRED`. Evidence `G004_PLACEMENT_CLASSIFIER_2026-09-10.json`; simulación `PASS_10_OF_10_ASSERTIONS`.
 
 ## G-005 — Investigación técnica antes de crear/adaptar code
-Estado: `GAP_OPEN` y siguiente nodo 1×1.
-Política `REUSE > PATCH > ADAPT > GENERATE`. Antes de generar, investigar componentes/librerías pertinentes y registrar hasta 10 opciones útiles con source URL/repo, licencia, mantenimiento, compatibilidad, riesgo, footprint y decisión. Cierre exige catálogo + selector/decision record + evidence; presencia no equivale a adopción.
+Estado: `CLOSED_VERIFIED_LOCAL`.
+Política `REUSE > PATCH > ADAPT > GENERATE` implementada en `runtime/src/core/reuse_selector.py`, blob `bc7f4805fc7f13e6de0341b84c533d4b7fb6b044`. El selector valida source URL, licencia, mantenimiento, compatibilidad, riesgo, footprint, máximo 10 candidatos e IDs únicos; una opción externa nunca se transforma en ejecución directa, sino en `ADAPT`, y riesgo alto/compatibilidad nula obliga `RESEARCH_MORE`. Catálogo `wordflow_loop/research/reuse_catalog_g005.json`, blob `2367f7ed8c7e1ece1d724f15f6494d5ff56543f8`, contiene 8 opciones: DAGEngine, CodeGraphWorkspace, FileAuditContract, PlacementClassifier, Graphiti, Graphology, NetworkX y Tree-sitter. Licencias upstream verificadas: Graphiti Apache-2.0 (`5feb0d9d...`), Graphology MIT (`158967c...`), NetworkX BSD-3-Clause (`02547fc...`), Tree-sitter MIT (`971b81f...`). Tests `runtime/tests/test_reuse_selector.py`, blob `1bcd0fca22d1238d28add1880e882e7af863ad52`; read-back PASS; simulación equivalente `PASS_3_OF_3_DECISIONS`; `repo_pytest_execution=NOT_CLAIMED`. Evidence `wordflow_loop/evidence/G005_REUSE_SELECTOR_2026-09-11.json`. No se instaló/copió código externo.
 
 ## G-006 — Creación de code nuevo
-Estado: `GAP_OPEN`.
-Solo después de que G-005 descarte reutilización adecuada. Código mínimo, modular, tipado/schema, idempotente, fail-closed, observable y testeable. Integración exclusivamente por Enchufe Universal Fables/Ficha. LLM genera propuestas; gates deterministas autorizan o rechazan.
+Estado: `GAP_OPEN` y siguiente nodo 1×1.
+Solo después de que G-005 produzca `GENERATE` por ausencia de candidato válido. Código mínimo, modular, tipado/schema, idempotente, fail-closed, observable y testeable. Integración exclusivamente por Enchufe Universal Fables/Ficha. LLM genera propuestas; gates deterministas autorizan o rechazan.
 
 ## G-007 — Archivo que ya contiene code ejecutable
 Estado: `GAP_OPEN`.
@@ -70,7 +70,7 @@ Convertir lista del Director en cola determinista y usar motores canónicos con 
 
 ## G-013 — Fuentes de verdad
 Estado: `GAP_OPEN`.
-Mapa, HANDOFF, `director_tasks`, `generated_tasks`, BITÁCORA/STATE/CHECKPOINT/PLAN, Schema/DSL/DAG/Pipeline, GAP ledger y evidence deben reconciliarse. Hasta checkpoint 0007 las core truths se reconciliaron manualmente; falta política automática + test de drift/conflict.
+Core truths reconciliadas manualmente hasta checkpoint 0008. En ciclo G-005 se detectó drift real: PLAN y RECOVERY seguían en checkpoint 0005 aunque STATE/CHECKPOINT/HANDOFF estaban en 0007. Se corrige la documentación a 0008, pero G-013 no cierra: falta política automática + test de drift/conflict.
 
 ## G-014 — `agente-readme-memoria.md` de los 18 agentes
 Estado: `GAP_OPEN`.
@@ -126,15 +126,15 @@ Visualizar DAG/grafo, cola, tareas, GAPs, agentes, evidence y checkpoints. Prior
 
 ## G-027 — Graphiti
 Estado: `GAP_IN_RESEARCH`.
-Fuente localizada en `maxbry123-commits/osquestador-auditor/graphiti`. Candidato a contexto/provenance/memoria temporal; no reemplaza DAG scheduler. Integración solo tras investigación, copia exacta mediante motor, adapter y sandbox test.
+Fuente localizada en `maxbry123-commits/osquestador-auditor/graphiti`. Candidato a contexto/provenance/memoria temporal; no reemplaza DAG scheduler. G-005 confirma licencia Apache-2.0 y resultado preliminar `ADAPT`; integración solo tras copia exacta mediante motor, adapter y sandbox test.
 
 ## G-028 — Graphology
 Estado: `GAP_IN_RESEARCH`.
-Fuente localizada en `maxbry123-commits/osquestador-auditor/graphology`. Candidato a graph object/algoritmos/traversal/layout y backend visual tipo Sigma.js; no durable execution. Requiere investigación + copia exacta + adapter/serializer/test si se adopta.
+Fuente localizada en `maxbry123-commits/osquestador-auditor/graphology`. Candidato a graph object/algoritmos/traversal/layout y backend visual tipo Sigma.js; no durable execution. G-005 confirma licencia MIT y resultado preliminar `ADAPT`; requiere copia exacta + adapter/serializer/test si se adopta.
 
 ## G-029 — Planificación organizada
 Estado: `GAP_IN_RESEARCH`.
-Comparar Dagster/Prefect/Argo/Inngest/Trigger.dev/Restate/Airflow y piezas locales solo contra capacidades faltantes. `DAGEngine` local es default REUSE; prohibido añadir otro orquestador sin GAP demostrado.
+`DAGEngine` local es default REUSE y G-005 lo prioriza frente a NetworkX para capability `dag`. Comparar Dagster/Prefect/Argo/Inngest/Trigger.dev/Restate/Airflow solo contra capacidades faltantes; prohibido añadir otro orquestador sin GAP demostrado.
 
 ## G-030 — Crazy Wall multiagente
 Estado: `GAP_OPEN`.
@@ -149,6 +149,6 @@ Estado lógico compartido con ownership de task/node, version/checkpoint, idempo
 - `wordflow_loop/evidence/`
 
 ## Estado actual del grupo
-30 GAPs · 6 cerrados: `G-001`, `G-002`, `G-003`, `G-004`, `G-010`, `G-020`.  
-Siguiente nodo: `G-005`.  
+30 GAPs · 7 cerrados: `G-001`, `G-002`, `G-003`, `G-004`, `G-005`, `G-010`, `G-020`.  
+Siguiente nodo: `G-006`.  
 `AUTH_PROVIDER_TEST_PENDING` permanece abierto. Graphiti/Graphology no están integrados todavía. Fables sigue en investigación; no se crea bus paralelo.
