@@ -1,0 +1,14 @@
+schema: riu.connectivity.bridge/v1
+project: agentes
+repo: maxbry123-commits/agentes
+branch: main
+role: agents_skills_runtime
+router:
+  repo: maxbry123-commits/router-universal-router-inteligente-
+  registry: conectividad con Router inteligente universal/REGISTRY-CONECTIVIDAD-RIU.json
+transport: [api, mcp]
+capabilities: [agents, skills, github_operations, runtime_connectors]
+auth: external_runtime_secret_store
+raw_credentials_in_git: false
+status: BRIDGE_DECLARED
+verification: PENDING_E2E_ROUTER
