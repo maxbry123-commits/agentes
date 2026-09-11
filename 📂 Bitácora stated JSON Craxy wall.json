@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-11T03:26:28.764385+00:00",
+  "updated_at": "2026-09-11T03:26:52.157386+00:00",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -726,15 +726,15 @@
       "id": 21,
       "component": "Dagu",
       "source": "Core kernel Yaiwes/Dagu/",
-      "current_step": 2,
-      "status": "GAP",
+      "current_step": 3,
+      "status": "PASS",
       "abc": "B",
       "target": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/dagu/",
-      "owner": "SOL",
-      "lock": "CLAIMED",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-11T03:26:28.764385+00:00 SOL integración 1 fresh STEP2: source residual expected schemas symlinks only; target already populated; execute symlink frontier only",
-        "after": "2026-09-10T20:22:00Z STEP2 GAP: source reduced to schemas/ only; residual config.schema.json and dag.schema.json are broken relative symlinks. Their targets exist under destination internal/cmn/schema. Immutable Motor4 manifests only rglob entries where is_file(), so broken symlinks are excluded and cannot be claimed moved/verified."
+        "after": "2026-09-11T03:26:52.157386+00:00 STEP2 PASS: immutable Motor4 moved exactly 2 residual Dagu schema symlinks via temporary resolvability bridge; source absent; destination symlinks resolve; origin/main read-back PASS"
       },
       "evidence": [
         "commit:b348db14774ecba416857bee1e387d12c91b98c7",
@@ -754,7 +754,13 @@
         "step2:dest-dag:6d0eb99af63760aa745f2e14f6f9dc6c85e884d4",
         "step2:motor4-is_file-excludes-broken-symlink",
         "step2:VERIFIED_CLOSED_REFUTED",
-        "worker:SOL integración 1"
+        "worker:SOL integración 1",
+        "step2:strategy_delta:temporary-resolvability-bridge-no-motor-modification",
+        "step2:motor4_blob:9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
+        "step2:run:34558403451",
+        "step2:move_commit:9d1ed653c74db2dc07a639c97368db1b5e9e472f",
+        "step2:source:ABSENT",
+        "step2:dest-symlinks:RESOLVED_READBACK_PASS"
       ],
       "history": [
         {
@@ -789,9 +795,17 @@
           "actor": "SOL",
           "label": "SOL integración 1",
           "event": "CLAIM_STEP2_SYMLINK_REPAIR"
+        },
+        {
+          "at": "2026-09-11T03:26:52.157386+00:00",
+          "actor": "SOL",
+          "label": "SOL integración 1",
+          "event": "STEP2_PASS_RELEASE",
+          "run": 34558403451,
+          "commit": "9d1ed653c74db2dc07a639c97368db1b5e9e472f"
         }
       ],
-      "next_action": "STEP_2_REQUIRES_AUTHORIZED_SYMLINK_AWARE_EXECUTION_WITH_CANONICAL_MOTOR4; FLAG_AND_CONTINUE_SAFE_FREE_NODE"
+      "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
     },
     {
       "id": 22,
