@@ -1,36 +1,32 @@
-"""
-Mavis Parallel Engine Module - PECP-MAXBRY-100x (Nodo T-013)
-Motor de paralelización masiva con colas de prioridad y caché determinista de resultados.
-"""
+"""Mavis Parallel Engine - deterministic cache, priority and in-flight dedup."""
+from __future__ import annotations
 
 import asyncio
 import hashlib
 import json
-from typing import Dict, Any, List, Optional, Callable, Awaitable
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 
 class SmartCache:
-    """Caché determinista de resultados basada en hashes de entrada."""
+    """Deterministic result cache keyed by canonical JSON hash."""
 
     def __init__(self) -> None:
         self._store: Dict[str, Any] = {}
 
     @staticmethod
     def _hash_key(key_data: Dict[str, Any]) -> str:
-        serialized = json.dumps(key_data, sort_keys=True)
+        serialized = json.dumps(key_data, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
     def get(self, payload: Dict[str, Any]) -> Optional[Any]:
-        key = self._hash_key(payload)
-        return self._store.get(key)
+        return self._store.get(self._hash_key(payload))
 
     def set(self, payload: Dict[str, Any], result: Any) -> None:
-        key = self._hash_key(payload)
-        self._store[key] = result
+        self._store[self._hash_key(payload)] = result
 
 
 class PriorityTaskQueue:
-    """Cola de tareas con prioridades numéricas (menor valor = mayor prioridad)."""
+    """Priority queue: lower number means higher priority."""
 
     def __init__(self) -> None:
         self._queue: asyncio.PriorityQueue = asyncio.PriorityQueue()
@@ -46,71 +42,78 @@ class PriorityTaskQueue:
 
 
 class MavisPool:
-    """Pool de ejecución paralela asíncrona optimizado con MavisPool y Deduplicación."""
+    """Bounded asynchronous worker pool with cache and exact in-flight dedup."""
 
     def __init__(self, max_workers: int = 10) -> None:
+        if max_workers < 1:
+            raise ValueError("max_workers must be >= 1")
         self.max_workers = max_workers
         self.queue = PriorityTaskQueue()
         self.cache = SmartCache()
-        self._active_hashes: set = set()
+        self._inflight: Dict[str, asyncio.Future] = {}
 
     async def execute_task(
         self,
         task_id: str,
         payload: Dict[str, Any],
-        worker_fn: Callable[[Dict[str, Any]], Awaitable[Dict[str, Any]]]
+        worker_fn: Callable[[Dict[str, Any]], Awaitable[Dict[str, Any]]],
     ) -> Dict[str, Any]:
-        """Ejecuta una tarea consultando caché o previniendo tareas duplicadas."""
         cached_result = self.cache.get(payload)
-        if cached_result:
-            return {"task_id": task_id, "status": "COMPLETED", "cache_hit": True, "output": cached_result}
+        if cached_result is not None:
+            return {
+                "task_id": task_id,
+                "status": "COMPLETED",
+                "cache_hit": True,
+                "dedup_hit": False,
+                "output": cached_result,
+            }
 
-        # Deduplicación básica
         payload_hash = SmartCache._hash_key(payload)
-        if payload_hash in self._active_hashes:
-            await asyncio.sleep(0.05)  # Breve pausa para resolver colisiones
+        existing = self._inflight.get(payload_hash)
+        if existing is not None:
+            result = await asyncio.shield(existing)
+            return {
+                "task_id": task_id,
+                "status": "COMPLETED",
+                "cache_hit": False,
+                "dedup_hit": True,
+                "output": result,
+            }
 
-        self._active_hashes.add(payload_hash)
+        loop = asyncio.get_running_loop()
+        future = loop.create_future()
+        self._inflight[payload_hash] = future
         try:
             result = await worker_fn(payload)
             self.cache.set(payload, result)
-            return {"task_id": task_id, "status": "COMPLETED", "cache_hit": False, "output": result}
+            if not future.done():
+                future.set_result(result)
+            return {
+                "task_id": task_id,
+                "status": "COMPLETED",
+                "cache_hit": False,
+                "dedup_hit": False,
+                "output": result,
+            }
+        except Exception as exc:
+            if not future.done():
+                future.set_exception(exc)
+                future.add_done_callback(lambda done: done.exception())
+            raise
         finally:
-            self._active_hashes.remove(payload_hash)
+            self._inflight.pop(payload_hash, None)
 
     async def run_batch(
         self,
         tasks: List[Dict[str, Any]],
-        worker_fn: Callable[[Dict[str, Any]], Awaitable[Dict[str, Any]]]
+        worker_fn: Callable[[Dict[str, Any]], Awaitable[Dict[str, Any]]],
     ) -> List[Dict[str, Any]]:
-        """Ejecuta un lote de tareas en paralelo respetando los límites del pool."""
+        """Run independent tasks with deterministic priority ordering and backpressure."""
         semaphore = asyncio.Semaphore(self.max_workers)
+        ordered = sorted(tasks, key=lambda task: (int(task.get("priority", 0)), str(task["id"])))
 
-        async def _bounded_exec(t: Dict[str, Any]) -> Dict[str, Any]:
+        async def _bounded_exec(task: Dict[str, Any]) -> Dict[str, Any]:
             async with semaphore:
-                return await self.execute_task(t["id"], t["payload"], worker_fn)
+                return await self.execute_task(task["id"], task["payload"], worker_fn)
 
-        futures = [_bounded_exec(task) for task in tasks]
-        return await asyncio.gather(*futures)
-
-
-async def _dummy_worker(payload: Dict[str, Any]) -> Dict[str, Any]:
-    await asyncio.sleep(0.01)
-    return {"processed": True, "data": payload.get("value", 0) * 2}
-
-
-if __name__ == "__main__":
-    print("=== TEST NODO T-013: MAVIS PARALLEL ENGINE ===")
-    
-    async def main() -> None:
-        pool = MavisPool(max_workers=5)
-        batch = [
-            {"id": f"task_{i}", "payload": {"value": i}} for i in range(5)
-        ]
-        # Tarea duplicada para probar SmartCache
-        batch.append({"id": "task_dup", "payload": {"value": 0}})
-
-        results = await pool.run_batch(batch, _dummy_worker)
-        print(json.dumps(results, indent=2))
-
-    asyncio.run(main())
+        return await asyncio.gather(*(_bounded_exec(task) for task in ordered))
