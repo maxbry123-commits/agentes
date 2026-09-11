@@ -1,0 +1,64 @@
+name: YAIWES Temporal full pool Step 3
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/yaiwes-temporal-full-pool-step3.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  temporal-full-pool:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout only Temporal source and pool target
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          sparse-checkout: |
+            .github/workflows/yaiwes-temporal-full-pool-step3.yml
+            Core kernel Yaiwes/Componentes recuperados B/Temporal
+            Agente Yaiwes principal/execution-engine-pool/temporal
+          sparse-checkout-cone-mode: false
+      - name: Copy Temporal complete under agent execution pool
+        run: |
+          set -euo pipefail
+          SRC='Core kernel Yaiwes/Componentes recuperados B/Temporal'
+          DST='Agente Yaiwes principal/execution-engine-pool/temporal'
+          test -d "$SRC"
+          test -f "$SRC/go.mod"
+          rm -rf "$DST"
+          mkdir -p "$(dirname "$DST")"
+          cp -a "$SRC" "$DST"
+          diff -qr "$SRC" "$DST"
+          test -f "$DST/go.mod"
+          test -d "$DST/common/backoff"
+      - name: Setup Go from Temporal
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'Agente Yaiwes principal/execution-engine-pool/temporal/go.mod'
+          cache: false
+      - name: Temporal microtest compile boundary
+        working-directory: Agente Yaiwes principal/execution-engine-pool/temporal
+        run: |
+          set -euo pipefail
+          go test ./common/backoff -run '^$' -count=1
+      - name: Commit and push Temporal pool
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- 'Agente Yaiwes principal/execution-engine-pool/temporal'
+          if git diff --cached --quiet; then
+            echo 'NO_CHANGE_TEMPORAL_ALREADY_COMPLETE'
+            exit 0
+          fi
+          git commit -m 'integrate(pool): Temporal full under YAIWES agent'
+          for i in 1 2 3 4 5; do
+            git push origin HEAD:main && exit 0
+            git fetch origin main
+            git rebase origin/main
+          done
+          exit 1
