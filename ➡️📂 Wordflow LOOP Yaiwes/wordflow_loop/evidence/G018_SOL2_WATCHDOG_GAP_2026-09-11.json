@@ -8,7 +8,7 @@
     "task_nodes_status": "CLAIMED",
     "claimed_by": "SOL_2",
     "step_1_research": "RUNNING",
-    "concurrent_foreign_node": "G-009 CLAIMED by SOL_1; G-030 PASS by SOL_1; no collision"
+    "concurrent_foreign_nodes": "G-008 PASS by SOL_1; G-009 PASS by SOL_1; G-030 PASS by SOL_1; no collision"
   },
   "research": {
     "canonical_binding_id": "UNIVERSAL_PLUGIN_BUS",
@@ -35,32 +35,36 @@
   ],
   "test_gate": {
     "test_commit": "845be9efa9f6d336e18875e91be5e05ef8207220",
-    "actions_runs_seen_for_test_commit": 6,
+    "actions_runs_seen_for_previous_evidence_commit": 6,
     "actions_success_runs_seen": 0,
-    "first_observed_run_id": 34593575484,
-    "first_observed_run_name": ".github/workflows/yaiwes-core-complete-inventory-audit.yml",
-    "first_observed_run_conclusion": "failure",
-    "relevant_unit_test_runner_found": false,
-    "global_push_workflows_are_not_g018_unit_test_evidence": true,
     "repo_pytest_execution": "NOT_VERIFIED",
     "local_clone_attempt": "BLOCKED_DNS_COULD_NOT_RESOLVE_GITHUB_COM",
     "closure_decision": "DO_NOT_CLOSE_G018"
   },
+  "runner_audit": {
+    "existing_workflow_checked": ".github/workflows/yaiwes-3step-programming-trigger.yml",
+    "workflow_blob": "8966076b38e53153a3c47515c01718a918d10789",
+    "result": "NOT_APPLICABLE_TO_G018",
+    "reason": "workflow sparse-checkout and test body target Agente Yaiwes principal programming runtime, not runtime/tests/test_fables_binding_gate.py",
+    "scope_decision": "DO_NOT_CREATE_OR_EDIT_DOT_GITHUB_WORKFLOW_OUTSIDE_AUTHORIZED_WRITE_ROOT"
+  },
   "fresh_main_readback": {
-    "main_head": "1130024fab313c074e3610acfadb331175e52732",
-    "main_head_message": "audit: Astra records reproduced G013 anchor drift without changing Sol nodes",
+    "main_head": "9483ca30201cc95772850c79d4154a1d5925660d",
+    "main_head_message": "G-011: checkpoint canonical motor wiring pending authoritative test",
     "handoff_blob": "d1635f5d7dd075e85af59a0bf7fa21a4d2cf4f1d",
     "binding_gate_blob": "516e639fc64d048a6bc922a4021c933985867a4b",
+    "generation_policy_blob": "384633550b995aae1187806017fb16b9411f0eed",
     "test_blob": "2729c653ba4b945b1e3ca20017bbdf1ae5669306",
     "g018_claim_preserved": true
   },
   "progress_this_cycle": [
     "fresh HANDOFF still selects G-018 as the next 1x1 node",
     "fresh TASK-NODES still assigns G-018 exclusively to SOL_2",
-    "fresh main advanced due Astra G013 audit without modifying Sol nodes",
-    "fresh source read-back confirms binding gate and G-018 test blobs unchanged",
-    "fresh local pytest attempt could not clone GitHub because the execution container has no GitHub DNS/network access",
-    "the six existing push workflows on the test commit still provide no successful G-018 unit-test execution"
+    "G-008, G-009 and G-030 are PASS under SOL_1 and do not collide with SOL_2",
+    "canonical Fables gate, generation policy and G-018 test blobs remain unchanged",
+    "latest main head belongs to independent G-011 work and does not modify the G-018 claim",
+    "existing YAIWES 3-Step programming runner was audited and cannot prove G-018 because it does not checkout or execute the G-018 runtime test",
+    "no workflow was created or edited outside the authorized Wordflow LOOP Yaiwes root"
   ],
   "next_action": "Execute runtime/tests/test_fables_binding_gate.py in a reproducible runner with access to current main and capture PASS/FAIL. Keep G-018 claimed by SOL_2 and do not unblock G-006 until that evidence exists.",
   "rules": ["NO_LFS", "NO_FORCE", "NO_PARALLEL_BUS", "FAIL_CLOSED"]
