@@ -1,7 +1,8 @@
 {
-  "schema": "yaiwes.watchdog-programming-plan/v5-strict",
+  "schema": "yaiwes.watchdog-programming-plan/v6-fastpath",
   "updated_at": "2026-09-10",
   "status": "ACTIVE_STRICT_3_STEPS",
+  "coordinator": "➡️ sol osquestador plan",
   "scope": {
     "work_root": "Core kernel Yaiwes/",
     "destination_root": "Agente Yaiwes principal/",
@@ -10,44 +11,96 @@
   },
   "crazy_wall": "📂 Bitácora stated JSON Craxy wall.json",
   "handoff": "Readme arquitectura Yaiwes/HANDOFF-INTEGRACION-1-20.md",
-  "recovery_grok_sol": "PARCHE-RECUPERACION-CORE-INTEGRACION-WATCHDOG.md",
-  "recovery_astra_claude": "PARCHE-RECUPERACION-ASTRA-CLAUDE-YAIWES-3-PASOS.md",
+  "coordinator_notes": "Core kernel Yaiwes/Crack wall bitácora stated JSON/NOTAS-ENCARRILAMIENTO-SOL-1-2-3.md",
+  "activation": [
+    "read_fresh_crazy_wall",
+    "read_fresh_coordinator_notes",
+    "read_owner_lock_current_step_next_action",
+    "claim_existing_free_node_only",
+    "execute_current_step_only"
+  ],
   "contract": [
     {
       "step": 1,
       "name": "ANALYZE_ABC_DESTINATION",
-      "actions": ["read_minimum_component_code", "decide_A_B_C", "select_exact_existing_target_under_destination_root"],
+      "actions": [
+        "read_minimum_component_code",
+        "identify_real_value",
+        "apply_agent_dekernel_rule_if_upstream_is_agent",
+        "decide_A_B_C",
+        "select_exact_existing_target_under_destination_root"
+      ],
       "output": "component -> A|B|C -> exact_target -> short_reason",
-      "forbidden": ["move", "wire", "prune", "test", "create_adapter", "create_motor", "new_architecture"]
+      "forbidden": ["move", "wire", "prune", "test", "create_motor", "new_architecture"]
     },
     {
       "step": 2,
       "name": "MOVE_WITH_CANONICAL_MOTOR",
       "actions": ["use_only_motor_root", "move_from_work_root_to_destination_root", "hash_readback", "skip_if_move_already_verified"],
       "output": "source -> canonical_motor -> target -> hash_readback",
-      "forbidden": ["wire", "prune", "test", "lfs", "force", "alternate_script", "new_motor"]
+      "forbidden": ["wire", "prune", "test", "lfs", "force", "alternate_script", "new_motor", "manual_move"]
     },
     {
       "step": 3,
       "name": "WIRE_PRUNE_IF_NEEDED_MICROTEST",
-      "actions": ["wire_real_capability", "fables_universal_plug_where_applicable", "minimal_adapter_port_wiring_only", "prune_only_for_concrete_cause", "minimal_functional_microtest", "surgical_repair_and_retest_on_failure"],
+      "actions": [
+        "wire_real_capability",
+        "fables_universal_plug_where_applicable",
+        "minimal_adapter_port_wiring_only",
+        "prune_only_for_concrete_cause",
+        "test_minimum_real_yaiwes_boundary",
+        "surgical_repair_and_retest_same_microtest_on_failure"
+      ],
       "output": "PASS_OR_GAP",
-      "forbidden": ["global_refactor", "blind_prune", "generic_wrapper_as_pass", "folder_import_source_probe_as_pass", "new_phase"]
+      "forbidden": ["full_upstream_build_unless_boundary_requires_it", "global_refactor", "blind_prune", "generic_wrapper_as_pass", "folder_import_source_probe_as_pass", "new_phase"]
     }
   ],
+  "agent_component_rule": {
+    "default": "DO_NOT_ADOPT_ANOTHER_KERNEL",
+    "decision": [
+      "identify useful deterministic workflow/tools/microservices/components",
+      "if extractable then decapitate_prune_upstream_kernel and classify B_or_C",
+      "if unique kernel value cannot be extracted then stop at STEP1 and emit KERNEL_VALUE_REVIEW"
+    ],
+    "kernel_review_format": "🤯🤯🧠🧠🧠 KERNEL_VALUE_REVIEW -> component -> unique_value -> evidence -> why_not_reducible_to_B_or_C",
+    "approval_required_before_kernel_integration": true
+  },
+  "fast_path": [
+    "physical_readback_first",
+    "never_repeat_verified_step",
+    "repair_exact_current_gap_only",
+    "microtest_minimum_real_capability_boundary",
+    "surgical_delta_then_repeat_same_test",
+    "separate_component_fail_from_publish_or_workflow_fail"
+  ],
+  "failure_classification": {
+    "COMPONENT_FAIL": "repair component adapter wiring or minimal dependency inside STEP3",
+    "PUBLISH_WORKFLOW_FAIL": "repair only persistence or workflow; never reopen already passing component"
+  },
   "no_step4": true,
   "failure_rule": "repair_inside_current_step; return to earlier owning step only when evidence proves destination or move incorrect; never create a new phase",
   "coordination": {
-    "writers": ["GROK", "SOL", "ASTRA", "CLAUDE"],
+    "writers": ["GROK", "SOL", "ASTRA", "CLAUDE", "➡️ sol osquestador plan"],
+    "coordinator": "➡️ sol osquestador plan",
+    "watchdog_activation_must_check_coordinator_notes": true,
+    "fresh_crazy_wall_overrides_old_notes": true,
+    "if_no_new_coordinator_note": "continue literal current_step and next_action; do not wait",
     "one_component_one_node": true,
-    "must_read_fresh_crazy_wall_before_claim": true,
     "may_claim_only_existing_free_node": true,
     "ai_may_create_new_work_node": false,
     "claimed_node_action": "SKIP",
-    "lock_flow": ["READ_FRESH", "CLAIM_EXISTING_FREE_NODE", "CHECKPOINT_BEFORE", "EXECUTE_CURRENT_STEP_ONLY", "CHECKPOINT_AFTER", "WRITE_EVIDENCE", "PASS_OR_GAP", "RELEASE"]
+    "lock_flow": ["READ_FRESH", "READ_COORDINATOR_NOTE", "CLAIM_EXISTING_FREE_NODE", "CHECKPOINT_BEFORE", "EXECUTE_CURRENT_STEP_ONLY", "CHECKPOINT_AFTER", "WRITE_EVIDENCE", "PASS_OR_GAP", "RELEASE"]
+  },
+  "queue": {
+    "new_nodes_after_1_20": 7,
+    "range": "N21-N27",
+    "closed": ["N22 Hatchet", "N24 Redis"],
+    "pending_gap": ["N21 Dagu", "N23 PostgreSQL", "N25 Workalendar", "N26 gVisor", "N27 pgvector"],
+    "pending_count": 5
   },
   "anti_dilation": [
     "no step4",
+    "no second kernel without explicit approval",
     "no new architecture",
     "no global refactor",
     "no benchmarks_or_100x",
@@ -60,16 +113,6 @@
     "no edit to another owner node",
     "no pass from folder import or source_probe",
     "no integration writes outside authorized roots"
-  ],
-  "watchdog_loop": [
-    "read fresh Crazy Wall",
-    "list existing FREE nodes only",
-    "claim one existing FREE node",
-    "execute current_step only",
-    "write checkpoint and physical evidence",
-    "PASS or concrete GAP",
-    "release",
-    "take next existing FREE node"
   ],
   "close_gate": "node PASS only with real evidence from its authorized current step"
 }
