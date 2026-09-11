@@ -17,7 +17,7 @@ Apertura: 2026-09-10. Esta fase no invalida el cierre local anterior; añade cap
 
 ## 1 — Raíz anclada de CODE GRAPH
 Se debe crear dentro del Wordflow un workspace canónico para recibir archivos y componentes. El grafo debe representar por nodos/aristas: archivo fuente, requisitos extraídos, capacidades, tareas, dependencias, destino arquitectónico, agente owner/reviewer, sandbox, tests, evidencia, deployment, GAPs, checkpoint y estado. No será un orquestador paralelo: debe consumir el contrato `tel.workflow/v4`, usar el fleet existente y persistir en Crazy Wall.
-Estado: `G-001 GAP_OPEN`.
+Estado: `G-001 GAP_OPEN` — siguiente nodo 1×1.
 
 ## 2 — Ask Council + auditoría de cada archivo
 Todo archivo recibido se audita antes de programar: tipo/formato, contenido, arquitectura, interfaces, dependencias, capacidades, riesgos, posibles comportamientos inseguros, intención, procedencia y compatibilidad. Ask Council puede razonar sobre alternativas; el resultado se normaliza a schema determinista antes de producir acciones.
@@ -29,8 +29,9 @@ Estado: `G-003 CLOSED_VERIFIED_LOCAL`.
 Implementación: `runtime/src/core/code_task_graph.py` blob `91fd7779b2e8c27e3dd7f282847df1e2e4ab4f62`; tests `runtime/tests/test_code_task_graph.py` blob `882eb17b4289c747adf3850407e8a6a13b80ae65`; reutiliza `runtime/src/core/dag_engine.py` blob `ed4361e9e2ca93e6744f9946d2334bf55b3ef63a`. Evidence: `wordflow_loop/evidence/G003_TASK_GRAPH_2026-09-10.json`. Verificación local equivalente: `PASS_5_OF_5_ASSERTIONS`; no se reclama ejecución externa/GitHub Actions.
 
 ## 4 — Decisión de ubicación en la arquitectura YAIWES
-El sistema estudiará función y límites del código para elegir entre: A Kernel; B Extension Kernel; C Reasoning Layer; D Wordflow en la cadena del agente; E Pool; F Tools; G otra ubicación justificable. La decisión usa privilegio, lifecycle, estado, latencia, acoplamiento, seguridad, dependencias y capacidad; nunca solo nombre de archivo.
-Estado: `G-004 GAP_OPEN` — siguiente nodo 1×1.
+El sistema estudia función y límites del código para elegir entre: A Kernel; B Extension Kernel; C Reasoning Layer; D Wordflow en la cadena del agente; E Pool; F Tools; G otra ubicación justificable. La decisión usa privilegio, lifecycle, estado, latencia, tipo de ejecución, invariantes de kernel, razonamiento, cadena de agente, fan-out, reutilización como tool, I/O y justificación explícita; nunca solo nombre de archivo.
+Estado: `G-004 CLOSED_VERIFIED_LOCAL`.
+Implementación: `runtime/src/core/placement_classifier.py` blob `69698ad30ba1903e0780efcea1952a3737aeb23e`; tests `runtime/tests/test_placement_classifier.py` blob `bf1c26f49edf668ee05584b2a357324af0fc4d8d`; evidence `wordflow_loop/evidence/G004_PLACEMENT_CLASSIFIER_2026-09-10.json`. Si hay señales débiles/conflictivas o una opción G sin ubicación+justificación, falla cerrado a `PLACEMENT_REVIEW_REQUIRED`. Simulación local equivalente: `PASS_10_OF_10_ASSERTIONS`; no se reclama runtime externo.
 
 ## 5 — Investigación técnica antes de crear code
 Política obligatoria `REUSE > PATCH > ADAPT > GENERATE`. Antes de crear se investigan librerías Python/YAML/schema/RAG/grafo/seguridad/colas/sandbox/deploy pertinentes. Cuando haya selección de biblioteca, comparar hasta 10 opciones útiles registrando fuente, licencia, compatibilidad, mantenimiento, riesgo e integración.
@@ -66,7 +67,7 @@ Estado: `G-012 GAP_OPEN`.
 
 ## 13 — Fuentes de verdad del LOOP
 Debe mantener y reconciliar: mapa/diagrama; HANDOFF; tareas generadas; tareas del Director; Crazy Wall BITÁCORA/STATE/CHECKPOINT/PLAN; Schema/DSL/DAG/Pipeline; evidencias y GAP ledger. Una discrepancia de estado abre GAP en vez de elegir silenciosamente una versión.
-Estado: `G-013 GAP_OPEN`.
+Estado: `G-013 GAP_OPEN` — core truths reconciliadas hasta checkpoint `0005`; falta política automática y test para cierre.
 
 ## 14 — `agente-readme-memoria.md` de cada agente
 Los 18 agentes tendrán memoria operativa versionada: rol, capacidades, restricciones, contratos, fuentes autorizadas, gates, evidence format, errores aprendidos y mejoras aprobadas. Se carga antes del trabajo y solo se perfecciona con aprendizaje verificado.
@@ -82,18 +83,18 @@ Estado: `G-016 GAP_IN_RESEARCH`.
 
 ## 17 — Despliegue determinista
 Revisar y adaptar pipeline existente. Cadena requerida: `validate → prepare/build → sandbox → tests → reviewer independiente → promote → checkpoint → rollback/compensation`. Ninguna salida generativa se despliega directamente.
-Estado: `G-017 GAP_OPEN`.
+Estado: `G-017 GAP_OPEN`; installation/deployment actual contiene PASS/health estáticos que no se aceptan como prueba real.
 
 ## 18 — Enchufe Universal Fables único
 Confirmar físicamente código canónico + Ficha/Contract. Todo módulo nuevo se integra a través de ese ABI/plug; prohibido crear buses o rutas de integración paralelas.
-Estado: `G-018 GAP_IN_RESEARCH` — búsquedas actuales dentro del LOOP no han producido source proof exacto; no se crea sustituto.
+Estado: `G-018 GAP_IN_RESEARCH`; no se crea sustituto.
 
 ## 19 — Auditoría global del Wordflow
 Inventariar capacidades existentes y encontrar duplicados, piezas huérfanas, rutas rotas, documentación obsoleta, code no utilizado y GAPs reales. Regla: no rehacer trabajo ya verificado.
 Estado: `G-019 GAP_OPEN`.
 
 ## 20 — 12 direcciones de comunidad/desarrollo
-Crear catálogo de al menos 12 fuentes verificadas para investigación de arquitectura/programación. Debe indicar URL, tema, autoridad/uso y cuándo un agente debe consultar la fuente antes de decidir.
+Catálogo de 12 fuentes verificadas para investigación de arquitectura/programación con URL, tema, autoridad/uso y cuándo consultar.
 Estado: `G-020 CLOSED_VERIFIED` — `wordflow_loop/research/community_sources.json` blob `5c03a6a13b5df868f21eb6f744fcc20489c4d183`.
 
 ## 21 — Cola + ejecución paralela
@@ -105,7 +106,7 @@ Antes de ejecutar code candidato: sandbox con límites de filesystem/network/tim
 Estado: `G-022 GAP_OPEN`; el descriptor actual no prueba aislamiento físico.
 
 ## 23 — Hugging Face: dataset + skills bridge
-Verificar con acceso/conector real los datasets, modelos, Spaces y skills disponibles. No asumir acceso a secretos por existir referencias. Crear bridge determinista que inyecte recursos/skills aprobados antes de la tarea sin exponer tokens.
+Verificar con acceso/conector real los datasets, modelos, Spaces y skills disponibles. No asumir acceso a secretos por existir referencias. Crear bridge determinista que inyecte recursos/skills aprobados antes de cada trabajo de agente sin exponer tokens.
 Estado: `G-023 GAP_IN_RESEARCH`.
 
 ## 24 — LLM solo para razonamiento
@@ -116,31 +117,30 @@ Estado: `G-024 GAP_OPEN`.
 Evaluar 1×1: pool persistente, priority queue, LRU/mmap, smart batching, streaming/backpressure, asyncio.Queue pipeline, dedup, Job ABI, registry/factory/DI/event bus/middleware/FSM/checkpoints/audit/tests/version/sandbox/capability routing. Sus multiplicadores de rendimiento quedan como hipótesis hasta benchmark local.
 Estado: `G-025 GAP_OPEN`.
 
-## 26 — Patrones del documento MAX-SYSTEM-100X-FINAL-1
-Evaluar 1×1: fan-out/fan-in, batching, sharding, idempotency+DLQ, outbox+CDC, multi-pool, durable execution, recovery, multi-sandbox y memoria persistente. Se debe preferir la fundación LOOP existente antes de incorporar infraestructura nueva.
+## 26 — UI/visual para operar el LOOP
+Investigar una capa visual para mapa de DAG/grafos, cola, estado de tareas, GAPs, agentes, evidencia y checkpoints. Priorizar componentes ya presentes en repositorios del usuario y evitar un frontend monolítico.
 Estado: `G-026 GAP_OPEN`.
 
 ## 27 — Graphiti
-Localizado en `maxbry123-commits/osquestador-auditor/graphiti`. Investigación inicial: grafo temporal/contextual para agentes con provenance por episodios, actualizaciones incrementales, retrieval híbrido, tipos Pydantic, MCP y FastAPI. Candidato para memoria/provenance/contexto de arquitectura y tareas; no reemplaza el scheduler DAG.
+Localizado en `maxbry123-commits/osquestador-auditor/graphiti`. Candidato para memoria/provenance/contexto de arquitectura y tareas; no reemplaza el scheduler DAG.
 Estado: `G-027 GAP_IN_RESEARCH`.
 
 ## 28 — Graphology
-Localizado en `maxbry123-commits/osquestador-auditor/graphology`. Investigación inicial: Graph object JS/TS, algoritmos/layout/traversal/eventos, usado por Sigma.js. Candidato para estructura/visualización interactiva del mapa de tareas; no durable execution.
+Localizado en `maxbry123-commits/osquestador-auditor/graphology`. Candidato para estructura/visualización interactiva del mapa de tareas; no durable execution.
 Estado: `G-028 GAP_IN_RESEARCH`.
 
 ## 29 — Planificación organizada de tareas
-Investigar piezas existentes en el repo auditor (Dagster, Prefect, Argo Workflows, Inngest, Trigger.dev, Restate, Airflow, `orchestrator`) y compararlas con la fundación Wordflow ya existente (LangGraph/Temporal/Prefect/Hatchet/redun históricos). Prohibido añadir otro orquestador si no cierra una capacidad no cubierta.
-Estado: `G-029 GAP_IN_RESEARCH`; para G-003 se decidió REUSE del DAG local, no añadir orquestador.
+Investigar piezas existentes en el repo auditor y compararlas con la fundación Wordflow ya existente. Prohibido añadir otro orquestador si no cierra una capacidad no cubierta.
+Estado: `G-029 GAP_IN_RESEARCH`; para G-003 se decidió REUSE del DAG local.
 
 ## 30 — Crazy Wall compartido por agentes
-Los agentes deben compartir un estado lógico sin pisarse: task ownership, node ownership, versión/checkpoint, idempotency y reglas de merge/conflict. Al cerrar un grupo de GAPs/tareas se conserva evidencia/historial y se abre el siguiente grupo. El operador/supervisor reconcilia cada hora.
+Los agentes deben compartir un estado lógico sin pisarse: task ownership, node ownership, versión/checkpoint, idempotency y reglas de merge/conflict. Al cerrar un grupo de GAPs/tareas se conserva evidencia/historial y se abre el siguiente grupo.
 Estado: `G-030 GAP_OPEN`.
 
 # Investigación inicial registrada
-- `osquestador-auditor` contiene Graphiti y Graphology, además de candidatos GraphRAG/FalkorDB/Neo4j y motores de planificación/visualización. Presencia ≠ selección.
-- Skill canónico de motores leído: `COPY_ONLY / IMMUTABLE_MOTORS`, allowlist exacta de 7 archivos, blobs fijos, destino explícito, no LFS, no force y read-back obligatorio.
-- Fuente canónica indicada por el skill: `maxbry123-commits/frontend/main/➡️📂motores de descarga extracción copiado movimiento archivos fromtend/`.
-- `runtime/src/core/dag_engine.py` ya cubre DAG topológico determinista, ciclos y batches paralelos; G-003 lo reutiliza.
+- `osquestador-auditor` contiene Graphiti y Graphology, además de candidatos de grafo y planificación. Presencia ≠ selección.
+- Skill canónico de motores: `COPY_ONLY / IMMUTABLE_MOTORS`, destino explícito, no LFS, no force y read-back obligatorio.
+- `runtime/src/core/dag_engine.py` cubre DAG topológico determinista, ciclos y batches paralelos; se reutiliza.
 
 # Persistencia y reglas de esta fase
 - GAP ledger: `Crazy Wall Orquestador/GAPS-INVESTIGACION-CODE-GRAPH-20260910.md`.
