@@ -25,8 +25,11 @@
       "source_location": "maxbry123-commits/osquestador-auditor/BrowserUse",
       "publish_commit": "133384f08151949a024975afd1223b8262f081c4",
       "acquisition": "VERIFIED_CLOSED",
-      "fables": "PENDING_RUNTIME_REGISTRATION",
-      "sandbox_test": "PENDING"
+      "adapter": "wordflow_loop/adapters/browser_use_adapter.py",
+      "ficha": "wordflow_loop/contracts/ficha.browser_use.v2.json",
+      "adapter_state": "IMPLEMENTED_FAIL_CLOSED",
+      "fables": "PENDING_RUNTIME_REGISTRATION_G018",
+      "sandbox_test": "PENDING_G022"
     },
     {
       "id": "megamem",
@@ -44,10 +47,19 @@
       "id": "graphiti",
       "decision": "ADAPT",
       "role": "temporal_context_provenance_agent_memory",
+      "source_repo": "getzep/graphiti",
+      "source_version": "0.29.3",
+      "source_commit": "021d3a57d511f21b10adaf7fa923bd5c1fce5e9d",
       "source_location": "maxbry123-commits/osquestador-auditor/graphiti",
-      "provenance": "SOURCE_LOCATED_EXACT_ACQUISITION_MANIFEST_PENDING",
-      "fables": "BLOCKED_BY_PROVENANCE_GATE",
-      "sandbox_test": "PENDING"
+      "acquisition": "REUSE_EXISTING_SNAPSHOT",
+      "provenance": "CROSSCHECKED_3_EXACT_UPSTREAM_BLOBS",
+      "provenance_blobs": {
+        "pyproject.toml": "8ed8dbab39eec12d213076a5d8c937245ba065ed",
+        "LICENSE": "5feb0d9d299a1107adfa8331306b13cc0eff2d78",
+        "graphiti_core/graphiti.py": "7555a1f828c4b94970911876bfd257aaa4577d4c"
+      },
+      "fables": "PENDING_RUNTIME_REGISTRATION_G018",
+      "sandbox_test": "PENDING_G022"
     },
     {
       "id": "graphology",
