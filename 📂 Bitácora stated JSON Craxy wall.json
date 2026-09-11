@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-11T04:10:10.614316+00:00",
+  "updated_at": "2026-09-11T04:11:52.014228+00:00",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -936,10 +936,10 @@
       "status": "PASS",
       "abc": "C",
       "target": "Agente Yaiwes principal/state-events-durability/run-state-store/postgresql/",
-      "owner": null,
-      "lock": "FREE",
+      "owner": "SOL",
+      "lock": "CLAIMED",
       "checkpoint": {
-        "before": "2026-09-11T04:09:30.514475+00:00 SOL integración 1 user-extended loop: fresh N23 STEP2 claim; execute existing canonical Motor4 only; source populated, target previously absent",
+        "before": "2026-09-11T04:11:52.014228+00:00 SOL integración 1 N23 STEP3: STEP2 Motor4/read-back PASS; wire FABLES and run real PostgreSQL initdb/server/query microtest only",
         "after": "2026-09-11T04:10:10.614316+00:00 STEP2 PASS: canonical Motor4 immutable SHA verified; PostgreSQL moved source->run-state-store; origin/main source absent, target populated, README read-back PASS"
       },
       "evidence": [
@@ -1010,6 +1010,12 @@
           "event": "STEP2_PASS_RELEASE",
           "run": 34561107291,
           "commit": "e6e080dbcac153a44cb4d8dc490ef8c0d2665f7b"
+        },
+        {
+          "at": "2026-09-11T04:11:52.014228+00:00",
+          "actor": "SOL",
+          "label": "SOL integración 1",
+          "event": "CLAIM_STEP3_USER_SCOPE_EXTENSION"
         }
       ],
       "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
