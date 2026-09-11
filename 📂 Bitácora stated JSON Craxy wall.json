@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-11T04:26:54.937093+00:00",
+  "updated_at": "2026-09-11T04:28:57.839533+00:00",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1188,10 +1188,10 @@
       "status": "PASS",
       "abc": "C",
       "target": "Agente Yaiwes principal/execution-orchestration/container-pod-isolation/gvisor/",
-      "owner": null,
-      "lock": "FREE",
+      "owner": "SOL",
+      "lock": "CLAIMED",
       "checkpoint": {
-        "before": "2026-09-11T04:22:04.210773+00:00 SOL integración 1 user-extended loop: N26 STEP2 claim; canonical Motor4 only; source populated; target exact path pending",
+        "before": "2026-09-11T04:28:57.839533+00:00 SOL integración 1 N26 STEP3: STEP2 Motor4/read-back PASS; build moved runsc and execute real rootless ptrace sandbox command",
         "after": "2026-09-11T04:24:34.033018+00:00 STEP2 PASS: canonical Motor4 immutable; internal symlink frontier materialized before Motor4; gVisor moved to container-pod-isolation; source absent + target README/runsc origin/main read-back PASS"
       },
       "evidence": [
@@ -1208,7 +1208,8 @@
         "step2:run:34562041394",
         "step2:move_commit:11b3f0be3d781bbf0292ef9c359e7a05973b5fe3",
         "step2:motor4:VERIFIED_CLOSED",
-        "step2:readback:source_absent+target_populated+README+runsc_PASS"
+        "step2:readback:source_absent+target_populated+README+runsc_PASS",
+        "step3:worker:SOL integración 1:user_scope_extension"
       ],
       "history": [
         {
@@ -1242,6 +1243,12 @@
           "event": "STEP2_PASS_RELEASE",
           "run": 34562041394,
           "commit": "11b3f0be3d781bbf0292ef9c359e7a05973b5fe3"
+        },
+        {
+          "at": "2026-09-11T04:28:57.839533+00:00",
+          "actor": "SOL",
+          "label": "SOL integración 1",
+          "event": "CLAIM_STEP3_USER_SCOPE_EXTENSION"
         }
       ],
       "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
