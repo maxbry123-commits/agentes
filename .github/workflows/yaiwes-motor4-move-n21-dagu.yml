@@ -41,7 +41,7 @@ jobs:
             /Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/ficha_contract_v2.py
             /Agente Yaiwes principal/execution-orchestration/state-machine-executor/dagu/
 
-      - name: Claim N21 STEP3 from fresh Crazy Wall
+      - name: Claim or resume N21 STEP3 from fresh Crazy Wall
         shell: bash
         run: |
           set -euo pipefail
@@ -57,19 +57,28 @@ jobs:
           p=os.environ['WALL']
           d=json.load(open(p,encoding='utf-8'))
           n=next(x for x in d['nodes'] if x['id']==21)
-          if n.get('owner') is not None or n.get('lock')!='FREE' or n.get('current_step')!=3:
-              raise SystemExit(f"N21_NOT_FREE_STEP3 owner={n.get('owner')} lock={n.get('lock')} step={n.get('current_step')}")
           now=datetime.now(timezone.utc).isoformat()
-          n['owner']='SOL'; n['lock']='CLAIMED'; n['status']='PASS'
-          n.setdefault('checkpoint',{})['before']=now+' SOL integración 1 fresh STEP3: STEP2 source absent + target read-back PASS; wire Dagu only and execute minimal real two-step DAG'
-          n.setdefault('evidence',[]).append('step3:worker:SOL integración 1')
-          n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 1','event':'CLAIM_STEP3'})
-          n['next_action']='STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST'
+          if n.get('owner') is None and n.get('lock')=='FREE' and n.get('current_step')==3:
+              n['owner']='SOL'; n['lock']='CLAIMED'
+              n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 1','event':'CLAIM_STEP3'})
+          elif n.get('owner')=='SOL' and n.get('lock')=='CLAIMED' and n.get('current_step')==3 and any(h.get('label')=='SOL integración 1' and h.get('event')=='CLAIM_STEP3' for h in n.get('history',[])):
+              n['status']='GAP'
+              n.setdefault('checkpoint',{})['after']='STEP3 GAP run 34558634272: Dagu CLI build PASS; generated adapter failed before functional microtest with SyntaxError unterminated string literal line 30 caused by newline escaping in runner materialization.'
+              ev=n.setdefault('evidence',[])
+              for item in ['step3:gap_run:34558634272','step3:cli_build:PASS','step3:gap_exact:dagu_adapter.py SyntaxError unterminated string literal line 30','step3:strategy_delta:preserve-generated-source-backslashes-and-repeat-same-DAG']:
+                  if item not in ev: ev.append(item)
+              if not any(h.get('event')=='STEP3_GAP_ADAPTER_ESCAPE' and h.get('run')==34558634272 for h in n.get('history',[])):
+                  n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 1','event':'STEP3_GAP_ADAPTER_ESCAPE','run':34558634272})
+          else:
+              raise SystemExit(f"N21_NOT_OWNED_OR_FREE_STEP3 owner={n.get('owner')} lock={n.get('lock')} step={n.get('current_step')}")
+          n['status']='GAP'
+          n.setdefault('checkpoint',{})['before']=now+' SOL integración 1 STEP3 retry: same real DAG; surgical adapter escape correction only'
+          n['next_action']='STEP3_RETRY_SAME_REAL_DAG_AFTER_ADAPTER_ESCAPE_FIX'
           d['updated_at']=now
           with open(p,'w',encoding='utf-8') as f: json.dump(d,f,ensure_ascii=False,indent=2); f.write('\n')
           PY
             git add -- "$WALL"
-            git commit -m 'watchdog(yaiwes): SOL integración 1 claim N21 STEP3'
+            git commit -m 'crazy-wall: SOL integración 1 N21 STEP3 retry exact adapter GAP'
             if git push origin HEAD:main; then ok=1; break; fi
             sleep $((attempt * 2))
           done
@@ -86,12 +95,12 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import hashlib, json, os
+          import hashlib, json, os, textwrap
           from pathlib import Path
           adapter=Path(os.environ['ADAPTER'])
           ficha=Path(os.environ['FICHA'])
           adapter.parent.mkdir(parents=True,exist_ok=True)
-          source='''"""YAIWES Dagu adapter: execute one real local two-step DAG through the moved Dagu binary."""
+          source=r'''"""YAIWES Dagu adapter: execute one real local two-step DAG through the moved Dagu binary."""
           import json
           import os
           import shlex
@@ -123,20 +132,15 @@ jobs:
                       "steps:\n"
                       "  - id: first\n"
                       "    name: first\n"
-                      f"    run: printf 'first\\n' > {q}\n"
+                      f"    run: echo first > {q}\n"
                       "  - id: second\n"
                       "    name: second\n"
                       "    depends: first\n"
-                      f"    run: printf 'second\\n' >> {q}\n",
+                      f"    run: echo second >> {q}\n",
                       encoding="utf-8")
                   env=os.environ.copy()
                   home=td / "home"; home.mkdir()
-                  env.update({
-                      "HOME":str(home),
-                      "XDG_CONFIG_HOME":str(td/"config"),
-                      "XDG_DATA_HOME":str(td/"data"),
-                      "XDG_CACHE_HOME":str(td/"cache"),
-                  })
+                  env.update({"HOME":str(home),"XDG_CONFIG_HOME":str(td/"config"),"XDG_DATA_HOME":str(td/"data"),"XDG_CACHE_HOME":str(td/"cache")})
                   proc=subprocess.run([str(binary),"start",str(workflow)],cwd=td,env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=120)
                   output=proc.stdout[-12000:]
                   if proc.returncode != 0:
@@ -152,22 +156,17 @@ jobs:
               result=run_microtest(sys.argv[1],sys.argv[2])
               print("YAIWES_DAGU_RESULT="+json.dumps(result,separators=(",",":")))
           '''
-          # Strip workflow indentation introduced by the YAML heredoc.
-          import textwrap
           source=textwrap.dedent(source)
+          compile(source,str(adapter),'exec')
           adapter.write_text(source,encoding='utf-8')
           digest='sha256:'+hashlib.sha256(source.encode()).hexdigest()
           manifest={
-            "artifact_id":"yaiwes.orchestration.dagu",
-            "version":"1.0.0",
-            "estado":"active",
-            "contract_hash":digest,
+            "artifact_id":"yaiwes.orchestration.dagu","version":"1.0.0","estado":"active","contract_hash":digest,
             "tribunal_case_id":"YAIWES-N21-DAGU-STEP3",
             "contrato":{"rol":"transform","consume":{"datatype":{"family":"json","type":"object","version":1}},"expone":{"datatype":{"family":"json","type":"object","version":1}}},
             "ejecucion":{"kind":"code","transport":"stdio","runtime_type":"compute","entry_point":os.environ['ADAPTER']+":run_microtest","idempotente":True},
             "seguridad":{"sandbox":"process","limites":{"timeout_ms":180000,"deadline_ms":180000}},
-            "firma":{"gpg_key_id":"YAIWES-N21"},
-            "categoria":"pipeline","etapa":"P",
+            "firma":{"gpg_key_id":"YAIWES-N21"},"categoria":"pipeline","etapa":"P",
             "perfiles":{"n0":{"habilitada":True,"iteraciones":1,"simulaciones":0,"criticas":0,"muestras_k":1}},
             "repeticion":{"max":1,"condicion":"nunca"},"repite_en":[],
             "activacion":{"eventos":["kernel.v2.plugin.enchufed"],"wake_words":[],"condicion":""},
@@ -175,9 +174,9 @@ jobs:
             "telemetria":{"metricas":["tiempo","errores","health"],"span_otel":True},
             "evidencia":{"produce":["L2_build","L3_runtime","L4_feature"],"destino":str(adapter.parent)+"/"},
             "failover":{"sustituible_por":[],"compensacion":"fail_closed"},
-            "salud":{"metodo":"exec","heartbeat_interval_s":30}
-          }
+            "salud":{"metodo":"exec","heartbeat_interval_s":30}}
           ficha.write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          print('DAGU_ADAPTER_COMPILE=PASS')
           print('DAGU_ADAPTER_SHA256='+digest)
           PY
 
@@ -189,77 +188,51 @@ jobs:
           test "$(git hash-object "$FICHA_CODE")" = 'a72508027cc2458553ef6a2255a9aa33d9a77a21'
           cd "$TARGET"
           go build -o /tmp/yaiwes-dagu ./cmd
-          /tmp/yaiwes-dagu version || /tmp/yaiwes-dagu --version || true
           test -x /tmp/yaiwes-dagu
           echo DAGU_CLI_BUILD=PASS
 
-      - name: FABLES Enchufe plus real two-step Dagu DAG microtest
+      - name: FABLES Enchufe plus same real two-step Dagu DAG microtest
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import hashlib, importlib.util, json, os, subprocess, sys
+          import hashlib, json, os, subprocess, sys
           from pathlib import Path
-          root=Path.cwd()
-          adapter=root/os.environ['ADAPTER']; ficha=root/os.environ['FICHA']; bus_path=root/os.environ['BUS']
-          source=adapter.read_text(encoding='utf-8')
-          manifest=json.loads(ficha.read_text(encoding='utf-8'))
-          actual='sha256:'+hashlib.sha256(source.encode()).hexdigest()
-          assert actual==manifest['contract_hash'], (actual,manifest['contract_hash'])
-          sys.path.insert(0,str(bus_path.parent))
-          import universal_plugin_bus_v2_integrated as bus_mod
-          bus=bus_mod.UniversalPluginBus()
-          bus.add_tribunal_approval(manifest['tribunal_case_id'])
-          candidate=bus_mod.ComponentCandidate(source,'python',[os.environ['ADAPTER']])
-          conventions=bus_mod.TargetConventions('python','snake_case','sync','gradual')
+          root=Path.cwd(); adapter=root/os.environ['ADAPTER']; ficha=root/os.environ['FICHA']; bus_path=root/os.environ['BUS']
+          source=adapter.read_text(encoding='utf-8'); manifest=json.loads(ficha.read_text(encoding='utf-8'))
+          actual='sha256:'+hashlib.sha256(source.encode()).hexdigest(); assert actual==manifest['contract_hash']
+          sys.path.insert(0,str(bus_path.parent)); import universal_plugin_bus_v2_integrated as bus_mod
+          bus=bus_mod.UniversalPluginBus(); bus.add_tribunal_approval(manifest['tribunal_case_id'])
+          candidate=bus_mod.ComponentCandidate(source,'python',[os.environ['ADAPTER']]); conventions=bus_mod.TargetConventions('python','snake_case','sync','gradual')
           reg=bus.enchufar(manifest,candidate,conventions,registered_by='SOL integración 1')
-          assert reg.status==bus_mod.PluginStatus.ACTIVE, reg
-          assert reg.plugin_id=='yaiwes.orchestration.dagu', reg.plugin_id
-          bus.health.heartbeat(reg.plugin_id)
-          assert bus.check_plugin_health(reg.plugin_id)
+          assert reg.status==bus_mod.PluginStatus.ACTIVE and reg.plugin_id=='yaiwes.orchestration.dagu'
+          bus.health.heartbeat(reg.plugin_id); assert bus.check_plugin_health(reg.plugin_id)
           proc=subprocess.run([sys.executable,str(adapter),str(root),'/tmp/yaiwes-dagu'],cwd=root,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=150)
           print(proc.stdout,end='')
-          if proc.returncode != 0:
-              raise RuntimeError(f'DAGU_ADAPTER_RUN_FAILED:{proc.returncode}')
-          marker='YAIWES_DAGU_RESULT='
-          payload=next((x[len(marker):] for x in proc.stdout.splitlines() if x.startswith(marker)),None)
+          if proc.returncode != 0: raise RuntimeError(f'DAGU_ADAPTER_RUN_FAILED:{proc.returncode}')
+          marker='YAIWES_DAGU_RESULT='; payload=next((x[len(marker):] for x in proc.stdout.splitlines() if x.startswith(marker)),None)
           if payload is None: raise RuntimeError('DAGU_RESULT_MARKER_MISSING')
-          result=json.loads(payload)
-          assert result['status']=='PASS', result
-          assert result['order']==['first','second'], result
-          bus.evidence.collect(reg.plugin_id,bus_mod.EvidenceLevel.L3,{'microtest':result})
-          bus.evidence.collect(reg.plugin_id,bus_mod.EvidenceLevel.L4,{'capability':'real_two_step_dependency_dag','verified':True})
-          levels=[e['level'] for e in bus.evidence.get(reg.plugin_id)]
-          assert 'L2_build' in levels and 'L3_runtime' in levels and 'L4_feature' in levels, levels
-          ev={
-            'node':21,'worker':'SOL integración 1','status':'PASS',
-            'route':'UniversalPluginBus/FABLES -> Dagu adapter -> moved Dagu CLI -> real DAG(first -> second)',
-            'plugin_id':reg.plugin_id,'microtest':'real_two_step_dependency_dag','order':result['order'],
-            'evidence_levels':levels,'run':int(os.environ['GITHUB_RUN_ID']),'runner_commit':os.environ['GITHUB_SHA'],
-            'adapter_sha256':actual,'canonical_bus_blob':'470f9c91650bc6c59e2900f7e71090b84363da9f',
-            'canonical_ficha_code_blob':'a72508027cc2458553ef6a2255a9aa33d9a77a21','prune':'NOT_NEEDED'}
+          result=json.loads(payload); assert result['status']=='PASS' and result['order']==['first','second'], result
+          bus.evidence.collect(reg.plugin_id,bus_mod.EvidenceLevel.L3,{'microtest':result}); bus.evidence.collect(reg.plugin_id,bus_mod.EvidenceLevel.L4,{'capability':'real_two_step_dependency_dag','verified':True})
+          levels=[e['level'] for e in bus.evidence.get(reg.plugin_id)]; assert 'L2_build' in levels and 'L3_runtime' in levels and 'L4_feature' in levels,levels
+          ev={'node':21,'worker':'SOL integración 1','status':'PASS','route':'UniversalPluginBus/FABLES -> Dagu adapter -> moved Dagu CLI -> real DAG(first -> second)','plugin_id':reg.plugin_id,'microtest':'real_two_step_dependency_dag','order':result['order'],'evidence_levels':levels,'run':int(os.environ['GITHUB_RUN_ID']),'runner_commit':os.environ['GITHUB_SHA'],'adapter_sha256':actual,'canonical_bus_blob':'470f9c91650bc6c59e2900f7e71090b84363da9f','canonical_ficha_code_blob':'a72508027cc2458553ef6a2255a9aa33d9a77a21','prune':'NOT_NEEDED'}
           Path(os.environ['EVIDENCE']).write_text(json.dumps(ev,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-          print('DAGU_REAL_DEPENDENCY_DAG=PASS first->second')
-          print('YAIWES_FABLES_ENCHUFE=PASS ACTIVE L2+L3+L4')
+          print('DAGU_REAL_DEPENDENCY_DAG=PASS first->second'); print('YAIWES_FABLES_ENCHUFE=PASS ACTIVE L2+L3+L4')
           PY
 
       - name: Persist STEP3 adapter ficha and evidence
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- "$ADAPTER" "$FICHA" "$EVIDENCE"
-          git diff --cached --check
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$ADAPTER" "$FICHA" "$EVIDENCE"; git diff --cached --check
           git commit -m 'wire(yaiwes): Dagu N21 FABLES real DAG STEP3 PASS'
           git reset --hard HEAD
           ok=0
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             if git rebase origin/main && git push origin HEAD:main; then ok=1; break; fi
-            git rebase --abort || true
-            git reset --hard HEAD
-            sleep $((attempt * 2))
+            git rebase --abort || true; git reset --hard HEAD; sleep $((attempt * 2))
           done
           test "$ok" -eq 1
           echo "EVIDENCE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
@@ -282,33 +255,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           ok=0
           for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            git reset --hard origin/main
+            git fetch origin main; git reset --hard origin/main
             python3 - <<'PY'
           import hashlib, json, os
           from datetime import datetime, timezone
           p=os.environ['WALL']; d=json.load(open(p,encoding='utf-8')); n=next(x for x in d['nodes'] if x['id']==21)
-          if n.get('owner')!='SOL' or n.get('lock')!='CLAIMED' or n.get('current_step')!=3:
-              raise SystemExit(f"N21_CLAIM_LOST:{n.get('owner')}:{n.get('lock')}:{n.get('current_step')}")
-          now=datetime.now(timezone.utc).isoformat(); run=os.environ.get('GITHUB_RUN_ID',''); commit=os.environ.get('EVIDENCE_COMMIT','')
-          adapter=open(os.environ['ADAPTER'],encoding='utf-8').read(); sha=hashlib.sha256(adapter.encode()).hexdigest()
-          n['status']='PASS'
-          n['checkpoint']['after']=now+' STEP3 PASS: FABLES ACTIVE; moved Dagu CLI executed real two-step dependency DAG first->second; L2+L3+L4 evidence; prune NOT_NEEDED; origin/main read-back PASS'
-          n.setdefault('evidence',[]).extend([
-            'step3:run:'+run,'step3:evidence_commit:'+commit,'step3:adapter_sha256:'+sha,
-            'step3:route:FABLES->Dagu adapter->moved Dagu CLI->real DAG(first->second)',
-            'step3:microtest:PASS order=first,second','step3:evidence:L2_build+L3_runtime+L4_feature',
-            'step3:prune:NOT_NEEDED','step3:readback:source-absent+adapter+ficha+evidence PASS'])
+          if n.get('owner')!='SOL' or n.get('lock')!='CLAIMED' or n.get('current_step')!=3: raise SystemExit(f"N21_CLAIM_LOST:{n.get('owner')}:{n.get('lock')}:{n.get('current_step')}")
+          now=datetime.now(timezone.utc).isoformat(); run=os.environ.get('GITHUB_RUN_ID',''); commit=os.environ.get('EVIDENCE_COMMIT',''); adapter=open(os.environ['ADAPTER'],encoding='utf-8').read(); sha=hashlib.sha256(adapter.encode()).hexdigest()
+          n['status']='PASS'; n['checkpoint']['after']=now+' STEP3 PASS: FABLES ACTIVE; moved Dagu CLI executed real two-step dependency DAG first->second; L2+L3+L4 evidence; prune NOT_NEEDED; origin/main read-back PASS'
+          n.setdefault('evidence',[]).extend(['step3:run:'+run,'step3:evidence_commit:'+commit,'step3:adapter_sha256:'+sha,'step3:route:FABLES->Dagu adapter->moved Dagu CLI->real DAG(first->second)','step3:microtest:PASS order=first,second','step3:evidence:L2_build+L3_runtime+L4_feature','step3:prune:NOT_NEEDED','step3:readback:source-absent+adapter+ficha+evidence PASS'])
           n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 1','event':'STEP3_PASS_RELEASE','run':int(run),'commit':commit})
           n['owner']=None; n['lock']='FREE'; n['next_action']='COMPLETE'; d['updated_at']=now
           with open(p,'w',encoding='utf-8') as f: json.dump(d,f,ensure_ascii=False,indent=2); f.write('\n')
           PY
-            git add -- "$WALL"
-            git commit -m 'crazy-wall: SOL integración 1 N21 STEP3 PASS release'
+            git add -- "$WALL"; git commit -m 'crazy-wall: SOL integración 1 N21 STEP3 PASS release'
             if git push origin HEAD:main; then ok=1; break; fi
             sleep $((attempt * 2))
           done
