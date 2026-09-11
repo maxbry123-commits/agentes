@@ -8,7 +8,7 @@
     "task_nodes_status": "CLAIMED",
     "claimed_by": "SOL_2",
     "step_1_research": "RUNNING",
-    "concurrent_foreign_nodes": "G-008 PASS by SOL_1; G-009 PASS by SOL_1; G-030 PASS by SOL_1; no collision"
+    "concurrent_foreign_nodes": "G-008 PASS by SOL_1; G-009 PASS by SOL_1; G-030 PASS by SOL_1; G-011 active under SOL_1 evidence stream; no collision"
   },
   "research": {
     "canonical_binding_id": "UNIVERSAL_PLUGIN_BUS",
@@ -46,26 +46,27 @@
     "workflow_blob": "8966076b38e53153a3c47515c01718a918d10789",
     "result": "NOT_APPLICABLE_TO_G018",
     "reason": "workflow sparse-checkout and test body target Agente Yaiwes principal programming runtime, not runtime/tests/test_fables_binding_gate.py",
+    "fresh_recursive_tree_audit": "NO_G018_OR_FABLES_SPECIFIC_WORKFLOW_FOUND_ON_MAIN",
+    "fresh_tree_head": "559571eea7a5a6ad6b1a52df121e99fe7925fab3",
     "scope_decision": "DO_NOT_CREATE_OR_EDIT_DOT_GITHUB_WORKFLOW_OUTSIDE_AUTHORIZED_WRITE_ROOT"
   },
   "fresh_main_readback": {
-    "main_head": "9483ca30201cc95772850c79d4154a1d5925660d",
-    "main_head_message": "G-011: checkpoint canonical motor wiring pending authoritative test",
+    "main_head": "559571eea7a5a6ad6b1a52df121e99fe7925fab3",
+    "main_head_message": "sol1: checkpoint G-011 runner probe fail-closed",
     "handoff_blob": "d1635f5d7dd075e85af59a0bf7fa21a4d2cf4f1d",
-    "binding_gate_blob": "516e639fc64d048a6bc922a4021c933985867a4b",
-    "generation_policy_blob": "384633550b995aae1187806017fb16b9411f0eed",
+    "task_nodes_blob": "6f4867aadd6d8065f8e90eef5c6a2628318865a6",
     "test_blob": "2729c653ba4b945b1e3ca20017bbdf1ae5669306",
     "g018_claim_preserved": true
   },
   "progress_this_cycle": [
-    "fresh HANDOFF still selects G-018 as the next 1x1 node",
-    "fresh TASK-NODES still assigns G-018 exclusively to SOL_2",
-    "G-008, G-009 and G-030 are PASS under SOL_1 and do not collide with SOL_2",
-    "canonical Fables gate, generation policy and G-018 test blobs remain unchanged",
-    "latest main head belongs to independent G-011 work and does not modify the G-018 claim",
-    "existing YAIWES 3-Step programming runner was audited and cannot prove G-018 because it does not checkout or execute the G-018 runtime test",
+    "fresh PARCHE, HANDOFF and Crazy Wall were read from main",
+    "fresh TASK-NODES still assigns G-018 exclusively to SOL_2 with 1_RESEARCH RUNNING",
+    "G-006 remains blocked by G-018 and was not touched",
+    "current main head is independent G-011 work from SOL_1 and does not collide with G-018",
+    "recursive main-tree audit found no G-018/Fables-specific workflow runner",
+    "existing YAIWES 3-Step programming runner remains not applicable to runtime/tests/test_fables_binding_gate.py",
     "no workflow was created or edited outside the authorized Wordflow LOOP Yaiwes root"
   ],
-  "next_action": "Execute runtime/tests/test_fables_binding_gate.py in a reproducible runner with access to current main and capture PASS/FAIL. Keep G-018 claimed by SOL_2 and do not unblock G-006 until that evidence exists.",
+  "next_action": "Execute runtime/tests/test_fables_binding_gate.py in a reproducible authorized runner that can test current main and capture PASS/FAIL. Keep G-018 claimed by SOL_2 and do not unblock G-006 until that evidence exists.",
   "rules": ["NO_LFS", "NO_FORCE", "NO_PARALLEL_BUS", "FAIL_CLOSED"]
 }
