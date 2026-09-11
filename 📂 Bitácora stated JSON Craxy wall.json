@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-11T04:16:21.777697+00:00",
+  "updated_at": "2026-09-11T04:17:49.330746+00:00",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1234,10 +1234,10 @@
       "status": "PASS",
       "abc": "C",
       "target": "Agente Yaiwes principal/tools-models-memory-knowledge/memory-microservices/pgvector/",
-      "owner": null,
-      "lock": "FREE",
+      "owner": "SOL",
+      "lock": "CLAIMED",
       "checkpoint": {
-        "before": "2026-09-11T04:15:57.736933+00:00 SOL integración 1 user-extended loop: N27 STEP2 claim; canonical Motor4 only; no manual move/LFS",
+        "before": "2026-09-11T04:17:49.330746+00:00 SOL integración 1 N27 STEP3: STEP2 Motor4/read-back PASS; build pgvector against moved PostgreSQL and execute CREATE EXTENSION + vector query",
         "after": "2026-09-11T04:16:21.777697+00:00 STEP2 PASS: immutable canonical Motor4 moved pgvector to memory-microservices; source absent + target README origin/main read-back PASS"
       },
       "evidence": [
@@ -1287,6 +1287,12 @@
           "event": "STEP2_PASS_RELEASE",
           "run": 34561536713,
           "commit": "ade703e1db5e1e232324167e661ffaaa88a55fd7"
+        },
+        {
+          "at": "2026-09-11T04:17:49.330746+00:00",
+          "actor": "SOL",
+          "label": "SOL integración 1",
+          "event": "CLAIM_STEP3_USER_SCOPE_EXTENSION"
         }
       ],
       "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
