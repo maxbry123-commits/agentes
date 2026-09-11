@@ -2,6 +2,7 @@
 
 Contrato: `tel.workflow/v4` · modo `FAIL_CLOSED_EXECUTION_LOOP`.  
 Raíz única autorizada de escritura: `maxbry123-commits/agentes/➡️📂 Wordflow LOOP Yaiwes/`.  
+Checkpoint canónico: `WFLOOP-CODE-GRAPH-20260911-0010`.  
 Regla de cierre: investigación/provenance + decisión + implementación cuando aplique + test/simulación + read-back/commit + persistencia en fuentes de verdad. Presencia ≠ PASS.
 
 ## G-001 — CODE GRAPH workspace
@@ -20,7 +21,7 @@ Regla de cierre: investigación/provenance + decisión + implementación cuando 
 `CLOSED_VERIFIED_LOCAL`. `runtime/src/core/reuse_selector.py` blob `bc7f4805fc7f13e6de0341b84c533d4b7fb6b044` aplica selector determinista `REUSE > PATCH > ADAPT > GENERATE`; valida source URL/licencia/mantenimiento/compatibilidad/riesgo/footprint, máximo 10 candidatos, IDs únicos y fail-closed de catálogo. Catálogo `wordflow_loop/research/reuse_catalog_g005.json` blob `2367f7ed8c7e1ece1d724f15f6494d5ff56543f8` con 8 opciones: 4 capacidades locales + Graphiti + Graphology + NetworkX + Tree-sitter. Licencias externas verificadas contra upstream: Graphiti Apache-2.0, Graphology MIT, NetworkX BSD-3-Clause, Tree-sitter MIT. Tests `runtime/tests/test_reuse_selector.py` blob `1bcd0fca22d1238d28add1880e882e7af863ad52`; read-back PASS; `repo_pytest_execution=NOT_CLAIMED`; simulación equivalente `PASS_3_OF_3_DECISIONS`. Evidence `wordflow_loop/evidence/G005_REUSE_SELECTOR_2026-09-11.json`. No se instaló/copió ningún componente externo.
 
 ## G-006 — Creación de code nuevo
-`GAP_OPEN` · siguiente nodo 1×1. Solo si G-005 demuestra que no existe pieza adecuada. Cierre: ABI/Protocol + módulo mínimo + tests + registro/cableado Fables.
+`BLOCKED_DEPENDENCY_G018`. La política existe, pero el cierre requiere Fables/Ficha con source proof canónico + registro/contract + test antes de cablear generación.
 
 ## G-007 — Ingesta de code existente
 `GAP_OPEN`. Evaluar REUSE/PATCH/ADAPT, conservar provenance; copiar/mover solo con motores canónicos y read-back. Cierre: source proof + decisión + destino + test.
@@ -41,7 +42,7 @@ Regla de cierre: investigación/provenance + decisión + implementación cuando 
 `GAP_OPEN`. Cierre: intake schema + queue + adapter a motores + CRC/hash/path safety/read-back.
 
 ## G-013 — Fuentes de verdad
-`GAP_OPEN`. Core truths reconciliadas manualmente hasta checkpoint `0008`; PLAN/RECOVERY presentaron drift histórico detectado durante el ciclo G-005 y se reconciliarán al nuevo checkpoint; falta reconciliador automático + drift/conflict test.
+`IN_RESEARCH_IMPLEMENTED_PENDING_FULL_RECONCILIATION`. Contrato `yaiwes.truth_reconciliation/v1`; STATE/CHECKPOINT son anchors. El parser acepta un único marcador explícito `Checkpoint canónico:` para documentos con historial y falla cerrado ante marcadores canónicos conflictivos. Módulo blob `fb93ce9ee5b86439b0ba36ef72c404134d1984b1`; tests blob `f39cb13a84d1dbb7fcb1c1467f712bf003a431df`. Cierre pendiente de read-back consistente de README/STATE/CHECKPOINT/BITACORA/GAPS/HANDOFF/PLAN/RECOVERY en `0010`.
 
 ## G-014 — Memoria de 18 agentes
 `GAP_OPEN`. Cierre: 18 `agente-readme-memoria.md` + loader determinista + test pre-injection.
@@ -94,5 +95,5 @@ Regla de cierre: investigación/provenance + decisión + implementación cuando 
 ## G-030 — Crazy Wall multiagente
 `GAP_OPEN`. Cierre: ownership/version/checkpoint/idempotency + optimistic concurrency/merge conflict protocol + tests.
 
-## Estado del grupo tras checkpoint 0008
-30 GAPs. Cerrados: `G-001`, `G-002`, `G-003`, `G-004`, `G-005`, `G-010`, `G-020` = 7. En investigación: `G-016`, `G-018`, `G-023`, `G-027`, `G-028`, `G-029`. Siguiente: `G-006`. `AUTH_PROVIDER_TEST_PENDING` permanece abierto; Graphiti/Graphology no integrados; no se crea bus paralelo.
+## Estado del grupo tras checkpoint 0010
+30 GAPs. Cerrados: `G-001`, `G-002`, `G-003`, `G-004`, `G-005`, `G-010`, `G-020` = 7. En investigación: `G-013`, `G-016`, `G-018`, `G-023`, `G-027`, `G-028`, `G-029`. `G-006` está bloqueado por G-018. `AUTH_PROVIDER_TEST_PENDING` permanece abierto; Graphiti/Graphology no integrados; no se crea bus paralelo.
