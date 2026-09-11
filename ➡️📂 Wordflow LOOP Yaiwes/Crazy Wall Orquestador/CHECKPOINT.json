@@ -1,5 +1,5 @@
 {
-  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260911-0016",
+  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260911-0017",
   "contract": "tel.workflow/v4",
   "mode": "FAIL_CLOSED_EXECUTION_LOOP",
   "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
@@ -21,8 +21,9 @@
   },
   "verified_this_cycle": {
     "gap": "G-011",
-    "result": "RUNNER_PROBED_FAIL_CLOSED_PENDING_AUTHORITATIVE_REPO_TEST_AND_TASK_NODE_CAS",
+    "result": "EXACT_BLOB_LOCAL_PYTEST_PASS_PENDING_TASK_NODE_CAS",
     "owner": "SOL_1",
+    "task_nodes_path_resolved": true,
     "task_nodes_claim_persisted": false,
     "task_nodes_blob_observed": "78a5dafbd3cbf5c6ae03dfa82a0351dc97335bd0",
     "task_nodes_observed_state": "G-011 PENDING claimed_by=null version=1; G-018 CLAIMED by SOL_2",
@@ -34,25 +35,19 @@
     "module_blob": "24c659c03454b7ef4361aa69bf721cb12b2331c4",
     "tests": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_canonical_motor_gate.py",
     "tests_blob": "9eee8d33532157967e88cf80fb6a4a0a37a30d7b",
-    "repo_pytest_execution": "NOT_CLAIMED",
-    "local_equivalent_simulation": "PASS_6_OF_6_EQUIVALENT_ASSERTIONS",
-    "runner_probe": {
-      "main_head_observed": "feb291df8cf21e89ac506479dbabf84a338b8d7d",
-      "github_actions_run_id": 34625014062,
-      "github_actions_conclusion": "failure",
-      "github_actions_jobs_total": 0,
-      "qualifies_as_g011_authoritative_test": false,
-      "local_checkout": "BLOCKED_ENVIRONMENT_DNS_GITHUB_COM_UNRESOLVABLE"
-    },
+    "exact_blob_local_pytest": "PASS_3_OF_3",
+    "exact_blob_local_pytest_command": "PYTHONPATH=. python -m pytest -q runtime/tests/test_canonical_motor_gate.py",
+    "exact_blob_local_pytest_runtime": "3 passed in 1.64s",
+    "github_actions_g011_authoritative_run": "NOT_CLAIMED",
     "motor_source_rewritten": false,
     "execution_authorized": false,
     "deployment_authorized": false,
     "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G011_CANONICAL_COPY_MOVE_MOTORS_2026-09-11.json",
-    "evidence_commit": "b13d57d5843a9c627aab15d12f8357c6a0bd0acb",
-    "decision": "G011_REMAINS_OPEN_FAIL_CLOSED; DO_NOT_FABRICATE_REPO_PYTEST_PASS"
+    "evidence_commit": "c58d7cc4c2b4dfd8fa002e67a8be80d12af0186b",
+    "decision": "G011_REMAINS_OPEN_FAIL_CLOSED_ONLY_FOR_TASK_NODES_SHA_CAS"
   },
   "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
-  "next_action": "G011_EXECUTE_TEST_ON_AUTHORITATIVE_REPO_CAPABLE_RUNNER_AND_RESOLVE_TASK_NODES_PATH_FOR_SHA_CAS; DO_NOT_TOUCH_G018_WHILE_CLAIMED_BY_SOL_2",
+  "next_action": "G011_PERSIST_SOL1_OWNERSHIP_AND_PASS_THROUGH_SAFE_SHA_CAS_ON_TASK_NODES_JSON; DO_NOT_TOUCH_G018_WHILE_CLAIMED_BY_SOL_2",
   "blocked_dependency": "G006_REQUIRES_G018_CANONICAL_FABLES_FICHA_PROOF",
   "recovery_entrypoint": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md"
 }
