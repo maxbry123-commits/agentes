@@ -1,0 +1,75 @@
+{
+  "schema": "yaiwes.mvp-components/v1",
+  "policy": "REUSE_OR_ADAPT_ONLY_WHEN_VALUE_IS_PROVEN",
+  "components": [
+    {
+      "id": "graphify",
+      "decision": "ADAPT",
+      "role": "project_code_docs_knowledge_graph_preanalysis",
+      "source_repo": "Graphify-Labs/graphify",
+      "source_commit": "23f2ffaa43fd12f25d9eabe91e6d184b5d89b474",
+      "source_tree_sha256": "4a60d754251731ac16b30e6e87ff44347477d6c55e24ac622d5a47ec3eda3735",
+      "source_location": "maxbry123-commits/osquestador-auditor/Graphify",
+      "acquisition": "VERIFIED_CLOSED",
+      "fables": "PENDING_RUNTIME_REGISTRATION",
+      "sandbox_test": "PENDING"
+    },
+    {
+      "id": "browser_use",
+      "decision": "ADAPT",
+      "role": "agent_browser_for_nodes_that_require_real_web_interaction",
+      "source_repo": "browser-use/browser-use",
+      "source_version": "0.13.10",
+      "source_commit": "5c892e013a73e6622e6f50336e1eb0aa2c4405f2",
+      "source_tree_sha256": "f4763ae4e5d2d8d1b79081de3ba5e4bf8568fcb5f2a346ddeff0482d02935a4c",
+      "source_location": "maxbry123-commits/osquestador-auditor/BrowserUse",
+      "publish_commit": "133384f08151949a024975afd1223b8262f081c4",
+      "acquisition": "VERIFIED_CLOSED",
+      "fables": "PENDING_RUNTIME_REGISTRATION",
+      "sandbox_test": "PENDING"
+    },
+    {
+      "id": "megamem",
+      "decision": "ADAPT",
+      "role": "document_vault_to_graphiti_mcp_bridge_pattern",
+      "source_repo": "C-Bjorn/MegaMem",
+      "source_commit": "ab45ac07de58ac65bf26dc145ef2e3fe6649965c",
+      "source_tree_sha256": "c91837265718c5918b2066f1b3d3f0f30ea30b5d585a0f89e4e64f080f718770",
+      "source_location": "maxbry123-commits/osquestador-auditor/MegaMem",
+      "acquisition": "VERIFIED_CLOSED",
+      "fables": "PENDING_RUNTIME_REGISTRATION",
+      "sandbox_test": "PENDING"
+    },
+    {
+      "id": "graphiti",
+      "decision": "ADAPT",
+      "role": "temporal_context_provenance_agent_memory",
+      "source_location": "maxbry123-commits/osquestador-auditor/graphiti",
+      "provenance": "SOURCE_LOCATED_EXACT_ACQUISITION_MANIFEST_PENDING",
+      "fables": "BLOCKED_BY_PROVENANCE_GATE",
+      "sandbox_test": "PENDING"
+    },
+    {
+      "id": "graphology",
+      "decision": "DEFER",
+      "role": "js_ts_graph_state_for_visual_ui",
+      "reason": "Graphify already supplies graph.html for MVP; adopt only if operator UI requires mutable JS graph state"
+    },
+    {
+      "id": "sigma_js",
+      "decision": "REJECT_FOR_MVP",
+      "role": "graph_renderer",
+      "reason": "not present in osquestador-auditor and no uncovered MVP visualization gap after Graphify"
+    },
+    {
+      "id": "dag_engine",
+      "decision": "REUSE",
+      "role": "deterministic_task_dependency_graph"
+    },
+    {
+      "id": "mavis_pool",
+      "decision": "REUSE",
+      "role": "bounded_parallelism_priority_cache_dedup"
+    }
+  ]
+}
