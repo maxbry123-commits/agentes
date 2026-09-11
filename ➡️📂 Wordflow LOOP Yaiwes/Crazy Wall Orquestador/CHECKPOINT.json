@@ -1,10 +1,10 @@
 {
-  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260910-0007",
+  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260911-0008",
   "contract": "tel.workflow/v4",
   "mode": "FAIL_CLOSED_EXECUTION_LOOP",
   "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
   "status": "ACTIVE_LOOP_CODE_GRAPH_RESEARCH",
-  "current_node": "CG05_REUSE_RESEARCH_G005",
+  "current_node": "CG06_NEW_CODE_POLICY_G006",
   "queue": "DAG_DEPENDENCIES_PLUS_PARALLEL_INDEPENDENT",
   "historical_closure": {
     "status": "LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING",
@@ -13,24 +13,26 @@
   "active_phase": {
     "name": "CODE_GRAPH_ARCHITECTURE_PROGRAMMING_LOOP",
     "gaps_total": 30,
-    "gaps_closed": 6,
-    "closed": ["G-001", "G-002", "G-003", "G-004", "G-010", "G-020"],
+    "gaps_closed": 7,
+    "closed": ["G-001", "G-002", "G-003", "G-004", "G-005", "G-010", "G-020"],
     "in_research": ["G-016", "G-018", "G-023", "G-027", "G-028", "G-029"]
   },
   "verified_this_cycle": {
-    "gap": "G-002",
-    "contract": "yaiwes.file_audit/v1",
-    "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/file_audit_contract.py",
-    "module_blob": "e6624c0b39421a01d54cf0615920073c5dd1ee0f",
-    "tests": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_file_audit_contract.py",
-    "tests_blob": "d490a7e15205c37a0f476e6e4c0de7f9429f36c6",
-    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G002_FILE_AUDIT_COUNCIL_2026-09-10.json",
-    "local_equivalent_simulation": "PASS_5_OF_5_ASSERTIONS",
+    "gap": "G-005",
+    "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/reuse_selector.py",
+    "module_blob": "bc7f4805fc7f13e6de0341b84c533d4b7fb6b044",
+    "tests": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_reuse_selector.py",
+    "tests_blob": "1bcd0fca22d1238d28add1880e882e7af863ad52",
+    "catalog": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/research/reuse_catalog_g005.json",
+    "catalog_blob": "2367f7ed8c7e1ece1d724f15f6494d5ff56543f8",
+    "catalog_count": 8,
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G005_REUSE_SELECTOR_2026-09-11.json",
+    "local_equivalent_simulation": "PASS_3_OF_3_DECISIONS",
     "repo_test_execution": "NOT_CLAIMED",
-    "council_execution_authority": false,
-    "readback": "PASS"
+    "readback": "PASS",
+    "external_install_or_copy": "NONE"
   },
   "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
-  "next_action": "G005_REUSE_RESEARCH_CATALOG_AND_SELECTOR",
+  "next_action": "G006_NEW_CODE_GENERATION_POLICY_AFTER_REUSE_GATE",
   "recovery_entrypoint": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md"
 }
