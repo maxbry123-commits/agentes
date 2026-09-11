@@ -16,12 +16,13 @@ Prioridad: Kimi → MiniMax → DeepSeek V4 Pro → DeepSeek V4 Flash → GLM 5 
 Apertura: 2026-09-10. Esta fase no invalida el cierre local anterior; añade capacidades nuevas autorizadas exclusivamente dentro del Wordflow. Ledger detallado: `Crazy Wall Orquestador/GAPS-INVESTIGACION-CODE-GRAPH-20260910.md`.
 
 ## 1 — Raíz anclada de CODE GRAPH
-Se debe crear dentro del Wordflow un workspace canónico para recibir archivos y componentes. El grafo debe representar por nodos/aristas: archivo fuente, requisitos extraídos, capacidades, tareas, dependencias, destino arquitectónico, agente owner/reviewer, sandbox, tests, evidencia, deployment, GAPs, checkpoint y estado. No será un orquestador paralelo: debe consumir el contrato `tel.workflow/v4`, usar el fleet existente y persistir en Crazy Wall.
-Estado: `G-001 GAP_OPEN` — siguiente nodo 1×1.
+Workspace canónico: `wordflow_loop/code_graph/`. El grafo representa por nodos/aristas archivo fuente, requisitos, capacidades, tareas, dependencias, placement, agentes, sandbox, tests, evidence, deployment, GAPs, checkpoint y state. No es un orquestador paralelo: consume `tel.workflow/v4`, proyecta dependencias de tareas hacia el `DAGEngine` existente y mantiene Crazy Wall como persistencia operativa.
+Estado: `G-001 CLOSED_VERIFIED_LOCAL`.
+Implementación: `runtime/src/core/code_graph_workspace.py` blob `6fe57e6c4233532623a8de589892de2d28897cb9`; tests `runtime/tests/test_code_graph_workspace.py` blob `c7f00e3155d22c559907d50af31bf95403a5eb68`; workspace README blob `2462785b8ee5a5d358d94bd5f5e504ffeec1ee17`; evidence `wordflow_loop/evidence/G001_CODE_GRAPH_WORKSPACE_2026-09-10.json`. Serialización JSON canónica + SHA-256 + fail-closed. Simulación local equivalente `PASS_5_OF_5_ASSERTIONS`; `repo_pytest_execution=NOT_CLAIMED`.
 
 ## 2 — Ask Council + auditoría de cada archivo
 Todo archivo recibido se audita antes de programar: tipo/formato, contenido, arquitectura, interfaces, dependencias, capacidades, riesgos, posibles comportamientos inseguros, intención, procedencia y compatibilidad. Ask Council puede razonar sobre alternativas; el resultado se normaliza a schema determinista antes de producir acciones.
-Estado: `G-002 GAP_OPEN`.
+Estado: `G-002 GAP_OPEN` — siguiente nodo 1×1.
 
 ## 3 — Generación de tareas de code
 La arquitectura extraída se descompone en tareas atómicas. Cada tarea tendrá `task_id`, dependencia, prioridad, capability, rol/owner, entradas, salidas, destino candidato, sandbox requerido, tests, evidencia, retry/idempotency y estado. Deben distinguirse explícitamente las tareas entregadas por el Director de las generadas automáticamente.
@@ -67,7 +68,7 @@ Estado: `G-012 GAP_OPEN`.
 
 ## 13 — Fuentes de verdad del LOOP
 Debe mantener y reconciliar: mapa/diagrama; HANDOFF; tareas generadas; tareas del Director; Crazy Wall BITÁCORA/STATE/CHECKPOINT/PLAN; Schema/DSL/DAG/Pipeline; evidencias y GAP ledger. Una discrepancia de estado abre GAP en vez de elegir silenciosamente una versión.
-Estado: `G-013 GAP_OPEN` — core truths reconciliadas hasta checkpoint `0005`; falta política automática y test para cierre.
+Estado: `G-013 GAP_OPEN` — core truths reconciliadas hasta checkpoint `0006`; falta política automática y test para cierre.
 
 ## 14 — `agente-readme-memoria.md` de cada agente
 Los 18 agentes tendrán memoria operativa versionada: rol, capacidades, restricciones, contratos, fuentes autorizadas, gates, evidence format, errores aprendidos y mejoras aprobadas. Se carga antes del trabajo y solo se perfecciona con aprendizaje verificado.
