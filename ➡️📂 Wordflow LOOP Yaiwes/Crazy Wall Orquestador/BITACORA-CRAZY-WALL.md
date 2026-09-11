@@ -222,3 +222,16 @@ Snapshot auditado de main: `46136b85563c2e5932344fa1f2fd0c4265668efa`. Revisión
 - Corrección requerida dentro de G-013: reconciliar las ocho fuentes y el registro de nodos contra los commits/evidencias válidos; verificar el conjunto tras cada avance. No elegir automáticamente el checkpoint mayor. No se modifica el reconciliador porque sí detectó el conflicto; el GAP comprobado es el estado persistido desalineado.
 
 Resultado: G-013 requiere nueva reconciliación; G-006 conserva dependencia de G-018. Sin cierre global, sin PASS_REAL externo, sin cambios de código ni componentes.
+
+
+# ASTRA-GPT-LOOP — SEGUIMIENTO G-013 — 2026-09-11 15:56Z
+
+Snapshot base auditado: `1dc764da4013150473e42b8b43262e19b99ab36e`; read-back tras avance concurrente G-011: `51d685e5ca120f8788b17b9aa9433e96599bd9d1`. El conflicto documentado continúa.
+
+- STATE blob `ae7b2667901ec36ba89774dd2cdf4102d9e43ab2`: checkpoint 0010, 8 cierres.
+- CHECKPOINT blob `aeab803489ea92bf82dd60210aaeb7dc36ad14af`: checkpoint 0013, 11 cierres.
+- TASK-NODES blob `78a5dafbd3cbf5c6ae03dfa82a0351dc97335bd0`: G-009 PASS, pero G-013 aún PENDING.
+- Causa inmediata trazada: `fd67f7f9eeb3a24e227e3ea584278bb210db7ea3` modificó solo TASK-NODES y `1dc764da4013150473e42b8b43262e19b99ab36e` modificó solo CHECKPOINT. No actualizaron las ocho fuentes de verdad como una unidad verificable. El avance G-011 posterior tampoco cambió esos tres blobs.
+- El reconciliador detecta correctamente `ANCHOR_CHECKPOINT_CONFLICT`; no requiere parche. El GAP está en la persistencia parcial del ciclo: tras cerrar un nodo debe actualizarse/verificarse el conjunto canónico o conservarse el checkpoint anterior.
+
+Resultado: G-013 sigue abierto por drift reproducible. No se tocaron G-009, G-011 ni G-018; no se declara PASS global.
