@@ -1,0 +1,59 @@
+{
+  "schema": "yaiwes.evidence/v1",
+  "node": "G-030",
+  "owner": "SOL_1",
+  "status": "CLOSED_VERIFIED_LOCAL",
+  "contract": "yaiwes.crazywall.claim/v1",
+  "research": {
+    "finding": "Canonical TASK-NODES assigned G-018 to SOL_2 while CHECKPOINT still assigned the same G-018 cycle to SOL_1.",
+    "decision": "Do not mutate G-018; claim independent G-030 and fail closed on ownership drift.",
+    "g018_owner_task_nodes": "SOL_2",
+    "g018_owner_checkpoint_before_g030": "SOL_1",
+    "motor_required": false,
+    "motor_reason": "G-030 is an internal deterministic coordination gate; no download, copy, move, extraction, or external code acquisition is required."
+  },
+  "claim": {
+    "claim_commit": "c7b67943515e092c17a8ac7162cba9b235891eee",
+    "claimed_by": "SOL_1",
+    "claimed_version": 2
+  },
+  "implementation": {
+    "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/crazywall_claim_gate.py",
+    "module_blob": "5f263e08dc725392a27b6a4c4d47448e72fccc4e",
+    "module_commit": "7cdda5e3c76d78dc3769bdd2f09899685277d821",
+    "tests": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_crazywall_claim_gate.py",
+    "tests_blob": "11d907a762c90c02624e6ec4e0fb62c2dd4993f6",
+    "tests_commit": "13f8963fca16e7b576aceab44b2c968e5e46e231"
+  },
+  "verified_properties": [
+    "optimistic compare-and-swap using expected node version",
+    "foreign owner claim fails closed",
+    "same idempotency key replays without mutation",
+    "different key cannot silently re-claim an already claimed node",
+    "release requires the same owner and expected version",
+    "foreign release fails closed",
+    "claim/release increment version deterministically",
+    "checkpoint versus TASK-NODES ownership drift is detected as FAIL_CLOSED_RECONCILE"
+  ],
+  "test": {
+    "kind": "REPRODUCIBLE_LOCAL_PYTEST_FROM_MAIN_READBACK",
+    "command": "python -m pytest -q runtime/tests/test_crazywall_claim_gate.py",
+    "result": "PASS_8_OF_8",
+    "summary": "8 passed in 0.05s",
+    "repo_github_actions_pytest_execution": "NOT_CLAIMED",
+    "global_push_workflows_are_not_unit_test_evidence": true
+  },
+  "read_back": {
+    "module": "PASS",
+    "tests": "PASS"
+  },
+  "safety": {
+    "g018_mutated_by_sol1_this_cycle": false,
+    "external_execution_authorized": false,
+    "deployment_authorized": false,
+    "no_lfs": true,
+    "no_force": true
+  },
+  "decision": "G030_CLOSED_VERIFIED_LOCAL",
+  "remaining_blocker": "G-006 remains blocked on G-018, which is currently claimed by SOL_2 in TASK-NODES."
+}
