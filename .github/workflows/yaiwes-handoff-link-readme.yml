@@ -32,13 +32,13 @@ jobs:
           if ! grep -q "$MARK" "$FILE"; then
             cat >> "$FILE" <<'EOF'
 
-<!-- YAIWES_HANDOFF_INTEGRACION_1_20 -->
-## Handoff operativo - integracion componentes 1-20
+          <!-- YAIWES_HANDOFF_INTEGRACION_1_20 -->
+          ## Handoff operativo - integracion componentes 1-20
 
-Plan operativo actual: [HANDOFF-INTEGRACION-1-20.md](./HANDOFF-INTEGRACION-1-20.md).
+          Plan operativo actual: [HANDOFF-INTEGRACION-1-20.md](./HANDOFF-INTEGRACION-1-20.md).
 
-Contrato vigente: `PASO 1 MOVE 1-20 -> PASO 2 CABLEAR/PODAR 1x1 SIN TESTS -> PASO 3 TESTS 1x1`.
-EOF
+          Contrato vigente: `PASO 1 MOVE 1-20 -> PASO 2 CABLEAR/PODAR 1x1 SIN TESTS -> PASO 3 TESTS 1x1`.
+          EOF
           fi
 
       - name: Publish link
