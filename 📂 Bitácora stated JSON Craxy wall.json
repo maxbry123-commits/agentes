@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-11T06:09:05.834246+00:00",
+  "updated_at": "2026-09-11T06:09:17.910913+00:00",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1139,13 +1139,13 @@
       "component": "Workalendar",
       "source": "Core kernel Yaiwes/Workalendar/",
       "current_step": 3,
-      "status": "PASS_STEP2",
+      "status": "IN_PROGRESS",
       "abc": "C",
       "target": "Agente Yaiwes principal/execution-orchestration/classifier-scheduler/workalendar/",
-      "owner": null,
-      "lock": "FREE",
+      "owner": "SOL",
+      "lock": "CLAIMED",
       "checkpoint": {
-        "before": "2026-09-11T06:08:53.132936+00:00 fresh physical read-back: source absent; target populated; canonical Motor4 move commit a97b5d8804ed76996027dbb254af3ad70b9f4c80 is ancestor of main; recover stale STEP2 only, do not repeat MOVE",
+        "before": "2026-09-11T06:09:17.910913+00:00 N25 STEP3: existing adapter+WIRING+port; execute FABLES and real weekday/weekend classifier gate microtest",
         "after": "2026-09-11T06:09:05.834246+00:00 STEP2 PASS recovered from physical main: source absent; target populated; canonical Motor4 move commit a97b5d8804ed76996027dbb254af3ad70b9f4c80; no MOVE repeated"
       },
       "evidence": [
@@ -1193,9 +1193,15 @@
           "label": "SOL integración 1",
           "event": "STEP2_PASS_RECOVERED_RELEASE",
           "commit": "a97b5d8804ed76996027dbb254af3ad70b9f4c80"
+        },
+        {
+          "at": "2026-09-11T06:09:17.910913+00:00",
+          "actor": "SOL",
+          "label": "SOL integración 1",
+          "event": "CLAIM_STEP3"
         }
       ],
-      "next_action": "STEP_3_WIRE_FABLES_MICROTEST"
+      "next_action": "STEP3_FABLES_REAL_WORKING_DAY_GATE"
     },
     {
       "id": 26,
