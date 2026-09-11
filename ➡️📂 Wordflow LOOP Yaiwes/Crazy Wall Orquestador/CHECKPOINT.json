@@ -1,10 +1,10 @@
 {
-  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260911-0018",
+  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260911-0019",
   "contract": "tel.workflow/v4",
   "mode": "FAIL_CLOSED_EXECUTION_LOOP",
   "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
   "status": "ACTIVE_LOOP_CODE_GRAPH_RESEARCH",
-  "current_node": "G011_VERIFIED_CLOSED_NEXT_G013_RECONCILIATION",
+  "current_node": "G013_SOURCE_TRUTH_RECONCILIATION",
   "claimed_by": "SOL_1",
   "queue": "DAG_DEPENDENCIES_PLUS_PARALLEL_INDEPENDENT",
   "historical_closure": {
@@ -17,36 +17,33 @@
     "gaps_closed": 11,
     "closed": ["G-001", "G-002", "G-003", "G-004", "G-005", "G-008", "G-009", "G-010", "G-011", "G-020", "G-030"],
     "blocked": ["G-006"],
-    "in_research": ["G-016", "G-018", "G-023", "G-027", "G-028", "G-029"]
+    "in_research": ["G-013", "G-016", "G-018", "G-023", "G-027", "G-028", "G-029"]
   },
-  "verified_this_cycle": {
+  "verified_previous_cycle": {
     "gap": "G-011",
     "result": "PATH_SCOPE_GATE_REPAIRED_EXACT_TOPOLOGY_PYTEST_PASS_TASK_NODE_CLOSED",
     "owner": "SOL_1",
-    "task_nodes_path_resolved": true,
-    "task_nodes_claim_persisted": true,
     "task_nodes_close_commit": "7a28a968c6fc311058e5794a5651639fe23985e6",
-    "task_nodes_observed_state": "G-011 PASS claimed_by=SOL_1 version=3 steps PASS/PASS/PASS gaps=[]; G-018 remains CLAIMED by SOL_2",
-    "contract": "yaiwes.canonical_motor_gate/v1",
-    "motor_code_lock_blob": "18196ecdd1379a17d763b3e2d0857534f5fdef14",
-    "copy_motor_blob": "3689924361ce4a1a9fde4ae2b6f6009c37a6042d",
-    "move_motor_blob": "9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
-    "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/canonical_motor_gate.py",
     "module_blob": "def0ccc402d4e9797ff7ac30a92c1993aec47914",
-    "tests": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_canonical_motor_gate.py",
     "tests_blob": "55a6e4fda73010cad2359f5e0ad9307bd44fc815",
     "exact_topology_pytest": "PASS_6_OF_6 in 3.03s",
-    "path_scope_regressions": "PASS dest escape + state escape + symlink escape + no mutation before explicit auth",
-    "motor_source_rewritten": false,
-    "execution_authorized": false,
-    "deployment_authorized": false,
     "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G011_CANONICAL_COPY_MOVE_MOTORS_2026-09-11.json",
-    "evidence_commit": "e00fb80fe890c9646fde39ed685c3f249d966b6b",
     "decision": "G011_VERIFIED_CLOSED"
   },
-  "known_source_of_truth_drift": "TASK-NODES says G-013 PENDING while previous CHECKPOINT listed G-013 closed; false closure removed here without claiming G-013",
+  "active_reconciliation": {
+    "gap": "G-013",
+    "owner": "SOL_1",
+    "claim_commit": "3529f52f034f47c94eb1aad9c972b8c393c32de9",
+    "gap_code": "SOURCE_OF_TRUTH_DRIFT",
+    "prior_state_anchor": "WFLOOP-CODE-GRAPH-20260911-0010",
+    "prior_checkpoint_anchor": "WFLOOP-CODE-GRAPH-20260911-0018",
+    "target_anchor": "WFLOOP-CODE-GRAPH-20260911-0019",
+    "task_nodes_state": "CLAIMED_SOL_1_VERSION_2",
+    "required_sources": 8,
+    "closure_gate": "ALL_8_ANCHORS_0019_PLUS_RECONCILER_CONSISTENT_PLUS_TESTS_PASS_PLUS_READBACK"
+  },
   "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
-  "next_action": "CLAIM_G013_IF_STILL_FREE_AND_RECONCILE_README_HANDOFF_PLAN_RECOVERY_STATE_CHECKPOINT_WITH_TEST; DO_NOT_TOUCH_G018_WHILE_CLAIMED_BY_SOL_2",
+  "next_action": "RECONCILE_ALL_8_TRUTH_SOURCES_TO_0019_RUN_RECONCILER_AND_TESTS_THEN_CLOSE_G013; DO_NOT_TOUCH_G018_WHILE_CLAIMED_BY_SOL_2",
   "blocked_dependency": "G006_REQUIRES_G018_CANONICAL_FABLES_FICHA_PROOF",
   "recovery_entrypoint": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md"
 }
