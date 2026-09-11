@@ -46,14 +46,52 @@ def verify_motor(repo_root: Path, operation: str) -> dict[str, object]:
     }
 
 
-def build_motor_env(source_dir: Path, dest_dir: Path, state_file: Path) -> dict[str, str]:
+def _resolve_inside_authorized_root(
+    candidate: Path,
+    authorized_root: Path,
+    label: str,
+) -> Path:
+    root = authorized_root.resolve()
+    resolved = candidate.resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"{label}_OUTSIDE_AUTHORIZED_ROOT") from exc
+    return resolved
+
+
+def build_motor_env(
+    source_dir: Path,
+    dest_dir: Path,
+    state_file: Path,
+    *,
+    authorized_root: Path | None = None,
+    mutation_authorized: bool = False,
+) -> dict[str, str]:
+    if authorized_root is None:
+        raise ValueError("AUTHORIZED_ROOT_REQUIRED")
+
+    root = authorized_root.resolve()
+    if not root.is_dir():
+        raise ValueError("AUTHORIZED_ROOT_NOT_FOUND")
+
     source = source_dir.resolve()
-    dest = dest_dir.resolve()
-    state = state_file.resolve()
+    dest = _resolve_inside_authorized_root(dest_dir, root, "DEST_DIR")
+    state = _resolve_inside_authorized_root(state_file, root, "STATE_FILE")
+
     if source == dest:
         raise ValueError("SOURCE_DESTINATION_COLLISION")
     if not source.is_dir():
         raise ValueError("SOURCE_DIR_NOT_FOUND")
+
+    # Path.resolve() follows every existing symlink in the candidate chain.
+    # The containment checks above therefore fail closed when either the
+    # destination or state path traverses a symlink outside authorized_root.
+    if not mutation_authorized:
+        raise PermissionError("MUTATION_NOT_AUTHORIZED")
+
+    # No filesystem mutation occurs before every path gate and the explicit
+    # mutation authorization have passed.
     dest.mkdir(parents=True, exist_ok=True)
     return {
         "SOURCE_DIR": str(source),
