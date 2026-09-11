@@ -1,0 +1,35 @@
+{
+  "contract": "tel.workflow/v4",
+  "project": "Wordflow LOOP Yaiwes",
+  "decision": "DIRECTOR_APPROVED",
+  "date": "2026-09-11",
+  "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
+  "hf_usage": {
+    "allowed": [
+      "datasets",
+      "skills",
+      "models",
+      "verified_huggingface_repository_resources"
+    ],
+    "forbidden_overengineering": [
+      "pytest_external_on_hf_jobs",
+      "hf_jobs_as_test_sandbox",
+      "hf_jobs_as_generic_ci"
+    ],
+    "external_pytest_status": "REMOVED_FROM_PLAN",
+    "previous_jobs": {
+      "6aa395b421047bf1b0374e07": "FINISHED_ERROR_NO_RETRY",
+      "6aa397635527934177ec4c1d": "COMPLETED_CONNECTIVITY_PROBE_NO_RETRY"
+    }
+  },
+  "sandbox": {
+    "preferred": "GITHUB_NATIVE_EPHEMERAL_RUNNER_OR_AUTHORIZED_LOCAL_SANDBOX",
+    "hf_jobs_allowed": false,
+    "required_flow": "checkout -> isolated workspace/container -> tests -> reviewer -> evidence -> promote",
+    "github_actions_constraint": "A GitHub Actions executable workflow lives under .github/workflows. Current Director rule forbids Wordflow writes outside ➡️📂 Wordflow LOOP Yaiwes/. Therefore do not create or modify a workflow there without explicit scope exception. Existing authorized workflows may be reused after verification."
+  },
+  "gap_effect": {
+    "G-022": "USE_GITHUB_OR_LOCAL_SANDBOX_NOT_HF",
+    "G-023": "HF_ONLY_DATASETS_SKILLS_MODELS_RESOURCES"
+  }
+}
