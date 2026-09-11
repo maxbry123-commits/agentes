@@ -11,25 +11,26 @@ Estado externo histórico y actual: `AUTH_PROVIDER_TEST_PENDING`. No se afirma P
 
 # Fase activa — CODE_GRAPH_ARCHITECTURE_PROGRAMMING_LOOP
 Estado: `ACTIVE_LOOP_CODE_GRAPH_RESEARCH`  
-Checkpoint: `WFLOOP-CODE-GRAPH-20260910-0006`  
-Nodo: `CG04_ASK_COUNCIL_AUDIT_G002`.
+Checkpoint: `WFLOOP-CODE-GRAPH-20260910-0007`  
+Nodo: `CG05_REUSE_RESEARCH_G005`.
 
 Pipeline objetivo:
 `archivo/componente → Ask Council/auditoría → arquitectura → requisitos → director_tasks + generated_tasks → DAG/cola → placement A|B|C|D|E|F|G → REUSE>PATCH>ADAPT>GENERATE → sandbox → reviewer independiente → deployment determinista → evidencia → STATE/CHECKPOINT`.
 
 ## GAP status verificado
-- `G-001 CLOSED_VERIFIED_LOCAL`: workspace `wordflow_loop/code_graph/`; contrato/serializador determinista `runtime/src/core/code_graph_workspace.py` blob `6fe57e6c4233532623a8de589892de2d28897cb9`; tests blob `c7f00e3155d22c559907d50af31bf95403a5eb68`; workspace README blob `2462785b8ee5a5d358d94bd5f5e504ffeec1ee17`; evidence `wordflow_loop/evidence/G001_CODE_GRAPH_WORKSPACE_2026-09-10.json`; simulación local equivalente `PASS_5_OF_5_ASSERTIONS`. No se creó orquestador paralelo.
-- `G-003 CLOSED_VERIFIED_LOCAL`: task graph determinista en `runtime/src/core/code_task_graph.py`; mantiene `director_tasks` y `generated_tasks` separados; evidence `wordflow_loop/evidence/G003_TASK_GRAPH_2026-09-10.json`.
-- `G-004 CLOSED_VERIFIED_LOCAL`: clasificador determinista en `runtime/src/core/placement_classifier.py`, blob `69698ad30ba1903e0780efcea1952a3737aeb23e`; tests blob `bf1c26f49edf668ee05584b2a357324af0fc4d8d`; evidence `wordflow_loop/evidence/G004_PLACEMENT_CLASSIFIER_2026-09-10.json`; simulación local equivalente `PASS_10_OF_10_ASSERTIONS`. Cubre A Kernel, B Extension Kernel, C Reasoning Layer, D Wordflow, E Pool, F Tools, G Other y fallback `PLACEMENT_REVIEW_REQUIRED`.
-- `G-010 CLOSED_VERIFIED`: Watchdog CODE GRAPH activo, fail-closed y limitado a la raíz autorizada.
-- `G-020 CLOSED_VERIFIED`: catálogo de 12 fuentes en `wordflow_loop/research/community_sources.json`.
+- `G-001 CLOSED_VERIFIED_LOCAL`: workspace `wordflow_loop/code_graph/`; serialización determinista + SHA-256 + proyección al DAG existente. Evidence `wordflow_loop/evidence/G001_CODE_GRAPH_WORKSPACE_2026-09-10.json`.
+- `G-002 CLOSED_VERIFIED_LOCAL`: contrato `yaiwes.file_audit/v1` en `runtime/src/core/file_audit_contract.py`, blob `e6624c0b39421a01d54cf0615920073c5dd1ee0f`; tests `runtime/tests/test_file_audit_contract.py`, blob `d490a7e15205c37a0f476e6e4c0de7f9429f36c6`; evidence `wordflow_loop/evidence/G002_FILE_AUDIT_COUNCIL_2026-09-10.json`; simulación local equivalente `PASS_5_OF_5_ASSERTIONS`. Extrae formato/arquitectura/interfaces/dependencias/capacidades/riesgos/requisitos, conserva provenance+SHA y normaliza Ask Council a schema. El Council es asesor: `executable_action_authorized=false` siempre.
+- `G-003 CLOSED_VERIFIED_LOCAL`: task graph determinista; mantiene `director_tasks` y `generated_tasks` separados. Evidence `wordflow_loop/evidence/G003_TASK_GRAPH_2026-09-10.json`.
+- `G-004 CLOSED_VERIFIED_LOCAL`: clasificador A–G + `PLACEMENT_REVIEW_REQUIRED`. Evidence `wordflow_loop/evidence/G004_PLACEMENT_CLASSIFIER_2026-09-10.json`.
+- `G-010 CLOSED_VERIFIED`: Watchdog CODE GRAPH activo y limitado a la raíz autorizada.
+- `G-020 CLOSED_VERIFIED`: 12 fuentes de investigación en `wordflow_loop/research/community_sources.json`.
 - En investigación: `G-016`, `G-018`, `G-023`, `G-027`, `G-028`, `G-029`.
 
 ## Reutilización clave
-`runtime/src/core/dag_engine.py` ya proporciona DAG topológico determinista, validación de dependencias, detección de ciclos y batches. `G-001` proyecta únicamente los nodos `task` hacia ese contrato; no añade scheduler alternativo.
+`runtime/src/core/dag_engine.py` sigue siendo el DAG topológico determinista. No se añade scheduler paralelo. El auditor G-002 produce requisitos estructurados para alimentar G-003; ninguna salida generativa ni del Council ejecuta, despliega o autoriza I/O por sí sola.
 
 ## GAPs críticos abiertos
-- `G-002`: siguiente nodo; contrato determinista de auditoría de archivo + normalización de salida Ask Council.
+- `G-005`: siguiente nodo 1×1; investigación/reutilización antes de crear código, catálogo de opciones y selector documentado.
 - `G-018`: Fables requiere source proof exacto; no crear bus paralelo.
 - `G-022`: sandbox actual no demuestra aislamiento físico de filesystem/network/time/memory.
 - `G-017`: installation/deployment contiene PASS/health estáticos no aceptados como prueba real.
@@ -43,4 +44,4 @@ Pipeline objetivo:
 4. Todo módulo nuevo entra por Enchufe Universal Fables/Ficha; no buses paralelos.
 5. LLM solo en análisis/generación/Council; DAG/routing/gates/state/sandbox/hash/deploy permanecen deterministas.
 6. Graphiti y Graphology siguen en investigación; no se declara integración hasta copia exacta/adaptador/test/read-back.
-7. Próximo nodo 1×1: `G-002` — Ask Council + auditoría de cada archivo, con salida estructurada y fail-closed.
+7. Próximo nodo 1×1: `G-005` — catálogo de reutilización/investigación y selector previo a GENERATE.
