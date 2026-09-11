@@ -1,0 +1,39 @@
+{
+  "gap_id": "G-001",
+  "status": "CLOSED_VERIFIED_LOCAL",
+  "contract": "tel.workflow/v4",
+  "workspace": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/code_graph/",
+  "implementation": {
+    "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/code_graph_workspace.py",
+    "module_blob": "6fe57e6c4233532623a8de589892de2d28897cb9",
+    "tests": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_code_graph_workspace.py",
+    "tests_blob": "c7f00e3155d22c559907d50af31bf95403a5eb68",
+    "workspace_readme_blob": "2462785b8ee5a5d358d94bd5f5e504ffeec1ee17"
+  },
+  "architecture": {
+    "parallel_orchestrator_created": false,
+    "dag_projection": "runtime/src/core/dag_engine.py existing manifest contract",
+    "task_sources": "director_tasks and generated_tasks remain separated in code_task_graph.py",
+    "node_kinds": 13,
+    "edge_kinds": 14,
+    "serialization": "canonical JSON sorted keys compact separators",
+    "digest": "SHA-256 over canonical serialization",
+    "fail_closed": [
+      "invalid contract",
+      "invalid workspace",
+      "duplicate/invalid node",
+      "missing edge endpoint",
+      "self edge",
+      "duplicate edge",
+      "non JSON payload",
+      "depends_on outside task nodes"
+    ]
+  },
+  "verification": {
+    "github_readback": "PASS",
+    "local_equivalent_simulation": "PASS_5_OF_5_ASSERTIONS",
+    "repo_pytest_execution": "NOT_CLAIMED",
+    "external_runtime": "NOT_CLAIMED"
+  },
+  "external_auth": "AUTH_PROVIDER_TEST_PENDING"
+}
