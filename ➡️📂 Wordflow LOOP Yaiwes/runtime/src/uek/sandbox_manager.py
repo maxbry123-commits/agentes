@@ -1,37 +1,117 @@
-"""
-UEK Sandbox Manager Module - PECP-MAXBRY-100x (Nodo T-004)
-Gestión de sandboxes aislados, warm pools y políticas de restricción.
-"""
+"""UEK sandbox policy gate.
 
-from typing import Dict, Any
+A sandbox descriptor is not evidence of isolation. This manager only returns
+READY_VERIFIED when an external backend supplies explicit isolation attestation.
+It does not pretend to create kernel/container isolation by itself.
+"""
+from __future__ import annotations
+
+import hashlib
 import json
+from dataclasses import dataclass
+from typing import Any, Dict, Mapping
+
+
+@dataclass(frozen=True)
+class SandboxAttestation:
+    backend: str
+    process_isolation: bool
+    filesystem_isolation: bool
+    network_enforced: bool
+    memory_enforced: bool
+    evidence_ref: str
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "SandboxAttestation":
+        return cls(
+            backend=str(data.get("backend", "")),
+            process_isolation=data.get("process_isolation") is True,
+            filesystem_isolation=data.get("filesystem_isolation") is True,
+            network_enforced=data.get("network_enforced") is True,
+            memory_enforced=data.get("memory_enforced") is True,
+            evidence_ref=str(data.get("evidence_ref", "")),
+        )
 
 
 class SandboxManager:
-    """Gestiona entornos aislados con reglas estrictas de seguridad."""
+    """Fail-closed policy manager for externally enforced sandboxes."""
+
+    ALLOWED_BACKENDS = {"bubblewrap", "nsjail", "firecracker", "gvisor", "container", "hf_job"}
 
     def __init__(self, network_policy: str = "DENY", memory_limit_mb: int = 512) -> None:
-        self.network_policy: str = network_policy
-        self.memory_limit_mb: int = memory_limit_mb
-        self.warm_pool_available: bool = True
+        if network_policy not in {"DENY", "ALLOWLIST"}:
+            raise ValueError("INVALID_NETWORK_POLICY")
+        if memory_limit_mb < 64:
+            raise ValueError("MEMORY_LIMIT_TOO_LOW")
+        self.network_policy = network_policy
+        self.memory_limit_mb = memory_limit_mb
 
-    def acquire_sandbox(self, sandbox_type: str) -> Dict[str, Any]:
-        """Asigna un contenedor/sandbox aislado del pool cálido."""
+    def acquire_sandbox(
+        self,
+        sandbox_type: str,
+        attestation: Mapping[str, Any] | None = None,
+    ) -> Dict[str, Any]:
+        """Validate backend attestation; never fabricate READY state."""
+        if not sandbox_type.strip():
+            raise ValueError("SANDBOX_TYPE_REQUIRED")
+        if attestation is None:
+            return {
+                "sandbox_id": None,
+                "type": sandbox_type,
+                "network_policy": self.network_policy,
+                "memory_limit_mb": self.memory_limit_mb,
+                "status": "BLOCKED_ATTESTATION_REQUIRED",
+                "execution_authorized": False,
+            }
+
+        proof = SandboxAttestation.from_mapping(attestation)
+        checks = {
+            "backend_allowed": proof.backend in self.ALLOWED_BACKENDS,
+            "process_isolation": proof.process_isolation,
+            "filesystem_isolation": proof.filesystem_isolation,
+            "network_enforced": proof.network_enforced,
+            "memory_enforced": proof.memory_enforced,
+            "evidence_ref": bool(proof.evidence_ref.strip()),
+        }
+        if not all(checks.values()):
+            return {
+                "sandbox_id": None,
+                "type": sandbox_type,
+                "backend": proof.backend,
+                "checks": checks,
+                "status": "BLOCKED_ATTESTATION_FAILED",
+                "execution_authorized": False,
+            }
+
+        material = json.dumps(
+            {
+                "type": sandbox_type,
+                "backend": proof.backend,
+                "network_policy": self.network_policy,
+                "memory_limit_mb": self.memory_limit_mb,
+                "evidence_ref": proof.evidence_ref,
+            },
+            sort_keys=True,
+        )
+        sandbox_id = "sbx_" + hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
         return {
-            "sandbox_id": f"sbx_{sandbox_type}_001",
+            "sandbox_id": sandbox_id,
             "type": sandbox_type,
+            "backend": proof.backend,
             "network_policy": self.network_policy,
             "memory_limit_mb": self.memory_limit_mb,
-            "status": "READY"
+            "checks": checks,
+            "status": "READY_VERIFIED",
+            "execution_authorized": True,
+            "evidence_ref": proof.evidence_ref,
         }
 
-    def release_sandbox(self, sandbox_id: str) -> bool:
-        """Restablece el estado del sandbox para su posterior reutilización."""
-        return True
-
-
-if __name__ == "__main__":
-    print("=== TEST NODO T-004: SANDBOX MANAGER ===")
-    sbx_mgr = SandboxManager()
-    sbx = sbx_mgr.acquire_sandbox("python")
-    print(json.dumps(sbx, indent=2))
+    def release_sandbox(self, sandbox_id: str, release_evidence_ref: str = "") -> Dict[str, Any]:
+        if not sandbox_id.strip() or not release_evidence_ref.strip():
+            return {"released": False, "status": "BLOCKED_RELEASE_EVIDENCE_REQUIRED"}
+        return {
+            "released": True,
+            "sandbox_id": sandbox_id,
+            "status": "RELEASE_RECORDED",
+            "evidence_ref": release_evidence_ref,
+        }
