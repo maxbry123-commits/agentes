@@ -1,9 +1,12 @@
 import hashlib
 import json
 
+import pytest
+
 from source_truth_reconciler import (
     REQUIRED_TRUTHS,
     TruthRecord,
+    TruthReconciliationError,
     build_record,
     reconcile,
     validate_reconciliation_plan,
@@ -62,3 +65,24 @@ def test_build_record_json_and_markdown():
         digest,
     )
     assert state.checkpoint_id == handoff.checkpoint_id
+
+
+def test_historical_truth_uses_explicit_canonical_marker():
+    digest = hashlib.sha256(b"history").hexdigest()
+    text = """
+Checkpoint canónico: `WFLOOP-CODE-GRAPH-20260911-0010`
+Histórico: `WFLOOP-CODE-GRAPH-20260911-0008`
+Histórico: `WFLOOP-CODE-GRAPH-20260911-0009`
+"""
+    record = build_record("BITACORA", text, digest)
+    assert record.checkpoint_id == "WFLOOP-CODE-GRAPH-20260911-0010"
+
+
+def test_conflicting_canonical_markers_fail_closed():
+    digest = hashlib.sha256(b"conflict").hexdigest()
+    text = """
+Checkpoint canónico: `WFLOOP-CODE-GRAPH-20260911-0010`
+Checkpoint canónico: `WFLOOP-CODE-GRAPH-20260911-0011`
+"""
+    with pytest.raises(TruthReconciliationError):
+        build_record("BITACORA", text, digest)
