@@ -234,13 +234,13 @@
       "id": "G-015",
       "task": "Cerrar 12 GOALS entrada/salida: schema + runner + Council/simulaciones/refutaciones/cross-check + evidencia.",
       "literal_sha256": "a4b8172e257efb8184154d5d7594eb4920741a217ed4e3a28cdcdae00468812b",
-      "status": "PENDING",
-      "claimed_by": null,
+      "status": "CLAIMED",
+      "claimed_by": "ASTRA_GPT_LOOP",
       "depends_on": [],
       "steps": [
         {
           "id": "1_RESEARCH",
-          "status": "PENDING"
+          "status": "RUNNING"
         },
         {
           "id": "2_MOTOR",
@@ -253,7 +253,7 @@
       ],
       "evidence": [],
       "gaps": [],
-      "version": 1,
+      "version": 2,
       "checker": "ASTRA_GPT"
     },
     {
