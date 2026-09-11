@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-11T05:32:58.058785+00:00",
+  "updated_at": "2026-09-11T06:08:53.132936+00:00",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1139,13 +1139,13 @@
       "component": "Workalendar",
       "source": "Core kernel Yaiwes/Workalendar/",
       "current_step": 2,
-      "status": "GAP",
+      "status": "IN_PROGRESS",
       "abc": "C",
       "target": "Agente Yaiwes principal/execution-orchestration/classifier-scheduler/workalendar/",
-      "owner": null,
-      "lock": "FREE",
+      "owner": "SOL",
+      "lock": "CLAIMED",
       "checkpoint": {
-        "before": "2026-09-10T19:54:00Z source_exists:Core kernel Yaiwes/Workalendar/; physical read-back confirms populated source tree with README.md, Makefile, package metadata and source provenance files",
+        "before": "2026-09-11T06:08:53.132936+00:00 fresh physical read-back: source absent; target populated; canonical Motor4 move commit a97b5d8804ed76996027dbb254af3ad70b9f4c80 is ancestor of main; recover stale STEP2 only, do not repeat MOVE",
         "after": "STEP2 GAP: canonical Motor4 verified; no N25 Workalendar runner and no reusable generic Motor4 runner exists on main; node-specific N21/N22 runners cannot be repurposed; MOVE not executed"
       },
       "evidence": [
@@ -1176,9 +1176,15 @@
           "actor": "SOL",
           "label": "SOL integración 2",
           "event": "STEP2_GAP_FAIL_CLOSED_RELEASE"
+        },
+        {
+          "at": "2026-09-11T06:08:53.132936+00:00",
+          "actor": "SOL",
+          "label": "SOL integración 1",
+          "event": "CLAIM_STEP2_STALE_STATE_RECONCILIATION"
         }
       ],
-      "next_action": "STEP_2_MOVE_WITH_CANONICAL_MOTOR_REQUIRES_EXISTING_AUTHORIZED_RUNNER_OR_DISPATCH"
+      "next_action": "STEP2_RECONCILE_EXISTING_MOTOR4_MOVE_READBACK"
     },
     {
       "id": 26,
