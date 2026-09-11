@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-11T05:10:58.324473+00:00",
+  "updated_at": "2026-09-11T05:22:12.652808+00:00",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1192,7 +1192,7 @@
       "lock": "CLAIMED",
       "checkpoint": {
         "before": "2026-09-11T04:28:57.839533+00:00 SOL integración 1 N26 STEP3: STEP2 Motor4/read-back PASS; build moved runsc and execute real rootless ptrace sandbox command",
-        "after": "STEP3 GAP run 34562490975: canonical runsc build PASS from identical no-space workspace; real rootless ptrace sandbox blocked by GitHub hosted runner policy: re-executing /proc/self/exe permission denied. StrategyDelta: same runsc binary and same ptrace/network-none feature test inside ephemeral privileged CI container; no gVisor source changes."
+        "after": "STEP3 GAP run 34564949176: canonical runsc build PASS; real gVisor ptrace network-none sandbox executed and emitted 41, but adapter merged Docker pull stderr with stdout and rejected the otherwise-correct feature result. StrategyDelta: keep identical test and separate stdout/stderr; no gVisor source changes."
       },
       "evidence": [
         "worker:SOL integración 2",
@@ -1216,7 +1216,12 @@
         "step3:build_run:34562490975:PASS",
         "step3:gap_run:34562490975",
         "step3:gap_exact:GitHub-hosted-runner blocks rootless runsc /proc/self/exe reexec permission denied",
-        "step3:strategy_delta:same_runsc_real_ptrace_test_inside_ephemeral_privileged_CI_container"
+        "step3:strategy_delta:same_runsc_real_ptrace_test_inside_ephemeral_privileged_CI_container",
+        "step3:build_run:34564949176:PASS",
+        "step3:runtime_run:34564949176:real_runsc_emitted_41",
+        "step3:gap_run:34564949176",
+        "step3:gap_exact:adapter_merged_docker_pull_stderr_with_sandbox_stdout",
+        "step3:strategy_delta:separate_stdout_stderr_same_real_runsc_test"
       ],
       "history": [
         {
@@ -1270,9 +1275,16 @@
           "label": "SOL integración 1",
           "event": "STEP3_GAP_ROOTLESS_HOST_POLICY_STRATEGY_DELTA",
           "run": 34562490975
+        },
+        {
+          "at": "2026-09-11T05:22:12.652808+00:00",
+          "actor": "SOL",
+          "label": "SOL integración 1",
+          "event": "STEP3_GAP_OUTPUT_PARSER_STRATEGY_DELTA",
+          "run": 34564949176
         }
       ],
-      "next_action": "STEP3_RETRY_REAL_RUNSC_PTRACE_IN_EPHEMERAL_PRIVILEGED_CI_CONTAINER"
+      "next_action": "STEP3_RETRY_SAME_REAL_RUNSC_TEST_SEPARATE_STDOUT_STDERR"
     },
     {
       "id": 27,
