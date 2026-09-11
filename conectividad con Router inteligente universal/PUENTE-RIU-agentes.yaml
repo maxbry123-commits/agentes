@@ -1,14 +1,33 @@
-schema: riu.connectivity.bridge/v1
+schema: riu.connectivity.bridge/v2
 project: agentes
 repo: maxbry123-commits/agentes
 branch: main
 role: agents_skills_runtime
+owner: maxbry123-commits
 router:
   repo: maxbry123-commits/router-universal-router-inteligente-
+  root: conectividad con Router inteligente universal
   registry: conectividad con Router inteligente universal/REGISTRY-CONECTIVIDAD-RIU.json
+  map: conectividad con Router inteligente universal/MAPA-MENTAL-CONECTIVIDAD-RIU.md
+  handoff: Handoff router inteligente universal.md
+  mode: FAIL_CLOSED_LOOP
+secret_store:
+  provider: github_codespaces_user_secrets
+  settings_url: https://github.com/settings/codespaces
+  repo_access_required: maxbry123-commits/agentes
+  raw_credentials_in_git: false
+  resolution:
+    huggingface: [RIU_HF_TOKEN, HF_TOKEN, HUGGINGFACE_TOKEN]
+    github: [RIU_GITHUB_PAT, GITHUB_TOKEN, GH_TOKEN]
+  rule: resolve_at_runtime_only
+connections:
+  github: {route_via: router_inteligente_universal, auth: runtime_env_ref}
+  huggingface: {account: COMAND-CENTER-1, route_via: router_inteligente_universal, compute: [hf_jobs_cpu, hf_jobs_gpu], auth: runtime_env_ref}
+  claude_github_mcp: {resource_type: github_repository, mcp_url: https://api.githubcopilot.com/mcp/, auth_boundary: vault_or_runtime, route_via: router_inteligente_universal}
+  memory: {route_via: router_inteligente_universal, targets: [maxbry123-commits/MEMORIA, maxbry123-commits/BIBLIOTECA, maxbry123-commits/BITACORA-MAXBRY, maxbry123-commits/Cerebro]}
 transport: [api, mcp]
-capabilities: [agents, skills, github_operations, runtime_connectors]
-auth: external_runtime_secret_store
-raw_credentials_in_git: false
-status: BRIDGE_DECLARED
-verification: PENDING_E2E_ROUTER
+capabilities: [agents, skills, github_operations, runtime_connectors, huggingface_compute, claude_github_mcp, memory_bridge]
+health_gates: {github: PENDING_RUNTIME_CREDENTIAL_TEST, huggingface: PENDING_RUNTIME_CREDENTIAL_TEST, claude_github_mcp: PENDING_RUNTIME_CREDENTIAL_TEST, router_bridge: DECLARED}
+security: {fail_closed: true, evidence_required: true, raw_credentials_in_git: false, never_log_secret_values: true}
+status: BRIDGE_V2_DECLARED
+verification: PENDING_E2E_ROUTER_CREDENTIALS
