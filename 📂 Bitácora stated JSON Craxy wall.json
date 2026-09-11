@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-10T22:31:41.010979+00:00",
+  "updated_at": "2026-09-11T02:24:14.829441+00:00",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -488,7 +488,7 @@
       "lock": "FREE",
       "checkpoint": {
         "before": null,
-        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=34537194559"
+        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=345371945559"
       },
       "evidence": [
         "move_1_20:VERIFIED_CLOSED",
@@ -544,7 +544,7 @@
       "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-10T20:10:00Z prior STEP3 run 34472888878 used go test ./... -run ^$ and failed in unrelated generated test helpers; internal/validator package compiled successfully in same log",
-        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=34537194559"
+        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=34537194559
       },
       "evidence": [
         "move_1_20:VERIFIED_CLOSED",
@@ -586,7 +586,7 @@
       "lock": "FREE",
       "checkpoint": {
         "before": null,
-        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=34537194559"
+        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=34537194559
       },
       "evidence": [
         "move_1_20:VERIFIED_CLOSED",
@@ -614,7 +614,7 @@
       "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-10T20:12:00Z prior STEP3 run 34472888878 failed because check-release-workflow-action-pins.mjs imports declared dependency yaml@2.9.0 but node_modules was absent",
-        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=34537194559"
+        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=34537194559
       },
       "evidence": [
         "move_1_20:VERIFIED_CLOSED",
@@ -706,7 +706,7 @@
       "lock": "FREE",
       "checkpoint": {
         "before": null,
-        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=34537194559"
+        "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=34537194559
       },
       "evidence": [
         "move_1_20:VERIFIED_CLOSED",
@@ -881,10 +881,10 @@
       "status": "GAP",
       "abc": "C",
       "target": "Agente Yaiwes principal/state-events-durability/run-state-store/postgresql/",
-      "owner": null,
-      "lock": "FREE",
+      "owner": "SOL",
+      "lock": "CLAIMED",
       "checkpoint": {
-        "before": "2026-09-10T20:14:00Z fresh physical read-back: source Core kernel Yaiwes/PostgreSQL/ exists and is populated; exact target Agente Yaiwes principal/state-events-durability/run-state-store/postgresql/ is absent on main (404)",
+        "before": "2026-09-11T02:24:14.829441+00:00 SOL integración 3 reactivation: fresh source PostgreSQL populated; exact target 404; fresh GitHub searches found no authorized N23 Motor4 runner; STEP2 only",
         "after": "2026-09-10T20:44:00Z STEP2 GAP fail-closed: fresh main still has populated PostgreSQL source and exact target remains 404; no n23 Motor4 runner exists. Canonical Motor4 HF sandbox job 6aa3074c5527934177ec24ee succeeded for 7682 files with aggregate SHA 4078b790994f4fc80470a5a3e5528a2bdc3d8f223b25af20c942b6089a4ae8b8, but HF has no GitHub/GH token environment so it cannot persist to main. MOVE not executed; released for safe-loop continuation."
       },
       "evidence": [
@@ -904,7 +904,10 @@
         "step2:hf_motor4_job:6aa3074c5527934177ec24ee:PASS:7682-files:aggregate_sha=4078b790994f4fc80470a5a3e5528a2bdc3d8f223b25af20c942b6089a4ae8b8",
         "step2:hf-credential-probe-job:6aa316815527934177ec29f4:NO_MATCHING_ENV_NAMES",
         "step2:strategy_delta_hf_push:UNAVAILABLE_NO_GITHUB_CREDENTIAL",
-        "step2:PASS_REFUTED_SOURCE_PRESENT_TARGET_404"
+        "step2:PASS_REFUTED_SOURCE_PRESENT_TARGET_404",
+        "reactivation:source-populated",
+        "reactivation:target-404",
+        "reactivation:search:no-authorized-n23-motor4-runner"
       ],
       "history": [
         {
@@ -936,6 +939,12 @@
           "actor": "SOL",
           "label": "SOL integración 3",
           "event": "STEP2_GAP_RESEARCH_RELEASE"
+        },
+        {
+          "at": "2026-09-11T02:24:14.829441+00:00",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "REACTIVATION_CLAIM_STEP2"
         }
       ],
       "next_action": "WAIT_EXISTING_AUTHORIZED_N23_MOTOR4_RUNNER_OR_DISPATCH; FLAG_AND_CONTINUE_SAFE_FREE_NODE"
