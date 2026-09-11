@@ -3,7 +3,7 @@
   "contract": "tel.workflow/v4",
   "gap": "G-011",
   "owner": "SOL_1",
-  "status": "LOCAL_EQUIVALENT_SIMULATION_PASS_PENDING_AUTHORITATIVE_RUNNER_AND_TASK_NODE_CAS",
+  "status": "EXACT_BLOB_LOCAL_PYTEST_PASS_PENDING_TASK_NODE_CAS",
   "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
   "research": {
     "motor_code_lock": "➡️📂motores de descarga extracción copiado movimiento archivos agentes/MOTOR-CODE-LOCK.json",
@@ -40,7 +40,15 @@
       "unsupported operation fail-closed",
       "source/destination collision fail-closed"
     ],
-    "repo_pytest_execution": "NOT_CLAIMED",
+    "exact_blob_local_pytest": {
+      "materialization": "GitHub read-back contents reconstructed byte-exact for canonical motors; computed Git blob SHA matched locked blobs before pytest",
+      "copy_computed_blob": "3689924361ce4a1a9fde4ae2b6f6009c37a6042d",
+      "move_computed_blob": "9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
+      "command": "PYTHONPATH=. python -m pytest -q runtime/tests/test_canonical_motor_gate.py",
+      "result": "3 passed in 1.64s",
+      "verdict": "PASS_3_OF_3",
+      "scope": "LOCAL_TOOL_RUN_EXACT_REPO_BLOBS_NOT_GITHUB_ACTIONS"
+    },
     "local_equivalent_simulation": {
       "copy_sha256_readback": "PASS",
       "copy_source_preserved": "PASS",
@@ -50,7 +58,7 @@
       "source_destination_collision_fail_closed": "PASS",
       "verdict": "PASS_6_OF_6_EQUIVALENT_ASSERTIONS"
     },
-    "verdict": "LOCAL_EQUIVALENT_PASS_REPO_RUNNER_NOT_EXECUTED"
+    "verdict": "EXACT_BLOB_LOCAL_PYTEST_PASS"
   },
   "runner_probe_2026_09_11": {
     "main_head_observed": "feb291df8cf21e89ac506479dbabf84a338b8d7d",
@@ -59,21 +67,21 @@
     "github_actions_conclusion": "failure",
     "github_actions_jobs_total": 0,
     "qualifies_as_g011_authoritative_test": false,
-    "local_fresh_checkout_attempt": "BLOCKED_ENVIRONMENT_DNS_GITHUB_COM_UNRESOLVABLE",
-    "decision": "DO_NOT_CLAIM_REPO_PYTEST_PASS"
+    "decision": "Do not use unrelated workflow as G-011 evidence. Exact-blob local pytest is separately recorded."
   },
   "task_node": {
     "fresh_precondition": "G-011 PENDING claimed_by=null version=1; G-018 CLAIMED by SOL_2",
-    "task_nodes_blob_before": "78a5dafbd3cbf5c6ae03dfa82a0351dc97335bd0",
+    "task_nodes_path": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/TASK-NODES.json",
+    "task_nodes_blob_observed": "78a5dafbd3cbf5c6ae03dfa82a0351dc97335bd0",
+    "path_resolved": true,
     "claim_persisted": false,
-    "reason": "Shared TASK-NODES path was not resolvable through the current contents view; fail closed rather than replace an unidentified shared ledger."
+    "reason": "Path is now resolved, but shared one-line ledger requires complete-content CAS replacement. Fail closed until a byte-complete fresh read can be safely patched without overwriting concurrent nodes."
   },
   "closure": {
     "closed": false,
     "remaining": [
-      "execute repository test in an authoritative runner or accepted repo execution path",
-      "resolve current TASK-NODES path and persist SOL_1 ownership/status through SHA/CAS",
-      "only then mark three steps PASS and advance gaps_closed"
+      "persist SOL_1 ownership/status for G-011 through safe SHA/CAS on TASK-NODES.json",
+      "after successful CAS, mark G-011 steps PASS and advance gaps_closed"
     ],
     "execution_authorized": false,
     "deployment_authorized": false
