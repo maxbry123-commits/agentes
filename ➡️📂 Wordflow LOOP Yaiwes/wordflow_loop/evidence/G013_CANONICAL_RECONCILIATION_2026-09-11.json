@@ -2,17 +2,17 @@
   "contract": "yaiwes.truth_reconciliation/v1",
   "gap": "G-013",
   "owner": "SOL_1",
-  "canonical_checkpoint": "WFLOOP-CODE-GRAPH-20260911-0010",
+  "canonical_checkpoint": "WFLOOP-CODE-GRAPH-20260911-0019",
   "result": "CONSISTENT_VERIFIED_LOCAL",
   "truth_sources": {
-    "STATE": {"git_blob_sha": "6bcae3a6364fbf5795a64bd2f9b465d7eb7b0d7c", "checkpoint": "WFLOOP-CODE-GRAPH-20260911-0010"},
-    "CHECKPOINT": {"git_blob_sha": "060dfc36e60c0322febb894f20c7277bedb68f5e", "checkpoint": "WFLOOP-CODE-GRAPH-20260911-0010"},
-    "README": {"git_blob_sha": "bc447fa7e222112ba171f3d86ed9b64026823f14", "checkpoint": "WFLOOP-CODE-GRAPH-20260911-0010"},
-    "BITACORA": {"git_blob_sha": "c010ace756ffedfd6de07f89c8f7884bbabbbf14", "checkpoint": "WFLOOP-CODE-GRAPH-20260911-0010"},
-    "GAPS": {"git_blob_sha": "7f7e7e9f0d956ed5614d1cd923067e1502625208", "checkpoint": "WFLOOP-CODE-GRAPH-20260911-0010"},
-    "HANDOFF": {"git_blob_sha": "e1822486ed88a3526432605c87d1bb98dd666f9e", "checkpoint": "WFLOOP-CODE-GRAPH-20260911-0010"},
-    "PLAN": {"git_blob_sha": "3a3f5e8f78d8c3338782ee5a8514a28d193bb58d", "checkpoint": "WFLOOP-CODE-GRAPH-20260911-0010"},
-    "RECOVERY": {"git_blob_sha": "b559e7d6e0d32aa4b68567abc783e0af7076aa8f", "checkpoint": "WFLOOP-CODE-GRAPH-20260911-0010"}
+    "README": {"git_blob_sha":"3652a6f5589bc8ba074f51b850ca4bd3203a41f4","checkpoint":"WFLOOP-CODE-GRAPH-20260911-0019"},
+    "STATE": {"git_blob_sha":"92e9db8dbe3c3b276b76d478401086c82decfd72","checkpoint":"WFLOOP-CODE-GRAPH-20260911-0019"},
+    "CHECKPOINT": {"git_blob_sha":"28dfb1c130b06f8db7ff23b47b28da1941450b12","checkpoint":"WFLOOP-CODE-GRAPH-20260911-0019"},
+    "BITACORA": {"git_blob_sha":"8ce47675f882fe9da3761da37356cd938e7fd780","checkpoint":"WFLOOP-CODE-GRAPH-20260911-0019"},
+    "GAPS": {"git_blob_sha":"74ea2099becf07d51bbf9d5613f71ab8dfb0fb4b","checkpoint":"WFLOOP-CODE-GRAPH-20260911-0019"},
+    "HANDOFF": {"git_blob_sha":"547fd6df24618fa30166ed8bed97debf73656f7d","checkpoint":"WFLOOP-CODE-GRAPH-20260911-0019"},
+    "PLAN": {"git_blob_sha":"d0ecd2d53b855b3c5e1819e71fc36dcd232c2a08","checkpoint":"WFLOOP-CODE-GRAPH-20260911-0019"},
+    "RECOVERY": {"git_blob_sha":"1819ebbe497b1bc5fd61ae7ab4d5fb0fbb45cdb8","checkpoint":"WFLOOP-CODE-GRAPH-20260911-0019"}
   },
   "reconciler": {
     "module": "runtime/src/core/source_truth_reconciler.py",
@@ -23,13 +23,12 @@
   },
   "verification": {
     "readback": "PASS_8_OF_8",
-    "local_equivalent_simulation": "PASS_7_OF_7",
+    "exact_local_pytest": "PASS_7_OF_7",
     "reconciliation_status": "CONSISTENT",
     "drift": [],
     "conflicts": [],
     "missing": [],
     "write_authorized_by_reconciler": false,
-    "repo_pytest_execution": "NOT_CLAIMED",
     "github_actions_test_pass": "NOT_CLAIMED",
     "external_provider_execution": "NOT_CLAIMED"
   },
@@ -38,6 +37,11 @@
     "observed_409_conflict": true,
     "conflict_handling": "REFETCH_AND_RETRY_NO_BLIND_OVERWRITE"
   },
-  "decision": "G013_ELIGIBLE_FOR_CLOSED_VERIFIED_LOCAL",
-  "next_dependency": "G-018_FABLES_CANONICAL_BINDING_BEFORE_G-006"
+  "task_nodes_close_commit": "5db4739d6bed2a34bd1e148ed23ea820f6b69aa3",
+  "next_node": {
+    "id": "G-019",
+    "owner": "SOL_1",
+    "claim_commit": "d6aafd207ab89db0437d8c4f17da016fec534687"
+  },
+  "decision": "G013_CLOSED_VERIFIED_LOCAL_0019"
 }
