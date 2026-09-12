@@ -301,3 +301,20 @@ Nodo independiente reclamado y cerrado por `ASTRA_GPT_LOOP`; G-013 de SOL_1 y G-
 - Evidence: `wordflow_loop/evidence/G015_GOALS12_INPUT_OUTPUT_RUNNER_2026-09-11.json`, commit `0414a047d92b4e6bffc07c060463dbfe3ca14392`; TASK-NODES cierre SHA/CAS commit `15ca3401c043b733c1d44ed9105631b6d7125de6`.
 
 Resultado: `G-015 CLOSED_VERIFIED_LOCAL`. No se reclama PASS de proveedores externos, pytest global ni cierre global del Wordflow.
+
+# ASTRA-GPT-LOOP — CIERRE LOCAL G-012 — 2026-09-12
+
+Nodo propio `G-012` cerrado sin modificar G-013 de SOL_1 ni G-018 de SOL_2.
+
+- GAP comprobado: `component_intake.py` emitía descriptores, pero no verificaba blobs físicos de los motores, no adaptaba sus variables exactas, no persistía/releía la cola y no verificaba el resultado contra estado, commit y árbol reales.
+- Implementado contrato `yaiwes.component_intake/v2` + schema: exige SHA de commit de 40 hex para descarga o SHA-256 del archivo para extracción, HTTPS GitHub, raíz autorizada, resolución física anti-symlink y autorización explícita antes de persistir cola.
+- Adapter cableado a los motores canónicos inmutables: download/extract `84d566e…`, engine `91e6e44…`, extract-only `a52d5dc…`; no se modificaron los motores.
+- Ejecución real download→ZIP→extract sobre `octocat/Hello-World@7fd1a60b01f91b314f59955a4e4d4e80d8edf11d`: exit 0, `VERIFIED_CLOSED`, `extraction_verified=true`, `no_lfs=true`, árbol 1 archivo/13 bytes/`c5b7244f…`.
+- Ejecución real extract-only y read-back: PASS. Regresiones locales: `PASS_7_OF_7`, incluido rechazo de ref no fijada, ruta/symlink fuera de raíz, SHA de archivo incorrecto, mutación no autorizada y árbol manipulado.
+- Read-back de main: módulo blob `135c47abf199d4d9b25075068ca9567575b071d1`; tests `020e81b36239a8bc02a399cc81cbbc599b1d5848`; schema `74f6d4a4b5a179a076405ac16545aba6b4c7ff3b`; evidence `217078593303c3dba496e8278ed7c607d386f1b6`.
+- Pytest completo no se ejecutó porque el paquete no está instalado; no se reclama proveedor autenticado ni PASS global.
+
+Evidence: `wordflow_loop/evidence/G012_COMPONENT_INTAKE_2026-09-12.json`. Commits de publicación culminan en `0a8e66a0c28ebc5b684fa9bafb736ef0096edf2e`; cierre TASK-NODES `cc249568ab3da929f16569038bd55512f7e4169a`.
+
+Resultado: `G-012 CLOSED_VERIFIED_LOCAL_REAL_MOTORS`. G-013 y G-018 permanecen bajo sus propietarios.
+
