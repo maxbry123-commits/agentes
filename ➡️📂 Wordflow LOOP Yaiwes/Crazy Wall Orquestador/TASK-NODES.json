@@ -604,15 +604,15 @@
       "id": "G-029",
       "task": "Cerrar planificación organizada con matriz ADOPT/ADAPT/REJECT; REUSE DAGEngine+MavisPool por defecto.",
       "literal_sha256": "3be8599eb7f6304e735e009126183f749f0861cbf783fdc0ebeb9e831b019ac9",
-      "status": "PENDING",
-      "claimed_by": null,
+      "status": "CLAIMED",
+      "claimed_by": "ASTRA_GPT_LOOP",
       "depends_on": [
         "G-021"
       ],
       "steps": [
         {
           "id": "1_RESEARCH",
-          "status": "PENDING"
+          "status": "RUNNING"
         },
         {
           "id": "2_MOTOR",
@@ -625,7 +625,7 @@
       ],
       "evidence": [],
       "gaps": [],
-      "version": 1,
+      "version": 2,
       "checker": "ASTRA_GPT"
     },
     {
