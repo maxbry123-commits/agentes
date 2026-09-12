@@ -331,3 +331,15 @@ Nodo independiente `G-007` reclamado y cerrado por `ASTRA_GPT_LOOP`; G-013 de SO
 - Evidence: `wordflow_loop/evidence/G007_EXISTING_CODE_CANONICAL_TRANSFER_2026-09-12.json`. No LFS, no force, motores canónicos sin reescritura.
 
 Resultado: `G-007 CLOSED_VERIFIED_LOCAL_REAL_MOTORS`. El Wordflow global continúa abierto.
+
+
+# CICLO ASTRA — G-016 CHAT A ↔ CHAT B — 2026-09-12
+
+## CG-0057 — Claim independiente
+Astra reclamó G-016 en commit `2ef190286fd06ad9b3c4cab7e2d4436391ccf0a2`; G-013 (Sol 1) y G-018 (Sol 2) permanecieron intactos.
+
+## CG-0058 — Chat-A localizado y verificado
+El árbol recursivo completo del LOOP (`truncated=false`) localizó el artefacto Chat-A en `📂 archivos download/📂Archivo download 2/PROMPT_MAESTRO_CHAT_A_CHAT_B_VERSION_MADURA.md`, blob `a9606ed0154ad5e7a72b6ffbe43d225e2ea448a3`. Se relevaron además los contratos Chat-B T001/T007/T011, blobs `e641ad5…`, `e1ae85b…` y `ac8b014…`.
+
+## CG-0059 — Validación y cierre local
+Validación ejecutable sobre read-back: `PASS_12_OF_12`. Confirma roles A/B, límites 2000/500 LOC, trazabilidad, política REUSE>PATCH>ADAPT>GENERATE, identidades T001/T007/T011, formatos de salida y contención en raíz. `G-016 VERIFIED_CLOSED_LOCAL_SOURCE_PROOF`; no hizo falta crear código. Evidence `wordflow_loop/wordflow_loop/evidence/G016_CHAT_A_CHAT_B_SOURCE_PROOF_2026-09-12.json`. STATE/CHECKPOINT no se tocaron porque G-013 pertenece a Sol 1.

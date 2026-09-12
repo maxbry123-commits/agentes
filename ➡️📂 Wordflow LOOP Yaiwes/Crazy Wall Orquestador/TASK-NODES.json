@@ -266,26 +266,28 @@
       "id": "G-016",
       "task": "Cerrar Chat A ↔ Chat B localizando/adaptando Chat A o demostrando NOT_FOUND.",
       "literal_sha256": "d9ad9eb38566a5c6bac70df9c79f02cf9f194146d3a20649bb02403c2db011ef",
-      "status": "CLAIMED",
+      "status": "PASS",
       "claimed_by": "ASTRA_GPT_LOOP",
       "depends_on": [],
       "steps": [
         {
           "id": "1_RESEARCH",
-          "status": "RUNNING"
+          "status": "PASS"
         },
         {
           "id": "2_MOTOR",
-          "status": "PENDING"
+          "status": "PASS"
         },
         {
           "id": "3_WIRE_TEST",
-          "status": "PENDING"
+          "status": "PASS"
         }
       ],
-      "evidence": [],
+      "evidence": [
+        "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G016_CHAT_A_CHAT_B_SOURCE_PROOF_2026-09-12.json"
+      ],
       "gaps": [],
-      "version": 2,
+      "version": 3,
       "checker": "ASTRA_GPT"
     },
     {
