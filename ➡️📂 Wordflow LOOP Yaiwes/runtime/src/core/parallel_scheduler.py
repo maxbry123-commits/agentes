@@ -1,9 +1,11 @@
-"""Deterministic DAG batch planner with priority, dedup and backpressure."""
+"""Deterministic DAG planner and bounded executor."""
 from __future__ import annotations
 
+import asyncio
 import graphlib
+import json
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, MutableMapping, Tuple
 
 
 class SchedulerError(ValueError):
@@ -24,6 +26,27 @@ class SchedulePlan:
     batches: Tuple[Tuple[str, ...], ...]
     idempotency_index: Dict[str, str]
     max_concurrency: int
+    aliases: Dict[str, str]
+
+
+@dataclass(frozen=True)
+class TaskResult:
+    task_id: str
+    canonical_task_id: str
+    status: str
+    output: Any
+
+
+def _payload_fingerprint(payload: Any) -> str:
+    try:
+        return json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    except (TypeError, ValueError) as exc:
+        raise SchedulerError("PAYLOAD_NOT_CANONICAL_JSON") from exc
 
 
 def plan_tasks(
@@ -39,24 +62,46 @@ def plan_tasks(
 
     by_id: Dict[str, TaskEnvelope] = {}
     by_key: Dict[str, str] = {}
+    aliases: Dict[str, str] = {}
+    signatures: Dict[str, Tuple[int, Tuple[str, ...], str]] = {}
+    seen_task_ids = set()
     for task in tasks:
         if not task.task_id or not task.idempotency_key:
             raise SchedulerError("task_id and idempotency_key required")
-        if task.task_id in by_id:
+        if task.task_id in seen_task_ids:
             raise SchedulerError("DUPLICATE_TASK_ID")
+        seen_task_ids.add(task.task_id)
         if task.idempotency_key in by_key:
-            raise SchedulerError("DUPLICATE_IDEMPOTENCY_KEY")
+            canonical_id = by_key[task.idempotency_key]
+            signature = (
+                task.priority,
+                tuple(task.depends_on),
+                _payload_fingerprint(task.payload),
+            )
+            if signatures[task.idempotency_key] != signature:
+                raise SchedulerError("IDEMPOTENCY_KEY_CONFLICT")
+            aliases[task.task_id] = canonical_id
+            continue
         by_id[task.task_id] = task
         by_key[task.idempotency_key] = task.task_id
+        aliases[task.task_id] = task.task_id
+        signatures[task.idempotency_key] = (
+            task.priority,
+            tuple(task.depends_on),
+            _payload_fingerprint(task.payload),
+        )
 
-    for task in tasks:
+    all_task_ids = set(aliases)
+    normalized_dependencies: Dict[str, set[str]] = {}
+    for task in by_id.values():
+        dependencies = set()
         for dependency in task.depends_on:
-            if dependency not in by_id:
+            if dependency not in all_task_ids:
                 raise SchedulerError("MISSING_DEPENDENCY")
+            dependencies.add(aliases[dependency])
+        normalized_dependencies[task.task_id] = dependencies
 
-    sorter = graphlib.TopologicalSorter(
-        {task.task_id: set(task.depends_on) for task in tasks}
-    )
+    sorter = graphlib.TopologicalSorter(normalized_dependencies)
     try:
         sorter.prepare()
     except graphlib.CycleError as exc:
@@ -72,4 +117,60 @@ def plan_tasks(
             batches.append(tuple(ready[index : index + max_concurrency]))
         sorter.done(*ready)
 
-    return SchedulePlan(tuple(batches), dict(by_key), max_concurrency)
+    return SchedulePlan(
+        tuple(batches),
+        dict(by_key),
+        max_concurrency,
+        dict(aliases),
+    )
+
+
+async def execute_tasks(
+    tasks: List[TaskEnvelope],
+    worker_fn: Callable[[TaskEnvelope], Awaitable[Any]],
+    *,
+    max_concurrency: int = 4,
+    max_queue: int = 100,
+    completed_by_key: MutableMapping[str, Any] | None = None,
+) -> Tuple[TaskResult, ...]:
+    """Execute one planned DAG with bounded fan-out and fail-closed fan-in."""
+
+    plan = plan_tasks(
+        tasks,
+        max_concurrency=max_concurrency,
+        max_queue=max_queue,
+    )
+    by_id = {
+        task.task_id: task
+        for task in tasks
+        if plan.aliases[task.task_id] == task.task_id
+    }
+    completed = completed_by_key if completed_by_key is not None else {}
+    results: List[TaskResult] = []
+    result_by_id: Dict[str, Any] = {}
+
+    for batch in plan.batches:
+        async def run(task_id: str) -> TaskResult:
+            task = by_id[task_id]
+            for dependency in task.depends_on:
+                canonical_dependency = plan.aliases[dependency]
+                if canonical_dependency not in result_by_id:
+                    raise SchedulerError("DEPENDENCY_NOT_COMPLETED")
+            if task.idempotency_key in completed:
+                output = completed[task.idempotency_key]
+                return TaskResult(task_id, task_id, "IDEMPOTENT_REPLAY", output)
+            output = await worker_fn(task)
+            completed[task.idempotency_key] = output
+            return TaskResult(task_id, task_id, "COMPLETED", output)
+
+        batch_results = await asyncio.gather(*(run(task_id) for task_id in batch))
+        for result in batch_results:
+            result_by_id[result.task_id] = result.output
+            results.append(result)
+
+    for alias_id, canonical_id in plan.aliases.items():
+        if alias_id == canonical_id:
+            continue
+        output = result_by_id[canonical_id]
+        results.append(TaskResult(alias_id, canonical_id, "DEDUPLICATED", output))
+    return tuple(results)
