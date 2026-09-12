@@ -2,47 +2,67 @@
 
 Contrato: `tel.workflow/v4`  
 Modo: `FAIL_CLOSED_EXECUTION_LOOP`  
-Raíz única autorizada de escritura: `maxbry123-commits/agentes/➡️📂 Wordflow LOOP Yaiwes/`
+Raíz única autorizada de escritura: `maxbry123-commits/agentes/➡️📂 Wordflow LOOP Yaiwes/`  
+Checkpoint canónico: `WFLOOP-CODE-GRAPH-20260911-0019`.
 
-## Histórico conservado
-El cierre local anterior permanece válido: fleet=18, Council12=12, routing/fail-closed local y router MVP fueron probados localmente. Evidencia: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/FINAL_3STEP_CLOSURE_TEST_2026-09-10.json` · commit `6c4b10a49fa8de3bd85348f15bd5f5fa461d128c`.
+## Estado canónico fresco — 2026-09-12
+Fuente de estado por nodo: `Crazy Wall Orquestador/TASK-NODES.json`.
 
-Estado externo histórico y actual: `AUTH_PROVIDER_TEST_PENDING`. No se afirma PASS_REAL de proveedores/APIs o agentes remotos sin ejecución autenticada real.
+- 30 GAPs del CODE GRAPH.
+- 25 `PASS` verificados en el ledger actual.
+- `G-022 BLOCKED_PHYSICAL_ISOLATION` y no puede convertirse a PASS sin aislamiento físico real.
+- `G-017 PENDING` depende de G-022.
+- `G-027 PENDING` y `G-028 PENDING`; ambos dependen de G-018, que ya está PASS.
+- `G-019 CLAIMED` por `SOL_1`; investigación global en curso.
+- `COMP-BROWSER-USE RUNNING` pertenece a `SOL_ORCHESTRATOR`; SOL_1 no lo toca.
+- `AUTH_PROVIDER_TEST_PENDING` continúa abierto; no afirmar PASS_REAL externo.
 
-# Fase activa — CODE_GRAPH_ARCHITECTURE_PROGRAMMING_LOOP
-Estado: `ACTIVE_LOOP_CODE_GRAPH_RESEARCH`  
-Checkpoint canónico: `WFLOOP-CODE-GRAPH-20260911-0019`  
-Nodo: `G013_SOURCE_TRUTH_RECONCILIATION`.
+## Cierre anterior inmediato — G-013
+`G-013 CLOSED_VERIFIED_LOCAL_0019` por SOL_1.
 
-Pipeline objetivo:
-`archivo/componente → Ask Council/auditoría → arquitectura → requisitos → director_tasks + generated_tasks → DAG/cola → placement A|B|C|D|E|F|G → REUSE>PATCH>ADAPT>GENERATE → sandbox → reviewer independiente → deployment determinista → evidencia → STATE/CHECKPOINT`.
+Contrato: `yaiwes.truth_reconciliation/v1`.
+- Módulo: `runtime/src/core/source_truth_reconciler.py`, blob `fb93ce9ee5b86439b0ba36ef72c404134d1984b1`.
+- Tests: `runtime/tests/test_source_truth_reconciler.py`, blob `f39cb13a84d1dbb7fcb1c1467f712bf003a431df`.
+- Ocho fuentes requeridas: README, STATE, CHECKPOINT, BITACORA, GAPS, HANDOFF, PLAN, RECOVERY.
+- Read-back: `PASS_8_OF_8` en checkpoint `0019`.
+- Test exacto local: `PASS_7_OF_7`.
+- Resultado del reconciliador: `CONSISTENT`, sin drift/conflicts/missing.
+- Cierre TASK-NODES: commit `5db4739d6bed2a34bd1e148ed23ea820f6b69aa3`.
+- Evidence: `wordflow_loop/evidence/G013_CANONICAL_RECONCILIATION_2026-09-11.json`.
 
-## GAP status verificado
-- `G-001 CLOSED_VERIFIED_LOCAL`: workspace `wordflow_loop/code_graph/`; serialización determinista + SHA-256 + proyección al DAG existente. Evidence `wordflow_loop/evidence/G001_CODE_GRAPH_WORKSPACE_2026-09-10.json`.
-- `G-002 CLOSED_VERIFIED_LOCAL`: contrato `yaiwes.file_audit/v1` en `runtime/src/core/file_audit_contract.py`, blob `e6624c0b39421a01d54cf0615920073c5dd1ee0f`; tests `runtime/tests/test_file_audit_contract.py`, blob `d490a7e15205c37a0f476e6e4c0de7f9429f36c6`; evidence `wordflow_loop/evidence/G002_FILE_AUDIT_COUNCIL_2026-09-10.json`; simulación local equivalente `PASS_5_OF_5_ASSERTIONS`. Council es asesor: `executable_action_authorized=false` siempre.
-- `G-003 CLOSED_VERIFIED_LOCAL`: task graph determinista; mantiene `director_tasks` y `generated_tasks` separados. Evidence `wordflow_loop/evidence/G003_TASK_GRAPH_2026-09-10.json`.
-- `G-004 CLOSED_VERIFIED_LOCAL`: clasificador A–G + `PLACEMENT_REVIEW_REQUIRED`. Evidence `wordflow_loop/evidence/G004_PLACEMENT_CLASSIFIER_2026-09-10.json`.
-- `G-005 CLOSED_VERIFIED_LOCAL`: selector `runtime/src/core/reuse_selector.py`, blob `bc7f4805fc7f13e6de0341b84c533d4b7fb6b044`, catálogo `wordflow_loop/research/reuse_catalog_g005.json` blob `2367f7ed8c7e1ece1d724f15f6494d5ff56543f8`, tests blob `1bcd0fca22d1238d28add1880e882e7af863ad52`, evidence `wordflow_loop/evidence/G005_REUSE_SELECTOR_2026-09-11.json`. Política `REUSE > PATCH > ADAPT > GENERATE`, máximo 10 candidatos, source/licencia/mantenimiento/compatibilidad/riesgo/footprint obligatorios, read-back PASS, `repo_pytest_execution=NOT_CLAIMED`. No se instaló/copió código externo.
-- `G-010 CLOSED_VERIFIED`: Watchdog CODE GRAPH activo y limitado a la raíz autorizada.
-- `G-013 RECONCILING_CHECKPOINT_0019`: owner `SOL_1`; reconciliador `yaiwes.truth_reconciliation/v1`; cierre condicionado a 8/8 fuentes en 0019 + test + read-back. Evidence `wordflow_loop/evidence/G013_CANONICAL_RECONCILIATION_2026-09-11.json`.
-- `G-020 CLOSED_VERIFIED`: 12 fuentes de investigación en `wordflow_loop/research/community_sources.json`.
-- El estado por nodo fresco se toma de `Crazy Wall Orquestador/TASK-NODES.json`; no se reabren nodos ya PASS ni se pisan nodos de otros workers.
+## Nodo actual — G-019 GLOBAL WORDFLOW AUDIT
+Owner: `SOL_1`. Claim commit `d6aafd207ab89db0437d8c4f17da016fec534687`.
 
-## Reutilización clave
-`runtime/src/core/dag_engine.py` sigue siendo el DAG topológico determinista y gana como `REUSE` para capability `dag`; NetworkX queda referencia externa, no reemplazo. Graphiti queda `ADAPT` únicamente para contexto temporal/provenance/memoria; Graphology `ADAPT` únicamente para grafo/visualización cuando exista GAP concreto. No se añade scheduler paralelo.
+Objetivo literal:
+`inventario + capabilities + duplicados + huérfanos + rutas rotas + code no usado + ledger`.
 
-## GAPs críticos abiertos
-- `G-006 BLOCKED_DEPENDENCY_G018`: la política de generación existe, pero no puede cerrarse hasta source proof + Ficha/registro Fables verificados.
-- `G-018`: reclamado por `SOL_2`; SOL_1 no lo toca.
-- `G-022`: bloqueo físico de aislamiento; no convertir en PASS sin backend enforceable.
-- `G-017`: depende de G-022 y permanece sin cierre positivo de deployment real.
-- `G-019`: pendiente y dependiente de G-013; será elegible solo después del cierre verificado de G-013.
+Avance actual:
+1. `runtime/src/core/wordflow_global_audit.py` creado bajo contrato `yaiwes.wordflow_global_audit/v1`.
+2. El auditor es read-only: no autoriza borrado, movimiento ni mutación; duplicados y huérfanos son candidatos, no acciones automáticas.
+3. Path escape/symlink fuera de raíz falla cerrado.
+4. Un defecto de resolución `from X import Y` fue detectado por la propia prueba, corregido antes de PASS.
+5. Batería determinista equivalente posterior al parche: `PASS_6_OF_6`.
+6. No hubo GitHub Actions para el commit del parche; no se fabrica runner PASS.
+7. Evidence abierta: `wordflow_loop/evidence/G019_GLOBAL_WORDFLOW_AUDIT_2026-09-12.json`.
+8. Gate pendiente: ejecutar el auditor sobre el árbol real completo y clasificar cada candidato antes de cerrar G-019.
 
-## Reglas de continuación
-1. No escribir fuera de `➡️📂 Wordflow LOOP Yaiwes/`.
-2. No cerrar GAP por presencia de archivo.
-3. Motores de descargar/extraer/copiar/mover: únicamente canónicos, inmutables, destino explícito, hash/read-back, no LFS, no force.
-4. Todo módulo nuevo entra por Enchufe Universal Fables/Ficha; no buses paralelos.
-5. LLM solo en análisis/generación/Council; DAG/routing/gates/state/sandbox/hash/deploy permanecen deterministas.
-6. Si SOL_1 ya tiene un nodo CLAIMED/RUNNING, debe terminar ese nodo antes de reclamar otro.
-7. Nodo actual de SOL_1: `G-013`; después del cierre y read-back, releer `TASK-NODES.json` y solo entonces reclamar un único PENDING libre con dependencias satisfechas.
+## Rutas históricas bajo investigación G-019
+No existen actualmente como archivos:
+- `PIPELINE/00_METODO_TRABAJO_Y_ARQUITECTURA.md`
+- `PIPELINE/FORENSIC_CODE_AUDIT.md`
+- `PIPELINE/ADVANCED_ENGINEERING_STANDARD_V3.md`
+
+No restaurarlas ni inventarlas sin source canónico. Su mención histórica por sí sola no autoriza crear documentos nuevos.
+
+## Reglas de continuación SOL_1
+1. Si SOL_1 tiene un nodo `CLAIMED/RUNNING`, continuar exclusivamente ese nodo.
+2. Flujo: `investigar → motor canónico solo si hace falta → cablear/test/evidence → read-back`.
+3. No escribir fuera de `➡️📂 Wordflow LOOP Yaiwes/`.
+4. No tocar nodos de otro owner.
+5. No LFS, no force, no Step4, no refactor lateral.
+6. No cerrar por presencia de archivo ni por test sintético aislado.
+7. Motores COPY/MOVE/DOWNLOAD/EXTRACT solo si la tarea realmente exige transferencia; G-019 actualmente no necesita motor de archivos.
+8. Tras cerrar G-019, releer TASK-NODES fresco antes de reclamar otro nodo.
+
+## Histórico local conservado
+Fleet=18 · Council12=12 · routing/fail-closed local. Evidence histórica `wordflow_loop/evidence/FINAL_3STEP_CLOSURE_TEST_2026-09-10.json`. Esto no sustituye pruebas externas autenticadas.
