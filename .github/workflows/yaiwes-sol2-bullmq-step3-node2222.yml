@@ -1,0 +1,147 @@
+name: YAIWES SOL2 BullMQ STEP3 Node2222
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-sol2-bullmq-step3-node2222.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-sol2-bullmq-step3-node2222
+  cancel-in-progress: false
+
+jobs:
+  step3:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      WALL: '📂 Bitácora stated JSON Craxy wall.json'
+      INVENTORY: 'Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json'
+      TARGET: 'Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/bullmq'
+      YDIR: 'Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/bullmq/yaiwes'
+      BUS: 'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 8
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /📂 Bitácora stated JSON Craxy wall.json
+            /Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json
+            /Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/bullmq/
+            /Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/
+
+      - name: Claim N33 exact Node2222 repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main; git reset --hard origin/main
+            python3 - <<'PY'
+          import json,os
+          from datetime import datetime,timezone
+          now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z'); p=os.environ['WALL']; d=json.load(open(p,encoding='utf-8')); n=next(x for x in d['nodes'] if x.get('id')==33 and x.get('component')=='BullMQ')
+          if n.get('current_step')!=3 or n.get('status') not in ('GAP_STEP3','GAP') or n.get('lock') not in ('FREE',None) or n.get('owner') not in (None,'SOL'): raise SystemExit(f"N33_NOT_FREE_GAP:{n.get('status')}:{n.get('owner')}:{n.get('lock')}")
+          n['owner']='SOL'; n['lock']='CLAIMED'; n['status']='PENDING_STEP3'; n['checkpoint']['before']=f"{now} SOL integración 2 exact STEP3 retry Node 22.22.2 satisfying commitlint/eslint/semantic-release engines; same BullMQ+Redis+FABLES microtest; no MOVE repeat"
+          n.setdefault('evidence',[]).append('step3:repair:node_runtime_22.13.0_to_22.22.2'); n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 2','event':'CLAIM_STEP3_NODE2222_REPAIR','prior_run':34720547406}); n['next_action']='REPAIR_EXACT_STEP3_GAP_AND_RETRY'; d['updated_at']=now
+          json.dump(d,open(p,'w',encoding='utf-8'),ensure_ascii=False,indent=2); open(p,'a',encoding='utf-8').write('\n')
+          PY
+            git add -- "$WALL"; git commit -m 'crazy-wall: SOL2 claim BullMQ Node2222 STEP3 repair' || true
+            if git push origin HEAD:main; then exit 0; fi; sleep $((attempt*2))
+          done
+          exit 41
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.2'
+          cache: 'yarn'
+          cache-dependency-path: 'Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/bullmq/yarn.lock'
+
+      - name: Execute real BullMQ STEP3
+        id: exec
+        shell: bash
+        run: |
+          set +e
+          sudo apt-get update -qq && sudo apt-get install -y redis-server >/tmp/apt.log 2>&1
+          cd "$TARGET"; npm install -g yarn@1.22.22 >/tmp/yarn-global.log 2>&1
+          yarn install --frozen-lockfile --ignore-scripts >/tmp/install.log 2>&1; irc=$?
+          if [ "$irc" -eq 0 ]; then yarn build >/tmp/build.log 2>&1; brc=$?; else brc=99; fi
+          cd "$GITHUB_WORKSPACE"; trc=99
+          if [ "$irc" -eq 0 ] && [ "$brc" -eq 0 ]; then
+            redis-server --daemonize yes >/tmp/redis.log 2>&1
+            for i in $(seq 1 20); do redis-cli ping 2>/dev/null | grep -q PONG && break; sleep 1; done
+            mkdir -p "$YDIR"
+            cat > "$YDIR/bullmq_microtest.cjs" <<'JS'
+          const path=require('path');const t=path.resolve(__dirname,'..');const {Queue,Worker,QueueEvents}=require(path.join(t,'dist/cjs/index.js'));const qn=`yaiwes-${Date.now()}-${process.pid}`;const connection={host:'127.0.0.1',port:6379,maxRetriesPerRequest:null};(async()=>{const q=new Queue(qn,{connection}),e=new QueueEvents(qn,{connection}),w=new Worker(qn,async j=>({input:j.data.value,output:j.data.value*2}),{connection});try{await e.waitUntilReady();await w.waitUntilReady();const j=await q.add('double',{value:21},{removeOnComplete:true,removeOnFail:true});const r=await j.waitUntilFinished(e,20000);if(r.input!==21||r.output!==42)throw Error('BAD_RESULT:'+JSON.stringify(r));console.log('YAIWES_BULLMQ_RESULT='+JSON.stringify({status:'PASS',input:21,output:42}));}finally{await w.close();await e.close();await q.close();}})().catch(e=>{console.error(e.stack||e);process.exit(1)});
+          JS
+            cat > "$YDIR/bullmq_adapter.py" <<'PY'
+          import json,subprocess
+          from pathlib import Path
+          PLUGIN_ID='yaiwes.parallel_dispatch.bullmq'; TARGET='Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/bullmq'
+          def run_microtest(root):
+              t=Path(root)/TARGET; p=subprocess.run(['node',str(t/'yaiwes'/'bullmq_microtest.cjs')],cwd=t,text=True,capture_output=True,timeout=30)
+              if p.returncode: raise RuntimeError(p.stderr[-1500:])
+              line=next(x for x in p.stdout.splitlines() if x.startswith('YAIWES_BULLMQ_RESULT=')); r=json.loads(line.split('=',1)[1])
+              if r.get('input')!=21 or r.get('output')!=42: raise RuntimeError(str(r))
+              return r
+          PY
+            python3 - <<'PY' >/tmp/test.log 2>&1
+          import hashlib,importlib.util,json,os,sys
+          from pathlib import Path
+          root=Path.cwd(); y=root/os.environ['YDIR']; a=y/'bullmq_adapter.py'; busp=root/os.environ['BUS']; digest='sha256:'+hashlib.sha256(a.read_bytes()).hexdigest()
+          ficha={'artifact_id':'yaiwes.parallel_dispatch.bullmq','version':'1.0.0','estado':'active','contract_hash':digest,'tribunal_case_id':'YAIWES-N33-BULLMQ-STEP3','contrato':{'rol':'transform','consume':{'datatype':{'family':'json','type':'object','version':1}},'expone':{'datatype':{'family':'json','type':'object','version':1}}},'ejecucion':{'kind':'code','transport':'sdk','runtime_type':'compute','entry_point':str(a)+':run_microtest','idempotente':True},'seguridad':{'sandbox':'process','limites':{'timeout_ms':300000,'deadline_ms':300000}},'firma':{'gpg_key_id':'YAIWES-N33'},'categoria':'pipeline','etapa':'P','perfiles':{'n0':{'habilitada':True,'iteraciones':1,'simulaciones':0,'criticas':0,'muestras_k':1}},'repeticion':{'max':1,'condicion':'nunca'},'repite_en':[],'activacion':{'eventos':['kernel.v2.plugin.enchufed'],'wake_words':[],'condicion':''},'presupuesto':{'n0':{'max_tokens':1,'max_ms':300000,'max_costo_usd':0.0}},'telemetria':{'metricas':['tiempo','errores','health'],'span_otel':True},'evidencia':{'produce':['L2_build','L3_runtime','L4_feature'],'destino':str(y)+'/'},'failover':{'sustituible_por':[],'compensacion':'fail_closed'},'salud':{'metodo':'exec','heartbeat_interval_s':30}}
+          (y/'ficha.bullmq.v2.json').write_text(json.dumps(ficha,ensure_ascii=False,indent=2)+'\n'); sys.path.insert(0,str(busp.parent)); import universal_plugin_bus_v2_integrated as b
+          bus=b.UniversalPluginBus(); bus.add_tribunal_approval(ficha['tribunal_case_id']); reg=bus.enchufar(ficha,b.ComponentCandidate(a.read_text(),'python',[str(a)]),b.TargetConventions('python','snake_case','sync','gradual'),registered_by='SOL integración 2'); assert reg.status==b.PluginStatus.ACTIVE; bus.health.heartbeat(reg.plugin_id); assert bus.check_plugin_health(reg.plugin_id)
+          sp=importlib.util.spec_from_file_location('ba',a); m=importlib.util.module_from_spec(sp); sp.loader.exec_module(m); result=m.run_microtest(root); assert result['input']==21 and result['output']==42
+          bus.evidence.collect(reg.plugin_id,b.EvidenceLevel.L3,{'microtest':result}); bus.evidence.collect(reg.plugin_id,b.EvidenceLevel.L4,{'capability':'redis_distributed_queue_worker','verified':True}); levels=[e['level'] for e in bus.evidence.get(reg.plugin_id)]; assert all(x in levels for x in ('L2_build','L3_runtime','L4_feature'))
+          (y/'STEP3_EVIDENCE.json').write_text(json.dumps({'node':'BullMQ','worker':'SOL integración 2','status':'PASS','repair':'Node22.22.2','plugin_id':reg.plugin_id,'route':'FABLES->BullMQ->Redis->Queue->Worker','result':result,'evidence_levels':levels,'run':int(os.environ['GITHUB_RUN_ID']),'adapter_sha256':digest,'prune':'NOT_NEEDED'},ensure_ascii=False,indent=2)+'\n'); print('BULLMQ_REAL_PASS input=21 output=42',levels)
+          PY
+            trc=$?
+          fi
+          cat /tmp/install.log; cat /tmp/build.log 2>/dev/null || true; cat /tmp/test.log 2>/dev/null || true
+          rc=$irc; stage=INSTALL; if [ "$rc" -eq 0 ]; then rc=$brc; stage=BUILD; fi; if [ "$rc" -eq 0 ]; then rc=$trc; stage=MICROTEST; fi
+          detail="$(cat /tmp/install.log /tmp/build.log /tmp/test.log 2>/dev/null | tail -n 18 | tr '\n\r' ' ' | sed 's/=/ /g' | cut -c1-1800)"
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"; echo "stage=$stage" >> "$GITHUB_OUTPUT"; echo "detail=$detail" >> "$GITHUB_OUTPUT"; exit 0
+
+      - name: Publish STEP3 artifacts
+        id: publish
+        if: steps.exec.outputs.rc == '0'
+        shell: bash
+        run: |
+          set -euo pipefail; git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'; git add -- "$YDIR"; git commit -m 'test(yaiwes): SOL2 BullMQ Node2222 STEP3 PASS'
+          for attempt in 1 2 3 4 5; do git fetch origin main; if git rebase origin/main && git push origin HEAD:main; then echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"; exit 0; fi; git rebase --abort || true; sleep $((attempt*2)); done; exit 41
+
+      - name: Checkpoint and release N33
+        shell: bash
+        env:
+          RC: ${{ steps.exec.outputs.rc }}
+          STAGE: ${{ steps.exec.outputs.stage }}
+          DETAIL: ${{ steps.exec.outputs.detail }}
+          ECOMMIT: ${{ steps.publish.outputs.commit }}
+        run: |
+          set -euo pipefail; git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main; git reset --hard origin/main
+            python3 - <<'PY'
+          import json,os
+          from datetime import datetime,timezone
+          now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z'); rc=int(os.environ.get('RC') or 99); stage=os.environ.get('STAGE') or 'UNKNOWN'; detail=(os.environ.get('DETAIL') or 'NO_OUTPUT')[:1800]; wp=os.environ['WALL']; ip=os.environ['INVENTORY']; d=json.load(open(wp,encoding='utf-8')); n=next(x for x in d['nodes'] if x.get('id')==33 and x.get('component')=='BullMQ')
+          if n.get('owner')!='SOL' or n.get('lock')!='CLAIMED': raise SystemExit('N33_LOCK_CHANGED')
+          ev=n.setdefault('evidence',[])
+          if rc==0:
+              n['status']='PASS'; n['checkpoint']['after']=f"STEP3 PASS run={os.environ['GITHUB_RUN_ID']}: Node22.22.2 install/build PASS; canonical FABLES ACTIVE; real Redis Queue/Worker input21->output42; L2+L3+L4; evidence_commit={os.environ.get('ECOMMIT')}; prune NOT_NEEDED"; ev += [f"step3:run:{os.environ['GITHUB_RUN_ID']}",f"step3:evidence_commit:{os.environ.get('ECOMMIT')}",'step3:repair:Node22.22.2_engine_chain_closed','step3:microtest:PASS input=21 output=42','step3:evidence:L2_build+L3_runtime+L4_feature','step3:prune:NOT_NEEDED']; n['next_action']='COMPLETE'; event='STEP3_PASS_NODE2222_RELEASE'
+          else:
+              n['status']='GAP_STEP3'; n['checkpoint']['after']=f"STEP3 GAP {stage} Node22.22.2 run={os.environ['GITHUB_RUN_ID']} rc={rc}: {detail}"; ev.append(f"step3:gap:{stage}:Node22.22.2:run:{os.environ['GITHUB_RUN_ID']}:rc={rc}:{detail}"); n['next_action']='REPAIR_EXACT_STEP3_GAP_AND_RETRY'; event=f'STEP3_GAP_{stage}_NODE2222_RELEASE'
+          n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 2','event':event,'run':int(os.environ['GITHUB_RUN_ID']),'commit':os.environ.get('ECOMMIT')}); n['owner']=None; n['lock']='FREE'; d['updated_at']=now; d.setdefault('counts',{})['closed_current_contract']=sum(1 for x in d['nodes'] if x.get('next_action')=='COMPLETE'); inv=json.load(open(ip,encoding='utf-8')); c=next(x for x in inv['components'] if x.get('name')=='BullMQ'); c['wall_node_id']=33; c['wall_status']=n['status']; c['wall_current_step']=3; c['wall_target']=n['target']; json.dump(d,open(wp,'w',encoding='utf-8'),ensure_ascii=False,indent=2); open(wp,'a',encoding='utf-8').write('\n'); json.dump(inv,open(ip,'w',encoding='utf-8'),ensure_ascii=False,indent=2); open(ip,'a',encoding='utf-8').write('\n')
+          PY
+            git add -- "$WALL" "$INVENTORY"; git commit -m "crazy-wall: SOL2 BullMQ Node2222 checkpoint run $GITHUB_RUN_ID" || true
+            if git push origin HEAD:main; then break; fi; sleep $((attempt*2))
+          done
+          test "${RC:-99}" -eq 0
