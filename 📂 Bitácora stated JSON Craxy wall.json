@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T20:54:53Z",
+  "updated_at": "2026-09-12T20:55:55Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1722,15 +1722,15 @@
       "id": 32,
       "component": "Casbin",
       "source": "Core kernel Yaiwes/Componentes recuperados B/Casbin/",
-      "current_step": 2,
-      "status": "PENDING_STEP2",
+      "current_step": 3,
+      "status": "PASS_STEP2",
       "abc": "C",
       "target": "Agente Yaiwes principal/definition-registry/authorization-model/casbin/",
-      "owner": "SOL",
-      "lock": "CLAIMED",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-12T20:54:53Z SOL integración 2 STEP2 claim after STEP1 PASS: immutable Motor4 9a21facfe11327cf60a2afca8f415ad52f0ecbe5; Casbin -> definition-registry/authorization-model/casbin",
-        "after": "STEP1 PASS: Apache Casbin is an access-control authorization library supporting ACL/RBAC/ABAC and policy enforcement; classified C modular authorization capability; target definition-registry/authorization-model/casbin/ beside Cedar"
+        "after": "STEP2 PASS: canonical Motor4 MOVE; source absent target populated; run=34718435582; move_commit=f295319dc264b21c8f5ca83f8d617ddd6bd74f01"
       },
       "evidence": [
         "worker:SOL integración 2",
@@ -1738,7 +1738,11 @@
         "step1:go_mod_blob:c46f727d388655b35cb7de834831e22a3e4a9a55",
         "step1:classification:C",
         "step1:target:Agente Yaiwes principal/definition-registry/authorization-model/casbin/",
-        "step1:reason:ACL/RBAC/ABAC authorization model + enforcement"
+        "step1:reason:ACL/RBAC/ABAC authorization model + enforcement",
+        "step2:motor4_blob:9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
+        "step2:run:34718435582",
+        "step2:move_commit:f295319dc264b21c8f5ca83f8d617ddd6bd74f01",
+        "step2:readback:origin/main source absent target populated go.mod PASS"
       ],
       "history": [
         {
@@ -1758,9 +1762,17 @@
           "actor": "SOL",
           "label": "SOL integración 2",
           "event": "CLAIM_STEP2"
+        },
+        {
+          "at": "2026-09-12T20:55:55Z",
+          "actor": "SOL",
+          "label": "SOL integración 2",
+          "event": "STEP2_PASS_RELEASE",
+          "run": 34718435582,
+          "commit": "f295319dc264b21c8f5ca83f8d617ddd6bd74f01"
         }
       ],
-      "next_action": "STEP_2_MOVE_WITH_CANONICAL_MOTOR"
+      "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
     }
   ],
   "counts": {
