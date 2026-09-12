@@ -266,13 +266,13 @@
       "id": "G-016",
       "task": "Cerrar Chat A ↔ Chat B localizando/adaptando Chat A o demostrando NOT_FOUND.",
       "literal_sha256": "d9ad9eb38566a5c6bac70df9c79f02cf9f194146d3a20649bb02403c2db011ef",
-      "status": "PENDING",
-      "claimed_by": null,
+      "status": "CLAIMED",
+      "claimed_by": "ASTRA_GPT_LOOP",
       "depends_on": [],
       "steps": [
         {
           "id": "1_RESEARCH",
-          "status": "PENDING"
+          "status": "RUNNING"
         },
         {
           "id": "2_MOTOR",
@@ -285,7 +285,7 @@
       ],
       "evidence": [],
       "gaps": [],
-      "version": 1,
+      "version": 2,
       "checker": "ASTRA_GPT"
     },
     {
