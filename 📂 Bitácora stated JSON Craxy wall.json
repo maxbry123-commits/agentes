@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T21:07:06Z",
+  "updated_at": "2026-09-12T21:32:16Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1864,13 +1864,13 @@
       "component": "BullMQ",
       "source": "Core kernel Yaiwes/Componentes recuperados B/BullMQ/",
       "current_step": 3,
-      "status": "PASS_STEP2",
+      "status": "PENDING_STEP3",
       "abc": "B",
       "target": "Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/bullmq/",
-      "owner": null,
-      "lock": "FREE",
+      "owner": "SOL",
+      "lock": "CLAIMED",
       "checkpoint": {
-        "before": "2026-09-12T21:06:30Z SOL integración 2 STEP2 claim after STEP1 PASS: immutable Motor4 9a21facfe11327cf60a2afca8f415ad52f0ecbe5; BullMQ -> execution-engine-pool/parallel-dispatch/bullmq",
+        "before": "2026-09-12T21:32:16Z SOL integración 3 STEP3 claim: canonical FABLES bus; build moved BullMQ, start real Redis, execute Queue->Worker job value 21->42, collect L2+L3+L4; no MOVE repeat",
         "after": "STEP2 PASS: canonical Motor4 MOVE; source absent target populated; run=34718988102; move_commit=f8b8d9f48925827ab98df5fc216842586c6c54a9"
       },
       "evidence": [
@@ -1882,7 +1882,8 @@
         "step2:motor4_blob:9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
         "step2:run:34718988102",
         "step2:move_commit:f8b8d9f48925827ab98df5fc216842586c6c54a9",
-        "step2:readback:origin/main source absent target populated README PASS"
+        "step2:readback:origin/main source absent target populated README PASS",
+        "step3:runner:.github/workflows/yaiwes-sol3-bullmq-step3.yml"
       ],
       "history": [
         {
@@ -1910,6 +1911,12 @@
           "event": "STEP2_PASS_RELEASE",
           "run": 34718988102,
           "commit": "f8b8d9f48925827ab98df5fc216842586c6c54a9"
+        },
+        {
+          "at": "2026-09-12T21:32:16Z",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "CLAIM_STEP3"
         }
       ],
       "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
