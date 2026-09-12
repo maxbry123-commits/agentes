@@ -1,0 +1,91 @@
+{
+  "schema": "yaiwes.wordflow_global_audit.classification_ledger/v1",
+  "gap": "G-019",
+  "owner": "SOL_1",
+  "policy": {
+    "orphan_is_not_delete": true,
+    "automatic_delete_authorized": false,
+    "broken_import_is_fail_closed": true,
+    "standalone_control_module_is_valid": true
+  },
+  "entries": [
+    {
+      "id": "G019-BR-001",
+      "kind": "HISTORICAL_BROKEN_REFERENCE",
+      "subjects": ["PIPELINE/00_METODO_TRABAJO_Y_ARQUITECTURA.md","PIPELINE/FORENSIC_CODE_AUDIT.md","PIPELINE/ADVANCED_ENGINEERING_STANDARD_V3.md"],
+      "classification": "DO_NOT_RESTORE_WITHOUT_CANONICAL_SOURCE",
+      "automatic_action": "NONE"
+    },
+    {
+      "id": "G019-WIRE-001",
+      "kind": "WIRED_INTERNAL_MODULE",
+      "source": "runtime/src/core/kernel.py",
+      "target": "runtime/src/core/parallel_scheduler.py",
+      "classification": "KEEP_WIRED"
+    },
+    {
+      "id": "G019-WIRE-002",
+      "kind": "WIRED_INTERNAL_MODULE",
+      "source": "runtime/src/core/code_generation_policy.py",
+      "target": "runtime/src/core/fables_binding_gate.py",
+      "classification": "KEEP_WIRED"
+    },
+    {
+      "id": "G019-WIRE-003",
+      "kind": "WIRED_INTERNAL_MODULE",
+      "source": "runtime/src/core/fables_binding_gate.py",
+      "target": "runtime/src/uek/universal_plugin_bus_v2_integrated.py",
+      "classification": "KEEP_WIRED"
+    },
+    {
+      "id": "G019-WIRE-004",
+      "kind": "WIRED_INTERNAL_MODULE",
+      "source": "runtime/src/uek/universal_plugin_bus_v2_integrated.py",
+      "target": "runtime/src/uek/ficha_contract_v2.py",
+      "classification": "KEEP_WIRED_RUNTIME_SRC_PREFIX"
+    },
+    {
+      "id": "G019-WIRE-005",
+      "kind": "WIRED_INTERNAL_MODULE",
+      "source": "runtime/src/core/existing_code_intake.py",
+      "target": "runtime/src/core/canonical_motor_gate.py",
+      "classification": "KEEP_WIRED"
+    },
+    {
+      "id": "G019-KEEP-001",
+      "kind": "STANDALONE_CONTROL_MODULE",
+      "subject": "runtime/src/core/component_intake.py",
+      "task_evidence": "G-012 PASS",
+      "classification": "KEEP_STANDALONE_CONTROL",
+      "automatic_action": "NONE"
+    },
+    {
+      "id": "G019-KEEP-002",
+      "kind": "PENDING_CONTROL_MODULE",
+      "subject": "runtime/src/install/deployment_gate.py",
+      "task_evidence": "G-017 PENDING_DEPENDS_G022",
+      "classification": "KEEP_PENDING_CONTROL",
+      "automatic_action": "NONE"
+    },
+    {
+      "id": "G019-BI-001",
+      "kind": "BROKEN_INTERNAL_IMPORT",
+      "source": "runtime/src/uek/uek_cluster.py",
+      "import": "src.uek.cache_engine",
+      "normalized_import": "uek.cache_engine",
+      "target": "runtime/src/uek/cache_engine.py",
+      "target_readback": "404_NOT_FOUND",
+      "classification": "FAIL_CLOSED_REAL_CODE_GAP",
+      "automatic_action": "NONE"
+    }
+  ],
+  "verification": {
+    "auditor_contract": "yaiwes.wordflow_global_audit/v4",
+    "auditor_blob": "73a247a3bb8df66877887a29ee65393211cdb3ad",
+    "tests_blob": "3548c833bcde7298dc064d976cb906d6dc77416a",
+    "local_exact_tests": "PASS_11_OF_11",
+    "github_actions_for_tests_commit": 0,
+    "full_candidate_classification": "RUNNING",
+    "closure_authorized": false
+  }
+}
