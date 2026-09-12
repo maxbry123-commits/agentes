@@ -46,6 +46,13 @@
     "repo_pytest_execution": "NOT_CLAIMED",
     "external_provider_execution": "NOT_CLAIMED"
   },
+  "remote_readback": {
+    "main_snapshot": "881eb75e1d70ffcfa0b79adc8a1cccb9117aa514",
+    "module_blob": "6d1939d9864e32974fed111626b60e276c6b62bf",
+    "tests_blob": "d3f1873c47e89d18965cd11d6369e1a1a65b2733",
+    "evidence_blob": "078295dfcb81a5c64142159eca9ed3722ad1d8c9",
+    "fresh_tree_unittest": "PASS_5_OF_5"
+  },
   "scope": {
     "writes_only_under_wordflow_root": true,
     "sol_1_nodes_modified": false,
