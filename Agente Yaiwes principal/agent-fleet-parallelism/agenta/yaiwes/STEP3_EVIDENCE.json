@@ -1,0 +1,46 @@
+{
+  "node": "Agenta",
+  "worker": "SOL integración 3",
+  "status": "PASS",
+  "route": "FABLES -> Agenta adapter -> real build_agent_template_overlay -> platform ops + sandbox permissions",
+  "plugin_id": "yaiwes.agent_fleet.agenta",
+  "microtest": "real_build_kit_background_agent_ops",
+  "result": {
+    "status": "PASS",
+    "capability": "agent_build_kit_background_runtime",
+    "required_ops_verified": [
+      "commit_revision",
+      "create_schedule",
+      "create_subscription",
+      "discover_triggers",
+      "list_deliveries",
+      "list_schedules",
+      "query_spans",
+      "remove_schedule",
+      "remove_subscription",
+      "test_run",
+      "test_subscription"
+    ],
+    "platform_op_count": 16,
+    "auto_allowed_ops": [
+      "rename_session",
+      "rename_agent"
+    ],
+    "sandbox_permissions": {
+      "write_files": "allow",
+      "execute_code": "allow"
+    },
+    "skill_count": 1
+  },
+  "evidence_levels": [
+    "L2_build",
+    "L3_runtime",
+    "L4_feature"
+  ],
+  "run": 34718251035,
+  "runner_commit": "398db1319cf9d8c15fa3a2717eb294210334e633",
+  "adapter_sha256": "sha256:9778c62ed676f26ea542a6c57250279059357fb11dfd60fcd60193ca84872129",
+  "canonical_bus_blob": "470f9c91650bc6c59e2900f7e71090b84363da9f",
+  "canonical_ficha_code_blob": "a72508027cc2458553ef6a2255a9aa33d9a77a21",
+  "prune": "NOT_NEEDED"
+}
