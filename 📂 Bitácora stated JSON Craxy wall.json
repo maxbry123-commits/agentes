@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-11T07:13:56.321031+00:00",
+  "updated_at": "2026-09-12T20:40:56Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -54,6 +54,13 @@
       "status": "ACTIVE",
       "scope": "nodes_1_20",
       "registered_at": "2026-09-10T19:42:00Z"
+    },
+    {
+      "name": "SOL integración 3",
+      "role": "integration_worker",
+      "status": "ACTIVE",
+      "scope": "physical_inventory_strict_3_steps",
+      "registered_at": "2026-09-12T20:40:56Z"
     }
   ],
   "move_1_20_evidence": {
@@ -1428,6 +1435,49 @@
         }
       ],
       "next_action": "COMPLETE"
+    },
+    {
+      "id": 28,
+      "component": "AG2",
+      "source": "Core kernel Yaiwes/Componentes recuperados B/AG2/",
+      "current_step": 2,
+      "status": "PENDING_STEP2",
+      "abc": "B",
+      "target": "Agente Yaiwes principal/agent-fleet-parallelism/ag2/",
+      "owner": "SOL",
+      "lock": "CLAIMED",
+      "checkpoint": {
+        "before": "2026-09-12T20:40:56Z SOL integración 3 STEP2 claim: use immutable Motor4 blob 9a21facfe11327cf60a2afca8f415ad52f0ecbe5; source AG2 -> target agent-fleet-parallelism/ag2",
+        "after": "STEP1 PASS: AG2 README defines AgentOS/framework for AI agents, tools, autonomous workflows and multi-agent orchestration; classified B motor de trabajo; target existing agent-fleet-parallelism/ag2/"
+      },
+      "evidence": [
+        "worker:SOL integración 3",
+        "step1:readme_blob:b8f7c0a249280f97809f81565d7d7afb9ecb140b",
+        "step1:classification:B",
+        "step1:target:Agente Yaiwes principal/agent-fleet-parallelism/ag2/",
+        "step1:reason:multi-agent orchestration + tools + autonomous workflows"
+      ],
+      "history": [
+        {
+          "at": "2026-09-12T20:40:56Z",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "CLAIM_STEP1_USER_REACTIVATION"
+        },
+        {
+          "at": "2026-09-12T20:40:56Z",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "STEP1_PASS_RELEASE"
+        },
+        {
+          "at": "2026-09-12T20:40:56Z",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "CLAIM_STEP2"
+        }
+      ],
+      "next_action": "STEP_2_MOVE_WITH_CANONICAL_MOTOR"
     }
   ],
   "counts": {
@@ -1466,7 +1516,8 @@
     "workers": [
       "SOL_1",
       "SOL_2",
-      "SOL_4"
+      "SOL_4",
+      "SOL_3"
     ],
     "mode": "ACTIVE_LOOP_CODA_PERSISTENCE_UNTIL_ALL_COMPONENTS_COMPLETE",
     "must_remain_active_while_pending_exists": true,
@@ -1487,7 +1538,7 @@
     ],
     "stop_condition": "ALL_COMPONENTS_COMPLETE_AND_PHYSICALLY_VERIFIED",
     "coda_persistence": true,
-    "updated_at": "2026-09-11T04:26:54.937093+00:00"
+    "updated_at": "2026-09-12T20:40:56Z"
   },
   "directive_history": [
     {
@@ -1502,6 +1553,12 @@
       "event": "TEMPORAL_POOL_VERIFIED_CLOSED",
       "run": 34573361099,
       "commit": "1cbc955e27a47c532db2cf7fe781b97ae773b44b"
+    },
+    {
+      "at": "2026-09-12T20:40:56Z",
+      "actor": "SOL",
+      "label": "SOL integración 3",
+      "event": "USER_REACTIVATED_SOL3_PHYSICAL_INVENTORY_LOOP_AG2_STEP1_PASS_STEP2_CLAIM"
     }
   ]
 }
