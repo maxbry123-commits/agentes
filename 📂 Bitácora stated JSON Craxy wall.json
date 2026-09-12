@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T21:03:12Z",
+  "updated_at": "2026-09-12T21:06:30Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1858,6 +1858,49 @@
         }
       ],
       "next_action": "COMPLETE"
+    },
+    {
+      "id": 33,
+      "component": "BullMQ",
+      "source": "Core kernel Yaiwes/Componentes recuperados B/BullMQ/",
+      "current_step": 2,
+      "status": "PENDING_STEP2",
+      "abc": "B",
+      "target": "Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/bullmq/",
+      "owner": "SOL",
+      "lock": "CLAIMED",
+      "checkpoint": {
+        "before": "2026-09-12T21:06:30Z SOL integración 2 STEP2 claim after STEP1 PASS: immutable Motor4 9a21facfe11327cf60a2afca8f415ad52f0ecbe5; BullMQ -> execution-engine-pool/parallel-dispatch/bullmq",
+        "after": "STEP1 PASS: BullMQ README defines a reliable Redis-based distributed queue across multiple runtimes; classified B motor de trabajo; target parallel-dispatch/bullmq beside Celery"
+      },
+      "evidence": [
+        "worker:SOL integración 2",
+        "step1:readme_blob:5a752fddd5006d891f8564ae2e4a407089c3558b",
+        "step1:classification:B",
+        "step1:target:Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/bullmq/",
+        "step1:reason:Redis-based distributed queue + atomic job dispatch"
+      ],
+      "history": [
+        {
+          "at": "2026-09-12T21:06:30Z",
+          "actor": "SOL",
+          "label": "SOL integración 2",
+          "event": "CLAIM_STEP1_USER_REACTIVATION"
+        },
+        {
+          "at": "2026-09-12T21:06:30Z",
+          "actor": "SOL",
+          "label": "SOL integración 2",
+          "event": "STEP1_PASS_RELEASE"
+        },
+        {
+          "at": "2026-09-12T21:06:30Z",
+          "actor": "SOL",
+          "label": "SOL integración 2",
+          "event": "CLAIM_STEP2"
+        }
+      ],
+      "next_action": "STEP_2_MOVE_WITH_CANONICAL_MOTOR"
     }
   ],
   "counts": {
@@ -1918,7 +1961,7 @@
     ],
     "stop_condition": "ALL_COMPONENTS_COMPLETE_AND_PHYSICALLY_VERIFIED",
     "coda_persistence": true,
-    "updated_at": "2026-09-12T20:54:53Z"
+    "updated_at": "2026-09-12T21:06:30Z"
   },
   "directive_history": [
     {
