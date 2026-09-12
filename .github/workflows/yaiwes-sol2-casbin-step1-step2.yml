@@ -1,0 +1,154 @@
+name: YAIWES SOL2 Casbin STEP1 STEP2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-sol2-casbin-step1-step2.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-sol2-casbin-step1-step2
+  cancel-in-progress: false
+
+jobs:
+  integrate_casbin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      WALL: '📂 Bitácora stated JSON Craxy wall.json'
+      INVENTORY: 'Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json'
+      SRC: 'Core kernel Yaiwes/Componentes recuperados B/Casbin'
+      DST: 'Agente Yaiwes principal/definition-registry/authorization-model/casbin'
+      MOTOR: '➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py'
+    steps:
+      - name: Checkout Casbin integration surfaces
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 4
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-sol2-casbin-step1-step2.yml
+            /📂 Bitácora stated JSON Craxy wall.json
+            /Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json
+            /Core kernel Yaiwes/Componentes recuperados B/Casbin/
+            /Agente Yaiwes principal/definition-registry/authorization-model/
+            /➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py
+
+      - name: Register SOL2 Casbin STEP1 PASS and claim STEP2
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          ok=0
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main; git reset --hard origin/main
+            python3 - <<'PY'
+          import json,os
+          from datetime import datetime,timezone
+          wp=os.environ['WALL']; ip=os.environ['INVENTORY']; now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
+          with open(wp,encoding='utf-8') as f:d=json.load(f)
+          with open(ip,encoding='utf-8') as f:inv=json.load(f)
+          c=next((x for x in inv.get('components',[]) if x.get('name')=='Casbin'),None)
+          if c is None: raise SystemExit('CASBIN_NOT_IN_INVENTORY')
+          old=next((n for n in d.get('nodes',[]) if n.get('component')=='Casbin'),None)
+          if old is not None: raise SystemExit(f"CASBIN_ALREADY_REGISTERED:{old.get('id')}:{old.get('owner')}:{old.get('lock')}:{old.get('status')}")
+          if c.get('wall_node_id') is not None: raise SystemExit(f"CASBIN_INVENTORY_BOUND:{c.get('wall_node_id')}")
+          regs=d.setdefault('registrations',[])
+          if not any(r.get('name')=='SOL integración 2' and r.get('status')=='ACTIVE' for r in regs): regs.append({'name':'SOL integración 2','role':'integration_worker','status':'ACTIVE','scope':'physical_inventory_strict_3_steps','registered_at':now})
+          nid=max([int(n.get('id',0)) for n in d.get('nodes',[])] or [0])+1
+          n={'id':nid,'component':'Casbin','source':'Core kernel Yaiwes/Componentes recuperados B/Casbin/','current_step':2,'status':'PENDING_STEP2','abc':'C','target':'Agente Yaiwes principal/definition-registry/authorization-model/casbin/','owner':'SOL','lock':'CLAIMED','checkpoint':{'before':f'{now} SOL integración 2 STEP2 claim after STEP1 PASS: immutable Motor4 9a21facfe11327cf60a2afca8f415ad52f0ecbe5; Casbin -> definition-registry/authorization-model/casbin','after':'STEP1 PASS: Apache Casbin is an access-control authorization library supporting ACL/RBAC/ABAC and policy enforcement; classified C modular authorization capability; target definition-registry/authorization-model/casbin/ beside Cedar'},'evidence':['worker:SOL integración 2','step1:readme_blob:2e6aaafc586b0047ad3baf3b141539b158a8f3b9','step1:go_mod_blob:c46f727d388655b35cb7de834831e22a3e4a9a55','step1:classification:C','step1:target:Agente Yaiwes principal/definition-registry/authorization-model/casbin/','step1:reason:ACL/RBAC/ABAC authorization model + enforcement'], 'history':[{'at':now,'actor':'SOL','label':'SOL integración 2','event':'CLAIM_STEP1_USER_REACTIVATION'},{'at':now,'actor':'SOL','label':'SOL integración 2','event':'STEP1_PASS_RELEASE'},{'at':now,'actor':'SOL','label':'SOL integración 2','event':'CLAIM_STEP2'}],'next_action':'STEP_2_MOVE_WITH_CANONICAL_MOTOR'}
+          d.setdefault('nodes',[]).append(n); d['updated_at']=now; loop=d.setdefault('sol_loop_persistence',{}); loop['updated_at']=now
+          c['wall_node_id']=nid;c['wall_status']='PENDING_STEP2';c['wall_current_step']=2;c['wall_target']=n['target']
+          with open(wp,'w',encoding='utf-8') as f:json.dump(d,f,ensure_ascii=False,indent=2);f.write('\n')
+          with open(ip,'w',encoding='utf-8') as f:json.dump(inv,f,ensure_ascii=False,indent=2);f.write('\n')
+          print('CASBIN_NODE_ID',nid)
+          PY
+            git add -- "$WALL" "$INVENTORY"; git commit -m 'crazy-wall: SOL integración 2 Casbin STEP1 PASS claim STEP2'
+            if git push origin HEAD:main; then ok=1; break; fi
+            sleep $((attempt*2))
+          done
+          test "$ok" -eq 1
+
+      - name: Verify Motor4 and claim read-back
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main; git reset --hard origin/main
+          test "$(git hash-object "$MOTOR")" = '9a21facfe11327cf60a2afca8f415ad52f0ecbe5'
+          python3 - <<'PY'
+          import json,os
+          with open(os.environ['WALL'],encoding='utf-8') as f:d=json.load(f)
+          n=next(x for x in d['nodes'] if x.get('component')=='Casbin')
+          assert n['owner']=='SOL' and n['lock']=='CLAIMED' and n['current_step']==2 and n['status']=='PENDING_STEP2',n
+          print('CASBIN_STEP2_CLAIM_READBACK=PASS')
+          PY
+
+      - name: Execute canonical Motor4 MOVE Casbin
+        id: motor
+        shell: bash
+        run: |
+          set -u
+          if [ ! -d "$SRC" ] && [ -d "$DST" ]; then echo 'motor_rc=0' >> "$GITHUB_OUTPUT"; echo 'motor_tail=MOVE_ALREADY_CANONICAL' >> "$GITHUB_OUTPUT"; exit 0; fi
+          test -d "$SRC" || { echo 'motor_rc=2' >> "$GITHUB_OUTPUT"; echo 'motor_tail=SOURCE_DIR_NOT_FOUND' >> "$GITHUB_OUTPUT"; exit 0; }
+          mkdir -p "$DST"; export SOURCE_DIR="$SRC" DEST_DIR="$DST" STATE_FILE='/tmp/yaiwes-sol2-casbin-motor4.json' BATCH_SIZE=100 COLLISION_POLICY=fail
+          set +e; python3 "$MOTOR" >/tmp/motor4-casbin.log 2>&1; rc=$?; set -e; cat /tmp/motor4-casbin.log
+          tail_line="$(tail -n 1 /tmp/motor4-casbin.log | tr '\n\r' ' ' | sed 's/=/ /g' | cut -c1-500)"; echo "motor_rc=$rc" >> "$GITHUB_OUTPUT"; echo "motor_tail=$tail_line" >> "$GITHUB_OUTPUT"
+
+      - name: Publish Casbin Motor4 MOVE
+        id: publish
+        if: steps.motor.outputs.motor_rc == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- "$SRC" "$DST"; if ! git diff --cached --quiet; then git commit -m 'move(yaiwes): Motor4 MOVE Casbin authorization model'; fi
+          ok=0; for attempt in 1 2 3 4; do git fetch origin main; if git rebase origin/main && git push origin HEAD:main; then ok=1;break;fi;git rebase --abort||true;sleep $((attempt*3));done;test "$ok" -eq 1
+          echo "move_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Read-back Casbin MOVE
+        if: steps.motor.outputs.motor_rc == '0'
+        shell: bash
+        run: |
+          set -euo pipefail;git fetch origin main
+          test -z "$(git ls-tree -r --name-only origin/main -- "$SRC")";test -n "$(git ls-tree -r --name-only origin/main -- "$DST")";git show "origin/main:$DST/go.mod" | grep -Fq 'module github.com/casbin/casbin/v3';echo CASBIN_MOVE_READBACK=PASS
+
+      - name: Checkpoint Casbin STEP2 PASS or GAP and release
+        shell: bash
+        env:
+          MOTOR_RC: ${{ steps.motor.outputs.motor_rc }}
+          MOTOR_TAIL: ${{ steps.motor.outputs.motor_tail }}
+          MOVE_COMMIT: ${{ steps.publish.outputs.move_commit }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com';ok=0
+          for attempt in 1 2 3 4 5;do
+            git fetch origin main;git reset --hard origin/main
+            python3 - <<'PY'
+          import json,os
+          from datetime import datetime,timezone
+          wp=os.environ['WALL'];ip=os.environ['INVENTORY'];rc=int(os.environ.get('MOTOR_RC') or 99);now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
+          with open(wp,encoding='utf-8') as f:d=json.load(f)
+          n=next(x for x in d['nodes'] if x.get('component')=='Casbin')
+          if n.get('owner')!='SOL' or n.get('lock')!='CLAIMED' or n.get('current_step')!=2:raise SystemExit('LOCK_OR_STEP_CHANGED')
+          if rc==0:
+            n['current_step']=3;n['status']='PASS_STEP2';n['checkpoint']['after']=f"STEP2 PASS: canonical Motor4 MOVE; source absent target populated; run={os.environ['GITHUB_RUN_ID']}; move_commit={os.environ.get('MOVE_COMMIT')}";n['evidence'] += [x for x in ['step2:motor4_blob:9a21facfe11327cf60a2afca8f415ad52f0ecbe5',f"step2:run:{os.environ['GITHUB_RUN_ID']}",f"step2:move_commit:{os.environ.get('MOVE_COMMIT')}",'step2:readback:origin/main source absent target populated go.mod PASS'] if x not in n['evidence']];n['history'].append({'at':now,'actor':'SOL','label':'SOL integración 2','event':'STEP2_PASS_RELEASE','run':int(os.environ['GITHUB_RUN_ID']),'commit':os.environ.get('MOVE_COMMIT')});n['next_action']='STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST'
+          else:
+            tail=(os.environ.get('MOTOR_TAIL') or 'NO_OUTPUT')[:500];n['status']='GAP_STEP2';n['checkpoint']['after']=f'STEP2 GAP Motor4 rc={rc}: {tail}';n['evidence'].append(f"step2:gap:run:{os.environ['GITHUB_RUN_ID']}:rc={rc}:{tail}");n['history'].append({'at':now,'actor':'SOL','label':'SOL integración 2','event':'STEP2_GAP_RELEASE','run':int(os.environ['GITHUB_RUN_ID'])});n['next_action']='REPAIR_EXACT_STEP2_GAP_AND_RETRY'
+          n['owner']=None;n['lock']='FREE';d['updated_at']=now
+          with open(ip,encoding='utf-8') as f:inv=json.load(f)
+          c=next(x for x in inv['components'] if x.get('name')=='Casbin');c['wall_node_id']=n['id'];c['wall_status']=n['status'];c['wall_current_step']=n['current_step'];c['wall_target']=n['target']
+          with open(wp,'w',encoding='utf-8') as f:json.dump(d,f,ensure_ascii=False,indent=2);f.write('\n')
+          with open(ip,'w',encoding='utf-8') as f:json.dump(inv,f,ensure_ascii=False,indent=2);f.write('\n')
+          PY
+            git add -- "$WALL" "$INVENTORY";git commit -m "crazy-wall: SOL integración 2 Casbin STEP2 checkpoint run $GITHUB_RUN_ID";if git push origin HEAD:main;then ok=1;break;fi;sleep $((attempt*2))
+          done;test "$ok" -eq 1
+
+      - name: Fail closed on Motor4 GAP
+        if: steps.motor.outputs.motor_rc != '0'
+        run: exit 1
