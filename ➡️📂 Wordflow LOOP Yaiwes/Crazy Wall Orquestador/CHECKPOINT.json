@@ -4,7 +4,7 @@
   "mode": "FAIL_CLOSED_EXECUTION_LOOP",
   "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
   "status": "ACTIVE_LOOP_CODE_GRAPH_RESEARCH",
-  "current_node": "G013_SOURCE_TRUTH_RECONCILIATION",
+  "current_node": "G019_GLOBAL_WORDFLOW_AUDIT",
   "claimed_by": "SOL_1",
   "queue": "DAG_DEPENDENCIES_PLUS_PARALLEL_INDEPENDENT",
   "historical_closure": {
@@ -14,36 +14,38 @@
   "active_phase": {
     "name": "CODE_GRAPH_ARCHITECTURE_PROGRAMMING_LOOP",
     "gaps_total": 30,
-    "gaps_closed": 11,
-    "closed": ["G-001", "G-002", "G-003", "G-004", "G-005", "G-008", "G-009", "G-010", "G-011", "G-020", "G-030"],
-    "blocked": ["G-006"],
-    "in_research": ["G-013", "G-016", "G-018", "G-023", "G-027", "G-028", "G-029"]
+    "gaps_closed": 25,
+    "closed": ["G-001","G-002","G-003","G-004","G-005","G-006","G-007","G-008","G-009","G-010","G-011","G-012","G-013","G-014","G-015","G-016","G-018","G-020","G-021","G-023","G-024","G-025","G-026","G-029","G-030"],
+    "blocked": ["G-022"],
+    "in_research": ["G-019"],
+    "pending": ["G-017","G-027","G-028"]
   },
   "verified_previous_cycle": {
-    "gap": "G-011",
-    "result": "PATH_SCOPE_GATE_REPAIRED_EXACT_TOPOLOGY_PYTEST_PASS_TASK_NODE_CLOSED",
-    "owner": "SOL_1",
-    "task_nodes_close_commit": "7a28a968c6fc311058e5794a5651639fe23985e6",
-    "module_blob": "def0ccc402d4e9797ff7ac30a92c1993aec47914",
-    "tests_blob": "55a6e4fda73010cad2359f5e0ad9307bd44fc815",
-    "exact_topology_pytest": "PASS_6_OF_6 in 3.03s",
-    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G011_CANONICAL_COPY_MOVE_MOTORS_2026-09-11.json",
-    "decision": "G011_VERIFIED_CLOSED"
-  },
-  "active_reconciliation": {
     "gap": "G-013",
+    "result": "SOURCE_TRUTH_RECONCILED_0019",
     "owner": "SOL_1",
-    "claim_commit": "3529f52f034f47c94eb1aad9c972b8c393c32de9",
-    "gap_code": "SOURCE_OF_TRUTH_DRIFT",
-    "prior_state_anchor": "WFLOOP-CODE-GRAPH-20260911-0010",
-    "prior_checkpoint_anchor": "WFLOOP-CODE-GRAPH-20260911-0018",
-    "target_anchor": "WFLOOP-CODE-GRAPH-20260911-0019",
-    "task_nodes_state": "CLAIMED_SOL_1_VERSION_2",
-    "required_sources": 8,
-    "closure_gate": "ALL_8_ANCHORS_0019_PLUS_RECONCILER_CONSISTENT_PLUS_TESTS_PASS_PLUS_READBACK"
+    "task_nodes_close_commit": "5db4739d6bed2a34bd1e148ed23ea820f6b69aa3",
+    "module_blob": "fb93ce9ee5b86439b0ba36ef72c404134d1984b1",
+    "tests_blob": "f39cb13a84d1dbb7fcb1c1467f712bf003a431df",
+    "exact_pytest": "PASS_7_OF_7",
+    "truth_readback": "PASS_8_OF_8",
+    "reconciliation_status": "CONSISTENT",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G013_CANONICAL_RECONCILIATION_2026-09-11.json",
+    "decision": "G013_VERIFIED_CLOSED_LOCAL_0019"
   },
+  "active_node": {
+    "gap": "G-019",
+    "owner": "SOL_1",
+    "claim_commit": "d6aafd207ab89db0437d8c4f17da016fec534687",
+    "task_nodes_state": "CLAIMED_SOL_1_VERSION_2",
+    "depends_on": ["G-013"],
+    "dependency_state": "PASS",
+    "step": "1_RESEARCH",
+    "scope": ["inventory","capabilities","duplicates","orphans","broken_routes","unused_code","ledger"],
+    "motor_gate": "MOTOR_NOT_REQUIRED_UNLESS_RESEARCH_PROVES_TRANSFER_NEEDED"
+  },
+  "blocked_dependency": "G017_REQUIRES_G022_PHYSICAL_ISOLATION",
   "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
-  "next_action": "RECONCILE_ALL_8_TRUTH_SOURCES_TO_0019_RUN_RECONCILER_AND_TESTS_THEN_CLOSE_G013; DO_NOT_TOUCH_G018_WHILE_CLAIMED_BY_SOL_2",
-  "blocked_dependency": "G006_REQUIRES_G018_CANONICAL_FABLES_FICHA_PROOF",
+  "next_action": "G019_FORENSIC_XRAY_FULL_WORDFLOW_FIND_EXACT_GAPS_THEN_MINIMAL_REPAIR; DO_NOT_TOUCH_G022_OR_COMP_BROWSER_USE",
   "recovery_entrypoint": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md"
 }
