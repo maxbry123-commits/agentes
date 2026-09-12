@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T20:50:54Z",
+  "updated_at": "2026-09-12T20:51:36Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1586,13 +1586,13 @@
       "component": "Agno",
       "source": "Core kernel Yaiwes/Componentes recuperados B/Agno/",
       "current_step": 3,
-      "status": "PASS_STEP2",
+      "status": "PENDING_STEP3",
       "abc": "B",
       "target": "Agente Yaiwes principal/agent-fleet-parallelism/agno/",
-      "owner": null,
-      "lock": "FREE",
+      "owner": "SOL",
+      "lock": "CLAIMED",
       "checkpoint": {
-        "before": "2026-09-12T20:49:14Z SOL integración 2 STEP2 claim after STEP1 PASS: immutable Motor4 9a21facfe11327cf60a2afca8f415ad52f0ecbe5; Agno source -> agent-fleet-parallelism/agno",
+        "before": "2026-09-12T20:51:36Z SOL integración 2 N30 STEP3 claim: STEP2 Motor4/read-back PASS; wire canonical FABLES; real Agno Agent.as_tool delegation marker + bypass-rejection microtest; no LLM/API; prune only if concrete cause",
         "after": "STEP2 PASS: canonical Motor4 MOVE; source absent target populated; run=34718178112; move_commit=581de047fab36d2082f89a1301ae6463084d3c2c"
       },
       "evidence": [
@@ -1632,6 +1632,12 @@
           "event": "STEP2_PASS_RELEASE",
           "run": 34718178112,
           "commit": "581de047fab36d2082f89a1301ae6463084d3c2c"
+        },
+        {
+          "at": "2026-09-12T20:51:36Z",
+          "actor": "SOL",
+          "label": "SOL integración 2",
+          "event": "CLAIM_STEP3"
         }
       ],
       "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
