@@ -446,26 +446,32 @@
       "id": "G-023",
       "task": "Cerrar Hugging Face bridge solo para datasets/skills/modelos/recursos verificados, sin secretos ni HF CI.",
       "literal_sha256": "a4351437f0736f3ecd80cf2e6a2383860a5b9133c760bf071662c2d9489fbca5",
-      "status": "PENDING",
-      "claimed_by": null,
+      "status": "CLAIMED",
+      "claimed_by": "ASTRA_GPT_LOOP",
       "depends_on": [],
       "steps": [
         {
           "id": "1_RESEARCH",
-          "status": "PENDING"
+          "status": "PASS"
         },
         {
           "id": "2_MOTOR",
-          "status": "PENDING"
+          "status": "RUNNING"
         },
         {
           "id": "3_WIRE_TEST",
           "status": "PENDING"
         }
       ],
-      "evidence": [],
-      "gaps": [],
-      "version": 1,
+      "evidence": [
+        "repro:artifact_router_NameError_List_not_defined",
+        "repro:huggingface_connection_static_ACTIVE_HEALTHY"
+      ],
+      "gaps": [
+        "HF_ARTIFACT_ROUTER_NOT_IMPORTABLE_AND_MOCK_ACQUISITION",
+        "HF_CONNECTION_HEALTH_FABRICATED_WITHOUT_PROBE"
+      ],
+      "version": 2,
       "checker": "ASTRA_GPT"
     },
     {
