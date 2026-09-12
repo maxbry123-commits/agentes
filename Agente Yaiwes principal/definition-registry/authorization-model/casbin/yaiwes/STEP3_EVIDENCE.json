@@ -1,0 +1,27 @@
+{
+  "node": 32,
+  "worker": "SOL integración 2",
+  "status": "PASS",
+  "route": "UniversalPluginBus/FABLES -> Casbin adapter -> real Go Enforcer -> ACL allow/deny",
+  "plugin_id": "yaiwes.authorization.casbin",
+  "microtest": "alice read allow + alice write deny + bob write allow",
+  "result": {
+    "alice_data1_read": true,
+    "alice_data1_write": false,
+    "bob_data2_write": true,
+    "status": "PASS"
+  },
+  "evidence_levels": [
+    "L2_build",
+    "L3_runtime",
+    "L4_feature"
+  ],
+  "run": 34718782407,
+  "runner_commit": "563effe1bdc3c27e203fbccbdd0ef08cb2c50267",
+  "adapter_sha256": "sha256:53a274034261aa712cc8020648424a04aca8d66dff57c9a0bc8b9a662ea2894a",
+  "gaps_repaired": [
+    "Go1.13 any -> interface{}",
+    "Ficha categoria validator/V -> pipeline/P transform"
+  ],
+  "prune": "NOT_NEEDED"
+}

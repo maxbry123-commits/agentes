@@ -1,0 +1,95 @@
+{
+  "artifact_id": "yaiwes.authorization.casbin",
+  "version": "1.0.0",
+  "estado": "active",
+  "contract_hash": "sha256:53a274034261aa712cc8020648424a04aca8d66dff57c9a0bc8b9a662ea2894a",
+  "tribunal_case_id": "YAIWES-N32-CASBIN-STEP3",
+  "contrato": {
+    "rol": "transform",
+    "consume": {
+      "datatype": {
+        "family": "json",
+        "type": "object",
+        "version": 1
+      }
+    },
+    "expone": {
+      "datatype": {
+        "family": "json",
+        "type": "object",
+        "version": 1
+      }
+    }
+  },
+  "ejecucion": {
+    "kind": "code",
+    "transport": "sdk",
+    "runtime_type": "compute",
+    "entry_point": "Agente Yaiwes principal/definition-registry/authorization-model/casbin/yaiwes/casbin_adapter.py:run_microtest",
+    "idempotente": true
+  },
+  "seguridad": {
+    "sandbox": "process",
+    "limites": {
+      "timeout_ms": 180000,
+      "deadline_ms": 180000
+    }
+  },
+  "firma": {
+    "gpg_key_id": "YAIWES-N32"
+  },
+  "categoria": "pipeline",
+  "etapa": "P",
+  "perfiles": {
+    "n0": {
+      "habilitada": true,
+      "iteraciones": 1,
+      "simulaciones": 0,
+      "criticas": 0,
+      "muestras_k": 1
+    }
+  },
+  "repeticion": {
+    "max": 1,
+    "condicion": "nunca"
+  },
+  "repite_en": [],
+  "activacion": {
+    "eventos": [
+      "kernel.v2.plugin.enchufed"
+    ],
+    "wake_words": [],
+    "condicion": ""
+  },
+  "presupuesto": {
+    "n0": {
+      "max_tokens": 1,
+      "max_ms": 180000,
+      "max_costo_usd": 0.0
+    }
+  },
+  "telemetria": {
+    "metricas": [
+      "tiempo",
+      "errores",
+      "health"
+    ],
+    "span_otel": true
+  },
+  "evidencia": {
+    "produce": [
+      "L2_build",
+      "L3_runtime",
+      "L4_feature"
+    ],
+    "destino": "Agente Yaiwes principal/definition-registry/authorization-model/casbin/yaiwes/"
+  },
+  "failover": {
+    "sustituible_por": [],
+    "compensacion": "deny"
+  },
+  "salud": {
+    "metodo": "exec",
+    "heartbeat_interval_s": 30
+  }
+}
