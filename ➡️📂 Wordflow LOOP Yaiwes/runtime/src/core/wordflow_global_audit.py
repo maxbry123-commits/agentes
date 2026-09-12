@@ -84,6 +84,18 @@ def _module_name(source_root: Path, path: Path) -> str:
     return ".".join(parts)
 
 
+def _import_candidates(node: ast.AST) -> list[str]:
+    if isinstance(node, ast.Import):
+        return [alias.name for alias in node.names]
+    if isinstance(node, ast.ImportFrom) and node.module:
+        candidates = [node.module]
+        for alias in node.names:
+            if alias.name != "*":
+                candidates.append(f"{node.module}.{alias.name}")
+        return candidates
+    return []
+
+
 def python_orphan_candidates(root: Path) -> list[str]:
     root = _resolved_root(root)
     source_root = root / "runtime" / "src"
@@ -98,12 +110,7 @@ def python_orphan_candidates(root: Path) -> list[str]:
         except (SyntaxError, UnicodeDecodeError):
             continue
         for node in ast.walk(tree):
-            candidates: list[str] = []
-            if isinstance(node, ast.Import):
-                candidates.extend(alias.name for alias in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                candidates.append(node.module)
-            for imported in candidates:
+            for imported in _import_candidates(node):
                 for module in modules:
                     if imported == module or imported.startswith(module + "."):
                         inbound[module] += 1
