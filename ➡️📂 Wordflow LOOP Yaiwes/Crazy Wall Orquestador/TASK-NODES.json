@@ -454,26 +454,28 @@
       "id": "G-024",
       "task": "Cerrar frontera determinismo/LLM con matriz y enforcement; LLM nunca autoriza ejecución.",
       "literal_sha256": "aca8782dbe10ccf12129cf06660fc6e1fc8b115d761222370773cdcd11d5877c",
-      "status": "CLAIMED",
+      "status": "PASS",
       "claimed_by": "ASTRA_GPT_LOOP",
       "depends_on": [],
       "steps": [
         {
           "id": "1_RESEARCH",
-          "status": "RUNNING"
+          "status": "PASS"
         },
         {
           "id": "2_MOTOR",
-          "status": "PENDING"
+          "status": "PASS"
         },
         {
           "id": "3_WIRE_TEST",
-          "status": "PENDING"
+          "status": "PASS"
         }
       ],
-      "evidence": [],
+      "evidence": [
+        "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G024_LLM_DETERMINISTIC_BOUNDARY_2026-09-12.json"
+      ],
       "gaps": [],
-      "version": 2,
+      "version": 3,
       "checker": "ASTRA_GPT"
     },
     {

@@ -343,3 +343,18 @@ El árbol recursivo completo del LOOP (`truncated=false`) localizó el artefacto
 
 ## CG-0059 — Validación y cierre local
 Validación ejecutable sobre read-back: `PASS_12_OF_12`. Confirma roles A/B, límites 2000/500 LOC, trazabilidad, política REUSE>PATCH>ADAPT>GENERATE, identidades T001/T007/T011, formatos de salida y contención en raíz. `G-016 VERIFIED_CLOSED_LOCAL_SOURCE_PROOF`; no hizo falta crear código. Evidence `wordflow_loop/wordflow_loop/evidence/G016_CHAT_A_CHAT_B_SOURCE_PROOF_2026-09-12.json`. STATE/CHECKPOINT no se tocaron porque G-013 pertenece a Sol 1.
+
+
+# ASTRA-GPT-LOOP — CIERRE LOCAL G-024 — 2026-09-12
+
+Nodo independiente reclamado por `ASTRA_GPT_LOOP`; G-013 de SOL_1 y G-018 de SOL_2 no fueron modificados.
+
+- GAP reproducido con el módulo anterior: `enforce_boundary("promote_deployment", actor)` permitía actores vacío y `human`; la prueba real devolvió `allowed=true` para ambos.
+- Corrección mínima en `runtime/src/core/llm_boundary.py`: matriz inmutable completa para análisis/LLM y controles deterministas; acciones y actores desconocidos fallan cerrado; solo `DETERMINISTIC|DETERMINISTIC_RUNTIME` pueden entrar a operaciones deterministas.
+- `execute_with_boundary` evalúa antes de invocar el callback. Una llamada LLM rechazada no produce efectos; el test verificó que el callback de promoción nunca fue ejecutado.
+- Read-back previo a publicación: módulo blob `d83c1face71ad84654264b287ef1286018b01c88`, test blob `6ed71952e43f0980ba7486aa16e0ced18870ed11`.
+- Ejecución local real: `python -m unittest -v runtime.tests.test_llm_boundary_g024` = `PASS_7_OF_7`. Suite adyacente file-audit = `PASS_8_OF_8`.
+- `test_architecture_chat_bridge` no se ejecutó porque importa `pytest`, ausente en el entorno; no se reclama pytest global, GitHub Actions, proveedores autenticados ni PASS global.
+- Evidence: `wordflow_loop/evidence/G024_LLM_DETERMINISTIC_BOUNDARY_2026-09-12.json`. No LFS, no force.
+
+Resultado: `G-024 CLOSED_VERIFIED_LOCAL`.
