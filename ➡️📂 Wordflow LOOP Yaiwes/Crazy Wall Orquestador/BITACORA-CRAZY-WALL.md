@@ -2,7 +2,7 @@
 
 Contrato: `tel.workflow/v4` · `FAIL_CLOSED_EXECUTION_LOOP`.
 Raíz única autorizada: `maxbry123-commits/agentes/➡️📂 Wordflow LOOP Yaiwes/`.
-Checkpoint canónico: `WFLOOP-CODE-GRAPH-20260911-0010`.
+Checkpoint canónico: `WFLOOP-CODE-GRAPH-20260911-0019`.
 
 ## HISTÓRICO CONSERVADO
 Migración de alcance principal `2a73aba061db7dfba2b37bf6637babb2e73c4b0d`. Cierre local previo: `LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING`; evidence `FINAL_3STEP_CLOSURE_TEST_2026-09-10.json`, commit `6c4b10a49fa8de3bd85348f15bd5f5fa461d128c`. Sobrevive `AUTH_PROVIDER_TEST_PENDING`; no se convierte ausencia de ejecución autenticada en PASS.
@@ -209,7 +209,6 @@ Read-back fresco de las 8 fuentes requeridas confirmó checkpoint `0010` y blobs
 ## CG-0050 — Cierre G-013 y avance seguro
 `G-013 CLOSED_VERIFIED_LOCAL`. STATE/CHECKPOINT registran 8 GAPs cerrados y avanzan la cola al nodo `CG18_FABLES_CANONICAL_BINDING_G018`. `G-006` permanece `BLOCKED_DEPENDENCY_G018`; no se declara Fables integrado ni se crea bus paralelo.
 
-
 # ASTRA-GPT-LOOP — REVISIÓN REAL G-013 — 2026-09-11
 
 Snapshot auditado de main: `46136b85563c2e5932344fa1f2fd0c4265668efa`. Revisión independiente; no se reclaman ni modifican nodos SOL_1 (G-009) ni SOL_2 (G-018).
@@ -223,7 +222,6 @@ Snapshot auditado de main: `46136b85563c2e5932344fa1f2fd0c4265668efa`. Revisión
 
 Resultado: G-013 requiere nueva reconciliación; G-006 conserva dependencia de G-018. Sin cierre global, sin PASS_REAL externo, sin cambios de código ni componentes.
 
-
 # ASTRA-GPT-LOOP — SEGUIMIENTO G-013 — 2026-09-11 15:56Z
 
 Snapshot base auditado: `1dc764da4013150473e42b8b43262e19b99ab36e`; read-back tras avance concurrente G-011: `51d685e5ca120f8788b17b9aa9433e96599bd9d1`. El conflicto documentado continúa.
@@ -235,7 +233,6 @@ Snapshot base auditado: `1dc764da4013150473e42b8b43262e19b99ab36e`; read-back tr
 - El reconciliador detecta correctamente `ANCHOR_CHECKPOINT_CONFLICT`; no requiere parche. El GAP está en la persistencia parcial del ciclo: tras cerrar un nodo debe actualizarse/verificarse el conjunto canónico o conservarse el checkpoint anterior.
 
 Resultado: G-013 sigue abierto por drift reproducible. No se tocaron G-009, G-011 ni G-018; no se declara PASS global.
-
 
 # ASTRA-GPT-LOOP — GAP DE CABLEADO G-013 — 2026-09-11 16:54Z
 
@@ -249,7 +246,6 @@ Snapshot auditado: `37e4c4f3cfd1e29ba7d89ab3ac1170f37b031608`.
 
 Resultado: `G-013 IMPLEMENTED_NOT_WIRED / OPEN`. No se tocaron nodos de SOL_1/SOL_2 ni se declaró PASS global.
 
-
 # ASTRA-GPT-LOOP — DESBLOQUEO COMPROBADO G-011 — 2026-09-11 17:58Z
 
 Snapshot auditado: `559571eea7a5a6ad6b1a52df121e99fe7925fab3`. Revisión de nodo ajeno; no se reclama ni modifica G-011.
@@ -262,7 +258,6 @@ Snapshot auditado: `559571eea7a5a6ad6b1a52df121e99fe7925fab3`. Revisión de nodo
 
 Resultado: bloqueo de resolución de TASK-NODES para G-011 = `CLEARED_BY_FRESH_READBACK`; ejecución autoritativa y claim siguen pendientes. Sin PASS global.
 
-
 # ASTRA-GPT-LOOP — REVISIÓN ADVERSARIAL G-011 — 2026-09-11 18:57Z
 
 - `canonical_motor_gate.py` blob `24c659c03454b7ef4361aa69bf721cb12b2331c4`: `build_motor_env` no recibe ni valida una raíz autorizada y ejecuta `dest.mkdir` antes de autorización.
@@ -272,7 +267,6 @@ Resultado: bloqueo de resolución de TASK-NODES para G-011 = `CLEARED_BY_FRESH_R
 - Corrección requerida en G-011: recibir `authorized_root`, exigir destination/state dentro de ella tras `resolve`, validar symlinks, diferir `mkdir` hasta autorización explícita y añadir regresiones de escape.
 
 Resultado: `G-011 PATH_SCOPE_GATE_GAP / OPEN`; no se acepta cierre con la simulación 6/6 actual. G-013 sigue sin cableado.
-
 
 # ASTRA-GPT-LOOP — CIERRE LOCAL G-014 — 2026-09-11 21:00Z
 
@@ -287,7 +281,6 @@ Snapshot de implementación y prueba: `31ebeee2130b71976f9a655ff9ae3bee3dd8c3e3`
 - Evidence: `wordflow_loop/evidence/G014_AGENT_MEMORY_PREINJECTION_2026-09-11.json`. TASK-NODES actualizado mediante SHA/CAS a `G-014 PASS`, versión 3.
 
 Resultado: `G-014 CLOSED_VERIFIED_LOCAL`. `AUTH_PROVIDER_TEST_PENDING` y ejecución real de agentes remotos permanecen abiertos.
-
 
 # ASTRA-GPT-LOOP — CIERRE LOCAL G-015 — 2026-09-11 22:57Z
 
@@ -371,7 +364,6 @@ Nodo independiente `G-007` reclamado y cerrado por `ASTRA_GPT_LOOP`; G-013 de SO
 
 Resultado: `G-007 CLOSED_VERIFIED_LOCAL_REAL_MOTORS`. El Wordflow global continúa abierto.
 
-
 # CICLO ASTRA — G-016 CHAT A ↔ CHAT B — 2026-09-12
 
 ## CG-0057 — Claim independiente
@@ -382,7 +374,6 @@ El árbol recursivo completo del LOOP (`truncated=false`) localizó el artefacto
 
 ## CG-0059 — Validación y cierre local
 Validación ejecutable sobre read-back: `PASS_12_OF_12`. Confirma roles A/B, límites 2000/500 LOC, trazabilidad, política REUSE>PATCH>ADAPT>GENERATE, identidades T001/T007/T011, formatos de salida y contención en raíz. `G-016 VERIFIED_CLOSED_LOCAL_SOURCE_PROOF`; no hizo falta crear código. Evidence `wordflow_loop/wordflow_loop/evidence/G016_CHAT_A_CHAT_B_SOURCE_PROOF_2026-09-12.json`. STATE/CHECKPOINT no se tocaron porque G-013 pertenece a Sol 1.
-
 
 # ASTRA-GPT-LOOP — CIERRE LOCAL G-024 — 2026-09-12
 
@@ -397,7 +388,6 @@ Nodo independiente reclamado por `ASTRA_GPT_LOOP`; G-013 de SOL_1 y G-018 de SOL
 - Evidence: `wordflow_loop/evidence/G024_LLM_DETERMINISTIC_BOUNDARY_2026-09-12.json`. No LFS, no force.
 
 Resultado: `G-024 CLOSED_VERIFIED_LOCAL`.
-
 
 # ASTRA-GPT-LOOP — CIERRE LOCAL G-021 — 2026-09-12
 
@@ -451,3 +441,20 @@ Continuación del nodo propio G-022; G-013 de SOL_1 y G-018 de SOL_2 no fueron m
 - Evidence: `wordflow_loop/evidence/G022_BACKEND_MATRIX_BLOCKER_2026-09-12.json`.
 
 Resultado: `G-022` continúa `BLOCKED_PHYSICAL_ISOLATION`; G-017 permanece bloqueado. No se añadió adaptador sin backend real ni se declaró PASS.
+
+# SOL_1 WORDLOW LOOP — RECONCILIACIÓN G-013 / CHECKPOINT 0019 — 2026-09-12
+
+## CG-0060 — Reentrada y ownership
+Read-back fresco de `TASK-NODES.json`: `G-013` permanece `CLAIMED` por `SOL_1`, `1_RESEARCH=RUNNING`, GAP `SOURCE_OF_TRUTH_DRIFT`, versión 2. `G-018` continúa reclamado por `SOL_2` y no fue modificado. El watchdog de SOL_1 fue corregido a scope exclusivo `➡️📂 Wordflow LOOP Yaiwes/`, una tarea 1×1 y ejecución horaria; el watchdog antiguo de integración quedó desactivado para evitar competencia.
+
+## CG-0061 — Drift físico confirmado
+STATE y CHECKPOINT ya fijan `WFLOOP-CODE-GRAPH-20260911-0019`; README, HANDOFF, PLAN, RECOVERY, GAP ledger y esta BITÁCORA seguían con ancla documental antigua o ausente. STATE además declaraba blobs del reconciliador distintos de los archivos físicos. Read-back físico: módulo `runtime/src/core/source_truth_reconciler.py` blob `fb93ce9ee5b86439b0ba36ef72c404134d1984b1`; tests `runtime/tests/test_source_truth_reconciler.py` blob `f39cb13a84d1dbb7fcb1c1467f712bf003a431df`.
+
+## CG-0062 — Reparación quirúrgica de fuentes
+PLAN, HANDOFF, RECOVERY, GAP ledger, README arquitectura y BITÁCORA fueron alineados al checkpoint canónico `0019` mediante updates SHA/CAS. Un 409 concurrente sobre README fue tratado fail-closed: se releyó el archivo fresco y se reaplicó únicamente el delta G-013, sin sobrescritura ciega. No se usó LFS, force, Step4, COPY/MOVE ni refactor lateral.
+
+## CG-0063 — Test del reconciliador
+El módulo y archivo de tests exactos de `main` fueron ejecutados en un entorno Python aislado: `python -m pytest -q test_source_truth_reconciler.py` → `7 passed in 0.06s`. Este resultado valida el contrato del reconciliador; no se reclama GitHub Actions, proveedor autenticado ni PASS global.
+
+## CG-0064 — Gate de cierre
+Esta escritura alinea la octava fuente requerida (BITÁCORA) con `0019`. G-013 no se declara PASS por esta sola escritura: el cierre exige read-back posterior de las 8 fuentes, `CONSISTENT` sin drift/conflicts/missing, evidencia G-013 actualizada y actualización CAS de TASK-NODES/STATE/CHECKPOINT. `G-019` permanece bloqueado hasta ese cierre.
