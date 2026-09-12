@@ -376,26 +376,33 @@
       "id": "G-021",
       "task": "Cerrar cola/paralelismo: priority/dependencies/fan-out/fan-in/dedup/idempotency/concurrency/backpressure + tests.",
       "literal_sha256": "e8b8aa731786d54d63a95e541674c9f63a86a20445c5aef61aa41e5a504f480d",
-      "status": "CLAIMED",
+      "status": "PASS",
       "claimed_by": "ASTRA_GPT_LOOP",
       "depends_on": [],
       "steps": [
         {
           "id": "1_RESEARCH",
-          "status": "RUNNING"
+          "status": "PASS"
         },
         {
           "id": "2_MOTOR",
-          "status": "PENDING"
+          "status": "PASS"
         },
         {
           "id": "3_WIRE_TEST",
-          "status": "PENDING"
+          "status": "PASS"
         }
       ],
-      "evidence": [],
-      "gaps": [],
-      "version": 2,
+      "evidence": [
+        "wordflow_loop/evidence/G021_PARALLEL_SCHEDULER_KERNEL_WIRING_2026-09-12.json",
+        "commit:449080bfd34c28ec6df13e529f5795c7820b7309",
+        "unittest:PASS_8_OF_8"
+      ],
+      "gaps": [
+        "RESOLVED: scheduler was not wired to Kernel.run",
+        "RESOLVED: priority direction conflicted with canonical Kernel/Mavis queues"
+      ],
+      "version": 3,
       "checker": "ASTRA_GPT"
     },
     {

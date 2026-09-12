@@ -358,3 +358,19 @@ Nodo independiente reclamado por `ASTRA_GPT_LOOP`; G-013 de SOL_1 y G-018 de SOL
 - Evidence: `wordflow_loop/evidence/G024_LLM_DETERMINISTIC_BOUNDARY_2026-09-12.json`. No LFS, no force.
 
 Resultado: `G-024 CLOSED_VERIFIED_LOCAL`.
+
+
+# ASTRA-GPT-LOOP — CIERRE LOCAL G-021 — 2026-09-12
+
+Nodo propio `G-021` cerrado sin modificar G-013 de SOL_1 ni G-018 de SOL_2.
+
+- GAP comprobado: `parallel_scheduler.py` existía con pruebas aisladas, pero no tenía caller de producción; `Kernel.run()` seguía ejecutando secuencialmente.
+- GAP comprobado: el planificador interpretaba números mayores como más urgentes, contrario a `PriorityMissionScheduler`, `MavisPool` y `DEFAULT_MISSION_PRIORITY` (`1 = más urgente`).
+- Corrección mínima: `Kernel.run()` conserva `DAGEngine` como validador canónico y cablea el scheduler acotado; límites provienen de `MavisPoolBootstrap.max_workers/queue_size`.
+- Se validan prioridad y límites; ciclos, dependencias, fan-out/fan-in, deduplicación, replay idempotente y backpressure fallan cerrado o respetan el contrato.
+- Read-back de implementación publicada: commit `449080bfd34c28ec6df13e529f5795c7820b7309`; kernel blob `19e8f9cd40e15539196f76507fc6283e8a368d76`; scheduler blob `2d224ef6f0f53ead4fb0c4c371e5dfd25cc59aea`; tests blob `1a8443192b2291e3bb7cf39ac341476999c238e0`.
+- Ejecución local real: `python -m unittest -v runtime.tests.test_parallel_scheduler_g021` = `PASS_8_OF_8`, exit 0, 0.063 s; incluye integración `manifest → DAGEngine → Kernel → handlers`, pico de concurrencia 2 y fan-in posterior a dependencias.
+- La suite pytest completa no se ejecutó porque el paquete no está instalado; no se reclama proveedor autenticado, deploy ni PASS global.
+- Evidence: `wordflow_loop/evidence/G021_PARALLEL_SCHEDULER_KERNEL_WIRING_2026-09-12.json`. No LFS, no force.
+
+Resultado: `G-021 CLOSED_VERIFIED_LOCAL`.

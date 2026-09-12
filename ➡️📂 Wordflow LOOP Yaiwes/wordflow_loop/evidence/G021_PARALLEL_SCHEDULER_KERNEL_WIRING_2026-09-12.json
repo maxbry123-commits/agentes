@@ -1,0 +1,54 @@
+{
+  "schema": "yaiwes.gap_evidence/v1",
+  "gap_id": "G-021",
+  "status": "CLOSED_VERIFIED_LOCAL",
+  "claimed_by": "ASTRA_GPT_LOOP",
+  "verified_at_utc": "2026-09-12T08:06:30Z",
+  "source_commit": "449080bfd34c28ec6df13e529f5795c7820b7309",
+  "findings_resolved": [
+    "parallel_scheduler had no production caller and Kernel.run executed every node sequentially",
+    "parallel_scheduler treated larger numbers as more urgent while canonical Kernel and Mavis queues use lower numbers as more urgent"
+  ],
+  "implementation": {
+    "kernel": {
+      "path": "runtime/src/core/kernel.py",
+      "blob": "19e8f9cd40e15539196f76507fc6283e8a368d76",
+      "sha256": "f174bdb240b636e60957bc47eae0ab9d045ef8ee9c55c46b12cf59df108f798b"
+    },
+    "scheduler": {
+      "path": "runtime/src/core/parallel_scheduler.py",
+      "blob": "2d224ef6f0f53ead4fb0c4c371e5dfd25cc59aea",
+      "sha256": "bdf3f1399e1da203f09b4f4b8d2f4688ab3560c301d38aed246179ecd3e76648"
+    },
+    "tests": {
+      "path": "runtime/tests/test_parallel_scheduler_g021.py",
+      "blob": "1a8443192b2291e3bb7cf39ac341476999c238e0",
+      "sha256": "8e65cd8b504e60ace355540a88d1d78ca903aba63e8a33b2a12edb3d22beeb28"
+    }
+  },
+  "execution": {
+    "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH='➡️📂 Wordflow LOOP Yaiwes' python -m unittest -v runtime.tests.test_parallel_scheduler_g021",
+    "result": "PASS_8_OF_8",
+    "exit_code": 0,
+    "elapsed_seconds": 0.063,
+    "verified_controls": [
+      "priority",
+      "dependencies",
+      "fan_out",
+      "fan_in",
+      "deduplication",
+      "idempotent_replay",
+      "concurrency_limit",
+      "backpressure",
+      "cycle_rejection",
+      "kernel_runtime_wiring"
+    ]
+  },
+  "limits": {
+    "pytest_full_suite": "NOT_EXECUTED_DEPENDENCY_MISSING",
+    "authenticated_providers": "NOT_TESTED",
+    "global_wordflow_pass": false
+  },
+  "no_lfs": true,
+  "no_force": true
+}
