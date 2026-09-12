@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T21:32:16Z",
+  "updated_at": "2026-09-12T21:33:00Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1864,14 +1864,14 @@
       "component": "BullMQ",
       "source": "Core kernel Yaiwes/Componentes recuperados B/BullMQ/",
       "current_step": 3,
-      "status": "PENDING_STEP3",
+      "status": "GAP_STEP3",
       "abc": "B",
       "target": "Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/bullmq/",
-      "owner": "SOL",
-      "lock": "CLAIMED",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-12T21:32:16Z SOL integración 3 STEP3 claim: canonical FABLES bus; build moved BullMQ, start real Redis, execute Queue->Worker job value 21->42, collect L2+L3+L4; no MOVE repeat",
-        "after": "STEP2 PASS: canonical Motor4 MOVE; source absent target populated; run=34718988102; move_commit=f8b8d9f48925827ab98df5fc216842586c6c54a9"
+        "after": "STEP3 GAP BUILD run=34720214036 rc=1: yarn install v1.22.22 [1/5] Validating package.json... [2/5] Resolving packages... warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@^4.1.0\" warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@^4.3.0\" warning Resolution field \"brace-expansion@5.0.9\" is incompatible with requested version \"brace-expansion@^1.1.7\" warning Resolution field \"picomatch@4.0.5\" is incompatible with requested version \"picomatch@^2.3.1\" warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@4.2.0\" warning Resolution field \"picomatch@4.0.5\" is incompatible with requested version \"picomatch@^4.0.7\" [3/5] Fetching packages... error @commitlint/cli@21.2.2: The engine \"node\" is incompatible with this module. Expected version \"> 22.12.0\". Got \"20.20.2\" error Found incompatible module. info Visit https://yarnpkg.com/en/docs/cli/install for documentation about this command. "
       },
       "evidence": [
         "worker:SOL integración 2",
@@ -1883,7 +1883,8 @@
         "step2:run:34718988102",
         "step2:move_commit:f8b8d9f48925827ab98df5fc216842586c6c54a9",
         "step2:readback:origin/main source absent target populated README PASS",
-        "step3:runner:.github/workflows/yaiwes-sol3-bullmq-step3.yml"
+        "step3:runner:.github/workflows/yaiwes-sol3-bullmq-step3.yml",
+        "step3:gap:BUILD:run:34720214036:rc=1:yarn install v1.22.22 [1/5] Validating package.json... [2/5] Resolving packages... warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@^4.1.0\" warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@^4.3.0\" warning Resolution field \"brace-expansion@5.0.9\" is incompatible with requested version \"brace-expansion@^1.1.7\" warning Resolution field \"picomatch@4.0.5\" is incompatible with requested version \"picomatch@^2.3.1\" warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@4.2.0\" warning Resolution field \"picomatch@4.0.5\" is incompatible with requested version \"picomatch@^4.0.7\" [3/5] Fetching packages... error @commitlint/cli@21.2.2: The engine \"node\" is incompatible with this module. Expected version \"> 22.12.0\". Got \"20.20.2\" error Found incompatible module. info Visit https://yarnpkg.com/en/docs/cli/install for documentation about this command. "
       ],
       "history": [
         {
@@ -1917,9 +1918,16 @@
           "actor": "SOL",
           "label": "SOL integración 3",
           "event": "CLAIM_STEP3"
+        },
+        {
+          "at": "2026-09-12T21:33:00Z",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "STEP3_GAP_BUILD_RELEASE",
+          "run": 34720214036
         }
       ],
-      "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
+      "next_action": "REPAIR_EXACT_STEP3_GAP_AND_RETRY"
     }
   ],
   "counts": {
