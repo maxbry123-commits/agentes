@@ -409,7 +409,7 @@
       "id": "G-022",
       "task": "Cerrar sandbox → reviewer → deploy con aislamiento enforceable y pruebas de rechazo/promoción.",
       "literal_sha256": "3d61116afce40ba6300335aef2abc0d21d215809284925e6e4944af3ade570ae",
-      "status": "CLAIMED",
+      "status": "BLOCKED",
       "claimed_by": "ASTRA_GPT_LOOP",
       "depends_on": [],
       "steps": [
@@ -419,22 +419,27 @@
         },
         {
           "id": "2_MOTOR",
-          "status": "RUNNING"
+          "status": "PASS"
         },
         {
           "id": "3_WIRE_TEST",
-          "status": "PENDING"
+          "status": "BLOCKED"
         }
       ],
       "evidence": [
         "runtime_probe:bwrap_netlink_operation_not_permitted",
-        "runtime_probe:unshare_uid_map_operation_not_permitted"
+        "runtime_probe:unshare_uid_map_operation_not_permitted",
+        "wordflow_loop/evidence/G022_SANDBOX_FAIL_CLOSED_BLOCKER_2026-09-12.json",
+        "unittest:PASS_5_OF_5",
+        "adjacent:PASS_5_OF_5",
+        "claim_commit:b8b63ab34f85e919166c0905f4b1e55af6dad594"
       ],
       "gaps": [
-        "CALLER_SUPPLIED_ATTESTATION_CAN_FABRICATE_READY_VERIFIED",
+        "RESOLVED: caller-supplied attestation can no longer fabricate READY_VERIFIED",
+        "RESOLVED: UEK cluster no longer announces SUCCESS after sandbox denial",
         "RUNTIME_NAMESPACE_ISOLATION_BLOCKED_BY_HOST"
       ],
-      "version": 2,
+      "version": 3,
       "checker": "ASTRA_GPT"
     },
     {

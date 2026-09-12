@@ -33,13 +33,13 @@ def test_installation_can_pass_only_with_complete_verified_evidence():
     assert result["deployment_authorized"] is False
 
 
-def test_sandbox_requires_real_backend_attestation():
+def test_sandbox_requires_backend_execution_not_caller_attestation():
     manager = SandboxManager(network_policy="DENY", memory_limit_mb=512)
     missing = manager.acquire_sandbox("python")
-    assert missing["status"] == "BLOCKED_ATTESTATION_REQUIRED"
+    assert missing["status"] == "BLOCKED_EXECUTION_REQUIRED"
     assert missing["execution_authorized"] is False
 
-    verified = manager.acquire_sandbox(
+    fabricated = manager.acquire_sandbox(
         "python",
         {
             "backend": "nsjail",
@@ -50,8 +50,8 @@ def test_sandbox_requires_real_backend_attestation():
             "evidence_ref": "evidence://sandbox/1",
         },
     )
-    assert verified["status"] == "READY_VERIFIED"
-    assert verified["execution_authorized"] is True
+    assert fabricated["status"] == "BLOCKED_UNTRUSTED_ATTESTATION"
+    assert fabricated["execution_authorized"] is False
 
 
 def test_deployment_is_blocked_until_every_gate_passes():

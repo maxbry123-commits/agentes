@@ -35,6 +35,17 @@ class UniversalExecutionKernelCluster:
         boot_info = self.boot_engine.boot_capability({"capability_id": cap_id, "runtime_type": request.get("runtime_type", "python")})
         sandbox = self.sandbox_mgr.acquire_sandbox(boot_info["runtime_type"])
 
+        if not sandbox["execution_authorized"]:
+            return {
+                "capability_id": cap_id,
+                "inputs": inputs,
+                "output": None,
+                "cache_hit": False,
+                "determinism_verified": True,
+                "status": "BLOCKED_SANDBOX",
+                "sandbox": sandbox,
+            }
+
         # 3. Ejecución determinista
         output_payload = {
             "result": f"Executed capability '{cap_id}' inside {sandbox['sandbox_id']}",

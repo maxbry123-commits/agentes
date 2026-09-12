@@ -413,3 +413,16 @@ Nodo propio `G-021` cerrado sin modificar G-013 de SOL_1 ni G-018 de SOL_2.
 - Evidence: `wordflow_loop/evidence/G021_PARALLEL_SCHEDULER_KERNEL_WIRING_2026-09-12.json`. No LFS, no force.
 
 Resultado: `G-021 CLOSED_VERIFIED_LOCAL`.
+
+# ASTRA-GPT-LOOP — AVANCE BLOQUEADO G-022 — 2026-09-12
+
+Nodo independiente G-022 reclamado por `ASTRA_GPT_LOOP`; G-013 de SOL_1 y G-018 de SOL_2 no fueron modificados.
+
+- GAP comprobado: `acquire_sandbox` confiaba en booleanos controlados por el llamador y devolvía `READY_VERIFIED` sin ejecutar backend alguno.
+- Corrección fail-closed: atestaciones externas ya no autorizan; el único camino positivo ejecuta Bubblewrap sin shell, solicita namespaces de proceso/filesystem/network y aplica límites de memoria/tiempo. Cualquier fallo bloquea.
+- El UEK ya no produce salida `SUCCESS` tras denegación del sandbox.
+- Pruebas negativas reales: `PASS_5_OF_5`; regresiones adyacentes: `PASS_5_OF_5`; compileall PASS.
+- Bloqueo físico reproducido: Bubblewrap falla al crear el namespace de red con `Operation not permitted`; `unshare` falla al escribir `/proc/self/uid_map`. La ruta integrada devuelve `BLOCKED_TIME_LIMIT_EXCEEDED`, nunca autorización.
+- Evidence: `wordflow_loop/evidence/G022_SANDBOX_FAIL_CLOSED_BLOCKER_2026-09-12.json`.
+
+Resultado: `G-022 BLOCKED_PHYSICAL_ISOLATION`. No se declara prueba positiva de aislamiento, promoción, deployment ni PASS global. G-017 sigue bloqueado por G-022.
