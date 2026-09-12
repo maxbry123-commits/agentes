@@ -7,7 +7,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Iterable, Sequence
 
-SCHEMA = "yaiwes.wordflow_global_audit/v3"
+SCHEMA = "yaiwes.wordflow_global_audit/v4"
 
 
 class WordflowAuditError(ValueError):
@@ -78,8 +78,10 @@ def _module_name(source_root: Path, path: Path) -> str:
 
 
 def _normalize_import_name(name: str) -> str:
-    if name == "src":
+    if name in {"src", "runtime.src"}:
         return ""
+    if name.startswith("runtime.src."):
+        return name[len("runtime.src."):]
     if name.startswith("src."):
         return name[4:]
     return name
