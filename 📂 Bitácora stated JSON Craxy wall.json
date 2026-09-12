@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T20:48:23Z",
+  "updated_at": "2026-09-12T20:49:14Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -61,6 +61,13 @@
       "status": "ACTIVE",
       "scope": "physical_inventory_strict_3_steps",
       "registered_at": "2026-09-12T20:40:56Z"
+    },
+    {
+      "name": "SOL integración 2",
+      "role": "integration_worker",
+      "status": "ACTIVE",
+      "scope": "physical_inventory_strict_3_steps",
+      "registered_at": "2026-09-12T20:49:14Z"
     }
   ],
   "move_1_20_evidence": {
@@ -1567,6 +1574,49 @@
         }
       ],
       "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
+    },
+    {
+      "id": 30,
+      "component": "Agno",
+      "source": "Core kernel Yaiwes/Componentes recuperados B/Agno/",
+      "current_step": 2,
+      "status": "PENDING_STEP2",
+      "abc": "B",
+      "target": "Agente Yaiwes principal/agent-fleet-parallelism/agno/",
+      "owner": "SOL",
+      "lock": "CLAIMED",
+      "checkpoint": {
+        "before": "2026-09-12T20:49:14Z SOL integración 2 STEP2 claim after STEP1 PASS: immutable Motor4 9a21facfe11327cf60a2afca8f415ad52f0ecbe5; Agno source -> agent-fleet-parallelism/agno",
+        "after": "STEP1 PASS: Agno README defines framework + AgentOS runtime for agent platforms, APIs, storage, scheduling/background jobs, observability and security; classified B motor de trabajo; target agent-fleet-parallelism/agno/"
+      },
+      "evidence": [
+        "worker:SOL integración 2",
+        "step1:readme_blob:2813f35fa7620ff7d95465d853d7b0a6ee2c00b4",
+        "step1:classification:B",
+        "step1:target:Agente Yaiwes principal/agent-fleet-parallelism/agno/",
+        "step1:reason:agent-platform framework/runtime + AgentOS + scheduling/background jobs"
+      ],
+      "history": [
+        {
+          "at": "2026-09-12T20:49:14Z",
+          "actor": "SOL",
+          "label": "SOL integración 2",
+          "event": "CLAIM_STEP1_USER_REACTIVATION"
+        },
+        {
+          "at": "2026-09-12T20:49:14Z",
+          "actor": "SOL",
+          "label": "SOL integración 2",
+          "event": "STEP1_PASS_RELEASE"
+        },
+        {
+          "at": "2026-09-12T20:49:14Z",
+          "actor": "SOL",
+          "label": "SOL integración 2",
+          "event": "CLAIM_STEP2"
+        }
+      ],
+      "next_action": "STEP_2_MOVE_WITH_CANONICAL_MOTOR"
     }
   ],
   "counts": {
@@ -1627,7 +1677,7 @@
     ],
     "stop_condition": "ALL_COMPONENTS_COMPLETE_AND_PHYSICALLY_VERIFIED",
     "coda_persistence": true,
-    "updated_at": "2026-09-12T20:40:56Z"
+    "updated_at": "2026-09-12T20:49:14Z"
   },
   "directive_history": [
     {
