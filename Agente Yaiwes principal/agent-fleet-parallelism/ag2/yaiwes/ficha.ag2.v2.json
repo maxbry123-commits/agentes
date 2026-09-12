@@ -1,0 +1,95 @@
+{
+  "artifact_id": "yaiwes.agent_fleet.ag2",
+  "version": "1.0.0",
+  "estado": "active",
+  "contract_hash": "sha256:1cd55ac2f9c718bab4bc439e98b7af8da3b495b3f51fac00372933d993ab4fd7",
+  "tribunal_case_id": "YAIWES-N28-AG2-STEP3",
+  "contrato": {
+    "rol": "transform",
+    "consume": {
+      "datatype": {
+        "family": "json",
+        "type": "object",
+        "version": 1
+      }
+    },
+    "expone": {
+      "datatype": {
+        "family": "json",
+        "type": "object",
+        "version": 1
+      }
+    }
+  },
+  "ejecucion": {
+    "kind": "code",
+    "transport": "sdk",
+    "runtime_type": "compute",
+    "entry_point": "Agente Yaiwes principal/agent-fleet-parallelism/ag2/yaiwes/ag2_adapter.py:run_microtest",
+    "idempotente": true
+  },
+  "seguridad": {
+    "sandbox": "process",
+    "limites": {
+      "timeout_ms": 180000,
+      "deadline_ms": 180000
+    }
+  },
+  "firma": {
+    "gpg_key_id": "YAIWES-N28"
+  },
+  "categoria": "pipeline",
+  "etapa": "P",
+  "perfiles": {
+    "n0": {
+      "habilitada": true,
+      "iteraciones": 1,
+      "simulaciones": 0,
+      "criticas": 0,
+      "muestras_k": 1
+    }
+  },
+  "repeticion": {
+    "max": 1,
+    "condicion": "nunca"
+  },
+  "repite_en": [],
+  "activacion": {
+    "eventos": [
+      "kernel.v2.plugin.enchufed"
+    ],
+    "wake_words": [],
+    "condicion": ""
+  },
+  "presupuesto": {
+    "n0": {
+      "max_tokens": 1,
+      "max_ms": 180000,
+      "max_costo_usd": 0.0
+    }
+  },
+  "telemetria": {
+    "metricas": [
+      "tiempo",
+      "errores",
+      "health"
+    ],
+    "span_otel": true
+  },
+  "evidencia": {
+    "produce": [
+      "L2_build",
+      "L3_runtime",
+      "L4_feature"
+    ],
+    "destino": "Agente Yaiwes principal/agent-fleet-parallelism/ag2/yaiwes/"
+  },
+  "failover": {
+    "sustituible_por": [],
+    "compensacion": "fail_closed"
+  },
+  "salud": {
+    "metodo": "exec",
+    "heartbeat_interval_s": 30
+  }
+}

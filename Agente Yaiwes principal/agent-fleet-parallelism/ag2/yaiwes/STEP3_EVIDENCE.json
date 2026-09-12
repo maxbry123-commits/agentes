@@ -1,0 +1,30 @@
+{
+  "node": "AG2",
+  "worker": "SOL integración 3",
+  "status": "PASS",
+  "route": "FABLES -> AG2 adapter -> real AG2 Hub -> TransitionGraph -> alice -> bob -> alice",
+  "plugin_id": "yaiwes.agent_fleet.ag2",
+  "microtest": "bridge_drives_workflow_alice_bob_alice",
+  "result": {
+    "status": "PASS",
+    "capability": "ag2_network_workflow_handoff",
+    "route": [
+      "alice",
+      "bob",
+      "alice"
+    ],
+    "channel_state": "active",
+    "last_speaker": "bob"
+  },
+  "evidence_levels": [
+    "L2_build",
+    "L3_runtime",
+    "L4_feature"
+  ],
+  "run": 34718002370,
+  "runner_commit": "ae81486f452c531551f29811c2b978679ce1f6b2",
+  "adapter_sha256": "sha256:1cd55ac2f9c718bab4bc439e98b7af8da3b495b3f51fac00372933d993ab4fd7",
+  "canonical_bus_blob": "470f9c91650bc6c59e2900f7e71090b84363da9f",
+  "canonical_ficha_code_blob": "a72508027cc2458553ef6a2255a9aa33d9a77a21",
+  "prune": "NOT_NEEDED"
+}
