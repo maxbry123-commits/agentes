@@ -36,15 +36,15 @@
       "id": "G-007",
       "task": "Ingestar code existente con REUSE/PATCH/ADAPT, provenance y copy/move solo con motores canónicos + read-back.",
       "literal_sha256": "ce65fd6a6cf7ad140283bed94ccb5383eb57f574b7aa0856ea616f877f561c78",
-      "status": "PENDING",
-      "claimed_by": null,
+      "status": "CLAIMED",
+      "claimed_by": "ASTRA_GPT_LOOP",
       "depends_on": [
         "G-011"
       ],
       "steps": [
         {
           "id": "1_RESEARCH",
-          "status": "PENDING"
+          "status": "RUNNING"
         },
         {
           "id": "2_MOTOR",
@@ -57,7 +57,7 @@
       ],
       "evidence": [],
       "gaps": [],
-      "version": 1,
+      "version": 2,
       "checker": "ASTRA_GPT"
     },
     {
