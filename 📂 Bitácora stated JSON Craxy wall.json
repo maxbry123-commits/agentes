@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T20:52:09Z",
+  "updated_at": "2026-09-12T20:52:53Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1602,14 +1602,14 @@
       "component": "Agno",
       "source": "Core kernel Yaiwes/Componentes recuperados B/Agno/",
       "current_step": 3,
-      "status": "PENDING_STEP3",
+      "status": "PASS",
       "abc": "B",
       "target": "Agente Yaiwes principal/agent-fleet-parallelism/agno/",
-      "owner": "SOL",
-      "lock": "CLAIMED",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-12T20:51:36Z SOL integración 2 N30 STEP3 claim: STEP2 Motor4/read-back PASS; wire canonical FABLES; real Agno Agent.as_tool delegation marker + bypass-rejection microtest; no LLM/API; prune only if concrete cause",
-        "after": "STEP2 PASS: canonical Motor4 MOVE; source absent target populated; run=34718178112; move_commit=581de047fab36d2082f89a1301ae6463084d3c2c"
+        "after": "STEP3 PASS: canonical FABLES ACTIVE yaiwes.agent_fleet.agno; real Agno Agent instantiated, published via as_tool marker, and direct Agent(tools=[marker]) bypass rejected as designed; no LLM/API; L2+L3+L4; prune NOT_NEEDED; read-back PASS; run=34718289482"
       },
       "evidence": [
         "worker:SOL integración 2",
@@ -1620,7 +1620,16 @@
         "step2:motor4_blob:9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
         "step2:run:34718178112",
         "step2:move_commit:581de047fab36d2082f89a1301ae6463084d3c2c",
-        "step2:readback:origin/main source absent target populated"
+        "step2:readback:origin/main source absent target populated",
+        "step3:run:34718289482",
+        "step3:evidence_commit:2eda05716408364480b473e0c1793f4655eae56e",
+        "step3:adapter_sha256:bbd61fd032427f6eb8e0d1eb3e408e0b3208609b2d605ec7d7739a55b8f6de1a",
+        "step3:plugin_id:yaiwes.agent_fleet.agno",
+        "step3:route:FABLES->Agno adapter->Agent->as_tool marker->bypass rejection",
+        "step3:microtest:PASS agent_as_tool marker + direct-tool bypass rejected",
+        "step3:evidence:L2_build+L3_runtime+L4_feature",
+        "step3:prune:NOT_NEEDED",
+        "step3:readback:source-absent+target+adapter+ficha+evidence PASS"
       ],
       "history": [
         {
@@ -1654,13 +1663,21 @@
           "actor": "SOL",
           "label": "SOL integración 2",
           "event": "CLAIM_STEP3"
+        },
+        {
+          "at": "2026-09-12T20:52:53Z",
+          "actor": "SOL",
+          "label": "SOL integración 2",
+          "event": "STEP3_PASS_RELEASE",
+          "run": 34718289482,
+          "commit": "2eda05716408364480b473e0c1793f4655eae56e"
         }
       ],
-      "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
+      "next_action": "COMPLETE"
     }
   ],
   "counts": {
-    "closed_current_contract": 29
+    "closed_current_contract": 30
   },
   "kernel_hold_policy": {
     "approved": true,
