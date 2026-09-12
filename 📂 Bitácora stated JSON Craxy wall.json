@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T21:50:21Z",
+  "updated_at": "2026-09-12T21:50:39Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -2056,18 +2056,23 @@
       "id": 35,
       "component": "AI-Scientist-v2",
       "source": "Core kernel Yaiwes/Componentes recuperados B/AI-Scientist-v2/",
-      "current_step": 1,
-      "status": "PENDING_STEP1",
-      "abc": null,
-      "target": null,
-      "owner": "SOL",
-      "lock": "CLAIMED",
+      "current_step": 2,
+      "status": "PASS_STEP1",
+      "abc": "A",
+      "target": "Agente Yaiwes principal/agent-fleet-parallelism/ai-scientist-v2/",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-12T21:50:21Z SOL integración 3 fresh physical inventory wall_node_id=null; README+launch_scientist_bfts present; execute STEP1 only",
-        "after": null
+        "after": "STEP1 PASS: upstream identifies generalized end-to-end agentic system that autonomously generates hypotheses, runs experiments, analyzes data and writes manuscripts; launch_scientist_bfts real entrypoint present; classify A; exact agent-fleet-parallelism destination."
       },
       "evidence": [
-        "worker:SOL integración 3"
+        "worker:SOL integración 3",
+        "step1:readme_blob:3bb62d43ab4632b3bbffc2642f12beafe869d3a4",
+        "step1:launch_blob:e854af0efce00ea8be0cfe21abf4b0066f703224",
+        "step1:classification:A",
+        "step1:target:Agente Yaiwes principal/agent-fleet-parallelism/ai-scientist-v2/",
+        "step1:reason:autonomous scientific research agent with agentic tree search"
       ],
       "history": [
         {
@@ -2075,9 +2080,15 @@
           "actor": "SOL",
           "label": "SOL integración 3",
           "event": "CLAIM_STEP1"
+        },
+        {
+          "at": "2026-09-12T21:50:39Z",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "STEP1_PASS_RELEASE"
         }
       ],
-      "next_action": "STEP_1_ANALYZE_ABC_DESTINATION"
+      "next_action": "STEP_2_MOVE_WITH_CANONICAL_MOTOR"
     }
   ],
   "counts": {
