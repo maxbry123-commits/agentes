@@ -36,7 +36,7 @@
       "id": "G-007",
       "task": "Ingestar code existente con REUSE/PATCH/ADAPT, provenance y copy/move solo con motores canónicos + read-back.",
       "literal_sha256": "ce65fd6a6cf7ad140283bed94ccb5383eb57f574b7aa0856ea616f877f561c78",
-      "status": "CLAIMED",
+      "status": "PASS",
       "claimed_by": "ASTRA_GPT_LOOP",
       "depends_on": [
         "G-011"
@@ -44,20 +44,22 @@
       "steps": [
         {
           "id": "1_RESEARCH",
-          "status": "RUNNING"
+          "status": "PASS"
         },
         {
           "id": "2_MOTOR",
-          "status": "PENDING"
+          "status": "PASS"
         },
         {
           "id": "3_WIRE_TEST",
-          "status": "PENDING"
+          "status": "PASS"
         }
       ],
-      "evidence": [],
+      "evidence": [
+        "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G007_EXISTING_CODE_CANONICAL_TRANSFER_2026-09-12.json"
+      ],
       "gaps": [],
-      "version": 2,
+      "version": 3,
       "checker": "ASTRA_GPT"
     },
     {
