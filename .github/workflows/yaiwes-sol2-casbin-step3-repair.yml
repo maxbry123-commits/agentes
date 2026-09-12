@@ -1,0 +1,238 @@
+name: YAIWES SOL2 Casbin N32 STEP3 Repair
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-sol2-casbin-step3-repair.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-sol2-casbin-n32-step3
+  cancel-in-progress: false
+
+jobs:
+  repair_retest_release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      WALL: '📂 Bitácora stated JSON Craxy wall.json'
+      INVENTORY: 'Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json'
+      TARGET: 'Agente Yaiwes principal/definition-registry/authorization-model/casbin'
+      YDIR: 'Agente Yaiwes principal/definition-registry/authorization-model/casbin/yaiwes'
+      ADAPTER: 'Agente Yaiwes principal/definition-registry/authorization-model/casbin/yaiwes/casbin_adapter.py'
+      FICHA: 'Agente Yaiwes principal/definition-registry/authorization-model/casbin/yaiwes/ficha.casbin.v2.json'
+      EVIDENCE: 'Agente Yaiwes principal/definition-registry/authorization-model/casbin/yaiwes/STEP3_EVIDENCE.json'
+      MICRODIR: 'Agente Yaiwes principal/definition-registry/authorization-model/casbin/yaiwes/microtest'
+      BUS: 'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py'
+      FICHA_CODE: 'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/ficha_contract_v2.py'
+    steps:
+      - name: Checkout N32 repair surfaces
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 8
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-sol2-casbin-step3-repair.yml
+            /📂 Bitácora stated JSON Craxy wall.json
+            /Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json
+            /Agente Yaiwes principal/definition-registry/authorization-model/casbin/
+            /Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py
+            /Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/ficha_contract_v2.py
+
+      - name: Record exact STEP3 GAP and retain claim
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          ok=0
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main; git reset --hard origin/main
+            python3 - <<'PY'
+          import json,os
+          from datetime import datetime,timezone
+          p=os.environ['WALL']; now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
+          with open(p,encoding='utf-8') as f:d=json.load(f)
+          n=next(x for x in d['nodes'] if x.get('id')==32 and x.get('component')=='Casbin')
+          if n.get('current_step')!=3 or n.get('owner')!='SOL' or n.get('lock')!='CLAIMED':
+              raise SystemExit(f"N32_NOT_SOL2_CLAIMED_STEP3:{n.get('current_step')}:{n.get('owner')}:{n.get('lock')}:{n.get('status')}")
+          n['status']='GAP_STEP3'
+          gap='step3:gap_run:34718600250:go1.13_language:predeclared_any_requires_go1.18'
+          if gap not in n.setdefault('evidence',[]): n['evidence'].append(gap)
+          n['checkpoint']['after']='STEP3 GAP run 34718600250: Casbin module language is Go 1.13; microtest used predeclared alias any (Go 1.18+). Component/FABLES claim verified; exact repair is map[string]interface{} and repeat same ACL test.'
+          n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 2','event':'STEP3_GAP_GO113_ANY_REPAIR_RETRY','run':34718600250})
+          n['next_action']='REPAIR_EXACT_STEP3_GAP_AND_RETRY'
+          d['updated_at']=now
+          with open(p,'w',encoding='utf-8') as f:json.dump(d,f,ensure_ascii=False,indent=2);f.write('\n')
+          PY
+            git add -- "$WALL"; git commit -m 'crazy-wall: N32 Casbin STEP3 GAP Go1.13 any alias'
+            if git push origin HEAD:main; then ok=1;break;fi
+            sleep $((attempt*2))
+          done
+          test "$ok" -eq 1
+
+      - name: Verify canonical FABLES and repair scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main; git reset --hard origin/main
+          test "$(git hash-object "$BUS")" = '470f9c91650bc6c59e2900f7e71090b84363da9f'
+          test "$(git hash-object "$FICHA_CODE")" = 'a72508027cc2458553ef6a2255a9aa33d9a77a21'
+          python3 - <<'PY'
+          import json,os
+          with open(os.environ['WALL'],encoding='utf-8') as f:d=json.load(f)
+          n=next(x for x in d['nodes'] if x.get('id')==32)
+          assert n['owner']=='SOL' and n['lock']=='CLAIMED' and n['status']=='GAP_STEP3',n
+          print('N32_GAP_READBACK=PASS')
+          PY
+
+      - name: Repeat same Casbin ACL microtest with Go1.13-compatible type
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$MICRODIR" "$YDIR"
+          cat > "$MICRODIR/main.go" <<'GO'
+          package main
+
+          import (
+            "encoding/json"
+            "fmt"
+            "os"
+            casbin "github.com/casbin/casbin/v3"
+            "github.com/casbin/casbin/v3/model"
+          )
+
+          func main() {
+            text := `[request_definition]
+          r = sub, obj, act
+          [policy_definition]
+          p = sub, obj, act
+          [policy_effect]
+          e = some(where (p.eft == allow))
+          [matchers]
+          m = r.sub == p.sub && r.obj == p.obj && r.act == p.act`
+            m, err := model.NewModelFromString(text)
+            if err != nil { panic(err) }
+            e, err := casbin.NewEnforcer(m)
+            if err != nil { panic(err) }
+            if ok, err := e.AddPolicy("alice", "data1", "read"); err != nil || !ok { panic(fmt.Sprintf("alice policy: ok=%v err=%v", ok, err)) }
+            if ok, err := e.AddPolicy("bob", "data2", "write"); err != nil || !ok { panic(fmt.Sprintf("bob policy: ok=%v err=%v", ok, err)) }
+            aliceRead, err := e.Enforce("alice", "data1", "read"); if err != nil { panic(err) }
+            aliceWrite, err := e.Enforce("alice", "data1", "write"); if err != nil { panic(err) }
+            bobWrite, err := e.Enforce("bob", "data2", "write"); if err != nil { panic(err) }
+            if !aliceRead || aliceWrite || !bobWrite { panic(fmt.Sprintf("unexpected acl: %v %v %v", aliceRead, aliceWrite, bobWrite)) }
+            result := map[string]interface{}{"status":"PASS","alice_data1_read":aliceRead,"alice_data1_write":aliceWrite,"bob_data2_write":bobWrite}
+            b,_:=json.Marshal(result)
+            fmt.Println("YAIWES_CASBIN_RESULT="+string(b))
+            if err:=os.WriteFile("yaiwes/microtest-result.json", append(b,'\n'), 0644); err!=nil { panic(err) }
+          }
+          GO
+          cd "$TARGET"
+          go run ./yaiwes/microtest | tee /tmp/casbin-microtest.log
+          grep -Fq '"status":"PASS"' /tmp/casbin-microtest.log
+          grep -Fq '"alice_data1_read":true' /tmp/casbin-microtest.log
+          grep -Fq '"alice_data1_write":false' /tmp/casbin-microtest.log
+          grep -Fq '"bob_data2_write":true' /tmp/casbin-microtest.log
+          echo CASBIN_REAL_ACL_MICROTEST=PASS
+
+      - name: Create minimal Casbin adapter and FABLES ficha
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$ADAPTER" <<'PY'
+          from __future__ import annotations
+          import json, subprocess
+          from pathlib import Path
+
+          def run_microtest() -> dict:
+              root=Path(__file__).resolve().parents[1]
+              proc=subprocess.run(['go','run','./yaiwes/microtest'],cwd=root,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=180)
+              if proc.returncode != 0: raise RuntimeError(proc.stdout)
+              marker='YAIWES_CASBIN_RESULT='
+              payload=next((x[len(marker):] for x in proc.stdout.splitlines() if x.startswith(marker)),None)
+              if payload is None: raise RuntimeError('CASBIN_RESULT_MARKER_MISSING')
+              result=json.loads(payload)
+              assert result['alice_data1_read'] is True and result['alice_data1_write'] is False and result['bob_data2_write'] is True
+              return result
+          if __name__=='__main__': print('YAIWES_CASBIN_ADAPTER_RESULT='+json.dumps(run_microtest(),sort_keys=True))
+          PY
+          python3 - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          a=Path(os.environ['ADAPTER']); h='sha256:'+hashlib.sha256(a.read_bytes()).hexdigest()
+          ficha={'artifact_id':'yaiwes.authorization.casbin','version':'1.0.0','estado':'active','contract_hash':h,'tribunal_case_id':'YAIWES-N32-CASBIN-STEP3','contrato':{'rol':'validator','consume':{'datatype':{'family':'json','type':'authorization_request','version':1}},'expone':{'datatype':{'family':'json','type':'authorization_decision','version':1}}},'ejecucion':{'kind':'code','transport':'sdk','runtime_type':'compute','entry_point':os.environ['ADAPTER']+':run_microtest','idempotente':True},'seguridad':{'sandbox':'process','limites':{'timeout_ms':180000,'deadline_ms':180000}},'firma':{'gpg_key_id':'YAIWES-N32'},'categoria':'validator','etapa':'V','perfiles':{'n0':{'habilitada':True,'iteraciones':1,'simulaciones':0,'criticas':0,'muestras_k':1}},'repeticion':{'max':1,'condicion':'nunca'},'repite_en':[],'activacion':{'eventos':['kernel.v2.plugin.enchufed'],'wake_words':[],'condicion':''},'presupuesto':{'n0':{'max_tokens':1,'max_ms':180000,'max_costo_usd':0.0}},'telemetria':{'metricas':['tiempo','errores','health'],'span_otel':True},'evidencia':{'produce':['L2_build','L3_runtime','L4_feature'],'destino':os.environ['YDIR']+'/'},'failover':{'sustituible_por':[],'compensacion':'deny'},'salud':{'metodo':'exec','heartbeat_interval_s':30}}
+          Path(os.environ['FICHA']).write_text(json.dumps(ficha,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          print('CASBIN_ADAPTER_SHA='+h)
+          PY
+          python3 -m py_compile "$ADAPTER"
+
+      - name: FABLES enchufe plus repaired real Casbin ACL test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,os,subprocess,sys
+          from pathlib import Path
+          root=Path.cwd();adapter=root/os.environ['ADAPTER'];ficha=root/os.environ['FICHA'];bus_path=root/os.environ['BUS'];source=adapter.read_text();manifest=json.loads(ficha.read_text());actual='sha256:'+hashlib.sha256(source.encode()).hexdigest();assert actual==manifest['contract_hash']
+          sys.path.insert(0,str(bus_path.parent));import universal_plugin_bus_v2_integrated as bus_mod
+          bus=bus_mod.UniversalPluginBus();bus.add_tribunal_approval(manifest['tribunal_case_id']);reg=bus.enchufar(manifest,bus_mod.ComponentCandidate(source,'python',[os.environ['ADAPTER']]),bus_mod.TargetConventions('python','snake_case','sync','gradual'),registered_by='SOL integración 2');assert reg.status==bus_mod.PluginStatus.ACTIVE and reg.plugin_id=='yaiwes.authorization.casbin';bus.health.heartbeat(reg.plugin_id);assert bus.check_plugin_health(reg.plugin_id)
+          proc=subprocess.run([sys.executable,str(adapter)],cwd=root,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=180);print(proc.stdout,end='');assert proc.returncode==0,proc.stdout
+          marker='YAIWES_CASBIN_ADAPTER_RESULT=';payload=next((x[len(marker):] for x in proc.stdout.splitlines() if x.startswith(marker)),None);assert payload;result=json.loads(payload);assert result['status']=='PASS' and result['alice_data1_read'] and not result['alice_data1_write'] and result['bob_data2_write']
+          bus.evidence.collect(reg.plugin_id,bus_mod.EvidenceLevel.L3,{'microtest':result});bus.evidence.collect(reg.plugin_id,bus_mod.EvidenceLevel.L4,{'capability':'acl_policy_enforcement_allow_and_deny','verified':True});levels=[e['level'] for e in bus.evidence.get(reg.plugin_id)];assert all(x in levels for x in ['L2_build','L3_runtime','L4_feature']),levels
+          Path(os.environ['EVIDENCE']).write_text(json.dumps({'node':32,'worker':'SOL integración 2','status':'PASS','route':'UniversalPluginBus/FABLES -> Casbin adapter -> real Go Enforcer -> ACL allow/deny','plugin_id':reg.plugin_id,'microtest':'alice read allow + alice write deny + bob write allow','result':result,'evidence_levels':levels,'run':int(os.environ['GITHUB_RUN_ID']),'runner_commit':os.environ['GITHUB_SHA'],'adapter_sha256':actual,'gap_repaired':'run 34718600250 Go1.13 any -> interface{}','prune':'NOT_NEEDED'},ensure_ascii=False,indent=2)+'\n')
+          print('CASBIN_FABLES_RETEST=PASS L2+L3+L4')
+          PY
+
+      - name: Publish repaired STEP3 artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$ADAPTER" "$FICHA" "$EVIDENCE" "$MICRODIR/main.go" "$TARGET/yaiwes/microtest-result.json";git commit -m 'feat(yaiwes): Casbin N32 STEP3 repaired Go1.13 microtest'
+          git reset --hard HEAD;ok=0
+          for attempt in 1 2 3 4 5;do git fetch origin main;if git rebase origin/main && git push origin HEAD:main;then ok=1;break;fi;git rebase --abort||true;git reset --hard HEAD;sleep $((attempt*2));done;test "$ok" -eq 1;echo "EVIDENCE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Read-back repaired STEP3 artifacts
+        shell: bash
+        run: |
+          set -euo pipefail;git fetch origin main
+          test -z "$(git ls-tree -r --name-only origin/main -- 'Core kernel Yaiwes/Componentes recuperados B/Casbin')";test -n "$(git ls-tree -r --name-only origin/main -- "$TARGET")";git show "origin/main:$FICHA"|grep -Fq 'yaiwes.authorization.casbin';git show "origin/main:$EVIDENCE"|grep -Fq 'Go1.13 any -> interface{}';git show "origin/main:$TARGET/yaiwes/microtest-result.json"|grep -Fq '"alice_data1_write":false';echo N32_REPAIR_READBACK=PASS
+
+      - name: Checkpoint N32 PASS and release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com';ok=0
+          for attempt in 1 2 3 4 5;do
+            git fetch origin main;git reset --hard origin/main
+            python3 - <<'PY'
+          import hashlib,json,os
+          from datetime import datetime,timezone
+          from pathlib import Path
+          wp=os.environ['WALL'];ip=os.environ['INVENTORY'];now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
+          with open(wp,encoding='utf-8') as f:d=json.load(f)
+          n=next(x for x in d['nodes'] if x.get('id')==32 and x.get('component')=='Casbin')
+          if n.get('owner')!='SOL' or n.get('lock')!='CLAIMED' or n.get('current_step')!=3:raise SystemExit('LOCK_OR_STEP_CHANGED')
+          ah=hashlib.sha256(Path(os.environ['ADAPTER']).read_bytes()).hexdigest();n['status']='PASS';n['checkpoint']['after']=f"STEP3 PASS after exact Go1.13 repair: canonical FABLES ACTIVE yaiwes.authorization.casbin; real Casbin Go Enforcer ACL alice/read allowed, alice/write denied, bob/write allowed; L2+L3+L4; prune NOT_NEEDED; read-back PASS; run={os.environ['GITHUB_RUN_ID']}"
+          for x in [f"step3:repair_run:{os.environ['GITHUB_RUN_ID']}",f"step3:evidence_commit:{os.environ.get('EVIDENCE_COMMIT')}",f"step3:adapter_sha256:{ah}",'step3:repair:map[string]any->map[string]interface{} for go1.13','step3:plugin_id:yaiwes.authorization.casbin','step3:route:FABLES->Casbin adapter->real Go Enforcer->ACL allow/deny','step3:microtest:PASS alice_read=True alice_write=False bob_write=True','step3:evidence:L2_build+L3_runtime+L4_feature','step3:prune:NOT_NEEDED','step3:readback:source-absent+target+adapter+ficha+evidence+microtest PASS']:
+              if x not in n['evidence']:n['evidence'].append(x)
+          n['history'].append({'at':now,'actor':'SOL','label':'SOL integración 2','event':'STEP3_PASS_AFTER_GO113_REPAIR_RELEASE','run':int(os.environ['GITHUB_RUN_ID']),'commit':os.environ.get('EVIDENCE_COMMIT')});n['owner']=None;n['lock']='FREE';n['next_action']='COMPLETE';d.setdefault('counts',{})['closed_current_contract']=max(int(d.get('counts',{}).get('closed_current_contract',30)),32);d['updated_at']=now
+          with open(ip,encoding='utf-8') as f:inv=json.load(f)
+          c=next(x for x in inv['components'] if x.get('name')=='Casbin');c['wall_node_id']=32;c['wall_status']='PASS';c['wall_current_step']=3;c['wall_target']=n['target']
+          with open(wp,'w',encoding='utf-8') as f:json.dump(d,f,ensure_ascii=False,indent=2);f.write('\n')
+          with open(ip,'w',encoding='utf-8') as f:json.dump(inv,f,ensure_ascii=False,indent=2);f.write('\n')
+          PY
+            git add -- "$WALL" "$INVENTORY";git commit -m "crazy-wall: SOL integración 2 Casbin N32 STEP3 repaired PASS run $GITHUB_RUN_ID";if git push origin HEAD:main;then ok=1;break;fi;sleep $((attempt*2))
+          done;test "$ok" -eq 1
+
+      - name: Final read-back
+        shell: bash
+        run: |
+          set -euo pipefail;git fetch origin main
+          git show "origin/main:$WALL"|python3 -c 'import json,sys;d=json.load(sys.stdin);n=next(x for x in d["nodes"] if x.get("id")==32);assert n["status"]=="PASS" and n["lock"]=="FREE" and n["next_action"]=="COMPLETE";print("N32_FINAL_WALL=PASS")'
+          echo YAIWES_SOL2_CASBIN_STEP3=VERIFIED_CLOSED
