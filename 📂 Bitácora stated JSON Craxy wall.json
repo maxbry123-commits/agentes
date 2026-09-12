@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T21:44:33Z",
+  "updated_at": "2026-09-12T21:47:13Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1976,13 +1976,13 @@
       "component": "AI-Scientist",
       "source": "Core kernel Yaiwes/Componentes recuperados B/AI-Scientist/",
       "current_step": 3,
-      "status": "PASS_STEP2",
+      "status": "PENDING_STEP3",
       "abc": "A",
       "target": "Agente Yaiwes principal/agent-fleet-parallelism/ai-scientist/",
-      "owner": null,
-      "lock": "FREE",
+      "owner": "SOL",
+      "lock": "CLAIMED",
       "checkpoint": {
-        "before": "2026-09-12T21:44:04Z SOL integración 3 STEP2 claim: execute immutable canonical Motor4 only; source AI-Scientist outer component -> agent-fleet-parallelism/ai-scientist; require VERIFIED_CLOSED + origin/main read-back",
+        "before": "2026-09-12T21:47:13Z SOL integración 3 STEP3 claim: canonical FABLES; minimal adapter; execute moved upstream generate_next_idea on real grokking seed without external LLM call; require L2+L3+L4; prune only if concrete",
         "after": "STEP2 PASS: immutable canonical Motor4 VERIFIED_CLOSED; source files remaining 0; move persisted to main; target nested upstream README+launch_scientist read-back PASS."
       },
       "evidence": [
@@ -1997,7 +1997,9 @@
         "step2:run:34720741204",
         "step2:move_commit:61c067fbf8a7389b21272778a8445025799fc31c",
         "step2:motor4:VERIFIED_CLOSED:failed=0:pending=0:source_files_remaining=0",
-        "step2:readback:origin/main source_absent+target/AI-Scientist/README+launch_scientist PASS"
+        "step2:readback:origin/main source_absent+target/AI-Scientist/README+launch_scientist PASS",
+        "step3:runner:.github/workflows/yaiwes-sol3-ai-scientist-step3.yml",
+        "step3:canonical_bus_blob:470f9c91650bc6c59e2900f7e71090b84363da9f"
       ],
       "history": [
         {
@@ -2025,6 +2027,12 @@
           "event": "STEP2_PASS_RELEASE",
           "run": 34720741204,
           "commit": "61c067fbf8a7389b21272778a8445025799fc31c"
+        },
+        {
+          "at": "2026-09-12T21:47:13Z",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "CLAIM_STEP3"
         }
       ],
       "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
