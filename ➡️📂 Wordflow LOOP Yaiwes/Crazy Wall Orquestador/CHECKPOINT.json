@@ -40,12 +40,21 @@
     "task_nodes_state": "CLAIMED_SOL_1_VERSION_2",
     "depends_on": ["G-013"],
     "dependency_state": "PASS",
-    "step": "1_RESEARCH",
-    "scope": ["inventory","capabilities","duplicates","orphans","broken_routes","unused_code","ledger"],
-    "motor_gate": "MOTOR_NOT_REQUIRED_UNLESS_RESEARCH_PROVES_TRANSFER_NEEDED"
+    "research": "IMPLEMENTED_READ_ONLY_AUDITOR",
+    "module": "runtime/src/core/wordflow_global_audit.py",
+    "module_blob": "ca08e2f280689189ce0d16e38ee5c0bf64d0f572",
+    "tests": "runtime/tests/test_wordflow_global_audit_g019.py",
+    "tests_blob": "5b8f4994920653830c6ada8b608016ae10b26750",
+    "equivalent_test": "PASS_6_OF_6_AFTER_REPAIR",
+    "initial_test": "FAIL_5_OF_6_FROM_IMPORT_RESOLUTION",
+    "motor": "NOT_REQUIRED_NO_COMPONENT_TRANSFER",
+    "evidence": "wordflow_loop/evidence/G019_GLOBAL_WORDFLOW_AUDIT_2026-09-12.json",
+    "wire_test_gate": "REAL_TREE_FULL_AUDIT_EXECUTION_PENDING",
+    "authoritative_actions_for_module_commit": 0,
+    "closure": "OPEN_FAIL_CLOSED"
   },
   "blocked_dependency": "G017_REQUIRES_G022_PHYSICAL_ISOLATION",
   "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
-  "next_action": "G019_FORENSIC_XRAY_FULL_WORDFLOW_FIND_EXACT_GAPS_THEN_MINIMAL_REPAIR; DO_NOT_TOUCH_G022_OR_COMP_BROWSER_USE",
+  "next_action": "EXECUTE_G019_AUDITOR_ON_REAL_WORDLOW_ROOT_AND_CLASSIFY_DUPLICATES_ORPHANS_BROKEN_ROUTES_UNUSED_CODE; DO_NOT_TOUCH_G022_OR_COMP_BROWSER_USE",
   "recovery_entrypoint": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md"
 }
