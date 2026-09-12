@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T20:58:20Z",
+  "updated_at": "2026-09-12T20:58:42Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1680,13 +1680,13 @@
       "component": "Anthropic-Skills",
       "source": "Core kernel Yaiwes/Componentes recuperados B/Anthropic-Skills/",
       "current_step": 3,
-      "status": "PASS_STEP2",
+      "status": "PENDING_STEP3",
       "abc": "C",
       "target": "Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/anthropic-skills/",
-      "owner": null,
-      "lock": "FREE",
+      "owner": "SOL",
+      "lock": "CLAIMED",
       "checkpoint": {
-        "before": "2026-09-12T20:54:02Z SOL integración 3 STEP2 claim: immutable Motor4 9a21facfe11327cf60a2afca8f415ad52f0ecbe5; Anthropic-Skills -> capability-registry/anthropic-skills",
+        "before": "2026-09-12T20:58:42Z SOL integración 3 STEP3 claim: canonical FABLES bus; execute moved upstream quick_validate.py against real mcp-builder and skill-creator SKILL.md; validate discovery/frontmatter; no MOVE repeat",
         "after": "STEP2 PASS RECOVERED: Motor4 run 34718394662 VERIFIED_CLOSED 417/417; source absent; target README + real SKILL.md read-back PASS. Prior workflow failure was read-back shell SIGPIPE 141 from grep -Fq under pipefail, not component/MOVE failure. MOVE NOT REPEATED."
       },
       "evidence": [
@@ -1737,6 +1737,12 @@
           "event": "STEP2_PASS_RECOVERED_RELEASE",
           "run": 34718529281,
           "commit": "37797c972"
+        },
+        {
+          "at": "2026-09-12T20:58:42Z",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "CLAIM_STEP3"
         }
       ],
       "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
