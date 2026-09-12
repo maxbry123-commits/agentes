@@ -27,6 +27,7 @@ class WordflowGlobalAuditTests(unittest.TestCase):
         self.assertEqual(first["broken_required_paths"], ["PIPELINE/missing.md"])
         self.assertEqual(first["report_sha256"], second["report_sha256"])
         self.assertFalse(first["policy"]["mutation_authorized"])
+        self.assertEqual(first["ledger"][0]["kind"], "BROKEN_REQUIRED_PATH")
 
     def test_detects_exact_duplicates_without_deleting(self):
         temp, root = self._root()
@@ -37,6 +38,7 @@ class WordflowGlobalAuditTests(unittest.TestCase):
         self.assertEqual(len(report["exact_duplicate_groups"]), 1)
         self.assertEqual(report["exact_duplicate_groups"][0]["count"], 2)
         self.assertTrue(report["policy"]["duplicates_are_candidates_not_auto_delete"])
+        self.assertIn("EXACT_DUPLICATE_GROUP", report["ledger_counts"])
 
     def test_marks_zero_inbound_python_module_as_candidate(self):
         temp, root = self._root()
@@ -45,6 +47,7 @@ class WordflowGlobalAuditTests(unittest.TestCase):
         (root / "runtime" / "src" / "core" / "unused.py").write_text("VALUE = 2\n", encoding="utf-8")
         report = audit_wordflow(root)
         self.assertIn("runtime/src/core/unused.py", report["python_orphan_candidates"])
+        self.assertIn("runtime/src/core/unused.py", report["unused_code_candidates"])
         self.assertNotIn("runtime/src/core/kernel.py", report["python_orphan_candidates"])
 
     def test_imported_module_is_not_orphan_candidate(self):
@@ -54,6 +57,27 @@ class WordflowGlobalAuditTests(unittest.TestCase):
         (root / "runtime" / "src" / "core" / "helper.py").write_text("VALUE = 2\n", encoding="utf-8")
         report = audit_wordflow(root)
         self.assertNotIn("runtime/src/core/helper.py", report["python_orphan_candidates"])
+
+    def test_relative_import_is_not_orphan_candidate(self):
+        temp, root = self._root()
+        self.addCleanup(temp.cleanup)
+        (root / "runtime" / "src" / "core" / "kernel.py").write_text("from . import helper\n", encoding="utf-8")
+        (root / "runtime" / "src" / "core" / "helper.py").write_text("VALUE = 2\n", encoding="utf-8")
+        report = audit_wordflow(root)
+        self.assertNotIn("runtime/src/core/helper.py", report["python_orphan_candidates"])
+
+    def test_capability_index_extracts_public_symbols(self):
+        temp, root = self._root()
+        self.addCleanup(temp.cleanup)
+        (root / "runtime" / "src" / "core" / "kernel.py").write_text(
+            "class Kernel:\n    pass\n\ndef run_task():\n    return True\n",
+            encoding="utf-8",
+        )
+        report = audit_wordflow(root)
+        record = next(item for item in report["python_capabilities"] if item["module"] == "core.kernel")
+        self.assertEqual(record["classes"], ["Kernel"])
+        self.assertEqual(record["functions"], ["run_task"])
+        self.assertEqual(record["parse_status"], "PASS")
 
     def test_rejects_path_escape(self):
         temp, root = self._root()
