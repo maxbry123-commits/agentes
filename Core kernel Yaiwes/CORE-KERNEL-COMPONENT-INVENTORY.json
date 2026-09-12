@@ -72,7 +72,7 @@
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
       "wall_node_id": 35,
-      "wall_status": "PASS_STEP2",
+      "wall_status": "PASS",
       "wall_current_step": 3,
       "wall_target": "Agente Yaiwes principal/agent-fleet-parallelism/ai-scientist-v2/"
     },

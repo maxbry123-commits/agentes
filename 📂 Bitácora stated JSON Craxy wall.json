@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T22:04:39Z",
+  "updated_at": "2026-09-12T22:05:18Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -2057,14 +2057,14 @@
       "component": "AI-Scientist-v2",
       "source": "Core kernel Yaiwes/Componentes recuperados B/AI-Scientist-v2/",
       "current_step": 3,
-      "status": "GAP_STEP3",
+      "status": "PASS",
       "abc": "A",
       "target": "Agente Yaiwes principal/agent-fleet-parallelism/ai-scientist-v2/",
-      "owner": "SOL",
-      "lock": "CLAIMED",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-12T22:01:25Z SOL integración 3 STEP3 claim: canonical FABLES bus + minimal adapter; microtest real upstream idea_to_markdown + edit_bfts_config_file; no prune unless concrete cause",
-        "after": "STEP2 PASS: canonical Motor4 VERIFIED_CLOSED; failed=0 pending=0 source_files_remaining=0; main target README+launch_scientist_bfts read-back PASS."
+        "after": "2026-09-12T22:05:18Z STEP3 PASS: identical functional microtest PASS after surgical importlib patch; artifacts persisted/read-back on main; canonical FABLES ACTIVE+trigger+health; prune NOT_NEEDED"
       },
       "evidence": [
         "worker:SOL integración 3",
@@ -2080,7 +2080,16 @@
         "step2:motor4:VERIFIED_CLOSED:failed=0:pending=0:source_files_remaining=0",
         "step2:readback:origin/main source_absent+target README+launch_scientist_bfts PASS",
         "step3:run:34721566891:FAIL:canonical_bus_importlib_dataclass_module_not_in_sys_modules",
-        "step3:run:34721626238:functional_microtest:PASS:persistence:FAIL:git_rebase_dirty_worktree"
+        "step3:run:34721626238:functional_microtest:PASS:persistence:FAIL:git_rebase_dirty_worktree",
+        "step3:run:34721719668:PASS",
+        "step3:artifact_commit:be4b1d061929a362d5668d106ce57baad06bf810",
+        "step3:adapter_sha256:e374b42a172cac08235fb43e43ee783e4c640470efdef8b370fb3f9887dd91a0",
+        "step3:ficha_sha256:73f7e7d1d04c601f4fc394ee70a29a153714d2af35617047df56d726a6d8d210",
+        "step3:evidence_sha256:33c1290aa743d808d843a27a6e2a66790a573b23d182c1de2f11405947f8b46d",
+        "step3:fables:canonical_bus:470f9c91650bc6c59e2900f7e71090b84363da9f",
+        "step3:microtest:ai_scientist_v2_bfts_idea_pipeline:PASS",
+        "step3:readback:origin/main:adapter+ficha+evidence:PASS",
+        "step3:prune:NOT_NEEDED"
       ],
       "history": [
         {
@@ -2128,9 +2137,18 @@
           "label": "SOL integración 3",
           "event": "STEP3_GAP_PERSISTENCE_REPAIR",
           "cause": "functional retest PASS; artifact persistence blocked because git rebase saw dirty runner worktree"
+        },
+        {
+          "at": "2026-09-12T22:05:18Z",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "STEP3_PASS_RELEASE",
+          "run": 34721719668,
+          "commit": "be4b1d061929a362d5668d106ce57baad06bf810",
+          "repair": "importlib sys.modules + clean runner worktree before persistence"
         }
       ],
-      "next_action": "STEP_3_RETRY_IDENTICAL_MICROTEST_THEN_CLEAN_WORKTREE_PUSH_RELEASE"
+      "next_action": "COMPLETE"
     }
   ],
   "counts": {
