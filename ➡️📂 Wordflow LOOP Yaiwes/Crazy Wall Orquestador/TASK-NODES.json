@@ -376,13 +376,13 @@
       "id": "G-021",
       "task": "Cerrar cola/paralelismo: priority/dependencies/fan-out/fan-in/dedup/idempotency/concurrency/backpressure + tests.",
       "literal_sha256": "e8b8aa731786d54d63a95e541674c9f63a86a20445c5aef61aa41e5a504f480d",
-      "status": "PENDING",
-      "claimed_by": null,
+      "status": "CLAIMED",
+      "claimed_by": "ASTRA_GPT_LOOP",
       "depends_on": [],
       "steps": [
         {
           "id": "1_RESEARCH",
-          "status": "PENDING"
+          "status": "RUNNING"
         },
         {
           "id": "2_MOTOR",
@@ -395,7 +395,7 @@
       ],
       "evidence": [],
       "gaps": [],
-      "version": 1,
+      "version": 2,
       "checker": "ASTRA_GPT"
     },
     {
