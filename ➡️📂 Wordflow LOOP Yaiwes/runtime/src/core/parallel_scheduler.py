@@ -55,7 +55,14 @@ def plan_tasks(
     max_concurrency: int = 4,
     max_queue: int = 100,
 ) -> SchedulePlan:
-    if max_concurrency < 1 or max_queue < 1:
+    if (
+        not isinstance(max_concurrency, int)
+        or isinstance(max_concurrency, bool)
+        or not isinstance(max_queue, int)
+        or isinstance(max_queue, bool)
+        or max_concurrency < 1
+        or max_queue < 1
+    ):
         raise SchedulerError("invalid limits")
     if len(tasks) > max_queue:
         raise SchedulerError("BACKPRESSURE_QUEUE_LIMIT")
@@ -68,6 +75,12 @@ def plan_tasks(
     for task in tasks:
         if not task.task_id or not task.idempotency_key:
             raise SchedulerError("task_id and idempotency_key required")
+        if (
+            not isinstance(task.priority, int)
+            or isinstance(task.priority, bool)
+            or not 0 <= task.priority <= 1000
+        ):
+            raise SchedulerError("INVALID_PRIORITY")
         if task.task_id in seen_task_ids:
             raise SchedulerError("DUPLICATE_TASK_ID")
         seen_task_ids.add(task.task_id)
@@ -110,7 +123,9 @@ def plan_tasks(
     batches = []
     while sorter.is_active():
         ready = list(sorter.get_ready())
-        ready.sort(key=lambda task_id: (-by_id[task_id].priority, task_id))
+        # The canonical Kernel and Mavis queues use the same convention:
+        # lower numeric values are more urgent.
+        ready.sort(key=lambda task_id: (by_id[task_id].priority, task_id))
         if not ready:
             raise SchedulerError("NO_READY_TASKS")
         for index in range(0, len(ready), max_concurrency):

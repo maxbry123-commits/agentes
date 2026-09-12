@@ -26,6 +26,12 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, Optional
 
+from .parallel_scheduler import (
+    SchedulerError,
+    TaskEnvelope,
+    execute_tasks,
+)
+
 logger = logging.getLogger("pecp.core.kernel")
 
 DEFAULT_MISSION_PRIORITY: int = 5  # 1 = mas urgente, 9 = menos urgente
@@ -288,23 +294,41 @@ class Kernel:
     # ---- ejecucion completa del DAG ------------------------------------
 
     async def run(self, dag_manifest: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-        """Ejecuta todos los nodos del manifest en orden topologico."""
+        """Ejecuta el DAG con prioridad y paralelismo acotado por dependencias."""
+        # Preserve DAGEngine as the canonical manifest/cycle validator.
         order = self._dag_engine.topological_order(dag_manifest)
-        results: Dict[str, Dict[str, Any]] = {}
+        envelopes = []
         for node_id in order:
-            payload = dag_manifest["nodes"][node_id].get("payload", {})
-            mission = MicroMission(
-                mission_id=f"m-{node_id}", node_id=node_id, payload=payload
+            spec = dag_manifest["nodes"][node_id]
+            payload = spec.get("payload", {})
+            envelopes.append(
+                TaskEnvelope(
+                    task_id=node_id,
+                    priority=payload.get("priority", DEFAULT_MISSION_PRIORITY),
+                    idempotency_key=payload.get("idempotency_key")
+                    or self.compute_input_hash(node_id, payload),
+                    depends_on=tuple(spec.get("depends_on", ())),
+                    payload=payload,
+                )
             )
-            self._scheduler.push(mission)
 
-        while not self._scheduler.is_empty():
-            mission = self._scheduler.pop()
-            assert mission is not None
-            results[mission.node_id] = await self.run_node(
-                mission.node_id, mission.payload, mission.mission_id
+        async def worker(task: TaskEnvelope) -> Dict[str, Any]:
+            return await self.run_node(
+                task.task_id,
+                task.payload,
+                f"m-{task.task_id}",
             )
-        return results
+
+        try:
+            scheduled = await execute_tasks(
+                envelopes,
+                worker,
+                max_concurrency=self._mavis_pool.max_workers,
+                max_queue=self._mavis_pool.queue_size,
+            )
+        except SchedulerError as exc:
+            raise KernelError(f"scheduler rechazo el manifest: {exc}") from exc
+        return {result.task_id: result.output for result in scheduled}
 
     # ---- checkpoint / status --------------------------------------------
 
