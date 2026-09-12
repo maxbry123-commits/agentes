@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T20:40:56Z",
+  "updated_at": "2026-09-12T20:41:26Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1440,22 +1440,26 @@
       "id": 28,
       "component": "AG2",
       "source": "Core kernel Yaiwes/Componentes recuperados B/AG2/",
-      "current_step": 2,
-      "status": "PENDING_STEP2",
+      "current_step": 3,
+      "status": "PASS_STEP2",
       "abc": "B",
       "target": "Agente Yaiwes principal/agent-fleet-parallelism/ag2/",
-      "owner": "SOL",
-      "lock": "CLAIMED",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-12T20:40:56Z SOL integración 3 STEP2 claim: use immutable Motor4 blob 9a21facfe11327cf60a2afca8f415ad52f0ecbe5; source AG2 -> target agent-fleet-parallelism/ag2",
-        "after": "STEP1 PASS: AG2 README defines AgentOS/framework for AI agents, tools, autonomous workflows and multi-agent orchestration; classified B motor de trabajo; target existing agent-fleet-parallelism/ag2/"
+        "after": "STEP2 PASS: canonical Motor4 MOVE; origin/main source absent; target populated; run=34717782052; move_commit=ec4b2590890f990ede28f607fd1f91c2b7deb9e6"
       },
       "evidence": [
         "worker:SOL integración 3",
         "step1:readme_blob:b8f7c0a249280f97809f81565d7d7afb9ecb140b",
         "step1:classification:B",
         "step1:target:Agente Yaiwes principal/agent-fleet-parallelism/ag2/",
-        "step1:reason:multi-agent orchestration + tools + autonomous workflows"
+        "step1:reason:multi-agent orchestration + tools + autonomous workflows",
+        "step2:motor4_blob:9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
+        "step2:run:34717782052",
+        "step2:move_commit:ec4b2590890f990ede28f607fd1f91c2b7deb9e6",
+        "step2:readback:origin/main source absent target populated"
       ],
       "history": [
         {
@@ -1475,9 +1479,17 @@
           "actor": "SOL",
           "label": "SOL integración 3",
           "event": "CLAIM_STEP2"
+        },
+        {
+          "at": "2026-09-12T20:41:26Z",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "STEP2_PASS_RELEASE",
+          "run": 34717782052,
+          "commit": "ec4b2590890f990ede28f607fd1f91c2b7deb9e6"
         }
       ],
-      "next_action": "STEP_2_MOVE_WITH_CANONICAL_MOTOR"
+      "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
     }
   ],
   "counts": {
