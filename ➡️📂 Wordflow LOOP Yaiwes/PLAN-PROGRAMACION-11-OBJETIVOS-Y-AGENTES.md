@@ -2,6 +2,7 @@
 
 Contrato `tel.workflow/v4` · `FAIL_CLOSED_EXECUTION_LOOP`.
 Raíz única de escritura: `maxbry123-commits/agentes/➡️📂 Wordflow LOOP Yaiwes/`.
+Checkpoint canónico: `WFLOOP-CODE-GRAPH-20260911-0019`.
 
 ## ESTADO
 Índice ✅ · cableado 18 agentes ✅ · Council12=12 ✅ · STEP3 histórico ✅ · preparación para test real `READY_FOR_REAL_AGENT_TEST`.
