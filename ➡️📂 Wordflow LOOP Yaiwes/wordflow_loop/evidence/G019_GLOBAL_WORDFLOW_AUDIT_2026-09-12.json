@@ -1,0 +1,56 @@
+{
+  "schema": "yaiwes.wordflow_global_audit.evidence/v1",
+  "gap": "G-019",
+  "owner": "SOL_1",
+  "status": "RESEARCH_IMPLEMENTED_PENDING_REAL_TREE_EXECUTION",
+  "claim_commit": "d6aafd207ab89db0437d8c4f17da016fec534687",
+  "canonical_checkpoint": "WFLOOP-CODE-GRAPH-20260911-0019",
+  "scope": [
+    "inventory",
+    "capabilities",
+    "exact_duplicates",
+    "orphan_candidates",
+    "broken_routes",
+    "unused_code_candidates",
+    "ledger"
+  ],
+  "fresh_findings": {
+    "historical_pipeline_paths": [
+      "PIPELINE/00_METODO_TRABAJO_Y_ARQUITECTURA.md",
+      "PIPELINE/FORENSIC_CODE_AUDIT.md",
+      "PIPELINE/ADVANCED_ENGINEERING_STANDARD_V3.md"
+    ],
+    "historical_pipeline_paths_present_in_current_tree": false,
+    "exact_name_code_search_results": 0,
+    "classification": "HISTORICAL_BROKEN_REFERENCE_CANDIDATES_NOT_RESTORED",
+    "repair_policy": "DO_NOT_INVENT_OR_RESTORE_DOCUMENTS_WITHOUT_CANONICAL_SOURCE"
+  },
+  "implementation": {
+    "module": "runtime/src/core/wordflow_global_audit.py",
+    "module_commit": "447a49cc96cc0311edfa0a8b59cfdde1a2268460",
+    "module_blob": "ca08e2f280689189ce0d16e38ee5c0bf64d0f572",
+    "tests": "runtime/tests/test_wordflow_global_audit_g019.py",
+    "tests_blob": "5b8f4994920653830c6ada8b608016ae10b26750",
+    "contract": "yaiwes.wordflow_global_audit/v1",
+    "mutation_authorized": false,
+    "duplicate_policy": "CANDIDATE_ONLY_NO_AUTO_DELETE",
+    "orphan_policy": "CANDIDATE_ONLY_NO_AUTO_DELETE",
+    "path_escape_policy": "FAIL_CLOSED"
+  },
+  "verification": {
+    "initial_equivalent_test": "FAIL_5_OF_6",
+    "initial_failure": "FROM_IMPORT_RESOLUTION_MISCLASSIFIED_IMPORTED_MODULE_AS_ORPHAN",
+    "repair": "EXPAND_ast.ImportFrom_TO_MODULE_PLUS_IMPORTED_ALIAS",
+    "post_repair_equivalent_test": "PASS_6_OF_6",
+    "github_actions_for_repair_commit": 0,
+    "authoritative_repo_runner": "NOT_AVAILABLE_FOR_THIS_COMMIT",
+    "real_tree_full_audit_execution": "PENDING",
+    "pass_fabricated": false
+  },
+  "motor": {
+    "required": false,
+    "reason": "G019_CURRENT_REPAIR_IS_READ_ONLY_AUDITOR_CODE_AND_LEDGER; NO_COMPONENT_TRANSFER"
+  },
+  "decision": "KEEP_G019_OPEN_UNTIL_REAL_TREE_AUDIT_AND_READBACK",
+  "next_gate": "EXECUTE_AUDITOR_ON_REAL_WORDLOW_ROOT_THEN_CLASSIFY_EACH_DUPLICATE_ORPHAN_BROKEN_ROUTE_AND_UNUSED_CODE_CANDIDATE"
+}
