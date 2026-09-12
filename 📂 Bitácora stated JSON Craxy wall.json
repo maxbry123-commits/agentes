@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T21:47:13Z",
+  "updated_at": "2026-09-12T21:48:33Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1976,14 +1976,14 @@
       "component": "AI-Scientist",
       "source": "Core kernel Yaiwes/Componentes recuperados B/AI-Scientist/",
       "current_step": 3,
-      "status": "PENDING_STEP3",
+      "status": "PASS",
       "abc": "A",
       "target": "Agente Yaiwes principal/agent-fleet-parallelism/ai-scientist/",
-      "owner": "SOL",
-      "lock": "CLAIMED",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-12T21:47:13Z SOL integración 3 STEP3 claim: canonical FABLES; minimal adapter; execute moved upstream generate_next_idea on real grokking seed without external LLM call; require L2+L3+L4; prune only if concrete",
-        "after": "STEP2 PASS: immutable canonical Motor4 VERIFIED_CLOSED; source files remaining 0; move persisted to main; target nested upstream README+launch_scientist read-back PASS."
+        "after": "STEP3 PASS: canonical FABLES ACTIVE yaiwes.agent.ai_scientist; moved upstream generate_next_idea executed real grokking seed path and returned batch_size_grokking; no external LLM simulation; L2+L3+L4; prune NOT_NEEDED; origin/main read-back PASS."
       },
       "evidence": [
         "worker:SOL integración 3",
@@ -1999,7 +1999,14 @@
         "step2:motor4:VERIFIED_CLOSED:failed=0:pending=0:source_files_remaining=0",
         "step2:readback:origin/main source_absent+target/AI-Scientist/README+launch_scientist PASS",
         "step3:runner:.github/workflows/yaiwes-sol3-ai-scientist-step3.yml",
-        "step3:canonical_bus_blob:470f9c91650bc6c59e2900f7e71090b84363da9f"
+        "step3:canonical_bus_blob:470f9c91650bc6c59e2900f7e71090b84363da9f",
+        "step3:run:34720918266",
+        "step3:evidence_commit:c2097bde3da28971f88cb0c52a4256204e18c00f",
+        "step3:route:FABLES->AI-Scientist adapter->moved generate_next_idea->real grokking seed_ideas.json",
+        "step3:microtest:PASS seed idea=batch_size_grokking",
+        "step3:evidence:L2_build+L3_runtime+L4_feature",
+        "step3:prune:NOT_NEEDED",
+        "step3:readback:adapter+ficha+evidence PASS"
       ],
       "history": [
         {
@@ -2033,13 +2040,21 @@
           "actor": "SOL",
           "label": "SOL integración 3",
           "event": "CLAIM_STEP3"
+        },
+        {
+          "at": "2026-09-12T21:48:33Z",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "STEP3_PASS_RELEASE",
+          "run": 34720918266,
+          "commit": "c2097bde3da28971f88cb0c52a4256204e18c00f"
         }
       ],
-      "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
+      "next_action": "COMPLETE"
     }
   ],
   "counts": {
-    "closed_current_contract": 32
+    "closed_current_contract": 33
   },
   "kernel_hold_policy": {
     "approved": true,
