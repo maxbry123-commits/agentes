@@ -78,6 +78,16 @@ class WordflowGlobalAuditTests(unittest.TestCase):
         self.assertIn("BROKEN_INTERNAL_IMPORT", report["ledger_counts"])
         self.assertTrue(report["policy"]["broken_internal_imports_are_fail_closed"])
 
+    def test_runtime_src_prefixed_import_counts_as_internal_wiring(self):
+        temp, root = self._root(); self.addCleanup(temp.cleanup)
+        uek = root / "runtime" / "src" / "uek"; uek.mkdir(parents=True)
+        (root / "runtime" / "src" / "core" / "kernel.py").write_text("VALUE = 1\n", encoding="utf-8")
+        (uek / "ficha_contract_v2.py").write_text("class FichaContract:\n    pass\n", encoding="utf-8")
+        (uek / "bus.py").write_text("from runtime.src.uek.ficha_contract_v2 import FichaContract\n", encoding="utf-8")
+        report = audit_wordflow(root)
+        self.assertNotIn("runtime/src/uek/ficha_contract_v2.py", report["python_orphan_candidates"])
+        self.assertEqual(report["broken_internal_imports"], [])
+
     def test_does_not_flag_standard_library_import(self):
         temp, root = self._root(); self.addCleanup(temp.cleanup)
         (root / "runtime" / "src" / "core" / "kernel.py").write_text("import json\nfrom typing import Any\n", encoding="utf-8")
