@@ -1,0 +1,54 @@
+{
+  "schema": "yaiwes.gap-evidence/v1",
+  "gap_id": "G-007",
+  "owner": "ASTRA_GPT_LOOP",
+  "result": "CLOSED_VERIFIED_LOCAL_REAL_MOTORS",
+  "base_commit": "d2be30f4499e68cff0b2ddca88e9e1c10c70e992",
+  "gap_reproduced": {
+    "status": "CONFIRMED",
+    "detail": "existing_code_intake validated a packet but had no production caller for canonical copy/move motors and no physical state/destination read-back"
+  },
+  "implementation": {
+    "contract": "yaiwes.existing_code_intake/v2",
+    "module": "runtime/src/core/existing_code_intake.py",
+    "module_sha256": "3793a909118a7a5f4377b01d691da16bc9524a7f8357ab4f02a59cb25055c05a",
+    "module_blob_precommit": "6d1939d9864e32974fed111626b60e276c6b62bf",
+    "tests": "runtime/tests/test_existing_code_intake_g007.py",
+    "tests_sha256": "5dbda0755fab2fcf965639c0c4dbc14842b47dcb0d25dfa91a1826cd0a9f5654",
+    "tests_blob_precommit": "d3f1873c47e89d18965cd11d6369e1a1a65b2733",
+    "canonical_motors_rewritten": false,
+    "copy_motor_blob": "3689924361ce4a1a9fde4ae2b6f6009c37a6042d",
+    "move_motor_blob": "9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
+    "no_lfs": true,
+    "force_used": false
+  },
+  "enforced_controls": [
+    "validated REUSE/PATCH/ADAPT packet and provenance",
+    "source bytes bound to SHA-256",
+    "single reviewed source file prevents sibling smuggling",
+    "destination constrained to authorized Wordflow root",
+    "canonical motor blob lock before execution",
+    "explicit mutation authorization",
+    "separate source-removal authorization for MOVE",
+    "destination hash and motor state read-back",
+    "COPY retains source and MOVE removes source"
+  ],
+  "execution": {
+    "command": "python -m unittest -v runtime.tests.test_existing_code_intake_g007",
+    "exit_code": 0,
+    "tests_passed": 5,
+    "tests_failed": 0,
+    "real_copy_motor_execution": "PASS",
+    "real_move_motor_execution": "PASS",
+    "negative_gates": "PASS",
+    "compileall": "PASS",
+    "git_diff_check": "PASS",
+    "repo_pytest_execution": "NOT_CLAIMED",
+    "external_provider_execution": "NOT_CLAIMED"
+  },
+  "scope": {
+    "writes_only_under_wordflow_root": true,
+    "sol_1_nodes_modified": false,
+    "sol_2_nodes_modified": false
+  }
+}
