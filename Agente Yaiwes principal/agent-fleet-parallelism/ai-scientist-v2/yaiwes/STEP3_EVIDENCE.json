@@ -1,0 +1,24 @@
+{
+  "node": "AI-Scientist-v2",
+  "worker": "SOL integración 3",
+  "status": "PASS",
+  "route": "FABLES -> adapter -> real upstream bfts_utils.idea_to_markdown + edit_bfts_config_file",
+  "plugin_id": "yaiwes.agent_fleet.ai_scientist_v2",
+  "microtest": "upstream_bfts_idea_pipeline",
+  "result": {
+    "status": "PASS",
+    "capability": "ai_scientist_v2_bfts_idea_pipeline",
+    "idea_md": "idea.md",
+    "config": "bfts_config.yaml",
+    "data_dir": true,
+    "logs_dir": true
+  },
+  "evidence_levels": [
+    "L2_build",
+    "L3_runtime",
+    "L4_feature"
+  ],
+  "prune": "NOT_NEEDED",
+  "repair": "sys.modules import patch + clean persistence path",
+  "run": 34721719668
+}
