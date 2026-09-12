@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T20:45:23Z",
+  "updated_at": "2026-09-12T20:45:55Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1441,14 +1441,14 @@
       "component": "AG2",
       "source": "Core kernel Yaiwes/Componentes recuperados B/AG2/",
       "current_step": 3,
-      "status": "PENDING_STEP3",
+      "status": "PASS",
       "abc": "B",
       "target": "Agente Yaiwes principal/agent-fleet-parallelism/ag2/",
-      "owner": "SOL",
-      "lock": "CLAIMED",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-12T20:45:23Z SOL integración 3 STEP3 claim: canonical FABLES bus blob 470f9c91650bc6c59e2900f7e71090b84363da9f; wire AG2 adapter then run real upstream bridge workflow Hub alice->bob->alice without LLM/API keys",
-        "after": "STEP2 PASS: canonical Motor4 MOVE; origin/main source absent; target populated; run=34717782052; move_commit=ec4b2590890f990ede28f607fd1f91c2b7deb9e6"
+        "after": "STEP3 PASS: canonical FABLES UniversalPluginBus ACTIVE for yaiwes.agent_fleet.ag2; real moved AG2 Hub/TransitionGraph workflow routed alice->bob->alice without LLM/API keys; L2+L3+L4 evidence; prune NOT_NEEDED; origin/main adapter/ficha/evidence read-back PASS."
       },
       "evidence": [
         "worker:SOL integración 3",
@@ -1459,7 +1459,15 @@
         "step2:motor4_blob:9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
         "step2:run:34717782052",
         "step2:move_commit:ec4b2590890f990ede28f607fd1f91c2b7deb9e6",
-        "step2:readback:origin/main source absent target populated"
+        "step2:readback:origin/main source absent target populated",
+        "step3:run:34718002370",
+        "step3:evidence_commit:3ea4a2de7adade0f133a5d45a33a348cdc17fa4c",
+        "step3:canonical_bus_blob:470f9c91650bc6c59e2900f7e71090b84363da9f",
+        "step3:route:FABLES->AG2 adapter->Hub->TransitionGraph->alice->bob->alice",
+        "step3:microtest:PASS route=alice,bob,alice no-LLM no-API-key",
+        "step3:evidence:L2_build+L3_runtime+L4_feature",
+        "step3:prune:NOT_NEEDED",
+        "step3:readback:adapter+ficha+evidence PASS"
       ],
       "history": [
         {
@@ -1493,13 +1501,21 @@
           "actor": "SOL",
           "label": "SOL integración 3",
           "event": "CLAIM_STEP3"
+        },
+        {
+          "at": "2026-09-12T20:45:55Z",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "STEP3_PASS_RELEASE",
+          "run": 34718002370,
+          "commit": "3ea4a2de7adade0f133a5d45a33a348cdc17fa4c"
         }
       ],
-      "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
+      "next_action": "COMPLETE"
     }
   ],
   "counts": {
-    "closed_current_contract": 27
+    "closed_current_contract": 28
   },
   "kernel_hold_policy": {
     "approved": true,
