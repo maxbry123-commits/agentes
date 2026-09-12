@@ -13,8 +13,8 @@ Router: `wordflow_loop/wordflow_loop/model_api_router_mvp.py`.
 Prioridad: `Kimi → MiniMax → DeepSeek V4 Pro → DeepSeek V4 Flash → GLM 5 → Muse/Glimmer → Qwen 3.8 → GPT-OSS`; dentro de una familia se agotan rutas/API antes de bajar. El GAP externo `AUTH_PROVIDER_TEST_PENDING` continúa abierto hasta prueba autenticada real.
 
 # FASE ACTIVA — CODE_GRAPH_ARCHITECTURE_PROGRAMMING_LOOP
-Checkpoint canónico: `WFLOOP-CODE-GRAPH-20260911-0010`.  
-Nodo activo: `CG18_FABLES_CANONICAL_BINDING_G018`.  
+Checkpoint canónico: `WFLOOP-CODE-GRAPH-20260911-0019`.  
+Nodo activo de SOL_1: `G013_SOURCE_TRUTH_RECONCILIATION`.  
 Ledger: `Crazy Wall Orquestador/GAPS-INVESTIGACION-CODE-GRAPH-20260910.md`.
 
 Pipeline operativo autorizado:
@@ -45,100 +45,79 @@ Estado: `BLOCKED_DEPENDENCY_G018`.
 La política existe, pero solo puede cerrar después de que G-018 demuestre source proof + Ficha/contract + registro/test de Fables. Solo después de que G-005 produzca `GENERATE` por ausencia de candidato válido. Código mínimo, modular, tipado/schema, idempotente, fail-closed, observable y testeable. Integración exclusivamente por Enchufe Universal Fables/Ficha. LLM genera propuestas; gates deterministas autorizan o rechazan.
 
 ## G-007 — Archivo que ya contiene code ejecutable
-Estado: `GAP_OPEN`.
-Analizar antes de reescribir. Evaluar REUSE/PATCH/ADAPT. Copiar/mover únicamente mediante motores canónicos inmutables con source/destination explícitos, hash y read-back. Cambio de lenguaje/extensión solo si contrato de destino lo exige y conserva provenance.
+Estado: consultar `Crazy Wall Orquestador/TASK-NODES.json`; no reabrir si está PASS. Analizar antes de reescribir. Evaluar REUSE/PATCH/ADAPT. Copiar/mover únicamente mediante motores canónicos inmutables con source/destination explícitos, hash y read-back.
 
 ## G-008 — Seguridad y neutralización
-Estado: `GAP_OPEN`.
-Escanear antes de ejecutar. Conducta maliciosa/insegura se bloquea; solo puede sustituirse por acción benigna funcionalmente justificable sin ejecutar primero la conducta peligrosa. Cierre requiere reason codes, gates, sandbox tests y evidencia.
+Estado: consultar `TASK-NODES.json`; no reabrir si está PASS. Conducta insegura se bloquea antes de ejecución y solo puede sustituirse por acción benigna funcionalmente justificable.
 
 ## G-009 — Componente sin valor
-Estado: `GAP_OPEN`.
-Si no aporta capacidad, duplica sin beneficio, empeora seguridad/mantenibilidad o no puede cablearse útilmente, marcar `NO_VALUE_GAP`; producir `.md` con justificación, alternativas y revisión independiente.
+Estado: consultar `TASK-NODES.json`; no reabrir si está PASS. `NO_VALUE_GAP` exige justificación, alternativas y revisión independiente.
 
 ## G-010 — Watchdog supervisor
 Estado: `CLOSED_VERIFIED`.
-Supervisa la raíz Wordflow, relee fuentes de verdad, opera 1×1, no inventa PASS, registra novedades materiales y conserva `AUTH_PROVIDER_TEST_PENDING` hasta evidencia externa real.
+Supervisa la raíz Wordflow, relee fuentes de verdad, opera 1×1, no inventa PASS y conserva `AUTH_PROVIDER_TEST_PENDING` hasta evidencia externa real.
 
 ## G-011 — Recepción de componentes + motores copiar/mover
-Estado: `GAP_OPEN`.
-Entrada `source + destination` obligatoria. Motores canónicos byte-a-byte, destino explícito, hash/read-back, no LFS, no force. Fuentes externas/Core Kernel son lectura/adquisición; esta fase no escribe fuera del Wordflow.
+Estado: consultar `TASK-NODES.json`; no reabrir si está PASS. Motores canónicos byte-a-byte, destino explícito, hash/read-back, no LFS, no force.
 
 ## G-012 — Lista de descarga/extracción
-Estado: `GAP_OPEN`.
-Convertir lista del Director en cola determinista y usar motores canónicos con allowlist, CRC/hash, bloqueo de path traversal/symlinks cuando aplique, persistencia y read-back antes de PASS.
+Estado: consultar `TASK-NODES.json`; no reabrir si está PASS. Cola/intake determinista con allowlist, CRC/hash, path safety y read-back.
 
 ## G-013 — Fuentes de verdad
-Estado: `CLOSED_VERIFIED_LOCAL`.
-Contrato `yaiwes.truth_reconciliation/v1` en `runtime/src/core/source_truth_reconciler.py`, blob `fb93ce9ee5b86439b0ba36ef72c404134d1984b1`; tests blob `f39cb13a84d1dbb7fcb1c1467f712bf003a431df`. STATE/CHECKPOINT son anchors; conflicto falla cerrado. El parser histórico acepta un único marcador explícito `Checkpoint canónico:` y rechaza marcadores canónicos contradictorios. Read-back 8/8 de README/STATE/CHECKPOINT/BITÁCORA/GAPS/HANDOFF/PLAN/RECOVERY; simulación equivalente 7/7; evidence `wordflow_loop/evidence/G013_CANONICAL_RECONCILIATION_2026-09-11.json`; `repo_pytest_execution=NOT_CLAIMED`.
+Estado: `RECONCILING_CHECKPOINT_0019`, owner `SOL_1`.
+Contrato `yaiwes.truth_reconciliation/v1` en `runtime/src/core/source_truth_reconciler.py`, blob físico actual `fb93ce9ee5b86439b0ba36ef72c404134d1984b1`; tests físicos `runtime/tests/test_source_truth_reconciler.py`, blob `f39cb13a84d1dbb7fcb1c1467f712bf003a431df`. STATE/CHECKPOINT son anchors; conflicto falla cerrado. El parser histórico acepta un único marcador explícito `Checkpoint canónico:` y rechaza marcadores canónicos contradictorios. Cierre actual: read-back 8/8 de README/STATE/CHECKPOINT/BITÁCORA/GAPS/HANDOFF/PLAN/RECOVERY en `0019` + reconciliador/tests + evidencia actualizada.
 
 ## G-014 — `agente-readme-memoria.md` de los 18 agentes
-Estado: `GAP_OPEN`.
-Cada agente tendrá rol, capacidades, prohibiciones, contratos, fuentes, gates, evidence format, errores aprendidos y mejoras aprobadas. Loader determinista antes de trabajo; actualización solo con aprendizaje verificado.
+Estado: consultar `TASK-NODES.json`; no reabrir si está PASS.
 
 ## G-015 — 12 GOALS entrada/salida + Council + simulaciones
-Estado: `GAP_OPEN`.
-Cada capacidad nueva deberá pasar 12 gates de entrada y 12 de salida, Council/Ask Council, simulaciones, refutaciones y cross-check. El razonamiento puede usar LLM, pero aceptación/estado son deterministas.
+Estado: consultar `TASK-NODES.json`; no reabrir si está PASS.
 
 ## G-016 — Conversión arquitectura Chat A ↔ Chat B
-Estado: `GAP_IN_RESEARCH`.
-Localizados contratos Chat-B en `runtime/docs/T001_CHAT_B_CONTRACT.md`, `T007_CHAT_B_CONTRACT.md`, `T011_CHAT_B_CONTRACT.md`. Chat-A sigue sin localizar. No crear reemplazo hasta búsqueda completa o `NOT_FOUND` probado.
+Estado: consultar `TASK-NODES.json`; no reabrir si está PASS.
 
 ## G-017 — Deployment determinista
-Estado: `GAP_OPEN`.
-Cadena requerida `validate → prepare/build → sandbox → tests → reviewer → promote → checkpoint → rollback/compensation`. `runtime/src/install/installation_engine.py` contiene campos PASS/health estáticos, no aceptados como prueba real.
+Estado: `PENDING` dependiente de G-022. No aceptar PASS/health estáticos como prueba real.
 
 ## G-018 — Enchufe Universal Fables
-Estado: `GAP_IN_RESEARCH` · siguiente nodo 1×1.
-Debe confirmarse source proof canónico + Ficha/Contract + registro/test. Todo módulo nuevo se registra/cablea por ese ABI; prohibidos buses paralelos o integraciones ad hoc.
+Estado: `CLAIMED` por `SOL_2`; SOL_1 no lo toca. G-006 sigue bloqueado por esta dependencia.
 
 ## G-019 — Auditoría global del Wordflow
-Estado: `GAP_OPEN`.
-Inventariar capacidades, duplicados, huérfanos, rutas rotas, docs obsoletas y code no usado. Regla: no rehacer trabajo ya verificado.
+Estado: `PENDING`, depende de G-013. Solo será elegible después del cierre verificado de G-013 y read-back fresco.
 
 ## G-020 — 12 fuentes comunidad/desarrollo
 Estado: `CLOSED_VERIFIED`.
 Catálogo `wordflow_loop/research/community_sources.json`, blob `5c03a6a13b5df868f21eb6f744fcc20489c4d183`.
 
 ## G-021 — Cola + paralelismo
-Estado: `GAP_OPEN`.
-Prioridad, dependencias, fan-out/fan-in, dedup, idempotency, límites de concurrencia y backpressure. Solo tareas independientes corren paralelas; bloqueadas esperan dependencias verificadas.
+Estado: consultar `TASK-NODES.json`; no reabrir si está PASS.
 
 ## G-022 — Sandbox → segundo reviewer → deploy
-Estado: `GAP_OPEN`.
-`runtime/src/uek/sandbox_manager.py` actual es descriptor lógico; no demuestra aislamiento físico de process/filesystem/network/time/memory. No cerrar hasta adapter enforceable + límites + reviewer gate + promotion rejection test.
+Estado: `BLOCKED_PHYSICAL_ISOLATION`. No cerrar hasta aislamiento enforceable de process/filesystem/network/time/memory con prueba positiva real.
 
 ## G-023 — Hugging Face dataset/skills bridge
-Estado: `GAP_IN_RESEARCH`.
-Inventario solo con conector/acceso verificable; no asumir secretos. Bridge determinista inyectará únicamente recursos aprobados y referencias, sin exponer token. `AUTH_PROVIDER_TEST_PENDING` no se altera por referencias a credenciales.
+Estado: consultar `TASK-NODES.json`; no reabrir si está PASS.
 
 ## G-024 — Separación determinismo/LLM
-Estado: `GAP_OPEN`.
-Contracts/scheduler/DAG/routing/FSM/state/gates/hash/sandbox/deploy/evidence son deterministas. LLM permitido en análisis/síntesis/generación/Council/clasificación semántica y siempre normalizado/validado.
+Estado: consultar `TASK-NODES.json`; no reabrir si está PASS.
 
 ## G-025 — Patrones MAVIS/PARALLEL
-Estado: `GAP_OPEN`.
-Evaluar 1×1 persistent pool, priority queue, cache, batching, backpressure, asyncio pipeline, dedup, Job ABI, registry/factory/DI/event bus/middleware/FSM/checkpoints/audit/tests/versioning/sandbox/capability routing, fan-out/fan-in, DLQ/outbox/multi-pool/durable recovery. Cifras de aceleración son hipótesis hasta benchmark.
+Estado: consultar `TASK-NODES.json`; no reabrir si está PASS.
 
 ## G-026 — UI/visual del LOOP
-Estado: `GAP_OPEN`.
-Visualizar DAG/grafo, cola, tareas, GAPs, agentes, evidence y checkpoints. Priorizar componentes existentes, mantener UI modular y no crear frontend monolítico.
+Estado: consultar `TASK-NODES.json`; no reabrir si está PASS.
 
 ## G-027 — Graphiti
-Estado: `GAP_IN_RESEARCH`.
-Fuente localizada en `maxbry123-commits/osquestador-auditor/graphiti`. Candidato a contexto/provenance/memoria temporal; no reemplaza DAG scheduler. G-005 confirma licencia Apache-2.0 y resultado preliminar `ADAPT`; integración solo tras copia exacta mediante motor, adapter y sandbox test.
+Estado: consultar `TASK-NODES.json`; source localizado no equivale a integración.
 
 ## G-028 — Graphology
-Estado: `GAP_IN_RESEARCH`.
-Fuente localizada en `maxbry123-commits/osquestador-auditor/graphology`. Candidato a graph object/algoritmos/traversal/layout y backend visual tipo Sigma.js; no durable execution. G-005 confirma licencia MIT y resultado preliminar `ADAPT`; requiere copia exacta + adapter/serializer/test si se adopta.
+Estado: consultar `TASK-NODES.json`; source localizado no equivale a integración.
 
 ## G-029 — Planificación organizada
-Estado: `GAP_IN_RESEARCH`.
-`DAGEngine` local es default REUSE y G-005 lo prioriza frente a NetworkX para capability `dag`. Comparar Dagster/Prefect/Argo/Inngest/Trigger.dev/Restate/Airflow solo contra capacidades faltantes; prohibido añadir otro orquestador sin GAP demostrado.
+Estado: consultar `TASK-NODES.json`; no reabrir si está PASS.
 
 ## G-030 — Crazy Wall multiagente
-Estado: `GAP_OPEN`.
-Estado lógico compartido con ownership de task/node, version/checkpoint, idempotency, optimistic concurrency y reglas de merge/conflict. Cierre de grupos conserva historial/evidence y abre siguiente grupo sin pisar agentes.
+Estado: consultar `TASK-NODES.json`; no reabrir si está PASS.
 
 # Persistencia canónica
 - `Crazy Wall Orquestador/STATE.json`
@@ -148,7 +127,5 @@ Estado lógico compartido con ownership de task/node, version/checkpoint, idempo
 - `HANDOFF.md`
 - `wordflow_loop/evidence/`
 
-## Estado actual del grupo
-30 GAPs · 8 cerrados: `G-001`, `G-002`, `G-003`, `G-004`, `G-005`, `G-010`, `G-013`, `G-020`.  
-Nodo actual: `G-018`. `G-006` permanece bloqueado por `G-018`.  
-`AUTH_PROVIDER_TEST_PENDING` permanece abierto. Graphiti/Graphology no están integrados todavía. Fables sigue en investigación; no se crea bus paralelo.
+## Estado operativo actual de SOL_1
+Checkpoint `0019`. Nodo único actual `G-013`, reclamado por `SOL_1`, con GAP `SOURCE_OF_TRUTH_DRIFT`. `G-018` pertenece a `SOL_2` y no se toca. `G-019` permanece pendiente hasta que G-013 cierre. `AUTH_PROVIDER_TEST_PENDING` permanece abierto.
