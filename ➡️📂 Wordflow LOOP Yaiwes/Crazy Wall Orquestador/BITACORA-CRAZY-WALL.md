@@ -318,3 +318,16 @@ Evidence: `wordflow_loop/evidence/G012_COMPONENT_INTAKE_2026-09-12.json`. Commit
 
 Resultado: `G-012 CLOSED_VERIFIED_LOCAL_REAL_MOTORS`. G-013 y G-018 permanecen bajo sus propietarios.
 
+# ASTRA-GPT-LOOP — CIERRE LOCAL G-007 — 2026-09-12
+
+Nodo independiente `G-007` reclamado y cerrado por `ASTRA_GPT_LOOP`; G-013 de SOL_1 y G-018 de SOL_2 no fueron modificados.
+
+- GAP comprobado: `existing_code_intake.py` solo validaba metadatos y hash en memoria; no invocaba los motores canónicos ni verificaba estado/destino físicos.
+- Corrección mínima: adapter `yaiwes.existing_code_intake/v2` que conserva REUSE/PATCH/ADAPT/provenance, bloquea REJECT, fija un único archivo auditado, verifica blob del motor y ejecuta copy/move canónico.
+- MOVE requiere autorización separada de retirada; destination/state quedan dentro de la raíz autorizada y se rechazan siblings no auditados.
+- Ejecución real de ambos motores sobre árbol temporal: COPY conserva origen, MOVE lo retira, hash de destino y state read-back verificados.
+- Read-back fresco de main `881eb75e1d70ffcfa0b79adc8a1cccb9117aa514`: módulo blob `6d1939d9864e32974fed111626b60e276c6b62bf`, tests `d3f1873c47e89d18965cd11d6369e1a1a65b2733`.
+- Prueba desde ese snapshot: `python -m unittest -v runtime.tests.test_existing_code_intake_g007` = `PASS_5_OF_5`, exit 0. No se reclama pytest global ni proveedores externos.
+- Evidence: `wordflow_loop/evidence/G007_EXISTING_CODE_CANONICAL_TRANSFER_2026-09-12.json`. No LFS, no force, motores canónicos sin reescritura.
+
+Resultado: `G-007 CLOSED_VERIFIED_LOCAL_REAL_MOTORS`. El Wordflow global continúa abierto.
