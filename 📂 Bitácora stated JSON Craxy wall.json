@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T20:55:55Z",
+  "updated_at": "2026-09-12T20:57:18Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1679,22 +1679,30 @@
       "id": 31,
       "component": "Anthropic-Skills",
       "source": "Core kernel Yaiwes/Componentes recuperados B/Anthropic-Skills/",
-      "current_step": 2,
-      "status": "PENDING_STEP2",
+      "current_step": 3,
+      "status": "PASS_STEP2",
       "abc": "C",
       "target": "Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/anthropic-skills/",
-      "owner": "SOL",
-      "lock": "CLAIMED",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-12T20:54:02Z SOL integración 3 STEP2 claim: immutable Motor4 9a21facfe11327cf60a2afca8f415ad52f0ecbe5; Anthropic-Skills -> capability-registry/anthropic-skills",
-        "after": "STEP1 PASS: Anthropic-Skills provides dynamically loadable SKILL.md instruction/script/resource packages plus Agent Skills spec/template; classified C modular capability; target existing capability-registry/anthropic-skills."
+        "after": "STEP2 PASS RECOVERED: Motor4 run 34718394662 VERIFIED_CLOSED 417/417; source absent; target README + real SKILL.md read-back PASS. Prior workflow failure was read-back shell SIGPIPE 141 from grep -Fq under pipefail, not component/MOVE failure. MOVE NOT REPEATED."
       },
       "evidence": [
         "worker:SOL integración 3",
         "step1:readme_blob:eb54ee8b92f2d40b4b26569be0772be3c1e23156",
         "step1:classification:C",
         "step1:target:Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/anthropic-skills/",
-        "step1:reason:dynamic reusable skill packages + spec/template capability"
+        "step1:reason:dynamic reusable skill packages + spec/template capability",
+        "step2:motor4_blob:9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
+        "step2:run:34718394662",
+        "step2:motor4:VERIFIED_CLOSED:417_files:failed=0:pending=0:source_files_remaining=0",
+        "step2:move_commit:37797c972",
+        "step2:gap_exact:readback_pipeline_exit_141_SIGPIPE_grep_Fq_under_pipefail",
+        "step2:strategy_delta:capture_git_ls_tree_to_file_then_exact_grep_no_SIGPIPE",
+        "step2:recovery_run:34718529281",
+        "step2:readback:source_404+target_README+skills/mcp-builder/SKILL.md_PASS"
       ],
       "history": [
         {
@@ -1714,9 +1722,24 @@
           "actor": "SOL",
           "label": "SOL integración 3",
           "event": "CLAIM_STEP2"
+        },
+        {
+          "at": "2026-09-12T20:57:18Z",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "STEP2_GAP_READBACK_PIPEFAIL_SIGPIPE_141",
+          "run": 34718394662
+        },
+        {
+          "at": "2026-09-12T20:57:18Z",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "STEP2_PASS_RECOVERED_RELEASE",
+          "run": 34718529281,
+          "commit": "37797c972"
         }
       ],
-      "next_action": "STEP_2_MOVE_WITH_CANONICAL_MOTOR"
+      "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
     },
     {
       "id": 32,
