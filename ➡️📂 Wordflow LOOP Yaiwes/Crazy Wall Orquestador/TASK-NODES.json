@@ -148,15 +148,15 @@
       "id": "G-012",
       "task": "Cerrar intake download/extract: schema + queue + adapter a motores + hash/path safety/read-back.",
       "literal_sha256": "be3eab788706cd47f951f882f721f43d7692591e47c5a9172e527a48c024179c",
-      "status": "PENDING",
-      "claimed_by": null,
+      "status": "CLAIMED",
+      "claimed_by": "ASTRA_GPT_LOOP",
       "depends_on": [
         "G-011"
       ],
       "steps": [
         {
           "id": "1_RESEARCH",
-          "status": "PENDING"
+          "status": "RUNNING"
         },
         {
           "id": "2_MOTOR",
@@ -169,7 +169,7 @@
       ],
       "evidence": [],
       "gaps": [],
-      "version": 1,
+      "version": 2,
       "checker": "ASTRA_GPT"
     },
     {
