@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T20:57:18Z",
+  "updated_at": "2026-09-12T20:58:20Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1746,13 +1746,13 @@
       "component": "Casbin",
       "source": "Core kernel Yaiwes/Componentes recuperados B/Casbin/",
       "current_step": 3,
-      "status": "PASS_STEP2",
+      "status": "PENDING_STEP3",
       "abc": "C",
       "target": "Agente Yaiwes principal/definition-registry/authorization-model/casbin/",
-      "owner": null,
-      "lock": "FREE",
+      "owner": "SOL",
+      "lock": "CLAIMED",
       "checkpoint": {
-        "before": "2026-09-12T20:54:53Z SOL integración 2 STEP2 claim after STEP1 PASS: immutable Motor4 9a21facfe11327cf60a2afca8f415ad52f0ecbe5; Casbin -> definition-registry/authorization-model/casbin",
+        "before": "2026-09-12T20:58:20Z SOL integración 2 N32 STEP3 claim: STEP2 Motor4/read-back PASS; wire canonical FABLES; compile/run real Casbin ACL allow/deny microtest from moved source; prune only if concrete cause",
         "after": "STEP2 PASS: canonical Motor4 MOVE; source absent target populated; run=34718435582; move_commit=f295319dc264b21c8f5ca83f8d617ddd6bd74f01"
       },
       "evidence": [
@@ -1793,6 +1793,12 @@
           "event": "STEP2_PASS_RELEASE",
           "run": 34718435582,
           "commit": "f295319dc264b21c8f5ca83f8d617ddd6bd74f01"
+        },
+        {
+          "at": "2026-09-12T20:58:20Z",
+          "actor": "SOL",
+          "label": "SOL integración 2",
+          "event": "CLAIM_STEP3"
         }
       ],
       "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
