@@ -5,7 +5,7 @@ Cluster orquestador principal de ejecución universal con caché y sandboxing.
 
 from typing import Dict, Any
 import json
-from src.uek.cache_engine import DeterministicCacheEngine
+from src.parallel.mavis_parallel import SmartCache
 from src.uek.sandbox_manager import SandboxManager
 from src.uek.boot_engine import CapabilityBootEngine
 
@@ -14,7 +14,7 @@ class UniversalExecutionKernelCluster:
     """Mini-kernel para ejecución de recursos heterogéneos."""
 
     def __init__(self) -> None:
-        self.cache = DeterministicCacheEngine()
+        self.cache = SmartCache()
         self.sandbox_mgr = SandboxManager()
         self.boot_engine = CapabilityBootEngine()
 
@@ -24,9 +24,10 @@ class UniversalExecutionKernelCluster:
         """
         cap_id: str = request.get("capability_id", "default_cap")
         inputs: Dict[str, Any] = request.get("inputs", {})
+        cache_key = {"capability_id": cap_id, "inputs": inputs}
 
         # 1. Caché previo
-        cached_result = self.cache.get(cap_id, inputs)
+        cached_result = self.cache.get(cache_key)
         if cached_result:
             cached_result["cache_hit"] = True
             return cached_result
@@ -61,7 +62,7 @@ class UniversalExecutionKernelCluster:
         }
 
         # 4. Registrar en Caché
-        self.cache.set(cap_id, inputs, trace)
+        self.cache.set(cache_key, trace)
         self.sandbox_mgr.release_sandbox(sandbox["sandbox_id"])
 
         return trace
