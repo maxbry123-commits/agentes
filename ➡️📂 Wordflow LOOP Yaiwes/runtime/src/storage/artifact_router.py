@@ -3,7 +3,7 @@ Artifact Router & Storage Call Engine - PECP-MAXBRY-100x (Nodo T-006)
 Storage Router con failover, chunked acquisition y validación de Hash.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 import hashlib
 import json
 
@@ -25,6 +25,14 @@ class ArtifactRouter:
         Adquiere un artefacto iterando por los backends hasta encontrar uno válido.
         """
         artifact_id: str = resource_manifest.get("artifact_id", "art_000")
+        if resource_manifest.get("source_provider", "").lower() == "huggingface":
+            return {
+                "artifact_id": artifact_id,
+                "backend_registered": None,
+                "hash_verified": False,
+                "size_match": False,
+                "status": "USE_VERIFIED_HUGGINGFACE_BRIDGE",
+            }
         expected_hash: str = resource_manifest.get("hash", "")
         mock_payload: bytes = resource_manifest.get("raw_data", b"PECP_ARTIFACT_DATA")
 

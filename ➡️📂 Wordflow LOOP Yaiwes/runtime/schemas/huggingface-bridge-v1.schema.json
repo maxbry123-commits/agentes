@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "yaiwes.huggingface_bridge/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["request_id", "kind", "repo_type", "repo_id", "revision"],
+  "properties": {
+    "request_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "kind": {"enum": ["MODEL", "DATASET", "SKILL", "RESOURCE"]},
+    "repo_type": {"enum": ["model", "dataset", "space"]},
+    "repo_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,95}/[A-Za-z0-9][A-Za-z0-9._-]{0,95}$"},
+    "revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "path": {"type": "string"}
+  }
+}

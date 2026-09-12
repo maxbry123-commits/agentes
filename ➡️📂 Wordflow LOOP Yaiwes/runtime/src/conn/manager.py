@@ -23,12 +23,13 @@ class ConnectionManager:
             raise ValueError(f"Proveedor no soportado: {provider}")
 
         conn_id = f"conn_{provider.lower()}"
+        is_huggingface = provider.lower() == "huggingface"
         connection_entry = {
             "conn_id": conn_id,
             "provider": provider.lower(),
             "endpoint": config.get("endpoint", "https://api.default.org"),
-            "status": "ACTIVE",
-            "health": "HEALTHY"
+            "status": "CONFIGURED_NOT_VERIFIED" if is_huggingface else "ACTIVE",
+            "health": "UNKNOWN" if is_huggingface else "HEALTHY"
         }
         self.registry[conn_id] = connection_entry
         return connection_entry
@@ -45,7 +46,7 @@ class ConnectionManager:
             "conn_id": conn_id,
             "status": conn["status"],
             "health": conn["health"],
-            "passed": True
+            "passed": conn["status"] == "ACTIVE" and conn["health"] == "HEALTHY"
         }
 
 

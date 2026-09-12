@@ -446,7 +446,7 @@
       "id": "G-023",
       "task": "Cerrar Hugging Face bridge solo para datasets/skills/modelos/recursos verificados, sin secretos ni HF CI.",
       "literal_sha256": "a4351437f0736f3ecd80cf2e6a2383860a5b9133c760bf071662c2d9489fbca5",
-      "status": "CLAIMED",
+      "status": "PASS",
       "claimed_by": "ASTRA_GPT_LOOP",
       "depends_on": [],
       "steps": [
@@ -456,22 +456,27 @@
         },
         {
           "id": "2_MOTOR",
-          "status": "RUNNING"
+          "status": "PASS"
         },
         {
           "id": "3_WIRE_TEST",
-          "status": "PENDING"
+          "status": "PASS"
         }
       ],
       "evidence": [
         "repro:artifact_router_NameError_List_not_defined",
-        "repro:huggingface_connection_static_ACTIVE_HEALTHY"
+        "repro:huggingface_connection_static_ACTIVE_HEALTHY",
+        "wordflow_loop/evidence/G023_HUGGINGFACE_PUBLIC_BRIDGE_2026-09-12.json",
+        "unittest:PASS_6_OF_6",
+        "live_hf_api:PASS_3_OF_3",
+        "claim_commit:14e9f158951ac14688cf7612fcc20fe892c34191"
       ],
       "gaps": [
-        "HF_ARTIFACT_ROUTER_NOT_IMPORTABLE_AND_MOCK_ACQUISITION",
-        "HF_CONNECTION_HEALTH_FABRICATED_WITHOUT_PROBE"
+        "RESOLVED: HF artifact route is importable and rejects mock acquisition",
+        "RESOLVED: HF connection no longer fabricates ACTIVE/HEALTHY without probe",
+        "RESOLVED: public pinned model/dataset/skill/resource metadata bridge was missing"
       ],
-      "version": 2,
+      "version": 3,
       "checker": "ASTRA_GPT"
     },
     {

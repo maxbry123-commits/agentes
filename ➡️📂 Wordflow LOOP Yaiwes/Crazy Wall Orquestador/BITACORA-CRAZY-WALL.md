@@ -426,3 +426,16 @@ Nodo independiente G-022 reclamado por `ASTRA_GPT_LOOP`; G-013 de SOL_1 y G-018 
 - Evidence: `wordflow_loop/evidence/G022_SANDBOX_FAIL_CLOSED_BLOCKER_2026-09-12.json`.
 
 Resultado: `G-022 BLOCKED_PHYSICAL_ISOLATION`. No se declara prueba positiva de aislamiento, promoción, deployment ni PASS global. G-017 sigue bloqueado por G-022.
+
+# ASTRA-GPT-LOOP — CIERRE G-023 HF BRIDGE — 2026-09-12
+
+Nodo independiente G-023 reclamado y cerrado por `ASTRA_GPT_LOOP`; G-013 de SOL_1 y G-018 de SOL_2 no fueron modificados.
+
+- GAP reproducido: `artifact_router.py` no importaba (`NameError: List`) y simulaba adquisición con `raw_data`; `ConnectionManager` fabricaba `ACTIVE/HEALTHY` para HF sin conexión.
+- Bridge read-only `yaiwes.huggingface_bridge/v1`: admite solo MODEL/DATASET/SKILL/RESOURCE públicos, revisión SHA de 40 hex, coincidencia exacta del SHA remoto y metadatos de archivo verificables.
+- SKILL exige ruta exacta terminada en `SKILL.md`; recursos privados/gated, revisión móvil, path inseguro o metadata incompleta se bloquean.
+- HF Jobs, CI, inferencia, secretos, descargas y transferencia LFS permanecen deshabilitados. No se instaló componente: biblioteca estándar y API oficial.
+- Pruebas locales: `PASS_6_OF_6`. Ejecución pública real contra Hugging Face: modelo GPT-2, dataset IMDB y `config.json` fijados a SHA, `PASS_3_OF_3`.
+- Evidence: `wordflow_loop/evidence/G023_HUGGINGFACE_PUBLIC_BRIDGE_2026-09-12.json`.
+
+Resultado: `G-023 CLOSED_VERIFIED_PUBLIC_HF_METADATA`. No se reclama acceso privado/autenticado, ejecución de modelos, proveedor remoto ni PASS global.
