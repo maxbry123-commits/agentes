@@ -29,10 +29,10 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
-      "wall_target": null
+      "wall_node_id": 29,
+      "wall_status": "PENDING_STEP2",
+      "wall_current_step": 2,
+      "wall_target": "Agente Yaiwes principal/agent-fleet-parallelism/agenta/"
     },
     {
       "name": "Agno",

@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T20:45:55Z",
+  "updated_at": "2026-09-12T20:47:32Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1512,6 +1512,49 @@
         }
       ],
       "next_action": "COMPLETE"
+    },
+    {
+      "id": 29,
+      "component": "Agenta",
+      "source": "Core kernel Yaiwes/Componentes recuperados B/Agenta/",
+      "current_step": 2,
+      "status": "PENDING_STEP2",
+      "abc": "B",
+      "target": "Agente Yaiwes principal/agent-fleet-parallelism/agenta/",
+      "owner": "SOL",
+      "lock": "CLAIMED",
+      "checkpoint": {
+        "before": "2026-09-12T20:47:32Z SOL integración 3 STEP2 claim: immutable Motor4 9a21facfe11327cf60a2afca8f415ad52f0ecbe5; Agenta source -> agent-fleet-parallelism/agenta",
+        "after": "STEP1 PASS: Agenta is a workspace/platform for building and running agents with background schedules/events, harness/model switching, permissions and tracing; classified B motor de trabajo, not YAIWES head; target agent-fleet-parallelism/agenta/"
+      },
+      "evidence": [
+        "worker:SOL integración 3",
+        "step1:readme_blob:5b430fb991ae1c858d87be1e28c55188c08f7e97",
+        "step1:classification:B",
+        "step1:target:Agente Yaiwes principal/agent-fleet-parallelism/agenta/",
+        "step1:reason:agent runtime/workspace + background schedules/events + harness/model routing + tracing"
+      ],
+      "history": [
+        {
+          "at": "2026-09-12T20:47:32Z",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "CLAIM_STEP1"
+        },
+        {
+          "at": "2026-09-12T20:47:32Z",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "STEP1_PASS_RELEASE"
+        },
+        {
+          "at": "2026-09-12T20:47:32Z",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "CLAIM_STEP2"
+        }
+      ],
+      "next_action": "STEP_2_MOVE_WITH_CANONICAL_MOTOR"
     }
   ],
   "counts": {
