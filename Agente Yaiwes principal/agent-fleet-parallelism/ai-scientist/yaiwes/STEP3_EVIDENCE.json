@@ -1,0 +1,28 @@
+{
+  "node_id": 34,
+  "component": "AI-Scientist",
+  "worker": "SOL integración 3",
+  "status": "PASS",
+  "route": "FABLES -> AI-Scientist adapter -> moved upstream generate_next_idea -> real grokking seed_ideas.json",
+  "plugin_id": "yaiwes.agent.ai_scientist",
+  "microtest": "generate_next_idea empty archive loads real first seed without external API",
+  "result": {
+    "status": "PASS",
+    "capability": "generate_next_idea_seed_path",
+    "idea_name": "batch_size_grokking",
+    "interestingness": 6,
+    "feasibility": 4,
+    "novelty": 4
+  },
+  "evidence_levels": [
+    "L2_build",
+    "L3_runtime",
+    "L4_feature"
+  ],
+  "run": 34720918266,
+  "runner_commit": "269d477a5da8e3e566b75d47fd87f05447f02563",
+  "adapter_sha256": "sha256:bfe982f08594728d9af06d61774769f190121173a39c7e463133299daba89bdb",
+  "upstream_generate_ideas_blob": "7b53b81b1ed1d7f4144b8632727d2f57369463f4",
+  "seed_blob": "53d03b3ca578e24ac8ea16b2ebece7f1e9933c88",
+  "prune": "NOT_NEEDED"
+}
