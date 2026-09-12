@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T21:41:50Z",
+  "updated_at": "2026-09-12T21:43:30Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1864,13 +1864,13 @@
       "component": "BullMQ",
       "source": "Core kernel Yaiwes/Componentes recuperados B/BullMQ/",
       "current_step": 3,
-      "status": "GAP_STEP3",
+      "status": "PENDING_STEP3",
       "abc": "B",
       "target": "Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/bullmq/",
-      "owner": null,
-      "lock": "FREE",
+      "owner": "SOL",
+      "lock": "CLAIMED",
       "checkpoint": {
-        "before": "2026-09-12T21:39:13Z SOL integración 2 retry exact STEP3 build GAP with Node 22.13.0 required by @eslint/js; preserve FABLES+Redis Queue/Worker test; no MOVE repeat",
+        "before": "2026-09-12T21:43:30Z SOL integración 2 exact STEP3 retry Node 22.22.2 satisfying commitlint/eslint/semantic-release engines; same BullMQ+Redis+FABLES microtest; no MOVE repeat",
         "after": "STEP3 GAP INSTALL Node22.13 run=34720547406 rc=1: yarn install v1.22.22 [1/5] Validating package.json... [2/5] Resolving packages... warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@^4.1.0\" warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@^4.3.0\" warning Resolution field \"brace-expansion@5.0.9\" is incompatible with requested version \"brace-expansion@^1.1.7\" warning Resolution field \"picomatch@4.0.5\" is incompatible with requested version \"picomatch@^2.3.1\" warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@4.2.0\" warning Resolution field \"picomatch@4.0.5\" is incompatible with requested version \"picomatch@^4.0.7\" [3/5] Fetching packages... error @semantic-release/changelog@7.0.0: The engine \"node\" is incompatible with this module. Expected version \"^22.22.2 || > 24.15\". Got \"22.13.0\" error Found incompatible module. info Visit https://yarnpkg.com/en/docs/cli/install for documentation about this command. "
       },
       "evidence": [
@@ -1889,7 +1889,8 @@
         "step3:repair_runner:.github/workflows/yaiwes-sol2-bullmq-step3-repair.yml",
         "step3:repair_gap:BUILD:run:34720421728:rc=1:yarn install v1.22.22 [1/5] Validating package.json... [2/5] Resolving packages... warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@^4.1.0\" warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@^4.3.0\" warning Resolution field \"brace-expansion@5.0.9\" is incompatible with requested version \"brace-expansion@^1.1.7\" warning Resolution field \"picomatch@4.0.5\" is incompatible with requested version \"picomatch@^2.3.1\" warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@4.2.0\" warning Resolution field \"picomatch@4.0.5\" is incompatible with requested version \"picomatch@^4.0.7\" [3/5] Fetching packages... error @eslint/js@10.0.1: The engine \"node\" is incompatible with this module. Expected version \"^20.19.0 || ^22.13.0 || > 24\". Got \"22.12.0\" error Found incompatible module. info Visit https://yarnpkg.com/en/docs/cli/install for documentation about this command. ",
         "step3:repair:node_runtime_22.12.0_to_22.13.0",
-        "step3:gap:INSTALL:Node22.13:run:34720547406:rc=1:yarn install v1.22.22 [1/5] Validating package.json... [2/5] Resolving packages... warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@^4.1.0\" warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@^4.3.0\" warning Resolution field \"brace-expansion@5.0.9\" is incompatible with requested version \"brace-expansion@^1.1.7\" warning Resolution field \"picomatch@4.0.5\" is incompatible with requested version \"picomatch@^2.3.1\" warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@4.2.0\" warning Resolution field \"picomatch@4.0.5\" is incompatible with requested version \"picomatch@^4.0.7\" [3/5] Fetching packages... error @semantic-release/changelog@7.0.0: The engine \"node\" is incompatible with this module. Expected version \"^22.22.2 || > 24.15\". Got \"22.13.0\" error Found incompatible module. info Visit https://yarnpkg.com/en/docs/cli/install for documentation about this command. "
+        "step3:gap:INSTALL:Node22.13:run:34720547406:rc=1:yarn install v1.22.22 [1/5] Validating package.json... [2/5] Resolving packages... warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@^4.1.0\" warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@^4.3.0\" warning Resolution field \"brace-expansion@5.0.9\" is incompatible with requested version \"brace-expansion@^1.1.7\" warning Resolution field \"picomatch@4.0.5\" is incompatible with requested version \"picomatch@^2.3.1\" warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@4.2.0\" warning Resolution field \"picomatch@4.0.5\" is incompatible with requested version \"picomatch@^4.0.7\" [3/5] Fetching packages... error @semantic-release/changelog@7.0.0: The engine \"node\" is incompatible with this module. Expected version \"^22.22.2 || > 24.15\". Got \"22.13.0\" error Found incompatible module. info Visit https://yarnpkg.com/en/docs/cli/install for documentation about this command. ",
+        "step3:repair:node_runtime_22.13.0_to_22.22.2"
       ],
       "history": [
         {
@@ -1959,6 +1960,13 @@
           "event": "STEP3_GAP_INSTALL_NODE2213_RELEASE",
           "run": 34720547406,
           "commit": ""
+        },
+        {
+          "at": "2026-09-12T21:43:30Z",
+          "actor": "SOL",
+          "label": "SOL integración 2",
+          "event": "CLAIM_STEP3_NODE2222_REPAIR",
+          "prior_run": 34720547406
         }
       ],
       "next_action": "REPAIR_EXACT_STEP3_GAP_AND_RETRY"
