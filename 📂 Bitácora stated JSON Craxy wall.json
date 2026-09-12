@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T20:58:42Z",
+  "updated_at": "2026-09-12T20:59:10Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1680,14 +1680,14 @@
       "component": "Anthropic-Skills",
       "source": "Core kernel Yaiwes/Componentes recuperados B/Anthropic-Skills/",
       "current_step": 3,
-      "status": "PENDING_STEP3",
+      "status": "PASS",
       "abc": "C",
       "target": "Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/anthropic-skills/",
-      "owner": "SOL",
-      "lock": "CLAIMED",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-12T20:58:42Z SOL integración 3 STEP3 claim: canonical FABLES bus; execute moved upstream quick_validate.py against real mcp-builder and skill-creator SKILL.md; validate discovery/frontmatter; no MOVE repeat",
-        "after": "STEP2 PASS RECOVERED: Motor4 run 34718394662 VERIFIED_CLOSED 417/417; source absent; target README + real SKILL.md read-back PASS. Prior workflow failure was read-back shell SIGPIPE 141 from grep -Fq under pipefail, not component/MOVE failure. MOVE NOT REPEATED."
+        "after": "STEP3 PASS: canonical FABLES ACTIVE; moved upstream quick_validate.py executed against real mcp-builder and skill-creator SKILL.md; discovery/frontmatter validation PASS; L2+L3+L4; prune NOT_NEEDED; read-back PASS."
       },
       "evidence": [
         "worker:SOL integración 3",
@@ -1702,7 +1702,15 @@
         "step2:gap_exact:readback_pipeline_exit_141_SIGPIPE_grep_Fq_under_pipefail",
         "step2:strategy_delta:capture_git_ls_tree_to_file_then_exact_grep_no_SIGPIPE",
         "step2:recovery_run:34718529281",
-        "step2:readback:source_404+target_README+skills/mcp-builder/SKILL.md_PASS"
+        "step2:readback:source_404+target_README+skills/mcp-builder/SKILL.md_PASS",
+        "step3:run:34718606707",
+        "step3:evidence_commit:2ec2131f997a8becef9565b26516b11e16905011",
+        "step3:canonical_bus_blob:470f9c91650bc6c59e2900f7e71090b84363da9f",
+        "step3:route:FABLES->Anthropic-Skills adapter->upstream quick_validate.py->SKILL.md",
+        "step3:microtest:PASS mcp-builder+skill-creator real validation",
+        "step3:evidence:L2_build+L3_runtime+L4_feature",
+        "step3:prune:NOT_NEEDED",
+        "step3:readback:adapter+ficha+evidence PASS"
       ],
       "history": [
         {
@@ -1743,9 +1751,17 @@
           "actor": "SOL",
           "label": "SOL integración 3",
           "event": "CLAIM_STEP3"
+        },
+        {
+          "at": "2026-09-12T20:59:10Z",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "STEP3_PASS_RELEASE",
+          "run": 34718606707,
+          "commit": "2ec2131f997a8becef9565b26516b11e16905011"
         }
       ],
-      "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
+      "next_action": "COMPLETE"
     },
     {
       "id": 32,
@@ -1811,7 +1827,7 @@
     }
   ],
   "counts": {
-    "closed_current_contract": 30
+    "closed_current_contract": 31
   },
   "kernel_hold_policy": {
     "approved": true,
