@@ -522,26 +522,31 @@
       "id": "G-026",
       "task": "Cerrar UI/visual LOOP con el mínimo stack reutilizable; Graphify visual primero, sin añadir Sigma si no hace falta.",
       "literal_sha256": "0e6de9068df8fab6f6514f9380e6e3ea8a7b3cc71a79650e53a5b63991a08345",
-      "status": "CLAIMED",
+      "status": "PASS",
       "claimed_by": "ASTRA_GPT_LOOP",
       "depends_on": [],
       "steps": [
         {
           "id": "1_RESEARCH",
-          "status": "RUNNING"
+          "status": "PASS"
         },
         {
           "id": "2_MOTOR",
-          "status": "PENDING"
+          "status": "PASS"
         },
         {
           "id": "3_WIRE_TEST",
-          "status": "PENDING"
+          "status": "PASS"
         }
       ],
-      "evidence": [],
-      "gaps": [],
-      "version": 2,
+      "evidence": [
+        "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G026_CRAZY_WALL_VISUAL_PROJECTION_2026-09-12.json"
+      ],
+      "gaps": [
+        "RESOLVED: renderer contract incorrectly preferred Graphology+Sigma",
+        "RESOLVED: real Crazy Wall sources were not projected into required visual panels"
+      ],
+      "version": 3,
       "checker": "ASTRA_GPT"
     },
     {

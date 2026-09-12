@@ -344,6 +344,19 @@ Nodo independiente reclamado y cerrado por `ASTRA_GPT_LOOP`; G-013 de SOL_1 y G-
 
 Resultado: `G-029 CLOSED_VERIFIED_LOCAL`. Sin PASS global ni ejecución de orquestadores externos.
 
+# ASTRA-GPT-LOOP — CIERRE LOCAL G-026 — 2026-09-12
+
+Nodo independiente reclamado y cerrado por `ASTRA_GPT_LOOP`; G-013 de SOL_1 y G-018 de SOL_2 no fueron modificados.
+
+- GAP comprobado: la proyección existente prefería `Graphology+Sigma`, contrario a la regla Graphify-first, y solo aceptaba nodos/aristas manuales.
+- Corrección mínima: renderer JSON agnóstico y adapter de `TASK-NODES.json + CHECKPOINT.json` reales para tareas, cola, GAPs, agentes, evidence y checkpoint.
+- Graphify queda como preferencia de enriquecimiento con `graphify_runtime_verified=false`; no se finge integración. Graphology/Sigma quedan no requeridos.
+- Proyección real del snapshot reclamado: 24 tareas, 11 entradas de cola, 7 GAP records, 4 agentes, 16 evidencias, 1 checkpoint; 52 nodos/49 aristas y SHA-256 estable.
+- Prueba real: `python -m unittest -v runtime.tests.test_graph_visual_projection_g026` = `PASS_5_OF_5`.
+- Evidence: `wordflow_loop/evidence/G026_CRAZY_WALL_VISUAL_PROJECTION_2026-09-12.json`.
+
+Resultado: `G-026 CLOSED_VERIFIED_LOCAL`. Sin nuevo componente, Sigma, Graphology ni PASS global.
+
 # ASTRA-GPT-LOOP — CIERRE LOCAL G-007 — 2026-09-12
 
 Nodo independiente `G-007` reclamado y cerrado por `ASTRA_GPT_LOOP`; G-013 de SOL_1 y G-018 de SOL_2 no fueron modificados.
