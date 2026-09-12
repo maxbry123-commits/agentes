@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T21:02:19Z",
+  "updated_at": "2026-09-12T21:03:12Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1768,14 +1768,14 @@
       "component": "Casbin",
       "source": "Core kernel Yaiwes/Componentes recuperados B/Casbin/",
       "current_step": 3,
-      "status": "GAP_STEP3",
+      "status": "PASS",
       "abc": "C",
       "target": "Agente Yaiwes principal/definition-registry/authorization-model/casbin/",
-      "owner": "SOL",
-      "lock": "CLAIMED",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-12T20:58:20Z SOL integración 2 N32 STEP3 claim: STEP2 Motor4/read-back PASS; wire canonical FABLES; compile/run real Casbin ACL allow/deny microtest from moved source; prune only if concrete cause",
-        "after": "STEP3 GAP run 34718676175: Casbin ACL microtest PASS after Go1.13 repair, but FABLES ficha used noncanonical categoria=validator and etapa=V. Exact repair: canonical schema transform + pipeline + P; repeat same ACL through adapter."
+        "after": "STEP3 PASS after exact repairs: canonical FABLES ACTIVE yaiwes.authorization.casbin; real Casbin Go Enforcer ACL alice/read allowed, alice/write denied, bob/write allowed; repaired Go1.13 type alias and FABLES ficha schema; L2+L3+L4; prune NOT_NEEDED; read-back PASS; run=34718782407"
       },
       "evidence": [
         "worker:SOL integración 2",
@@ -1789,7 +1789,17 @@
         "step2:move_commit:f295319dc264b21c8f5ca83f8d617ddd6bd74f01",
         "step2:readback:origin/main source absent target populated go.mod PASS",
         "step3:gap_run:34718600250:go1.13_language:predeclared_any_requires_go1.18",
-        "step3:gap_run:34718676175:FichaValidationError:V01_categoria+V02_etapa"
+        "step3:gap_run:34718676175:FichaValidationError:V01_categoria+V02_etapa",
+        "step3:repair2_run:34718782407",
+        "step3:evidence_commit:0fb6a56dfe61f14a82e49fbb2b0fef54b9d24be6",
+        "step3:adapter_sha256:53a274034261aa712cc8020648424a04aca8d66dff57c9a0bc8b9a662ea2894a",
+        "step3:repair:FABLES ficha validator/V->transform+pipeline/P",
+        "step3:plugin_id:yaiwes.authorization.casbin",
+        "step3:route:FABLES->Casbin adapter->real Go Enforcer->ACL allow/deny",
+        "step3:microtest:PASS alice_read=True alice_write=False bob_write=True",
+        "step3:evidence:L2_build+L3_runtime+L4_feature",
+        "step3:prune:NOT_NEEDED",
+        "step3:readback:source-absent+target+adapter+ficha+evidence+microtest PASS"
       ],
       "history": [
         {
@@ -1837,13 +1847,21 @@
           "label": "SOL integración 2",
           "event": "STEP3_GAP_FABLES_FICHA_REPAIR_RETRY",
           "run": 34718676175
+        },
+        {
+          "at": "2026-09-12T21:03:12Z",
+          "actor": "SOL",
+          "label": "SOL integración 2",
+          "event": "STEP3_PASS_AFTER_FABLES_FICHA_REPAIR_RELEASE",
+          "run": 34718782407,
+          "commit": "0fb6a56dfe61f14a82e49fbb2b0fef54b9d24be6"
         }
       ],
-      "next_action": "REPAIR_EXACT_STEP3_GAP_AND_RETRY"
+      "next_action": "COMPLETE"
     }
   ],
   "counts": {
-    "closed_current_contract": 31
+    "closed_current_contract": 32
   },
   "kernel_hold_policy": {
     "approved": true,
