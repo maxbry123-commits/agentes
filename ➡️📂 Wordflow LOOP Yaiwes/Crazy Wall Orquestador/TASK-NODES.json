@@ -604,7 +604,7 @@
       "id": "G-029",
       "task": "Cerrar planificación organizada con matriz ADOPT/ADAPT/REJECT; REUSE DAGEngine+MavisPool por defecto.",
       "literal_sha256": "3be8599eb7f6304e735e009126183f749f0861cbf783fdc0ebeb9e831b019ac9",
-      "status": "CLAIMED",
+      "status": "PASS",
       "claimed_by": "ASTRA_GPT_LOOP",
       "depends_on": [
         "G-021"
@@ -612,20 +612,25 @@
       "steps": [
         {
           "id": "1_RESEARCH",
-          "status": "RUNNING"
+          "status": "PASS"
         },
         {
           "id": "2_MOTOR",
-          "status": "PENDING"
+          "status": "PASS"
         },
         {
           "id": "3_WIRE_TEST",
-          "status": "PENDING"
+          "status": "PASS"
         }
       ],
-      "evidence": [],
-      "gaps": [],
-      "version": 2,
+      "evidence": [
+        "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G029_PLANNING_STACK_DECISION_2026-09-12.json"
+      ],
+      "gaps": [
+        "RESOLVED: comparative planning matrix was missing",
+        "RESOLVED: external orchestrators lacked a concrete-gap admission gate"
+      ],
+      "version": 3,
       "checker": "ASTRA_GPT"
     },
     {

@@ -1,0 +1,63 @@
+{
+  "schema": "yaiwes.evidence/v1",
+  "gap_id": "G-029",
+  "owner": "ASTRA_GPT_LOOP",
+  "base_main_sha": "dadd3b883bbbebe6ab980aab19e70487c2bd585f",
+  "result": "CLOSED_VERIFIED_LOCAL",
+  "research": {
+    "verified_date": "2026-09-12",
+    "official_sources": [
+      "https://docs.dagster.io/",
+      "https://docs.prefect.io/",
+      "https://argo-workflows.readthedocs.io/en/latest/",
+      "https://www.inngest.com/docs",
+      "https://trigger.dev/docs/introduction",
+      "https://docs.restate.dev/",
+      "https://airflow.apache.org/docs/apache-airflow/stable/"
+    ],
+    "matrix_candidates": 9,
+    "decision": "REUSE_LOCAL_STACK",
+    "selected_stack": ["DAGEngine", "parallel_scheduler"],
+    "uncovered_planning_capabilities": [],
+    "new_component_required": false,
+    "motor_status": "NOT_REQUIRED_NO_ACQUISITION_OR_MOVE"
+  },
+  "execution": {
+    "result": "PASS_5_OF_5",
+    "runner": "python importlib runner over runtime/tests/test_planning_stack_g029.py",
+    "verified": [
+      "9/9 candidate decisions",
+      "official HTTPS references",
+      "local-only selected stack",
+      "DAG dependency ordering",
+      "priority batches with bounded concurrency"
+    ],
+    "pytest": "NOT_INSTALLED_NOT_CLAIMED",
+    "external_runtime": "NOT_EXECUTED_NOT_REQUIRED"
+  },
+  "read_back": {
+    "wordflow_loop/contracts/planning-stack-g029-matrix.json": {
+      "git_blob": "1f19f4066791df15c8e582592e1eaf90e4a14c31",
+      "sha256": "7cb125c70f2081a0fd15aa06f63c013486d1c92638cf1c4ff32a37dec3849c3d"
+    },
+    "runtime/tests/test_planning_stack_g029.py": {
+      "git_blob": "a51e7de231ad2e08c331fbcd6c38c819286c46b3",
+      "sha256": "a6653a48912f0c0e800f0b0809feab95315cba52a10f59484f89e4b8664ee11e"
+    },
+    "runtime/src/core/dag_engine.py": {
+      "git_blob": "ed4361e9e2ca93e6744f9946d2334bf55b3ef63a",
+      "sha256": "cdc88ea0cf66684e5eac4556cecb5b2e53c04e919b83ac127cedf4787e8aa2df"
+    },
+    "runtime/src/core/parallel_scheduler.py": {
+      "git_blob": "2d224ef6f0f53ead4fb0c4c371e5dfd25cc59aea",
+      "sha256": "bdf3f1399e1da203f09b4f4b8d2f4688ab3560c301d38aed246179ecd3e76648"
+    }
+  },
+  "limits": [
+    "No external orchestrator was installed or executed.",
+    "No provider, sandbox, deployment, or global PASS is claimed.",
+    "G-013 and G-018 were not modified."
+  ],
+  "no_lfs": true,
+  "no_force": true
+}

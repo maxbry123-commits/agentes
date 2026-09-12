@@ -1,0 +1,88 @@
+{
+  "schema": "yaiwes.planning-stack-matrix/v1",
+  "decision": "REUSE_LOCAL_STACK",
+  "selected_stack": ["dag_engine", "mavis_parallel_scheduler"],
+  "uncovered_planning_capabilities": [],
+  "new_component_required": false,
+  "candidates": [
+    {
+      "id": "dag_engine",
+      "source": "runtime/src/core/dag_engine.py",
+      "decision": "ADOPT",
+      "capabilities": ["dag_validation", "cycle_detection", "topological_order", "ready_batches"],
+      "reason": "Motor local canónico, determinista y sin dependencia externa.",
+      "concrete_gap": null
+    },
+    {
+      "id": "mavis_parallel_scheduler",
+      "source": "runtime/src/core/parallel_scheduler.py",
+      "decision": "ADOPT",
+      "capabilities": ["priority", "bounded_concurrency", "backpressure", "fan_out_fan_in", "dedup", "idempotency"],
+      "reason": "Complementa DAGEngine y quedó cableado/verificado en G-021.",
+      "concrete_gap": null
+    },
+    {
+      "id": "dagster",
+      "source": "https://docs.dagster.io/",
+      "decision": "REJECT",
+      "capabilities": ["data_assets", "lineage", "asset_checks", "schedules"],
+      "reason": "No existe un GAP de asset/data orchestration que justifique sustituir el stack local.",
+      "concrete_gap": null,
+      "reconsider_if": "Se abre un GAP verificable de lineage o assets de datos."
+    },
+    {
+      "id": "prefect",
+      "source": "https://docs.prefect.io/",
+      "decision": "REJECT",
+      "capabilities": ["python_flows", "dynamic_control_flow", "deployments", "automations"],
+      "reason": "Solapa DAG, scheduler y eventos locales sin cubrir un GAP actual.",
+      "concrete_gap": null,
+      "reconsider_if": "Se demuestra un flujo dinámico no representable por los contratos actuales."
+    },
+    {
+      "id": "argo_workflows",
+      "source": "https://argo-workflows.readthedocs.io/en/latest/",
+      "decision": "REJECT",
+      "capabilities": ["kubernetes_jobs", "container_dag", "artifacts", "cron_workflows"],
+      "reason": "Requiere Kubernetes y no hay un GAP autorizado de ejecución container-native.",
+      "concrete_gap": null,
+      "reconsider_if": "El destino real pasa a ser un clúster Kubernetes con jobs por contenedor."
+    },
+    {
+      "id": "inngest",
+      "source": "https://www.inngest.com/docs",
+      "decision": "REJECT",
+      "capabilities": ["event_driven", "durable_functions", "step_retries"],
+      "reason": "La planificación actual no necesita un runtime gestionado adicional.",
+      "concrete_gap": null,
+      "reconsider_if": "Se demuestra un requisito externo de durable functions basado en eventos."
+    },
+    {
+      "id": "trigger_dev",
+      "source": "https://trigger.dev/docs/introduction",
+      "decision": "REJECT",
+      "capabilities": ["background_jobs", "scheduled_tasks", "retries"],
+      "reason": "Añadiría otro runtime de tareas sin una capacidad de planificación faltante.",
+      "concrete_gap": null,
+      "reconsider_if": "Se documenta un GAP de jobs externos que el scheduler local no puede ejecutar."
+    },
+    {
+      "id": "restate",
+      "source": "https://docs.restate.dev/",
+      "decision": "REJECT",
+      "capabilities": ["durable_execution", "durable_services", "event_processing"],
+      "reason": "Durabilidad externa no es un GAP de planificación G-029 y no debe crear otro orquestador.",
+      "concrete_gap": null,
+      "reconsider_if": "Un GAP independiente exige recuperación distribuida que los checkpoints no cubren."
+    },
+    {
+      "id": "apache_airflow",
+      "source": "https://airflow.apache.org/docs/apache-airflow/stable/",
+      "decision": "REJECT",
+      "capabilities": ["batch_workflows", "scheduling", "data_pipelines", "backfills"],
+      "reason": "El proyecto no presenta un GAP actual de batch data pipeline o backfill.",
+      "concrete_gap": null,
+      "reconsider_if": "Se abre un workload real de datos por lotes con backfills."
+    }
+  ]
+}

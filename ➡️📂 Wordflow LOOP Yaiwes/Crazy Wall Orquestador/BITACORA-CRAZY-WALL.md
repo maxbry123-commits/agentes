@@ -331,6 +331,19 @@ Nodo independiente reclamado y cerrado por `ASTRA_GPT_LOOP`; G-013 de SOL_1 y G-
 
 Resultado: `G-025 CLOSED_VERIFIED_LOCAL`. Sin benchmark ni claim de aceleración; sin PASS global, proveedor externo, sandbox o deployment.
 
+# ASTRA-GPT-LOOP — CIERRE LOCAL G-029 — 2026-09-12
+
+Nodo independiente reclamado y cerrado por `ASTRA_GPT_LOOP`; G-013 de SOL_1 y G-018 de SOL_2 no fueron modificados.
+
+- GAP comprobado: G-029 exigía una matriz comparativa y decisión, pero solo existían recomendaciones en prosa.
+- Se contrastaron DAGEngine/Mavis y Dagster, Prefect, Argo Workflows, Inngest, Trigger.dev, Restate y Airflow contra documentación oficial vigente.
+- Decisión: `REUSE_LOCAL_STACK`; DAGEngine + scheduler de G-021 cubren las capacidades de planificación comprobadas. Los siete externos quedan `REJECT` en el alcance actual, cada uno con condición explícita de reconsideración.
+- No existe capacidad de planificación descubierta sin cubrir; no se adquirió ni movió componente y no se modificó runtime productivo.
+- Ejecución local real: `PASS_5_OF_5`, incluida ordenación DAG y batches por prioridad/dependencia/concurrencia.
+- Evidence: `wordflow_loop/evidence/G029_PLANNING_STACK_DECISION_2026-09-12.json`.
+
+Resultado: `G-029 CLOSED_VERIFIED_LOCAL`. Sin PASS global ni ejecución de orquestadores externos.
+
 # ASTRA-GPT-LOOP — CIERRE LOCAL G-007 — 2026-09-12
 
 Nodo independiente `G-007` reclamado y cerrado por `ASTRA_GPT_LOOP`; G-013 de SOL_1 y G-018 de SOL_2 no fueron modificados.
