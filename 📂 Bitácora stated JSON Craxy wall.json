@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T20:51:36Z",
+  "updated_at": "2026-09-12T20:52:09Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1525,14 +1525,14 @@
       "component": "Agenta",
       "source": "Core kernel Yaiwes/Componentes recuperados B/Agenta/",
       "current_step": 3,
-      "status": "PENDING_STEP3",
+      "status": "PASS",
       "abc": "B",
       "target": "Agente Yaiwes principal/agent-fleet-parallelism/agenta/",
-      "owner": "SOL",
-      "lock": "CLAIMED",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-12T20:50:54Z SOL integración 3 STEP3 claim: canonical FABLES bus 470f9c91650bc6c59e2900f7e71090b84363da9f; execute real Agenta build_agent_template_overlay and verify scheduling/subscription/run/tracing ops and sandbox permissions",
-        "after": "STEP2 PASS: canonical Motor4 MOVE; source absent; target populated; run=34718100611; move_commit=46099c22078adf219d7815a394391b6e52edac42"
+        "after": "STEP3 PASS: canonical FABLES ACTIVE for yaiwes.agent_fleet.agenta; real moved Agenta build_agent_template_overlay verified commit/test_run/tracing/schedule/subscription ops and sandbox permissions; L2+L3+L4; prune NOT_NEEDED; origin/main evidence read-back PASS."
       },
       "evidence": [
         "worker:SOL integración 3",
@@ -1543,7 +1543,15 @@
         "step2:motor4_blob:9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
         "step2:run:34718100611",
         "step2:move_commit:46099c22078adf219d7815a394391b6e52edac42",
-        "step2:readback:origin/main source absent target populated"
+        "step2:readback:origin/main source absent target populated",
+        "step3:run:34718251035",
+        "step3:evidence_commit:ce1c6366d5e597c1545e286ba56139cdfe79f89b",
+        "step3:canonical_bus_blob:470f9c91650bc6c59e2900f7e71090b84363da9f",
+        "step3:route:FABLES->Agenta adapter->build_agent_template_overlay->platform ops",
+        "step3:microtest:PASS commit_revision+test_run+query_spans+create_schedule+create_subscription",
+        "step3:evidence:L2_build+L3_runtime+L4_feature",
+        "step3:prune:NOT_NEEDED",
+        "step3:readback:adapter+ficha+evidence PASS"
       ],
       "history": [
         {
@@ -1577,9 +1585,17 @@
           "actor": "SOL",
           "label": "SOL integración 3",
           "event": "CLAIM_STEP3"
+        },
+        {
+          "at": "2026-09-12T20:52:09Z",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "STEP3_PASS_RELEASE",
+          "run": 34718251035,
+          "commit": "ce1c6366d5e597c1545e286ba56139cdfe79f89b"
         }
       ],
-      "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
+      "next_action": "COMPLETE"
     },
     {
       "id": 30,
@@ -1644,7 +1660,7 @@
     }
   ],
   "counts": {
-    "closed_current_contract": 28
+    "closed_current_contract": 29
   },
   "kernel_hold_policy": {
     "approved": true,
