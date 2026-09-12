@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T21:00:07Z",
+  "updated_at": "2026-09-12T21:02:19Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1775,7 +1775,7 @@
       "lock": "CLAIMED",
       "checkpoint": {
         "before": "2026-09-12T20:58:20Z SOL integración 2 N32 STEP3 claim: STEP2 Motor4/read-back PASS; wire canonical FABLES; compile/run real Casbin ACL allow/deny microtest from moved source; prune only if concrete cause",
-        "after": "STEP3 GAP run 34718600250: Casbin module language is Go 1.13; microtest used predeclared alias any (Go 1.18+). Component/FABLES claim verified; exact repair is map[string]interface{} and repeat same ACL test."
+        "after": "STEP3 GAP run 34718676175: Casbin ACL microtest PASS after Go1.13 repair, but FABLES ficha used noncanonical categoria=validator and etapa=V. Exact repair: canonical schema transform + pipeline + P; repeat same ACL through adapter."
       },
       "evidence": [
         "worker:SOL integración 2",
@@ -1788,7 +1788,8 @@
         "step2:run:34718435582",
         "step2:move_commit:f295319dc264b21c8f5ca83f8d617ddd6bd74f01",
         "step2:readback:origin/main source absent target populated go.mod PASS",
-        "step3:gap_run:34718600250:go1.13_language:predeclared_any_requires_go1.18"
+        "step3:gap_run:34718600250:go1.13_language:predeclared_any_requires_go1.18",
+        "step3:gap_run:34718676175:FichaValidationError:V01_categoria+V02_etapa"
       ],
       "history": [
         {
@@ -1829,6 +1830,13 @@
           "label": "SOL integración 2",
           "event": "STEP3_GAP_GO113_ANY_REPAIR_RETRY",
           "run": 34718600250
+        },
+        {
+          "at": "2026-09-12T21:02:19Z",
+          "actor": "SOL",
+          "label": "SOL integración 2",
+          "event": "STEP3_GAP_FABLES_FICHA_REPAIR_RETRY",
+          "run": 34718676175
         }
       ],
       "next_action": "REPAIR_EXACT_STEP3_GAP_AND_RETRY"
