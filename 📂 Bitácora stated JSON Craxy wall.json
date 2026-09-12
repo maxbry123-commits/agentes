@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T21:41:35Z",
+  "updated_at": "2026-09-12T21:41:50Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1967,18 +1967,23 @@
       "id": 34,
       "component": "AI-Scientist",
       "source": "Core kernel Yaiwes/Componentes recuperados B/AI-Scientist/",
-      "current_step": 1,
-      "status": "PENDING_STEP1",
-      "abc": null,
-      "target": null,
-      "owner": "SOL",
-      "lock": "CLAIMED",
+      "current_step": 2,
+      "status": "PASS_STEP1",
+      "abc": "A",
+      "target": "Agente Yaiwes principal/agent-fleet-parallelism/ai-scientist/",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-12T21:41:35Z SOL integración 3 fresh main: physical inventory wall_node_id=null; nested upstream README+launch_scientist present; execute STEP1 only",
-        "after": null
+        "after": "STEP1 PASS: README states comprehensive fully automatic scientific discovery and independent research; launch_scientist executable present; classify A agent/subagent; destination agent-fleet-parallelism/ai-scientist."
       },
       "evidence": [
-        "worker:SOL integración 3"
+        "worker:SOL integración 3",
+        "step1:readme_blob:6d9b58e462117e7b653ae2a34407e96c3d0ce16a",
+        "step1:launch_blob:2fe7a49ca3477c816cd643854b1cdd2ad05cbdda",
+        "step1:classification:A",
+        "step1:target:Agente Yaiwes principal/agent-fleet-parallelism/ai-scientist/",
+        "step1:reason:fully automatic scientific discovery agent performing research independently"
       ],
       "history": [
         {
@@ -1986,9 +1991,15 @@
           "actor": "SOL",
           "label": "SOL integración 3",
           "event": "CLAIM_STEP1"
+        },
+        {
+          "at": "2026-09-12T21:41:50Z",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "STEP1_PASS_RELEASE"
         }
       ],
-      "next_action": "STEP_1_ANALYZE_ABC_DESTINATION"
+      "next_action": "STEP_2_MOVE_WITH_CANONICAL_MOTOR"
     }
   ],
   "counts": {

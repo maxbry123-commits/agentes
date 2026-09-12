@@ -58,9 +58,9 @@
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
       "wall_node_id": 34,
-      "wall_status": "PENDING_STEP1",
-      "wall_current_step": 1,
-      "wall_target": null
+      "wall_status": "PASS_STEP1",
+      "wall_current_step": 2,
+      "wall_target": "Agente Yaiwes principal/agent-fleet-parallelism/ai-scientist/"
     },
     {
       "name": "AI-Scientist-v2",
