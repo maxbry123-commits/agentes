@@ -409,26 +409,32 @@
       "id": "G-022",
       "task": "Cerrar sandbox → reviewer → deploy con aislamiento enforceable y pruebas de rechazo/promoción.",
       "literal_sha256": "3d61116afce40ba6300335aef2abc0d21d215809284925e6e4944af3ade570ae",
-      "status": "PENDING",
-      "claimed_by": null,
+      "status": "CLAIMED",
+      "claimed_by": "ASTRA_GPT_LOOP",
       "depends_on": [],
       "steps": [
         {
           "id": "1_RESEARCH",
-          "status": "PENDING"
+          "status": "PASS"
         },
         {
           "id": "2_MOTOR",
-          "status": "PENDING"
+          "status": "RUNNING"
         },
         {
           "id": "3_WIRE_TEST",
           "status": "PENDING"
         }
       ],
-      "evidence": [],
-      "gaps": [],
-      "version": 1,
+      "evidence": [
+        "runtime_probe:bwrap_netlink_operation_not_permitted",
+        "runtime_probe:unshare_uid_map_operation_not_permitted"
+      ],
+      "gaps": [
+        "CALLER_SUPPLIED_ATTESTATION_CAN_FABRICATE_READY_VERIFIED",
+        "RUNTIME_NAMESPACE_ISOLATION_BLOCKED_BY_HOST"
+      ],
+      "version": 2,
       "checker": "ASTRA_GPT"
     },
     {
