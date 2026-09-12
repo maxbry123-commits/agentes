@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T21:44:04Z",
+  "updated_at": "2026-09-12T21:44:33Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1975,15 +1975,15 @@
       "id": 34,
       "component": "AI-Scientist",
       "source": "Core kernel Yaiwes/Componentes recuperados B/AI-Scientist/",
-      "current_step": 2,
-      "status": "PENDING_STEP2",
+      "current_step": 3,
+      "status": "PASS_STEP2",
       "abc": "A",
       "target": "Agente Yaiwes principal/agent-fleet-parallelism/ai-scientist/",
-      "owner": "SOL",
-      "lock": "CLAIMED",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-12T21:44:04Z SOL integración 3 STEP2 claim: execute immutable canonical Motor4 only; source AI-Scientist outer component -> agent-fleet-parallelism/ai-scientist; require VERIFIED_CLOSED + origin/main read-back",
-        "after": "STEP1 PASS: README states comprehensive fully automatic scientific discovery and independent research; launch_scientist executable present; classify A agent/subagent; destination agent-fleet-parallelism/ai-scientist."
+        "after": "STEP2 PASS: immutable canonical Motor4 VERIFIED_CLOSED; source files remaining 0; move persisted to main; target nested upstream README+launch_scientist read-back PASS."
       },
       "evidence": [
         "worker:SOL integración 3",
@@ -1993,7 +1993,11 @@
         "step1:target:Agente Yaiwes principal/agent-fleet-parallelism/ai-scientist/",
         "step1:reason:fully automatic scientific discovery agent performing research independently",
         "step2:motor4_blob:9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
-        "step2:runner:.github/workflows/yaiwes-sol3-ai-scientist-step2.yml"
+        "step2:runner:.github/workflows/yaiwes-sol3-ai-scientist-step2.yml",
+        "step2:run:34720741204",
+        "step2:move_commit:61c067fbf8a7389b21272778a8445025799fc31c",
+        "step2:motor4:VERIFIED_CLOSED:failed=0:pending=0:source_files_remaining=0",
+        "step2:readback:origin/main source_absent+target/AI-Scientist/README+launch_scientist PASS"
       ],
       "history": [
         {
@@ -2013,9 +2017,17 @@
           "actor": "SOL",
           "label": "SOL integración 3",
           "event": "CLAIM_STEP2"
+        },
+        {
+          "at": "2026-09-12T21:44:33Z",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "STEP2_PASS_RELEASE",
+          "run": 34720741204,
+          "commit": "61c067fbf8a7389b21272778a8445025799fc31c"
         }
       ],
-      "next_action": "STEP_2_MOVE_WITH_CANONICAL_MOTOR"
+      "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
     }
   ],
   "counts": {
