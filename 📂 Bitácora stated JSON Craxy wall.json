@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T20:59:10Z",
+  "updated_at": "2026-09-12T21:00:07Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1768,14 +1768,14 @@
       "component": "Casbin",
       "source": "Core kernel Yaiwes/Componentes recuperados B/Casbin/",
       "current_step": 3,
-      "status": "PENDING_STEP3",
+      "status": "GAP_STEP3",
       "abc": "C",
       "target": "Agente Yaiwes principal/definition-registry/authorization-model/casbin/",
       "owner": "SOL",
       "lock": "CLAIMED",
       "checkpoint": {
         "before": "2026-09-12T20:58:20Z SOL integración 2 N32 STEP3 claim: STEP2 Motor4/read-back PASS; wire canonical FABLES; compile/run real Casbin ACL allow/deny microtest from moved source; prune only if concrete cause",
-        "after": "STEP2 PASS: canonical Motor4 MOVE; source absent target populated; run=34718435582; move_commit=f295319dc264b21c8f5ca83f8d617ddd6bd74f01"
+        "after": "STEP3 GAP run 34718600250: Casbin module language is Go 1.13; microtest used predeclared alias any (Go 1.18+). Component/FABLES claim verified; exact repair is map[string]interface{} and repeat same ACL test."
       },
       "evidence": [
         "worker:SOL integración 2",
@@ -1787,7 +1787,8 @@
         "step2:motor4_blob:9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
         "step2:run:34718435582",
         "step2:move_commit:f295319dc264b21c8f5ca83f8d617ddd6bd74f01",
-        "step2:readback:origin/main source absent target populated go.mod PASS"
+        "step2:readback:origin/main source absent target populated go.mod PASS",
+        "step3:gap_run:34718600250:go1.13_language:predeclared_any_requires_go1.18"
       ],
       "history": [
         {
@@ -1821,9 +1822,16 @@
           "actor": "SOL",
           "label": "SOL integración 2",
           "event": "CLAIM_STEP3"
+        },
+        {
+          "at": "2026-09-12T21:00:07Z",
+          "actor": "SOL",
+          "label": "SOL integración 2",
+          "event": "STEP3_GAP_GO113_ANY_REPAIR_RETRY",
+          "run": 34718600250
         }
       ],
-      "next_action": "STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
+      "next_action": "REPAIR_EXACT_STEP3_GAP_AND_RETRY"
     }
   ],
   "counts": {
