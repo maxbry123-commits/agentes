@@ -1,0 +1,43 @@
+{
+  "schema": "yaiwes.evidence/v1",
+  "gap_id": "G-025",
+  "owner": "ASTRA_GPT_LOOP",
+  "base_main_sha": "2d4fc1e881f86a372c807ef5ec24270464e63174",
+  "result": "CLOSED_VERIFIED_LOCAL",
+  "gap_reproduced": "MAVIS_POOL_PRESENT_BUT_25_PATTERN_DECISION_MATRIX_AND_BENCHMARK_GATE_MISSING",
+  "implementation": {
+    "matrix": "wordflow_loop/contracts/mavis-parallel-g025-matrix.json",
+    "patterns": 25,
+    "decisions": ["ADOPT", "ADAPT", "REJECT"],
+    "new_external_components": 0,
+    "motor_status": "NOT_REQUIRED_NO_COMPONENT_ACQUISITION_OR_MOVE",
+    "performance_claims": [],
+    "benchmark_status": "NOT_REQUIRED_NO_PERFORMANCE_CLAIM",
+    "claim_authorized": false
+  },
+  "tests": {
+    "command": "python importlib runner over runtime/tests/test_mavis_parallel_g025.py",
+    "result": "PASS_8_OF_8",
+    "pytest": "NOT_INSTALLED_NOT_CLAIMED",
+    "external_runtime": "NOT_CLAIMED"
+  },
+  "read_back": {
+    "runtime/src/parallel/mavis_parallel.py": {
+      "git_blob": "b8be2386b5bf8d1baeec734baa19f370706153c2",
+      "sha256": "80d6abde46c6b5ea4faefbe0978b1878cb1805c0a3661a3d069e9ebb26eb440e"
+    },
+    "runtime/tests/test_mavis_parallel_g025.py": {
+      "git_blob": "81b7667430219bf311377651b4b23ae6a53d718c",
+      "sha256": "049b8314ef4e2eb2e17b2a4950ff47c69ede6f20da4bdfab27464e39dd5141f9"
+    },
+    "wordflow_loop/contracts/mavis-parallel-g025-matrix.json": {
+      "git_blob": "622a112a226cdc33e065afc069bd36f98b96e8c7",
+      "sha256": "d7c11f053e4b43e19204d1c04669a8f74f74b56919289000bacec51c83820b20"
+    }
+  },
+  "limits": [
+    "No benchmark was run because no performance claim exists.",
+    "No global PASS, provider PASS, sandbox PASS, or deployment PASS is claimed.",
+    "G-013 and G-018 were not modified."
+  ]
+}

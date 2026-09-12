@@ -1,0 +1,32 @@
+{
+  "schema": "yaiwes.mavis-pattern-matrix/v1",
+  "performance_claims": [],
+  "benchmark_status": "NOT_REQUIRED_NO_PERFORMANCE_CLAIM",
+  "patterns": [
+    {"pattern":"persistent_pool","decision":"ADAPT","evidence_refs":["runtime/src/parallel/mavis_parallel.py:MavisPool","runtime/src/recovery/checkpoint.py:CheckpointManager"],"reason":"El pool es persistente durante el proceso; la recuperación durable pertenece al checkpoint."},
+    {"pattern":"priority_queue","decision":"ADOPT","evidence_refs":["runtime/src/parallel/mavis_parallel.py:PriorityTaskQueue","runtime/src/core/parallel_scheduler.py:plan_tasks"],"reason":"Prioridad determinista 1=mayor urgencia ya verificada en G-021."},
+    {"pattern":"cache","decision":"ADOPT","evidence_refs":["runtime/src/parallel/mavis_parallel.py:SmartCache"],"reason":"Cache local con clave JSON canónica SHA-256."},
+    {"pattern":"batching","decision":"ADOPT","evidence_refs":["runtime/src/parallel/mavis_parallel.py:MavisPool.run_batch"],"reason":"Lotes independientes ya soportados."},
+    {"pattern":"backpressure","decision":"ADOPT","evidence_refs":["runtime/src/parallel/mavis_parallel.py:MavisPool.run_batch","runtime/src/core/parallel_scheduler.py:plan_tasks"],"reason":"Semáforo y límite de cola aplican capacidad explícita."},
+    {"pattern":"async_pipeline","decision":"ADOPT","evidence_refs":["runtime/src/parallel/mavis_parallel.py:MavisPool.execute_task"],"reason":"Ejecución asyncio existente."},
+    {"pattern":"dedup","decision":"ADOPT","evidence_refs":["runtime/src/parallel/mavis_parallel.py:MavisPool._inflight","runtime/src/core/parallel_scheduler.py:idempotency_key"],"reason":"Deduplicación exacta en vuelo e idempotencia persistida."},
+    {"pattern":"job_abi","decision":"ADAPT","evidence_refs":["runtime/src/core/code_task_graph.py:CodeTask","runtime/src/core/parallel_scheduler.py:TaskEnvelope"],"reason":"Reutilizar contratos existentes; no crear ABI paralelo."},
+    {"pattern":"registry","decision":"ADAPT","evidence_refs":["runtime/src/agent/agent_router.py:AgentRouter"],"reason":"Usar el registro canónico de agentes."},
+    {"pattern":"factory","decision":"REJECT","evidence_refs":["runtime/src/parallel/mavis_parallel.py:MavisPool"],"reason":"No hay GAP que justifique una factory nueva."},
+    {"pattern":"dependency_injection","decision":"ADAPT","evidence_refs":["runtime/src/parallel/mavis_parallel.py:worker_fn"],"reason":"La función worker ya es una dependencia explícita inyectada."},
+    {"pattern":"event_bus","decision":"ADAPT","evidence_refs":["runtime/src/core/event_bus.py:EventBus"],"reason":"Reutilizar el bus existente; prohibido crear otro."},
+    {"pattern":"middleware","decision":"REJECT","evidence_refs":["runtime/src/core/kernel.py:Kernel"],"reason":"Los gates del kernel cubren el límite; otra capa no está justificada."},
+    {"pattern":"fsm","decision":"ADAPT","evidence_refs":["runtime/src/core/state_machine.py:StateMachine"],"reason":"Reutilizar FSM canónica."},
+    {"pattern":"checkpoints","decision":"ADAPT","evidence_refs":["runtime/src/recovery/checkpoint.py:CheckpointManager"],"reason":"Reutilizar checkpoint existente."},
+    {"pattern":"audit","decision":"ADAPT","evidence_refs":["runtime/src/observability/engine.py:ObservabilityEngine"],"reason":"Emitir evidencia mediante observabilidad existente."},
+    {"pattern":"tests","decision":"ADOPT","evidence_refs":["runtime/tests/test_mavis_parallel_g025.py"],"reason":"Pruebas locales deterministas dedicadas."},
+    {"pattern":"versioning","decision":"ADAPT","evidence_refs":["runtime/plugin-manifest.yaml"],"reason":"Conservar versionado del manifest canónico."},
+    {"pattern":"sandbox","decision":"REJECT","evidence_refs":["Crazy Wall Orquestador/TASK-NODES.json:G-022"],"reason":"G-022 sigue abierto; Mavis no debe fingir aislamiento."},
+    {"pattern":"capability_routing","decision":"ADAPT","evidence_refs":["runtime/src/agent/agent_router.py:AgentRouter"],"reason":"Reutilizar routing canónico."},
+    {"pattern":"fan_out_fan_in","decision":"ADOPT","evidence_refs":["runtime/src/core/parallel_scheduler.py:execute_tasks"],"reason":"Dependencias y lotes listos ya verifican fan-out/fan-in en G-021."},
+    {"pattern":"dlq","decision":"ADAPT","evidence_refs":["runtime/src/recovery/engine.py:RecoveryEngine"],"reason":"Adaptar la recuperación existente si se demuestra una necesidad concreta de DLQ."},
+    {"pattern":"outbox","decision":"REJECT","evidence_refs":["runtime/src/core/parallel_scheduler.py:execute_tasks"],"reason":"No hay entrega externa transaccional que justifique outbox adicional."},
+    {"pattern":"multi_pool","decision":"REJECT","evidence_refs":["runtime/src/parallel/mavis_parallel.py:MavisPool"],"reason":"Un pool acotado satisface el GAP actual."},
+    {"pattern":"durable_recovery","decision":"ADAPT","evidence_refs":["runtime/src/recovery/engine.py:RecoveryEngine","runtime/src/recovery/checkpoint.py:CheckpointManager"],"reason":"Reutilizar estado y recuperación canónicos."}
+  ]
+}

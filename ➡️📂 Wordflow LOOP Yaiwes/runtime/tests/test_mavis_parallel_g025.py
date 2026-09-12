@@ -1,6 +1,65 @@
 import asyncio
+from pathlib import Path
 
-from runtime.src.parallel.mavis_parallel import MavisPool
+from runtime.src.parallel.mavis_parallel import (
+    MavisPool,
+    evaluate_benchmark_gate,
+    load_pattern_matrix,
+)
+
+
+MATRIX_PATH = (
+    Path(__file__).parents[2]
+    / "wordflow_loop"
+    / "contracts"
+    / "mavis-parallel-g025-matrix.json"
+)
+
+
+def test_g025_matrix_covers_every_director_pattern_with_evidence():
+    required = {
+        "persistent_pool", "priority_queue", "cache", "batching", "backpressure",
+        "async_pipeline", "dedup", "job_abi", "registry", "factory", "dependency_injection",
+        "event_bus", "middleware", "fsm", "checkpoints", "audit", "tests", "versioning",
+        "sandbox", "capability_routing", "fan_out_fan_in", "dlq", "outbox", "multi_pool",
+        "durable_recovery",
+    }
+    matrix = load_pattern_matrix(MATRIX_PATH)
+    assert set(matrix) == required
+    assert all(row["decision"] in {"ADOPT", "ADAPT", "REJECT"} for row in matrix.values())
+
+
+def test_g025_matrix_evidence_paths_and_symbols_exist():
+    root = Path(__file__).parents[2]
+    matrix = load_pattern_matrix(MATRIX_PATH)
+    for row in matrix.values():
+        for reference in row["evidence_refs"]:
+            relative_path, separator, symbol = reference.partition(":")
+            source = root / relative_path
+            assert source.is_file(), reference
+            if separator:
+                symbol_name = symbol.rsplit(".", 1)[-1]
+                assert symbol_name in source.read_text(encoding="utf-8"), reference
+
+
+def test_benchmark_is_not_invented_without_performance_claim():
+    result = evaluate_benchmark_gate([], [])
+    assert result["status"] == "NOT_REQUIRED_NO_PERFORMANCE_CLAIM"
+    assert result["benchmark_required"] is False
+    assert result["claim_authorized"] is False
+
+
+def test_performance_claim_fails_closed_without_benchmark_evidence():
+    result = evaluate_benchmark_gate(["20x faster"], [])
+    assert result["status"] == "BLOCKED_BENCHMARK_EVIDENCE_REQUIRED"
+    assert result["benchmark_required"] is True
+    assert result["claim_authorized"] is False
+
+
+def test_benchmark_evidence_never_self_authorizes_claim():
+    result = evaluate_benchmark_gate(["lower latency"], ["benchmark://run/1"])
+    assert result["status"] == "EVIDENCE_PRESENT_REVIEW_REQUIRED"
+    assert result["claim_authorized"] is False
 
 
 def test_concurrent_duplicate_payload_executes_worker_once():

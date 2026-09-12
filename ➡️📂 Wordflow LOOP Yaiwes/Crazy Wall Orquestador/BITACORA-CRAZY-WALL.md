@@ -318,6 +318,19 @@ Evidence: `wordflow_loop/evidence/G012_COMPONENT_INTAKE_2026-09-12.json`. Commit
 
 Resultado: `G-012 CLOSED_VERIFIED_LOCAL_REAL_MOTORS`. G-013 y G-018 permanecen bajo sus propietarios.
 
+# ASTRA-GPT-LOOP — CIERRE LOCAL G-025 — 2026-09-12
+
+Nodo independiente reclamado y cerrado por `ASTRA_GPT_LOOP`; G-013 de SOL_1 y G-018 de SOL_2 no fueron modificados.
+
+- GAP comprobado: MavisPool tenía cache, batching, backpressure y deduplicación con tres pruebas, pero no existía la matriz ADOPT/ADAPT/REJECT de los 25 patrones literales ni un gate para impedir claims de rendimiento sin benchmark.
+- Añadida matriz canónica de 25/25 patrones con decisión, evidencia y justificación. No se adquirió ni movió componente: `MOTOR_NOT_REQUIRED`.
+- Añadido loader fail-closed: schema, filas, decisiones, duplicados y referencias de evidencia son validados.
+- Añadido gate de benchmark: sin claim no inventa benchmark; con claim sin evidencia bloquea; con evidencia todavía exige revisión y nunca autoautoriza el claim.
+- Ejecución local real mediante importlib: `PASS_8_OF_8`. Pytest no está instalado y no se reclama.
+- Evidence: `wordflow_loop/evidence/G025_MAVIS_PATTERN_MATRIX_2026-09-12.json`.
+
+Resultado: `G-025 CLOSED_VERIFIED_LOCAL`. Sin benchmark ni claim de aceleración; sin PASS global, proveedor externo, sandbox o deployment.
+
 # ASTRA-GPT-LOOP — CIERRE LOCAL G-007 — 2026-09-12
 
 Nodo independiente `G-007` reclamado y cerrado por `ASTRA_GPT_LOOP`; G-013 de SOL_1 y G-018 de SOL_2 no fueron modificados.

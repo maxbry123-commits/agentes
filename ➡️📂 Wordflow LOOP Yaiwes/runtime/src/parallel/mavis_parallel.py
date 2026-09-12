@@ -4,7 +4,66 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional
+
+
+VALID_PATTERN_DECISIONS = frozenset({"ADOPT", "ADAPT", "REJECT"})
+
+
+def load_pattern_matrix(path: Path) -> Dict[str, Dict[str, Any]]:
+    """Load and validate the G-025 decision matrix without authorizing execution."""
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if payload.get("schema") != "yaiwes.mavis-pattern-matrix/v1":
+        raise ValueError("unsupported MAVIS pattern matrix schema")
+    rows = payload.get("patterns")
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("patterns must be a non-empty list")
+
+    matrix: Dict[str, Dict[str, Any]] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("each pattern must be an object")
+        pattern = row.get("pattern")
+        decision = row.get("decision")
+        evidence = row.get("evidence_refs")
+        if not isinstance(pattern, str) or not pattern:
+            raise ValueError("pattern must be a non-empty string")
+        if pattern in matrix:
+            raise ValueError(f"duplicate pattern: {pattern}")
+        if decision not in VALID_PATTERN_DECISIONS:
+            raise ValueError(f"invalid decision for {pattern}")
+        if not isinstance(evidence, list) or not evidence or not all(
+            isinstance(item, str) and item for item in evidence
+        ):
+            raise ValueError(f"evidence_refs required for {pattern}")
+        matrix[pattern] = dict(row)
+    return matrix
+
+
+def evaluate_benchmark_gate(
+    performance_claims: List[str], benchmark_evidence: List[str]
+) -> Dict[str, Any]:
+    """Require measured evidence only when a performance claim is made."""
+    claims = [item.strip() for item in performance_claims if item.strip()]
+    evidence = [item.strip() for item in benchmark_evidence if item.strip()]
+    if not claims:
+        return {
+            "status": "NOT_REQUIRED_NO_PERFORMANCE_CLAIM",
+            "benchmark_required": False,
+            "claim_authorized": False,
+        }
+    if not evidence:
+        return {
+            "status": "BLOCKED_BENCHMARK_EVIDENCE_REQUIRED",
+            "benchmark_required": True,
+            "claim_authorized": False,
+        }
+    return {
+        "status": "EVIDENCE_PRESENT_REVIEW_REQUIRED",
+        "benchmark_required": True,
+        "claim_authorized": False,
+    }
 
 
 class SmartCache:

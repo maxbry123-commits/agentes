@@ -489,28 +489,33 @@
       "id": "G-025",
       "task": "Cerrar matriz MAVIS/PARALLEL ADOPT/ADAPT/REJECT y benchmark solo cuando una claim de rendimiento lo requiera.",
       "literal_sha256": "05e641ba6c4ec586270d98a9908abc62540daf92d9f9bac9e1c336ec6be413b8",
-      "status": "PENDING",
-      "claimed_by": null,
+      "status": "PASS",
+      "claimed_by": "ASTRA_GPT_LOOP",
       "depends_on": [
         "G-021"
       ],
       "steps": [
         {
           "id": "1_RESEARCH",
-          "status": "PENDING"
+          "status": "PASS"
         },
         {
           "id": "2_MOTOR",
-          "status": "PENDING"
+          "status": "PASS"
         },
         {
           "id": "3_WIRE_TEST",
-          "status": "PENDING"
+          "status": "PASS"
         }
       ],
-      "evidence": [],
-      "gaps": [],
-      "version": 1,
+      "evidence": [
+        "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G025_MAVIS_PATTERN_MATRIX_2026-09-12.json"
+      ],
+      "gaps": [
+        "RESOLVED: 25-pattern ADOPT/ADAPT/REJECT matrix was missing",
+        "RESOLVED: performance claims had no deterministic benchmark evidence gate"
+      ],
+      "version": 3,
       "checker": "ASTRA_GPT"
     },
     {
