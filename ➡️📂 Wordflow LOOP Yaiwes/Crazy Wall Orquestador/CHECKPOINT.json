@@ -25,13 +25,9 @@
     "result": "SOURCE_TRUTH_RECONCILED_0019",
     "owner": "SOL_1",
     "task_nodes_close_commit": "5db4739d6bed2a34bd1e148ed23ea820f6b69aa3",
-    "module_blob": "fb93ce9ee5b86439b0ba36ef72c404134d1984b1",
-    "tests_blob": "f39cb13a84d1dbb7fcb1c1467f712bf003a431df",
     "exact_pytest": "PASS_7_OF_7",
     "truth_readback": "PASS_8_OF_8",
-    "reconciliation_status": "CONSISTENT",
-    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G013_CANONICAL_RECONCILIATION_2026-09-11.json",
-    "decision": "G013_VERIFIED_CLOSED_LOCAL_0019"
+    "reconciliation_status": "CONSISTENT"
   },
   "active_node": {
     "gap": "G-019",
@@ -40,28 +36,34 @@
     "task_nodes_state": "CLAIMED_SOL_1_VERSION_2",
     "depends_on": ["G-013"],
     "dependency_state": "PASS",
-    "research": "AUDITOR_V2_IMPLEMENTED_REAL_TREE_CLASSIFICATION_RUNNING",
+    "research": "AUDITOR_V4_REAL_TREE_CLASSIFICATION_RUNNING",
     "module": "runtime/src/core/wordflow_global_audit.py",
-    "module_commit": "318b1ffd5bed89847cdb3213378c6228ba3ca5f9",
-    "module_blob": "9194864a5dbeb4e3e153c8990953a3e89e195471",
+    "module_commit": "4f312520a64fef359cb5e6a5a7c0fc037d0c4ea1",
+    "module_blob": "73a247a3bb8df66877887a29ee65393211cdb3ad",
     "tests": "runtime/tests/test_wordflow_global_audit_g019.py",
-    "tests_commit": "904a30d87a5ff2a2e42f65aadf29e56c56c6dc0c",
-    "tests_blob": "24adec374f7872412f3f247b13ea88abf7a18685",
-    "local_exact_test": "PASS_8_OF_8",
+    "tests_commit": "685f4c044db11cc5b5d3a7c6df45b54745a5f991",
+    "tests_blob": "3548c833bcde7298dc064d976cb906d6dc77416a",
+    "local_exact_test": "PASS_11_OF_11",
     "motor": "NOT_REQUIRED_NO_COMPONENT_TRANSFER",
     "evidence": "wordflow_loop/evidence/G019_GLOBAL_WORDFLOW_AUDIT_2026-09-12.json",
-    "evidence_commit": "8cd7cf7dd5b818c3f8d018158d50c756a12565cc",
-    "real_tree_snapshot": {
-      "runtime_tree_sha": "7de7117ea3062f7d60d47447fdb2cd5e93211585",
-      "wordflow_loop_tree_sha": "0174975b4dc2ac56ef7166fc0e663162281ee5ab",
-      "crazy_wall_tree_sha_before_this_checkpoint_write": "c0283463417816c5cfe09dffbd3c73323a7616a9"
+    "evidence_commit": "8387494135cb29062e5243f3ffb34354998f2601",
+    "classified_findings": {
+      "historical_broken_references": 3,
+      "confirmed_broken_internal_imports": 1,
+      "confirmed_broken_internal_import_ids": ["G019-BI-001"]
     },
-    "wire_test_gate": "CLASSIFY_EACH_REAL_TREE_CANDIDATE_AND_PERSIST_READBACK",
-    "authoritative_actions_for_tests_commit": 0,
+    "g019_bi_001": {
+      "source": "runtime/src/uek/uek_cluster.py",
+      "import": "src.uek.cache_engine",
+      "target": "runtime/src/uek/cache_engine.py",
+      "readback": "404_NOT_FOUND",
+      "classification": "FAIL_CLOSED_REAL_CODE_GAP"
+    },
+    "wire_test_gate": "CONTINUE_FULL_REAL_TREE_DUPLICATE_ORPHAN_UNUSED_CLASSIFICATION_AND_PERSIST_READBACK",
     "closure": "OPEN_FAIL_CLOSED"
   },
   "blocked_dependency": "G017_REQUIRES_G022_PHYSICAL_ISOLATION",
   "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
-  "next_action": "CONTINUE_G019_REAL_TREE_IMPORT_GRAPH_AND_CANDIDATE_CLASSIFICATION; DO_NOT_TOUCH_G022_OR_COMP_BROWSER_USE_OR_CLAIM_G027_G028",
+  "next_action": "CONTINUE_G019_ONLY; DO_NOT_TOUCH_G022_OR_COMP_BROWSER_USE_OR_CLAIM_G027_G028_UNTIL_G019_CLOSES",
   "recovery_entrypoint": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md"
 }
