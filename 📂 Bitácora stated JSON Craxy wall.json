@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-12T21:40:01Z",
+  "updated_at": "2026-09-12T21:41:35Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1962,6 +1962,33 @@
         }
       ],
       "next_action": "REPAIR_EXACT_STEP3_GAP_AND_RETRY"
+    },
+    {
+      "id": 34,
+      "component": "AI-Scientist",
+      "source": "Core kernel Yaiwes/Componentes recuperados B/AI-Scientist/",
+      "current_step": 1,
+      "status": "PENDING_STEP1",
+      "abc": null,
+      "target": null,
+      "owner": "SOL",
+      "lock": "CLAIMED",
+      "checkpoint": {
+        "before": "2026-09-12T21:41:35Z SOL integración 3 fresh main: physical inventory wall_node_id=null; nested upstream README+launch_scientist present; execute STEP1 only",
+        "after": null
+      },
+      "evidence": [
+        "worker:SOL integración 3"
+      ],
+      "history": [
+        {
+          "at": "2026-09-12T21:41:35Z",
+          "actor": "SOL",
+          "label": "SOL integración 3",
+          "event": "CLAIM_STEP1"
+        }
+      ],
+      "next_action": "STEP_1_ANALYZE_ABC_DESTINATION"
     }
   ],
   "counts": {

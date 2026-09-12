@@ -57,9 +57,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 34,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
