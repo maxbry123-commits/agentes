@@ -1,25 +1,32 @@
 {
-  "schema": "yaiwes.wordflow_global_audit.evidence/v3",
+  "schema": "yaiwes.wordflow_global_audit.evidence/v4",
   "gap": "G-019",
   "owner": "SOL_1",
-  "status": "AUDITOR_V4_READBACK_VERIFIED_REAL_TREE_CLASSIFICATION_RUNNING",
+  "status": "PASS_REAL_TREE_AUDIT_CLASSIFIED",
   "claim_commit": "d6aafd207ab89db0437d8c4f17da016fec534687",
   "canonical_checkpoint": "WFLOOP-CODE-GRAPH-20260911-0019",
-  "scope": ["inventory","capabilities","exact_duplicates","orphan_candidates","broken_routes","unused_code_candidates","ledger"],
+  "scope": [
+    "inventory",
+    "capabilities",
+    "exact_duplicates",
+    "orphan_candidates",
+    "broken_routes",
+    "unused_code_candidates",
+    "ledger"
+  ],
   "real_tree_snapshot": {
-    "main_commit_observed_before_v4": "0cc164ed8a96e6d5a665e99b241100b83b2146e9",
+    "snapshot_commit": "a7d9b763304b1cbe5bf01e083f0ed8cf9c34e1a1",
+    "wordflow_tree_sha": "7e51de1ef7b53139b3591fdbaa3bd14e8cb6b294",
     "authorized_root": "➡️📂 Wordflow LOOP Yaiwes/",
-    "source": "GITHUB_TREE_CONTENTS_AND_FILE_API",
-    "clone_transport": "BLOCKED_BY_EXECUTION_ENV_DNS_NOT_REPO_FAILURE"
+    "subtree_truncated": false,
+    "materialized_files": 351,
+    "audit_file_count": 352,
+    "source": "PINNED_GITHUB_TREE_PLUS_RAW_BLOBS_ON_HF_EPHEMERAL_CPU"
   },
   "implementation": {
     "module": "runtime/src/core/wordflow_global_audit.py",
-    "module_commit": "4f312520a64fef359cb5e6a5a7c0fc037d0c4ea1",
-    "module_blob": "73a247a3bb8df66877887a29ee65393211cdb3ad",
-    "tests": "runtime/tests/test_wordflow_global_audit_g019.py",
-    "tests_commit": "685f4c044db11cc5b5d3a7c6df45b54745a5f991",
-    "tests_blob": "3548c833bcde7298dc064d976cb906d6dc77416a",
     "contract": "yaiwes.wordflow_global_audit/v4",
+    "tests": "runtime/tests/test_wordflow_global_audit_g019.py",
     "features": [
       "RELATIVE_IMPORT_RESOLUTION",
       "SRC_PREFIX_NORMALIZATION",
@@ -45,44 +52,60 @@
       "automatic_action": "NONE"
     },
     {
-      "id": "G019-WIRE-001",
-      "kind": "INTERNAL_WIRING",
-      "source": "runtime/src/core/kernel.py",
-      "target": "runtime/src/core/parallel_scheduler.py",
-      "classification": "WIRED",
-      "automatic_action": "NONE"
+      "id": "G019-DUP-SUMMARY",
+      "kind": "EXACT_DUPLICATE_CLASSIFICATION",
+      "count": 34,
+      "classification": "STAGING_MIRROR",
+      "meaning": "each duplicate group has an authoritative active path plus an identical copy under 📂 archivos download",
+      "automatic_action": "NONE_NO_AUTO_DELETE"
     },
     {
-      "id": "G019-WIRE-002",
-      "kind": "INTERNAL_WIRING",
-      "source": "runtime/src/uek/universal_plugin_bus_v2_integrated.py",
-      "target": "runtime/src/uek/ficha_contract_v2.py",
-      "classification": "WIRED_RUNTIME_SRC_PREFIX",
-      "automatic_action": "NONE"
+      "id": "G019-ORPHAN-SUMMARY",
+      "kind": "PYTHON_ORPHAN_UNUSED_CLASSIFICATION",
+      "candidate_count": 43,
+      "referenced_active": 42,
+      "staging_only_reference": 1,
+      "unreferenced_review": 0,
+      "special_candidate": "runtime/src/spec/healing_engine.py",
+      "special_classification": "STAGING_ONLY_REFERENCE",
+      "automatic_action": "NONE_NO_AUTO_DELETE"
     },
     {
       "id": "G019-BI-001",
       "kind": "BROKEN_INTERNAL_IMPORT",
       "source": "runtime/src/uek/uek_cluster.py",
-      "import": "src.uek.cache_engine",
-      "normalized_import": "uek.cache_engine",
-      "target_path": "runtime/src/uek/cache_engine.py",
-      "target_readback": "404_NOT_FOUND",
-      "classification": "FAIL_CLOSED_REAL_CODE_GAP",
-      "automatic_action": "NONE",
-      "reason": "AUDIT_NODE_DOES_NOT_INVENT_MISSING_COMPONENT"
+      "old_import": "src.uek.cache_engine.DeterministicCacheEngine",
+      "classification": "RESOLVED_REUSE_EXISTING_CAPABILITY",
+      "repair": "reuse src.parallel.mavis_parallel.SmartCache and adapt UEK cache key/get/set contract",
+      "repair_commit": "a7d9b763304b1cbe5bf01e083f0ed8cf9c34e1a1",
+      "repair_blob": "0a467d29068fbdf3c31692627c6d5cd308a8b7d9",
+      "post_repair_broken_internal_imports": 0,
+      "automatic_action": "SURGICAL_REUSE_ADAPT_ONLY"
     }
   ],
   "verification": {
-    "v4_local_exact_test": "PASS_11_OF_11",
-    "module_readback": "PASS_BLOB_73a247a3bb8df66877887a29ee65393211cdb3ad",
-    "tests_readback": "PASS_BLOB_3548c833bcde7298dc064d976cb906d6dc77416a",
-    "github_actions_for_v4_commit": "NOT_CLAIMED",
-    "real_tree_structural_snapshot": "PASS",
-    "real_tree_candidate_classification": "RUNNING",
+    "pre_repair_snapshot": "ad652165fb5e97f92ffb869d415a694524a5719b",
+    "pre_repair_job": "6aa5c6d621047bf1b037e8e2",
+    "pre_repair_result": "GAP_BROKEN_INTERNAL_IMPORT_uek.cache_engine",
+    "post_repair_snapshot": "a7d9b763304b1cbe5bf01e083f0ed8cf9c34e1a1",
+    "post_repair_full_audit_job": "6aa5c76221047bf1b037e8ee",
+    "post_repair_classification_job": "6aa5c7ab5527934177ed1d37",
+    "audit_schema": "yaiwes.wordflow_global_audit/v4",
+    "audit_report_sha256": "c39505cec5fa9b938d1caed5cbfcb3a2ee9484a4349d7136e778f3d2ede005a1",
+    "classification_report_sha256": "a0e453d2c6e62d5e300da96e5e1333df572452f0817d98dd29be2019c5977e63",
+    "broken_required_paths": [],
+    "broken_internal_imports": [],
+    "unittest": "PASS_11_OF_11",
+    "unittest_returncode": 0,
+    "uek_cache_microtest": "PASS_SEEDED_HIT",
+    "sandbox_microtest": "BLOCKED_SANDBOX_FAIL_CLOSED_EXPECTED",
+    "candidate_classification": "PASS_34_DUPLICATE_GROUPS_PLUS_43_ORPHAN_CANDIDATES_CLASSIFIED",
     "pass_fabricated": false
   },
-  "motor": {"required": false, "reason": "READ_ONLY_AUDIT_NO_COMPONENT_TRANSFER"},
-  "decision": "KEEP_G019_OPEN_UNTIL_FULL_REAL_TREE_CANDIDATE_CLASSIFICATION_IS_COMPLETE_AND_PERSISTED",
-  "next_gate": "CONTINUE_REAL_TREE_IMPORT_GRAPH_DUPLICATE_ORPHAN_UNUSED_CLASSIFICATION_THEN_TASK_NODE_CAS"
+  "motor": {
+    "required": false,
+    "reason": "G019 is audit plus surgical wiring repair; no component download/copy/move/extract"
+  },
+  "decision": "PASS_G019_REAL_TREE_AUDITED_CLASSIFIED_AND_BROKEN_ROUTE_REPAIRED",
+  "next_gate": "TASK_NODE_CAS_CLOSE_G019_THEN_READ_FRESH_QUEUE"
 }
