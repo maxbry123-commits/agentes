@@ -7,7 +7,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Iterable, Sequence
 
-SCHEMA = "yaiwes.wordflow_global_audit/v1"
+SCHEMA = "yaiwes.wordflow_global_audit/v2"
 
 
 class WordflowAuditError(ValueError):
@@ -84,44 +84,106 @@ def _module_name(source_root: Path, path: Path) -> str:
     return ".".join(parts)
 
 
-def _import_candidates(node: ast.AST) -> list[str]:
+def _absolute_import_candidates(node: ast.AST, current_module: str) -> list[str]:
     if isinstance(node, ast.Import):
         return [alias.name for alias in node.names]
-    if isinstance(node, ast.ImportFrom) and node.module:
-        candidates = [node.module]
-        for alias in node.names:
-            if alias.name != "*":
-                candidates.append(f"{node.module}.{alias.name}")
-        return candidates
-    return []
+    if not isinstance(node, ast.ImportFrom):
+        return []
+
+    if node.level == 0:
+        base = node.module or ""
+    else:
+        package = current_module.split(".")[:-1]
+        up = node.level - 1
+        if up > len(package):
+            return []
+        prefix_parts = package[: len(package) - up] if up else package
+        if node.module:
+            prefix_parts = [*prefix_parts, *node.module.split(".")]
+        base = ".".join(prefix_parts)
+
+    candidates: list[str] = []
+    if base:
+        candidates.append(base)
+    for alias in node.names:
+        if alias.name == "*":
+            continue
+        candidates.append(f"{base}.{alias.name}" if base else alias.name)
+    return candidates
+
+
+def _python_source_index(root: Path) -> tuple[list[dict[str, object]], Counter[str]]:
+    root = _resolved_root(root)
+    source_root = root / "runtime" / "src"
+    if not source_root.is_dir():
+        return [], Counter()
+
+    py_files = sorted(source_root.rglob("*.py"), key=lambda p: p.as_posix())
+    modules = {_module_name(source_root, path): path for path in py_files}
+    inbound: Counter[str] = Counter()
+    records: list[dict[str, object]] = []
+
+    for path in py_files:
+        module = _module_name(source_root, path)
+        rel = path.relative_to(root).as_posix()
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=path.as_posix())
+        except (SyntaxError, UnicodeDecodeError) as exc:
+            records.append(
+                {
+                    "path": rel,
+                    "module": module,
+                    "parse_status": "ERROR",
+                    "parse_error": type(exc).__name__,
+                    "functions": [],
+                    "classes": [],
+                    "internal_imports": [],
+                }
+            )
+            continue
+
+        functions = sorted(
+            node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        )
+        classes = sorted(node.name for node in tree.body if isinstance(node, ast.ClassDef))
+        internal_imports: set[str] = set()
+        for node in ast.walk(tree):
+            for imported in _absolute_import_candidates(node, module):
+                for candidate_module in modules:
+                    if imported == candidate_module or imported.startswith(candidate_module + "."):
+                        inbound[candidate_module] += 1
+                        internal_imports.add(candidate_module)
+        records.append(
+            {
+                "path": rel,
+                "module": module,
+                "parse_status": "PASS",
+                "functions": functions,
+                "classes": classes,
+                "internal_imports": sorted(internal_imports),
+            }
+        )
+    return records, inbound
+
+
+def python_capability_index(root: Path) -> list[dict[str, object]]:
+    records, _ = _python_source_index(root)
+    return records
 
 
 def python_orphan_candidates(root: Path) -> list[str]:
     root = _resolved_root(root)
-    source_root = root / "runtime" / "src"
-    if not source_root.is_dir():
-        return []
-    py_files = sorted(source_root.rglob("*.py"), key=lambda p: p.as_posix())
-    modules = {_module_name(source_root, path): path for path in py_files}
-    inbound: Counter[str] = Counter()
-    for path in py_files:
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=path.as_posix())
-        except (SyntaxError, UnicodeDecodeError):
-            continue
-        for node in ast.walk(tree):
-            for imported in _import_candidates(node):
-                for module in modules:
-                    if imported == module or imported.startswith(module + "."):
-                        inbound[module] += 1
+    records, inbound = _python_source_index(root)
     entry_names = {"core.kernel", "agent.agent_router"}
     candidates = []
-    for module, path in sorted(modules.items()):
-        if not module or path.name == "__init__.py" or module in entry_names:
+    for record in records:
+        module = str(record["module"])
+        path = str(record["path"])
+        if not module or Path(path).name == "__init__.py" or module in entry_names:
             continue
         if inbound[module] == 0:
-            candidates.append(path.relative_to(root).as_posix())
-    return candidates
+            candidates.append(path)
+    return sorted(candidates)
 
 
 def required_path_status(root: Path, required_paths: Iterable[str]) -> list[dict[str, object]]:
@@ -133,13 +195,70 @@ def required_path_status(root: Path, required_paths: Iterable[str]) -> list[dict
     return statuses
 
 
+def _audit_ledger(
+    *,
+    duplicates: Sequence[dict[str, object]],
+    orphans: Sequence[str],
+    broken: Sequence[str],
+    capabilities: Sequence[dict[str, object]],
+) -> list[dict[str, object]]:
+    ledger: list[dict[str, object]] = []
+    for path in sorted(broken):
+        ledger.append(
+            {
+                "kind": "BROKEN_REQUIRED_PATH",
+                "subject": path,
+                "classification": "FAIL_CLOSED",
+                "automatic_action": "NONE",
+            }
+        )
+    for group in duplicates:
+        ledger.append(
+            {
+                "kind": "EXACT_DUPLICATE_GROUP",
+                "subject": list(group["paths"]),
+                "classification": "REVIEW_CANDIDATE",
+                "automatic_action": "NONE",
+            }
+        )
+    for path in sorted(orphans):
+        ledger.append(
+            {
+                "kind": "PYTHON_ORPHAN_OR_UNUSED_CANDIDATE",
+                "subject": path,
+                "classification": "REVIEW_CANDIDATE",
+                "automatic_action": "NONE",
+            }
+        )
+    for record in capabilities:
+        if record.get("parse_status") == "ERROR":
+            ledger.append(
+                {
+                    "kind": "PYTHON_PARSE_ERROR",
+                    "subject": record["path"],
+                    "classification": "FAIL_CLOSED",
+                    "automatic_action": "NONE",
+                }
+            )
+    return ledger
+
+
 def audit_wordflow(root: Path, *, required_paths: Iterable[str] = ()) -> dict[str, object]:
     root = _resolved_root(root)
     rows = inventory(root)
     required = required_path_status(root, required_paths)
-    broken = [item["path"] for item in required if not item["exists"]]
+    broken = [str(item["path"]) for item in required if not item["exists"]]
     suffix_counts = Counter(str(row["suffix"]) or "<none>" for row in rows)
     top_level_counts = Counter(str(row["path"]).split("/", 1)[0] for row in rows)
+    duplicates = exact_duplicate_groups(rows)
+    capabilities = python_capability_index(root)
+    orphans = python_orphan_candidates(root)
+    ledger = _audit_ledger(
+        duplicates=duplicates,
+        orphans=orphans,
+        broken=broken,
+        capabilities=capabilities,
+    )
     report: dict[str, object] = {
         "schema": SCHEMA,
         "root": root.name,
@@ -149,12 +268,18 @@ def audit_wordflow(root: Path, *, required_paths: Iterable[str] = ()) -> dict[st
         "top_level_file_counts": dict(sorted(top_level_counts.items())),
         "required_paths": required,
         "broken_required_paths": broken,
-        "exact_duplicate_groups": exact_duplicate_groups(rows),
-        "python_orphan_candidates": python_orphan_candidates(root),
+        "exact_duplicate_groups": duplicates,
+        "python_capabilities": capabilities,
+        "python_orphan_candidates": orphans,
+        "unused_code_candidates": orphans,
+        "ledger": ledger,
+        "ledger_counts": dict(sorted(Counter(str(item["kind"]) for item in ledger).items())),
         "policy": {
             "duplicates_are_candidates_not_auto_delete": True,
             "orphans_are_candidates_not_auto_delete": True,
+            "unused_code_is_candidate_not_auto_delete": True,
             "broken_required_paths_are_fail_closed": True,
+            "parse_errors_are_fail_closed": True,
             "mutation_authorized": False,
         },
     }
