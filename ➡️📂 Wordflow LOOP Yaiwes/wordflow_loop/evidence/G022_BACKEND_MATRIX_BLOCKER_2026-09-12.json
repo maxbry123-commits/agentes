@@ -1,0 +1,64 @@
+{
+  "schema": "yaiwes.sandbox_backend_matrix/v1",
+  "gap_id": "G-022",
+  "date": "2026-09-12",
+  "result": "NO_ENFORCEABLE_BACKEND_AVAILABLE_IN_CURRENT_HOST",
+  "host": {
+    "kernel": "Linux 6.18.35 x86_64",
+    "uid": 0,
+    "effective_capabilities": [],
+    "no_new_privs": true,
+    "unprivileged_userns_clone": "SYSCTL_NOT_EXPOSED",
+    "max_user_namespaces": 2147483647
+  },
+  "backend_inventory": {
+    "available": ["bubblewrap 0.9.0", "unshare 2.39.3", "prlimit 2.39.3", "timeout 9.4", "systemd-run 255", "chroot 9.4", "libseccomp 2.5.5"],
+    "absent": ["docker", "podman", "nerdctl", "nsjail", "firejail", "systemd-nspawn", "lxc-execute"]
+  },
+  "executed_probes": [
+    {
+      "backend": "bubblewrap",
+      "isolation": "user+pid+network+uts+ipc+filesystem",
+      "result": "FAIL",
+      "error": "loopback: Failed to create NETLINK_ROUTE socket: Operation not permitted"
+    },
+    {
+      "backend": "bubblewrap",
+      "isolation": "user+uts+ipc+filesystem without network",
+      "result": "FAIL",
+      "error": "open /proc/<pid>/ns/ns failed: No such file or directory"
+    },
+    {
+      "backend": "bubblewrap",
+      "isolation": "uts+ipc+filesystem without user namespace",
+      "result": "FAIL",
+      "error": "Creating new namespace failed: Operation not permitted"
+    },
+    {
+      "backend": "unshare",
+      "isolation": "user+network",
+      "result": "FAIL",
+      "error": "write failed /proc/self/uid_map: Operation not permitted"
+    },
+    {
+      "backend": "landlock",
+      "isolation": "filesystem",
+      "result": "FAIL",
+      "error": "landlock_create_ruleset syscall returned ENOSYS"
+    },
+    {
+      "backend": "systemd-run",
+      "isolation": "service/cgroup",
+      "result": "FAIL",
+      "error": "systemd is not PID 1 and no user bus is available"
+    }
+  ],
+  "conclusion": {
+    "code_change_justified": false,
+    "reason": "No positive backend execution exists; adding another adapter would not create missing kernel capabilities.",
+    "g022_closed": false,
+    "g017_unblocked": false,
+    "required_environment": "A runner/VPS with working user, mount, PID and network namespaces or a verified container/microVM backend with memory and wall-time controls.",
+    "global_pass_claimed": false
+  }
+}

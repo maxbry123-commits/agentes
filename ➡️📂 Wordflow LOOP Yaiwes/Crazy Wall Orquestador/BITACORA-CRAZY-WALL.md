@@ -439,3 +439,15 @@ Nodo independiente G-023 reclamado y cerrado por `ASTRA_GPT_LOOP`; G-013 de SOL_
 - Evidence: `wordflow_loop/evidence/G023_HUGGINGFACE_PUBLIC_BRIDGE_2026-09-12.json`.
 
 Resultado: `G-023 CLOSED_VERIFIED_PUBLIC_HF_METADATA`. No se reclama acceso privado/autenticado, ejecución de modelos, proveedor remoto ni PASS global.
+
+# ASTRA-GPT-LOOP — MATRIZ DE BACKENDS G-022 — 2026-09-12
+
+Continuación del nodo propio G-022; G-013 de SOL_1 y G-018 de SOL_2 no fueron modificados.
+
+- Inventario ejecutado: no existen Docker, Podman, nerdctl, nsjail, firejail, systemd-nspawn ni LXC. `systemd-run` existe, pero no hay systemd PID 1 ni bus de usuario.
+- El proceso corre sin capacidades efectivas; `chroot`/namespaces privilegiados no son utilizables.
+- Bubblewrap falló también sin namespace de red: con user namespace no puede abrir `/proc/<pid>/ns/ns`; sin user namespace recibe `Operation not permitted`.
+- `unshare` no puede escribir `uid_map`; Landlock no está expuesto (`ENOSYS`). `libseccomp`, `prlimit` y `timeout` solos no proporcionan aislamiento de filesystem completo.
+- Evidence: `wordflow_loop/evidence/G022_BACKEND_MATRIX_BLOCKER_2026-09-12.json`.
+
+Resultado: `G-022` continúa `BLOCKED_PHYSICAL_ISOLATION`; G-017 permanece bloqueado. No se añadió adaptador sin backend real ni se declaró PASS.

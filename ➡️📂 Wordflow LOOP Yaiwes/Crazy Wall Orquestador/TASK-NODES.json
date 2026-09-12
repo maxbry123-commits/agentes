@@ -432,14 +432,15 @@
         "wordflow_loop/evidence/G022_SANDBOX_FAIL_CLOSED_BLOCKER_2026-09-12.json",
         "unittest:PASS_5_OF_5",
         "adjacent:PASS_5_OF_5",
-        "claim_commit:b8b63ab34f85e919166c0905f4b1e55af6dad594"
+        "claim_commit:b8b63ab34f85e919166c0905f4b1e55af6dad594",
+        "wordflow_loop/evidence/G022_BACKEND_MATRIX_BLOCKER_2026-09-12.json"
       ],
       "gaps": [
         "RESOLVED: caller-supplied attestation can no longer fabricate READY_VERIFIED",
         "RESOLVED: UEK cluster no longer announces SUCCESS after sandbox denial",
         "RUNTIME_NAMESPACE_ISOLATION_BLOCKED_BY_HOST"
       ],
-      "version": 3,
+      "version": 4,
       "checker": "ASTRA_GPT"
     },
     {
