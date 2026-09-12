@@ -522,13 +522,13 @@
       "id": "G-026",
       "task": "Cerrar UI/visual LOOP con el mínimo stack reutilizable; Graphify visual primero, sin añadir Sigma si no hace falta.",
       "literal_sha256": "0e6de9068df8fab6f6514f9380e6e3ea8a7b3cc71a79650e53a5b63991a08345",
-      "status": "PENDING",
-      "claimed_by": null,
+      "status": "CLAIMED",
+      "claimed_by": "ASTRA_GPT_LOOP",
       "depends_on": [],
       "steps": [
         {
           "id": "1_RESEARCH",
-          "status": "PENDING"
+          "status": "RUNNING"
         },
         {
           "id": "2_MOTOR",
@@ -541,7 +541,7 @@
       ],
       "evidence": [],
       "gaps": [],
-      "version": 1,
+      "version": 2,
       "checker": "ASTRA_GPT"
     },
     {
