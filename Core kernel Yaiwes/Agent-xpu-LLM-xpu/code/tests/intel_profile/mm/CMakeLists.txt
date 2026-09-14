@@ -1,0 +1,27 @@
+cmake_minimum_required(VERSION 3.14)
+project(intel_profile LANGUAGES CXX)
+
+# Set C++ standard (C++20)
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
+
+find_package(OpenMP REQUIRED)
+find_package(OpenVINO REQUIRED)
+
+find_library(MATH_LIB m)
+
+link_libraries(OpenMP::OpenMP_CXX openvino::runtime ${MATH_LIB})
+add_executable(mm mm.cc)
+add_executable(mm_const_both mm_const_both.cc)
+add_executable(mm_const_left mm_const_left.cc)
+add_executable(mm_const_right mm_const_right.cc)
+add_executable(mm_const_right_dynamic mm_const_right_dynamic.cc)
+add_executable(mm_tp mm_tp.cc)
+add_executable(mm_tp_const mm_tp_const.cc)
+add_executable(mm_var_const mm_var_const.cc)
+add_executable(mm_var mm_var.cc)
+add_executable(ffn_fused ffn_fused.cc)
+add_executable(ffn_fused_const ffn_fused_const.cc)
+add_executable(ffn_discrete ffn_discrete.cc)
+add_executable(ffn_discrete_const ffn_discrete_const.cc)

@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 5745240,
+  "bundle_sha256": "faf15c3565a8bae99ae16b02ce8fea6fd0a5d134a8ad7f376257832536a141cf",
+  "extracted_tree": {
+    "bytes": 8866648,
+    "files": 159,
+    "sha256": "128904fa67d4ccc75ed7655054e90fda9a7c6a5b879974f5c0f07a4ab3178217"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 5745240,
+      "name": "Agent-xpu-LLM-xpu.bundle.zip.part-0001",
+      "sha256": "faf15c3565a8bae99ae16b02ce8fea6fd0a5d134a8ad7f376257832536a141cf"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Agent-xpu-LLM-xpu",
+  "source_bytes": 8866648,
+  "source_commit": "689be270aa29bb88447e3867cd97d85a55f454d5",
+  "source_files": 159,
+  "source_ref": "HEAD",
+  "source_repo": "xinming-wei/LLM.xpu",
+  "source_tree": {
+    "bytes": 8866648,
+    "files": 159,
+    "sha256": "128904fa67d4ccc75ed7655054e90fda9a7c6a5b879974f5c0f07a4ab3178217"
+  }
+}
