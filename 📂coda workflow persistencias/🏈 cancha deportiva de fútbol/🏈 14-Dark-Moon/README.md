@@ -32,3 +32,17 @@ El cableado adopta el sistema suministrado por el usuario: ficha universal con i
 ### Documentación y evidencia
 
 `📂coda workflow persistencias/🏈 cancha deportiva de fútbol/🏈 14-Dark-Moon/`
+
+
+## Cableado maestro — Persistence Mesh v2.1
+
+**Equipo:** Swarm agent team Navy seals YAIWES  
+**Versión de malla:** `YAIWES-PERSISTENCE-MESH-v2.1`
+
+`🏈 13-Auto-Pentest-LLM → 🏈 14-Dark-Moon → 🏈 15-Pentdem`
+
+Este eslabón participa en una malla circular de 24 componentes para handoff de **estado, checkpoint, evidencia y liberación de tarea**. El handoff no ejecuta código upstream ni habilita red, shell o acciones externas. Si un eslabón no valida, la malla falla cerrada y el estado permanece recuperable desde el último checkpoint verificado.
+
+**Contrato de salida:** `CHECKPOINTED|VERIFIED|RELEASED`  
+**Contrato de entrada:** `task_id + checkpoint + evidence`  
+**Failover:** siguiente eslabón únicamente después de validación del registro y del adapter.

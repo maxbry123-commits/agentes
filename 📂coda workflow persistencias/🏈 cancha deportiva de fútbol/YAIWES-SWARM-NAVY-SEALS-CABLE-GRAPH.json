@@ -1,0 +1,355 @@
+{
+  "schema": "yaiwes.swarm.persistence-mesh/v2.1",
+  "version": "YAIWES-PERSISTENCE-MESH-v2.1",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "topology": "ring_with_registry_failover",
+  "component_count": 24,
+  "edge_count": 24,
+  "mode": "TASK_PERSISTENCE_ONLY",
+  "edges": [
+    {
+      "from": "🏈 01-DeepAudit",
+      "to": "🏈 02-CyberStrikeAI",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    },
+    {
+      "from": "🏈 02-CyberStrikeAI",
+      "to": "🏈 03-LuaN1aoAgent",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    },
+    {
+      "from": "🏈 03-LuaN1aoAgent",
+      "to": "🏈 04-AI-Pentest",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    },
+    {
+      "from": "🏈 04-AI-Pentest",
+      "to": "🏈 05-AI-Infra-Guard",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    },
+    {
+      "from": "🏈 05-AI-Infra-Guard",
+      "to": "🏈 06-PentAGI",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    },
+    {
+      "from": "🏈 06-PentAGI",
+      "to": "🏈 07-Strix",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    },
+    {
+      "from": "🏈 07-Strix",
+      "to": "🏈 08-Redcell",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    },
+    {
+      "from": "🏈 08-Redcell",
+      "to": "🏈 09-Shel",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    },
+    {
+      "from": "🏈 09-Shel",
+      "to": "🏈 10-Pentest-Swarm-AI",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    },
+    {
+      "from": "🏈 10-Pentest-Swarm-AI",
+      "to": "🏈 11-LLM-CTF-Solver",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    },
+    {
+      "from": "🏈 11-LLM-CTF-Solver",
+      "to": "🏈 12-PentestGPT",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    },
+    {
+      "from": "🏈 12-PentestGPT",
+      "to": "🏈 13-Auto-Pentest-LLM",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    },
+    {
+      "from": "🏈 13-Auto-Pentest-LLM",
+      "to": "🏈 14-Dark-Moon",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    },
+    {
+      "from": "🏈 14-Dark-Moon",
+      "to": "🏈 15-Pentdem",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    },
+    {
+      "from": "🏈 15-Pentdem",
+      "to": "🏈 16-Autonomous-Pentest-Agent",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    },
+    {
+      "from": "🏈 16-Autonomous-Pentest-Agent",
+      "to": "🏈 17-AI-Red-Team-Agent",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    },
+    {
+      "from": "🏈 17-AI-Red-Team-Agent",
+      "to": "🏈 18-Agent-Smith",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    },
+    {
+      "from": "🏈 18-Agent-Smith",
+      "to": "🏈 19-TPT-Agent",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    },
+    {
+      "from": "🏈 19-TPT-Agent",
+      "to": "🏈 20-OpenWhale",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    },
+    {
+      "from": "🏈 20-OpenWhale",
+      "to": "🏈 21-H-Pentest",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    },
+    {
+      "from": "🏈 21-H-Pentest",
+      "to": "🏈 22-PHANTOM",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    },
+    {
+      "from": "🏈 22-PHANTOM",
+      "to": "🏈 23-HackSynth",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    },
+    {
+      "from": "🏈 23-HackSynth",
+      "to": "🏈 24-Security-AI-Agent",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    },
+    {
+      "from": "🏈 24-Security-AI-Agent",
+      "to": "🏈 01-DeepAudit",
+      "type": "PERSISTENCE_HANDOFF",
+      "contract": "checkpoint+evidence+release",
+      "network": "deny",
+      "source_execution": false
+    }
+  ],
+  "validation": {
+    "static_adapter_validation": "PASS_24_OF_24",
+    "runtime_persistence_roundtrip": "PASS_24_OF_24",
+    "offensive_execution": false,
+    "network_default": "deny"
+  },
+  "evidence": [
+    {
+      "component": "🏈 01-DeepAudit",
+      "adapter": "📂coda workflow persistencias/🏈 01-DeepAudit/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    },
+    {
+      "component": "🏈 02-CyberStrikeAI",
+      "adapter": "📂coda workflow persistencias/🏈 02-CyberStrikeAI/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    },
+    {
+      "component": "🏈 03-LuaN1aoAgent",
+      "adapter": "📂coda workflow persistencias/🏈 03-LuaN1aoAgent/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    },
+    {
+      "component": "🏈 04-AI-Pentest",
+      "adapter": "📂coda workflow persistencias/🏈 04-AI-Pentest/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    },
+    {
+      "component": "🏈 05-AI-Infra-Guard",
+      "adapter": "📂coda workflow persistencias/🏈 05-AI-Infra-Guard/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    },
+    {
+      "component": "🏈 06-PentAGI",
+      "adapter": "📂coda workflow persistencias/🏈 06-PentAGI/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    },
+    {
+      "component": "🏈 07-Strix",
+      "adapter": "📂coda workflow persistencias/🏈 07-Strix/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    },
+    {
+      "component": "🏈 08-Redcell",
+      "adapter": "📂coda workflow persistencias/🏈 08-Redcell/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    },
+    {
+      "component": "🏈 09-Shel",
+      "adapter": "📂coda workflow persistencias/🏈 09-Shel/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    },
+    {
+      "component": "🏈 10-Pentest-Swarm-AI",
+      "adapter": "📂coda workflow persistencias/🏈 10-Pentest-Swarm-AI/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    },
+    {
+      "component": "🏈 11-LLM-CTF-Solver",
+      "adapter": "📂coda workflow persistencias/🏈 11-LLM-CTF-Solver/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    },
+    {
+      "component": "🏈 12-PentestGPT",
+      "adapter": "📂coda workflow persistencias/🏈 12-PentestGPT/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    },
+    {
+      "component": "🏈 13-Auto-Pentest-LLM",
+      "adapter": "📂coda workflow persistencias/🏈 13-Auto-Pentest-LLM/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    },
+    {
+      "component": "🏈 14-Dark-Moon",
+      "adapter": "📂coda workflow persistencias/🏈 14-Dark-Moon/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    },
+    {
+      "component": "🏈 15-Pentdem",
+      "adapter": "📂coda workflow persistencias/🏈 15-Pentdem/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    },
+    {
+      "component": "🏈 16-Autonomous-Pentest-Agent",
+      "adapter": "📂coda workflow persistencias/🏈 16-Autonomous-Pentest-Agent/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    },
+    {
+      "component": "🏈 17-AI-Red-Team-Agent",
+      "adapter": "📂coda workflow persistencias/🏈 17-AI-Red-Team-Agent/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    },
+    {
+      "component": "🏈 18-Agent-Smith",
+      "adapter": "📂coda workflow persistencias/🏈 18-Agent-Smith/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    },
+    {
+      "component": "🏈 19-TPT-Agent",
+      "adapter": "📂coda workflow persistencias/🏈 19-TPT-Agent/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    },
+    {
+      "component": "🏈 20-OpenWhale",
+      "adapter": "📂coda workflow persistencias/🏈 20-OpenWhale/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    },
+    {
+      "component": "🏈 21-H-Pentest",
+      "adapter": "📂coda workflow persistencias/🏈 21-H-Pentest/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    },
+    {
+      "component": "🏈 22-PHANTOM",
+      "adapter": "📂coda workflow persistencias/🏈 22-PHANTOM/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    },
+    {
+      "component": "🏈 23-HackSynth",
+      "adapter": "📂coda workflow persistencias/🏈 23-HackSynth/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    },
+    {
+      "component": "🏈 24-Security-AI-Agent",
+      "adapter": "📂coda workflow persistencias/🏈 24-Security-AI-Agent/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "status": "PASS",
+      "final_state": "RELEASED"
+    }
+  ]
+}
