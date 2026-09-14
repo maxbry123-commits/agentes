@@ -1,0 +1,46 @@
+{
+  "schema": "yaiwes.coda.persistence.download-queue/v1",
+  "created_for": "coda workflow persistencias",
+  "destination_root": "📂coda workflow persistencias",
+  "total_components": 24,
+  "safety_policy": "ARCHITECTURE_ONLY_NO_OFFENSIVE_EXECUTION",
+  "transformation_goal": "Preserve planning, memory, checkpoints, retries, recovery, orchestration and reporting; replace offensive execution surfaces with inert task-persistence adapters and mocks before any runtime tests.",
+  "canonicalization": [
+    {
+      "original": "Ed1s0nZ/CyberStrikeAI",
+      "canonical": "AIPentest/CyberStrikeAI",
+      "reason": "GitHub repository redirect resolves to repository id 1092279475 under AIPentest"
+    },
+    {
+      "original": "HMB-research/strix",
+      "canonical": "usestrix/strix",
+      "reason": "HMB-research/strix is a fork; GitHub metadata identifies usestrix/strix as source/parent"
+    }
+  ],
+  "queue": [
+    {"id":"01-deepaudit","source_repo":"lintsinghua/DeepAudit","source_ref":"HEAD","slug":"01-DeepAudit","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true},
+    {"id":"02-cyberstrikeai","source_repo":"AIPentest/CyberStrikeAI","source_ref":"HEAD","slug":"02-CyberStrikeAI","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true},
+    {"id":"03-luan1aoagent","source_repo":"SanMuzZzZz/LuaN1aoAgent","source_ref":"HEAD","slug":"03-LuaN1aoAgent","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true},
+    {"id":"04-ai-pentest","source_repo":"yuanweipeifang/AI_Pentest","source_ref":"HEAD","slug":"04-AI-Pentest","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true},
+    {"id":"05-ai-infra-guard","source_repo":"Tencent/AI-Infra-Guard","source_ref":"HEAD","slug":"05-AI-Infra-Guard","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true},
+    {"id":"06-pentagi","source_repo":"vxcontrol/pentagi","source_ref":"HEAD","slug":"06-PentAGI","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true},
+    {"id":"07-strix","source_repo":"usestrix/strix","source_ref":"HEAD","slug":"07-Strix","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true},
+    {"id":"08-redcell","source_repo":"martian56/redcell","source_ref":"HEAD","slug":"08-Redcell","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true},
+    {"id":"09-shel","source_repo":"shri7-lab/Shel","source_ref":"HEAD","slug":"09-Shel","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true},
+    {"id":"10-pentest-swarm-ai","source_repo":"Armur-Ai/Pentest-Swarm-AI","source_ref":"HEAD","slug":"10-Pentest-Swarm-AI","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true},
+    {"id":"11-llm-ctf-solver","source_repo":"gehewu/LLM-CTF-Solver","source_ref":"HEAD","slug":"11-LLM-CTF-Solver","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true},
+    {"id":"12-pentestgpt","source_repo":"GreyDGL/PentestGPT","source_ref":"HEAD","slug":"12-PentestGPT","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true},
+    {"id":"13-auto-pentest-llm","source_repo":"knooob/Auto-Pentest-LLM","source_ref":"HEAD","slug":"13-Auto-Pentest-LLM","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true},
+    {"id":"14-dark-moon","source_repo":"ASCIT31/Dark-Moon","source_ref":"HEAD","slug":"14-Dark-Moon","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true},
+    {"id":"15-pentdem","source_repo":"Gabson0x/pentdem","source_ref":"HEAD","slug":"15-Pentdem","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true},
+    {"id":"16-autonomous-pentest-agent","source_repo":"deltaRed1a/autonomous-pentest-agent","source_ref":"HEAD","slug":"16-Autonomous-Pentest-Agent","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true},
+    {"id":"17-red-team-ai-agent","source_repo":"anaitik/red-team-ai-agent","source_ref":"HEAD","slug":"17-AI-Red-Team-Agent","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true},
+    {"id":"18-agent-smith","source_repo":"0x0pointer/agent-smith","source_ref":"HEAD","slug":"18-Agent-Smith","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true},
+    {"id":"19-tpt-agent","source_repo":"CloudEver-Team/TPT-Agent","source_ref":"HEAD","slug":"19-TPT-Agent","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true},
+    {"id":"20-openwhale","source_repo":"lonelyuan/OpenWhale","source_ref":"HEAD","slug":"20-OpenWhale","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true},
+    {"id":"21-h-pentest","source_repo":"hexian2001/H-Pentest","source_ref":"HEAD","slug":"21-H-Pentest","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true},
+    {"id":"22-phantom","source_repo":"Usta0x001/Phantom","source_ref":"HEAD","slug":"22-PHANTOM","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true},
+    {"id":"23-hacksynth","source_repo":"aielte-research/HackSynth","source_ref":"HEAD","slug":"23-HackSynth","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true},
+    {"id":"24-security-ai-agent","source_repo":"sirspyr0/security-ai-agent-public","source_ref":"HEAD","slug":"24-Security-AI-Agent","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"📂coda workflow persistencias","publish":true}
+  ]
+}
