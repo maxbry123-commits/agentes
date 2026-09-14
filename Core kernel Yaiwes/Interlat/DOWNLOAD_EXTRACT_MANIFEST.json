@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 2244638,
+  "bundle_sha256": "a166fb69aaa95d4aeaf7c204e252829689059b168c372a797778cb42c2c84d8b",
+  "extracted_tree": {
+    "bytes": 3206048,
+    "files": 147,
+    "sha256": "ca12dd7319c29b84c38752f756006d859cdecfe4ed458164966993729ca8ad4f"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 2244638,
+      "name": "Interlat.bundle.zip.part-0001",
+      "sha256": "a166fb69aaa95d4aeaf7c204e252829689059b168c372a797778cb42c2c84d8b"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Interlat",
+  "source_bytes": 3206048,
+  "source_commit": "66a89cb4d4097b2f86cbe48ed9851d6e8578f821",
+  "source_files": 147,
+  "source_ref": "HEAD",
+  "source_repo": "XiaoDu-flying/Interlat",
+  "source_tree": {
+    "bytes": 3206048,
+    "files": 147,
+    "sha256": "ca12dd7319c29b84c38752f756006d859cdecfe4ed458164966993729ca8ad4f"
+  }
+}
