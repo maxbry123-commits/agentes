@@ -1,9 +1,9 @@
 {
   "schema": "yaiwes.core-component-inventory/v1",
-  "generated_at": "2026-09-14T15:13:50.761971+00:00",
+  "generated_at": "2026-09-14T22:27:35.375006+00:00",
   "repository": "maxbry123-commits/agentes",
   "root": "Core kernel Yaiwes",
-  "component_count": 224,
+  "component_count": 229,
   "kernel_signal_count": 4,
   "components": [
     {
@@ -637,6 +637,20 @@
       "wall_target": null
     },
     {
+      "name": "Fast-Downward",
+      "path": "Core kernel Yaiwes/Fast-Downward",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
+      "wall_target": null
+    },
+    {
       "name": "FastMCP",
       "path": "Core kernel Yaiwes/Componentes recuperados A/FastMCP",
       "bucket": "Componentes recuperados A",
@@ -802,6 +816,20 @@
       "wall_node_id": 167,
       "wall_status": "PENDING_STEP1",
       "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "GTPyhop",
+      "path": "Core kernel Yaiwes/GTPyhop",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
       "wall_target": null
     },
     {
@@ -2322,6 +2350,20 @@
       "wall_target": null
     },
     {
+      "name": "Pyperplan",
+      "path": "Core kernel Yaiwes/Pyperplan",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
+      "wall_target": null
+    },
+    {
       "name": "Pyright",
       "path": "Core kernel Yaiwes/Componentes recuperados B/Pyright",
       "bucket": "Componentes recuperados B",
@@ -2403,6 +2445,20 @@
       "wall_node_id": 198,
       "wall_status": "PENDING_STEP1",
       "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "readme índice componentes",
+      "path": "Core kernel Yaiwes/readme índice componentes",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
       "wall_target": null
     },
     {
@@ -2967,6 +3023,20 @@
       "wall_node_id": 142,
       "wall_status": "PENDING_STEP1",
       "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "Unified-Planning",
+      "path": "Core kernel Yaiwes/Unified-Planning",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
       "wall_target": null
     },
     {
