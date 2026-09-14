@@ -1,0 +1,43 @@
+# Example workflow that consumes the Pentest Swarm AI action.
+# Copy this into your repo at .github/workflows/pentest.yml.
+
+name: Pentest Swarm
+
+on:
+  schedule:
+    - cron: "0 2 * * 1"   # weekly, Mondays 02:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write    # required for SARIF upload to Code Scanning
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Pentest Swarm
+        id: swarm
+        uses: Armur-Ai/Pentest-Swarm-AI@v0
+        with:
+          target: ${{ vars.PENTEST_TARGET }}
+          scope: ${{ vars.PENTEST_SCOPE }}
+          mode: bugbounty
+          swarm: "true"
+          fail-on: high
+          api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pentest-report
+          path: ./pentest-report
+
+      - name: Upload SARIF to Code Scanning
+        if: always() && steps.swarm.outputs.sarif-path != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ steps.swarm.outputs.sarif-path }}

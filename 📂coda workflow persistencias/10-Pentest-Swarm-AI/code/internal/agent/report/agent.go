@@ -1,0 +1,275 @@
+package report
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/Armur-Ai/Pentest-Swarm-AI/internal/llm"
+	"github.com/Armur-Ai/Pentest-Swarm-AI/internal/pipeline"
+	"github.com/Armur-Ai/Pentest-Swarm-AI/internal/taxonomy"
+	"github.com/google/uuid"
+)
+
+// reportSectionMaxTokens is the output-token budget for each generated report
+// section (executive summary, remediation, narrative). It is deliberately
+// generous: reasoning models (GLM, Qwen, DeepSeek-R1) consume part of the
+// budget on hidden reasoning tokens before any visible content, so a tight
+// cap leaves the section blank. The visible text is short, so the extra
+// ceiling costs nothing when the model doesn't reason.
+const reportSectionMaxTokens = 6144
+
+// ReportAgent generates professional pentest reports using LLM.
+type ReportAgent struct {
+	provider llm.Provider
+}
+
+// NewReportAgent creates a new report agent.
+func NewReportAgent(provider llm.Provider) *ReportAgent {
+	return &ReportAgent{provider: provider}
+}
+
+// Generate produces a full PentestReport from campaign data.
+func (r *ReportAgent) Generate(ctx context.Context, campaign pipeline.Campaign, findings []pipeline.ClassifiedFinding, plan *pipeline.AttackPlan, results []pipeline.ExecutionResult) (*pipeline.PentestReport, error) {
+	report := &pipeline.PentestReport{
+		ID:          uuid.New(),
+		CampaignID:  campaign.ID,
+		Target:      campaign.Target,
+		Objective:   campaign.Objective,
+		GeneratedAt: time.Now(),
+	}
+
+	// Generate executive summary
+	execSummary, err := r.generateSection(ctx, "executive_summary", campaign, findings)
+	if err == nil {
+		report.ExecutiveSummary = execSummary
+	}
+
+	// Generate finding writeups
+	for _, f := range findings {
+		reportFinding := pipeline.ReportFinding{
+			ID:                 f.ID,
+			Title:              f.Title,
+			Severity:           f.Severity,
+			CVSSScore:          f.CVSSScore,
+			CVSSVector:         f.CVSSVector,
+			Description:        f.Description,
+			Evidence:           f.Evidence,
+			AffectedComponents: []string{f.Target},
+			Reproduce:          f.Reproduce,
+		}
+
+		// Standardized taxonomy labels (OWASP Top 10 + CWE) from the finding's
+		// category/title — the metadata enterprise security teams triage by.
+		if tag, ok := taxonomy.Lookup(f.AttackCategory, f.Title); ok {
+			reportFinding.OWASP = tag.OWASP
+			reportFinding.CWE = tag.CWE
+			reportFinding.ATTACK = tag.Attack
+		}
+
+		// Generate remediation for each finding
+		remediation, err := r.generateRemediation(ctx, f)
+		if err == nil {
+			reportFinding.Remediation = remediation
+		}
+
+		report.Findings = append(report.Findings, reportFinding)
+	}
+
+	// Generate attack narrative
+	if plan != nil {
+		narrative, err := r.generateNarrative(ctx, campaign, plan, results)
+		if err == nil {
+			report.AttackNarrative = narrative
+		}
+	}
+
+	// Build risk summary
+	report.RiskSummary = buildRiskSummary(findings)
+
+	// Generate remediation plan
+	report.RemediationPlan = buildRemediationPlan(findings)
+
+	return report, nil
+}
+
+func (r *ReportAgent) generateSection(ctx context.Context, section string, campaign pipeline.Campaign, findings []pipeline.ClassifiedFinding) (string, error) {
+	var prompt string
+	switch section {
+	case "executive_summary":
+		// Compte reel par severite plutot que d'affirmer a tort au modele
+		// que tous les findings sont "critical, high-severity" (bug d'origine:
+		// le prompt utilisait len(findings) avec un texte fixe mentionnant
+		// "critical, high-severity" quelle que soit la severite reelle).
+		var critical, high, medium, low, info int
+		for _, f := range findings {
+			switch f.Severity {
+			case pipeline.SeverityCritical:
+				critical++
+			case pipeline.SeverityHigh:
+				high++
+			case pipeline.SeverityMedium:
+				medium++
+			case pipeline.SeverityLow:
+				low++
+			default:
+				info++
+			}
+		}
+		prompt = fmt.Sprintf(
+			"Write a 2-3 paragraph executive summary for a penetration test report.\nTarget: %s\nObjective: %s\nFindings by severity: %d critical, %d high, %d medium, %d low, %d info (total %d).\nBase every claim strictly on these counts and the finding titles provided elsewhere in the report — do not invent vulnerability types, data exposure, or business impact that isn't supported by the findings. If there are 0 critical and 0 high findings, say so plainly rather than describing the results as critical. Focus on business risk, not technical details. Write for a non-technical audience.",
+			campaign.Target, campaign.Objective, critical, high, medium, low, info, len(findings),
+		)
+	default:
+		return "", fmt.Errorf("unknown section: %s", section)
+	}
+
+	resp, err := r.provider.Complete(ctx, llm.CompletionRequest{
+		SystemPrompt: "You are a professional penetration testing report writer. Write clear, concise, and actionable content.",
+		Messages:     []llm.Message{{Role: "user", Content: prompt}},
+		// Reasoning models (GLM, Qwen, DeepSeek-R1) spend part of the token
+		// budget on hidden reasoning before emitting visible content. A tight
+		// budget gets consumed by reasoning and the visible answer comes back
+		// empty (finish_reason=length), leaving the section blank in the
+		// report. Give ample headroom — the visible summary is still short.
+		MaxTokens:   reportSectionMaxTokens,
+		Temperature: 0.3,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return resp.Content, nil
+}
+
+func (r *ReportAgent) generateRemediation(ctx context.Context, finding pipeline.ClassifiedFinding) (string, error) {
+	description := finding.Description
+	if description == "" {
+		// La description peut arriver vide depuis le classifier (deja
+		// observe en degraded mode). Sans ce garde-fou, le modele demande
+		// des precisions a l'utilisateur en plein milieu du rapport livre
+		// au lieu de produire une remediation generique exploitable.
+		description = "No detailed description was captured for this finding. Base your remediation on the title, severity, and target alone."
+	}
+	resp, err := r.provider.Complete(ctx, llm.CompletionRequest{
+		SystemPrompt: "You are a security remediation expert. Provide specific, actionable remediation steps. Never ask the user for more information or offer alternative tailored plans — this text goes directly into a delivered report with no follow-up turn. If the input lacks detail, give the best generic remediation for the finding type and say nothing about the missing detail.",
+		Messages: []llm.Message{
+			{
+				Role:    "user",
+				Content: fmt.Sprintf("Provide remediation steps for this vulnerability:\nTitle: %s\nSeverity: %s\nCVSS: %.1f\nDescription: %s", finding.Title, finding.Severity, finding.CVSSScore, description),
+			},
+		},
+		// Headroom for reasoning-model thinking tokens — see generateSection.
+		MaxTokens:   reportSectionMaxTokens,
+		Temperature: 0.2,
+	})
+	if err != nil {
+		return "", err
+	}
+	return resp.Content, nil
+}
+
+func (r *ReportAgent) generateNarrative(ctx context.Context, campaign pipeline.Campaign, plan *pipeline.AttackPlan, results []pipeline.ExecutionResult) (string, error) {
+	// Transmet le detail reel de chaque etape (commande, succes/echec,
+	// extrait de sortie) plutot que de simples compteurs. Sans ca, le
+	// modele n'a aucune donnee sur ce qui s'est vraiment passe et invente
+	// une histoire generique (nmap/dirb/Burp Suite, SQLi/XSS testes...)
+	// sans rapport avec les etapes reellement executees ou bloquees.
+	var resultsBuilder strings.Builder
+	if len(results) == 0 {
+		resultsBuilder.WriteString("No steps executed (all planned steps were blocked before execution).")
+	}
+	for i, res := range results {
+		status := "FAILED"
+		if res.Success {
+			status = "SUCCEEDED"
+		}
+		output := res.Output
+		if len(output) > 500 {
+			output = output[:500] + "... (truncated)"
+		}
+		resultsBuilder.WriteString(fmt.Sprintf(
+			"Step %d [%s]: command=%q output=%q\n",
+			i+1, status, res.CommandExecuted, output,
+		))
+	}
+
+	resp, err := r.provider.Complete(ctx, llm.CompletionRequest{
+		SystemPrompt: "You are a penetration testing report writer. Write the attack narrative as a sequence of events, telling the story of this penetration test from initial recon to final findings. Base every step strictly on the execution log provided — never invent tools, commands, or outcomes that are not in that log. If a step was blocked or failed, say so plainly rather than describing a fictional successful test.",
+		Messages: []llm.Message{
+			{
+				Role: "user",
+				Content: fmt.Sprintf(
+					"Write an attack narrative for target %s. Planner reasoning: %s\n\nActual execution log (%d steps):\n%s",
+					campaign.Target, plan.Reasoning, len(results), resultsBuilder.String(),
+				),
+			},
+		},
+		// Headroom for reasoning-model thinking tokens — see generateSection.
+		MaxTokens:   reportSectionMaxTokens,
+		Temperature: 0.3,
+	})
+	if err != nil {
+		return "", err
+	}
+	return resp.Content, nil
+}
+
+func buildRiskSummary(findings []pipeline.ClassifiedFinding) pipeline.RiskSummary {
+	summary := pipeline.RiskSummary{}
+	for _, f := range findings {
+		switch f.Severity {
+		case pipeline.SeverityCritical:
+			summary.CriticalCount++
+		case pipeline.SeverityHigh:
+			summary.HighCount++
+		case pipeline.SeverityMedium:
+			summary.MediumCount++
+		case pipeline.SeverityLow:
+			summary.LowCount++
+		case pipeline.SeverityInformational:
+			summary.InfoCount++
+		}
+	}
+
+	switch {
+	case summary.CriticalCount > 0:
+		summary.OverallRisk = "critical"
+	case summary.HighCount > 0:
+		summary.OverallRisk = "high"
+	case summary.MediumCount > 0:
+		summary.OverallRisk = "medium"
+	default:
+		summary.OverallRisk = "low"
+	}
+
+	return summary
+}
+
+func buildRemediationPlan(findings []pipeline.ClassifiedFinding) []pipeline.RemediationItem {
+	var items []pipeline.RemediationItem
+	for i, f := range findings {
+		items = append(items, pipeline.RemediationItem{
+			Priority: i + 1,
+			Finding:  f.Title,
+			Action:   "Remediate " + f.Title,
+			Effort:   estimateEffort(f.Severity),
+			Impact:   string(f.Severity),
+		})
+	}
+	return items
+}
+
+func estimateEffort(severity pipeline.Severity) string {
+	switch severity {
+	case pipeline.SeverityCritical:
+		return "immediate"
+	case pipeline.SeverityHigh:
+		return "1-2 days"
+	case pipeline.SeverityMedium:
+		return "1 week"
+	default:
+		return "low priority"
+	}
+}

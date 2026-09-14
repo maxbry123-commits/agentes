@@ -1,0 +1,144 @@
+// Package slack posts findings + campaign events to Slack. Supports both
+// incoming-webhook URLs (simple) and chat.postMessage + Bot Token (threaded
+// per-campaign, interactive). The interface is the same — PostFinding /
+// PostEvent — so callers don't care which transport is configured.
+package slack
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/Armur-Ai/Pentest-Swarm-AI/internal/pipeline"
+)
+
+// Client posts to Slack. Set either WebhookURL (simple) or BotToken + Channel
+// (threaded). Both => BotToken wins.
+type Client struct {
+	webhook  string
+	botToken string
+	channel  string
+	http     *http.Client
+
+	// Per-campaign thread TS so campaign events all cluster in one thread.
+	mu      sync.Mutex
+	threads map[string]string // campaign_id -> thread_ts
+}
+
+// Config customizes a Client.
+type Config struct {
+	WebhookURL string // https://hooks.slack.com/services/...
+	BotToken   string // xoxb-...
+	Channel    string // e.g. #security (only used with BotToken)
+	Timeout    time.Duration
+}
+
+// NewClient builds a Slack client.
+func NewClient(cfg Config) *Client {
+	if cfg.Timeout == 0 {
+		cfg.Timeout = 10 * time.Second
+	}
+	return &Client{
+		webhook:  cfg.WebhookURL,
+		botToken: cfg.BotToken,
+		channel:  cfg.Channel,
+		http:     &http.Client{Timeout: cfg.Timeout},
+		threads:  map[string]string{},
+	}
+}
+
+// PostFinding sends a formatted finding message. Blocks format is used
+// so severity color + CVSS render cleanly in Slack.
+func (c *Client) PostFinding(ctx context.Context, campaignID string, f pipeline.ClassifiedFinding) error {
+	text := fmt.Sprintf(":rotating_light: *%s* — %s (CVSS %.1f)",
+		strings.ToUpper(string(f.Severity)), f.Title, f.CVSSScore)
+	if f.Target != "" {
+		text += " on `" + f.Target + "`"
+	}
+	return c.post(ctx, campaignID, text)
+}
+
+// PostEvent is a generic campaign event post (scheduler event, recon start,
+// etc.). Short + compact.
+func (c *Client) PostEvent(ctx context.Context, campaignID string, title, detail string) error {
+	msg := fmt.Sprintf("*%s*\n%s", title, detail)
+	return c.post(ctx, campaignID, msg)
+}
+
+// --- transport ---
+
+func (c *Client) post(ctx context.Context, campaignID, text string) error {
+	if c.botToken != "" {
+		return c.postViaBot(ctx, campaignID, text)
+	}
+	if c.webhook != "" {
+		return c.postViaWebhook(ctx, text)
+	}
+	return fmt.Errorf("slack: no webhook or bot token configured")
+}
+
+func (c *Client) postViaWebhook(ctx context.Context, text string) error {
+	body, _ := json.Marshal(map[string]string{"text": text})
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.webhook, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("slack transport: %w", err)
+	}
+	defer resp.Body.Close()
+	buf, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("slack webhook %d: %s", resp.StatusCode, string(buf))
+	}
+	return nil
+}
+
+func (c *Client) postViaBot(ctx context.Context, campaignID, text string) error {
+	c.mu.Lock()
+	thread := c.threads[campaignID]
+	c.mu.Unlock()
+
+	payload := map[string]any{
+		"channel": c.channel,
+		"text":    text,
+	}
+	if thread != "" {
+		payload["thread_ts"] = thread
+	}
+
+	buf, _ := json.Marshal(payload)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "https://slack.com/api/chat.postMessage", bytes.NewReader(buf))
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req.Header.Set("Authorization", "Bearer "+c.botToken)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("slack transport: %w", err)
+	}
+	defer resp.Body.Close()
+	var out struct {
+		OK    bool   `json:"ok"`
+		TS    string `json:"ts"`
+		Error string `json:"error"`
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if err := json.Unmarshal(body, &out); err != nil {
+		return fmt.Errorf("slack parse: %w", err)
+	}
+	if !out.OK {
+		return fmt.Errorf("slack error: %s", out.Error)
+	}
+	if thread == "" {
+		// First message in this campaign — remember the TS so follow-ups thread.
+		c.mu.Lock()
+		c.threads[campaignID] = out.TS
+		c.mu.Unlock()
+	}
+	return nil
+}

@@ -1,0 +1,29 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  bin = "./bin/pentestswarm"
+  cmd = "go build -ldflags '-s -w' -o ./bin/pentestswarm ./cmd/pentestswarm/"
+  delay = 1000
+  exclude_dir = ["bin", "tmp", "vendor", "web", "node_modules", "data", "training", "legacy"]
+  exclude_file = []
+  exclude_regex = ["_test.go$"]
+  exclude_unchanged = false
+  follow_symlink = false
+  include_ext = ["go", "yaml", "yml"]
+  kill_delay = "2s"
+  log = "build-errors.log"
+  send_interrupt = true
+  stop_on_error = true
+
+[color]
+  build = "yellow"
+  main = "magenta"
+  runner = "green"
+  watcher = "cyan"
+
+[log]
+  time = false
+
+[misc]
+  clean_on_exit = true

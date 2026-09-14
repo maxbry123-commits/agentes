@@ -1,0 +1,35 @@
+package swarm
+
+import "context"
+
+// Tracer is the minimum interface the scheduler needs for distributed
+// tracing. A no-op implementation is the default; operators who want
+// real OpenTelemetry plug in their own adapter.
+//
+// This deliberately does NOT import go.opentelemetry.io/otel — keeping
+// the dependency footprint small. Bridge code in cmd/pentestswarm can
+// wrap an OTel tracer into this shape in a few lines.
+type Tracer interface {
+	// StartSpan begins a span and returns a ctx carrying it plus an End
+	// function. name is the operation name; attrs is a flat list of
+	// key-value pairs.
+	StartSpan(ctx context.Context, name string, attrs ...Attr) (context.Context, EndSpan)
+}
+
+// Attr is a single span attribute. Strings only for simplicity — callers
+// that need typed values can serialise themselves.
+type Attr struct {
+	Key, Value string
+}
+
+// EndSpan finishes a span. Call with an error if the operation failed.
+type EndSpan func(err error)
+
+// NoopTracer discards all spans. Use as the default so the scheduler
+// never crashes on a nil tracer.
+type NoopTracer struct{}
+
+// StartSpan implements Tracer with no-op semantics.
+func (NoopTracer) StartSpan(ctx context.Context, _ string, _ ...Attr) (context.Context, EndSpan) {
+	return ctx, func(error) {}
+}

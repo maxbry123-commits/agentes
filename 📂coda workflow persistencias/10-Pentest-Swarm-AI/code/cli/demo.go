@@ -1,0 +1,527 @@
+package cli
+
+import (
+	"fmt"
+	"math"
+	"math/rand"
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/spf13/cobra"
+)
+
+var demoCmd = &cobra.Command{
+	Use:   "demo",
+	Short: "Offline demo — replay a real crAPI campaign into the live TUI + dashboard (no network/LLM/key)",
+	Long: `demo replays a real crAPI campaign entirely offline — no network, no LLM,
+no API key, no Docker. It drives the SAME live views a real run does: the
+full-screen terminal TUI and the web dashboard on localhost:7777 both
+populate — recon surface, attack chains, the exploit probe fan-out, graded
+findings, the threat gauge and detection timeline — paced so it looks like
+the swarm is running for real.
+
+Built for talks where the venue wifi (or anything else) can't be trusted.
+Set PENTESTSWARM_DEMO_SPEED to pace it (e.g. 4 = 4x faster for a rehearsal).
+
+  --classic   the old scripted printf walkthrough (used for the README GIF)
+  --no-tui    web dashboard only (skip the full-screen terminal TUI)`,
+	Example: `  pentestswarm demo
+  pentestswarm demo --no-tui
+  PENTESTSWARM_DEMO_SPEED=4 pentestswarm demo`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if classic, _ := cmd.Flags().GetBool("classic"); classic {
+			return runDemo(cmd, args) // the original scripted printf show
+		}
+		// Drive the real TUI + web dashboard with the offline replay by
+		// setting the scan flags and reusing runScan (same path a live run
+		// takes — only the runner is swapped for the replay).
+		f := scanCmd.Flags()
+		set := func(name, val string) { _ = f.Set(name, val) }
+		set("demo", "true")
+		set("swarm", "true")
+		set("dashboard", "true")
+		noTUI, _ := cmd.Flags().GetBool("no-tui")
+		set("tui", strconv.FormatBool(!noTUI))
+		set("follow", "true")
+		set("format", "all")
+		return runScan(scanCmd, []string{})
+	},
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// palette (24-bit) — the exact tokens from banner/hero.svg
+// ─────────────────────────────────────────────────────────────────────
+
+type rgb struct{ r, g, b int }
+
+var (
+	cCrest  = rgb{255, 213, 128}
+	cAmber  = rgb{245, 166, 35}
+	cEmber  = rgb{214, 140, 36}
+	cDeep   = rgb{153, 96, 29}
+	cPurple = rgb{175, 169, 236}
+	cPurpDk = rgb{127, 119, 221}
+	cGreen  = rgb{61, 220, 151}
+	cRed    = rgb{255, 107, 107}
+	cCyan   = rgb{87, 199, 255}
+	cText   = rgb{230, 233, 239}
+	cMuted  = rgb{138, 147, 166}
+	cFaint  = rgb{92, 101, 119}
+)
+
+func fg(c rgb, s string) string {
+	return fmt.Sprintf("\033[38;2;%d;%d;%dm%s\033[0m", c.r, c.g, c.b, s)
+}
+
+// gradientText paints s across a two-stop gradient, rune by rune.
+func gradientText(s string, a, b rgb) string {
+	runes := []rune(s)
+	n := len(runes)
+	var out strings.Builder
+	for i, ru := range runes {
+		if ru == ' ' {
+			out.WriteRune(ru)
+			continue
+		}
+		t := 0.0
+		if n > 1 {
+			t = float64(i) / float64(n-1)
+		}
+		c := rgb{
+			int(float64(a.r) + (float64(b.r)-float64(a.r))*t),
+			int(float64(a.g) + (float64(b.g)-float64(a.g))*t),
+			int(float64(a.b) + (float64(b.b)-float64(a.b))*t),
+		}
+		out.WriteString(fg(c, string(ru)))
+	}
+	return out.String()
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// width helpers — strip ANSI so box padding stays correct
+// ─────────────────────────────────────────────────────────────────────
+
+var ansiRe = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+func visLen(s string) int { return len([]rune(ansiRe.ReplaceAllString(s, ""))) }
+
+func padTo(s string, w int) string {
+	if d := w - visLen(s); d > 0 {
+		return s + strings.Repeat(" ", d)
+	}
+	return s
+}
+
+func runDemo(cmd *cobra.Command, args []string) error {
+	target, _ := cmd.Flags().GetString("target")
+	speed, _ := cmd.Flags().GetString("speed")
+	tempo := tempoFor(speed)
+
+	bootHeader(target, tempo)
+	swarmTopology(tempo)
+	reconPhase(target, tempo)
+	blackboardPhase(tempo)
+	exploitPhase(tempo)
+	dashboard(target, tempo)
+	return nil
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// phase 0 — boot header
+// ─────────────────────────────────────────────────────────────────────
+
+func bootHeader(target string, tempo demoTempo) {
+	printBanner()
+	fmt.Println()
+	for _, step := range []string{
+		"linking stigmergic blackboard  (pgvector)",
+		"spawning agents  recon · classify · exploit · report",
+		"loading offensive toolchain  8 recon + exploit adapters",
+		"scope guard armed  " + fg(cAmber, target),
+	} {
+		fmt.Printf("  %s %s ", fg(cPurpDk, "◇"), padTo(fg(cMuted, step), 60))
+		os.Stdout.Sync()
+		tempo.sleep(240)
+		fmt.Printf("%s\n", fg(cGreen, "ok"))
+		tempo.sleep(60)
+	}
+	fmt.Println()
+	tempo.sleep(300)
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// phase 1 — swarm topology graph
+// ─────────────────────────────────────────────────────────────────────
+
+func swarmTopology(tempo demoTempo) {
+	sectionRule("SWARM ONLINE", cAmber)
+	a := fg(cPurple, "RECON")
+	b := fg(cPurple, "CLASSIFY")
+	c := fg(cAmber, "EXPLOIT")
+	d := fg(cPurple, "REPORT")
+	lines := []string{
+		"",
+		"      " + a + " ─────────╮            ╭───────── " + b,
+		"                     ▼            ▼",
+		"                ╭─────────────────────╮",
+		"                │   " + fg(cCrest, "◈") + "  " + fg(cAmber, "BLACKBOARD") + "      │  " + fg(cFaint, "pgvector · pheromones"),
+		"                ╰─────────────────────╯",
+		"                     ▲            ▲",
+		"      " + c + " ───────╯            ╰───────── " + d,
+		"",
+	}
+	for _, l := range lines {
+		fmt.Println("  " + l)
+		tempo.sleep(90)
+	}
+	// pulse ticker — signals firing across the board
+	pulses := []string{
+		fg(cGreen, "●") + fg(cMuted, " recon▸board"),
+		fg(cGreen, "●") + fg(cMuted, " board▸classify"),
+		fg(cAmber, "●") + fg(cMuted, " board▸exploit"),
+		fg(cGreen, "●") + fg(cMuted, " exploit▸board"),
+	}
+	fmt.Print("     ")
+	for _, p := range pulses {
+		fmt.Print("  " + p)
+		os.Stdout.Sync()
+		tempo.sleep(280)
+	}
+	fmt.Println()
+	fmt.Println()
+	tempo.sleep(300)
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// phase 2 — recon: spinners + a live attack-surface tree
+// ─────────────────────────────────────────────────────────────────────
+
+func reconPhase(target string, tempo demoTempo) {
+	sectionRule("RECON  fan-out", cCyan)
+	for _, tool := range []demoTool{
+		{"subfinder", "passive subdomain enum", 22, "subdomains"},
+		{"dnsx", "A/AAAA/CNAME resolution", 22, "records"},
+		{"httpx", "probing alive hosts", 14, "alive"},
+		{"naabu", "top-1000 port scan", 37, "ports"},
+		{"katana", "depth-3 crawl + JS", 58, "endpoints"},
+		{"nuclei", "CVE + misconfig sweep", 11, "matches"},
+	} {
+		spinProgress(tool, tempo)
+	}
+	tempo.sleep(300)
+
+	// live surface tree
+	fmt.Println()
+	fmt.Println("  " + fg(cCyan, "attack surface") + fg(cFaint, "  ── discovered hosts"))
+	fmt.Println("  " + fg(cText, target))
+	rows := []struct {
+		branch, host, code, tech, flag string
+	}{
+		{"├─", "www.acme.corp", "200", "nginx/1.18", ""},
+		{"├─", "api.acme.corp", "200", "node/18", fg(cAmber, "⚠ 3 params reflected")},
+		{"├─", "shop.acme.corp", "200", "wordpress/6.2", fg(cAmber, "⚠ jQuery 1.12.4")},
+		{"├─", "dev.acme.corp", "403", "apache/2.4", fg(cRed, "⚠ /.git exposed")},
+		{"└─", "vpn.acme.corp", "—", "openvpn :443", ""},
+	}
+	for _, r := range rows {
+		host := padTo(fg(cText, r.host), 20)
+		code := fg(cGreen, r.code)
+		if r.code == "403" {
+			code = fg(cAmber, r.code)
+		} else if r.code == "—" {
+			code = fg(cFaint, r.code)
+		}
+		line := fmt.Sprintf("  %s %s %s  %s  %s",
+			fg(cFaint, r.branch), host, code, padTo(fg(cMuted, r.tech), 14), r.flag)
+		fmt.Println(strings.TrimRight(line, " "))
+		tempo.sleep(200)
+	}
+	fmt.Println()
+	tempo.sleep(300)
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// phase 3 — blackboard: animated pheromone bar-chart
+// ─────────────────────────────────────────────────────────────────────
+
+type finding struct {
+	sev    string
+	kind   string
+	where  string
+	weight float64
+	note   string
+}
+
+func blackboardPhase(tempo demoTempo) {
+	sectionRule("BLACKBOARD  pheromone weights", cAmber)
+	fmt.Println("  " + fg(cFaint, "bar = weight · colour = severity · ▸ = agent action"))
+	fmt.Println()
+	fds := []finding{
+		{"CRITICAL", "SQLi", "/search?q=", 0.98, fg(cAmber, "▸ escalating to sqlmap")},
+		{"HIGH", "XSS", "/profile?name=", 0.73, fg(cAmber, "▸ queued active scan")},
+		{"HIGH", ".git", "dev.acme.corp", 0.61, ""},
+		{"MEDIUM", "CVE", "jQuery-2020-11022", 0.34, ""},
+		{"MEDIUM", "hdr", "X-Frame-Options", 0.22, ""},
+		{"LOW", "info", "server banner leak", 0.11, ""},
+	}
+	for _, f := range fds {
+		animatePheromone(f, tempo)
+	}
+	fmt.Println()
+	fmt.Println("  " + fg(cMuted, "classifier: ") + fg(cText, "11 findings") + fg(cMuted, " · 2 filtered false-positive · CVSS scored"))
+	fmt.Println()
+	tempo.sleep(400)
+}
+
+func sevColor(sev string) rgb {
+	switch sev {
+	case "CRITICAL":
+		return cRed
+	case "HIGH":
+		return cAmber
+	case "MEDIUM":
+		return cCrest
+	case "LOW":
+		return cGreen
+	}
+	return cMuted
+}
+
+// animatePheromone grows a single bar in place, then settles the line.
+func animatePheromone(f finding, tempo demoTempo) {
+	col := sevColor(f.sev)
+	width := 22
+	label := fmt.Sprintf("%s %s %s",
+		padTo(fg(col, sevGlyph(f.sev)+" "+f.sev), 12),
+		padTo(fg(cCyan, f.kind), 6),
+		padTo(fg(cText, f.where), 20),
+	)
+	steps := 14
+	for i := 0; i <= steps; i++ {
+		frac := f.weight * float64(i) / float64(steps)
+		fmt.Printf("\r  %s %s %s", label, hbar(frac, width, col), fg(cMuted, fmt.Sprintf("%.2f", frac)))
+		os.Stdout.Sync()
+		tempo.sleep(28)
+	}
+	fmt.Printf("\r  %s %s %s  %s\n", label, hbar(f.weight, width, col), fg(col, fmt.Sprintf("%.2f", f.weight)), f.note)
+}
+
+func sevGlyph(sev string) string {
+	if sev == "CRITICAL" || sev == "HIGH" {
+		return "◆"
+	}
+	return "◇"
+}
+
+// hbar renders a fractional bar with 1/8-block resolution.
+func hbar(frac float64, width int, col rgb) string {
+	if frac < 0 {
+		frac = 0
+	}
+	if frac > 1 {
+		frac = 1
+	}
+	blocks := frac * float64(width)
+	full := int(blocks)
+	rem := blocks - float64(full)
+	parts := []rune(" ▏▎▍▌▋▊▉█")
+	var b strings.Builder
+	b.WriteString(strings.Repeat("█", full))
+	if full < width {
+		idx := int(rem*8 + 0.5)
+		if idx > 0 {
+			b.WriteRune(parts[idx])
+			full++
+		}
+	}
+	for i := full; i < width; i++ {
+		b.WriteRune(' ')
+	}
+	track := b.String()
+	// colour the filled glyphs; leave the empty track faint
+	return fg(col, strings.TrimRight(track, " ")) + fg(cFaint, strings.Repeat("·", width-visLen(strings.TrimRight(track, " "))))
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// phase 4 — exploit chain tree
+// ─────────────────────────────────────────────────────────────────────
+
+func exploitPhase(tempo demoTempo) {
+	sectionRule("EXPLOIT  building attack chain", cAmber)
+	fmt.Println("  " + fg(cAmber, "⚡ chain") + "  " + fg(cText, "SQLi → dump users → cred access → lateral movement"))
+	steps := []struct {
+		br, cmd, mark, t string
+	}{
+		{"├─", "nmap -sV api.acme.corp", fg(cGreen, "✓"), "0.4s"},
+		{"├─", "sqlmap --batch -u '/search?q='", fg(cGreen, "✓"), "2.1s"},
+		{"├─", "extract users table  (142 rows)", fg(cGreen, "✓"), "0.8s"},
+		{"└─", "test lateral smb shares", fg(cAmber, "~"), "partial"},
+	}
+	for i, s := range steps {
+		fmt.Printf("     %s %s %s %s ",
+			fg(cFaint, s.br), fg(cFaint, fmt.Sprintf("[%d/4]", i+1)),
+			padTo(fg(cText, s.cmd), 34), fg(cFaint, s.t))
+		os.Stdout.Sync()
+		tempo.sleep(360)
+		fmt.Printf("%s\n", s.mark)
+		tempo.sleep(120)
+	}
+	fmt.Println()
+	tempo.sleep(300)
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// phase 5 — dashboard HUD (severity histogram + activity sparkline)
+// ─────────────────────────────────────────────────────────────────────
+
+func dashboard(target string, tempo demoTempo) {
+	// inner = visible columns between the two vertical borders. All three
+	// edges (top / body / bottom) are built from this same count using
+	// rune-accurate visLen, so they line up regardless of the multi-byte
+	// box-drawing glyphs.
+	inner := 56
+	title := " CAMPAIGN COMPLETE "
+	right := " 1m 47s "
+	fmt.Println("  " + fg(cAmber, "╭") + gradientText(title, cCrest, cEmber) +
+		fg(cAmber, strings.Repeat("─", inner-visLen(title)-visLen(right))) +
+		fg(cMuted, right) + fg(cAmber, "╮"))
+
+	boxLine := func(content string) {
+		fmt.Println("  " + fg(cAmber, "│") + padTo(content, inner) + fg(cAmber, "│"))
+	}
+	boxBlank := func() { boxLine("") }
+
+	boxBlank()
+	boxLine(fg(cMuted, "findings by severity"))
+	hist := []struct {
+		name string
+		n    int
+		col  rgb
+	}{
+		{"critical", 1, cRed},
+		{"high", 3, cAmber},
+		{"medium", 5, cCrest},
+		{"low", 2, cGreen},
+	}
+	for _, h := range hist {
+		bar := fg(h.col, strings.Repeat("█", h.n*3))
+		boxLine("  " + padTo(fg(cText, h.name), 9) + " " + bar + " " + fg(h.col, fmt.Sprintf("%d", h.n)))
+		tempo.sleep(160)
+	}
+	boxBlank()
+
+	// activity sparkline
+	spark := sparkline([]float64{2, 4, 7, 11, 18, 26, 22, 15, 9, 14, 21, 30, 27, 19, 12, 8})
+	boxLine("  " + padTo(fg(cMuted, "swarm activity"), 15) + fg(cGreen, spark) + fg(cMuted, "  187 events"))
+	boxLine("  " + padTo(fg(cMuted, "overall risk"), 15) + fg(cRed, "█ HIGH"))
+	boxBlank()
+	boxLine("  " + fg(cMuted, "reports  ") + fg(cCyan, "acme.corp.md") + fg(cFaint, " · ") + fg(cCyan, "sarif") + fg(cFaint, " · ") + fg(cCyan, "html") + fg(cFaint, " · ") + fg(cCyan, "json"))
+	fmt.Println("  " + fg(cAmber, "╰"+strings.Repeat("─", inner)+"╯"))
+
+	fmt.Println()
+	fmt.Println("  " + fg(cFaint, "simulated run — for the real thing:"))
+	fmt.Println("  " + fg(cGreen, "$") + fg(cMuted, " export PENTESTSWARM_ORCHESTRATOR_API_KEY=sk-ant-…"))
+	fmt.Println("  " + fg(cGreen, "$") + " " + fg(cText, "pentestswarm scan ") + fg(cAmber, target) + fg(cText, " --scope ") + fg(cAmber, target) + fg(cAmber, " --swarm --follow"))
+	fmt.Println()
+}
+
+// sparkline maps values onto 1/8-height block glyphs.
+func sparkline(vals []float64) string {
+	glyphs := []rune("▁▂▃▄▅▆▇█")
+	max := 0.0
+	for _, v := range vals {
+		if v > max {
+			max = v
+		}
+	}
+	if max == 0 {
+		max = 1
+	}
+	var b strings.Builder
+	for _, v := range vals {
+		idx := int(math.Round(v / max * float64(len(glyphs)-1)))
+		if idx < 0 {
+			idx = 0
+		}
+		b.WriteRune(glyphs[idx])
+	}
+	return b.String()
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// shared bits
+// ─────────────────────────────────────────────────────────────────────
+
+// sectionRule prints a futuristic section header: a coloured chevron, the
+// label, and a hairline rule out to the right.
+func sectionRule(label string, col rgb) {
+	head := fg(col, "▸ ") + fg(col, label) + " "
+	pad := 66 - visLen(head)
+	if pad < 0 {
+		pad = 0
+	}
+	fmt.Println("  " + head + fg(cFaint, strings.Repeat("─", pad)))
+	fmt.Println()
+}
+
+type demoTool struct {
+	name, detail string
+	count        int
+	unit         string
+}
+
+// --- tempo / pacing ---
+
+type demoTempo struct{ factor float64 }
+
+func tempoFor(s string) demoTempo {
+	switch s {
+	case "fast":
+		return demoTempo{factor: 0.3}
+	case "slow":
+		return demoTempo{factor: 1.5}
+	}
+	return demoTempo{factor: 1.0}
+}
+
+func (t demoTempo) sleep(ms int) {
+	time.Sleep(time.Duration(float64(ms)*t.factor) * time.Millisecond)
+}
+
+// spinProgress renders a running-tool line that updates in place with a
+// Unicode spinner and a percentage bar, then settles on the final count.
+func spinProgress(tool demoTool, tempo demoTempo) {
+	frames := []rune{'⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷'}
+	steps := 16
+	for i := 0; i <= steps; i++ {
+		pct := (i * 100) / steps
+		spinner := string(frames[i%len(frames)])
+		fmt.Printf("\r  %s %s  %-10s %s  %s",
+			fg(cAmber, spinner),
+			hbar(float64(pct)/100, 18, cGreen),
+			fg(cCyan, tool.name),
+			padTo(fg(cMuted, tool.detail), 24),
+			fg(cFaint, fmt.Sprintf("%3d%%", pct)),
+		)
+		os.Stdout.Sync()
+		tempo.sleep(42 + rand.Intn(22))
+	}
+	fmt.Printf("\r  %s %s  %-10s %s  %s            \n",
+		fg(cGreen, "✓"),
+		hbar(1, 18, cGreen),
+		fg(cCyan, tool.name),
+		padTo(fg(cMuted, tool.detail), 24),
+		fg(cGreen, fmt.Sprintf("%d %s", tool.count, tool.unit)),
+	)
+}
+
+func init() {
+	demoCmd.Flags().String("target", "acme.corp", "the target to simulate scanning (--classic only)")
+	demoCmd.Flags().String("speed", "normal", "playback speed: slow | normal | fast (--classic only)")
+	demoCmd.Flags().Bool("classic", false, "play the original scripted printf walkthrough instead of the live TUI+dashboard replay")
+	demoCmd.Flags().Bool("no-tui", false, "web dashboard only — skip the full-screen terminal TUI")
+	rootCmd.AddCommand(demoCmd)
+}

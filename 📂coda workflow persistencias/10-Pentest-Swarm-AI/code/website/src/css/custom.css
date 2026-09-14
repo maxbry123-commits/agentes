@@ -1,0 +1,105 @@
+/**
+ * Pentest Swarm AI — brand palette for Docusaurus (Infima).
+ *
+ * Identity (matches the hero / demo GIF):
+ *   Primary accent  amber   #F5A623
+ *   Background      near-black #0B0E14
+ *   Agent purple    #7F77DD
+ *   Execute green   #3DDC97
+ *   Cyan            #57C7FF
+ *
+ * Dark mode is the default (see docusaurus.config.js). Both themes are tuned
+ * for contrast.
+ */
+
+/* ---------------------------------------------------------------- *
+ * Light mode
+ * ---------------------------------------------------------------- */
+:root {
+  --ifm-color-primary: #b06f00;
+  --ifm-color-primary-dark: #9e6400;
+  --ifm-color-primary-darker: #955e00;
+  --ifm-color-primary-darkest: #7b4d00;
+  --ifm-color-primary-light: #c27a00;
+  --ifm-color-primary-lighter: #cb8000;
+  --ifm-color-primary-lightest: #e59000;
+
+  --ifm-color-success: #1f9d6b;
+  --ifm-color-info: #0f83c7;
+
+  --ifm-code-font-size: 95%;
+  --ifm-font-family-monospace: 'IBM Plex Mono', ui-monospace, SFMono-Regular,
+    'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  --docusaurus-highlighted-code-line-bg: rgba(245, 166, 35, 0.12);
+
+  /* Supporting brand accents, available to markdown/JSX. */
+  --psw-amber: #f5a623;
+  --psw-purple: #7f77dd;
+  --psw-green: #3ddc97;
+  --psw-cyan: #57c7ff;
+  --psw-ink: #0b0e14;
+}
+
+/* ---------------------------------------------------------------- *
+ * Dark mode (default)
+ * ---------------------------------------------------------------- */
+[data-theme='dark'] {
+  --ifm-color-primary: #f5a623;
+  --ifm-color-primary-dark: #ee9a0a;
+  --ifm-color-primary-darker: #e19109;
+  --ifm-color-primary-darkest: #b97708;
+  --ifm-color-primary-light: #f7b143;
+  --ifm-color-primary-lighter: #f8b954;
+  --ifm-color-primary-lightest: #facd85;
+
+  --ifm-color-success: #3ddc97;
+  --ifm-color-info: #57c7ff;
+
+  --ifm-background-color: #0b0e14;
+  --ifm-background-surface-color: #10151f;
+  --ifm-navbar-background-color: #0b0e14;
+  --ifm-footer-background-color: #080a10;
+
+  --docusaurus-highlighted-code-line-bg: rgba(245, 166, 35, 0.16);
+}
+
+/* Links: amber in dark, but keep the readable primary in light. */
+[data-theme='dark'] .markdown a {
+  color: var(--psw-cyan);
+}
+[data-theme='dark'] .markdown a:hover {
+  color: var(--psw-amber);
+}
+
+/* Navbar & hero polish */
+.navbar {
+  border-bottom: 1px solid rgba(245, 166, 35, 0.14);
+}
+[data-theme='dark'] .navbar {
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+/* Admonitions tinted with the supporting accents. */
+.theme-admonition-tip {
+  border-left-color: var(--psw-green);
+}
+.theme-admonition-note,
+.theme-admonition-info {
+  border-left-color: var(--psw-cyan);
+}
+.theme-admonition-danger,
+.theme-admonition-warning {
+  border-left-color: var(--psw-amber);
+}
+
+/* Inline code stands out a touch against the near-black surface. */
+[data-theme='dark'] code {
+  background-color: rgba(127, 119, 221, 0.14);
+  border: 1px solid rgba(127, 119, 221, 0.22);
+}
+
+/* Buttons / primary CTAs use the amber accent with readable text. */
+.button--primary {
+  --ifm-button-color: #0b0e14;
+}

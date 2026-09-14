@@ -1,0 +1,26 @@
+# Classifier eval: a clear SQL injection finding should come back
+# as critical with CVSS >= 9.0 and attack_category = sqli.
+name: classifier_sqli_critical
+agent: classifier
+input:
+  findings:
+    - target: https://shop.example.com/search?q=test
+      source: nuclei
+      type: sqli
+      detail: "UNION-based SQLi; /search?q= reflects DB error; error message contains 'MySQL server version'"
+rubric:
+  severity: critical
+  cvss_min: 9.0
+  attack_category_any_of: [sqli, sql_injection]
+  confidence_any_of: [high, medium]
+mock_response:
+  findings:
+    - input_index: 0
+      title: UNION-based SQL injection in /search endpoint
+      description: Parameter `q` is concatenated into a MySQL query without sanitisation.
+      cve_ids: []
+      cvss_score: 9.8
+      cvss_vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+      severity: critical
+      attack_category: sqli
+      confidence: high

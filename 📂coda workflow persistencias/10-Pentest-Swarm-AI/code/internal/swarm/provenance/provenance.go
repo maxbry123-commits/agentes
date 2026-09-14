@@ -1,0 +1,90 @@
+// Package provenance signs blackboard findings with an Ed25519 keypair
+// per agent so that any read can detect tampering.
+//
+// Threat model: a malicious or compromised agent may try to inject a
+// fake finding that looks like it came from a trusted agent (recon,
+// classifier, exploit). Without provenance, the swarm has no way to
+// notice — agent_name is a string and any code path can write any
+// agent_name. With provenance, every write carries an Ed25519
+// signature over (campaign | agent | type | target | data | created)
+// and a public key. A reader recomputes the canonical bytes and
+// rejects the finding if Verify fails.
+//
+// Keys are generated per-process at startup (NewSigner) and the public
+// key is bound to the agent name on first write. Subsequent writes
+// from a different keypair under the same agent name fail verification
+// — the simplest possible defense against agent-name impersonation.
+//
+// References:
+//   - "Trust but verify" — see Phase 3.4.1 in IMPLEMENTATION_PLAN.md
+//   - MemoryGraft + MINJA literature: arXiv:2512.16962, arXiv:2503.03704
+package provenance
+
+import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/json"
+	"errors"
+	"fmt"
+)
+
+// Signer holds an Ed25519 keypair for one agent.
+type Signer struct {
+	priv ed25519.PrivateKey
+	pub  ed25519.PublicKey
+}
+
+// NewSigner generates a fresh keypair. Call once per agent per process.
+func NewSigner() (*Signer, error) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("generate ed25519 key: %w", err)
+	}
+	return &Signer{priv: priv, pub: pub}, nil
+}
+
+// PublicKey returns the agent's public key (32 bytes). Stored alongside
+// every signed finding so verifiers don't need a key registry.
+func (s *Signer) PublicKey() []byte { return s.pub }
+
+// canonicalBytes is the message Ed25519 signs. Order + types are fixed
+// — any change to the schema breaks signature verification, which is
+// the desired behaviour (refuse to verify findings written under a
+// different schema).
+func canonicalBytes(campaignID, agentName, findingType, target string, data []byte, createdUnix int64) []byte {
+	// JSON over a struct keeps the encoding stable + portable. Avoid
+	// raw concatenation — colon-separated strings are footguns when a
+	// field legitimately contains a colon.
+	v := struct {
+		C string `json:"c"` // campaign id
+		A string `json:"a"` // agent name
+		T string `json:"t"` // finding type
+		G string `json:"g"` // tarGet
+		D []byte `json:"d"` // data
+		U int64  `json:"u"` // unix-ts
+	}{C: campaignID, A: agentName, T: findingType, G: target, D: data, U: createdUnix}
+	out, _ := json.Marshal(v)
+	return out
+}
+
+// Sign produces a signature over the canonical bytes of a finding.
+func (s *Signer) Sign(campaignID, agentName, findingType, target string, data []byte, createdUnix int64) []byte {
+	msg := canonicalBytes(campaignID, agentName, findingType, target, data, createdUnix)
+	return ed25519.Sign(s.priv, msg)
+}
+
+// Verify checks a signature against the public key + canonical bytes.
+// Returns nil if the signature is valid; an error otherwise.
+func Verify(pub []byte, sig []byte, campaignID, agentName, findingType, target string, data []byte, createdUnix int64) error {
+	if len(pub) != ed25519.PublicKeySize {
+		return errors.New("provenance: bad public key length")
+	}
+	if len(sig) != ed25519.SignatureSize {
+		return errors.New("provenance: bad signature length")
+	}
+	msg := canonicalBytes(campaignID, agentName, findingType, target, data, createdUnix)
+	if !ed25519.Verify(ed25519.PublicKey(pub), msg, sig) {
+		return errors.New("provenance: signature verification failed (possible tamper)")
+	}
+	return nil
+}

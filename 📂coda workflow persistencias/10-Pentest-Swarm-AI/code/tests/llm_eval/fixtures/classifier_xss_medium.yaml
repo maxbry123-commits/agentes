@@ -1,0 +1,24 @@
+name: classifier_xss_medium
+agent: classifier
+input:
+  findings:
+    - target: https://app.example.com/profile?name=%3Cscript%3Ealert(1)%3C/script%3E
+      source: nuclei
+      type: xss
+      detail: "Reflected XSS in /profile name param; no HttpOnly or CSP headers"
+rubric:
+  severity_any_of: [medium, high]
+  cvss_min: 5.0
+  cvss_max: 8.5
+  attack_category_any_of: [xss, cross_site_scripting]
+mock_response:
+  findings:
+    - input_index: 0
+      title: Reflected XSS in /profile name parameter
+      description: User input from `name` is rendered without HTML-escaping; no CSP mitigates.
+      cve_ids: []
+      cvss_score: 6.1
+      cvss_vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"
+      severity: medium
+      attack_category: xss
+      confidence: high

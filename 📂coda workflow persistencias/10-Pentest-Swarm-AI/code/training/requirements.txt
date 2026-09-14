@@ -1,0 +1,8 @@
+anthropic>=0.40.0
+pydantic>=2.5.0
+datasets>=2.16.0
+huggingface-hub>=0.20.0
+numpy>=1.26.0
+tqdm>=4.66.0
+jsonlines>=4.0.0
+scikit-learn>=1.4.0

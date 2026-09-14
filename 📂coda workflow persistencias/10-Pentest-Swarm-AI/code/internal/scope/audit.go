@@ -1,0 +1,35 @@
+package scope
+
+import (
+	"github.com/Armur-Ai/Pentest-Swarm-AI/internal/logger"
+	"go.uber.org/zap"
+)
+
+// ValidateAndLog wraps Validate with mandatory structured logging on
+// scope violations. Every tool adapter should use this instead of Validate
+// so that a future bug where a caller silently eats the error still shows
+// up in the log stream.
+//
+// Behaviour contract: on violation, emits a WARN log line with
+// subsystem="scope" and the target + allowed scope, then returns the error
+// unchanged. On success, emits a DEBUG log line (so audit trails can prove
+// every tool call was scope-checked).
+func ValidateAndLog(tool, target string, def ScopeDefinition) error {
+	err := Validate(target, def)
+	l := logger.Get().With(
+		zap.String("subsystem", "scope"),
+		zap.String("tool", tool),
+		zap.String("target", target),
+	)
+	if err != nil {
+		l.Warn("scope.violation",
+			zap.Strings("allowed_domains", def.AllowedDomains),
+			zap.Strings("allowed_cidrs", def.AllowedCIDRs),
+			zap.Strings("excluded_cidrs", def.ExcludedCIDRs),
+			zap.Error(err),
+		)
+		return err
+	}
+	l.Debug("scope.allowed")
+	return nil
+}

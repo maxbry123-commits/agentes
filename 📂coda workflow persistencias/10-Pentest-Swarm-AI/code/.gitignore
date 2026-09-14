@@ -1,0 +1,70 @@
+# Binaries
+/bin/
+/pentestswarm
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go
+/vendor/
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# Environment & secrets
+.env
+.env.*
+config.yaml
+!config.example.yaml
+*.pem
+*.key
+
+# Models
+*.gguf
+*.bin
+*.safetensors
+
+# Node / React
+node_modules/
+web/dist/
+.vite/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Test artifacts
+tests/e2e/reports/
+tests/integration/data/
+
+# Build
+/dist/
+*.tar.gz
+
+# Private implementation plans — not for the public repo (competitive)
+docs/internal/
+
+# Detailed phased plan is private (competitive); public roadmap lives in README
+IMPLEMENTATION_PLAN.md

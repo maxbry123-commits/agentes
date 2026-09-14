@@ -1,0 +1,23 @@
+name: classifier_info_disclosure_low
+agent: classifier
+input:
+  findings:
+    - target: https://example.com/
+      source: httpx
+      type: server_header
+      detail: "Server header reveals: Apache/2.4.41 (Ubuntu)"
+rubric:
+  severity_any_of: [low, informational]
+  cvss_max: 5.0
+  attack_category_any_of: [info_disclosure, information_disclosure, misconfig, misconfiguration]
+mock_response:
+  findings:
+    - input_index: 0
+      title: Server banner discloses version
+      description: Apache version disclosed via Server header. Low direct risk; helps attackers pick CVEs.
+      cve_ids: []
+      cvss_score: 3.1
+      cvss_vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
+      severity: low
+      attack_category: info_disclosure
+      confidence: high

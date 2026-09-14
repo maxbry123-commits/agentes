@@ -1,0 +1,26 @@
+# Bundled practice target for Pentest Swarm AI.
+#
+# `pentestswarm scan --lab --lab-target vampi` writes and runs this same
+# compose file for you, then tears it down. This copy is here so you can
+# audit exactly what it starts, or run it by hand:
+#
+#   docker compose -f deploy/lab/vampi/docker-compose.yml up -d
+#   until curl -sf http://localhost:5000/createdb >/dev/null; do sleep 3; done
+#   pentestswarm scan http://localhost:5000 --scope 127.0.0.1/32,localhost --swarm --follow
+#   docker compose -f deploy/lab/vampi/docker-compose.yml down -v
+#
+# VAmPI (Vulnerable API) is erev0s' intentionally-vulnerable Flask REST API,
+# built to demonstrate the OWASP API Security Top 10 — BOLA, excessive data
+# exposure, mass assignment, injection, and broken authentication among them.
+# Project: https://github.com/erev0s/VAmPI (MIT licensed). It's a single
+# lightweight container and binds only to 127.0.0.1; nothing here touches the
+# outside world.
+#
+# NOTE: kept in sync with the embedded labVampiCompose const in cli/lab.go.
+services:
+  vampi:
+    image: erev0s/vampi:latest
+    environment:
+      - VULNERABLE=1
+    ports:
+      - "127.0.0.1:5000:5000"

@@ -1,0 +1,27 @@
+# Bundled practice target for Pentest Swarm AI.
+#
+# `pentestswarm scan --lab --lab-target dvga` writes and runs this same
+# compose file for you, then tears it down. This copy is here so you can
+# audit exactly what it starts, or run it by hand:
+#
+#   docker compose -f deploy/lab/dvga/docker-compose.yml up -d
+#   until curl -sf http://localhost:5013/graphql >/dev/null; do sleep 3; done
+#   pentestswarm scan http://localhost:5013 --scope 127.0.0.1/32,localhost --swarm --follow
+#   docker compose -f deploy/lab/dvga/docker-compose.yml down -v
+#
+# DVGA (Damn Vulnerable GraphQL Application) is dolevf's intentionally-
+# vulnerable GraphQL API — introspection left enabled, injection (OS command
+# and SQL), denial-of-service via unbounded/nested queries, stored XSS, and
+# broken access control among its planted flaws. Project:
+# https://github.com/dolevf/Damn-Vulnerable-GraphQL-Application (MIT
+# licensed). It's a single lightweight container and binds only to
+# 127.0.0.1; nothing here touches the outside world.
+#
+# NOTE: kept in sync with the embedded labDvgaCompose const in cli/lab.go.
+services:
+  dvga:
+    image: dolevf/dvga:latest
+    environment:
+      - WEB_HOST=0.0.0.0
+    ports:
+      - "127.0.0.1:5013:5013"
