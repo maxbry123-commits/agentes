@@ -146,7 +146,7 @@ def run_chain(registry_path: str | Path, state_root: str | Path, task_id: str, p
         state_file = state_root / component["component"] / f"{task_id}.json"
         adapter = Adapter(state_file)
         adapter.claim(task_id)
-        adapter.checkpoint(task_id, {"chain_id": CHAIN_ID, "order": component["order"], "payload": handoff["payload"]})
+        adapter.checkpoint_task(task_id, {"chain_id": CHAIN_ID, "order": component["order"], "payload": handoff["payload"]})
         adapter.verify(task_id, {"component": component["component"], "handoff": "PASS"})
         adapter.release(task_id)
         evidence.append({"order": component["order"], "component": component["component"], "status": "RELEASED"})
