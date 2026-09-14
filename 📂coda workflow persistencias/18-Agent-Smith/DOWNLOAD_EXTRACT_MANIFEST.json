@@ -1,0 +1,48 @@
+{
+  "bundle_bytes": 43590163,
+  "bundle_sha256": "924fd7476dbfc09cfdf4eecca4dbf1fcff93d65fa0099bf8698c3dd4b940d536",
+  "extracted_tree": {
+    "bytes": 49766631,
+    "files": 379,
+    "sha256": "5a77ae04775fbfe38fefc422230a69bcb8d88672239d119d8df9f713e331f254"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "18-Agent-Smith.bundle.zip.part-0001",
+      "sha256": "f518fa0c65db5065f9f85ff145eb9308076dbdb8b73fbb9c518356f0e3eb9889"
+    },
+    {
+      "bytes": 12582912,
+      "name": "18-Agent-Smith.bundle.zip.part-0002",
+      "sha256": "8d849944c9a3672904b17477f00eabfd173cf697f9042ce015454b9cebca9c12"
+    },
+    {
+      "bytes": 12582912,
+      "name": "18-Agent-Smith.bundle.zip.part-0003",
+      "sha256": "dd3157502ee353610cfbf5f53140b6f7b2e6475685ba65d5d845f5f7107cc133"
+    },
+    {
+      "bytes": 5841427,
+      "name": "18-Agent-Smith.bundle.zip.part-0004",
+      "sha256": "b9d3d72613cf8b94ef2f1666947cff1c27f0336568e0315e238576779397565a"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "18-Agent-Smith",
+  "source_bytes": 49766631,
+  "source_commit": "e06508920db6a41773381e42102daa0e75e21ece",
+  "source_files": 379,
+  "source_ref": "HEAD",
+  "source_repo": "0x0pointer/agent-smith",
+  "source_tree": {
+    "bytes": 49766631,
+    "files": 379,
+    "sha256": "5a77ae04775fbfe38fefc422230a69bcb8d88672239d119d8df9f713e331f254"
+  }
+}

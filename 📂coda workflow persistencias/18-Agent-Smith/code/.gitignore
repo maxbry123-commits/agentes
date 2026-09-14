@@ -1,0 +1,63 @@
+# ── Scan output ──────────────────────────────────────────────────────────────
+artifacts/
+logs/
+findings.json
+coverage_matrix.json
+session.json
+session_cost.json
+pocs/
+gh-issues.md
+threat-model/
+quick_log.json
+qa_state.json
+adjudication_log.jsonl
+
+# ── Test coverage ────────────────────────────────────────────────────────────
+coverage.xml
+.coverage
+htmlcov/
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Secrets / env ─────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+report_generator.py
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# ── Claude Code local settings ────────────────────────────────────────────────
+.claude/settings.local.json
+
+# ── Editors ───────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+steering_queue.json
+wishlist_queue.json
+recovery_latest.json
+pentest_metrics.jsonl
+
+# AS-REPUD detached signatures (never commit)
+*.sig
+SECURITY-REVIEW.md
+analysis/
+run_2/
