@@ -1,7 +1,7 @@
 {
   "schema": "yaiwes.internal.swarm/v5",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.1",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.2",
   "count": 24,
   "topology": "LINEAR_FAIL_CLOSED",
   "components": [
@@ -10,7 +10,7 @@
       "component": "🏈 01-DeepAudit",
       "manifest": "🏈 01-DeepAudit/INTERNAL-SURGICAL-MANIFEST-V5.json",
       "runtime": "🏈 01-DeepAudit/code/yaiwes_internal/persistence_runtime.py",
-      "links": 29,
+      "links": 230,
       "previous": null,
       "next": "🏈 02-CyberStrikeAI"
     },
@@ -19,7 +19,7 @@
       "component": "🏈 02-CyberStrikeAI",
       "manifest": "🏈 02-CyberStrikeAI/INTERNAL-SURGICAL-MANIFEST-V5.json",
       "runtime": "🏈 02-CyberStrikeAI/code/yaiwes_internal/persistence_runtime.py",
-      "links": 55,
+      "links": 450,
       "previous": "🏈 01-DeepAudit",
       "next": "🏈 03-LuaN1aoAgent"
     },
@@ -28,7 +28,7 @@
       "component": "🏈 03-LuaN1aoAgent",
       "manifest": "🏈 03-LuaN1aoAgent/INTERNAL-SURGICAL-MANIFEST-V5.json",
       "runtime": "🏈 03-LuaN1aoAgent/code/yaiwes_internal/persistence_runtime.py",
-      "links": 18,
+      "links": 57,
       "previous": "🏈 02-CyberStrikeAI",
       "next": "🏈 04-AI-Pentest"
     },
@@ -37,7 +37,7 @@
       "component": "🏈 04-AI-Pentest",
       "manifest": "🏈 04-AI-Pentest/INTERNAL-SURGICAL-MANIFEST-V5.json",
       "runtime": "🏈 04-AI-Pentest/code/yaiwes_internal/persistence_runtime.py",
-      "links": 12,
+      "links": 25,
       "previous": "🏈 03-LuaN1aoAgent",
       "next": "🏈 05-AI-Infra-Guard"
     },
@@ -46,7 +46,7 @@
       "component": "🏈 05-AI-Infra-Guard",
       "manifest": "🏈 05-AI-Infra-Guard/INTERNAL-SURGICAL-MANIFEST-V5.json",
       "runtime": "🏈 05-AI-Infra-Guard/code/yaiwes_internal/persistence_runtime.py",
-      "links": 354,
+      "links": 622,
       "previous": "🏈 04-AI-Pentest",
       "next": "🏈 06-PentAGI"
     },
@@ -55,7 +55,7 @@
       "component": "🏈 06-PentAGI",
       "manifest": "🏈 06-PentAGI/INTERNAL-SURGICAL-MANIFEST-V5.json",
       "runtime": "🏈 06-PentAGI/code/yaiwes_internal/persistence_runtime.py",
-      "links": 12,
+      "links": 503,
       "previous": "🏈 05-AI-Infra-Guard",
       "next": "🏈 07-Strix"
     },
@@ -64,7 +64,7 @@
       "component": "🏈 07-Strix",
       "manifest": "🏈 07-Strix/INTERNAL-SURGICAL-MANIFEST-V5.json",
       "runtime": "🏈 07-Strix/code/yaiwes_internal/persistence_runtime.py",
-      "links": 31,
+      "links": 99,
       "previous": "🏈 06-PentAGI",
       "next": "🏈 08-Redcell"
     },
@@ -73,7 +73,7 @@
       "component": "🏈 08-Redcell",
       "manifest": "🏈 08-Redcell/INTERNAL-SURGICAL-MANIFEST-V5.json",
       "runtime": "🏈 08-Redcell/code/yaiwes_internal/persistence_runtime.py",
-      "links": 11,
+      "links": 103,
       "previous": "🏈 07-Strix",
       "next": "🏈 09-Shel"
     },
@@ -82,7 +82,7 @@
       "component": "🏈 09-Shel",
       "manifest": "🏈 09-Shel/INTERNAL-SURGICAL-MANIFEST-V5.json",
       "runtime": "🏈 09-Shel/code/yaiwes_internal/persistence_runtime.py",
-      "links": 17,
+      "links": 25,
       "previous": "🏈 08-Redcell",
       "next": "🏈 10-Pentest-Swarm-AI"
     },
@@ -91,7 +91,7 @@
       "component": "🏈 10-Pentest-Swarm-AI",
       "manifest": "🏈 10-Pentest-Swarm-AI/INTERNAL-SURGICAL-MANIFEST-V5.json",
       "runtime": "🏈 10-Pentest-Swarm-AI/code/yaiwes_internal/persistence_runtime.py",
-      "links": 61,
+      "links": 151,
       "previous": "🏈 09-Shel",
       "next": "🏈 11-LLM-CTF-Solver"
     },
@@ -100,7 +100,7 @@
       "component": "🏈 11-LLM-CTF-Solver",
       "manifest": "🏈 11-LLM-CTF-Solver/INTERNAL-SURGICAL-MANIFEST-V5.json",
       "runtime": "🏈 11-LLM-CTF-Solver/code/yaiwes_internal/persistence_runtime.py",
-      "links": 16,
+      "links": 47,
       "previous": "🏈 10-Pentest-Swarm-AI",
       "next": "🏈 12-PentestGPT"
     },
@@ -109,7 +109,7 @@
       "component": "🏈 12-PentestGPT",
       "manifest": "🏈 12-PentestGPT/INTERNAL-SURGICAL-MANIFEST-V5.json",
       "runtime": "🏈 12-PentestGPT/code/yaiwes_internal/persistence_runtime.py",
-      "links": 11,
+      "links": 38,
       "previous": "🏈 11-LLM-CTF-Solver",
       "next": "🏈 13-Auto-Pentest-LLM"
     },
@@ -118,7 +118,7 @@
       "component": "🏈 13-Auto-Pentest-LLM",
       "manifest": "🏈 13-Auto-Pentest-LLM/INTERNAL-SURGICAL-MANIFEST-V5.json",
       "runtime": "🏈 13-Auto-Pentest-LLM/code/yaiwes_internal/persistence_runtime.py",
-      "links": 0,
+      "links": 4,
       "previous": "🏈 12-PentestGPT",
       "next": "🏈 14-Dark-Moon"
     },
@@ -127,7 +127,7 @@
       "component": "🏈 14-Dark-Moon",
       "manifest": "🏈 14-Dark-Moon/INTERNAL-SURGICAL-MANIFEST-V5.json",
       "runtime": "🏈 14-Dark-Moon/code/yaiwes_internal/persistence_runtime.py",
-      "links": 5,
+      "links": 14,
       "previous": "🏈 13-Auto-Pentest-LLM",
       "next": "🏈 15-Pentdem"
     },
@@ -136,7 +136,7 @@
       "component": "🏈 15-Pentdem",
       "manifest": "🏈 15-Pentdem/INTERNAL-SURGICAL-MANIFEST-V5.json",
       "runtime": "🏈 15-Pentdem/code/yaiwes_internal/persistence_runtime.py",
-      "links": 26,
+      "links": 41,
       "previous": "🏈 14-Dark-Moon",
       "next": "🏈 16-Autonomous-Pentest-Agent"
     },
@@ -145,7 +145,7 @@
       "component": "🏈 16-Autonomous-Pentest-Agent",
       "manifest": "🏈 16-Autonomous-Pentest-Agent/INTERNAL-SURGICAL-MANIFEST-V5.json",
       "runtime": "🏈 16-Autonomous-Pentest-Agent/code/yaiwes_internal/persistence_runtime.py",
-      "links": 5,
+      "links": 13,
       "previous": "🏈 15-Pentdem",
       "next": "🏈 17-AI-Red-Team-Agent"
     },
@@ -154,7 +154,7 @@
       "component": "🏈 17-AI-Red-Team-Agent",
       "manifest": "🏈 17-AI-Red-Team-Agent/INTERNAL-SURGICAL-MANIFEST-V5.json",
       "runtime": "🏈 17-AI-Red-Team-Agent/code/yaiwes_internal/persistence_runtime.py",
-      "links": 1,
+      "links": 4,
       "previous": "🏈 16-Autonomous-Pentest-Agent",
       "next": "🏈 18-Agent-Smith"
     },
@@ -163,7 +163,7 @@
       "component": "🏈 18-Agent-Smith",
       "manifest": "🏈 18-Agent-Smith/INTERNAL-SURGICAL-MANIFEST-V5.json",
       "runtime": "🏈 18-Agent-Smith/code/yaiwes_internal/persistence_runtime.py",
-      "links": 23,
+      "links": 121,
       "previous": "🏈 17-AI-Red-Team-Agent",
       "next": "🏈 19-TPT-Agent"
     },
@@ -172,7 +172,7 @@
       "component": "🏈 19-TPT-Agent",
       "manifest": "🏈 19-TPT-Agent/INTERNAL-SURGICAL-MANIFEST-V5.json",
       "runtime": "🏈 19-TPT-Agent/code/yaiwes_internal/persistence_runtime.py",
-      "links": 2,
+      "links": 9,
       "previous": "🏈 18-Agent-Smith",
       "next": "🏈 20-OpenWhale"
     },
@@ -181,7 +181,7 @@
       "component": "🏈 20-OpenWhale",
       "manifest": "🏈 20-OpenWhale/INTERNAL-SURGICAL-MANIFEST-V5.json",
       "runtime": "🏈 20-OpenWhale/code/yaiwes_internal/persistence_runtime.py",
-      "links": 3,
+      "links": 8,
       "previous": "🏈 19-TPT-Agent",
       "next": "🏈 21-H-Pentest"
     },
@@ -190,7 +190,7 @@
       "component": "🏈 21-H-Pentest",
       "manifest": "🏈 21-H-Pentest/INTERNAL-SURGICAL-MANIFEST-V5.json",
       "runtime": "🏈 21-H-Pentest/code/yaiwes_internal/persistence_runtime.py",
-      "links": 6,
+      "links": 28,
       "previous": "🏈 20-OpenWhale",
       "next": "🏈 22-PHANTOM"
     },
@@ -199,7 +199,7 @@
       "component": "🏈 22-PHANTOM",
       "manifest": "🏈 22-PHANTOM/INTERNAL-SURGICAL-MANIFEST-V5.json",
       "runtime": "🏈 22-PHANTOM/code/yaiwes_internal/persistence_runtime.py",
-      "links": 24,
+      "links": 68,
       "previous": "🏈 21-H-Pentest",
       "next": "🏈 23-HackSynth"
     },

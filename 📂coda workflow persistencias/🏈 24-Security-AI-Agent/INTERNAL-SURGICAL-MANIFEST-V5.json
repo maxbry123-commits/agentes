@@ -2,7 +2,7 @@
   "schema": "yaiwes.internal.surgical/v5",
   "component": "🏈 24-Security-AI-Agent",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.1",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.2",
   "policy": {
     "restore_benign": true,
     "offensive_execution": false,
@@ -13,9 +13,12 @@
   "files": [],
   "counts": {
     "accounted": 0,
+    "keep_unchanged": 0,
     "restored_benign": 0,
     "blocked_offensive": 0,
     "review_fail_closed": 0,
     "links": 0
-  }
+  },
+  "source_code_available": false,
+  "source_code_status": "SOURCE_CODE_UNAVAILABLE"
 }

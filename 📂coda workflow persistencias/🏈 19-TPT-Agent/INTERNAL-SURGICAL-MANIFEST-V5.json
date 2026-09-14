@@ -2,7 +2,7 @@
   "schema": "yaiwes.internal.surgical/v5",
   "component": "🏈 19-TPT-Agent",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.1",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.2",
   "policy": {
     "restore_benign": true,
     "offensive_execution": false,
@@ -18,6 +18,24 @@
       "original_sha256": "d57d924c2d91a0eff1a0ea7f0fffb432055765d7bb4bfa52d4a7f72fc0ddc539",
       "active_sha256": "d57d924c2d91a0eff1a0ea7f0fffb432055765d7bb4bfa52d4a7f72fc0ddc539",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "tpt_agent/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "c361d43b7627fc221c68a4776fb1d492773855064362af8b42ef91ef126c97eb",
+      "active_sha256": "c361d43b7627fc221c68a4776fb1d492773855064362af8b42ef91ef126c97eb",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "tpt_agent/__main__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ea91a62222fd160001b765570db38cfce6422bba1525730e23ef8be97c575e37",
+      "active_sha256": "ea91a62222fd160001b765570db38cfce6422bba1525730e23ef8be97c575e37",
+      "quarantine": null,
       "link": false
     },
     {
@@ -26,6 +44,15 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "dfbac895c273d74e0f36591622c289e1e34f8c0272d246c10ae5d0439844ac95",
       "active_sha256": "dfbac895c273d74e0f36591622c289e1e34f8c0272d246c10ae5d0439844ac95",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "tpt_agent/knowledge.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "558f7dcc36b0012042e21365387feeaad03edebf866e1e0806e925aa82a09982",
+      "active_sha256": "558f7dcc36b0012042e21365387feeaad03edebf866e1e0806e925aa82a09982",
       "quarantine": null,
       "link": false
     },
@@ -36,7 +63,7 @@
       "original_sha256": "f76b4ff6406ac560069dbc2de8f16450c5d56dd30b2a46e72821a2ac790ad9a0",
       "active_sha256": "f76b4ff6406ac560069dbc2de8f16450c5d56dd30b2a46e72821a2ac790ad9a0",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "tpt_agent/memory.py",
@@ -45,7 +72,7 @@
       "original_sha256": "9cb373d2779594d0d7971ae19dcdcea287c6cdaf7d43e19a929d60c8fd24ff29",
       "active_sha256": "9cb373d2779594d0d7971ae19dcdcea287c6cdaf7d43e19a929d60c8fd24ff29",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "tpt_agent/orchestrator.py",
@@ -54,7 +81,7 @@
       "original_sha256": "a46ee54da7521355c92bd9743d4e2243ecab19518f2fda9236f24ff386ea31b1",
       "active_sha256": "a46ee54da7521355c92bd9743d4e2243ecab19518f2fda9236f24ff386ea31b1",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "tpt_agent/prompts.py",
@@ -72,6 +99,15 @@
       "original_sha256": "ae021d801c645671d28ffcfd7bf759f224193a8edc2bf153ace8a5ee13e383e8",
       "active_sha256": "ae021d801c645671d28ffcfd7bf759f224193a8edc2bf153ace8a5ee13e383e8",
       "quarantine": "_yaiwes_upstream_quarantine/tpt_agent/sandbox.py.original",
+      "link": true
+    },
+    {
+      "path": "tpt_agent/static/app.js",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "63bb99684ece5a7b8b93e9096406b55cfc03cbcc2909a98c05a02a29ca0cf938",
+      "active_sha256": "63bb99684ece5a7b8b93e9096406b55cfc03cbcc2909a98c05a02a29ca0cf938",
+      "quarantine": null,
       "link": false
     },
     {
@@ -81,7 +117,7 @@
       "original_sha256": "558556bb0c4070c587795245afa26e3a5bf4f4821209d122acb73cabf67527d5",
       "active_sha256": "558556bb0c4070c587795245afa26e3a5bf4f4821209d122acb73cabf67527d5",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "tpt_agent/tools.py",
@@ -91,13 +127,25 @@
       "active_sha256": "d47d86eea063c5bc1b1003db00eac190fe3629d307ff6ab6d110bb9ea9c4ec72",
       "quarantine": "_yaiwes_upstream_quarantine/tpt_agent/tools.py.original",
       "link": true
+    },
+    {
+      "path": "tpt_agent/web_app.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "636f5545f30378477548cee3e0980e54d48a00e1d5a317739a6f045133d763ba",
+      "active_sha256": "636f5545f30378477548cee3e0980e54d48a00e1d5a317739a6f045133d763ba",
+      "quarantine": null,
+      "link": false
     }
   ],
   "counts": {
-    "accounted": 9,
+    "accounted": 14,
+    "keep_unchanged": 5,
     "restored_benign": 7,
     "blocked_offensive": 2,
     "review_fail_closed": 0,
-    "links": 2
-  }
+    "links": 9
+  },
+  "source_code_available": true,
+  "source_code_status": "AVAILABLE"
 }

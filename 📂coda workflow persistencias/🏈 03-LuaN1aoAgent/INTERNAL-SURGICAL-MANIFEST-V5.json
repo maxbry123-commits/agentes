@@ -2,7 +2,7 @@
   "schema": "yaiwes.internal.surgical/v5",
   "component": "🏈 03-LuaN1aoAgent",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.1",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.2",
   "policy": {
     "restore_benign": true,
     "offensive_execution": false,
@@ -12,11 +12,47 @@
   },
   "files": [
     {
+      "path": "install.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "577ac2e0ffd5b1d0c187b8ea34e828d7afdaf3a137650622a2bff7de6835d4f7",
+      "active_sha256": "577ac2e0ffd5b1d0c187b8ea34e828d7afdaf3a137650622a2bff7de6835d4f7",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "network-image/conntrack_telemetry.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "909b41ea0cb0b33ed7ba548ca9370ae158da820d387d3aff162141609c31c442",
       "active_sha256": "909b41ea0cb0b33ed7ba548ca9370ae158da820d387d3aff162141609c31c442",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "network-image/entrypoint.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "c425d8515c5dcc95715b361abf31b5e2bca7f267ba07df588b1b2d616e12e35c",
+      "active_sha256": "c425d8515c5dcc95715b361abf31b5e2bca7f267ba07df588b1b2d616e12e35c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "network-image/flow_capture.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d26782743bc793bc43b85d9e25834b2370d92541e20f79d271eba09ab4b94400",
+      "active_sha256": "d26782743bc793bc43b85d9e25834b2370d92541e20f79d271eba09ab4b94400",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "network-image/gateway-tun/capture_writer.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "3a98c98a1e1abdc4e900d3f3de7b26ab7f349003acea2e5953d55759ab894258",
+      "active_sha256": "3a98c98a1e1abdc4e900d3f3de7b26ab7f349003acea2e5953d55759ab894258",
       "quarantine": null,
       "link": false
     },
@@ -26,6 +62,42 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "9b1c09489818423aac884829a7ef6eb7688c8ebc593bc878c3e89340a3d66f70",
       "active_sha256": "9b1c09489818423aac884829a7ef6eb7688c8ebc593bc878c3e89340a3d66f70",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "network-image/gateway-tun/host_broker.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e8eb0dbbc6dd1587fe759074b554049a5172bd4e1ba13cfea8cdb2a379be4c28",
+      "active_sha256": "e8eb0dbbc6dd1587fe759074b554049a5172bd4e1ba13cfea8cdb2a379be4c28",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "network-image/gateway-tun/host_broker_test.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "9983dc3b6c5d505a55909a6f3f1fb36baa34e0ed0a1049bbb7d11e50654915ef",
+      "active_sha256": "9983dc3b6c5d505a55909a6f3f1fb36baa34e0ed0a1049bbb7d11e50654915ef",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "network-image/gateway-tun/main.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "3623a66e42923e7c63aa2c680d121bf0b1af1b69629e9b1465a156a055ff34b5",
+      "active_sha256": "3623a66e42923e7c63aa2c680d121bf0b1af1b69629e9b1465a156a055ff34b5",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "network-image/gateway-tun/main_test.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "7f16244d2147cea36f9fc8025cb9a1d3bddb312e81b3c517591fbac43ea9f0f7",
+      "active_sha256": "7f16244d2147cea36f9fc8025cb9a1d3bddb312e81b3c517591fbac43ea9f0f7",
       "quarantine": null,
       "link": false
     },
@@ -37,6 +109,69 @@
       "active_sha256": "2c737c9ab7f12522218cfad3efe84b8a4a4c2d8b422677b2dc605001a30b277d",
       "quarantine": "_yaiwes_upstream_quarantine/network-image/gateway-tun/protocol_gateway.go.original",
       "link": true
+    },
+    {
+      "path": "network-image/gateway-tun/protocol_gateway_test.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "47fa6b0884216e431d4e78c666beab1598e500309e4f363a10f057da29021d6a",
+      "active_sha256": "47fa6b0884216e431d4e78c666beab1598e500309e4f363a10f057da29021d6a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "network-image/gateway-tun/route_proxy.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "bf9118b5d2d1b903504a14fe4e870a7881395c3574e61f1244cf129034aad18e",
+      "active_sha256": "bf9118b5d2d1b903504a14fe4e870a7881395c3574e61f1244cf129034aad18e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "network-image/gateway-tun/route_proxy_test.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "74112e945246b35bf33bca2d6f3ba4b31df36ae373d3c2f23ad29ea30bd70fc2",
+      "active_sha256": "74112e945246b35bf33bca2d6f3ba4b31df36ae373d3c2f23ad29ea30bd70fc2",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "network-image/gateway-tun/segmented_writer.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "2ae167756a483007323453fc235e0f758932f395064ba33e0cca70e132acb1dd",
+      "active_sha256": "2ae167756a483007323453fc235e0f758932f395064ba33e0cca70e132acb1dd",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "network-image/gateway-tun/segmented_writer_test.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "505caefb037dace9cf38ec80317b17420e08b6f69762954896b41084339ac404",
+      "active_sha256": "505caefb037dace9cf38ec80317b17420e08b6f69762954896b41084339ac404",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "network-image/gateway-tun/socks.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ff0150ee7f8d5ac0d98a61c58af43a4d4bb416c8dcca280901a2598c5e25e2c5",
+      "active_sha256": "ff0150ee7f8d5ac0d98a61c58af43a4d4bb416c8dcca280901a2598c5e25e2c5",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "network-image/gateway-tun/tcp_timewait.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "0f9c11dcb3cfd9a5c15193993eea0a6e5cde781e98091072fa9a748c315be309",
+      "active_sha256": "0f9c11dcb3cfd9a5c15193993eea0a6e5cde781e98091072fa9a748c315be309",
+      "quarantine": null,
+      "link": false
     },
     {
       "path": "network-image/index_server.py",
@@ -66,11 +201,47 @@
       "link": true
     },
     {
+      "path": "network-image/segmented_capture.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d618f755430c9d78e1ac302a52f816434834cdee538d652d961b0068b096093a",
+      "active_sha256": "d618f755430c9d78e1ac302a52f816434834cdee538d652d961b0068b096093a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "network-image/socks-connector/main.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "97ffa3815f0f920762fe2195a46ff91809405848ab2296b5c8734c41cbc86cd9",
+      "active_sha256": "97ffa3815f0f920762fe2195a46ff91809405848ab2296b5c8734c41cbc86cd9",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "network-image/socks-connector/main_test.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "54a06f6e229284ecbf9b2c8308e24a3377c065db0ae0e7d7c0220d2fb5de2d7f",
+      "active_sha256": "54a06f6e229284ecbf9b2c8308e24a3377c065db0ae0e7d7c0220d2fb5de2d7f",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "network-image/test_conntrack_telemetry.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "c5e0f4927398e4e288036b1b8a3d7fea0e5ddaa96d5e6c1541b993f2af455e22",
       "active_sha256": "c5e0f4927398e4e288036b1b8a3d7fea0e5ddaa96d5e6c1541b993f2af455e22",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "network-image/test_flow_capture.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ce9998712807d66fa93909133f27f61cf7a24a79102087000e6490b0c5783d75",
+      "active_sha256": "ce9998712807d66fa93909133f27f61cf7a24a79102087000e6490b0c5783d75",
       "quarantine": null,
       "link": false
     },
@@ -93,11 +264,101 @@
       "link": true
     },
     {
+      "path": "network-image/test_scope_dns.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b9ed122d3dfd13b3f06be51bcc003a6dd2e5cbf472bd82d327ccc2455c98981d",
+      "active_sha256": "b9ed122d3dfd13b3f06be51bcc003a6dd2e5cbf472bd82d327ccc2455c98981d",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "network-image/test_segmented_capture.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "c83916a180b3810d87e027200d35b095c1a6878c7675483dfc612c0c01512072",
+      "active_sha256": "c83916a180b3810d87e027200d35b095c1a6878c7675483dfc612c0c01512072",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "scripts/diagnose-baidu-gateway.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1dae2e5003c2fa88229c2d70b2ae76c2b314cf57abeeb3e03bbb21e91da8ba88",
+      "active_sha256": "1dae2e5003c2fa88229c2d70b2ae76c2b314cf57abeeb3e03bbb21e91da8ba88",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/agent-runtime-bootstrap.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "5135910374dedaf1ba1da01c51d015e9a8626e5d5ce775c528b40c3306472bdc",
+      "active_sha256": "5135910374dedaf1ba1da01c51d015e9a8626e5d5ce775c528b40c3306472bdc",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/agents.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "878f27b1c1857468d5e0bccc6187e03ad035d9cb8f167b8aaa0fbf7dbc982ee7",
+      "active_sha256": "878f27b1c1857468d5e0bccc6187e03ad035d9cb8f167b8aaa0fbf7dbc982ee7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/cli-options.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "f875bc35b2503da603c5107597bcfbb7c34585a7c700beb1bebed7607a861361",
+      "active_sha256": "f875bc35b2503da603c5107597bcfbb7c34585a7c700beb1bebed7607a861361",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/cli-runtime.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "605ed4c757cc8ff490e098de279cfe7f98e545af25aafe632ca52c5f90977c4d",
+      "active_sha256": "605ed4c757cc8ff490e098de279cfe7f98e545af25aafe632ca52c5f90977c4d",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/cli.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "072805d3bc9d1961756cb9fa5500d3759684cffdfa3db63f6bf783b055f4f551",
+      "active_sha256": "072805d3bc9d1961756cb9fa5500d3759684cffdfa3db63f6bf783b055f4f551",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/coda-persistence-policy.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "08fa339fb6d19ec5be83c5b7cc3cbd972551f481506119e2fbf40cf7bb0a5a35",
+      "active_sha256": "08fa339fb6d19ec5be83c5b7cc3cbd972551f481506119e2fbf40cf7bb0a5a35",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "src/connectivity/connectivity-runtime-registry.ts",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "c48e49ee1c500e2de541473c773dc819f22a4b26ad906731026edb4502507d0c",
       "active_sha256": "c48e49ee1c500e2de541473c773dc819f22a4b26ad906731026edb4502507d0c",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "src/connectivity/connectivity-runtime.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e6ec6eb5ce81fa13a4aebd8c4a56ccb8d62f0f099e749af9ddc3cb702a1d90f8",
+      "active_sha256": "e6ec6eb5ce81fa13a4aebd8c4a56ccb8d62f0f099e749af9ddc3cb702a1d90f8",
       "quarantine": null,
       "link": false
     },
@@ -126,7 +387,7 @@
       "original_sha256": "697bbf464a7267c0aa696ad1b857f0d65a2092ed60e35b836260d9ca181bcb6d",
       "active_sha256": "697bbf464a7267c0aa696ad1b857f0d65a2092ed60e35b836260d9ca181bcb6d",
       "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/network-sandbox-manager.ts.original",
-      "link": false
+      "link": true
     },
     {
       "path": "src/connectivity/replay-gateway-runtime.ts",
@@ -136,6 +397,15 @@
       "active_sha256": "9b52e4bec3adbca34c57e1c488223fe4b9383a6780922e46747f81176be5b26e",
       "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/replay-gateway-runtime.ts.original",
       "link": true
+    },
+    {
+      "path": "src/connectivity/route-manager.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "5cf38b78c75f9a1b62659e2a0192d3da9e03b57938c2cc5a0788613f7e3cd6db",
+      "active_sha256": "5cf38b78c75f9a1b62659e2a0192d3da9e03b57938c2cc5a0788613f7e3cd6db",
+      "quarantine": null,
+      "link": false
     },
     {
       "path": "src/connectivity/runtime-owner-lease.ts",
@@ -162,7 +432,7 @@
       "original_sha256": "be5f7aa8b7a672f414fb40ee5cb8169ac750d45f8e88cecee0bf16730746a0db",
       "active_sha256": "be5f7aa8b7a672f414fb40ee5cb8169ac750d45f8e88cecee0bf16730746a0db",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "src/connectivity/traffic-proxy-manager.ts",
@@ -172,6 +442,15 @@
       "active_sha256": "6a9c1e83a709846b93689c74424d5d31016e6dab9687654e991c0dab9e449f91",
       "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/traffic-proxy-manager.ts.original",
       "link": true
+    },
+    {
+      "path": "src/connectivity/traffic-proxy-runtime.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "f4037938d254ddbd692d629545215a8bd24c2b193d41c9b761e39ec89625019c",
+      "active_sha256": "f4037938d254ddbd692d629545215a8bd24c2b193d41c9b761e39ec89625019c",
+      "quarantine": null,
+      "link": false
     },
     {
       "path": "src/controller.ts",
@@ -189,6 +468,15 @@
       "original_sha256": "6268a93b8fac66ae002ddb0b8795413ad2682523863df26e573649b3805c17d5",
       "active_sha256": "6268a93b8fac66ae002ddb0b8795413ad2682523863df26e573649b3805c17d5",
       "quarantine": "_yaiwes_upstream_quarantine/src/docker-resource-reaper.ts.original",
+      "link": true
+    },
+    {
+      "path": "src/epoch-budget-clock.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b1bc565881fa8a702b5a3773f58b9a9634f06b8826766e079da3d6b76249cba6",
+      "active_sha256": "b1bc565881fa8a702b5a3773f58b9a9634f06b8826766e079da3d6b76249cba6",
+      "quarantine": null,
       "link": false
     },
     {
@@ -207,7 +495,7 @@
       "original_sha256": "930371bef3299019c505e34435dec524282ccf7c59fe0c0f9e6b92118691e13c",
       "active_sha256": "930371bef3299019c505e34435dec524282ccf7c59fe0c0f9e6b92118691e13c",
       "quarantine": "_yaiwes_upstream_quarantine/src/executor-sandbox-docker.ts.original",
-      "link": false
+      "link": true
     },
     {
       "path": "src/executor-sandbox.ts",
@@ -215,6 +503,24 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "b29fc8ae0ca2b6ef995e2f3e20a7e1f257f162b182b910c0f8817d757224160d",
       "active_sha256": "b29fc8ae0ca2b6ef995e2f3e20a7e1f257f162b182b910c0f8817d757224160d",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "src/index.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "3647fa8291673867e5b093b3d7105fec4fdcba42b44447f31c557bb74d83a3ee",
+      "active_sha256": "3647fa8291673867e5b093b3d7105fec4fdcba42b44447f31c557bb74d83a3ee",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/json.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ce4a0ebb273c9177d2e178729da6d270fbb6e92ead6146324291104c77295d9c",
+      "active_sha256": "ce4a0ebb273c9177d2e178729da6d270fbb6e92ead6146324291104c77295d9c",
       "quarantine": null,
       "link": false
     },
@@ -225,7 +531,7 @@
       "original_sha256": "1a79b32b51b8cd2c644e5dda53c529a7be6620d4b2cfb98ae38bbce8369c57db",
       "active_sha256": "1a79b32b51b8cd2c644e5dda53c529a7be6620d4b2cfb98ae38bbce8369c57db",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "src/log-summary.ts",
@@ -233,6 +539,33 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "ea1f6768274606dbe2be4db85e2843397ad240ba07a1cc8624c1ba8046630193",
       "active_sha256": "ea1f6768274606dbe2be4db85e2843397ad240ba07a1cc8624c1ba8046630193",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "src/node-sqlite.d.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b67f4c82f7805647db6d7e5f4a1213f998bc094dd973b678847ee71ecf85dbe1",
+      "active_sha256": "b67f4c82f7805647db6d7e5f4a1213f998bc094dd973b678847ee71ecf85dbe1",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/operation-identity.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "f38a75a2bfe987fdc825db15cbe54ec723a51218a26804fc6b6602cf109238d1",
+      "active_sha256": "f38a75a2bfe987fdc825db15cbe54ec723a51218a26804fc6b6602cf109238d1",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/pi-runner.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "9651ff577a33520dbc89e0ba27424f28ef0856557b4ddda791c4648fc305aeb1",
+      "active_sha256": "9651ff577a33520dbc89e0ba27424f28ef0856557b4ddda791c4648fc305aeb1",
       "quarantine": null,
       "link": false
     },
@@ -243,6 +576,24 @@
       "original_sha256": "743e525f202c5b4478d2c3f0b12d27f43f06f287d10872f6c67c3a7443c39fa2",
       "active_sha256": "743e525f202c5b4478d2c3f0b12d27f43f06f287d10872f6c67c3a7443c39fa2",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "src/projection.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "10dc6873f77dee2c82e9cfe5286542b4030dbb32b6d24acabdce3bd496089817",
+      "active_sha256": "10dc6873f77dee2c82e9cfe5286542b4030dbb32b6d24acabdce3bd496089817",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/projector-coordinator.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "9acdacc358f27baf15d33cfe35385d2705bbe9dc797dfb41e54b3c337f6ee2dc",
+      "active_sha256": "9acdacc358f27baf15d33cfe35385d2705bbe9dc797dfb41e54b3c337f6ee2dc",
+      "quarantine": null,
       "link": false
     },
     {
@@ -252,7 +603,7 @@
       "original_sha256": "d74f4adb538533a4119fdd088492031e62620241e5821b31d160046256abccf4",
       "active_sha256": "d74f4adb538533a4119fdd088492031e62620241e5821b31d160046256abccf4",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "src/proxy-config.ts",
@@ -261,7 +612,7 @@
       "original_sha256": "005cdc3b2a8d0aed4d23400217b473477ab2229c6bad7243a7d26831e2db6fe7",
       "active_sha256": "005cdc3b2a8d0aed4d23400217b473477ab2229c6bad7243a7d26831e2db6fe7",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "src/run-report.ts",
@@ -269,6 +620,24 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "db4979deb89c3abcc501647464f26a459927adbf1fbd2275174398da2bd7f64d",
       "active_sha256": "db4979deb89c3abcc501647464f26a459927adbf1fbd2275174398da2bd7f64d",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "src/runtime-control-tools.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "0fe1bc097a775a9c6c87cc16bb94111693511fdc93c89b8ab5a703176648951f",
+      "active_sha256": "0fe1bc097a775a9c6c87cc16bb94111693511fdc93c89b8ab5a703176648951f",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/runtime-path-policy.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "fc8d0090960ec190ffd46837c70e1127b1deaea089dbab02fd99e31005d23676",
+      "active_sha256": "fc8d0090960ec190ffd46837c70e1127b1deaea089dbab02fd99e31005d23676",
       "quarantine": null,
       "link": false
     },
@@ -279,6 +648,15 @@
       "original_sha256": "145cfff1f65b394ded823bab9bd36bbe89eb81872309b9eba22103fb659e6e0a",
       "active_sha256": "145cfff1f65b394ded823bab9bd36bbe89eb81872309b9eba22103fb659e6e0a",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "src/scope.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "057760ee93b5bb33c555c35e1d6be04ffb503c7c0df6555ba2f628bb7b6e1196",
+      "active_sha256": "057760ee93b5bb33c555c35e1d6be04ffb503c7c0df6555ba2f628bb7b6e1196",
+      "quarantine": null,
       "link": false
     },
     {
@@ -288,7 +666,7 @@
       "original_sha256": "8ba79dc25349943a21eb363a59371c0a50b338f9aeaabb8e9151aa4649dd5b63",
       "active_sha256": "8ba79dc25349943a21eb363a59371c0a50b338f9aeaabb8e9151aa4649dd5b63",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "src/stores/connectivity-store.ts",
@@ -297,7 +675,7 @@
       "original_sha256": "9e17f477c36d4b8609bd12f91e0dac2fbe0a0e3272beac6c8bca2bf07760cf95",
       "active_sha256": "9e17f477c36d4b8609bd12f91e0dac2fbe0a0e3272beac6c8bca2bf07760cf95",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "src/stores/execution-log.ts",
@@ -306,7 +684,7 @@
       "original_sha256": "5a2492de202aaa4c19066081e27972df21197687470d1d3267bf48a2429af1b0",
       "active_sha256": "5a2492de202aaa4c19066081e27972df21197687470d1d3267bf48a2429af1b0",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "src/stores/graph-store.ts",
@@ -324,7 +702,7 @@
       "original_sha256": "ffdca8cd46d5c89c2ac359d3adfc7f8187c6a75be68b9e525b8282ddce8d5f4b",
       "active_sha256": "ffdca8cd46d5c89c2ac359d3adfc7f8187c6a75be68b9e525b8282ddce8d5f4b",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "src/tools/browser-tools.ts",
@@ -336,6 +714,24 @@
       "link": true
     },
     {
+      "path": "src/tools/connectivity-tools.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ba872f6af1a7ec38b37674e65c1ee6d3a6f7f19ca54bc0d8a1e60f0114bf75dd",
+      "active_sha256": "ba872f6af1a7ec38b37674e65c1ee6d3a6f7f19ca54bc0d8a1e60f0114bf75dd",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/tools/pi-tools.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "fc8960181f4368f45d8c064fac314eb5f8d9be77ffc4e495f4513eda139c18b7",
+      "active_sha256": "fc8960181f4368f45d8c064fac314eb5f8d9be77ffc4e495f4513eda139c18b7",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "src/tools/research-tools.ts",
       "decision": "BLOCK_OFFENSIVE",
       "reason": "offensive content plus execution surface",
@@ -345,11 +741,65 @@
       "link": true
     },
     {
+      "path": "src/tui/app.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "30b29ccad2b7530618c79bab876bdba3d8fc1f6e5eb5cc090bd53c80a8c036c9",
+      "active_sha256": "30b29ccad2b7530618c79bab876bdba3d8fc1f6e5eb5cc090bd53c80a8c036c9",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/tui/timeline.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "fbc2cb569b2eade5d236fa22faa6dd9f7eaed4098aed70a2646feee1072e4793",
+      "active_sha256": "fbc2cb569b2eade5d236fa22faa6dd9f7eaed4098aed70a2646feee1072e4793",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/types.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "f48ba1158be04c14ac31aec123fb8d2167ccc8ad921009338afba9e1c94eaefe",
+      "active_sha256": "f48ba1158be04c14ac31aec123fb8d2167ccc8ad921009338afba9e1c94eaefe",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/types/turndown-plugin-gfm.d.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "5c82b5cff29547283f9e335ad6755fd0fc5369eb1ecab6c0bcd996b49c8cca54",
+      "active_sha256": "5c82b5cff29547283f9e335ad6755fd0fc5369eb1ecab6c0bcd996b49c8cca54",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "src/web-auth.ts",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "7b79ad660bff930860dc3ef507bc09431d9c198908b7ed567e38e4a29a2655c4",
       "active_sha256": "7b79ad660bff930860dc3ef507bc09431d9c198908b7ed567e38e4a29a2655c4",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "src/web-security.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "0838b116e503a02c658ab19bbdb088a49caf6996e3836b8bc9faab7c33011f5f",
+      "active_sha256": "0838b116e503a02c658ab19bbdb088a49caf6996e3836b8bc9faab7c33011f5f",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/web-server.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "0a9c0f50d447b4462fbe55936badc65761fcc9bd5df03810a7da33ec32feae03",
+      "active_sha256": "0a9c0f50d447b4462fbe55936badc65761fcc9bd5df03810a7da33ec32feae03",
       "quarantine": null,
       "link": false
     },
@@ -360,6 +810,33 @@
       "original_sha256": "742302934e4538ecc5c1273f7f6646beac5704dc5fe608a05995b93057e43117",
       "active_sha256": "742302934e4538ecc5c1273f7f6646beac5704dc5fe608a05995b93057e43117",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "traffic-proxy/ca.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1e092c327a27975aebf2e1274145fd9576e59f0e3e71ea5f5507367cbc4f0488",
+      "active_sha256": "1e092c327a27975aebf2e1274145fd9576e59f0e3e71ea5f5507367cbc4f0488",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "traffic-proxy/control.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d023154c3a2e3b9457d816b0da424ecff653136918aba773d1f9f91be8ecead9",
+      "active_sha256": "d023154c3a2e3b9457d816b0da424ecff653136918aba773d1f9f91be8ecead9",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "traffic-proxy/feature_test.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "f29bea09f0f89905155b01bed3cbe4acdd628a75f1cd3243e2fe92597409c0cf",
+      "active_sha256": "f29bea09f0f89905155b01bed3cbe4acdd628a75f1cd3243e2fe92597409c0cf",
+      "quarantine": null,
       "link": false
     },
     {
@@ -368,6 +845,60 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "cefc4adeb67eb9e2d68c9f44ca3b1c515b67d52ffd0c58abd6bfa1f5b0b5c554",
       "active_sha256": "cefc4adeb67eb9e2d68c9f44ca3b1c515b67d52ffd0c58abd6bfa1f5b0b5c554",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "traffic-proxy/main.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ec5387904a2c5e3b706342455450dcb58834fcb6fc75b7376afcf5f2f51bbb78",
+      "active_sha256": "ec5387904a2c5e3b706342455450dcb58834fcb6fc75b7376afcf5f2f51bbb78",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "traffic-proxy/proxy.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "a5a5e5128958b3de4d1558c9bc889a0a66b7f110a5a8a73d31ba7524a22d5931",
+      "active_sha256": "a5a5e5128958b3de4d1558c9bc889a0a66b7f110a5a8a73d31ba7524a22d5931",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "traffic-proxy/proxy_test.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "2e7f323ce76a1faf3e89dad1e88a582eb20d3c4555c94236fcb7631924ef8b91",
+      "active_sha256": "2e7f323ce76a1faf3e89dad1e88a582eb20d3c4555c94236fcb7631924ef8b91",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "traffic-proxy/replay.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "2e5c953c8031c79137be93c986e8e57d64cd1ed652daa7dccdd85eb69d1ae40c",
+      "active_sha256": "2e5c953c8031c79137be93c986e8e57d64cd1ed652daa7dccdd85eb69d1ae40c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "traffic-proxy/replay_test.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "4f93f3e54a2f8f643f6d5a79ee2ffb02f0330cbb1d912815b2073f2527f8e7d0",
+      "active_sha256": "4f93f3e54a2f8f643f6d5a79ee2ffb02f0330cbb1d912815b2073f2527f8e7d0",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "traffic-proxy/security_regression_test.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "a1ec2912f03ec17bf0605dc5a7b73833efc13ce8e44a373f819250c71cf9e379",
+      "active_sha256": "a1ec2912f03ec17bf0605dc5a7b73833efc13ce8e44a373f819250c71cf9e379",
       "quarantine": null,
       "link": false
     },
@@ -378,6 +909,15 @@
       "original_sha256": "cb47645c4410bdefab716f2c43d01afe983a424a6ab2069d6290242500194c36",
       "active_sha256": "cb47645c4410bdefab716f2c43d01afe983a424a6ab2069d6290242500194c36",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "web/src/App.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "9549300d95475f3034d6617c89ff8d57a22197682520c2643a177ee7384aa215",
+      "active_sha256": "9549300d95475f3034d6617c89ff8d57a22197682520c2643a177ee7384aa215",
+      "quarantine": null,
       "link": false
     },
     {
@@ -387,7 +927,7 @@
       "original_sha256": "6a71e28234fca86bdeac320d1d69c0d63e469ef60f4e59f7f5e0294dbcd87f20",
       "active_sha256": "6a71e28234fca86bdeac320d1d69c0d63e469ef60f4e59f7f5e0294dbcd87f20",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "web/src/api.test.ts",
@@ -396,7 +936,7 @@
       "original_sha256": "b39c1a6c9fa740a8c2ce8b26b331b8423ff84b0e8dc1a635466205dd549a15f4",
       "active_sha256": "b39c1a6c9fa740a8c2ce8b26b331b8423ff84b0e8dc1a635466205dd549a15f4",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "web/src/api.ts",
@@ -404,6 +944,24 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "ac2bc9105830b3b480c2a24297f50e9c43437779413231266b0405a643a2042a",
       "active_sha256": "ac2bc9105830b3b480c2a24297f50e9c43437779413231266b0405a643a2042a",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "web/src/components/ArtifactsView.test.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "a116a85f0d7b8a166921a71f58179d30b31ddf0cd99ef65314caf9fe539d108a",
+      "active_sha256": "a116a85f0d7b8a166921a71f58179d30b31ddf0cd99ef65314caf9fe539d108a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/components/ArtifactsView.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "25f1a97bd3a3fc6f8aff7ae23227f59368296bd34153f363c29ad2ff91a38089",
+      "active_sha256": "25f1a97bd3a3fc6f8aff7ae23227f59368296bd34153f363c29ad2ff91a38089",
       "quarantine": null,
       "link": false
     },
@@ -414,6 +972,105 @@
       "original_sha256": "a36ae818bb8ea2ca4906b73e1bf6ae8c5be8d8c009780391cffa59539771084e",
       "active_sha256": "a36ae818bb8ea2ca4906b73e1bf6ae8c5be8d8c009780391cffa59539771084e",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "web/src/components/ConnectionsView.test.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "94caf4d479a016ff3007a636430c8291d74609b0b148617e001f210fdc901fca",
+      "active_sha256": "94caf4d479a016ff3007a636430c8291d74609b0b148617e001f210fdc901fca",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/components/ConnectionsView.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e268aff759522275d420b986a050f63afa01f3b04f30bf312270d69285d3780d",
+      "active_sha256": "e268aff759522275d420b986a050f63afa01f3b04f30bf312270d69285d3780d",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/components/GraphView.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "c67ad0df24df2f3245eea71b64ace5c43d75296121d6a5fff824714651b3bdb4",
+      "active_sha256": "c67ad0df24df2f3245eea71b64ace5c43d75296121d6a5fff824714651b3bdb4",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/components/Inspector.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ab6e5284a0269b7a901c58e2a0d56016bc10cff59025821544ecfa0fd60fa391",
+      "active_sha256": "ab6e5284a0269b7a901c58e2a0d56016bc10cff59025821544ecfa0fd60fa391",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/components/Markdown.test.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "5f3002efd6d3248006eae248ec167b6d995536d6d8509dacf5924552fc79d471",
+      "active_sha256": "5f3002efd6d3248006eae248ec167b6d995536d6d8509dacf5924552fc79d471",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/components/Markdown.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "710d9322325a57ccdf1c7a54626745b5a7edf35c59707bf12ea4cc230efff2b1",
+      "active_sha256": "710d9322325a57ccdf1c7a54626745b5a7edf35c59707bf12ea4cc230efff2b1",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/components/ResizableWorkspace.test.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "8565c2ba38ec1c663741a986e7b5aad8fabf14f7be176ce7fce86cbd796ebd23",
+      "active_sha256": "8565c2ba38ec1c663741a986e7b5aad8fabf14f7be176ce7fce86cbd796ebd23",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/components/ResizableWorkspace.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ad083fc21d4e3a88a5fa800ea56be35547be42ea741ce9900dc6dfd046b75665",
+      "active_sha256": "ad083fc21d4e3a88a5fa800ea56be35547be42ea741ce9900dc6dfd046b75665",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/components/Sidebar.test.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "a8119610ba69d340a67f075ada4cc08533b2ac73d37b1865b253e92b1d3d520a",
+      "active_sha256": "a8119610ba69d340a67f075ada4cc08533b2ac73d37b1865b253e92b1d3d520a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/components/Sidebar.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e57a0bbaf9fa5e2b7235b45bd3e8d2fe0f0a6492591e5e92123f9cbc0e8a1457",
+      "active_sha256": "e57a0bbaf9fa5e2b7235b45bd3e8d2fe0f0a6492591e5e92123f9cbc0e8a1457",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/components/StartRunModal.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "50dbfed03d90142c4cf1f01ba16695e5d92298f902a70d411edbc27344365696",
+      "active_sha256": "50dbfed03d90142c4cf1f01ba16695e5d92298f902a70d411edbc27344365696",
+      "quarantine": null,
       "link": false
     },
     {
@@ -423,7 +1080,7 @@
       "original_sha256": "1d5a6816fcbf53fd09b21770a872735f29e71fb495d54930dcddda1c9c813366",
       "active_sha256": "1d5a6816fcbf53fd09b21770a872735f29e71fb495d54930dcddda1c9c813366",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "web/src/components/StructuredReport.tsx",
@@ -432,7 +1089,7 @@
       "original_sha256": "f092cdede20ee352048e59c03f53ab9fb43bc2d0216c2802af536cda581292de",
       "active_sha256": "f092cdede20ee352048e59c03f53ab9fb43bc2d0216c2802af536cda581292de",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "web/src/components/TraceView.test.tsx",
@@ -441,7 +1098,7 @@
       "original_sha256": "240335512b6bd22e61c168dd72e7c8c96df19d566093e37f3476ad750db89066",
       "active_sha256": "240335512b6bd22e61c168dd72e7c8c96df19d566093e37f3476ad750db89066",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "web/src/components/TraceView.tsx",
@@ -449,6 +1106,15 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "048a27f878af6423c344a92d7dbf97f035b740af98dd04309d9d02e819e64188",
       "active_sha256": "048a27f878af6423c344a92d7dbf97f035b740af98dd04309d9d02e819e64188",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "web/src/components/TrafficInspector.test.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "67f48e5187a3ee298b091aa2b19932378c6c09e9b2a98fc3f8ee016f149151d5",
+      "active_sha256": "67f48e5187a3ee298b091aa2b19932378c6c09e9b2a98fc3f8ee016f149151d5",
       "quarantine": null,
       "link": false
     },
@@ -462,13 +1128,31 @@
       "link": true
     },
     {
+      "path": "web/src/components/TrafficView.test.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1db43dcac48ef25f6b021b6d7f6bbeaa9e7eb5f5eba0beb173217c2ced30f709",
+      "active_sha256": "1db43dcac48ef25f6b021b6d7f6bbeaa9e7eb5f5eba0beb173217c2ced30f709",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/components/TrafficView.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d2c543e62b26f1e46de33f1c92a9f5d68e943c94028fc3c2d9847d6e60f10983",
+      "active_sha256": "d2c543e62b26f1e46de33f1c92a9f5d68e943c94028fc3c2d9847d6e60f10983",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "web/src/components/structured-report.test.ts",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "e442d3a2f0fb0bae1b3ebcf7760443a14e3c4088fd5927a91c7ff11802abc639",
       "active_sha256": "e442d3a2f0fb0bae1b3ebcf7760443a14e3c4088fd5927a91c7ff11802abc639",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "web/src/components/structured-report.ts",
@@ -476,6 +1160,60 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "ed9066dcb0902caaff4216515622daf11a42d55eabaa9838f5623f3b3fb73efe",
       "active_sha256": "ed9066dcb0902caaff4216515622daf11a42d55eabaa9838f5623f3b3fb73efe",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "web/src/cytoscape-elk.d.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "4557338787952a1d704efad2a6a3baccf16fbbcd2cdbaa66086a3139e9958081",
+      "active_sha256": "4557338787952a1d704efad2a6a3baccf16fbbcd2cdbaa66086a3139e9958081",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/graph.test.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "f91afe3dbe8117ab1fa0884c0b1dd28bb59977d771b3fb8300d5181e71d89091",
+      "active_sha256": "f91afe3dbe8117ab1fa0884c0b1dd28bb59977d771b3fb8300d5181e71d89091",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/graph.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1d9e312d9d48164d3925122830405f5504659764d912db928ba450b525ac3289",
+      "active_sha256": "1d9e312d9d48164d3925122830405f5504659764d912db928ba450b525ac3289",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/language.test.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "0e7ed390b4e4552780a80010abc8c104fb48e77531ca249a64939313e01aae5b",
+      "active_sha256": "0e7ed390b4e4552780a80010abc8c104fb48e77531ca249a64939313e01aae5b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/language.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e930c5e2087753f493f21db0051d2224142c050304113b8030d39b8b270af6a1",
+      "active_sha256": "e930c5e2087753f493f21db0051d2224142c050304113b8030d39b8b270af6a1",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/main.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "7824a0fcc4c12c30601f308a5bcdbc329adbce670246a20d4aad5ac4c15a103a",
+      "active_sha256": "7824a0fcc4c12c30601f308a5bcdbc329adbce670246a20d4aad5ac4c15a103a",
       "quarantine": null,
       "link": false
     },
@@ -486,7 +1224,7 @@
       "original_sha256": "5f10f20bd6f2b59d20591ca4b027d398af90346041251b428702465adfbe1cbd",
       "active_sha256": "5f10f20bd6f2b59d20591ca4b027d398af90346041251b428702465adfbe1cbd",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "web/src/sessions.ts",
@@ -494,6 +1232,24 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "943d98f8d0b1e225237c52fdf71487157f6eac8ae490686781cf7ff77c11a57e",
       "active_sha256": "943d98f8d0b1e225237c52fdf71487157f6eac8ae490686781cf7ff77c11a57e",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "web/src/test-setup.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1188f54abd8c5bec69fb1fba8640fde015117dcaa70126bdac791c0dac50b83e",
+      "active_sha256": "1188f54abd8c5bec69fb1fba8640fde015117dcaa70126bdac791c0dac50b83e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/types.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "c53b882f8a4c7e29374c37f6219e68ee0a25fb5a25ef6fffd5547cdcaa386536",
+      "active_sha256": "c53b882f8a4c7e29374c37f6219e68ee0a25fb5a25ef6fffd5547cdcaa386536",
       "quarantine": null,
       "link": false
     },
@@ -504,7 +1260,7 @@
       "original_sha256": "73627dcaa410257ccf33fca1d7b6143a170ab8a82ff743c86d983d508f0dd171",
       "active_sha256": "73627dcaa410257ccf33fca1d7b6143a170ab8a82ff743c86d983d508f0dd171",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "web/src/useAuth.ts",
@@ -512,6 +1268,42 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "9d2298a714a59b4129a7f58b118e888159375a88ab1da7097d2976d62c149626",
       "active_sha256": "9d2298a714a59b4129a7f58b118e888159375a88ab1da7097d2976d62c149626",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "web/src/useRuntimeDashboard.test.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "7879d820396dcbe3446be7a19ce741fd9de2470c5abac519093a4cc42629d2b7",
+      "active_sha256": "7879d820396dcbe3446be7a19ce741fd9de2470c5abac519093a4cc42629d2b7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/useRuntimeDashboard.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "dc445e31f4d0c9d98490259d2473f225e65dcef2da2b877ba708fb99994d502b",
+      "active_sha256": "dc445e31f4d0c9d98490259d2473f225e65dcef2da2b877ba708fb99994d502b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/utils.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "8b299a8c97e51223277418971bbc532f1a4f6c492c8ab8d399aad237bef64495",
+      "active_sha256": "8b299a8c97e51223277418971bbc532f1a4f6c492c8ab8d399aad237bef64495",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/vite-env.d.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "67ba1f5b1f143fc83aaae9454c491d181061a1e1feff96966887dc45c117d694",
+      "active_sha256": "67ba1f5b1f143fc83aaae9454c491d181061a1e1feff96966887dc45c117d694",
       "quarantine": null,
       "link": false
     },
@@ -522,14 +1314,17 @@
       "original_sha256": "511e742230df7b1984382c570a81af62cb3535a7b29fa5461806ce903c6d1be6",
       "active_sha256": "511e742230df7b1984382c570a81af62cb3535a7b29fa5461806ce903c6d1be6",
       "quarantine": null,
-      "link": false
+      "link": true
     }
   ],
   "counts": {
-    "accounted": 57,
+    "accounted": 145,
+    "keep_unchanged": 88,
     "restored_benign": 39,
     "blocked_offensive": 4,
     "review_fail_closed": 14,
-    "links": 18
-  }
+    "links": 57
+  },
+  "source_code_available": true,
+  "source_code_status": "AVAILABLE"
 }

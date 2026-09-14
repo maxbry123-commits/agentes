@@ -2,7 +2,7 @@
   "schema": "yaiwes.internal.surgical/v5",
   "component": "🏈 14-Dark-Moon",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.1",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.2",
   "policy": {
     "restore_benign": true,
     "offensive_execution": false,
@@ -18,6 +18,24 @@
       "original_sha256": "cfcaef8d7e4760cb7a9f7b650e9f92b3dac8603ae5978a9b63f3fd9c3ca693d0",
       "active_sha256": "cfcaef8d7e4760cb7a9f7b650e9f92b3dac8603ae5978a9b63f3fd9c3ca693d0",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "conf/entrypoint-darkmoon.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "89d395de9f9cd8ad2f1e252d859d4a7da3341d3b5ef4a5a612c98082ba00b708",
+      "active_sha256": "89d395de9f9cd8ad2f1e252d859d4a7da3341d3b5ef4a5a612c98082ba00b708",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "conf/entrypoint-opencode.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "169811ecbf3f0de7a4ec9494bfac0d9d6a693476b9dc311e88a0eb7cc098e12f",
+      "active_sha256": "169811ecbf3f0de7a4ec9494bfac0d9d6a693476b9dc311e88a0eb7cc098e12f",
+      "quarantine": null,
       "link": false
     },
     {
@@ -30,13 +48,94 @@
       "link": true
     },
     {
+      "path": "conf/tui/app.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "c452aed6a19a6f0b6b18d0dc5f284f8e08e48010b7df24e167b2935111347bb7",
+      "active_sha256": "c452aed6a19a6f0b6b18d0dc5f284f8e08e48010b7df24e167b2935111347bb7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "conf/tui/index.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e163f62180cc3668c3f114353ade7c2bd4479e18247a7b7373b0e115062f11ef",
+      "active_sha256": "e163f62180cc3668c3f114353ade7c2bd4479e18247a7b7373b0e115062f11ef",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "conf/tui/index.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "8d3fe52c18c949f8b650711219b66e191b3ecbb196f78f14dbef5c67b04dfbda",
+      "active_sha256": "8d3fe52c18c949f8b650711219b66e191b3ecbb196f78f14dbef5c67b04dfbda",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "conf/tui/logo.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "a519d615896e95b20f5dcadb5ef9c1f4618edbcf4e29aa16582e9e5132029711",
+      "active_sha256": "a519d615896e95b20f5dcadb5ef9c1f4618edbcf4e29aa16582e9e5132029711",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "conf/tui/logo.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "32603dc5fc0abdfa72466c86d69fc16dfb06121edb95567871c5aaffd6a236ca",
+      "active_sha256": "32603dc5fc0abdfa72466c86d69fc16dfb06121edb95567871c5aaffd6a236ca",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "conf/tui/ui.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "36f1560b2de74259bcf32fa6657a713d8622dfd9a1f67f671bc45ffde7c66fcb",
+      "active_sha256": "36f1560b2de74259bcf32fa6657a713d8622dfd9a1f67f671bc45ffde7c66fcb",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "darkmoon.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "9f9ef2c6e9d179d75b6ae3662a2d3655856ccb453bacc26e31f8429cd4bce391",
+      "active_sha256": "9f9ef2c6e9d179d75b6ae3662a2d3655856ccb453bacc26e31f8429cd4bce391",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "install-dev.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "38db84cd9d3144f19629aa4729251e5c9497c497c8f1f1b0622e18bed42e3626",
+      "active_sha256": "38db84cd9d3144f19629aa4729251e5c9497c497c8f1f1b0622e18bed42e3626",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "install.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "5ca96d7be354fd0662f384d0068b6e24b858412c99ee7428b26c3bc7a8d5a41f",
+      "active_sha256": "5ca96d7be354fd0662f384d0068b6e24b858412c99ee7428b26c3bc7a8d5a41f",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "mcp/api/__init__.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "9476d573828983111f2f5a7488c7e3c57478058ff3cadc76882b392696a20717",
       "active_sha256": "9476d573828983111f2f5a7488c7e3c57478058ff3cadc76882b392696a20717",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp/api/json_storage.py",
@@ -45,7 +144,7 @@
       "original_sha256": "cff844642def717458bd0b766ab6092eaae05cbe5096acbc4b3d886ef6425039",
       "active_sha256": "cff844642def717458bd0b766ab6092eaae05cbe5096acbc4b3d886ef6425039",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp/api/live_push.py",
@@ -53,6 +152,24 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "78000c0659f323f91b78e91c08d3868737da8e1f5d1ae88f385154ebefe0dcee",
       "active_sha256": "78000c0659f323f91b78e91c08d3868737da8e1f5d1ae88f385154ebefe0dcee",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "mcp/install.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "34d95750571a70f49a690ab93c104db79ac7b31d264e10c052bad2813c4d7aa6",
+      "active_sha256": "34d95750571a70f49a690ab93c104db79ac7b31d264e10c052bad2813c4d7aa6",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp/src/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "72fdf2339992631d79339a0b9b128d8ad7ea88e57b4cff45acc8d4207d8aeab2",
+      "active_sha256": "72fdf2339992631d79339a0b9b128d8ad7ea88e57b4cff45acc8d4207d8aeab2",
       "quarantine": null,
       "link": false
     },
@@ -66,13 +183,22 @@
       "link": true
     },
     {
+      "path": "mcp/src/execution_guard.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1b6673b725921ab2e4c06c34c4aaa51a172349419b2b710450da6d1282bd50ab",
+      "active_sha256": "1b6673b725921ab2e4c06c34c4aaa51a172349419b2b710450da6d1282bd50ab",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "mcp/src/mcp_monitoring.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "1d04150ac388f2e609b96dc2d8be7a101e4bb2a4d6f1ec1a05cbc8c1d4f9f51a",
       "active_sha256": "1d04150ac388f2e609b96dc2d8be7a101e4bb2a4d6f1ec1a05cbc8c1d4f9f51a",
       "quarantine": "_yaiwes_upstream_quarantine/mcp/src/mcp_monitoring.py.original",
-      "link": false
+      "link": true
     },
     {
       "path": "mcp/src/models/__init__.py",
@@ -81,7 +207,7 @@
       "original_sha256": "f3c32aa0c84ae686b704ed3d88aaa853e7c6ce50f73a240f1611be6255796329",
       "active_sha256": "f3c32aa0c84ae686b704ed3d88aaa853e7c6ce50f73a240f1611be6255796329",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp/src/models/common.py",
@@ -89,6 +215,33 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "60c9c1033816a04cc22dbf9c2045b63842546f8df97c1a71884cf6526b18023b",
       "active_sha256": "60c9c1033816a04cc22dbf9c2045b63842546f8df97c1a71884cf6526b18023b",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "mcp/src/privacy/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "9c17d49294d8ef23341bb9897f279494ed1929b955c9838d69663c40acc2d2f7",
+      "active_sha256": "9c17d49294d8ef23341bb9897f279494ed1929b955c9838d69663c40acc2d2f7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp/src/privacy/gateway.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "4077fe7f2a74242174cdcd19773fe861b1a0d87325c4fcfdba5e8a58768c4b8b",
+      "active_sha256": "4077fe7f2a74242174cdcd19773fe861b1a0d87325c4fcfdba5e8a58768c4b8b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp/src/privacy/vault.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "3857ac3ccfdecd554b7e85074cd62693cd4977e1b7b7607631f469793c28859b",
+      "active_sha256": "3857ac3ccfdecd554b7e85074cd62693cd4977e1b7b7607631f469793c28859b",
       "quarantine": null,
       "link": false
     },
@@ -99,6 +252,42 @@
       "original_sha256": "9c5371c18fd87f6dcc5082297f8f06da1fde67f075593dd626635e72ea38a04a",
       "active_sha256": "9c5371c18fd87f6dcc5082297f8f06da1fde67f075593dd626635e72ea38a04a",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "mcp/src/server.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "5074fad425e0a42459ede9113982f5bceb98d32cc159a203fd872803e21be818",
+      "active_sha256": "5074fad425e0a42459ede9113982f5bceb98d32cc159a203fd872803e21be818",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp/src/tools/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "2de5d2fe638fda5d5c7ec3f073c4722736f8ff9d648ac7b6421645037f904025",
+      "active_sha256": "2de5d2fe638fda5d5c7ec3f073c4722736f8ff9d648ac7b6421645037f904025",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp/src/tools/core/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e72a0872c2d46051bce085b34cd9fe1478473874216526129bfe6355d330efa4",
+      "active_sha256": "e72a0872c2d46051bce085b34cd9fe1478473874216526129bfe6355d330efa4",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp/src/tools/core/executor.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ac35a5d0624b79da0151bf550d737fc2929467c873eec76498e9da7d3bbd5059",
+      "active_sha256": "ac35a5d0624b79da0151bf550d737fc2929467c873eec76498e9da7d3bbd5059",
+      "quarantine": null,
       "link": false
     },
     {
@@ -107,6 +296,105 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "08420a097b15122439f6434ab1b540024cd27f11c8212599a089d6995f149946",
       "active_sha256": "08420a097b15122439f6434ab1b540024cd27f11c8212599a089d6995f149946",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "mcp/src/utils/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ed0dc1c725c44e4b77b66e6dae1b8b4f22fc3e810238ad1088afb42945404764",
+      "active_sha256": "ed0dc1c725c44e4b77b66e6dae1b8b4f22fc3e810238ad1088afb42945404764",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "setup.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1955f17ab606393f984ddd8f177123a60cbc89236e3c4a9c48641fa05b1f345f",
+      "active_sha256": "1955f17ab606393f984ddd8f177123a60cbc89236e3c4a9c48641fa05b1f345f",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "setup_py.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ec26c4df0ef5a68b184571ca73923aea45b311e8b6da4f111544d4b8d06f0a13",
+      "active_sha256": "ec26c4df0ef5a68b184571ca73923aea45b311e8b6da4f111544d4b8d06f0a13",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "setup_ruby.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "39e564b02fdf364e7c9ce4c8c9d263c2e0de65468e230a5f6b4c2c9aabc48ec7",
+      "active_sha256": "39e564b02fdf364e7c9ce4c8c9d263c2e0de65468e230a5f6b4c2c9aabc48ec7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "tools/agent-build/enrich_signals.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "2f597acbbe8ef61ddc20c4fcab1c6bf40348efe54480087e06e9c5a3b5d6e835",
+      "active_sha256": "2f597acbbe8ef61ddc20c4fcab1c6bf40348efe54480087e06e9c5a3b5d6e835",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "tools/agent-build/generate.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "6af6afc4d81f27f2133a0f178e52fff471375b7dac08b98064384a090ec33257",
+      "active_sha256": "6af6afc4d81f27f2133a0f178e52fff471375b7dac08b98064384a090ec33257",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "tools/agent-build/mirror.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "185eb94e91c81253e57b71b28c00dfb8f576c2b7c521d2773d24e26616518f07",
+      "active_sha256": "185eb94e91c81253e57b71b28c00dfb8f576c2b7c521d2773d24e26616518f07",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "tools/agent-build/validate.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "aaf4c61be5c45cb341233dfb5581f060f5df7a452000e41e1af09c442bcf9186",
+      "active_sha256": "aaf4c61be5c45cb341233dfb5581f060f5df7a452000e41e1af09c442bcf9186",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "tools/agent-build/wire.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1e3541f179e1ea6bcd6aef1b88a5d6bc4061b1080fdf73fa25444f0681505952",
+      "active_sha256": "1e3541f179e1ea6bcd6aef1b88a5d6bc4061b1080fdf73fa25444f0681505952",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "tools/check-no-regression.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "8ed270961b2748aa529bdb7ae33a644135c5ce6018a3f58b310e0ff28d7b835d",
+      "active_sha256": "8ed270961b2748aa529bdb7ae33a644135c5ce6018a3f58b310e0ff28d7b835d",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "tools/lab-tests/pr42-repro/compare.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b587d08c30c291b677a117beeea7c7ff08fdf2644ad3c24d765a62f57f1807f3",
+      "active_sha256": "b587d08c30c291b677a117beeea7c7ff08fdf2644ad3c24d765a62f57f1807f3",
       "quarantine": null,
       "link": false
     },
@@ -118,6 +406,15 @@
       "active_sha256": "5b240e106b720d95e595bff29fe7d8775eb34c31cacbdafa08d1aae1dced58b6",
       "quarantine": "_yaiwes_upstream_quarantine/tools/lab-tests/pr42-repro/reproduce.sh.original",
       "link": true
+    },
+    {
+      "path": "tools/lab-tests/pr42-repro/www/index.php",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "3334e9c27ccd45e5603be1fe8cad3ca5e318a69cb2567672795b8a08988368a3",
+      "active_sha256": "3334e9c27ccd45e5603be1fe8cad3ca5e318a69cb2567672795b8a08988368a3",
+      "quarantine": null,
+      "link": false
     },
     {
       "path": "tools/lab-tests/privacy-e2e-campaign.py",
@@ -136,13 +433,34 @@
       "active_sha256": "9ede355e8f8a8fd388ad2313322d4f4e28ecaebebbc48f58d0963d8f380417d0",
       "quarantine": "_yaiwes_upstream_quarantine/tools/lab-tests/privacy-gateway-lab.py.original",
       "link": true
+    },
+    {
+      "path": "tools/lab-tests/run-lab-tests.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "caedadee5b1842c1d397021ecda8ba317f72d89d96f6052f7ba27e9f41b8cfcc",
+      "active_sha256": "caedadee5b1842c1d397021ecda8ba317f72d89d96f6052f7ba27e9f41b8cfcc",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "tools/verify-toolbox.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "8e525c8feb1b94eed0653ab2a33cfd580159e3376a57e42689daa7d9c2106ba2",
+      "active_sha256": "8e525c8feb1b94eed0653ab2a33cfd580159e3376a57e42689daa7d9c2106ba2",
+      "quarantine": null,
+      "link": false
     }
   ],
   "counts": {
-    "accounted": 14,
+    "accounted": 49,
+    "keep_unchanged": 35,
     "restored_benign": 9,
     "blocked_offensive": 3,
     "review_fail_closed": 2,
-    "links": 5
-  }
+    "links": 14
+  },
+  "source_code_available": true,
+  "source_code_status": "AVAILABLE"
 }

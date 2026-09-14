@@ -2,7 +2,7 @@
   "schema": "yaiwes.internal.surgical/v5",
   "component": "🏈 15-Pentdem",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.1",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.2",
   "policy": {
     "restore_benign": true,
     "offensive_execution": false,
@@ -30,13 +30,103 @@
       "link": true
     },
     {
+      "path": "adaptive_wordlist_engine.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "18fbcfbb5c9e36dff5dc87abb74c470d9906b322e687b3ca3a6026a54237ede5",
+      "active_sha256": "18fbcfbb5c9e36dff5dc87abb74c470d9906b322e687b3ca3a6026a54237ede5",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "agents/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "44a6ada1c0cf1cc21c0bdb61cdf0a8d1488f1f0d6c7c6d42c2fc21e409856be3",
+      "active_sha256": "44a6ada1c0cf1cc21c0bdb61cdf0a8d1488f1f0d6c7c6d42c2fc21e409856be3",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "agents/__main__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "6bee35229976d75acb9a56781dee6d9b31a9a30f1949aa7de9ba84bc23aaa9ba",
+      "active_sha256": "6bee35229976d75acb9a56781dee6d9b31a9a30f1949aa7de9ba84bc23aaa9ba",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "agents/autonomous.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "0de7bcd2b78488f16fd63d8891898230240c94db87fb4f5b9c8be988cf4b50b6",
+      "active_sha256": "0de7bcd2b78488f16fd63d8891898230240c94db87fb4f5b9c8be988cf4b50b6",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "ai_decision_engine.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "beda66609a12c9e0f0f731795c6366d3b1c9b553622a2479c2d8d412cece0336",
+      "active_sha256": "beda66609a12c9e0f0f731795c6366d3b1c9b553622a2479c2d8d412cece0336",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "cli.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b5fc7a49766bd29352a9d3ae128cc24577385ab2548dcf7824cc4211ddcef32a",
+      "active_sha256": "b5fc7a49766bd29352a9d3ae128cc24577385ab2548dcf7824cc4211ddcef32a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "concurrent_hunt.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "c23188481c32194988f1e98bef064d135bfa8ac6160f7cd58f5d4a42319f46c8",
+      "active_sha256": "c23188481c32194988f1e98bef064d135bfa8ac6160f7cd58f5d4a42319f46c8",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "deploy.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "909dc90796f1f74142e893699dd220f3003747d5e31f6471884a4f86ed07cef0",
+      "active_sha256": "909dc90796f1f74142e893699dd220f3003747d5e31f6471884a4f86ed07cef0",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "main.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "f435ba0d24440408cd91b838a5f555a4956c9395c9e0c5e754d0c7faae6adedd",
+      "active_sha256": "f435ba0d24440408cd91b838a5f555a4956c9395c9e0c5e754d0c7faae6adedd",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "23c66a3150559df380a54e853821502b736b54f0f317a210c7fed965785dff7f",
+      "active_sha256": "23c66a3150559df380a54e853821502b736b54f0f317a210c7fed965785dff7f",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "mock_models.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "5f8c585d8e794f1318d3ddb994fc8649da8c82724fd905f4c4e2166bce77174e",
       "active_sha256": "5f8c585d8e794f1318d3ddb994fc8649da8c82724fd905f4c4e2166bce77174e",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "models.py",
@@ -45,7 +135,7 @@
       "original_sha256": "aa5cbed2976f9e59a1d304d89c7b635bc6b2deabe33f2422210b1d820cf8c07b",
       "active_sha256": "aa5cbed2976f9e59a1d304d89c7b635bc6b2deabe33f2422210b1d820cf8c07b",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "models_data.py",
@@ -54,7 +144,7 @@
       "original_sha256": "27f5a8ed426bc7c2ab0af53a542e5af1c34ef64e6faed4bd2dd3b73558aa38f5",
       "active_sha256": "27f5a8ed426bc7c2ab0af53a542e5af1c34ef64e6faed4bd2dd3b73558aa38f5",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "pentdem/__init__.py",
@@ -66,13 +156,22 @@
       "link": true
     },
     {
+      "path": "pipeline.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "084aed397e116454b61f3bcc8095c3054dba0a73897e0f8f7b53e65aa817c8cf",
+      "active_sha256": "084aed397e116454b61f3bcc8095c3054dba0a73897e0f8f7b53e65aa817c8cf",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "rate_limiter.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "b0f72560fe76c87d11db04b73c85bbf0d6f1406fdfa4dd626c640ab5baec9794",
       "active_sha256": "b0f72560fe76c87d11db04b73c85bbf0d6f1406fdfa4dd626c640ab5baec9794",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "server.py",
@@ -84,13 +183,31 @@
       "link": true
     },
     {
+      "path": "setup.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "4e8238403e967adc97c25c00c4ddd1989c0d0536f914cdf10e9a4ba2624e9bd9",
+      "active_sha256": "4e8238403e967adc97c25c00c4ddd1989c0d0536f914cdf10e9a4ba2624e9bd9",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "skills/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "skills/adversarial_validation.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "5d47dd366ea1a86f102d5d91c5c68117a0994a585fd284d50e365fea70e8bb12",
       "active_sha256": "5d47dd366ea1a86f102d5d91c5c68117a0994a585fd284d50e365fea70e8bb12",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "skills/api_discovery.py",
@@ -108,7 +225,7 @@
       "original_sha256": "8f3c9b5c721957be5a7ef145ff73110b065a763ad4f6ed320968b24d6333b033",
       "active_sha256": "8f3c9b5c721957be5a7ef145ff73110b065a763ad4f6ed320968b24d6333b033",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "skills/attack_strategy.py",
@@ -126,7 +243,7 @@
       "original_sha256": "e4575f085342aa509516f0ba823409f63a1534fae18f61e5298169ff0a9b36cf",
       "active_sha256": "e4575f085342aa509516f0ba823409f63a1534fae18f61e5298169ff0a9b36cf",
       "quarantine": "_yaiwes_upstream_quarantine/skills/auth_broker.py.original",
-      "link": false
+      "link": true
     },
     {
       "path": "skills/auth_detect.py",
@@ -134,6 +251,15 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "edfa3cea5e0a8e2c086e3ac49e40f41976f76c297f52b74ec4672e06fea27231",
       "active_sha256": "edfa3cea5e0a8e2c086e3ac49e40f41976f76c297f52b74ec4672e06fea27231",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "skills/base.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "5ab29747c651700a4e7cedb6e06cfa2f55a44b870cad26231ac74e41032ab8ba",
+      "active_sha256": "5ab29747c651700a4e7cedb6e06cfa2f55a44b870cad26231ac74e41032ab8ba",
       "quarantine": null,
       "link": false
     },
@@ -147,6 +273,33 @@
       "link": true
     },
     {
+      "path": "skills/capability_ledger.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "fd1ebfb5ea86f1a5b373f2de92f93182ae9b69a6121d97b55124cb83ee8ddefc",
+      "active_sha256": "fd1ebfb5ea86f1a5b373f2de92f93182ae9b69a6121d97b55124cb83ee8ddefc",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "skills/chain.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "9bf47646c51c705e202f7cacb78cf7ab6c86290bc1495ab44cbfbe4a78987ad7",
+      "active_sha256": "9bf47646c51c705e202f7cacb78cf7ab6c86290bc1495ab44cbfbe4a78987ad7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "skills/cicd_integration.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "662ec7c30abfa76bc6da615ce3e6cfc7fc68416fd5ec1c3b0d97f919ba320527",
+      "active_sha256": "662ec7c30abfa76bc6da615ce3e6cfc7fc68416fd5ec1c3b0d97f919ba320527",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "skills/cloud_metadata.py",
       "decision": "BLOCK_OFFENSIVE",
       "reason": "offensive content plus execution surface",
@@ -154,6 +307,15 @@
       "active_sha256": "fdb6d30b0641db9422972cbeb6ec54bc3e9767ac098da3c58eec56da604a4d1b",
       "quarantine": "_yaiwes_upstream_quarantine/skills/cloud_metadata.py.original",
       "link": true
+    },
+    {
+      "path": "skills/compliance_mapper.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "602bab755a45860fa09b71f153255558865190c76d9cc1f9379dc7958853dba2",
+      "active_sha256": "602bab755a45860fa09b71f153255558865190c76d9cc1f9379dc7958853dba2",
+      "quarantine": null,
+      "link": false
     },
     {
       "path": "skills/credential_harvesting.py",
@@ -165,6 +327,15 @@
       "link": true
     },
     {
+      "path": "skills/deep_exploration.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "29436a475ff3a49764db0124171117704a04f10a8d386cbb73d2e6d53855a6f0",
+      "active_sha256": "29436a475ff3a49764db0124171117704a04f10a8d386cbb73d2e6d53855a6f0",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "skills/docker_isolation.py",
       "decision": "BLOCK_OFFENSIVE",
       "reason": "offensive content plus execution surface",
@@ -174,6 +345,33 @@
       "link": true
     },
     {
+      "path": "skills/evidence.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "939db8f6332886bd02a44792ce1f71bc5f59228f361ce44601d24e1fd2ffe025",
+      "active_sha256": "939db8f6332886bd02a44792ce1f71bc5f59228f361ce44601d24e1fd2ffe025",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "skills/evidence_collector.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "35bf94671344d194f0b8cf87f69db5dd667e70fdcebaf554e003fe5e4ef1439d",
+      "active_sha256": "35bf94671344d194f0b8cf87f69db5dd667e70fdcebaf554e003fe5e4ef1439d",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "skills/hunt/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e8fc2c886e7bcfc6ba0ff54c5441f2ab6ec0680bb17debdd5f8a2327eb2cd70a",
+      "active_sha256": "e8fc2c886e7bcfc6ba0ff54c5441f2ab6ec0680bb17debdd5f8a2327eb2cd70a",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "skills/jwt_attack.py",
       "decision": "BLOCK_OFFENSIVE",
       "reason": "offensive functional leaf",
@@ -181,6 +379,15 @@
       "active_sha256": "cc4c063fe0050a6903f6645d09c47aa51fd9d28c20cf8713c4f60a06c4e01edf",
       "quarantine": "_yaiwes_upstream_quarantine/skills/jwt_attack.py.original",
       "link": true
+    },
+    {
+      "path": "skills/kill_chain.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "8179929cc5d6cdea19f012daed9ab3db154f40c8f0afe24ecfb69017e552ac6e",
+      "active_sha256": "8179929cc5d6cdea19f012daed9ab3db154f40c8f0afe24ecfb69017e552ac6e",
+      "quarantine": null,
+      "link": false
     },
     {
       "path": "skills/knowledge/__init__.py",
@@ -206,6 +413,15 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "cec6e4e4459108cdba90bbd6c428353051745e10ff69436368616d7ced059ad2",
       "active_sha256": "cec6e4e4459108cdba90bbd6c428353051745e10ff69436368616d7ced059ad2",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "skills/mitre_mapper.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "adaad6e4707c9ad16176ff86a4a579068b82992424a07d7b76010abfaef86cd7",
+      "active_sha256": "adaad6e4707c9ad16176ff86a4a579068b82992424a07d7b76010abfaef86cd7",
       "quarantine": null,
       "link": false
     },
@@ -237,6 +453,15 @@
       "link": true
     },
     {
+      "path": "skills/osint_collector.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "48070942083b9dd3137a9da0c58c4cfb30c8c2c94a8a0de198f7b54ac3f7b2bc",
+      "active_sha256": "48070942083b9dd3137a9da0c58c4cfb30c8c2c94a8a0de198f7b54ac3f7b2bc",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "skills/proxy_manager.py",
       "decision": "REVIEW_FAIL_CLOSED",
       "reason": "previously effectful file without safe classification",
@@ -244,6 +469,15 @@
       "active_sha256": "9b53737cafa57db4f0884b3f83b4f9ce4a4fd7b54cee5646ddd34f51b2cfa324",
       "quarantine": "_yaiwes_upstream_quarantine/skills/proxy_manager.py.original",
       "link": true
+    },
+    {
+      "path": "skills/quality_gate.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "5e8f8aacc765581d711750c2135dba71e2405a9f217c0e3267d89751a18ddcdf",
+      "active_sha256": "5e8f8aacc765581d711750c2135dba71e2405a9f217c0e3267d89751a18ddcdf",
+      "quarantine": null,
+      "link": false
     },
     {
       "path": "skills/race_condition.py",
@@ -279,7 +513,7 @@
       "original_sha256": "47fb00da1db9026bb620fe0b1fe9a034bcca545a5a15cb77db80a83b33974b9a",
       "active_sha256": "47fb00da1db9026bb620fe0b1fe9a034bcca545a5a15cb77db80a83b33974b9a",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "skills/report/__init__.py",
@@ -288,7 +522,7 @@
       "original_sha256": "1375210d22feb15ba914b18b9bfe5035f2dc2c17f6785f5aa9217bebfca456fb",
       "active_sha256": "1375210d22feb15ba914b18b9bfe5035f2dc2c17f6785f5aa9217bebfca456fb",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "skills/report_writer.py",
@@ -296,6 +530,24 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "789d3ea510bb368220154476b99b99ca9a0d3546c1b0af9456558d7b6e223866",
       "active_sha256": "789d3ea510bb368220154476b99b99ca9a0d3546c1b0af9456558d7b6e223866",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "skills/scope_guard.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e30f49e46b382f68b4795e6399a1cbd014004b02aa6859f9dfba506ef344f31a",
+      "active_sha256": "e30f49e46b382f68b4795e6399a1cbd014004b02aa6859f9dfba506ef344f31a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "skills/screenshot.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d2bb2178fdff5f4a0b76b237e6d62df68ac7a04ce2cfd44f4b9075fdb85bcbc4",
+      "active_sha256": "d2bb2178fdff5f4a0b76b237e6d62df68ac7a04ce2cfd44f4b9075fdb85bcbc4",
       "quarantine": null,
       "link": false
     },
@@ -306,7 +558,7 @@
       "original_sha256": "734724c3c6723033ce01f87602d4eda7dba2109e0f072a61a7b3a38f211d5285",
       "active_sha256": "734724c3c6723033ce01f87602d4eda7dba2109e0f072a61a7b3a38f211d5285",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "skills/session_manager.py",
@@ -315,7 +567,7 @@
       "original_sha256": "84bccdd31d453888451179ebca60255efedf12299d6ee2ed633fa79d60b6ddc5",
       "active_sha256": "84bccdd31d453888451179ebca60255efedf12299d6ee2ed633fa79d60b6ddc5",
       "quarantine": "_yaiwes_upstream_quarantine/skills/session_manager.py.original",
-      "link": false
+      "link": true
     },
     {
       "path": "skills/session_persistence.py",
@@ -323,6 +575,24 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "a40a79d3dfc000bf69f2445dcecf9686e72eaaa65eeced39b92db72ed1072ef1",
       "active_sha256": "a40a79d3dfc000bf69f2445dcecf9686e72eaaa65eeced39b92db72ed1072ef1",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "skills/shared_waf.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "fdd3595152f24896dc09d52b9e2504a05166d0848a07833cf7a441eae895c45e",
+      "active_sha256": "fdd3595152f24896dc09d52b9e2504a05166d0848a07833cf7a441eae895c45e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "skills/ship_gate.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ed20e659023fdcaaecae1057bed21696dd226498b3cd015c339cc5aa3cc3e693",
+      "active_sha256": "ed20e659023fdcaaecae1057bed21696dd226498b3cd015c339cc5aa3cc3e693",
       "quarantine": null,
       "link": false
     },
@@ -345,6 +615,24 @@
       "link": true
     },
     {
+      "path": "skills/threat_analyzer.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "f9cc043e84382cd26b91c843819b8e0ee02daeaa9e77813bc10fef7709dccbd1",
+      "active_sha256": "f9cc043e84382cd26b91c843819b8e0ee02daeaa9e77813bc10fef7709dccbd1",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "skills/validate/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "c91987cb301ac98e6eb12a3c5a501e71c40d4bbc2d40c58e4c6f05cc5337a323",
+      "active_sha256": "c91987cb301ac98e6eb12a3c5a501e71c40d4bbc2d40c58e4c6f05cc5337a323",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "skills/waf_bypass.py",
       "decision": "REVIEW_FAIL_CLOSED",
       "reason": "previously effectful file without safe classification",
@@ -363,6 +651,24 @@
       "link": true
     },
     {
+      "path": "test_pipeline.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "85953a46fd53b16cc47144a51079922d5e0bd9bc8662d6a7f2a615a8084b3d4c",
+      "active_sha256": "85953a46fd53b16cc47144a51079922d5e0bd9bc8662d6a7f2a615a8084b3d4c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "test_server.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "bdfed3509469aa6586e6ee31a210f5c8666add9f238b73774983f1d134180952",
+      "active_sha256": "bdfed3509469aa6586e6ee31a210f5c8666add9f238b73774983f1d134180952",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "tools/__init__.py",
       "decision": "REVIEW_FAIL_CLOSED",
       "reason": "previously effectful file without safe classification",
@@ -372,6 +678,15 @@
       "link": true
     },
     {
+      "path": "tools/catalog.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "00a988e151da8492e2c511cc61b024815bfc817ffb1a78294066c1e9546df854",
+      "active_sha256": "00a988e151da8492e2c511cc61b024815bfc817ffb1a78294066c1e9546df854",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "tools/payloads.py",
       "decision": "BLOCK_OFFENSIVE",
       "reason": "offensive content plus execution surface",
@@ -379,13 +694,25 @@
       "active_sha256": "2f48d82bc484338e4770f06466b8b4295354893dc0f1d8458178cbc3a1c07ae1",
       "quarantine": "_yaiwes_upstream_quarantine/tools/payloads.py.original",
       "link": true
+    },
+    {
+      "path": "verifier.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "43081c8d2dcea9407d12527f1758538cb58969fa8acb7fbf1eb2ddad7a5862b2",
+      "active_sha256": "43081c8d2dcea9407d12527f1758538cb58969fa8acb7fbf1eb2ddad7a5862b2",
+      "quarantine": null,
+      "link": false
     }
   ],
   "counts": {
-    "accounted": 41,
+    "accounted": 77,
+    "keep_unchanged": 36,
     "restored_benign": 15,
     "blocked_offensive": 17,
     "review_fail_closed": 9,
-    "links": 26
-  }
+    "links": 41
+  },
+  "source_code_available": true,
+  "source_code_status": "AVAILABLE"
 }

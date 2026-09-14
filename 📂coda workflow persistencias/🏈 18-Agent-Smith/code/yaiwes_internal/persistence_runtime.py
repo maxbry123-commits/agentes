@@ -35,7 +35,7 @@ class PersistenceRuntime:
         return state
     def run(self, task_id, payload=None):
         state = self.load(task_id); state.status = "CLAIMED"; manifest = self._manifest()
-        links = [x for x in manifest["files"] if x["decision"] in {"BLOCK_OFFENSIVE","REVIEW_FAIL_CLOSED"}]
+        links = [x for x in manifest["files"] if x.get("link")]
         for idx, link in enumerate(links, 1):
             state.status = "CHECKPOINTED"; state.cursor = idx
             state.checkpoints.append({"order":idx,"path":link["path"],"decision":link["decision"],"active_sha256":link["active_sha256"],"payload":dict(payload or {})})

@@ -2,7 +2,7 @@
   "schema": "yaiwes.internal.surgical/v5",
   "component": "🏈 18-Agent-Smith",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.1",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.2",
   "policy": {
     "restore_benign": true,
     "offensive_execution": false,
@@ -12,13 +12,103 @@
   },
   "files": [
     {
+      "path": ".claude/hooks/post-compact.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "80bfe479552a5803bcc496f183dc98d69c515c60fe4f67573ad32448b5eef4ed",
+      "active_sha256": "80bfe479552a5803bcc496f183dc98d69c515c60fe4f67573ad32448b5eef4ed",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": ".codex/hooks/post-compact.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "942f731d8bad5bfcd1122a88ae117038b94d7e7fa87a93a2d0742baf1d49ed86",
+      "active_sha256": "942f731d8bad5bfcd1122a88ae117038b94d7e7fa87a93a2d0742baf1d49ed86",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "129732800ed26dfbb9125d761d9fa9621d88fdc95df7a0c8180b46cebdb3edbe",
+      "active_sha256": "129732800ed26dfbb9125d761d9fa9621d88fdc95df7a0c8180b46cebdb3edbe",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/adjunction/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "0b5be6ddbac05593f4f3c7a1887b49d3f36a9e46ea9996d5d04cf61a24d913a3",
+      "active_sha256": "0b5be6ddbac05593f4f3c7a1887b49d3f36a9e46ea9996d5d04cf61a24d913a3",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/adjunction/directive.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "618f587267a3433a17c0b4a864533e8c4f2c92cd60e1eff8bae9f703b6080f7f",
+      "active_sha256": "618f587267a3433a17c0b4a864533e8c4f2c92cd60e1eff8bae9f703b6080f7f",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/adjunction/gate.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "a0d1d7b30ffb928c1b12f6988c77fe1b73bbd7400c350dfc0245a27a438be4d3",
+      "active_sha256": "a0d1d7b30ffb928c1b12f6988c77fe1b73bbd7400c350dfc0245a27a438be4d3",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/adjunction/log.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "f5dbc6f951873bc22141d1e2a73bb7f34ee3db385c19db34d7aaaf4f4a9937e2",
+      "active_sha256": "f5dbc6f951873bc22141d1e2a73bb7f34ee3db385c19db34d7aaaf4f4a9937e2",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/adjunction/persona.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e4df0431d4d3d9c619c4ae8251b07b5aac0336493387979fed6a3b96e4e80149",
+      "active_sha256": "e4df0431d4d3d9c619c4ae8251b07b5aac0336493387979fed6a3b96e4e80149",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/adjunction/rubric.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "2e8de8a5643511551df0f91dbd506bfca042661b57f0ac693bf3bc1959c8deb8",
+      "active_sha256": "2e8de8a5643511551df0f91dbd506bfca042661b57f0ac693bf3bc1959c8deb8",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/adjunction/verdict.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "358e04af9b88df6b2855c921792c4716ec53a5c2d0342dca245caae998b428a2",
+      "active_sha256": "358e04af9b88df6b2855c921792c4716ec53a5c2d0342dca245caae998b428a2",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "core/api_server/__init__.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "e3fa00c59a3874ded892846fb782a4c5c9166a4e910c2e4c16dc6aec5ed10c18",
       "active_sha256": "e3fa00c59a3874ded892846fb782a4c5c9166a4e910c2e4c16dc6aec5ed10c18",
       "quarantine": "_yaiwes_upstream_quarantine/core/api_server/__init__.py.original",
-      "link": false
+      "link": true
     },
     {
       "path": "core/api_server/mermaid.py",
@@ -27,7 +117,7 @@
       "original_sha256": "d35d2b53cc6c38bd7cf772adc57749605ab314dc3ceff712a20ec7e3b7838b1e",
       "active_sha256": "d35d2b53cc6c38bd7cf772adc57749605ab314dc3ceff712a20ec7e3b7838b1e",
       "quarantine": "_yaiwes_upstream_quarantine/core/api_server/mermaid.py.original",
-      "link": false
+      "link": true
     },
     {
       "path": "core/api_server/routes/__init__.py",
@@ -36,7 +126,7 @@
       "original_sha256": "b02ef6b2994fbae7367ef28d0269783f3a465cbf74f18c43d6e74fb9ad1cd511",
       "active_sha256": "b02ef6b2994fbae7367ef28d0269783f3a465cbf74f18c43d6e74fb9ad1cd511",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/api_server/routes/_common.py",
@@ -45,7 +135,7 @@
       "original_sha256": "0c804ecbd06caa209b09a0357d557c20cc913573b6db470301ae806d7bb88c43",
       "active_sha256": "0c804ecbd06caa209b09a0357d557c20cc913573b6db470301ae806d7bb88c43",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/api_server/routes/dashboard_routes.py",
@@ -54,7 +144,7 @@
       "original_sha256": "1efb3a082893240112f5caf14b8d29a764dbcaba48da24b02eb68f203983c09a",
       "active_sha256": "1efb3a082893240112f5caf14b8d29a764dbcaba48da24b02eb68f203983c09a",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/api_server/routes/findings_routes.py",
@@ -63,7 +153,7 @@
       "original_sha256": "d8c786b96e2498f37b86bbd2418a863bfb910abb10bb34e58d465ba5a49a47b2",
       "active_sha256": "d8c786b96e2498f37b86bbd2418a863bfb910abb10bb34e58d465ba5a49a47b2",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/api_server/routes/misc_routes.py",
@@ -72,7 +162,7 @@
       "original_sha256": "5096d4724f8835698448c2dd81638b9188263a61c26083e96017f085e8d992f0",
       "active_sha256": "5096d4724f8835698448c2dd81638b9188263a61c26083e96017f085e8d992f0",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/api_server/routes/scan_state_routes.py",
@@ -81,7 +171,7 @@
       "original_sha256": "5b2e3c93bb2500ad06c2c62e6184d17f3fa4ee1cadc1158ed9ba7c93e65d9f81",
       "active_sha256": "5b2e3c93bb2500ad06c2c62e6184d17f3fa4ee1cadc1158ed9ba7c93e65d9f81",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/api_server/routes/setup_gate_routes.py",
@@ -90,7 +180,7 @@
       "original_sha256": "84ef4da737382700cf64f3a3b820a0d97a44756fd92332dbbd8f7844272e2988",
       "active_sha256": "84ef4da737382700cf64f3a3b820a0d97a44756fd92332dbbd8f7844272e2988",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/api_server/routes/smith_routes.py",
@@ -99,7 +189,7 @@
       "original_sha256": "d3c6fd25570bc2ab2bef0b1408c696202c3f5445f11de58ae8e9727dc76ba8f2",
       "active_sha256": "d3c6fd25570bc2ab2bef0b1408c696202c3f5445f11de58ae8e9727dc76ba8f2",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/api_server/routes/triage_routes.py",
@@ -108,7 +198,7 @@
       "original_sha256": "d9f36feb349d443a10d645a0ee5a59b49bdf7d10ee1ea9a4a6c9a28e8694f960",
       "active_sha256": "d9f36feb349d443a10d645a0ee5a59b49bdf7d10ee1ea9a4a6c9a28e8694f960",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/api_server/routes/wishlist_routes.py",
@@ -117,7 +207,7 @@
       "original_sha256": "113514999b5cac48a2372480acbebb5b60c160340f0024468e714186fc8a74d2",
       "active_sha256": "113514999b5cac48a2372480acbebb5b60c160340f0024468e714186fc8a74d2",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/api_server/serve.py",
@@ -126,7 +216,7 @@
       "original_sha256": "f2417b2fe995d092456f8b0d09236a4c208ababd27f2b348ac716818eca2bf39",
       "active_sha256": "f2417b2fe995d092456f8b0d09236a4c208ababd27f2b348ac716818eca2bf39",
       "quarantine": "_yaiwes_upstream_quarantine/core/api_server/serve.py.original",
-      "link": false
+      "link": true
     },
     {
       "path": "core/api_server/smith/__init__.py",
@@ -135,7 +225,7 @@
       "original_sha256": "57f3322897a36a9ca272b458043792922ae62758051ca80cfaf30c4fac00fbbc",
       "active_sha256": "57f3322897a36a9ca272b458043792922ae62758051ca80cfaf30c4fac00fbbc",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/api_server/smith/_common.py",
@@ -144,7 +234,7 @@
       "original_sha256": "dc5341ad804259920d1462618d766bcab6520c48e3ffc63327d95b47d287b684",
       "active_sha256": "dc5341ad804259920d1462618d766bcab6520c48e3ffc63327d95b47d287b684",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/api_server/smith/clients.py",
@@ -153,7 +243,7 @@
       "original_sha256": "435068486031bb14f47c8a898648b22ba28cd8b77cc5b6cb5807316874e093ad",
       "active_sha256": "435068486031bb14f47c8a898648b22ba28cd8b77cc5b6cb5807316874e093ad",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/api_server/smith/health.py",
@@ -162,7 +252,7 @@
       "original_sha256": "199e59f99296fd6cfb52b815b236eada422f6ad817c1530d44c3101d9a79eb90",
       "active_sha256": "199e59f99296fd6cfb52b815b236eada422f6ad817c1530d44c3101d9a79eb90",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/api_server/smith/mcp_sse.py",
@@ -171,7 +261,7 @@
       "original_sha256": "a76287f78e036f758ee233cee8207542e559b430caf4196f06b73bdcce8e14e7",
       "active_sha256": "a76287f78e036f758ee233cee8207542e559b430caf4196f06b73bdcce8e14e7",
       "quarantine": "_yaiwes_upstream_quarantine/core/api_server/smith/mcp_sse.py.original",
-      "link": false
+      "link": true
     },
     {
       "path": "core/api_server/smith/progress.py",
@@ -180,7 +270,7 @@
       "original_sha256": "7c72aa5df437f9644a84d6f2798d3c53aa066cbbde90f4ff57446c221ec11071",
       "active_sha256": "7c72aa5df437f9644a84d6f2798d3c53aa066cbbde90f4ff57446c221ec11071",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/api_server/smith/refusal.py",
@@ -189,7 +279,7 @@
       "original_sha256": "8d95ced141601b3a82c86b52719adfc0635b3091e0d2e283c5cafc0ab0dff9af",
       "active_sha256": "8d95ced141601b3a82c86b52719adfc0635b3091e0d2e283c5cafc0ab0dff9af",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/api_server/smith/signals.py",
@@ -198,7 +288,7 @@
       "original_sha256": "6a49b191a2969135bcc32d41a5233478dec3a26945f8aba50a77779d41ec8f28",
       "active_sha256": "6a49b191a2969135bcc32d41a5233478dec3a26945f8aba50a77779d41ec8f28",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/api_server/smith/spawn.py",
@@ -207,7 +297,7 @@
       "original_sha256": "31ff337fac8825dfd5cb636cf8ba2593549355b227cfb0040598435587a9f18d",
       "active_sha256": "31ff337fac8825dfd5cb636cf8ba2593549355b227cfb0040598435587a9f18d",
       "quarantine": "_yaiwes_upstream_quarantine/core/api_server/smith/spawn.py.original",
-      "link": false
+      "link": true
     },
     {
       "path": "core/api_server/smith/watchdog.py",
@@ -215,6 +305,33 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "b5fe6716f3e0df1eef639b60f93c824b8f03602f63c52c83536200238ea7f681",
       "active_sha256": "b5fe6716f3e0df1eef639b60f93c824b8f03602f63c52c83536200238ea7f681",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "core/capabilities.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "6c4d8bae74a47b88f50e232a73ab379e97ad6202e76d570cb2a951174da87f95",
+      "active_sha256": "6c4d8bae74a47b88f50e232a73ab379e97ad6202e76d570cb2a951174da87f95",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/client_patterns.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "a69dc3fd616acfcc5e9cac0f04bef10ede9429342e61b971ae9400ac8c411b97",
+      "active_sha256": "a69dc3fd616acfcc5e9cac0f04bef10ede9429342e61b971ae9400ac8c411b97",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/cost.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e779c9670ba1968f2d730bb614311c430db10fc82734dacc7463ba20bf53e5c6",
+      "active_sha256": "e779c9670ba1968f2d730bb614311c430db10fc82734dacc7463ba20bf53e5c6",
       "quarantine": null,
       "link": false
     },
@@ -225,7 +342,7 @@
       "original_sha256": "870e3e4a0c8c15a9d4f56d18d5d99feceaa4b8cc107620489a6c2f0d7ac4d8a6",
       "active_sha256": "870e3e4a0c8c15a9d4f56d18d5d99feceaa4b8cc107620489a6c2f0d7ac4d8a6",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/coverage/autoclose.py",
@@ -234,7 +351,7 @@
       "original_sha256": "1834d14aeb0651734f59e4d5ed4760912886532481591cbaeb5454dea0bd7722",
       "active_sha256": "1834d14aeb0651734f59e4d5ed4760912886532481591cbaeb5454dea0bd7722",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/coverage/classify.py",
@@ -243,7 +360,7 @@
       "original_sha256": "df8338c1a927b422df8c922763eb79722017fbbf67849ece8a88d22fd88d1303",
       "active_sha256": "df8338c1a927b422df8c922763eb79722017fbbf67849ece8a88d22fd88d1303",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/coverage/operations.py",
@@ -252,7 +369,7 @@
       "original_sha256": "22587ee976811300019192f1c4ce6d51e2a87b14db428ceed319c4d8257d89ff",
       "active_sha256": "22587ee976811300019192f1c4ce6d51e2a87b14db428ceed319c4d8257d89ff",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/coverage/sweep.py",
@@ -261,7 +378,7 @@
       "original_sha256": "61f4de1728bdba79b61cbf7f07aeb2325cb3f3eb5d845e62ebfc276b87622aaa",
       "active_sha256": "61f4de1728bdba79b61cbf7f07aeb2325cb3f3eb5d845e62ebfc276b87622aaa",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/coverage/validation.py",
@@ -270,7 +387,7 @@
       "original_sha256": "c5beae49bbd4c9320b789f03b13410109f29b9e6ffe463521469e6bc6fdb660c",
       "active_sha256": "c5beae49bbd4c9320b789f03b13410109f29b9e6ffe463521469e6bc6fdb660c",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/dashboard_auth.py",
@@ -278,6 +395,60 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "b9f585ddfa92904da821caca722123ba386187e3773fcde7785327e2e0d3a550",
       "active_sha256": "b9f585ddfa92904da821caca722123ba386187e3773fcde7785327e2e0d3a550",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "core/findings.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "4fcab2e16072e9fb02e46d5d0c179abd6f273f80b0faa7abf06c8afa0e1ce31a",
+      "active_sha256": "4fcab2e16072e9fb02e46d5d0c179abd6f273f80b0faa7abf06c8afa0e1ce31a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/findings_validate.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "75349213f09a8f678536a610197c4d0fe2d4b9c7d3dbdfb6c496cbd4c4a75242",
+      "active_sha256": "75349213f09a8f678536a610197c4d0fe2d4b9c7d3dbdfb6c496cbd4c4a75242",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/gate_keywords.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "accba4416523d13b7b28f648b915f8d8145b0ac89bd12db1443d7bea47c1a23e",
+      "active_sha256": "accba4416523d13b7b28f648b915f8d8145b0ac89bd12db1443d7bea47c1a23e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/graph/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "69b56892861c279c6dea2d6b473e08678172cb35001f82a22e428ce960347b44",
+      "active_sha256": "69b56892861c279c6dea2d6b473e08678172cb35001f82a22e428ce960347b44",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/graph/build.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "73a16b8e708399398bba99cce20085ca64783d830c13e77d2357c614fe0c0972",
+      "active_sha256": "73a16b8e708399398bba99cce20085ca64783d830c13e77d2357c614fe0c0972",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/graph/chains.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "0b9618fa4ddfddebe6af9357fb9a1694d70fb177fcf7dc502b5fa177a161f213",
+      "active_sha256": "0b9618fa4ddfddebe6af9357fb9a1694d70fb177fcf7dc502b5fa177a161f213",
       "quarantine": null,
       "link": false
     },
@@ -287,6 +458,33 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "ed6d046121d68d7f31f31593d8783c69cbcc999cb781f713410832c8e90bf32a",
       "active_sha256": "ed6d046121d68d7f31f31593d8783c69cbcc999cb781f713410832c8e90bf32a",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "core/graph/paths.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "84cd114aad620447d8f8f8d87be9a9b2d997bd6369f21e77fca6fd606df3cb89",
+      "active_sha256": "84cd114aad620447d8f8f8d87be9a9b2d997bd6369f21e77fca6fd606df3cb89",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/graph/primitives.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b58df1f0415da1b4dcf5cd847eeccbfe5499532b9b4f93d7f0bfa033ef993495",
+      "active_sha256": "b58df1f0415da1b4dcf5cd847eeccbfe5499532b9b4f93d7f0bfa033ef993495",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/graph/views.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "8f1cb35d1dccb5b2343bdbc2d9c3ce90e96456ef99e2f36a38948ceadf073971",
+      "active_sha256": "8f1cb35d1dccb5b2343bdbc2d9c3ce90e96456ef99e2f36a38948ceadf073971",
       "quarantine": null,
       "link": false
     },
@@ -300,13 +498,22 @@
       "link": true
     },
     {
+      "path": "core/integrity.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "18d205d59de9c14db2499586723a385313d83097fedfdd5aa0ee879db805ba9f",
+      "active_sha256": "18d205d59de9c14db2499586723a385313d83097fedfdd5aa0ee879db805ba9f",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "core/logger.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "ed886beac1d7754fa6f5e425261c20e76952ca094e647db93c6c1393b963a370",
       "active_sha256": "ed886beac1d7754fa6f5e425261c20e76952ca094e647db93c6c1393b963a370",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/metrics.py",
@@ -315,7 +522,7 @@
       "original_sha256": "533c37bf753d4970a5de68400b7cb2ce1ddcee4e6f6f338afe816e39015b756b",
       "active_sha256": "533c37bf753d4970a5de68400b7cb2ce1ddcee4e6f6f338afe816e39015b756b",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/model_detect.py",
@@ -323,6 +530,24 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "262c54a2d48a44fcbe6c5271f0e94ca2c8ae433d4ba9e8721671401cc0dc3960",
       "active_sha256": "262c54a2d48a44fcbe6c5271f0e94ca2c8ae433d4ba9e8721671401cc0dc3960",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "core/notifiers/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b232a9c244b593e7a0d72d5f75acda19afdf4fc5195cee7a60ffab30980fdca7",
+      "active_sha256": "b232a9c244b593e7a0d72d5f75acda19afdf4fc5195cee7a60ffab30980fdca7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/notifiers/_base.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "68c46e86c65ecdb3fb159d62f48b1723841506370d0cef8c3d93ea689fb3c62c",
+      "active_sha256": "68c46e86c65ecdb3fb159d62f48b1723841506370d0cef8c3d93ea689fb3c62c",
       "quarantine": null,
       "link": false
     },
@@ -354,6 +579,33 @@
       "link": true
     },
     {
+      "path": "core/oob.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "db496cea7edef09b4158b558e26c1d86800be55b0a8e216adf82ad75a54dac98",
+      "active_sha256": "db496cea7edef09b4158b558e26c1d86800be55b0a8e216adf82ad75a54dac98",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/paths.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "91722fb3c63844a2559a23495bcedd7cf95423a1b5ddb9f87e0eafb290035c9d",
+      "active_sha256": "91722fb3c63844a2559a23495bcedd7cf95423a1b5ddb9f87e0eafb290035c9d",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/probe_runner.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "21a3732281135807cdc58ed3a7906c1a3d3cb3c0e7cb8e05ab9939d60631a374",
+      "active_sha256": "21a3732281135807cdc58ed3a7906c1a3d3cb3c0e7cb8e05ab9939d60631a374",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "core/probe_verbs.py",
       "decision": "REVIEW_FAIL_CLOSED",
       "reason": "previously effectful file without safe classification",
@@ -369,6 +621,24 @@
       "original_sha256": "4ebed1c2348feeb0aae78f28e335352b08321db64be61a7b8511e28f6eb79941",
       "active_sha256": "4ebed1c2348feeb0aae78f28e335352b08321db64be61a7b8511e28f6eb79941",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "core/qa_agent/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "3b8dc10aae2e8127c43e36e2cd1d9398ba3a88cb189a52a1d5c94b4b9fd8e536",
+      "active_sha256": "3b8dc10aae2e8127c43e36e2cd1d9398ba3a88cb189a52a1d5c94b4b9fd8e536",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/qa_agent/_util.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e7e05e935c55e0931402502339e15cf6bdcdad8067a99070ca91f35d15468d62",
+      "active_sha256": "e7e05e935c55e0931402502339e15cf6bdcdad8067a99070ca91f35d15468d62",
+      "quarantine": null,
       "link": false
     },
     {
@@ -377,6 +647,15 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "ae0b8f651f697686f3cb89879c95579351dd701fc3a6b8d5e5f106e5759ee037",
       "active_sha256": "ae0b8f651f697686f3cb89879c95579351dd701fc3a6b8d5e5f106e5759ee037",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "core/qa_agent/checks_depth.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "3c0a5c8d8756d61781dae60e8c2a6dac8a5eceb623eed70e3c35b668b7dddd2b",
+      "active_sha256": "3c0a5c8d8756d61781dae60e8c2a6dac8a5eceb623eed70e3c35b668b7dddd2b",
       "quarantine": null,
       "link": false
     },
@@ -387,6 +666,51 @@
       "original_sha256": "bf17a94ba06de067bc279c7d40af3d7e66c9a6d0bde74dd802f5a5d21f96f8ef",
       "active_sha256": "bf17a94ba06de067bc279c7d40af3d7e66c9a6d0bde74dd802f5a5d21f96f8ef",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "core/qa_agent/checks_shortcuts.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d42a7b8660a1cd300d4c89d98216cf7d071d2810ac9b3db137b269b75b1b20a0",
+      "active_sha256": "d42a7b8660a1cd300d4c89d98216cf7d071d2810ac9b3db137b269b75b1b20a0",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/qa_agent/checks_skills.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "2b11c14d97b6e9d942f1f753c48c89f329263d95de55f2361ed618618450708f",
+      "active_sha256": "2b11c14d97b6e9d942f1f753c48c89f329263d95de55f2361ed618618450708f",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/qa_agent/daemon.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "74e26b94693529ee515fe5b8e8f580c8089fd32c1e357aa2fd9c30c20432427c",
+      "active_sha256": "74e26b94693529ee515fe5b8e8f580c8089fd32c1e357aa2fd9c30c20432427c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/qa_agent/hir.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "83fcc0ffd81ce6b6e5df52b5e8cf3ee985c2c766136234f5143f30e9bc8d365c",
+      "active_sha256": "83fcc0ffd81ce6b6e5df52b5e8cf3ee985c2c766136234f5143f30e9bc8d365c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/quick_log.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1b80e15f31d8314405aaa1d8df5f6532edaf8a7ee2f137e72ff4364d6eebc594",
+      "active_sha256": "1b80e15f31d8314405aaa1d8df5f6532edaf8a7ee2f137e72ff4364d6eebc594",
+      "quarantine": null,
       "link": false
     },
     {
@@ -396,7 +720,7 @@
       "original_sha256": "b82774c5ce0d365b3e7c6c01d14b09f99b24ac229e643c5e083cc2c68e0a491a",
       "active_sha256": "b82774c5ce0d365b3e7c6c01d14b09f99b24ac229e643c5e083cc2c68e0a491a",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/session/assets.py",
@@ -405,7 +729,7 @@
       "original_sha256": "c951d48cdb16abee15b58bbf92014a3b8f83d047dd2b8ef9c8e36d10c2ed69e6",
       "active_sha256": "c951d48cdb16abee15b58bbf92014a3b8f83d047dd2b8ef9c8e36d10c2ed69e6",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/session/gates.py",
@@ -414,7 +738,7 @@
       "original_sha256": "b5646d37cf0be635486a7e873f5bacb6739f9f216109c6badd49725da6eb064a",
       "active_sha256": "b5646d37cf0be635486a7e873f5bacb6739f9f216109c6badd49725da6eb064a",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/session/intervention.py",
@@ -423,7 +747,7 @@
       "original_sha256": "ceaf8c99ac7fe6efff71f78ba35ac3bd53e5e9b9448baab74cb21cc6fce74ea2",
       "active_sha256": "ceaf8c99ac7fe6efff71f78ba35ac3bd53e5e9b9448baab74cb21cc6fce74ea2",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/session/lifecycle.py",
@@ -441,7 +765,7 @@
       "original_sha256": "444583c181e971c5dde22b0a9aa4b96488885d16587b7042761682698649178a",
       "active_sha256": "444583c181e971c5dde22b0a9aa4b96488885d16587b7042761682698649178a",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/session/persistence.py",
@@ -450,7 +774,7 @@
       "original_sha256": "148e9909c441405be047517af7f17262e2390a8791be0b80b4a7126cfb022508",
       "active_sha256": "148e9909c441405be047517af7f17262e2390a8791be0b80b4a7126cfb022508",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/session/phases.py",
@@ -459,7 +783,7 @@
       "original_sha256": "b4952eebfe917b241785af175a2d7d760ac233cf8c08617dc0824e299610765d",
       "active_sha256": "b4952eebfe917b241785af175a2d7d760ac233cf8c08617dc0824e299610765d",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/session/process_detect.py",
@@ -468,7 +792,7 @@
       "original_sha256": "a612b08646d2e8d95ebba11994c89bb5c7ac8cca46e69f4b98e2178cc03063d9",
       "active_sha256": "a612b08646d2e8d95ebba11994c89bb5c7ac8cca46e69f4b98e2178cc03063d9",
       "quarantine": "_yaiwes_upstream_quarantine/core/session/process_detect.py.original",
-      "link": false
+      "link": true
     },
     {
       "path": "core/session/setup_gates.py",
@@ -476,6 +800,15 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "a60998bc20dba91ab818aa5d554783a620bde9b7e8e4642da8dae4a10b9d763a",
       "active_sha256": "a60998bc20dba91ab818aa5d554783a620bde9b7e8e4642da8dae4a10b9d763a",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "core/skill_paths.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "5e5f7e3afca6e834ef4400e94fd83ba020078e7011618ac46211a51bea5e2ae7",
+      "active_sha256": "5e5f7e3afca6e834ef4400e94fd83ba020078e7011618ac46211a51bea5e2ae7",
       "quarantine": null,
       "link": false
     },
@@ -486,6 +819,15 @@
       "original_sha256": "6846a43e552c5095f0af458d94c4a963dcd2dff801ab4e04841cd1957d76eded",
       "active_sha256": "6846a43e552c5095f0af458d94c4a963dcd2dff801ab4e04841cd1957d76eded",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "core/steering.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "cfd1ffe5f1f95746e016ec0b233ac3747af9d530f1d3dafd10fea5411c7f487a",
+      "active_sha256": "cfd1ffe5f1f95746e016ec0b233ac3747af9d530f1d3dafd10fea5411c7f487a",
+      "quarantine": null,
       "link": false
     },
     {
@@ -494,6 +836,60 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "5f9ce9b56dbd7059e37da858d2ea96d791e4eefe016c504e11d0e46e92400d0a",
       "active_sha256": "5f9ce9b56dbd7059e37da858d2ea96d791e4eefe016c504e11d0e46e92400d0a",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "core/target_class.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "84e95961d18b03c30775b13b934294f9034eb36e8e0ad2738d19df66b2139b59",
+      "active_sha256": "84e95961d18b03c30775b13b934294f9034eb36e8e0ad2738d19df66b2139b59",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/taxonomy.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d7702911b65a02f054136834b34d2b188d86f5c03902edc3022a5aae0df8bd99",
+      "active_sha256": "d7702911b65a02f054136834b34d2b188d86f5c03902edc3022a5aae0df8bd99",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "core/wishlist.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "8ead2cd5d59d6c1c11bfa65626ab4741b100a1e97a679eae8fbadbabe04e7e1e",
+      "active_sha256": "8ead2cd5d59d6c1c11bfa65626ab4741b100a1e97a679eae8fbadbabe04e7e1e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "dashboard/js/activity.js",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "07dc75e22588caf849576c0e2e6751190020f1122a78c087166a275219e3bf5e",
+      "active_sha256": "07dc75e22588caf849576c0e2e6751190020f1122a78c087166a275219e3bf5e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "dashboard/js/common.js",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "6819001ce6123e4d3bf2f1fb20456e32d3993211a128b0df42a003dd395801a5",
+      "active_sha256": "6819001ce6123e4d3bf2f1fb20456e32d3993211a128b0df42a003dd395801a5",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "dashboard/js/components.js",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "fa8a9c41722107d7175b44a3e0858a182b1224ad392d95554c7f079c5548754f",
+      "active_sha256": "fa8a9c41722107d7175b44a3e0858a182b1224ad392d95554c7f079c5548754f",
       "quarantine": null,
       "link": false
     },
@@ -504,6 +900,42 @@
       "original_sha256": "af09c7f5860092dee0c36d8e8f40276e5b4bcbb481d28eba65d4d675101f0d64",
       "active_sha256": "af09c7f5860092dee0c36d8e8f40276e5b4bcbb481d28eba65d4d675101f0d64",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "dashboard/js/finding.js",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "630b8252220a8e40983b3469a66aaf03c131ac223a094300926dd8c7da5053ac",
+      "active_sha256": "630b8252220a8e40983b3469a66aaf03c131ac223a094300926dd8c7da5053ac",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "dashboard/js/findings.js",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "06bb67769ce407fbd362d4b9af471ac63148bf6e5bf2a534811d2c45ce29a3ef",
+      "active_sha256": "06bb67769ce407fbd362d4b9af471ac63148bf6e5bf2a534811d2c45ce29a3ef",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "dashboard/js/logs.js",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "91adb96df7298ee3f0f9105fb191bc52fada834d5479863931e5844e773da2df",
+      "active_sha256": "91adb96df7298ee3f0f9105fb191bc52fada834d5479863931e5844e773da2df",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "dashboard/js/main.js",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ec52ca836bf4a940e770921aeb2d3f2d6b8e8a8d61b33ef0b834cbb03de06ca8",
+      "active_sha256": "ec52ca836bf4a940e770921aeb2d3f2d6b8e8a8d61b33ef0b834cbb03de06ca8",
+      "quarantine": null,
       "link": false
     },
     {
@@ -512,6 +944,42 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "215d7f1db662634db5bb271a6d95d25d5847b6cf1fc775e1bfa7bb7e66d93184",
       "active_sha256": "215d7f1db662634db5bb271a6d95d25d5847b6cf1fc775e1bfa7bb7e66d93184",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "dashboard/js/overview.js",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "40534f028195ffd643126395a753d57359c2403d77f380e955039a5837a23993",
+      "active_sha256": "40534f028195ffd643126395a753d57359c2403d77f380e955039a5837a23993",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "dashboard/js/setup-gates.js",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "874f8728e0f3dba1e89e7d98291f904d39c6f09cbd6c5b625a696bd0461a3c56",
+      "active_sha256": "874f8728e0f3dba1e89e7d98291f904d39c6f09cbd6c5b625a696bd0461a3c56",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "dashboard/js/shared.js",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ae03794ab26f11aff1e29f3925daf04ceb5547909921a6c047c01c728df2c2b6",
+      "active_sha256": "ae03794ab26f11aff1e29f3925daf04ceb5547909921a6c047c01c728df2c2b6",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "dashboard/js/skills.js",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b1d966e1902ad748f260811a4e9d21cd11cdb5ab14f0a010d9928fbce1dc465b",
+      "active_sha256": "b1d966e1902ad748f260811a4e9d21cd11cdb5ab14f0a010d9928fbce1dc465b",
       "quarantine": null,
       "link": false
     },
@@ -522,6 +990,15 @@
       "original_sha256": "a9646e3e4b9db6579a91f01d52a5ecd79968e8f36d4e3747f80e77c682e1d6c6",
       "active_sha256": "a9646e3e4b9db6579a91f01d52a5ecd79968e8f36d4e3747f80e77c682e1d6c6",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "dashboard/js/topology.js",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d19966fe313124b0c259d1856155623eeb10003eb42cb905d22d1660170fd8d8",
+      "active_sha256": "d19966fe313124b0c259d1856155623eeb10003eb42cb905d22d1660170fd8d8",
+      "quarantine": null,
       "link": false
     },
     {
@@ -530,6 +1007,87 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "7ac3d8c7b3a8fc3a78ad20979126fb69a5d3b7fdba03787355f199a706d86ed9",
       "active_sha256": "7ac3d8c7b3a8fc3a78ad20979126fb69a5d3b7fdba03787355f199a706d86ed9",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "installers/change-mcp-port.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "9b712d2d35c6ace2851c34d315faf3aa22c28f4fb39ea1ede3719198352e66db",
+      "active_sha256": "9b712d2d35c6ace2851c34d315faf3aa22c28f4fb39ea1ede3719198352e66db",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "installers/install-launchd.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "a840d41d480243dd4aaa73a793a86a81647552135ac9d8556c6148ea1e8c2652",
+      "active_sha256": "a840d41d480243dd4aaa73a793a86a81647552135ac9d8556c6148ea1e8c2652",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "installers/install.ps1",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "029587d8f2bb6b17cc773f308ef818a9a392149b5c415b0de711c236231ea227",
+      "active_sha256": "029587d8f2bb6b17cc773f308ef818a9a392149b5c415b0de711c236231ea227",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "installers/install.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "cd1a097a2a2aecde5ccf41eeea4b8de126ea979a13b9424baba040a60b68876a",
+      "active_sha256": "cd1a097a2a2aecde5ccf41eeea4b8de126ea979a13b9424baba040a60b68876a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "installers/install_codex.ps1",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b3cc26f96e3f8353ad727fb9428d0106fdc43e78e59cd3c7d300261d3ddacb82",
+      "active_sha256": "b3cc26f96e3f8353ad727fb9428d0106fdc43e78e59cd3c7d300261d3ddacb82",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "installers/install_codex.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "acb7e593282789a49aa0aa2c446e645985d79b0ea58fc0e9740f20804e452f91",
+      "active_sha256": "acb7e593282789a49aa0aa2c446e645985d79b0ea58fc0e9740f20804e452f91",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "installers/install_opencode.ps1",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "18c8bb368ac9f1f78508f38537c0ba58267301e57be18ed097e0a0afd5064fe0",
+      "active_sha256": "18c8bb368ac9f1f78508f38537c0ba58267301e57be18ed097e0a0afd5064fe0",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "installers/install_opencode.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "35f7b9b643744edbf48b648aeb4c8e746ec91d5c87044a52220cc4b6df6c7f71",
+      "active_sha256": "35f7b9b643744edbf48b648aeb4c8e746ec91d5c87044a52220cc4b6df6c7f71",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "installers/run-mcp-server.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e134f9773677cfbc7a72029e1bd918252b28a45606c458782a003f8a4406ba58",
+      "active_sha256": "e134f9773677cfbc7a72029e1bd918252b28a45606c458782a003f8a4406ba58",
       "quarantine": null,
       "link": false
     },
@@ -543,6 +1101,60 @@
       "link": true
     },
     {
+      "path": "installers/start-mcp-server.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "2bee4b292e5aebb63d5991632e6c9eb97b2714cc1e1cadc40bba525cc3d59f39",
+      "active_sha256": "2bee4b292e5aebb63d5991632e6c9eb97b2714cc1e1cadc40bba525cc3d59f39",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "installers/uninstall.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "6fcd15ed72929eb5582c2299f2da785a487e75d9c608ad89a8c09a3ac02145f1",
+      "active_sha256": "6fcd15ed72929eb5582c2299f2da785a487e75d9c608ad89a8c09a3ac02145f1",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "installers/uninstall_codex.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "cc35c3b5cbfd5e7ed7c1ad8d5292f5b8af8becf3b38f62e238682f4077418afc",
+      "active_sha256": "cc35c3b5cbfd5e7ed7c1ad8d5292f5b8af8becf3b38f62e238682f4077418afc",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp_server/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp_server/__main__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "48628fd34bbd65772d6ed99de97d708e8aa2de29383339295a5dda7ba8cb4cf9",
+      "active_sha256": "48628fd34bbd65772d6ed99de97d708e8aa2de29383339295a5dda7ba8cb4cf9",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp_server/_app.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "75a107ccaf28bf21b2361dff401ead018e736bde139a7e5f524cef1aec7c7426",
+      "active_sha256": "75a107ccaf28bf21b2361dff401ead018e736bde139a7e5f524cef1aec7c7426",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "mcp_server/http_tools.py",
       "decision": "BLOCK_OFFENSIVE",
       "reason": "offensive content plus execution surface",
@@ -552,13 +1164,22 @@
       "link": true
     },
     {
+      "path": "mcp_server/kali_tools.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "116dc67a83cb50f9a381f41fd89931f6f96d5b8075391d937d74ce5bde2bb20e",
+      "active_sha256": "116dc67a83cb50f9a381f41fd89931f6f96d5b8075391d937d74ce5bde2bb20e",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "mcp_server/report_tools/__init__.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "8baac74a1afa70d23083f299782eff8ee7f5818bfb3db14c49306634e64f9386",
       "active_sha256": "8baac74a1afa70d23083f299782eff8ee7f5818bfb3db14c49306634e64f9386",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/report_tools/_common.py",
@@ -567,7 +1188,7 @@
       "original_sha256": "8985aa933e6705c639f6b882931f89453df65afd659e33e6b09cf90b17f9deb0",
       "active_sha256": "8985aa933e6705c639f6b882931f89453df65afd659e33e6b09cf90b17f9deb0",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/report_tools/adjudication.py",
@@ -576,7 +1197,7 @@
       "original_sha256": "882729fccb64070a874cdc726f0dac66008a0c19156fc0960e185343022bdc39",
       "active_sha256": "882729fccb64070a874cdc726f0dac66008a0c19156fc0960e185343022bdc39",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/report_tools/coverage.py",
@@ -585,7 +1206,7 @@
       "original_sha256": "12af4a9e17b32b92a61e0e56b6814a7068c3a9edf5f911dc15dc475af4c479f9",
       "active_sha256": "12af4a9e17b32b92a61e0e56b6814a7068c3a9edf5f911dc15dc475af4c479f9",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/report_tools/coverage_extra.py",
@@ -594,7 +1215,7 @@
       "original_sha256": "66a5d956b51cc66bf38cd52a0deaebd4f114369ba19a91ba54fe7517d6720cd1",
       "active_sha256": "66a5d956b51cc66bf38cd52a0deaebd4f114369ba19a91ba54fe7517d6720cd1",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/report_tools/diagrams.py",
@@ -603,7 +1224,7 @@
       "original_sha256": "39475d4dcffda96e86bad88f88c05e85d3e8519edea41772de5b260589a99373",
       "active_sha256": "39475d4dcffda96e86bad88f88c05e85d3e8519edea41772de5b260589a99373",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/report_tools/findings.py",
@@ -612,7 +1233,7 @@
       "original_sha256": "20b5ff41287e391e235a8957034732f39ec94557261f18bede683389de87e6f7",
       "active_sha256": "20b5ff41287e391e235a8957034732f39ec94557261f18bede683389de87e6f7",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/report_tools/gates.py",
@@ -620,6 +1241,33 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "b9a01a1cdc898498334e36ee4a2a443361915f3882efe0faa8118d7bf85af525",
       "active_sha256": "b9a01a1cdc898498334e36ee4a2a443361915f3882efe0faa8118d7bf85af525",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "mcp_server/scan_engine/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "14520f5a3aa97a4c4006fad2329ed76b9198d2a727aead6b42bfe9b09bee13bb",
+      "active_sha256": "14520f5a3aa97a4c4006fad2329ed76b9198d2a727aead6b42bfe9b09bee13bb",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp_server/scan_engine/artifacts.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "5d77c5bb75bd818d502415404122e8a21f4f7027784ac8a5b41f66162630ee72",
+      "active_sha256": "5d77c5bb75bd818d502415404122e8a21f4f7027784ac8a5b41f66162630ee72",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp_server/scan_engine/budget.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "5eabade1b999c7d22437c2b2c2b10fd831a0c2e7d96761c2c0251b0bad17a9b5",
+      "active_sha256": "5eabade1b999c7d22437c2b2c2b10fd831a0c2e7d96761c2c0251b0bad17a9b5",
       "quarantine": null,
       "link": false
     },
@@ -633,13 +1281,40 @@
       "link": true
     },
     {
+      "path": "mcp_server/scan_engine/envelope/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "2c99267967d42864c15b2f58a8cfc8ec8a729b7bb352d0e23db89956e1aebeba",
+      "active_sha256": "2c99267967d42864c15b2f58a8cfc8ec8a729b7bb352d0e23db89956e1aebeba",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp_server/scan_engine/envelope/_common.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "dad7d50bc6cd660971e023713eb1c638727ebe381729f0f7ce04b55f4a172cfb",
+      "active_sha256": "dad7d50bc6cd660971e023713eb1c638727ebe381729f0f7ce04b55f4a172cfb",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp_server/scan_engine/envelope/assets.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "fe7292807c0aae276234fe96e9e9d4eaabc83d258ed0ae29b2f5f4e5c8607557",
+      "active_sha256": "fe7292807c0aae276234fe96e9e9d4eaabc83d258ed0ae29b2f5f4e5c8607557",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "mcp_server/scan_engine/envelope/auth_detect.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "e143839ff2735b481092b4c34ff1a4255247257c59b4bc0ebd608eb097377250",
       "active_sha256": "e143839ff2735b481092b4c34ff1a4255247257c59b4bc0ebd608eb097377250",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/scan_engine/envelope/auth_warning.py",
@@ -647,6 +1322,24 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "db9e679df5636d387ac7911b3409bad3541aea8828f73979631d61b020c524d7",
       "active_sha256": "db9e679df5636d387ac7911b3409bad3541aea8828f73979631d61b020c524d7",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "mcp_server/scan_engine/envelope/gates.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "0a401e29267132499a89d92b6eeb1a5777632b7973a9603dcbe4e95cfa1218d8",
+      "active_sha256": "0a401e29267132499a89d92b6eeb1a5777632b7973a9603dcbe4e95cfa1218d8",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp_server/scan_engine/envelope/pressure.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "75db15bdb4c75417b4cc356124ab9b144e29cb5609938ff3a11e181a3ea43455",
+      "active_sha256": "75db15bdb4c75417b4cc356124ab9b144e29cb5609938ff3a11e181a3ea43455",
       "quarantine": null,
       "link": false
     },
@@ -658,6 +1351,15 @@
       "active_sha256": "9846185f381578275f05ed6cb5a64ffdfff3378dedf8289aa45424a6efd88165",
       "quarantine": "_yaiwes_upstream_quarantine/mcp_server/scan_engine/envelope/qa_injection.py.original",
       "link": true
+    },
+    {
+      "path": "mcp_server/scan_engine/envelope/quick_log.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d7c997fe386a95049c52e760acffd295e6ab4b159366d241f2aa76ff80a02d94",
+      "active_sha256": "d7c997fe386a95049c52e760acffd295e6ab4b159366d241f2aa76ff80a02d94",
+      "quarantine": null,
+      "link": false
     },
     {
       "path": "mcp_server/scan_engine/planner.py",
@@ -675,7 +1377,7 @@
       "original_sha256": "044dc03fc0f6fcb54c19b3fc615ffa2418a526a0d6e405abed11197c394e929d",
       "active_sha256": "044dc03fc0f6fcb54c19b3fc615ffa2418a526a0d6e405abed11197c394e929d",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/scan_engine/state.py",
@@ -684,7 +1386,7 @@
       "original_sha256": "5236527823a352ff32bc4aa6d65ab39631c1aa9680d0c602b5bb21c34bb75dab",
       "active_sha256": "5236527823a352ff32bc4aa6d65ab39631c1aa9680d0c602b5bb21c34bb75dab",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/scan_engine/summarizers/__init__.py",
@@ -693,7 +1395,7 @@
       "original_sha256": "33395985b12188cae82ce5e14160a9d47982969c203124a2588ebeabd49e3f25",
       "active_sha256": "33395985b12188cae82ce5e14160a9d47982969c203124a2588ebeabd49e3f25",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/scan_engine/summarizers/_common.py",
@@ -702,7 +1404,7 @@
       "original_sha256": "4edc04d2023bec807ed2af59c13bd0efb4e3fbd515c2facb948ed2cf4c2b732a",
       "active_sha256": "4edc04d2023bec807ed2af59c13bd0efb4e3fbd515c2facb948ed2cf4c2b732a",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/scan_engine/summarizers/ai.py",
@@ -711,7 +1413,7 @@
       "original_sha256": "4d1926d694bd51cc53c725c934e33690fe5173d96c17ad26a13262ba822b6155",
       "active_sha256": "4d1926d694bd51cc53c725c934e33690fe5173d96c17ad26a13262ba822b6155",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/scan_engine/summarizers/generic.py",
@@ -720,7 +1422,7 @@
       "original_sha256": "93b2d8f7ce3ea3bfecea145c50367dc68eb5d25dbbb10809f455752d29ace896",
       "active_sha256": "93b2d8f7ce3ea3bfecea145c50367dc68eb5d25dbbb10809f455752d29ace896",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/scan_engine/summarizers/http.py",
@@ -729,7 +1431,7 @@
       "original_sha256": "77ea25cfde5f0081e996a16e476239e916ba1e0eb5fe39977e870ad65e77a660",
       "active_sha256": "77ea25cfde5f0081e996a16e476239e916ba1e0eb5fe39977e870ad65e77a660",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/scan_engine/summarizers/net.py",
@@ -738,7 +1440,7 @@
       "original_sha256": "2081a668de1738d6753be57b7fc1a3024f331ef7daebf38ae91aaa11e6b417b1",
       "active_sha256": "2081a668de1738d6753be57b7fc1a3024f331ef7daebf38ae91aaa11e6b417b1",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/scan_engine/summarizers/web.py",
@@ -746,6 +1448,42 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "34e7538392c7c9844b7434c8ab93a26f32b901bcd317d0448656f1b01e4715d7",
       "active_sha256": "34e7538392c7c9844b7434c8ab93a26f32b901bcd317d0448656f1b01e4715d7",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "mcp_server/scan_tools/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "5d40f8d47d2f8c05794f9cec74d759a84c024e4959e8c764f0caf0e484e32e4e",
+      "active_sha256": "5d40f8d47d2f8c05794f9cec74d759a84c024e4959e8c764f0caf0e484e32e4e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp_server/scan_tools/_common.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "664ced0db61e1f8be775515176049a58f5ef0f1ad935a44714707c2e19966d1a",
+      "active_sha256": "664ced0db61e1f8be775515176049a58f5ef0f1ad935a44714707c2e19966d1a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp_server/scan_tools/handlers_ai.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "31cca29ea34dee7105a28171aeb7a5d17fd32b1b1f1b6568a11f2e2a7135e2cf",
+      "active_sha256": "31cca29ea34dee7105a28171aeb7a5d17fd32b1b1f1b6568a11f2e2a7135e2cf",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp_server/scan_tools/handlers_code.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "66a19401d6ef1efd84f331fe4820929399950f9248127395d7dbbdf494347680",
+      "active_sha256": "66a19401d6ef1efd84f331fe4820929399950f9248127395d7dbbdf494347680",
       "quarantine": null,
       "link": false
     },
@@ -759,13 +1497,40 @@
       "link": true
     },
     {
+      "path": "mcp_server/scan_tools/handlers_mobile.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ea2aac4aeee80fe28ed3b3a1c1e093a675d01844a1d8d71e2ba28fbd25f94cc0",
+      "active_sha256": "ea2aac4aeee80fe28ed3b3a1c1e093a675d01844a1d8d71e2ba28fbd25f94cc0",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp_server/scan_tools/handlers_net.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d6a0130882b1d12c82b6c5b16ed55c5e7b9b6b9f2c3b94c428a0dafef08a6bec",
+      "active_sha256": "d6a0130882b1d12c82b6c5b16ed55c5e7b9b6b9f2c3b94c428a0dafef08a6bec",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp_server/scan_tools/spider.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "c570e050e2605934280141413ed125db33d41398335345b235926c42a9d8d9cc",
+      "active_sha256": "c570e050e2605934280141413ed125db33d41398335345b235926c42a9d8d9cc",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "mcp_server/session_tools/__init__.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "e51ac78339e722df35bcc19104b167040ded2c532d10e8fc7e029cc3cd11bd5b",
       "active_sha256": "e51ac78339e722df35bcc19104b167040ded2c532d10e8fc7e029cc3cd11bd5b",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/session_tools/_common.py",
@@ -774,7 +1539,7 @@
       "original_sha256": "387198c56e5da62ced802484a79178ab581b8164912b0fc8a165ebf1a112d884",
       "active_sha256": "387198c56e5da62ced802484a79178ab581b8164912b0fc8a165ebf1a112d884",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/session_tools/blocker_response.py",
@@ -783,7 +1548,7 @@
       "original_sha256": "8344fb3634da1f2bb86d687a2e483f65d3cf38f190fba9682026dcda33628bc2",
       "active_sha256": "8344fb3634da1f2bb86d687a2e483f65d3cf38f190fba9682026dcda33628bc2",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/session_tools/complete.py",
@@ -792,7 +1557,7 @@
       "original_sha256": "dd3feace10980e65cda72ed9986568eb0fb5da3ef483a628c19c3fca8bb759b5",
       "active_sha256": "dd3feace10980e65cda72ed9986568eb0fb5da3ef483a628c19c3fca8bb759b5",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/session_tools/completion_gates.py",
@@ -801,7 +1566,7 @@
       "original_sha256": "b45a0ebee6e3759227263fa5a94c0f5bd829409cd36314e79757cdc1df366af8",
       "active_sha256": "b45a0ebee6e3759227263fa5a94c0f5bd829409cd36314e79757cdc1df366af8",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/session_tools/containers.py",
@@ -819,7 +1584,7 @@
       "original_sha256": "5b0806ebddfaa25f110a6ac87583f9dd006911848dc078d7fc492b404888f7ce",
       "active_sha256": "5b0806ebddfaa25f110a6ac87583f9dd006911848dc078d7fc492b404888f7ce",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/session_tools/deepen.py",
@@ -828,7 +1593,7 @@
       "original_sha256": "3911a2ec78f6d71591042bd3fb25287be099be86ebedbba61b1b423c2f590722",
       "active_sha256": "3911a2ec78f6d71591042bd3fb25287be099be86ebedbba61b1b423c2f590722",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/session_tools/handshake.py",
@@ -837,7 +1602,7 @@
       "original_sha256": "a4ab4c6de7085192ae99ee6bc8d5bf8caac33acbbba139e2c3f86cf8d4936211",
       "active_sha256": "a4ab4c6de7085192ae99ee6bc8d5bf8caac33acbbba139e2c3f86cf8d4936211",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/session_tools/hir.py",
@@ -846,7 +1611,7 @@
       "original_sha256": "c60dea47aa8865e03e873260ea74ef49737752409192d6be1cfa6c9f406d56f4",
       "active_sha256": "c60dea47aa8865e03e873260ea74ef49737752409192d6be1cfa6c9f406d56f4",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/session_tools/integrity_gates.py",
@@ -855,7 +1620,7 @@
       "original_sha256": "6fe6ada2fcd170c34f445dbf6f7dd7045188dca1f4139202cf787f6ffad78d4d",
       "active_sha256": "6fe6ada2fcd170c34f445dbf6f7dd7045188dca1f4139202cf787f6ffad78d4d",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/session_tools/oob_actions.py",
@@ -864,7 +1629,7 @@
       "original_sha256": "b710fc49ccdc7fd99308f8c60bb418e2e6be0ce16abd85288af16c404107792e",
       "active_sha256": "b710fc49ccdc7fd99308f8c60bb418e2e6be0ce16abd85288af16c404107792e",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/session_tools/recovery.py",
@@ -873,7 +1638,7 @@
       "original_sha256": "c81d12a5a00beb73a6c91d7f60d1ac390db3df927c30c073ca4f555cf26cd9d9",
       "active_sha256": "c81d12a5a00beb73a6c91d7f60d1ac390db3df927c30c073ca4f555cf26cd9d9",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/session_tools/recovery_build.py",
@@ -882,7 +1647,7 @@
       "original_sha256": "f8cb9f6f2da7a4e678ccb78297c072a17720945bfb1a8cc35059dfbe8181f743",
       "active_sha256": "f8cb9f6f2da7a4e678ccb78297c072a17720945bfb1a8cc35059dfbe8181f743",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/session_tools/setup_gates.py",
@@ -891,7 +1656,7 @@
       "original_sha256": "5e9df74a18d170efe100fd3329d62a4d6dbb3462aa1164ce8f8696f48fc23e4c",
       "active_sha256": "5e9df74a18d170efe100fd3329d62a4d6dbb3462aa1164ce8f8696f48fc23e4c",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/session_tools/skills.py",
@@ -900,7 +1665,7 @@
       "original_sha256": "d874a221ad0562f5ed7495beff18880262c6c3ab323c5db85fd82a6cd112fc52",
       "active_sha256": "d874a221ad0562f5ed7495beff18880262c6c3ab323c5db85fd82a6cd112fc52",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/session_tools/start.py",
@@ -909,7 +1674,7 @@
       "original_sha256": "57e0372877163e2f7e97d2dd81f41550c3aca7f540c94891bafb9bdd720d11c6",
       "active_sha256": "57e0372877163e2f7e97d2dd81f41550c3aca7f540c94891bafb9bdd720d11c6",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/session_tools/start_helpers.py",
@@ -918,7 +1683,7 @@
       "original_sha256": "59617a23b80e957fe409b93c7c5fd443a02b80e950dff0dfb697484f3d136678",
       "active_sha256": "59617a23b80e957fe409b93c7c5fd443a02b80e950dff0dfb697484f3d136678",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/session_tools/status.py",
@@ -927,7 +1692,7 @@
       "original_sha256": "08df5ef8bb818f26e9b907e8627c57af0747473eca4e87284e06e1308e724803",
       "active_sha256": "08df5ef8bb818f26e9b907e8627c57af0747473eca4e87284e06e1308e724803",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/session_tools/whitebox.py",
@@ -936,7 +1701,7 @@
       "original_sha256": "8242facd50c7471f8578140e517af759d7d410d3486be8d563b5d431352986c4",
       "active_sha256": "8242facd50c7471f8578140e517af759d7d410d3486be8d563b5d431352986c4",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "mcp_server/session_tools/wishlist.py",
@@ -945,7 +1710,7 @@
       "original_sha256": "8d769451a671e65a72107d9519f9c8fc65f2e51e74850a001c4a385d945fd279",
       "active_sha256": "8d769451a671e65a72107d9519f9c8fc65f2e51e74850a001c4a385d945fd279",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "tools/__init__.py",
@@ -955,6 +1720,24 @@
       "active_sha256": "a672ce84e30a429f70122f1f3c9bda2ba636cd806055741d170af2993aaba2d2",
       "quarantine": "_yaiwes_upstream_quarantine/tools/__init__.py.original",
       "link": true
+    },
+    {
+      "path": "tools/base.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "82167e8e2acee8b1c9394e2199fe830597e7d3ab621f2f9a21d284182f37b313",
+      "active_sha256": "82167e8e2acee8b1c9394e2199fe830597e7d3ab621f2f9a21d284182f37b313",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "tools/docker_cli.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "3ee57082c7fe952549b6bc26514a82241edd9790180498befb293dae1580cb99",
+      "active_sha256": "3ee57082c7fe952549b6bc26514a82241edd9790180498befb293dae1580cb99",
+      "quarantine": null,
+      "link": false
     },
     {
       "path": "tools/docker_runner.py",
@@ -975,11 +1758,38 @@
       "link": true
     },
     {
+      "path": "tools/httpx.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "5d1b4d6e7410dd53839a35926fd5dcb2279c61c7d5ab96e2f2b81e95b9e3d4e4",
+      "active_sha256": "5d1b4d6e7410dd53839a35926fd5dcb2279c61c7d5ab96e2f2b81e95b9e3d4e4",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "tools/kali/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "tools/kali/api_guard.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "b61b922e5826e5edfa275f34039cdeff4ea079f4781a049bf0995de3edf1ea2a",
       "active_sha256": "b61b922e5826e5edfa275f34039cdeff4ea079f4781a049bf0995de3edf1ea2a",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "tools/kali/playwright_spider.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "978003aead31402578aa4463ad2da4b02cfe27e2f5c420e7b1cc2a66277648cd",
+      "active_sha256": "978003aead31402578aa4463ad2da4b02cfe27e2f5c420e7b1cc2a66277648cd",
       "quarantine": null,
       "link": false
     },
@@ -1020,6 +1830,24 @@
       "link": true
     },
     {
+      "path": "tools/mobsfscan.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1961ec3cca932575d4a45b7c8647869969081385192662b731fd218a03f735d6",
+      "active_sha256": "1961ec3cca932575d4a45b7c8647869969081385192662b731fd218a03f735d6",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "tools/naabu.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "411b63823c661cf860830077c569f8e7922f55b0229cae4042b26357b7f5b6d1",
+      "active_sha256": "411b63823c661cf860830077c569f8e7922f55b0229cae4042b26357b7f5b6d1",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "tools/nmap.py",
       "decision": "BLOCK_OFFENSIVE",
       "reason": "offensive functional leaf",
@@ -1044,6 +1872,42 @@
       "original_sha256": "29804478c0f39ec5167f1e750fa772cd364c10f2e29e9fd55aa23ee8ad0f8e46",
       "active_sha256": "29804478c0f39ec5167f1e750fa772cd364c10f2e29e9fd55aa23ee8ad0f8e46",
       "quarantine": "_yaiwes_upstream_quarantine/tools/sandbox_runner.py.original",
+      "link": true
+    },
+    {
+      "path": "tools/semgrep.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "4073788859eddbd4f59615c002f969c929e5c51477ffe893a125e383d94adb68",
+      "active_sha256": "4073788859eddbd4f59615c002f969c929e5c51477ffe893a125e383d94adb68",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "tools/subfinder.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "2b01bafe96f259647a4c9e8838f5f5710c6ba7f9603fd62a3ba3ad15bd42729a",
+      "active_sha256": "2b01bafe96f259647a4c9e8838f5f5710c6ba7f9603fd62a3ba3ad15bd42729a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "tools/trufflehog.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "29f4d3ad40841dc880e3a8164d26e16c5bee0db4a659bdc43d87f87928be4632",
+      "active_sha256": "29f4d3ad40841dc880e3a8164d26e16c5bee0db4a659bdc43d87f87928be4632",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "training-data/build_derived.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "50e9cdcd0d289a6f3d4431ff8203597f5f94c5a4594947da45bb118a8fc674ce",
+      "active_sha256": "50e9cdcd0d289a6f3d4431ff8203597f5f94c5a4594947da45bb118a8fc674ce",
+      "quarantine": null,
       "link": false
     },
     {
@@ -1053,7 +1917,7 @@
       "original_sha256": "8e3223a6fc5d7de036a62b56b31f1e7a7973f5156198995c89255a246f653bb8",
       "active_sha256": "8e3223a6fc5d7de036a62b56b31f1e7a7973f5156198995c89255a246f653bb8",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "training-data/eventstore/core.py",
@@ -1062,7 +1926,7 @@
       "original_sha256": "12ccae89af1b7cd533b369593c72009c8ca238e1b9b02c1cad9a9f555587b0e2",
       "active_sha256": "12ccae89af1b7cd533b369593c72009c8ca238e1b9b02c1cad9a9f555587b0e2",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "training-data/eventstore/harvest_decisions.py",
@@ -1071,7 +1935,7 @@
       "original_sha256": "84da5d3611d06b3a966359ac917a1e76e64bbe9b525c65d3c32048e7c658ae24",
       "active_sha256": "84da5d3611d06b3a966359ac917a1e76e64bbe9b525c65d3c32048e7c658ae24",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "training-data/eventstore/ingest_agent_smith.py",
@@ -1080,7 +1944,7 @@
       "original_sha256": "2dcda68907a1e5bf80327e3e56400f4764a39218375dde50204047a0758e1710",
       "active_sha256": "2dcda68907a1e5bf80327e3e56400f4764a39218375dde50204047a0758e1710",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "training-data/eventstore/validate_stream.py",
@@ -1089,7 +1953,7 @@
       "original_sha256": "377259e83414bfe015d140d8472a308d1b241512fdca967582f341d15a27f2ee",
       "active_sha256": "377259e83414bfe015d140d8472a308d1b241512fdca967582f341d15a27f2ee",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "training-data/validate.py",
@@ -1102,10 +1966,13 @@
     }
   ],
   "counts": {
-    "accounted": 121,
+    "accounted": 217,
+    "keep_unchanged": 96,
     "restored_benign": 98,
     "blocked_offensive": 12,
     "review_fail_closed": 11,
-    "links": 23
-  }
+    "links": 121
+  },
+  "source_code_available": true,
+  "source_code_status": "AVAILABLE"
 }

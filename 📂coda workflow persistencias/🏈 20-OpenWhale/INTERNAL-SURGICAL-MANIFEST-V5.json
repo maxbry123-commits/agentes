@@ -2,7 +2,7 @@
   "schema": "yaiwes.internal.surgical/v5",
   "component": "🏈 20-OpenWhale",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.1",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.2",
   "policy": {
     "restore_benign": true,
     "offensive_execution": false,
@@ -27,7 +27,7 @@
       "original_sha256": "d7185f28fd610189ba48363061e5c1d652002d5f67c9ad5782146fe273b3f255",
       "active_sha256": "d7185f28fd610189ba48363061e5c1d652002d5f67c9ad5782146fe273b3f255",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "scripts/test_openai_api.py",
@@ -35,6 +35,51 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "a517569c857072b6af918c8d9b868ca83ef98c936a73cd62d038a5f88c131505",
       "active_sha256": "a517569c857072b6af918c8d9b868ca83ef98c936a73cd62d038a5f88c131505",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "src/openwhale/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "a216339394158c0df62672670cb69a94d4690e4b7bd983a57cfcc903f3065020",
+      "active_sha256": "a216339394158c0df62672670cb69a94d4690e4b7bd983a57cfcc903f3065020",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/openwhale/agent.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "5e03c3906ad4cfcfd132b46c7160e59a79196432bd4b31e2631990666af62e7e",
+      "active_sha256": "5e03c3906ad4cfcfd132b46c7160e59a79196432bd4b31e2631990666af62e7e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/openwhale/agents/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "68b98865c7fd8e8e3f43b505f939f31657dbfbe37836bd7ba4e15a536cd0c522",
+      "active_sha256": "68b98865c7fd8e8e3f43b505f939f31657dbfbe37836bd7ba4e15a536cd0c522",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/openwhale/agents/base.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "5c5e28cad5d8923c29148ae01d1d78085c3f165c460e4f99111a954844d5c39f",
+      "active_sha256": "5c5e28cad5d8923c29148ae01d1d78085c3f165c460e4f99111a954844d5c39f",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/openwhale/agents/claude_code_agent.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "9b6a78ff347055f530ce80acafa33b5c94072f08839652f484a6112be5c1e933",
+      "active_sha256": "9b6a78ff347055f530ce80acafa33b5c94072f08839652f484a6112be5c1e933",
       "quarantine": null,
       "link": false
     },
@@ -54,6 +99,15 @@
       "original_sha256": "fd8a6041d27f5512fbc04486cd23638aab8f13ee994bcfdf55549f75eb1b93a9",
       "active_sha256": "fd8a6041d27f5512fbc04486cd23638aab8f13ee994bcfdf55549f75eb1b93a9",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "src/openwhale/agents/openai_agent.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "9b74073ac2d47a1b07d96bfda7162d2311b672ee265c81091fbd4ad726a19b8d",
+      "active_sha256": "9b74073ac2d47a1b07d96bfda7162d2311b672ee265c81091fbd4ad726a19b8d",
+      "quarantine": null,
       "link": false
     },
     {
@@ -62,6 +116,15 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "bf7306f90d903cc2a286c9ea3e409f8aa6d540235d944791f3c17b5cdedb9890",
       "active_sha256": "bf7306f90d903cc2a286c9ea3e409f8aa6d540235d944791f3c17b5cdedb9890",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "src/openwhale/agents/tooling.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "08235e9ab3dac454daf3e596a887de5f34fdee8b05ea6022caa704df5b83cf8e",
+      "active_sha256": "08235e9ab3dac454daf3e596a887de5f34fdee8b05ea6022caa704df5b83cf8e",
       "quarantine": null,
       "link": false
     },
@@ -75,20 +138,59 @@
       "link": true
     },
     {
+      "path": "src/openwhale/util/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "58ca1fd6a9b1d28bfd9a5c1d151956a3ddfe87e8bc9877f2d21fb3c556495997",
+      "active_sha256": "58ca1fd6a9b1d28bfd9a5c1d151956a3ddfe87e8bc9877f2d21fb3c556495997",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "src/openwhale/util/logging_config.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "5a84a76c8140d05ae0e7f34cc000d6032bc37e0b9880e189f08af19104cea75f",
       "active_sha256": "5a84a76c8140d05ae0e7f34cc000d6032bc37e0b9880e189f08af19104cea75f",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "src/openwhale/util/mcp_client.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "c0da328384b2dd7a0378644cc1b0e6c2206f425a8ecfc53b155e87ab33b698cb",
+      "active_sha256": "c0da328384b2dd7a0378644cc1b0e6c2206f425a8ecfc53b155e87ab33b698cb",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/openwhale/web/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "06bf7ea7edd49e0ca7476929af8c353aae6f7f90b93168c4a52010473bb2a65d",
+      "active_sha256": "06bf7ea7edd49e0ca7476929af8c353aae6f7f90b93168c4a52010473bb2a65d",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/openwhale/web/app.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b7ff11530f6ca3c9cf478093d33f5d89498ed6460219575729d516d94863672a",
+      "active_sha256": "b7ff11530f6ca3c9cf478093d33f5d89498ed6460219575729d516d94863672a",
+      "quarantine": null,
       "link": false
     }
   ],
   "counts": {
-    "accounted": 8,
+    "accounted": 19,
+    "keep_unchanged": 11,
     "restored_benign": 5,
     "blocked_offensive": 0,
     "review_fail_closed": 3,
-    "links": 3
-  }
+    "links": 8
+  },
+  "source_code_available": true,
+  "source_code_status": "AVAILABLE"
 }

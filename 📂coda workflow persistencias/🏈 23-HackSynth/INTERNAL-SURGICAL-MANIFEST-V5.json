@@ -2,7 +2,7 @@
   "schema": "yaiwes.internal.surgical/v5",
   "component": "🏈 23-HackSynth",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.1",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.2",
   "policy": {
     "restore_benign": true,
     "offensive_execution": false,
@@ -12,6 +12,15 @@
   },
   "files": [
     {
+      "path": "docker_setup.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1fee8278c43d9fb635a5acf8b1058706ec5270bdd731ac4abbe4a4a234105f6a",
+      "active_sha256": "1fee8278c43d9fb635a5acf8b1058706ec5270bdd731ac4abbe4a4a234105f6a",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "overthewire_bench/bandit_solver.py",
       "decision": "BLOCK_OFFENSIVE",
       "reason": "offensive content plus execution surface",
@@ -19,6 +28,15 @@
       "active_sha256": "836722d718c42f35cab98a3999606a6b5c786460a2c9bae7b3905135dde6566b",
       "quarantine": "_yaiwes_upstream_quarantine/overthewire_bench/bandit_solver.py.original",
       "link": true
+    },
+    {
+      "path": "overthewire_bench/combine.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b00b0bca136ecddd48ab7a6b0cbac9234a45228e751887dd20dcd79564219257",
+      "active_sha256": "b00b0bca136ecddd48ab7a6b0cbac9234a45228e751887dd20dcd79564219257",
+      "quarantine": null,
+      "link": false
     },
     {
       "path": "overthewire_bench/krypton_solver.py",
@@ -30,6 +48,15 @@
       "link": true
     },
     {
+      "path": "overthewire_bench/leviathan_solver.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "cdff7b5b097ed94a06d0f45c56a8bc26b794f411e15bb500754f97096c6b1363",
+      "active_sha256": "cdff7b5b097ed94a06d0f45c56a8bc26b794f411e15bb500754f97096c6b1363",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "overthewire_bench/natas_solver.py",
       "decision": "REVIEW_FAIL_CLOSED",
       "reason": "previously effectful file without safe classification",
@@ -37,6 +64,15 @@
       "active_sha256": "791b47670c2efc0c9ef8c729a7215db0eb51cb0eaed1ee8eb1837840e18d8971",
       "quarantine": "_yaiwes_upstream_quarantine/overthewire_bench/natas_solver.py.original",
       "link": true
+    },
+    {
+      "path": "overthewire_bench/run_solvers.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "632531de5df1ae51592a5294b706ca440c898cb86c48699bb06eda9b7651d526",
+      "active_sha256": "632531de5df1ae51592a5294b706ca440c898cb86c48699bb06eda9b7651d526",
+      "quarantine": null,
+      "link": false
     },
     {
       "path": "pentest_agent.py",
@@ -55,13 +91,34 @@
       "active_sha256": "43b3881f47a486e7977603abd4c7dbe0e67d6818ccbcdc0f500b5b97a45284a5",
       "quarantine": "_yaiwes_upstream_quarantine/picoctf_bench/challenge_solver.py.original",
       "link": true
+    },
+    {
+      "path": "run.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "735119e63fb44d863b3f07ab79e043e64f30c90accc41f2ef49a917c5207d7d5",
+      "active_sha256": "735119e63fb44d863b3f07ab79e043e64f30c90accc41f2ef49a917c5207d7d5",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "run_bench.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "5d2e7425464e4e78de6041e8bf4192d8228462373eb660479b76203d72e68579",
+      "active_sha256": "5d2e7425464e4e78de6041e8bf4192d8228462373eb660479b76203d72e68579",
+      "quarantine": null,
+      "link": false
     }
   ],
   "counts": {
-    "accounted": 5,
+    "accounted": 11,
+    "keep_unchanged": 6,
     "restored_benign": 0,
     "blocked_offensive": 1,
     "review_fail_closed": 4,
     "links": 5
-  }
+  },
+  "source_code_available": true,
+  "source_code_status": "AVAILABLE"
 }

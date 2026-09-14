@@ -2,7 +2,7 @@
   "schema": "yaiwes.internal.surgical/v5",
   "component": "🏈 17-AI-Red-Team-Agent",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.1",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.2",
   "policy": {
     "restore_benign": true,
     "offensive_execution": false,
@@ -27,7 +27,7 @@
       "original_sha256": "d6ef9473f3d2e540e6c7bdb9971781cc0265e0ffdc1cd88e0a05d354bb6de39d",
       "active_sha256": "d6ef9473f3d2e540e6c7bdb9971781cc0265e0ffdc1cd88e0a05d354bb6de39d",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "core/github_api.py",
@@ -36,7 +36,7 @@
       "original_sha256": "490c200dd3569e6bd8abc4fd1f698f1378308b72a17218bea02568f2059c3858",
       "active_sha256": "490c200dd3569e6bd8abc4fd1f698f1378308b72a17218bea02568f2059c3858",
       "quarantine": "_yaiwes_upstream_quarantine/core/github_api.py.original",
-      "link": false
+      "link": true
     },
     {
       "path": "core/orchestrator.py",
@@ -45,14 +45,35 @@
       "original_sha256": "b40dbb566ac898fd608a025c02d9702eea1844042a89cb94ea1afc1f18d15f59",
       "active_sha256": "b40dbb566ac898fd608a025c02d9702eea1844042a89cb94ea1afc1f18d15f59",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "ui/components.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e2bd035e88d03272f557abc0f2cf25ee32532252c6c322f02d5e423b69f77431",
+      "active_sha256": "e2bd035e88d03272f557abc0f2cf25ee32532252c6c322f02d5e423b69f77431",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "ui/styles.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "65f67aec27d99d58ac52c8161e6b4d2f9a63b5a0977ae504f794236446e07a79",
+      "active_sha256": "65f67aec27d99d58ac52c8161e6b4d2f9a63b5a0977ae504f794236446e07a79",
+      "quarantine": null,
       "link": false
     }
   ],
   "counts": {
-    "accounted": 4,
+    "accounted": 6,
+    "keep_unchanged": 2,
     "restored_benign": 3,
     "blocked_offensive": 1,
     "review_fail_closed": 0,
-    "links": 1
-  }
+    "links": 4
+  },
+  "source_code_available": true,
+  "source_code_status": "AVAILABLE"
 }

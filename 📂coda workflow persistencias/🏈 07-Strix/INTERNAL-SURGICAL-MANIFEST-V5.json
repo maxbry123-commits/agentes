@@ -2,7 +2,7 @@
   "schema": "yaiwes.internal.surgical/v5",
   "component": "🏈 07-Strix",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.1",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.2",
   "policy": {
     "restore_benign": true,
     "offensive_execution": false,
@@ -11,6 +11,42 @@
     "source_execution_during_audit": false
   },
   "files": [
+    {
+      "path": "containers/docker-entrypoint.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d088257a30b39b352ad7a0db16ad8e4b59d608616efb5873b12c0a9a5a1add70",
+      "active_sha256": "d088257a30b39b352ad7a0db16ad8e4b59d608616efb5873b12c0a9a5a1add70",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "scripts/build.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1d9f754e71e9ee24b8a884e3e18e117e97ed99b97362e14ef5404221018f4f66",
+      "active_sha256": "1d9f754e71e9ee24b8a884e3e18e117e97ed99b97362e14ef5404221018f4f66",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "scripts/docker.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "aeed9383c2a52aafe0bb4ed55e6876d6b65aaa2311f99ef7f71b57f3f3b9c425",
+      "active_sha256": "aeed9383c2a52aafe0bb4ed55e6876d6b65aaa2311f99ef7f71b57f3f3b9c425",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "scripts/install.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "525c5898b176dd15f0bb97afdf4ba8c62ad526ba75d6af456681b6aff4ae3952",
+      "active_sha256": "525c5898b176dd15f0bb97afdf4ba8c62ad526ba75d6af456681b6aff4ae3952",
+      "quarantine": null,
+      "link": false
+    },
     {
       "path": "scripts/tui_sidecar_hook.py",
       "decision": "REVIEW_FAIL_CLOSED",
@@ -21,13 +57,31 @@
       "link": true
     },
     {
+      "path": "strix/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/agents/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "strix/agents/factory.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "c0f32a9524ff8b018aa204bf6ba4dbd147f768f9a43eb46d83e4f06a4760adfd",
       "active_sha256": "c0f32a9524ff8b018aa204bf6ba4dbd147f768f9a43eb46d83e4f06a4760adfd",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/agents/prompt.py",
@@ -36,7 +90,7 @@
       "original_sha256": "2b30f1ecee988f9effed96c54af2baecd3a6506b6bcfdc5bd9a0f325cf540a33",
       "active_sha256": "2b30f1ecee988f9effed96c54af2baecd3a6506b6bcfdc5bd9a0f325cf540a33",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/config/__init__.py",
@@ -45,7 +99,7 @@
       "original_sha256": "98cbbdaad44b29431fb05dfb471af34bb014b20458ca3e87cd10e50f8934c5fa",
       "active_sha256": "98cbbdaad44b29431fb05dfb471af34bb014b20458ca3e87cd10e50f8934c5fa",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/config/codex.py",
@@ -54,7 +108,7 @@
       "original_sha256": "59ce71271d90c6a60405d89d5ac07e16e9809e1b0a589326538acdb1ca4dffd7",
       "active_sha256": "59ce71271d90c6a60405d89d5ac07e16e9809e1b0a589326538acdb1ca4dffd7",
       "quarantine": "_yaiwes_upstream_quarantine/strix/config/codex.py.original",
-      "link": false
+      "link": true
     },
     {
       "path": "strix/config/loader.py",
@@ -63,7 +117,7 @@
       "original_sha256": "ea93ba975d6ed5cb6f41aa79b63f2cac4199eeefbcd264572bd46d22dd1a78e8",
       "active_sha256": "ea93ba975d6ed5cb6f41aa79b63f2cac4199eeefbcd264572bd46d22dd1a78e8",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/config/models.py",
@@ -72,7 +126,7 @@
       "original_sha256": "9e6828869473ec10f51130e2392eef5de1faeb4c38680c4c049df06b747ed9c7",
       "active_sha256": "9e6828869473ec10f51130e2392eef5de1faeb4c38680c4c049df06b747ed9c7",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/config/settings.py",
@@ -81,7 +135,7 @@
       "original_sha256": "0278183e691254f4089d801f935632ce8fb419a9e831f3102b19facb1f87b0bd",
       "active_sha256": "0278183e691254f4089d801f935632ce8fb419a9e831f3102b19facb1f87b0bd",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/config/tool_call_ids.py",
@@ -90,7 +144,7 @@
       "original_sha256": "fd1028fa5bc5fb1dedee8fc2bba6d6b99687eb44dee6204bff47a9cfa2f44706",
       "active_sha256": "fd1028fa5bc5fb1dedee8fc2bba6d6b99687eb44dee6204bff47a9cfa2f44706",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/config/tool_call_limits.py",
@@ -98,6 +152,69 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "49873389ab79660a68e2bc78ea927c1ee0604c333193f40736c9e9ceb76a7290",
       "active_sha256": "49873389ab79660a68e2bc78ea927c1ee0604c333193f40736c9e9ceb76a7290",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/core/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "7e6ff8e3393df64f4d6c7fa52f111d9fd7fbb9a3f2cd9fec1d0ce314e6c14678",
+      "active_sha256": "7e6ff8e3393df64f4d6c7fa52f111d9fd7fbb9a3f2cd9fec1d0ce314e6c14678",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/core/agents.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "807174e211129668e90e06e4d34ace5671e800a2e66cddd1aa3972ef266b4eec",
+      "active_sha256": "807174e211129668e90e06e4d34ace5671e800a2e66cddd1aa3972ef266b4eec",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/core/execution.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "cb925e9cfc8bb9b91b9fce1af6b274d182ae4cdfa6bf9cc7607ebc5eb0fd7d6a",
+      "active_sha256": "cb925e9cfc8bb9b91b9fce1af6b274d182ae4cdfa6bf9cc7607ebc5eb0fd7d6a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/core/hooks.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "45f33624568379106381bfeb6d5b7441cb1fc43f8d2a95424950ea77f8dc961e",
+      "active_sha256": "45f33624568379106381bfeb6d5b7441cb1fc43f8d2a95424950ea77f8dc961e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/core/inputs.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "7c9e8aa30defe8a8313e9d3119fa09a65b9745ca7e8d51959bb0f6989cae7bc1",
+      "active_sha256": "7c9e8aa30defe8a8313e9d3119fa09a65b9745ca7e8d51959bb0f6989cae7bc1",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/core/paths.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "3623e10e6c9683cf9d210c4ef68a4e97c5cecbfc268f2f471f1468cdf0f4a8fb",
+      "active_sha256": "3623e10e6c9683cf9d210c4ef68a4e97c5cecbfc268f2f471f1468cdf0f4a8fb",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/core/runner.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "72826c017e4b6cb2f1e6fd029392eb141f5d391bd5b0b31938e4583848012577",
+      "active_sha256": "72826c017e4b6cb2f1e6fd029392eb141f5d391bd5b0b31938e4583848012577",
       "quarantine": null,
       "link": false
     },
@@ -108,6 +225,15 @@
       "original_sha256": "8dbcc62894c32a852b0f5ad82e4bacd7c908e8d3f941942bd88150109967b8ee",
       "active_sha256": "8dbcc62894c32a852b0f5ad82e4bacd7c908e8d3f941942bd88150109967b8ee",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/interface/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "c30db7b0539084808422b228d0cb705afdaa1d6e6a529aef3e3f10563bf748cd",
+      "active_sha256": "c30db7b0539084808422b228d0cb705afdaa1d6e6a529aef3e3f10563bf748cd",
+      "quarantine": null,
       "link": false
     },
     {
@@ -116,6 +242,42 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "802a6d7dd6e0446ce2c9141d9124b24894b73db471b1a9a858cb817c003e8caa",
       "active_sha256": "802a6d7dd6e0446ce2c9141d9124b24894b73db471b1a9a858cb817c003e8caa",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/interface/cli.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "4d2da6cfbcd3e1ca03dcd2aa45da34a5ccca299597d601988470ff9b5db9bd9c",
+      "active_sha256": "4d2da6cfbcd3e1ca03dcd2aa45da34a5ccca299597d601988470ff9b5db9bd9c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/cli_args.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "69dac7993afc315fa11fc9b63b64d8065de6fc0ea6a4d9dc3954d409c0b34deb",
+      "active_sha256": "69dac7993afc315fa11fc9b63b64d8065de6fc0ea6a4d9dc3954d409c0b34deb",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/cloud/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "3e8e373da4199be7a3c396f693ab63a22cc3e4062a210692fea5e2b2fe305dd2",
+      "active_sha256": "3e8e373da4199be7a3c396f693ab63a22cc3e4062a210692fea5e2b2fe305dd2",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/cloud/arguments.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "28a3d06f882bd3fbaabbbbd9bc86a8ee4bf8283ce6aa63d67554829694cc905c",
+      "active_sha256": "28a3d06f882bd3fbaabbbbd9bc86a8ee4bf8283ce6aa63d67554829694cc905c",
       "quarantine": null,
       "link": false
     },
@@ -147,6 +309,15 @@
       "link": true
     },
     {
+      "path": "strix/interface/cloud/render.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "efe60ef6ce6e7d16e854de61f25f9e64c0b43b4cbe15b720ee70ad082d1935ec",
+      "active_sha256": "efe60ef6ce6e7d16e854de61f25f9e64c0b43b4cbe15b720ee70ad082d1935ec",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "strix/interface/cloud/runner.py",
       "decision": "REVIEW_FAIL_CLOSED",
       "reason": "previously effectful file without safe classification",
@@ -162,7 +333,7 @@
       "original_sha256": "b8eeb1e4bfa77ed35e744997dfbbf31c8968787fb6d6a5e8172bd31232d759c6",
       "active_sha256": "b8eeb1e4bfa77ed35e744997dfbbf31c8968787fb6d6a5e8172bd31232d759c6",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/interface/cloud/source_scan.py",
@@ -192,6 +363,51 @@
       "link": true
     },
     {
+      "path": "strix/interface/cloud/workspaces.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "8a0e8d1ecbd5de5b6072b2ddae1dd247786c66446ad89896a5974aa31fc90d3d",
+      "active_sha256": "8a0e8d1ecbd5de5b6072b2ddae1dd247786c66446ad89896a5974aa31fc90d3d",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/completions.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d43190c231aaf931a2accb0867232bd73f79023a7e80ade7f1f9bcfc3fa5c4d7",
+      "active_sha256": "d43190c231aaf931a2accb0867232bd73f79023a7e80ade7f1f9bcfc3fa5c4d7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/environment.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d8381609f0ab8ef6a6241a4777df92ec40a1f1b8fbcf8d1e715481fcc62007ad",
+      "active_sha256": "d8381609f0ab8ef6a6241a4777df92ec40a1f1b8fbcf8d1e715481fcc62007ad",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/interactive.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "719ed9b4e98e31c8e4ffe73239cd86fd2af134788ccba04b66c9cacc29c17e29",
+      "active_sha256": "719ed9b4e98e31c8e4ffe73239cd86fd2af134788ccba04b66c9cacc29c17e29",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/main.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "fdea10ae42def8ad7e93403adf1dcb196b646a4e3f12b4a17d3a093dd9cbbf4b",
+      "active_sha256": "fdea10ae42def8ad7e93403adf1dcb196b646a4e3f12b4a17d3a093dd9cbbf4b",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "strix/interface/platform_cli.py",
       "decision": "REVIEW_FAIL_CLOSED",
       "reason": "previously effectful file without safe classification",
@@ -199,6 +415,96 @@
       "active_sha256": "6a383c5cd324d2f632bf1993459b5b339582efb0b10a8405d7d6f4c1c78fd033",
       "quarantine": "_yaiwes_upstream_quarantine/strix/interface/platform_cli.py.original",
       "link": true
+    },
+    {
+      "path": "strix/interface/platform_identity.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e641d3906591bdc98e86e6cb752ac16dfb29b6a2f4ca35c431e20e66e2cc8822",
+      "active_sha256": "e641d3906591bdc98e86e6cb752ac16dfb29b6a2f4ca35c431e20e66e2cc8822",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/scan_setup.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "633bb3b3b551039672a14f9233faca2b52e2dd024658cb19cf43bc2544a91dc4",
+      "active_sha256": "633bb3b3b551039672a14f9233faca2b52e2dd024658cb19cf43bc2544a91dc4",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/terminal_text.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "475351245a43cb93bec48c438e5133d17afb8cd7eb5dac5edfec94725d5640fa",
+      "active_sha256": "475351245a43cb93bec48c438e5133d17afb8cd7eb5dac5edfec94725d5640fa",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b5b1ffb8daeef64c64b551f38c328123ec4f78858b6f0de0d64817f625337d5c",
+      "active_sha256": "b5b1ffb8daeef64c64b551f38c328123ec4f78858b6f0de0d64817f625337d5c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/backend/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "300faa3d0871b949bd48169a36f4e2ddfc979d5bf47d865f762cda34b1a39ba7",
+      "active_sha256": "300faa3d0871b949bd48169a36f4e2ddfc979d5bf47d865f762cda34b1a39ba7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/backend/controller.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "3862ae3f2b3195b07c886acf3b036d9f1202f6b081620e713114990665e84780",
+      "active_sha256": "3862ae3f2b3195b07c886acf3b036d9f1202f6b081620e713114990665e84780",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/backend/live_view.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "bf43e62c7e9b78d30c7ddc7ff5f4ce6f80e02f8677b64039c6bd2262d8992df3",
+      "active_sha256": "bf43e62c7e9b78d30c7ddc7ff5f4ce6f80e02f8677b64039c6bd2262d8992df3",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/backend/messages.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1feaf67405efc2e50cb20190d6aa8467e2215fda10eac478b69a174655dc1dec",
+      "active_sha256": "1feaf67405efc2e50cb20190d6aa8467e2215fda10eac478b69a174655dc1dec",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/backend/projection.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "f5604a97679e6c9b8eb2825a1f706fc1a581418436cdf0cf0c1e919a487d63e5",
+      "active_sha256": "f5604a97679e6c9b8eb2825a1f706fc1a581418436cdf0cf0c1e919a487d63e5",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/backend/protocol.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "c87d97c67a0c3e2fadb337e63d95592962017dc130bf2dcc953c44258b5428a7",
+      "active_sha256": "c87d97c67a0c3e2fadb337e63d95592962017dc130bf2dcc953c44258b5428a7",
+      "quarantine": null,
+      "link": false
     },
     {
       "path": "strix/interface/tui/backend/server.py",
@@ -210,11 +516,83 @@
       "link": true
     },
     {
+      "path": "strix/interface/tui/cmd/strix-tui/main.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "c78c2474c650d373ac45a0031d8e0d43b1be88d431c77a1493ad87abb5f4059b",
+      "active_sha256": "c78c2474c650d373ac45a0031d8e0d43b1be88d431c77a1493ad87abb5f4059b",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "strix/interface/tui/history.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "66cd891a3dc17e114a2e3d9f8c48b7ec0cafed95f6754b5d6ad77842933d9aa3",
       "active_sha256": "66cd891a3dc17e114a2e3d9f8c48b7ec0cafed95f6754b5d6ad77842933d9aa3",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/interface/tui/internal/app/agents.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "7110a5dfd4c572968449b0b0a060bd66412d1d690b8a582a16ee5c522141a96f",
+      "active_sha256": "7110a5dfd4c572968449b0b0a060bd66412d1d690b8a582a16ee5c522141a96f",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/app/client.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "5fda2ad8f042d30bbbeb47d531a5682897d58f6935b0487d8494f95791003a14",
+      "active_sha256": "5fda2ad8f042d30bbbeb47d531a5682897d58f6935b0487d8494f95791003a14",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/app/client_test.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "c7aba4b9174c6b97207101589512d37cf881789e4ad1d2b58457f392e3491a59",
+      "active_sha256": "c7aba4b9174c6b97207101589512d37cf881789e4ad1d2b58457f392e3491a59",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/app/findings_test.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "69f85987a33ca5aae106faf385d7af91a69af67660f4a7dbacb01251b6c21616",
+      "active_sha256": "69f85987a33ca5aae106faf385d7af91a69af67660f4a7dbacb01251b6c21616",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/app/frame_bench_test.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "71d6113f2c92f1d5041a45ac6a2553d6b2a8656a43ea8fcfd4fd6feef0bc8f63",
+      "active_sha256": "71d6113f2c92f1d5041a45ac6a2553d6b2a8656a43ea8fcfd4fd6feef0bc8f63",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/app/input_test.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "39e7d63dd8ebd287a9d40c99537c7c5adf4b6abf95da9e6bc7fd84b1e027a595",
+      "active_sha256": "39e7d63dd8ebd287a9d40c99537c7c5adf4b6abf95da9e6bc7fd84b1e027a595",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/app/mcp_test.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "338a4106bd8140e6ae73f1e536d079a5d2644f3355a71fa7accfbdb8eec80503",
+      "active_sha256": "338a4106bd8140e6ae73f1e536d079a5d2644f3355a71fa7accfbdb8eec80503",
       "quarantine": null,
       "link": false
     },
@@ -225,7 +603,7 @@
       "original_sha256": "ce9b0439deff4b44cf75e00b19ca7b7b61bf0b0600cc9ef4c8c0476a5a184f64",
       "active_sha256": "ce9b0439deff4b44cf75e00b19ca7b7b61bf0b0600cc9ef4c8c0476a5a184f64",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/interface/tui/internal/app/model_test.go",
@@ -233,6 +611,42 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "000e6074d74d912a72e1f365578911e5888e9bcfd625032dd52485ef2a81dafe",
       "active_sha256": "000e6074d74d912a72e1f365578911e5888e9bcfd625032dd52485ef2a81dafe",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/interface/tui/internal/app/selection.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "4bf6122eceee0896ff464ea41c732bb5fc5b687bc84bbf541d7adb73bfe1c26c",
+      "active_sha256": "4bf6122eceee0896ff464ea41c732bb5fc5b687bc84bbf541d7adb73bfe1c26c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/app/selection_test.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "80caca646445e9a27e244673ee484a8d443889810d8916f5fa40ad41636c766f",
+      "active_sha256": "80caca646445e9a27e244673ee484a8d443889810d8916f5fa40ad41636c766f",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/app/setup.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "f18c44cbb1b79e9d730de5c8cb241c3eef012e322ef57f912ad6e4427c34ca1c",
+      "active_sha256": "f18c44cbb1b79e9d730de5c8cb241c3eef012e322ef57f912ad6e4427c34ca1c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/app/setup_log_test.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "0101818cf99926c2e1ae5997090bd8b2a9f00b7cd86e298da6238b41051e36b2",
+      "active_sha256": "0101818cf99926c2e1ae5997090bd8b2a9f00b7cd86e298da6238b41051e36b2",
       "quarantine": null,
       "link": false
     },
@@ -243,6 +657,24 @@
       "original_sha256": "6382494c3586abbd6ef77a51edccd1351e15937613e9d0850ffd498aa159a797",
       "active_sha256": "6382494c3586abbd6ef77a51edccd1351e15937613e9d0850ffd498aa159a797",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/interface/tui/internal/app/update.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "3f8b902563e38879fa737cd4f99785cc966bed760cb45e3aa1c02d2c148061ba",
+      "active_sha256": "3f8b902563e38879fa737cd4f99785cc966bed760cb45e3aa1c02d2c148061ba",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/app/view.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b144c93e38b521cfc0b06487cbdd6500a1bc8351e65f1d99cd0a0f0f778de8ed",
+      "active_sha256": "b144c93e38b521cfc0b06487cbdd6500a1bc8351e65f1d99cd0a0f0f778de8ed",
+      "quarantine": null,
       "link": false
     },
     {
@@ -252,7 +684,7 @@
       "original_sha256": "4e6b6df01d7c5d4b22f5175e807e6b5a1824c6c0be0e30e4d875ad49740f4313",
       "active_sha256": "4e6b6df01d7c5d4b22f5175e807e6b5a1824c6c0be0e30e4d875ad49740f4313",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/interface/tui/internal/app/vulnerabilities.go",
@@ -264,13 +696,76 @@
       "link": true
     },
     {
+      "path": "strix/interface/tui/internal/app/wire.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "9246c1bdd2b67d9018673b228abf28dabbfcc6d1ea681acbb0752ef19402a0c1",
+      "active_sha256": "9246c1bdd2b67d9018673b228abf28dabbfcc6d1ea681acbb0752ef19402a0c1",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/protocol/protocol.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "4e475ec557a9c23c5931c6737349c1a244b87c8065e8174d913e9047f00d07e8",
+      "active_sha256": "4e475ec557a9c23c5931c6737349c1a244b87c8065e8174d913e9047f00d07e8",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/protocol/protocol_test.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "8b47157ac27b106dd02e7b05f4e6a8d2fd65732889471da3fe64f9ba4e358ab3",
+      "active_sha256": "8b47157ac27b106dd02e7b05f4e6a8d2fd65732889471da3fe64f9ba4e358ab3",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/render/agent_message.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "71c2dc2f028336c395ce9b2be6ade29ed8722bb63a8aad91049697e07f293b6d",
+      "active_sha256": "71c2dc2f028336c395ce9b2be6ade29ed8722bb63a8aad91049697e07f293b6d",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/render/agents_graph.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "fc1bf9471699dcaa31da9c1a7c34477b7ea1dc8ac1da4b64283649b159393e43",
+      "active_sha256": "fc1bf9471699dcaa31da9c1a7c34477b7ea1dc8ac1da4b64283649b159393e43",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/render/chat.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "56b6428975257de3d766ea40601e1c215a9d81a7f65e17ff081c58dc5f6832db",
+      "active_sha256": "56b6428975257de3d766ea40601e1c215a9d81a7f65e17ff081c58dc5f6832db",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/render/code.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "06d1ae3d0dfd61af38fc793a6c68ae492c6857c3a66db2fb56627b0779ad0903",
+      "active_sha256": "06d1ae3d0dfd61af38fc793a6c68ae492c6857c3a66db2fb56627b0779ad0903",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "strix/interface/tui/internal/render/coverage.go",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "3add0b4098306b65ec6760fc9b7a74b6d423ad7e53da9b5bf5122b95d15b9915",
       "active_sha256": "3add0b4098306b65ec6760fc9b7a74b6d423ad7e53da9b5bf5122b95d15b9915",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/interface/tui/internal/render/coverage_test.go",
@@ -278,6 +773,132 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "478688fc8d5cc444b0faad795cbac18a65ff168becb6f017ecadae046fd226c0",
       "active_sha256": "478688fc8d5cc444b0faad795cbac18a65ff168becb6f017ecadae046fd226c0",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/interface/tui/internal/render/dependency.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "297ef8ea805ed7a7057826f9188de9e1239408cc175b2783e6796c1acedc088b",
+      "active_sha256": "297ef8ea805ed7a7057826f9188de9e1239408cc175b2783e6796c1acedc088b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/render/file_edit.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "eb7c21f5895bf41c1758259ca05a17a93886adb457699a46323f01ff16c4627b",
+      "active_sha256": "eb7c21f5895bf41c1758259ca05a17a93886adb457699a46323f01ff16c4627b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/render/helpers.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "4e57d38d74e3404e327d22ffa31f51408686ed0b5ea9d130e9bb30445dd2ced9",
+      "active_sha256": "4e57d38d74e3404e327d22ffa31f51408686ed0b5ea9d130e9bb30445dd2ced9",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/render/image.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "90610cedc41fedfb05370cfa530ca5cb72c0cf6b0dd7e95f2f78fa02e16ca2ea",
+      "active_sha256": "90610cedc41fedfb05370cfa530ca5cb72c0cf6b0dd7e95f2f78fa02e16ca2ea",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/render/image_detect.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "919a43e712422abbb814a902591774d65b24fb5f7a3f24b983b7224eaf0f83b3",
+      "active_sha256": "919a43e712422abbb814a902591774d65b24fb5f7a3f24b983b7224eaf0f83b3",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/render/image_detect_test.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ee6efdb194644a959540d330d10f0582b297a0203fc87f8f6a6c487227094ddc",
+      "active_sha256": "ee6efdb194644a959540d330d10f0582b297a0203fc87f8f6a6c487227094ddc",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/render/image_detect_unix.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "c3cf3995f747020d1efcef09200ae5eddfe702d0c0fc1055ae3807edc1c8ce63",
+      "active_sha256": "c3cf3995f747020d1efcef09200ae5eddfe702d0c0fc1055ae3807edc1c8ce63",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/render/image_detect_windows.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "f680bef024f9736c1bc99422111a70cc1d80590f504a8dfa0290341602d4bd3f",
+      "active_sha256": "f680bef024f9736c1bc99422111a70cc1d80590f504a8dfa0290341602d4bd3f",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/render/image_kitty.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "4291088762710a4dc7c9bfe338ca0cb85880ea9d69935910d9fcbebce20e639c",
+      "active_sha256": "4291088762710a4dc7c9bfe338ca0cb85880ea9d69935910d9fcbebce20e639c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/render/image_kitty_test.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "148c04a55eeb44d8a947294b2206c26c6836d03d419b0d9342a6cf660de0e376",
+      "active_sha256": "148c04a55eeb44d8a947294b2206c26c6836d03d419b0d9342a6cf660de0e376",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/render/markdown_test.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "2eb7cbecdc6c5fde588c6b2bf3daf21f72f04714b704d53d30c4c714b4ecf98b",
+      "active_sha256": "2eb7cbecdc6c5fde588c6b2bf3daf21f72f04714b704d53d30c4c714b4ecf98b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/render/mcp.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e702ad3afcb26053a534b112d57400e36c985ac56acea10bdf3a5193af13a03d",
+      "active_sha256": "e702ad3afcb26053a534b112d57400e36c985ac56acea10bdf3a5193af13a03d",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/render/notes.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "293747030b54c6a97767327e9f4c7573e04221baaa69de335a3f4da246bedcd5",
+      "active_sha256": "293747030b54c6a97767327e9f4c7573e04221baaa69de335a3f4da246bedcd5",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/render/proxy.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "82aff19fee37026c29ace7e832bfb8f4eeb9ad78379a50897d868efa62af7613",
+      "active_sha256": "82aff19fee37026c29ace7e832bfb8f4eeb9ad78379a50897d868efa62af7613",
       "quarantine": null,
       "link": false
     },
@@ -288,6 +909,15 @@
       "original_sha256": "18a3ddef26af1fe2bbef04a0ecfb6a226a961651d0e12d8608fd55be7896a13b",
       "active_sha256": "18a3ddef26af1fe2bbef04a0ecfb6a226a961651d0e12d8608fd55be7896a13b",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/interface/tui/internal/render/render_test.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "8405ba7b56366b418ed5e7b920ae6a674057bd0fbd71b275c6594e00ba28ffe1",
+      "active_sha256": "8405ba7b56366b418ed5e7b920ae6a674057bd0fbd71b275c6594e00ba28ffe1",
+      "quarantine": null,
       "link": false
     },
     {
@@ -297,7 +927,7 @@
       "original_sha256": "803c1da40e66949b6d7c64edb3e1f4af4b29e22d4eebb9132189a24d9e84f0ba",
       "active_sha256": "803c1da40e66949b6d7c64edb3e1f4af4b29e22d4eebb9132189a24d9e84f0ba",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/interface/tui/internal/render/report_list.go",
@@ -305,6 +935,51 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "8d507888299692325317f441e4b42cb250563f0989308b66344303fa57a09ac6",
       "active_sha256": "8d507888299692325317f441e4b42cb250563f0989308b66344303fa57a09ac6",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/interface/tui/internal/render/respond.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "40645dcf685fab2f052a06b927b40492d7e2cd73a1e882399e5104a11fcdf963",
+      "active_sha256": "40645dcf685fab2f052a06b927b40492d7e2cd73a1e882399e5104a11fcdf963",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/render/scan.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "4d687e00d091a203c6ceb922c3ea4f5669382195f6ce1915a94347ad0d4ba887",
+      "active_sha256": "4d687e00d091a203c6ceb922c3ea4f5669382195f6ce1915a94347ad0d4ba887",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/render/simple.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b236f1435896ed262b5d7cc9b6eec45d22df9363fcfb2425667dacdbb6646177",
+      "active_sha256": "b236f1435896ed262b5d7cc9b6eec45d22df9363fcfb2425667dacdbb6646177",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/render/styles.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "6878fcb74245f4937ce98a73d16a1e4ee7f3d4474d9e6ddb3263e543afbcd146",
+      "active_sha256": "6878fcb74245f4937ce98a73d16a1e4ee7f3d4474d9e6ddb3263e543afbcd146",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/render/terminal.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "7b8898025045843faf26abee208b98414bc368f518f636274a493f0303528b03",
+      "active_sha256": "7b8898025045843faf26abee208b98414bc368f518f636274a493f0303528b03",
       "quarantine": null,
       "link": false
     },
@@ -314,6 +989,24 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "121e2628628613e78158d29d591ba3ee83b9bd7bd45c51f95b788573f9e9a041",
       "active_sha256": "121e2628628613e78158d29d591ba3ee83b9bd7bd45c51f95b788573f9e9a041",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/interface/tui/internal/render/todo.go",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "4acdd1f6efbb9ba07b1adb1a54fd6e7b0a3ccf7e3505a66deb3de16a7586f07d",
+      "active_sha256": "4acdd1f6efbb9ba07b1adb1a54fd6e7b0a3ccf7e3505a66deb3de16a7586f07d",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/live_view.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "354c211530471fdfeb760d0c76a81875f2c042e1a193600303a98d0c0e4d381f",
+      "active_sha256": "354c211530471fdfeb760d0c76a81875f2c042e1a193600303a98d0c0e4d381f",
       "quarantine": null,
       "link": false
     },
@@ -345,6 +1038,15 @@
       "link": true
     },
     {
+      "path": "strix/interface/url_safety.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "7658af9fe470a58e1100c5ebf9e1cd2db8ef0c35fb271dbc521710f1304d9703",
+      "active_sha256": "7658af9fe470a58e1100c5ebf9e1cd2db8ef0c35fb271dbc521710f1304d9703",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "strix/interface/utils.py",
       "decision": "REVIEW_FAIL_CLOSED",
       "reason": "previously effectful file without safe classification",
@@ -354,12 +1056,39 @@
       "link": true
     },
     {
+      "path": "strix/interface/viewer/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "8defc09270703f6e0a62db14fdd4feb61fb3d0ab69c6043e0bfa0d601c3ae2b6",
+      "active_sha256": "8defc09270703f6e0a62db14fdd4feb61fb3d0ab69c6043e0bfa0d601c3ae2b6",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "strix/interface/viewer/auth.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "27439a44c2aad8baca3c5dc34a3246c0a6d86fcf192365f6b958bc020fa6e658",
       "active_sha256": "27439a44c2aad8baca3c5dc34a3246c0a6d86fcf192365f6b958bc020fa6e658",
       "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/auth.py.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/viewer/cli.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "8cb48bf747f819b02da74e1ae903c2e1a8bffc5293e4196c4a6dc9f0441103d8",
+      "active_sha256": "8cb48bf747f819b02da74e1ae903c2e1a8bffc5293e4196c4a6dc9f0441103d8",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/App.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ad0aab41b974c34cf1581d73590ba257636992e1dd79d4b2f2fbe43d591bb8a6",
+      "active_sha256": "ad0aab41b974c34cf1581d73590ba257636992e1dd79d4b2f2fbe43d591bb8a6",
+      "quarantine": null,
       "link": false
     },
     {
@@ -369,7 +1098,7 @@
       "original_sha256": "0bf7a9c5a1e67304f7386c268d3ea36833c75cd60142ebfd92e79bae3105f494",
       "active_sha256": "0bf7a9c5a1e67304f7386c268d3ea36833c75cd60142ebfd92e79bae3105f494",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/interface/viewer/frontend/src/components/EmailReportView.tsx",
@@ -378,7 +1107,7 @@
       "original_sha256": "3f05304ad37afba6b4984bb3fca8523e06d428fb62984876e74d7322ea666ff7",
       "active_sha256": "3f05304ad37afba6b4984bb3fca8523e06d428fb62984876e74d7322ea666ff7",
       "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/frontend/src/components/EmailReportView.tsx.original",
-      "link": false
+      "link": true
     },
     {
       "path": "strix/interface/viewer/frontend/src/components/EmailVerifyInline.tsx",
@@ -396,7 +1125,7 @@
       "original_sha256": "3432ed5053a42a06923fddb9c8051015e16bfc17ddb110cc9edededa40ad6399",
       "active_sha256": "3432ed5053a42a06923fddb9c8051015e16bfc17ddb110cc9edededa40ad6399",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/interface/viewer/frontend/src/components/IssueSeveritySummary.tsx",
@@ -404,6 +1133,105 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "381d76a462754849076f243136b9aa6ea748a06a724716b09a995a8a5cb44819",
       "active_sha256": "381d76a462754849076f243136b9aa6ea748a06a724716b09a995a8a5cb44819",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/PastRunsView.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d69e5471b3aef9c5072b4c6c30eea5c66133c580993dbeb29bb6d445ceb7f00f",
+      "active_sha256": "d69e5471b3aef9c5072b4c6c30eea5c66133c580993dbeb29bb6d445ceb7f00f",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/ProCta.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "4da5794dd0f2c3218fecbe58caeb91839c96af68f09e6f6342af614c6f3d8c8b",
+      "active_sha256": "4da5794dd0f2c3218fecbe58caeb91839c96af68f09e6f6342af614c6f3d8c8b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/RunDetails.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ea5fd9b730daa7dbf972046fcf96687f577face0ea078094214dfdcfc63e546d",
+      "active_sha256": "ea5fd9b730daa7dbf972046fcf96687f577face0ea078094214dfdcfc63e546d",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/Sidebar.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "6d6343f048dfffe22706457d47ef33e91f6024775235e951c40528308b5da3c3",
+      "active_sha256": "6d6343f048dfffe22706457d47ef33e91f6024775235e951c40528308b5da3c3",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/TrustToast.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "06a9b00d606bcd44b3fbb4c7f6c9f0268ed21580dbedae9d2bb09fda29e48de0",
+      "active_sha256": "06a9b00d606bcd44b3fbb4c7f6c9f0268ed21580dbedae9d2bb09fda29e48de0",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/UpgradeModal.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "71b9e6f6e5c75db22c5f1aab12a542597ef17a910b07067e5b3262d7ed3c82d2",
+      "active_sha256": "71b9e6f6e5c75db22c5f1aab12a542597ef17a910b07067e5b3262d7ed3c82d2",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/AgentDetailModal.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "dc8b5704a1fbb6d5d555924fca3011bcf43dc4267444392313630c792b07ea53",
+      "active_sha256": "dc8b5704a1fbb6d5d555924fca3011bcf43dc4267444392313630c792b07ea53",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/AgentGraph.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d7163331c6c1c96e521d8ae9fbde5a6ccdcc2b0ef5130aae6ed5c9307f2743f6",
+      "active_sha256": "d7163331c6c1c96e521d8ae9fbde5a6ccdcc2b0ef5130aae6ed5c9307f2743f6",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/AgentNode.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "13df448e3f8e2accc80b59d54eb0ecb0fbc45a4731d418fee3124f9292c2b53d",
+      "active_sha256": "13df448e3f8e2accc80b59d54eb0ecb0fbc45a4731d418fee3124f9292c2b53d",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/AgentTranscript.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "50d2260c2cee33195b512e39d32129a20a2bd1390ff9b2d7cf1941bc975b1d6b",
+      "active_sha256": "50d2260c2cee33195b512e39d32129a20a2bd1390ff9b2d7cf1941bc975b1d6b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/GraphSkeleton.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "74d585f0bde4424bc7c4fd362e0f5ca95a2ba707248a6096d085d7201f75a409",
+      "active_sha256": "74d585f0bde4424bc7c4fd362e0f5ca95a2ba707248a6096d085d7201f75a409",
       "quarantine": null,
       "link": false
     },
@@ -414,6 +1242,42 @@
       "original_sha256": "2c64cff168e443f05d68aad6e3d972587389625b3c0d673c82ffe48187793f06",
       "active_sha256": "2c64cff168e443f05d68aad6e3d972587389625b3c0d673c82ffe48187793f06",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/AgentCommsRenderer.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "44ccb968322275bd2711e467c0e7f2792487b09fa87c7761964524df87c05f27",
+      "active_sha256": "44ccb968322275bd2711e467c0e7f2792487b09fa87c7761964524df87c05f27",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/ApplyPatchRenderer.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "7b4d47ca1317da2ad7821e4727c4eb6745c30682a086ea73a5bde3088940ad93",
+      "active_sha256": "7b4d47ca1317da2ad7821e4727c4eb6745c30682a086ea73a5bde3088940ad93",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/BrowserRenderer.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d641f9c6e7b0782234d2daa95fc0ea18d885cdaefcfc55e3112c5c195a5b0cf7",
+      "active_sha256": "d641f9c6e7b0782234d2daa95fc0ea18d885cdaefcfc55e3112c5c195a5b0cf7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/ChatBubble.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1e680fa9bfddf1c2b3d4d3d6512e7d6791397771389b9477aba2a0e9e7739f7a",
+      "active_sha256": "1e680fa9bfddf1c2b3d4d3d6512e7d6791397771389b9477aba2a0e9e7739f7a",
+      "quarantine": null,
       "link": false
     },
     {
@@ -422,6 +1286,69 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "d475bfa0c80e701ecb165f14e46fb35097a08b5037ce8e3dfbde1dbfd497a838",
       "active_sha256": "d475bfa0c80e701ecb165f14e46fb35097a08b5037ce8e3dfbde1dbfd497a838",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/FallbackRenderer.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ae27c31ed5a045627722b3a103af7d013638134d10dc485485916afa5a08190d",
+      "active_sha256": "ae27c31ed5a045627722b3a103af7d013638134d10dc485485916afa5a08190d",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/FileEditRenderer.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "bf3eab9853db82af2fa74e6cbcd7133838aac0f7ba0102f6eefd4484ca39507f",
+      "active_sha256": "bf3eab9853db82af2fa74e6cbcd7133838aac0f7ba0102f6eefd4484ca39507f",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/FinishRenderer.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d0262ee18578e23877b898bd56023f6f7d4e17f039de9b064f41397bfbe2956c",
+      "active_sha256": "d0262ee18578e23877b898bd56023f6f7d4e17f039de9b064f41397bfbe2956c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/LoadSkillRenderer.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d39ef7904e636878c216bad0301b03c3336ae5430472d24af43110ef58c25ab7",
+      "active_sha256": "d39ef7904e636878c216bad0301b03c3336ae5430472d24af43110ef58c25ab7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/Markdown.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "6fff7bcd6a034358f797d427cbd0227b8a2faf4544597ad3f8d54685944b1573",
+      "active_sha256": "6fff7bcd6a034358f797d427cbd0227b8a2faf4544597ad3f8d54685944b1573",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/McpRenderer.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1ca76ad689f2d5f258c60e45b23ca7ff715c75c5169b0945287b2f04da6e0197",
+      "active_sha256": "1ca76ad689f2d5f258c60e45b23ca7ff715c75c5169b0945287b2f04da6e0197",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/NotesRenderer.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d0ed712d1678d62bec015660bba35dc2519ea644ce5d24f7a3f3cc8139ab56f7",
+      "active_sha256": "d0ed712d1678d62bec015660bba35dc2519ea644ce5d24f7a3f3cc8139ab56f7",
       "quarantine": null,
       "link": false
     },
@@ -435,11 +1362,56 @@
       "link": true
     },
     {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/PythonRenderer.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "44627d173106d50af3a388ebd4fcb26aa4fb4e6bdb52ca716aa4b14b0430f5cb",
+      "active_sha256": "44627d173106d50af3a388ebd4fcb26aa4fb4e6bdb52ca716aa4b14b0430f5cb",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/ReportListRenderer.tsx",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "92eb9215878af799bb915c0d7ba91a923bb5ae02a8b2d1a86127e3e5e81a8f68",
       "active_sha256": "92eb9215878af799bb915c0d7ba91a923bb5ae02a8b2d1a86127e3e5e81a8f68",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/RespondRenderer.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "5b690281355b09e7286f5c947ee55889e7ac392fcd7e4aac403e735656fb4c06",
+      "active_sha256": "5b690281355b09e7286f5c947ee55889e7ac392fcd7e4aac403e735656fb4c06",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/ScanInfoRenderer.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "6c6ed9ef64202dae2c2f8b169845300cf4e354f2efcad39e640120b2b89c0d39",
+      "active_sha256": "6c6ed9ef64202dae2c2f8b169845300cf4e354f2efcad39e640120b2b89c0d39",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/TerminalRenderer.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "6177790087c4631a359f482da7e76b2c2371f5e29bd2a47a26909e9cbcf267f6",
+      "active_sha256": "6177790087c4631a359f482da7e76b2c2371f5e29bd2a47a26909e9cbcf267f6",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/ThinkRenderer.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d35a7fb9418ad549090691439748d83858f19f8b2da774e1b895684a758ce594",
+      "active_sha256": "d35a7fb9418ad549090691439748d83858f19f8b2da774e1b895684a758ce594",
       "quarantine": null,
       "link": false
     },
@@ -450,6 +1422,33 @@
       "original_sha256": "f811c1209a7c925f3e759e263e779ce577168f162d66410216024a33d592927a",
       "active_sha256": "f811c1209a7c925f3e759e263e779ce577168f162d66410216024a33d592927a",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/TodoRenderer.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1d35f5dde719b38d68dea70609a523ee8866bcf90b74848b31eb313704b98511",
+      "active_sha256": "1d35f5dde719b38d68dea70609a523ee8866bcf90b74848b31eb313704b98511",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/ToolCard.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "3dee21dd8b87826af003e85e082c65e2f061c6f1cfe552281e76c1402a3fc17e",
+      "active_sha256": "3dee21dd8b87826af003e85e082c65e2f061c6f1cfe552281e76c1402a3fc17e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/ViewImageRenderer.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "13e9b443c42de3b5cdaf327f53ede92354fa813f61ff5b63d93584985b73f408",
+      "active_sha256": "13e9b443c42de3b5cdaf327f53ede92354fa813f61ff5b63d93584985b73f408",
+      "quarantine": null,
       "link": false
     },
     {
@@ -458,6 +1457,33 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "bfac9b0856e6eae3c925d22e62279f73960e3ccd2bf6721636b0ee7b6028dbfc",
       "active_sha256": "bfac9b0856e6eae3c925d22e62279f73960e3ccd2bf6721636b0ee7b6028dbfc",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/WebSearchRenderer.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d1f10bf66d7535f6b10e9d7bddb98234e991e8ecb3de1e2890f7ac480d010720",
+      "active_sha256": "d1f10bf66d7535f6b10e9d7bddb98234e991e8ecb3de1e2890f7ac480d010720",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/index.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "3b0b8e4f9ee7dc9f910dad2ec77ceb81c78891cccbed67c01bacb124ec068715",
+      "active_sha256": "3b0b8e4f9ee7dc9f910dad2ec77ceb81c78891cccbed67c01bacb124ec068715",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/utils.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e2b8620d2603f057c46709cfe9288564b38c1630c625101165705b9b951fc3b4",
+      "active_sha256": "e2b8620d2603f057c46709cfe9288564b38c1630c625101165705b9b951fc3b4",
       "quarantine": null,
       "link": false
     },
@@ -525,6 +1551,69 @@
       "link": true
     },
     {
+      "path": "strix/interface/viewer/frontend/src/lib/cta.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d1bf77fd0b6291c6c5bab292858eda6f7f01ad7f5ca3238936b9ade8b775c75a",
+      "active_sha256": "d1bf77fd0b6291c6c5bab292858eda6f7f01ad7f5ca3238936b9ade8b775c75a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/lib/display-number.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "48331ff88df9848a6d21c6d9a8feb7317dc8b17dbe7233ed831941e0170f84f8",
+      "active_sha256": "48331ff88df9848a6d21c6d9a8feb7317dc8b17dbe7233ed831941e0170f84f8",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/lib/fenced-code.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d69e0ecc1aaf2b2957b33370a558568ec874536da7310511443f325643e44864",
+      "active_sha256": "d69e0ecc1aaf2b2957b33370a558568ec874536da7310511443f325643e44864",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/lib/hljs.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "faa4c6115e0f971c8578870880155a91091429cba923cf5731a0c0c3aaa3a159",
+      "active_sha256": "faa4c6115e0f971c8578870880155a91091429cba923cf5731a0c0c3aaa3a159",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/lib/local-run-parser.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "699c3cb779d3afe66e1fc49995ee122e4b81e227fbadbf205b3b624b1f571f22",
+      "active_sha256": "699c3cb779d3afe66e1fc49995ee122e4b81e227fbadbf205b3b624b1f571f22",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/lib/target-utils.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "99d69c367a11e70ff16865a5fa5d72a109b10f9fe3036a8d343cd727cf208d36",
+      "active_sha256": "99d69c367a11e70ff16865a5fa5d72a109b10f9fe3036a8d343cd727cf208d36",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/lib/utils.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "4f8bdead58dc69f14c9b328755df5d5869dbd2ff16ab7ef5c830b39e1fd7c1ac",
+      "active_sha256": "4f8bdead58dc69f14c9b328755df5d5869dbd2ff16ab7ef5c830b39e1fd7c1ac",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "strix/interface/viewer/frontend/src/lib/vulnerability-utils.ts",
       "decision": "BLOCK_OFFENSIVE",
       "reason": "offensive functional leaf",
@@ -534,13 +1623,22 @@
       "link": true
     },
     {
+      "path": "strix/interface/viewer/frontend/src/main.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "c997bd61148a86e2c86794e75e7121b4b1f332b8fde14c476aea791f8e542ab0",
+      "active_sha256": "c997bd61148a86e2c86794e75e7121b4b1f332b8fde14c476aea791f8e542ab0",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "strix/interface/viewer/frontend/src/stores/auth.ts",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "e5e896ef287f3e55a61a129fe1aafca472dc1ea4ddbbb06d4ef707bbaa638d4e",
       "active_sha256": "e5e896ef287f3e55a61a129fe1aafca472dc1ea4ddbbb06d4ef707bbaa638d4e",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/interface/viewer/frontend/src/types/events.ts",
@@ -548,6 +1646,15 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "bca6f1689131059d1b836e29dc9ae8b6a485b2455031e1d42b91fd6f7db278b7",
       "active_sha256": "bca6f1689131059d1b836e29dc9ae8b6a485b2455031e1d42b91fd6f7db278b7",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/types/issues.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "0f2bee942dc8e6739e1f724756698b3c3b97373b10a2a83ecd2bf923f9353229",
+      "active_sha256": "0f2bee942dc8e6739e1f724756698b3c3b97373b10a2a83ecd2bf923f9353229",
       "quarantine": null,
       "link": false
     },
@@ -558,7 +1665,7 @@
       "original_sha256": "8489b1f7589ef1554675d613a6fcd541d81912b84a688bdfb33f6db6173013f9",
       "active_sha256": "8489b1f7589ef1554675d613a6fcd541d81912b84a688bdfb33f6db6173013f9",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/interface/viewer/report_pdf.py",
@@ -566,6 +1673,15 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "0a355031c1c0560650037bd31e6e0d6f2d8c0984d54a2cb98f01f286c9fe7311",
       "active_sha256": "0a355031c1c0560650037bd31e6e0d6f2d8c0984d54a2cb98f01f286c9fe7311",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/interface/viewer/server.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "45f44eaf81468e67dbf1f02f5f1c35ef77b4c35cdfc3e071f14e2adb6e16b06c",
+      "active_sha256": "45f44eaf81468e67dbf1f02f5f1c35ef77b4c35cdfc3e071f14e2adb6e16b06c",
       "quarantine": null,
       "link": false
     },
@@ -579,13 +1695,22 @@
       "link": true
     },
     {
+      "path": "strix/interface/viewer/transcript.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "4b4b2e68edffc83531d338f316f04c9a420e277805a7c11d545215189e75a6dc",
+      "active_sha256": "4b4b2e68edffc83531d338f316f04c9a420e277805a7c11d545215189e75a6dc",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "strix/llm/__init__.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "b67cc29f0c95abbd98da35fc0c4dc5ce0b71ddf224905e9963da61e51367fde6",
       "active_sha256": "b67cc29f0c95abbd98da35fc0c4dc5ce0b71ddf224905e9963da61e51367fde6",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/llm/compaction.py",
@@ -594,7 +1719,7 @@
       "original_sha256": "409960da6a3534ad7d4b1a55df609e538acd139a85bd255330ccfe6441be6fb7",
       "active_sha256": "409960da6a3534ad7d4b1a55df609e538acd139a85bd255330ccfe6441be6fb7",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/llm/context_budget.py",
@@ -603,7 +1728,7 @@
       "original_sha256": "379f7c3274acc6616af5c0b6ce349188e4f1321122ec606e1e8c4719268d7797",
       "active_sha256": "379f7c3274acc6616af5c0b6ce349188e4f1321122ec606e1e8c4719268d7797",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/llm/warmup.py",
@@ -612,7 +1737,7 @@
       "original_sha256": "91f349fb993ccece78ddd944767146458106724f4ddef7171cc070f43f0ff40c",
       "active_sha256": "91f349fb993ccece78ddd944767146458106724f4ddef7171cc070f43f0ff40c",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/report/__init__.py",
@@ -621,7 +1746,7 @@
       "original_sha256": "dbd18ba8f47aa73a1c639365283a8bc315ae3380c7ed232bd7fb3e0554981b9f",
       "active_sha256": "dbd18ba8f47aa73a1c639365283a8bc315ae3380c7ed232bd7fb3e0554981b9f",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/report/coverage.py",
@@ -630,7 +1755,7 @@
       "original_sha256": "d41661775b450a6407e14e168aa73dd81f2330c8b75accda930d46472b071b87",
       "active_sha256": "d41661775b450a6407e14e168aa73dd81f2330c8b75accda930d46472b071b87",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/report/dedupe.py",
@@ -639,7 +1764,7 @@
       "original_sha256": "34a6c5cc9c83bff5ba92183256d1e105728c69c43a1311f8c23093d2bafcdd90",
       "active_sha256": "34a6c5cc9c83bff5ba92183256d1e105728c69c43a1311f8c23093d2bafcdd90",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/report/pricing.py",
@@ -648,7 +1773,7 @@
       "original_sha256": "2231723e20df6ae8bbfc92c67f2a6ad595aabcaacf08614f781c5ac0684629a0",
       "active_sha256": "2231723e20df6ae8bbfc92c67f2a6ad595aabcaacf08614f781c5ac0684629a0",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/report/sarif.py",
@@ -657,7 +1782,7 @@
       "original_sha256": "018131419d27494aaadd289b32c01b776caad6c42dd24e5eed4be0ef4a355543",
       "active_sha256": "018131419d27494aaadd289b32c01b776caad6c42dd24e5eed4be0ef4a355543",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/report/state.py",
@@ -666,7 +1791,7 @@
       "original_sha256": "a946cfc1c94c7196165f827e8bdb9facb3c3f2c522a2ca99df483f8fa662b11a",
       "active_sha256": "a946cfc1c94c7196165f827e8bdb9facb3c3f2c522a2ca99df483f8fa662b11a",
       "quarantine": "_yaiwes_upstream_quarantine/strix/report/state.py.original",
-      "link": false
+      "link": true
     },
     {
       "path": "strix/report/usage.py",
@@ -675,7 +1800,7 @@
       "original_sha256": "37168c08d41f13c4f36354e53abd1b24f87d11cdee7baee3e2ca3a50720f3fea",
       "active_sha256": "37168c08d41f13c4f36354e53abd1b24f87d11cdee7baee3e2ca3a50720f3fea",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/report/writer.py",
@@ -683,6 +1808,42 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "32e0d389d04c887d0234231a1b24032665f71077daab11de534af8690503a200",
       "active_sha256": "32e0d389d04c887d0234231a1b24032665f71077daab11de534af8690503a200",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/runtime/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ac8999103459c5bb68ad82e1adaa6be8a30ccbb779393da8768340b60a76786b",
+      "active_sha256": "ac8999103459c5bb68ad82e1adaa6be8a30ccbb779393da8768340b60a76786b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/runtime/backends.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "7ec9c89b391efa21909bf25003705db7dd52f4677524e0e3f95230e82b5af8f5",
+      "active_sha256": "7ec9c89b391efa21909bf25003705db7dd52f4677524e0e3f95230e82b5af8f5",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/runtime/caido_bootstrap.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "f493e3a7c9219e52520d2fadfd8dde78782e17440056f98aa068b146a0e788af",
+      "active_sha256": "f493e3a7c9219e52520d2fadfd8dde78782e17440056f98aa068b146a0e788af",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/runtime/caido_handle.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b4c5bfbd755b59819bb961767e91ea8526b827644751e740c2d5cca79ffc17d4",
+      "active_sha256": "b4c5bfbd755b59819bb961767e91ea8526b827644751e740c2d5cca79ffc17d4",
       "quarantine": null,
       "link": false
     },
@@ -702,6 +1863,24 @@
       "original_sha256": "ac1bf0876c40e137acc255580bf5c4a1ed0d38a4f4024a8d322e0336ac210c83",
       "active_sha256": "ac1bf0876c40e137acc255580bf5c4a1ed0d38a4f4024a8d322e0336ac210c83",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/runtime/status.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "2a1792b20b554a13682079aef5672e6c8a1aefc04241bafce99bf548fe302e4c",
+      "active_sha256": "2a1792b20b554a13682079aef5672e6c8a1aefc04241bafce99bf548fe302e4c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/skills/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d7b4d8678dc67cebf9bef76b0ad53d9c77ce4c55a74c4439e6f70d1d853b14f3",
+      "active_sha256": "d7b4d8678dc67cebf9bef76b0ad53d9c77ce4c55a74c4439e6f70d1d853b14f3",
+      "quarantine": null,
       "link": false
     },
     {
@@ -711,7 +1890,7 @@
       "original_sha256": "9ac4aa22608029a998587a08fcfd32d541c396bb1111eb9340644b17c650e9ec",
       "active_sha256": "9ac4aa22608029a998587a08fcfd32d541c396bb1111eb9340644b17c650e9ec",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/telemetry/_common.py",
@@ -720,7 +1899,7 @@
       "original_sha256": "57fa57f14548520e879d14cabe6325ac8ba0e63dbb8556c40ad9705853aca63b",
       "active_sha256": "57fa57f14548520e879d14cabe6325ac8ba0e63dbb8556c40ad9705853aca63b",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/telemetry/logging.py",
@@ -729,7 +1908,7 @@
       "original_sha256": "df908b7e0bbc364f1a4eb410888eb545b81b9523884593801466d71292bbf560",
       "active_sha256": "df908b7e0bbc364f1a4eb410888eb545b81b9523884593801466d71292bbf560",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/telemetry/posthog.py",
@@ -738,7 +1917,7 @@
       "original_sha256": "122f80dd93db562b05179eb95fcdeea609337fe61a12afe1b24c49a326e1c33d",
       "active_sha256": "122f80dd93db562b05179eb95fcdeea609337fe61a12afe1b24c49a326e1c33d",
       "quarantine": "_yaiwes_upstream_quarantine/strix/telemetry/posthog.py.original",
-      "link": false
+      "link": true
     },
     {
       "path": "strix/telemetry/scarf.py",
@@ -747,6 +1926,33 @@
       "original_sha256": "227766fd3ee094e0bed566c97fe7633930bd26da347107cb453171cad04f31c0",
       "active_sha256": "227766fd3ee094e0bed566c97fe7633930bd26da347107cb453171cad04f31c0",
       "quarantine": "_yaiwes_upstream_quarantine/strix/telemetry/scarf.py.original",
+      "link": true
+    },
+    {
+      "path": "strix/tools/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "9da303a0957cea8d8db7c77ecd170dbbab771d5571a0f7bf3f85ed228ca5ce04",
+      "active_sha256": "9da303a0957cea8d8db7c77ecd170dbbab771d5571a0f7bf3f85ed228ca5ce04",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/tools/agents_graph/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/tools/agents_graph/tools.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1a73cb63c4ebcdf2d05f7e9463ae07a0591589be224dad1b2f784871ccc81034",
+      "active_sha256": "1a73cb63c4ebcdf2d05f7e9463ae07a0591589be224dad1b2f784871ccc81034",
+      "quarantine": null,
       "link": false
     },
     {
@@ -756,7 +1962,7 @@
       "original_sha256": "286fd46f279c060ff8e92c79e4d046a2c6a65561eddb669d2ef39820129e6faa",
       "active_sha256": "286fd46f279c060ff8e92c79e4d046a2c6a65561eddb669d2ef39820129e6faa",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/tools/coverage/tools.py",
@@ -764,6 +1970,60 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "10b77c2bd092ef7ec8cd5f80933ed537bd1d8753a36409229d7dd6816996b6c1",
       "active_sha256": "10b77c2bd092ef7ec8cd5f80933ed537bd1d8753a36409229d7dd6816996b6c1",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/tools/finish/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/tools/finish/tool.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "31c91bac0958a609e33cc254f09372408d7362e4b4300ada2c396678507105b6",
+      "active_sha256": "31c91bac0958a609e33cc254f09372408d7362e4b4300ada2c396678507105b6",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/tools/load_skill/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/tools/load_skill/tool.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1cbcaff9968972f60ede8a3d137df8984a71d1cc2b28014b4224fa27fd8f31d5",
+      "active_sha256": "1cbcaff9968972f60ede8a3d137df8984a71d1cc2b28014b4224fa27fd8f31d5",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/tools/mcp/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "78015ec3c6f10154d9656ed95efade9f847f48308e635af79ee930381bc524a0",
+      "active_sha256": "78015ec3c6f10154d9656ed95efade9f847f48308e635af79ee930381bc524a0",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/tools/mcp/agent_tools.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "c2f43b1080ea090d4acdba2144b1b6274cd010ae1c25c189c8abc13cbb0ef950",
+      "active_sha256": "c2f43b1080ea090d4acdba2144b1b6274cd010ae1c25c189c8abc13cbb0ef950",
       "quarantine": null,
       "link": false
     },
@@ -783,7 +2043,7 @@
       "original_sha256": "685a640666caa9761a12d55e333fa4932357f25fa7298dd49b752a13beed1669",
       "active_sha256": "685a640666caa9761a12d55e333fa4932357f25fa7298dd49b752a13beed1669",
       "quarantine": "_yaiwes_upstream_quarantine/strix/tools/mcp/config.py.original",
-      "link": false
+      "link": true
     },
     {
       "path": "strix/tools/mcp/failures.py",
@@ -795,13 +2055,31 @@
       "link": true
     },
     {
+      "path": "strix/tools/mcp/loader.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "7ce59102a6adf535a2611b2fe05e3a774643ef2798f63fd41178753212b5f5d4",
+      "active_sha256": "7ce59102a6adf535a2611b2fe05e3a774643ef2798f63fd41178753212b5f5d4",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/tools/mcp/naming.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "497a2b1b86e59685ba41ab71b75821bf919f09b407f57ea5baadfc985b87ed29",
+      "active_sha256": "497a2b1b86e59685ba41ab71b75821bf919f09b407f57ea5baadfc985b87ed29",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "strix/tools/mcp/registry.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "e7d332426128453f97c6fc59c8b35eed4c0b6b3f878d89bfdb750770ff258024",
       "active_sha256": "e7d332426128453f97c6fc59c8b35eed4c0b6b3f878d89bfdb750770ff258024",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/tools/mcp/session.py",
@@ -809,6 +2087,33 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "5c4e375b90f1ee33eaf4ab9534d1eaae3a6d6d7d3b51ac1a8ca48935e9160988",
       "active_sha256": "5c4e375b90f1ee33eaf4ab9534d1eaae3a6d6d7d3b51ac1a8ca48935e9160988",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/tools/notes/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/tools/notes/tools.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1ffaba18f1a8ba39fd67566d72d51c18ad5ca3397fdd8b252bd8a1e6d2ddf164",
+      "active_sha256": "1ffaba18f1a8ba39fd67566d72d51c18ad5ca3397fdd8b252bd8a1e6d2ddf164",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/tools/nullish.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d5fb080289161f486ecc8558348d7fc3a3f32561b17279ad2585864c24b9ed71",
+      "active_sha256": "d5fb080289161f486ecc8558348d7fc3a3f32561b17279ad2585864c24b9ed71",
       "quarantine": null,
       "link": false
     },
@@ -819,6 +2124,15 @@
       "original_sha256": "79c4c1f5436a931b53a9b22de046fa97a3747ece1c52bc13aa3609054db3775b",
       "active_sha256": "79c4c1f5436a931b53a9b22de046fa97a3747ece1c52bc13aa3609054db3775b",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/tools/proxy/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
       "link": false
     },
     {
@@ -828,7 +2142,7 @@
       "original_sha256": "5555aef4112ea3479d33f271830483de96ce1e26983d91f03bf4a9ad38f202bb",
       "active_sha256": "5555aef4112ea3479d33f271830483de96ce1e26983d91f03bf4a9ad38f202bb",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/tools/proxy/tools.py",
@@ -846,7 +2160,7 @@
       "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/tools/reporting/tool.py",
@@ -854,6 +2168,42 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "b34c3164a97eb079a762fc1f1ecba32d26bcf2d184f168555f67405c138fd88c",
       "active_sha256": "b34c3164a97eb079a762fc1f1ecba32d26bcf2d184f168555f67405c138fd88c",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "strix/tools/respond/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "806de6b005483048cb9bdbfbc10d47af2884d07a5f1105741b630b1b9360e3b4",
+      "active_sha256": "806de6b005483048cb9bdbfbc10d47af2884d07a5f1105741b630b1b9360e3b4",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/tools/respond/tool.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "47f0e666950f52873f757c17d04c7bdf800ad9280f15cc286c81ede847a0e04c",
+      "active_sha256": "47f0e666950f52873f757c17d04c7bdf800ad9280f15cc286c81ede847a0e04c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/tools/thinking/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/tools/thinking/tool.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "3ff8e20340521677428fd8744b9c0a9011422f23c2e77c7022776241bb7a8c8d",
+      "active_sha256": "3ff8e20340521677428fd8744b9c0a9011422f23c2e77c7022776241bb7a8c8d",
       "quarantine": null,
       "link": false
     },
@@ -864,7 +2214,7 @@
       "original_sha256": "e25439267022facc77a8386532f139cba6e8c2ea00bb80d2e75a291e8ad03989",
       "active_sha256": "e25439267022facc77a8386532f139cba6e8c2ea00bb80d2e75a291e8ad03989",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "strix/tools/threat_model/tools.py",
@@ -873,6 +2223,33 @@
       "original_sha256": "be7c5909ac7ef8558c2d0674d6054a06a921c89b21eaecb4dce66531c4adfd0e",
       "active_sha256": "be7c5909ac7ef8558c2d0674d6054a06a921c89b21eaecb4dce66531c4adfd0e",
       "quarantine": "_yaiwes_upstream_quarantine/strix/tools/threat_model/tools.py.original",
+      "link": true
+    },
+    {
+      "path": "strix/tools/todo/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/tools/todo/tools.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "c499a5ebcaaa3c22e8bf531480ede5448b0e17fcb769d95eee929009592e3e44",
+      "active_sha256": "c499a5ebcaaa3c22e8bf531480ede5448b0e17fcb769d95eee929009592e3e44",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/tools/web_search/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
       "link": false
     },
     {
@@ -885,13 +2262,22 @@
       "link": true
     },
     {
+      "path": "strix/utils/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "strix/utils/api_spec.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "1552c47c9512714878ce26a50e87d2f2559c672a0e2351377cb87012ad8983ca",
       "active_sha256": "1552c47c9512714878ce26a50e87d2f2559c672a0e2351377cb87012ad8983ca",
       "quarantine": "_yaiwes_upstream_quarantine/strix/utils/api_spec.py.original",
-      "link": false
+      "link": true
     },
     {
       "path": "strix/utils/resource_paths.py",
@@ -900,14 +2286,26 @@
       "original_sha256": "e9835920cbd8396ae5f21915f4b6a49971dbae005b3b0aaee9c6bc99238b96fe",
       "active_sha256": "e9835920cbd8396ae5f21915f4b6a49971dbae005b3b0aaee9c6bc99238b96fe",
       "quarantine": "_yaiwes_upstream_quarantine/strix/utils/resource_paths.py.original",
+      "link": true
+    },
+    {
+      "path": "strix/utils/secret_files.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "acdc43fdbd69e1b5da9cae8558f8c350c08cdff278611cf033ff7a67adc32ba7",
+      "active_sha256": "acdc43fdbd69e1b5da9cae8558f8c350c08cdff278611cf033ff7a67adc32ba7",
+      "quarantine": null,
       "link": false
     }
   ],
   "counts": {
-    "accounted": 99,
+    "accounted": 254,
+    "keep_unchanged": 155,
     "restored_benign": 68,
     "blocked_offensive": 10,
     "review_fail_closed": 21,
-    "links": 31
-  }
+    "links": 99
+  },
+  "source_code_available": true,
+  "source_code_status": "AVAILABLE"
 }

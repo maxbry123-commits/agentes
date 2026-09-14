@@ -2,7 +2,7 @@
   "schema": "yaiwes.internal.surgical/v5",
   "component": "🏈 08-Redcell",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.1",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.2",
   "policy": {
     "restore_benign": true,
     "offensive_execution": false,
@@ -18,7 +18,7 @@
       "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/api/app/deps.py",
@@ -27,7 +27,7 @@
       "original_sha256": "a5609ee2d0bef32316e77b44b8c99ee4df163c3ea0099ab6483b0900d3242309",
       "active_sha256": "a5609ee2d0bef32316e77b44b8c99ee4df163c3ea0099ab6483b0900d3242309",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/api/app/main.py",
@@ -36,7 +36,7 @@
       "original_sha256": "808000da03e62d1e274642b86feb1166c2b70006f0e2c652b193d90359b81bfc",
       "active_sha256": "808000da03e62d1e274642b86feb1166c2b70006f0e2c652b193d90359b81bfc",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/api/app/ratelimit.py",
@@ -45,7 +45,7 @@
       "original_sha256": "284247602a0bee1af72d2ddcd816933590b16c13b2fade861c7bfb75b381f037",
       "active_sha256": "284247602a0bee1af72d2ddcd816933590b16c13b2fade861c7bfb75b381f037",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/api/app/routers/__init__.py",
@@ -54,7 +54,7 @@
       "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/api/app/routers/ai.py",
@@ -63,7 +63,7 @@
       "original_sha256": "a578c6b3e098cc4d734beae3e12840d6963702783adde7cd9f17359032528e1e",
       "active_sha256": "a578c6b3e098cc4d734beae3e12840d6963702783adde7cd9f17359032528e1e",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/api/app/routers/auth.py",
@@ -72,7 +72,7 @@
       "original_sha256": "f532b256a1d4b53f97ce3523547cb44826143653b4bd69519b65a9132b6f1315",
       "active_sha256": "f532b256a1d4b53f97ce3523547cb44826143653b4bd69519b65a9132b6f1315",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/api/app/routers/files.py",
@@ -81,7 +81,7 @@
       "original_sha256": "f46e3385748d71cb7f3eb51e4e6d3cb4a14dc5ab45d3235f284e78ed893e90c8",
       "active_sha256": "f46e3385748d71cb7f3eb51e4e6d3cb4a14dc5ab45d3235f284e78ed893e90c8",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/api/app/routers/infra.py",
@@ -90,7 +90,7 @@
       "original_sha256": "268c9d53acece0bb475fb98297fb5702627569f10028ac3a1f96390a415aa785",
       "active_sha256": "268c9d53acece0bb475fb98297fb5702627569f10028ac3a1f96390a415aa785",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/api/app/routers/notifications.py",
@@ -99,7 +99,7 @@
       "original_sha256": "1d20c9612eab612a875e262fafabc56f6c59cefe85626b430b1e221903e1358d",
       "active_sha256": "1d20c9612eab612a875e262fafabc56f6c59cefe85626b430b1e221903e1358d",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/api/app/routers/reports.py",
@@ -108,7 +108,7 @@
       "original_sha256": "e561017fda3fe1b9b93c21b2fc8c04ecfb2690a16b44252ca3e07cc3ccc914fb",
       "active_sha256": "e561017fda3fe1b9b93c21b2fc8c04ecfb2690a16b44252ca3e07cc3ccc914fb",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/api/app/routers/resources.py",
@@ -126,7 +126,7 @@
       "original_sha256": "dddbc1245dd3ec7c4432affe48aa2bbd9d58be71d729950650892793851dfcbe",
       "active_sha256": "dddbc1245dd3ec7c4432affe48aa2bbd9d58be71d729950650892793851dfcbe",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/api/app/routers/system.py",
@@ -135,7 +135,7 @@
       "original_sha256": "c685f73f76de820923c7018bc4f848f5de0d95149847b247f85c1a410f11a20c",
       "active_sha256": "c685f73f76de820923c7018bc4f848f5de0d95149847b247f85c1a410f11a20c",
       "quarantine": "_yaiwes_upstream_quarantine/apps/api/app/routers/system.py.original",
-      "link": false
+      "link": true
     },
     {
       "path": "apps/api/app/routers/ws.py",
@@ -144,6 +144,24 @@
       "original_sha256": "7775f8ddfa7647697d67a6db3377879200a71acd47403005f3825eb0231017a5",
       "active_sha256": "7775f8ddfa7647697d67a6db3377879200a71acd47403005f3825eb0231017a5",
       "quarantine": "_yaiwes_upstream_quarantine/apps/api/app/routers/ws.py.original",
+      "link": true
+    },
+    {
+      "path": "apps/web/src/App.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "06d76fc54c020f52db9774e72418a56fe37908cfa2cde58e8a75c84dffec0a70",
+      "active_sha256": "06d76fc54c020f52db9774e72418a56fe37908cfa2cde58e8a75c84dffec0a70",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/AppShell.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "f888e15f793f4307fdf9014b2b9a2e2a4398b94e0e55b0159ee04b130229e625",
+      "active_sha256": "f888e15f793f4307fdf9014b2b9a2e2a4398b94e0e55b0159ee04b130229e625",
+      "quarantine": null,
       "link": false
     },
     {
@@ -153,7 +171,7 @@
       "original_sha256": "5b7aa206c471deb9fe1fc179f5534a428a74a755d7272b2f77594e9268c57526",
       "active_sha256": "5b7aa206c471deb9fe1fc179f5534a428a74a755d7272b2f77594e9268c57526",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/web/src/app/AuthGate.tsx",
@@ -161,6 +179,231 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "8ef6982d03ffeaa35838eabddac45873ce7be1fafdd65af938e6a130a67c267d",
       "active_sha256": "8ef6982d03ffeaa35838eabddac45873ce7be1fafdd65af938e6a130a67c267d",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "apps/web/src/app/CommandPalette.test.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "a740a3720de531a880264539539ceef91fd393bb530e1d646170caf44d4608e2",
+      "active_sha256": "a740a3720de531a880264539539ceef91fd393bb530e1d646170caf44d4608e2",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/CommandPalette.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "f8f65e07b0cf1deaffe64bc934e1e0e2b0d2aee66a69703b220dbda446b6cbcc",
+      "active_sha256": "f8f65e07b0cf1deaffe64bc934e1e0e2b0d2aee66a69703b220dbda446b6cbcc",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/ConsoleHeader.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "9fef2b7d76092aafc3f476f603f234b056847beedea84fac2a01f5122ddeaadb",
+      "active_sha256": "9fef2b7d76092aafc3f476f603f234b056847beedea84fac2a01f5122ddeaadb",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/ConsolePage.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "0125d2c42a2ecc856908c63dad9c977df7f039ae2b86d42ec94acae600944408",
+      "active_sha256": "0125d2c42a2ecc856908c63dad9c977df7f039ae2b86d42ec94acae600944408",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/DashboardShell.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "3076139036cc88238111a54b7bb72d38b4ee7a4b066594d3fd27e6c429743d90",
+      "active_sha256": "3076139036cc88238111a54b7bb72d38b4ee7a4b066594d3fd27e6c429743d90",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/LiveNotifier.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "bdef45b904f61a07a9b3446d93154bada6c564161ef72cfc1693127f0ad33bea",
+      "active_sha256": "bdef45b904f61a07a9b3446d93154bada6c564161ef72cfc1693127f0ad33bea",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/MobileDrawer.test.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "149d6034f4066c50ca5929059ebe4530a5d239970caa8ef81b714b5efab05d01",
+      "active_sha256": "149d6034f4066c50ca5929059ebe4530a5d239970caa8ef81b714b5efab05d01",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/MobileDrawer.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "f0616fa5b9bb844a9de237fc2aa7fa9ff84c528db6cd3783989a5ddfcc772b4e",
+      "active_sha256": "f0616fa5b9bb844a9de237fc2aa7fa9ff84c528db6cd3783989a5ddfcc772b4e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/MobileNav.test.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d02375254e4deea2e5c6435e42234c5e16e327272a28c764a3885633898ec746",
+      "active_sha256": "d02375254e4deea2e5c6435e42234c5e16e327272a28c764a3885633898ec746",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/MobileNav.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ef0fcbe1481aa2ce4dc596e7f6e03b55114d53669ea6ec7efa8c7c388209b665",
+      "active_sha256": "ef0fcbe1481aa2ce4dc596e7f6e03b55114d53669ea6ec7efa8c7c388209b665",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/MobileWorkspace.test.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "26a74448eb4bb2c15b37310d671bab82c392f2720fa998ce0c38fcaa693e922a",
+      "active_sha256": "26a74448eb4bb2c15b37310d671bab82c392f2720fa998ce0c38fcaa693e922a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/MobileWorkspace.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "a2f88d1eae960f3d0c27e89c62c900b0c815442177c2b775c8f60fd52ee1b449",
+      "active_sha256": "a2f88d1eae960f3d0c27e89c62c900b0c815442177c2b775c8f60fd52ee1b449",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/NewRunDialog.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "2284abfe50214304c6987a4b1772e0852bb00ed5954f472830a477d2066de7ef",
+      "active_sha256": "2284abfe50214304c6987a4b1772e0852bb00ed5954f472830a477d2066de7ef",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/NotificationsBell.test.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1dd333b6efb46bc4e9b5e594031b189775faf977716e49b6bd70a179e9a3b1dd",
+      "active_sha256": "1dd333b6efb46bc4e9b5e594031b189775faf977716e49b6bd70a179e9a3b1dd",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/NotificationsBell.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "3025e14f1967b52160a5353e6a244daf53638e35372bd606214c2416a9c9c7a9",
+      "active_sha256": "3025e14f1967b52160a5353e6a244daf53638e35372bd606214c2416a9c9c7a9",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/PullToRefresh.test.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d9625836199359079aff69dbac87ae3910c93b1e88d3ec778613ed82b328f586",
+      "active_sha256": "d9625836199359079aff69dbac87ae3910c93b1e88d3ec778613ed82b328f586",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/PullToRefresh.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "adbc5d012a5337a9b1b20028434ee388c26a63954bc9dfbf668ca0de6c9a5f93",
+      "active_sha256": "adbc5d012a5337a9b1b20028434ee388c26a63954bc9dfbf668ca0de6c9a5f93",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/Sidebar.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "c6da310a1cb1a487f21cbae71b97cc7cafa501a6663ddb0656b153d618224367",
+      "active_sha256": "c6da310a1cb1a487f21cbae71b97cc7cafa501a6663ddb0656b153d618224367",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/Topbar.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "173197d7f60b5b13325e728b81537997d1092ad34215334ff83450ee4e2a50a6",
+      "active_sha256": "173197d7f60b5b13325e728b81537997d1092ad34215334ff83450ee4e2a50a6",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/UpdateDialog.test.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "46184df0fdab10e8e86ec2dc049acade7d2b145831bca1b625c26fb6f25c9c00",
+      "active_sha256": "46184df0fdab10e8e86ec2dc049acade7d2b145831bca1b625c26fb6f25c9c00",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/UpdateDialog.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "789fa89def6ce0889fb1c3a8b4a561760492071db9d43ac062a93a1080b74144",
+      "active_sha256": "789fa89def6ce0889fb1c3a8b4a561760492071db9d43ac062a93a1080b74144",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/Workspace.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "239fe14113d7253961d76c690ab7050865309dd4084aa351ee3d4ebd2a7feb51",
+      "active_sha256": "239fe14113d7253961d76c690ab7050865309dd4084aa351ee3d4ebd2a7feb51",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/nav.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b34ca4b6104862f17ab69d74f383b919ea8e439ed3445b4293599890de8ff305",
+      "active_sha256": "b34ca4b6104862f17ab69d74f383b919ea8e439ed3445b4293599890de8ff305",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/pages/EngagementsPage.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "f21b91780b818db33ea96cae24c72b2d3f48225c12b3159cb139c3400b4bba02",
+      "active_sha256": "f21b91780b818db33ea96cae24c72b2d3f48225c12b3159cb139c3400b4bba02",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/pages/FindingsPage.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "9ee0a771e56b00d2b7ec65148c29192b312b0cf61edef038670afc2ceb339e17",
+      "active_sha256": "9ee0a771e56b00d2b7ec65148c29192b312b0cf61edef038670afc2ceb339e17",
       "quarantine": null,
       "link": false
     },
@@ -171,6 +414,51 @@
       "original_sha256": "ddc8b70d58328ddb9159cf441c30b68f3d3269bc6d3bcf8d893df034f7672dad",
       "active_sha256": "ddc8b70d58328ddb9159cf441c30b68f3d3269bc6d3bcf8d893df034f7672dad",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "apps/web/src/app/pages/NotificationsPage.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "a868fabd258bfa5e658b3121a094835e3a06e48c848a0ff467cb6cb3c10426f2",
+      "active_sha256": "a868fabd258bfa5e658b3121a094835e3a06e48c848a0ff467cb6cb3c10426f2",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/pages/OverviewPage.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b83569515a313570fbac9b716c1624c1b7286f1bb1b673dc33708200184df2c1",
+      "active_sha256": "b83569515a313570fbac9b716c1624c1b7286f1bb1b673dc33708200184df2c1",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/pages/PageShell.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "3addac7127aa548863e51282bdf7a81bc550bf71087e62980ae88edb5570130c",
+      "active_sha256": "3addac7127aa548863e51282bdf7a81bc550bf71087e62980ae88edb5570130c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/pages/ProxiesPage.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "755106e560d99b53a6cb27d707f643b282cb56f223b4daafd23e7f5d64c0dfd4",
+      "active_sha256": "755106e560d99b53a6cb27d707f643b282cb56f223b4daafd23e7f5d64c0dfd4",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/pages/ProxyDetailPage.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "3a80f588dfd5118ab3b63655922ae337db911d79f60a86ad750c4126048395b0",
+      "active_sha256": "3a80f588dfd5118ab3b63655922ae337db911d79f60a86ad750c4126048395b0",
+      "quarantine": null,
       "link": false
     },
     {
@@ -179,6 +467,24 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "64456f56a148bca3edc70e218d00fd2eedd6c649a6e3f4926b7119d4379f452e",
       "active_sha256": "64456f56a148bca3edc70e218d00fd2eedd6c649a6e3f4926b7119d4379f452e",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "apps/web/src/app/pages/ServerDetailPage.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "4a53c709340e45543b903a98d5dd5122fd53cd711aa29408579dc8d3c77ded04",
+      "active_sha256": "4a53c709340e45543b903a98d5dd5122fd53cd711aa29408579dc8d3c77ded04",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/pages/ServersPage.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1cea28860eb5880e51c000c0a4c6959b284ef5315549beba784a3d364b997ae5",
+      "active_sha256": "1cea28860eb5880e51c000c0a4c6959b284ef5315549beba784a3d364b997ae5",
       "quarantine": null,
       "link": false
     },
@@ -189,7 +495,7 @@
       "original_sha256": "d6112f49b35cb3d5a2f4382c21580c11754b3a9ad7f1f20205ee84f728a72b47",
       "active_sha256": "d6112f49b35cb3d5a2f4382c21580c11754b3a9ad7f1f20205ee84f728a72b47",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/web/src/app/pages/SessionsPage.tsx",
@@ -198,7 +504,7 @@
       "original_sha256": "1727a162d92223c715ecb885b275de380fd034d64c39c16d2505c18b379f3626",
       "active_sha256": "1727a162d92223c715ecb885b275de380fd034d64c39c16d2505c18b379f3626",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/web/src/app/pages/SettingsPage.tsx",
@@ -208,6 +514,33 @@
       "active_sha256": "492d1bad21bc27012ab7f60e25912d0e8083aa1b9c9de6c2b5c5b04f119b674a",
       "quarantine": "_yaiwes_upstream_quarantine/apps/web/src/app/pages/SettingsPage.tsx.original",
       "link": true
+    },
+    {
+      "path": "apps/web/src/app/pages/parts.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e00a975966ed47b7f413870557fe12cc6916655f52b2516d2453ee80533c9c38",
+      "active_sha256": "e00a975966ed47b7f413870557fe12cc6916655f52b2516d2453ee80533c9c38",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/pages/shared.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "cdb98d07cc2cbb29d8eeac4ad036b8088e280140c2e848c48a87f8926dbbd2e6",
+      "active_sha256": "cdb98d07cc2cbb29d8eeac4ad036b8088e280140c2e848c48a87f8926dbbd2e6",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/panels/AgentGraphPanel.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "25247c88036d889b2f99844cdbdc57b888073e71a7dfc4b8c620889f1e9c33f8",
+      "active_sha256": "25247c88036d889b2f99844cdbdc57b888073e71a7dfc4b8c620889f1e9c33f8",
+      "quarantine": null,
+      "link": false
     },
     {
       "path": "apps/web/src/app/panels/AttackSurfacePanel.tsx",
@@ -228,11 +561,83 @@
       "link": true
     },
     {
+      "path": "apps/web/src/app/panels/BrowserPanel.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "acfafe7e9198ab0c0f9a85bf6e09a83c5a43b93c5146c0b40d7a47b7a3073c37",
+      "active_sha256": "acfafe7e9198ab0c0f9a85bf6e09a83c5a43b93c5146c0b40d7a47b7a3073c37",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/panels/ChatPanel.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "29f3ea0e8aa6a7cd518876c2a1182c436b9e11a0f4ac6119d47676ea39dcb078",
+      "active_sha256": "29f3ea0e8aa6a7cd518876c2a1182c436b9e11a0f4ac6119d47676ea39dcb078",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "apps/web/src/app/panels/ContextPanel.tsx",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "cb7116d01f11492099ed99c10dc466022c93856d3dc9749ee02643ba8093e569",
       "active_sha256": "cb7116d01f11492099ed99c10dc466022c93856d3dc9749ee02643ba8093e569",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "apps/web/src/app/panels/FindingsPanel.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "399df6a9905e6133e3f9d90cf169479eedb51e0bab4c318f1033a6e7a369d5b6",
+      "active_sha256": "399df6a9905e6133e3f9d90cf169479eedb51e0bab4c318f1033a6e7a369d5b6",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/panels/ListenersPanel.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d5f0e35305a6be5199f50a8f3f687e80c04db9ebd43c1627533452a56ad67fb4",
+      "active_sha256": "d5f0e35305a6be5199f50a8f3f687e80c04db9ebd43c1627533452a56ad67fb4",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/panels/LiveFeedPanel.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "021e63eba2e88dd9f31f3bef0ca03a9ac0c245a7485e946ac111d7c051b1982d",
+      "active_sha256": "021e63eba2e88dd9f31f3bef0ca03a9ac0c245a7485e946ac111d7c051b1982d",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/panels/LootPanel.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ec00290f842e53b4a906d6900a3af9ec48bf70b1e337a80a6ca959d1a1d2b575",
+      "active_sha256": "ec00290f842e53b4a906d6900a3af9ec48bf70b1e337a80a6ca959d1a1d2b575",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/panels/PanelView.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e40aa78cd4ef016b1e5612a40c4391eff01d380e6b3d7453603a49cf72627c2e",
+      "active_sha256": "e40aa78cd4ef016b1e5612a40c4391eff01d380e6b3d7453603a49cf72627c2e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/panels/ProxyPanel.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "4166cbd16739748ed421392b2f5df74bfcdd823d5fdbfc0ef7579257dc1ea4ad",
+      "active_sha256": "4166cbd16739748ed421392b2f5df74bfcdd823d5fdbfc0ef7579257dc1ea4ad",
       "quarantine": null,
       "link": false
     },
@@ -242,6 +647,123 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "a0137e1f4a3afdffa37ed0d6bc9fcda65f32a597e906c3dbfa61a73d8189f89f",
       "active_sha256": "a0137e1f4a3afdffa37ed0d6bc9fcda65f32a597e906c3dbfa61a73d8189f89f",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "apps/web/src/app/panels/Terminal.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "041b6bd5fc09b9e89c76a22491037db7dade0b7d768dbcb0aa13c05188e2279b",
+      "active_sha256": "041b6bd5fc09b9e89c76a22491037db7dade0b7d768dbcb0aa13c05188e2279b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/panels/TerminalsPanel.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "6ebfab8bc6a3aad850d700a2451b2bf1becd4cc1102093063c2a277462b1cf36",
+      "active_sha256": "6ebfab8bc6a3aad850d700a2451b2bf1becd4cc1102093063c2a277462b1cf36",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/components/ui/AreaChart.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e560bd7601c03a262c17054335e376e07abb8e19c4e874926180d5220041d88a",
+      "active_sha256": "e560bd7601c03a262c17054335e376e07abb8e19c4e874926180d5220041d88a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/components/ui/Combobox.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "f9ded85644f45ba15c83a478941fb93ad1b0619b6e84f91c2cd21913868ca91e",
+      "active_sha256": "f9ded85644f45ba15c83a478941fb93ad1b0619b6e84f91c2cd21913868ca91e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/components/ui/Dialog.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "47c00eebbe54d88609a8292db889654bb4f47eb932bc5410279b7963258cd1c8",
+      "active_sha256": "47c00eebbe54d88609a8292db889654bb4f47eb932bc5410279b7963258cd1c8",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/components/ui/Dropdown.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "58314b0451cd8103f20fc47f8736087b06ed8a111449efe8818fe98c43da8744",
+      "active_sha256": "58314b0451cd8103f20fc47f8736087b06ed8a111449efe8818fe98c43da8744",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/components/ui/Icon.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "86de5ac80ccc6296e80126c833d5bc3e4d2d1deed211f3323a5fe4ad1a3dc720",
+      "active_sha256": "86de5ac80ccc6296e80126c833d5bc3e4d2d1deed211f3323a5fe4ad1a3dc720",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/components/ui/Markdown.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ec508005273803e493c7d8f4a52e153a0e37889de0b375ab9ead1e937ce670be",
+      "active_sha256": "ec508005273803e493c7d8f4a52e153a0e37889de0b375ab9ead1e937ce670be",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/components/ui/Thinking.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1e5a66d16cba97e411f1cd30e4d66190ccebd44ad09465a89c9ff6f3dc86c89e",
+      "active_sha256": "1e5a66d16cba97e411f1cd30e4d66190ccebd44ad09465a89c9ff6f3dc86c89e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/components/ui/fields.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "de44a5ecee507d9808dbf055a10556040d7c90e0d9d6bb7d0ce790b1d85b104b",
+      "active_sha256": "de44a5ecee507d9808dbf055a10556040d7c90e0d9d6bb7d0ce790b1d85b104b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/components/ui/primitives.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "73b7ac5afdbb106c8ffde0306b7efac8253fdc8192dbd89af88013d9cd224be2",
+      "active_sha256": "73b7ac5afdbb106c8ffde0306b7efac8253fdc8192dbd89af88013d9cd224be2",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/components/ui/toast.test.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "8ef5ebcfb5aba19913d9f0c5dc44fcb98de0a14efec4bad13b763460fc83129c",
+      "active_sha256": "8ef5ebcfb5aba19913d9f0c5dc44fcb98de0a14efec4bad13b763460fc83129c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/components/ui/toast.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "fbef5a92826a38bfb9b630b42f613868a861ece2fcb5ff6afca69495421f855a",
+      "active_sha256": "fbef5a92826a38bfb9b630b42f613868a861ece2fcb5ff6afca69495421f855a",
       "quarantine": null,
       "link": false
     },
@@ -261,6 +783,114 @@
       "original_sha256": "513739a26cb578264555e92bfb527d908a3025eb82f189d95ee2058c593370e1",
       "active_sha256": "513739a26cb578264555e92bfb527d908a3025eb82f189d95ee2058c593370e1",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "apps/web/src/lib/cn.test.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "0c73c9776dad1470c57b52df1e276d26ef29bd642aac698066c8ecf7a49ea573",
+      "active_sha256": "0c73c9776dad1470c57b52df1e276d26ef29bd642aac698066c8ecf7a49ea573",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/lib/cn.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "3320a516fb4c3a5eca6468a22c1383d866d7ddf4414fb9942d7120afdbc89ed3",
+      "active_sha256": "3320a516fb4c3a5eca6468a22c1383d866d7ddf4414fb9942d7120afdbc89ed3",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/lib/format.test.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "f8a54b5b0b0b5430c7d438c519778f94446945cbacc9a1c607f3eeda200868cb",
+      "active_sha256": "f8a54b5b0b0b5430c7d438c519778f94446945cbacc9a1c607f3eeda200868cb",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/lib/format.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "faf8802f64928159cef25fafec0cd1bf06b932a775ae5bc09e2d5bf5252081d6",
+      "active_sha256": "faf8802f64928159cef25fafec0cd1bf06b932a775ae5bc09e2d5bf5252081d6",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/lib/notify.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "48ca0b8c4d63d5a9ddd5212059d16b422a6d9e8de35789665b2f57f1ac187fea",
+      "active_sha256": "48ca0b8c4d63d5a9ddd5212059d16b422a6d9e8de35789665b2f57f1ac187fea",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/lib/query.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "267960a9ea9b87fdc47cec2d9d234ee1219841d334218aca94ceb1d48bbccbf1",
+      "active_sha256": "267960a9ea9b87fdc47cec2d9d234ee1219841d334218aca94ceb1d48bbccbf1",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/lib/terminals.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "80df6a242b9d0735e9313f0c45031c1878c42433209ed8181a1acaafdcbb8cd5",
+      "active_sha256": "80df6a242b9d0735e9313f0c45031c1878c42433209ed8181a1acaafdcbb8cd5",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/lib/theme.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "aa1a898a7e1af79e9ca1c377d2fea2c8cafa788104093a6ad700ef8af65564d9",
+      "active_sha256": "aa1a898a7e1af79e9ca1c377d2fea2c8cafa788104093a6ad700ef8af65564d9",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/lib/useIsMobile.test.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "04d76f9558b4c198f49a3d1ec303d9ff5756411dda002a848b70cfc186abb7d5",
+      "active_sha256": "04d76f9558b4c198f49a3d1ec303d9ff5756411dda002a848b70cfc186abb7d5",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/lib/useIsMobile.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "08fee25462ee32e5c956184edbb97ae0407cfe8c277b56147380d5831eef4ee1",
+      "active_sha256": "08fee25462ee32e5c956184edbb97ae0407cfe8c277b56147380d5831eef4ee1",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/main.tsx",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "9f9ef166de985856f5b8b50efcf3b91661d42b82804acab707fb8066c8b7a01c",
+      "active_sha256": "9f9ef166de985856f5b8b50efcf3b91661d42b82804acab707fb8066c8b7a01c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/novnc.d.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b8f5019082f10b64520a206fc48f27a763ec6d29d3b3f6c16f1e9f913f092672",
+      "active_sha256": "b8f5019082f10b64520a206fc48f27a763ec6d29d3b3f6c16f1e9f913f092672",
+      "quarantine": null,
       "link": false
     },
     {
@@ -270,7 +900,7 @@
       "original_sha256": "bbb3adb01befe55f0d3ebd9ac5f0a15c57219f2e07a1f1f8270f1e1a0dc1886b",
       "active_sha256": "bbb3adb01befe55f0d3ebd9ac5f0a15c57219f2e07a1f1f8270f1e1a0dc1886b",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/web/src/store/graph.ts",
@@ -279,7 +909,7 @@
       "original_sha256": "b2a2b634f826ec722b0cc8fc887b02b02cf27c8a58b2386ddae37f898c30d616",
       "active_sha256": "b2a2b634f826ec722b0cc8fc887b02b02cf27c8a58b2386ddae37f898c30d616",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/web/src/store/session.ts",
@@ -288,7 +918,7 @@
       "original_sha256": "f1c17631f7ffe2cbb70b239119b426e2d75ed948732bd142f9b321f1e452ac4c",
       "active_sha256": "f1c17631f7ffe2cbb70b239119b426e2d75ed948732bd142f9b321f1e452ac4c",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/web/src/store/shells.test.ts",
@@ -297,7 +927,7 @@
       "original_sha256": "61c91bab174eb8a5df52255c818d592af69cd27c98a0eb8c2ab8ae1e4822398d",
       "active_sha256": "61c91bab174eb8a5df52255c818d592af69cd27c98a0eb8c2ab8ae1e4822398d",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/web/src/store/shells.ts",
@@ -306,7 +936,7 @@
       "original_sha256": "03d30213c6f6db74747ab60864d88c033fcd251ca640df21844e5db81b271b66",
       "active_sha256": "03d30213c6f6db74747ab60864d88c033fcd251ca640df21844e5db81b271b66",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/web/src/store/ui.test.ts",
@@ -315,7 +945,7 @@
       "original_sha256": "74d005af427c70706e555fd9426cfe5de8084389cac88adc48044b8e924fde98",
       "active_sha256": "74d005af427c70706e555fd9426cfe5de8084389cac88adc48044b8e924fde98",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/web/src/store/ui.ts",
@@ -324,7 +954,7 @@
       "original_sha256": "e990a90f5384d1b98cdb9eca35b7dd28075be86f489c157ca6324ab13fde7b9e",
       "active_sha256": "e990a90f5384d1b98cdb9eca35b7dd28075be86f489c157ca6324ab13fde7b9e",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/web/src/store/workspace.test.ts",
@@ -333,7 +963,7 @@
       "original_sha256": "7e40a2b08cc534c38839ecf31adfe06092939aada61f0a2b46ac10b8a317c13e",
       "active_sha256": "7e40a2b08cc534c38839ecf31adfe06092939aada61f0a2b46ac10b8a317c13e",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/web/src/store/workspace.ts",
@@ -341,6 +971,15 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "3ac5cab92dc572516a80568eb75bfab1cec1d907bcc38d95f745d8ed1baf6ee1",
       "active_sha256": "3ac5cab92dc572516a80568eb75bfab1cec1d907bcc38d95f745d8ed1baf6ee1",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "apps/web/src/vite-env.d.ts",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "df77f5e05eda35bc8ccea8a9a205180c71e66caee80eecffea3817b9c0f5f49a",
+      "active_sha256": "df77f5e05eda35bc8ccea8a9a205180c71e66caee80eecffea3817b9c0f5f49a",
       "quarantine": null,
       "link": false
     },
@@ -351,6 +990,15 @@
       "original_sha256": "f213f214076ef8746a97166e43228f97de4c9a32caf8e3e649dc45f25daaa3ef",
       "active_sha256": "f213f214076ef8746a97166e43228f97de4c9a32caf8e3e649dc45f25daaa3ef",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "apps/worker/worker/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "838a72127a037a797eac3eceb9b9d552794a01479a9d0936372db7594480a1e5",
+      "active_sha256": "838a72127a037a797eac3eceb9b9d552794a01479a9d0936372db7594480a1e5",
+      "quarantine": null,
       "link": false
     },
     {
@@ -360,7 +1008,7 @@
       "original_sha256": "76a73722681ee44f042fcbf0734ec7c9d9e6afa8eac310cd3b6cb6077410f6e5",
       "active_sha256": "76a73722681ee44f042fcbf0734ec7c9d9e6afa8eac310cd3b6cb6077410f6e5",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "apps/worker/worker/tasks.py",
@@ -368,6 +1016,24 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "76420d88ef7cb4e6a4627e6455e3f34f47e5635d09093f4734121a24c31424ac",
       "active_sha256": "76420d88ef7cb4e6a4627e6455e3f34f47e5635d09093f4734121a24c31424ac",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "conftest.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "4421a074ecfce2f41f25da437aa809eb399a5b05622a4034573376550f3f2e77",
+      "active_sha256": "4421a074ecfce2f41f25da437aa809eb399a5b05622a4034573376550f3f2e77",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "deploy.sh",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "dfa82ad4aece1ae317c46a03221f199346226e886a82371a74d3c621600ece3e",
+      "active_sha256": "dfa82ad4aece1ae317c46a03221f199346226e886a82371a74d3c621600ece3e",
       "quarantine": null,
       "link": false
     },
@@ -378,7 +1044,7 @@
       "original_sha256": "43fb203a0568b3a8e21ccd54df4fad0bb805816c44e4d0f01f7851db9220452d",
       "active_sha256": "43fb203a0568b3a8e21ccd54df4fad0bb805816c44e4d0f01f7851db9220452d",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/api-client/src/factory.ts",
@@ -387,7 +1053,7 @@
       "original_sha256": "b1ffb087abe54084ca3cb48b90a85ebbdbbf4639b7aeb4484f6cc0a5352da744",
       "active_sha256": "b1ffb087abe54084ca3cb48b90a85ebbdbbf4639b7aeb4484f6cc0a5352da744",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/api-client/src/http/httpClient.ts",
@@ -396,7 +1062,7 @@
       "original_sha256": "fdf67da9b0fcde0b28a54bc477d704c0c4007777204026cc6415c272b5f547f3",
       "active_sha256": "fdf67da9b0fcde0b28a54bc477d704c0c4007777204026cc6415c272b5f547f3",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/api-client/src/index.ts",
@@ -405,7 +1071,7 @@
       "original_sha256": "5770cb0c513a48dd26911d8c09883e64062dcfd9f3ff7d40d33911aee437b2cf",
       "active_sha256": "5770cb0c513a48dd26911d8c09883e64062dcfd9f3ff7d40d33911aee437b2cf",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/api-client/src/mock/fixtures.ts",
@@ -414,7 +1080,7 @@
       "original_sha256": "937d09a2ee316a8bdffb52f20c3d6e1289eedad701043fda73de4d233e705406",
       "active_sha256": "937d09a2ee316a8bdffb52f20c3d6e1289eedad701043fda73de4d233e705406",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/api-client/src/mock/mockClient.ts",
@@ -423,7 +1089,7 @@
       "original_sha256": "b2ea000b9b6aab2602302efda9fab1e5a4fc83fa3ad2130563cf429dec86b7d7",
       "active_sha256": "b2ea000b9b6aab2602302efda9fab1e5a4fc83fa3ad2130563cf429dec86b7d7",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/api-client/src/types.ts",
@@ -431,6 +1097,24 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "a1db862dcccbbaefc2c02460a6e70843672a18b8a8df5dcb81f48f273d4815a7",
       "active_sha256": "a1db862dcccbbaefc2c02460a6e70843672a18b8a8df5dcb81f48f273d4815a7",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "packages/core/redcell_core/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "3ac65641566d5d6e5655c85405ce0805555cd560b35c250fb970024443e025f3",
+      "active_sha256": "3ac65641566d5d6e5655c85405ce0805555cd560b35c250fb970024443e025f3",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/alembic/env.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "20419174e75024196fe3ff15ed0f52e0e313102bc96bea931f71308f80cc044b",
+      "active_sha256": "20419174e75024196fe3ff15ed0f52e0e313102bc96bea931f71308f80cc044b",
       "quarantine": null,
       "link": false
     },
@@ -441,7 +1125,7 @@
       "original_sha256": "58fdbb3f2504572a24101a8a8c69d84932ee0e0b57393620d74ceb8e38b87d61",
       "active_sha256": "58fdbb3f2504572a24101a8a8c69d84932ee0e0b57393620d74ceb8e38b87d61",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/alembic/versions/a5b6c7d8e9f0_report_artifacts_branding.py",
@@ -450,7 +1134,7 @@
       "original_sha256": "04813b617c350e2418ac52a9f30702fae8f5a37b0a5eae0083d83059f92db58b",
       "active_sha256": "04813b617c350e2418ac52a9f30702fae8f5a37b0a5eae0083d83059f92db58b",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/alembic/versions/b7c8d9e0f1a2_session_brief_run_instruction.py",
@@ -459,7 +1143,7 @@
       "original_sha256": "35faa1af2fa7db5735a1fc175990627b02f50dcc7a87d323c49d7297b0150516",
       "active_sha256": "35faa1af2fa7db5735a1fc175990627b02f50dcc7a87d323c49d7297b0150516",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/alembic/versions/bfbe26b46a24_provider_credentials_run_provider.py",
@@ -468,7 +1152,7 @@
       "original_sha256": "4ed116f87cafa9e9e10f78af7120769629173fc3b269763a28ac3e955348e243",
       "active_sha256": "4ed116f87cafa9e9e10f78af7120769629173fc3b269763a28ac3e955348e243",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/alembic/versions/c1a2b3d4e5f6_session_kind_server_proxy_model.py",
@@ -476,6 +1160,33 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "87a5d2ba624b510213647ead2e3200db32625d58736b54d0b1bc1db2121720ef",
       "active_sha256": "87a5d2ba624b510213647ead2e3200db32625d58736b54d0b1bc1db2121720ef",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "packages/core/redcell_core/alembic/versions/c9d0e1f2a3b4_notifications.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "6246d782af30c7ac98a91ec0ae79584a6c6ce58e2a918aab93938c909caea1ca",
+      "active_sha256": "6246d782af30c7ac98a91ec0ae79584a6c6ce58e2a918aab93938c909caea1ca",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/alembic/versions/d2b3c4e5f6a7_server_connection_facts.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "26ad512508c6eaaca71d21abd6415a0f5d9165bb60d6386b131c3b70ba7eaf82",
+      "active_sha256": "26ad512508c6eaaca71d21abd6415a0f5d9165bb60d6386b131c3b70ba7eaf82",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/alembic/versions/d5e6f7a8b9c0_secrets.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b359521ec68f21041b421c47ae3fc799b8c8e1730b9a5e7556183db5c2464540",
+      "active_sha256": "b359521ec68f21041b421c47ae3fc799b8c8e1730b9a5e7556183db5c2464540",
       "quarantine": null,
       "link": false
     },
@@ -486,6 +1197,15 @@
       "original_sha256": "6f108e6ea9ba67622eccc51a18bf29ff813e662c6012e66c51777bdb59ff7844",
       "active_sha256": "6f108e6ea9ba67622eccc51a18bf29ff813e662c6012e66c51777bdb59ff7844",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "packages/core/redcell_core/alembic/versions/e6f7a8b9c0d1_onboarding.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "17a47b6d0c3d9a583f73527c0e5bf4c3468283909258fc3e64e83e9637af6fe9",
+      "active_sha256": "17a47b6d0c3d9a583f73527c0e5bf4c3468283909258fc3e64e83e9637af6fe9",
+      "quarantine": null,
       "link": false
     },
     {
@@ -494,6 +1214,15 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "396872ac2cae548c1b1b9d0061edcbb2c5b13c28bb1d9d57d5ce7ad0deab6fba",
       "active_sha256": "396872ac2cae548c1b1b9d0061edcbb2c5b13c28bb1d9d57d5ce7ad0deab6fba",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "packages/core/redcell_core/bus.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b375f6b69b104ddff5fb22bcf7ea29fad26f7708c1f29dc9ef4c1dc50d4cd6bc",
+      "active_sha256": "b375f6b69b104ddff5fb22bcf7ea29fad26f7708c1f29dc9ef4c1dc50d4cd6bc",
       "quarantine": null,
       "link": false
     },
@@ -504,7 +1233,7 @@
       "original_sha256": "e0b3f131e11274dacb3ad339c22edcd9053d81cb7680c2f2a83163b227605067",
       "active_sha256": "e0b3f131e11274dacb3ad339c22edcd9053d81cb7680c2f2a83163b227605067",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/cli.py",
@@ -522,6 +1251,15 @@
       "original_sha256": "810cc3a798f93a80983cb14cbf71e739a4944aa0ed7cadf767579e3adf270c16",
       "active_sha256": "810cc3a798f93a80983cb14cbf71e739a4944aa0ed7cadf767579e3adf270c16",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "packages/core/redcell_core/crypto.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "7ddb7de84058f003c48a05fd08ba4eeabbc7d8dd96cdfc0cccef6554d62f9d0d",
+      "active_sha256": "7ddb7de84058f003c48a05fd08ba4eeabbc7d8dd96cdfc0cccef6554d62f9d0d",
+      "quarantine": null,
       "link": false
     },
     {
@@ -530,6 +1268,33 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "a97441f1379a1cd450bf1e74f17f2952e85c6ba5df81eb2c7bc7e15b72632b22",
       "active_sha256": "a97441f1379a1cd450bf1e74f17f2952e85c6ba5df81eb2c7bc7e15b72632b22",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "packages/core/redcell_core/engine/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "def487d73d7372949e4024e91e5a29139e520d13a058ab7ee9082349e76c457e",
+      "active_sha256": "def487d73d7372949e4024e91e5a29139e520d13a058ab7ee9082349e76c457e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/engine/assistant.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "a330170a1da4061c8d58a0154507f6dc08194accc8f2757f78adb9ff6de9e41a",
+      "active_sha256": "a330170a1da4061c8d58a0154507f6dc08194accc8f2757f78adb9ff6de9e41a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/engine/browser.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "92c61a492bc31ced9960ad514b2fc2cc44a0acefde5ff0d193261f77ab856a8a",
+      "active_sha256": "92c61a492bc31ced9960ad514b2fc2cc44a0acefde5ff0d193261f77ab856a8a",
       "quarantine": null,
       "link": false
     },
@@ -540,7 +1305,7 @@
       "original_sha256": "22aa8652e100ce9a89cd012004d3445bf68c614af4317b83eaa442880edd2a22",
       "active_sha256": "22aa8652e100ce9a89cd012004d3445bf68c614af4317b83eaa442880edd2a22",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/engine/execution.py",
@@ -552,11 +1317,38 @@
       "link": true
     },
     {
+      "path": "packages/core/redcell_core/engine/listeners.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ae4805eb7c8faffc2b9a82793182b977b22a9f25da1511cd2ac7f421ebd46913",
+      "active_sha256": "ae4805eb7c8faffc2b9a82793182b977b22a9f25da1511cd2ac7f421ebd46913",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/engine/live.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b789fd184cdc8a987c05bd1b613958a353bf7b04b67dd7d4cf8a4b15cd728d04",
+      "active_sha256": "b789fd184cdc8a987c05bd1b613958a353bf7b04b67dd7d4cf8a4b15cd728d04",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "packages/core/redcell_core/engine/llm.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "228341f67d76802f94bdf4f6dc067a98efadc84020ec36448d8173190b9a93d3",
       "active_sha256": "228341f67d76802f94bdf4f6dc067a98efadc84020ec36448d8173190b9a93d3",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "packages/core/redcell_core/engine/msf.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "11edb311122267c3c424c67d1741e02659671880c7c0ebedb164ed5bf612ad90",
+      "active_sha256": "11edb311122267c3c424c67d1741e02659671880c7c0ebedb164ed5bf612ad90",
       "quarantine": null,
       "link": false
     },
@@ -579,13 +1371,40 @@
       "link": true
     },
     {
+      "path": "packages/core/redcell_core/engine/opshell.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "f551ac63dad5c98feee82cd80131810e78b8fb999d3a339be95d01f7fd7d3a2b",
+      "active_sha256": "f551ac63dad5c98feee82cd80131810e78b8fb999d3a339be95d01f7fd7d3a2b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/engine/pivot.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "88629d0ab126a66213aaf3aad0d9ec6a95a4126dbef46bc4ead220e5a055e288",
+      "active_sha256": "88629d0ab126a66213aaf3aad0d9ec6a95a4126dbef46bc4ead220e5a055e288",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/engine/pricing.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "adedb68ed0fcb94ecaa0194f764f5372f0f877112edb306a7341a61d7def90f4",
+      "active_sha256": "adedb68ed0fcb94ecaa0194f764f5372f0f877112edb306a7341a61d7def90f4",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "packages/core/redcell_core/engine/reporting/__init__.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "84f553dae38a8d564d0483ab25c6662cee4ac4c87624a678457f92099ab13f53",
       "active_sha256": "84f553dae38a8d564d0483ab25c6662cee4ac4c87624a678457f92099ab13f53",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/engine/reporting/generate.py",
@@ -594,7 +1413,7 @@
       "original_sha256": "35452af3f21001fd947029667a7bfa9cc55780589f5392f9da8d1cbecea12801",
       "active_sha256": "35452af3f21001fd947029667a7bfa9cc55780589f5392f9da8d1cbecea12801",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/engine/reporting/narrative.py",
@@ -603,7 +1422,7 @@
       "original_sha256": "c941354bd01296c688eeaefb61815c0fdb61a843369ba1d036097f0057111703",
       "active_sha256": "c941354bd01296c688eeaefb61815c0fdb61a843369ba1d036097f0057111703",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/engine/reporting/pdf.py",
@@ -612,7 +1431,7 @@
       "original_sha256": "bdb07a356d7d1c666a7293070736856f827423241e6f11f1e57b3553c3717f0e",
       "active_sha256": "bdb07a356d7d1c666a7293070736856f827423241e6f11f1e57b3553c3717f0e",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/engine/reporting/sarif.py",
@@ -621,7 +1440,7 @@
       "original_sha256": "935377afc7ecfd34005e1429f369d6fc15adcab4ad4f8c6fa8e555c4b8825d0b",
       "active_sha256": "935377afc7ecfd34005e1429f369d6fc15adcab4ad4f8c6fa8e555c4b8825d0b",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/engine/reporting/text.py",
@@ -630,7 +1449,7 @@
       "original_sha256": "a2de3ef03bd962a20bbc1ce2e07e592ab91bb3d85e350ed98621998605856213",
       "active_sha256": "a2de3ef03bd962a20bbc1ce2e07e592ab91bb3d85e350ed98621998605856213",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/engine/runner.py",
@@ -642,11 +1461,65 @@
       "link": true
     },
     {
+      "path": "packages/core/redcell_core/engine/scope.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "28683ffe131979a0ccd9730033d709872f75f5f17dffa30acb25871ca66498bd",
+      "active_sha256": "28683ffe131979a0ccd9730033d709872f75f5f17dffa30acb25871ca66498bd",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/engine/simulator.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "efffbdb4df307c6770e320ffa49a85ab0e1cf051b6ad39414ca04cfc5af31416",
+      "active_sha256": "efffbdb4df307c6770e320ffa49a85ab0e1cf051b6ad39414ca04cfc5af31416",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/engine/tools.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "a72a168181418e96b452066acc112a02e0d336aed889ce8a1c3c54bcaabeb473",
+      "active_sha256": "a72a168181418e96b452066acc112a02e0d336aed889ce8a1c3c54bcaabeb473",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/engine/webscan.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "cd13f29c43ffd81860e5526e30c58b6181567f23c1cb2d87eb0fec88e81e0d4f",
+      "active_sha256": "cd13f29c43ffd81860e5526e30c58b6181567f23c1cb2d87eb0fec88e81e0d4f",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "packages/core/redcell_core/events.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "68f8270a582d99582dc00416a2df564e8f9adfec3df4ba8eb97654eb353f4200",
       "active_sha256": "68f8270a582d99582dc00416a2df564e8f9adfec3df4ba8eb97654eb353f4200",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "packages/core/redcell_core/keys.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ed147915aec54d92a13ae7f0d4fa382c9f1aab134cc30590407d9cb524f4f8b9",
+      "active_sha256": "ed147915aec54d92a13ae7f0d4fa382c9f1aab134cc30590407d9cb524f4f8b9",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/logs.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ce94e38bfec7e42d3f9b461c0c72ee2d7b6fd329111785992023ba859aa8749a",
+      "active_sha256": "ce94e38bfec7e42d3f9b461c0c72ee2d7b6fd329111785992023ba859aa8749a",
       "quarantine": null,
       "link": false
     },
@@ -657,7 +1530,7 @@
       "original_sha256": "317cd09b879afaa3f5c9a3a94ab90e0122000306380acc637eccaaeffc5c5b93",
       "active_sha256": "317cd09b879afaa3f5c9a3a94ab90e0122000306380acc637eccaaeffc5c5b93",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/models/agent.py",
@@ -666,7 +1539,7 @@
       "original_sha256": "8fea83dbaddb92dbb464b6385d6cdea5aa6f02c455f0f4dba6fdae3ec03d2b2e",
       "active_sha256": "8fea83dbaddb92dbb464b6385d6cdea5aa6f02c455f0f4dba6fdae3ec03d2b2e",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/models/chat.py",
@@ -675,7 +1548,7 @@
       "original_sha256": "02c9c85008806d219f2ca3d3f03b965102f8e8a5a89d1b4d01e1043d161fd5e3",
       "active_sha256": "02c9c85008806d219f2ca3d3f03b965102f8e8a5a89d1b4d01e1043d161fd5e3",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/models/event.py",
@@ -684,7 +1557,7 @@
       "original_sha256": "a4aaeaad7e841eb6b91ae89cb39fba7b0c96bbc6f534ea9a65b6b89afc61b2b4",
       "active_sha256": "a4aaeaad7e841eb6b91ae89cb39fba7b0c96bbc6f534ea9a65b6b89afc61b2b4",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/models/file.py",
@@ -693,7 +1566,7 @@
       "original_sha256": "8fcbc16d876d0bb44f71a1f77861e19536a33af9c4f453965217e58be325fc33",
       "active_sha256": "8fcbc16d876d0bb44f71a1f77861e19536a33af9c4f453965217e58be325fc33",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/models/finding.py",
@@ -702,7 +1575,7 @@
       "original_sha256": "b061d29ab8289f6405ad1cc770f2e79a1e04657b1e5a4e632703ec8b5a019dbf",
       "active_sha256": "b061d29ab8289f6405ad1cc770f2e79a1e04657b1e5a4e632703ec8b5a019dbf",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/models/host.py",
@@ -711,7 +1584,7 @@
       "original_sha256": "6c3fd44bd4475bf0eb340740279b10733b6004edbf3eafa0110d1bc118eb85db",
       "active_sha256": "6c3fd44bd4475bf0eb340740279b10733b6004edbf3eafa0110d1bc118eb85db",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/models/listener.py",
@@ -720,7 +1593,7 @@
       "original_sha256": "82829a5ea0b0fec7d2514ad7bf07eee8df4d542a603e35203f1ca8e89faf1ba7",
       "active_sha256": "82829a5ea0b0fec7d2514ad7bf07eee8df4d542a603e35203f1ca8e89faf1ba7",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/models/loot.py",
@@ -729,7 +1602,7 @@
       "original_sha256": "91674cdd76cbe99edb4d4d6b1b341d78d07ab5197a9337450ac154fd36190c90",
       "active_sha256": "91674cdd76cbe99edb4d4d6b1b341d78d07ab5197a9337450ac154fd36190c90",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/models/notification.py",
@@ -738,7 +1611,7 @@
       "original_sha256": "b5dce03e227b6180a9e0459adb88f3a22edadd57ea04fc557a88630656564c46",
       "active_sha256": "b5dce03e227b6180a9e0459adb88f3a22edadd57ea04fc557a88630656564c46",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/models/provider.py",
@@ -747,7 +1620,7 @@
       "original_sha256": "220b0b4d7706ea051024e1e6d6bed7aba3982e17f3ad90d629e0f2ad6c54211b",
       "active_sha256": "220b0b4d7706ea051024e1e6d6bed7aba3982e17f3ad90d629e0f2ad6c54211b",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/models/provider_credential.py",
@@ -756,7 +1629,7 @@
       "original_sha256": "dd7eb05e0516bd9cba872ef21cb2a629ba6b34b5addcebf9666e7e77089742f0",
       "active_sha256": "dd7eb05e0516bd9cba872ef21cb2a629ba6b34b5addcebf9666e7e77089742f0",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/models/proxy.py",
@@ -765,7 +1638,7 @@
       "original_sha256": "1c7424375f519153d41f67e41ebfb5c114b96d2e4a233a33250edcb650eb02e2",
       "active_sha256": "1c7424375f519153d41f67e41ebfb5c114b96d2e4a233a33250edcb650eb02e2",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/models/proxy_entry.py",
@@ -774,7 +1647,7 @@
       "original_sha256": "aa36411fb78d36315f0ccad75f309dcf121f7fa1b818ad8730764612d7a0f26e",
       "active_sha256": "aa36411fb78d36315f0ccad75f309dcf121f7fa1b818ad8730764612d7a0f26e",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/models/report.py",
@@ -783,7 +1656,7 @@
       "original_sha256": "37557eef2cdf7ec5fa13b44200954ff7fb6a5f95a53238390a5ba9f15691566f",
       "active_sha256": "37557eef2cdf7ec5fa13b44200954ff7fb6a5f95a53238390a5ba9f15691566f",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/models/run.py",
@@ -792,7 +1665,7 @@
       "original_sha256": "d4c15f701a66a072c48be8ae595f83509ed9e7ed4f9054a426bd77939fc57294",
       "active_sha256": "d4c15f701a66a072c48be8ae595f83509ed9e7ed4f9054a426bd77939fc57294",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/models/secret.py",
@@ -801,7 +1674,7 @@
       "original_sha256": "a79ae596b04666636b007402da52bbb172d5c55d33198545f30351c2187deb73",
       "active_sha256": "a79ae596b04666636b007402da52bbb172d5c55d33198545f30351c2187deb73",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/models/server.py",
@@ -810,7 +1683,7 @@
       "original_sha256": "e576bb1c8c5ed5096b421f11a8360dda024dbd8b72a2fff5a578cec7d1901f69",
       "active_sha256": "e576bb1c8c5ed5096b421f11a8360dda024dbd8b72a2fff5a578cec7d1901f69",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/models/session.py",
@@ -819,7 +1692,7 @@
       "original_sha256": "4a14d3f5397339fb32e873df40748ef7204803f91b419f0e5898af335841e231",
       "active_sha256": "4a14d3f5397339fb32e873df40748ef7204803f91b419f0e5898af335841e231",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/models/settings.py",
@@ -828,7 +1701,7 @@
       "original_sha256": "7e7bc810ac5162276e6dea47913ccfc3a829e0759e04829570090f85daa6abd9",
       "active_sha256": "7e7bc810ac5162276e6dea47913ccfc3a829e0759e04829570090f85daa6abd9",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/models/shell.py",
@@ -837,7 +1710,7 @@
       "original_sha256": "77d521677b062ad9f63267c34b5f2e400cd0d0a5b6b947daed8250962a909d93",
       "active_sha256": "77d521677b062ad9f63267c34b5f2e400cd0d0a5b6b947daed8250962a909d93",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/models/user.py",
@@ -846,7 +1719,7 @@
       "original_sha256": "788a951e7e7f069b7d07decf492cf829970c55d89556376a6c683ab62846bcb0",
       "active_sha256": "788a951e7e7f069b7d07decf492cf829970c55d89556376a6c683ab62846bcb0",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/probe.py",
@@ -864,6 +1737,42 @@
       "original_sha256": "2e563e1eb296934e7dc09b3e109ff7227d2f3b68765393db59c22572b4f5d1c3",
       "active_sha256": "2e563e1eb296934e7dc09b3e109ff7227d2f3b68765393db59c22572b4f5d1c3",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "packages/core/redcell_core/repositories/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b3c6ae664437c0b294be9fa3afaa7171b7f668745e1c24f43c0241f944d0097c",
+      "active_sha256": "b3c6ae664437c0b294be9fa3afaa7171b7f668745e1c24f43c0241f944d0097c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/repositories/_query.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "8a52c9e4ffb64627204ae42878c7c604cb8da3640241a91538bb119893aa0b8d",
+      "active_sha256": "8a52c9e4ffb64627204ae42878c7c604cb8da3640241a91538bb119893aa0b8d",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/repositories/agents.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ea3458b4bb5f1adeaf78cd34f63f2188345735c7c325d597e09bcdeaa98c9640",
+      "active_sha256": "ea3458b4bb5f1adeaf78cd34f63f2188345735c7c325d597e09bcdeaa98c9640",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/repositories/chat.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d4fc35e969d9bc2b492f027193719f5c4702fd559fd27e15424d18195e0de032",
+      "active_sha256": "d4fc35e969d9bc2b492f027193719f5c4702fd559fd27e15424d18195e0de032",
+      "quarantine": null,
       "link": false
     },
     {
@@ -872,6 +1781,69 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "11bb1b5a2a3af050981f09b64ec31573e027c75fc10c658afd96f02965a880b3",
       "active_sha256": "11bb1b5a2a3af050981f09b64ec31573e027c75fc10c658afd96f02965a880b3",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "packages/core/redcell_core/repositories/files.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b2874c935b2fd985cf09e135c1490fb430d5c74c415a32387569e1c5079db00c",
+      "active_sha256": "b2874c935b2fd985cf09e135c1490fb430d5c74c415a32387569e1c5079db00c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/repositories/findings.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "a751f599c93baca8654d0f1dc337939a231cf75352da538bdd61d7fa67512dda",
+      "active_sha256": "a751f599c93baca8654d0f1dc337939a231cf75352da538bdd61d7fa67512dda",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/repositories/hosts.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d0241ce15d71db53cfc56ddb12848eded0ed87f333b5d1aa38a9cc29d0f6a10a",
+      "active_sha256": "d0241ce15d71db53cfc56ddb12848eded0ed87f333b5d1aa38a9cc29d0f6a10a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/repositories/ids.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "9ae37f38f4cdad562884a672fd5aa3e52da18db894959a652cf96ac40e06c1ef",
+      "active_sha256": "9ae37f38f4cdad562884a672fd5aa3e52da18db894959a652cf96ac40e06c1ef",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/repositories/listeners.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "fcc1a935047bd925dfae079cfb9c6be7998307caf9b31808ba2854d0391ec4c9",
+      "active_sha256": "fcc1a935047bd925dfae079cfb9c6be7998307caf9b31808ba2854d0391ec4c9",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/repositories/loot.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e2fd00e73a7c8cf49488c9b3e589003a3d0d60e16f14ea4548c731e305047c81",
+      "active_sha256": "e2fd00e73a7c8cf49488c9b3e589003a3d0d60e16f14ea4548c731e305047c81",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/repositories/notifications.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "4de604250719b7c69b77344d10401c3003500d6ee7a61db05b75b7977ea9d968",
+      "active_sha256": "4de604250719b7c69b77344d10401c3003500d6ee7a61db05b75b7977ea9d968",
       "quarantine": null,
       "link": false
     },
@@ -882,7 +1854,7 @@
       "original_sha256": "260f63d1dfd8ad0d99791518d84d381d5e2aa07a3bfb117013281c1494ad8434",
       "active_sha256": "260f63d1dfd8ad0d99791518d84d381d5e2aa07a3bfb117013281c1494ad8434",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/repositories/providers.py",
@@ -890,6 +1862,24 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "f925e8ea6c8ee83e94744cbe936a97cac2644e6f9d838c3235ab89f93ba178d2",
       "active_sha256": "f925e8ea6c8ee83e94744cbe936a97cac2644e6f9d838c3235ab89f93ba178d2",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "packages/core/redcell_core/repositories/proxies.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "725ac56b2515dcfeba31b13fe26c02efb1ff965c34d8face8fdb4d1162bccc11",
+      "active_sha256": "725ac56b2515dcfeba31b13fe26c02efb1ff965c34d8face8fdb4d1162bccc11",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/repositories/proxy_entries.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "3607e0a84d98dc16dc69f786a72b2d652c006bc76dcef2d0815ad96f7dba4806",
+      "active_sha256": "3607e0a84d98dc16dc69f786a72b2d652c006bc76dcef2d0815ad96f7dba4806",
       "quarantine": null,
       "link": false
     },
@@ -900,6 +1890,33 @@
       "original_sha256": "844ef8fbcb1ef072eb232a15eedd35273a9c0eb2860775efc2247ec405fb6b0c",
       "active_sha256": "844ef8fbcb1ef072eb232a15eedd35273a9c0eb2860775efc2247ec405fb6b0c",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "packages/core/redcell_core/repositories/runs.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "88b356f1c9c5497ef5903669f7b602d1be3810b6a18f0697a3d2a7d1eafa0a91",
+      "active_sha256": "88b356f1c9c5497ef5903669f7b602d1be3810b6a18f0697a3d2a7d1eafa0a91",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/repositories/secrets.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "724bb49aa3faf77b73c87153497b7d50f43f1f62c79f5bc35c354d3ba1a8db81",
+      "active_sha256": "724bb49aa3faf77b73c87153497b7d50f43f1f62c79f5bc35c354d3ba1a8db81",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/repositories/servers.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "47b7856e0e26d41c41ad93fb71cdd4ce33c278d3581896ced5daf6fa681e0ae1",
+      "active_sha256": "47b7856e0e26d41c41ad93fb71cdd4ce33c278d3581896ced5daf6fa681e0ae1",
+      "quarantine": null,
       "link": false
     },
     {
@@ -909,7 +1926,7 @@
       "original_sha256": "c7e3a45134730c7686c352516cdeac77427fe1b6edd7186c3d120e2f0d96d0cf",
       "active_sha256": "c7e3a45134730c7686c352516cdeac77427fe1b6edd7186c3d120e2f0d96d0cf",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "packages/core/redcell_core/repositories/settings.py",
@@ -917,6 +1934,24 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "0d81d18d77856a1fa825dfab1fefe11fb9e4646ab2f95ca174cae9ff3522423b",
       "active_sha256": "0d81d18d77856a1fa825dfab1fefe11fb9e4646ab2f95ca174cae9ff3522423b",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "packages/core/redcell_core/repositories/shells.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b4cd4ee8e366bc7a42cfaec4d8d19a6220cf5091984cd2897dcd81db2b8a2c62",
+      "active_sha256": "b4cd4ee8e366bc7a42cfaec4d8d19a6220cf5091984cd2897dcd81db2b8a2c62",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/repositories/users.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "eb120f9609efd0be8f4062cb8859fd6bae23e79b6e0aadaa823af26892a070f9",
+      "active_sha256": "eb120f9609efd0be8f4062cb8859fd6bae23e79b6e0aadaa823af26892a070f9",
       "quarantine": null,
       "link": false
     },
@@ -927,6 +1962,33 @@
       "original_sha256": "1e625ae54accc8e951e31a7ca29c3033d9665255dd3052a45f69010fdd36e84f",
       "active_sha256": "1e625ae54accc8e951e31a7ca29c3033d9665255dd3052a45f69010fdd36e84f",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "packages/core/redcell_core/security.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "247b397896d77cd7961da48294b33416f1015d88bd084279d99fdab9ceb49bbe",
+      "active_sha256": "247b397896d77cd7961da48294b33416f1015d88bd084279d99fdab9ceb49bbe",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/seed.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "6958b385bd53c44dd445bdc2f316d3416739eeaf8ad41a456bcdf6c31c0f3fd6",
+      "active_sha256": "6958b385bd53c44dd445bdc2f316d3416739eeaf8ad41a456bcdf6c31c0f3fd6",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/steer.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1e9b772ab72385a9477e27d1ca943110bb9b399f82146915276333d391747b78",
+      "active_sha256": "1e9b772ab72385a9477e27d1ca943110bb9b399f82146915276333d391747b78",
+      "quarantine": null,
       "link": false
     },
     {
@@ -936,14 +1998,17 @@
       "original_sha256": "3a603831c09f99f76e347e16b3e43fb5adc8e3c237e2cdc81ebec25eca68f6e0",
       "active_sha256": "3a603831c09f99f76e347e16b3e43fb5adc8e3c237e2cdc81ebec25eca68f6e0",
       "quarantine": null,
-      "link": false
+      "link": true
     }
   ],
   "counts": {
-    "accounted": 103,
+    "accounted": 221,
+    "keep_unchanged": 118,
     "restored_benign": 92,
     "blocked_offensive": 5,
     "review_fail_closed": 6,
-    "links": 11
-  }
+    "links": 103
+  },
+  "source_code_available": true,
+  "source_code_status": "AVAILABLE"
 }

@@ -2,7 +2,7 @@
   "schema": "yaiwes.internal.surgical/v5",
   "component": "🏈 09-Shel",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.1",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.2",
   "policy": {
     "restore_benign": true,
     "offensive_execution": false,
@@ -11,6 +11,15 @@
     "source_execution_during_audit": false
   },
   "files": [
+    {
+      "path": "agent/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
     {
       "path": "agent/autopilot.py",
       "decision": "BLOCK_OFFENSIVE",
@@ -21,13 +30,22 @@
       "link": true
     },
     {
+      "path": "agent/brain.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "ed184cd5fcc57b8bf01244a3fcc1959891e2dc9f3b33a3a406d369f3f9955217",
+      "active_sha256": "ed184cd5fcc57b8bf01244a3fcc1959891e2dc9f3b33a3a406d369f3f9955217",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "agent/checkpoints.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "ce0fb4d199e780458ce0e1d660408415c71b018dd6696199ce5c100155701b5d",
       "active_sha256": "ce0fb4d199e780458ce0e1d660408415c71b018dd6696199ce5c100155701b5d",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "agent/docker.py",
@@ -39,11 +57,29 @@
       "link": true
     },
     {
+      "path": "agent/learner.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "d78df1e7f4ad06a3e061cae38afd93f104fd35db78f6a3f0db3bd16b594317ce",
+      "active_sha256": "d78df1e7f4ad06a3e061cae38afd93f104fd35db78f6a3f0db3bd16b594317ce",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "agent/llm.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "13e0f3ed1f96591d2a12b1a1400a04a9e8594f734f99565631a080b26f460aa4",
       "active_sha256": "13e0f3ed1f96591d2a12b1a1400a04a9e8594f734f99565631a080b26f460aa4",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "agent/output_parser.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "a53ea7005594fd4fc4e5135a531d9c31aa85fb2af10bf2840d4d7dd1dd2d0eef",
+      "active_sha256": "a53ea7005594fd4fc4e5135a531d9c31aa85fb2af10bf2840d4d7dd1dd2d0eef",
       "quarantine": null,
       "link": false
     },
@@ -54,7 +90,7 @@
       "original_sha256": "807fd12608d0ec0839f1765d87f350661d70a5045f97c10f7a63263a273940e6",
       "active_sha256": "807fd12608d0ec0839f1765d87f350661d70a5045f97c10f7a63263a273940e6",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "agent/state.py",
@@ -62,6 +98,42 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "56db3a77788c1536a03dc98c36db55e7d719e7c48b24acff8fb07073dc424270",
       "active_sha256": "56db3a77788c1536a03dc98c36db55e7d719e7c48b24acff8fb07073dc424270",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "agent/sub_agent_runner.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "1af0a5ecf073990fdbec0578340a573d9c666ebf6fc8e807dd3f0bcc65034a59",
+      "active_sha256": "1af0a5ecf073990fdbec0578340a573d9c666ebf6fc8e807dd3f0bcc65034a59",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "agent/sub_agents.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "6b07d532d4685875765c027aebc70c0e40ce4084610c89070ba2731ff09c5724",
+      "active_sha256": "6b07d532d4685875765c027aebc70c0e40ce4084610c89070ba2731ff09c5724",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "agent/swarm.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "654092882a4ef166d1639a531e68867cbd53894d05e883a496e1506b575e1816",
+      "active_sha256": "654092882a4ef166d1639a531e68867cbd53894d05e883a496e1506b575e1816",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "agent/system.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "9657989383fba178b1de7ba28d81aa5f6fa69cda1a2edbafb2cf71dd1b77b46c",
+      "active_sha256": "9657989383fba178b1de7ba28d81aa5f6fa69cda1a2edbafb2cf71dd1b77b46c",
       "quarantine": null,
       "link": false
     },
@@ -84,6 +156,15 @@
       "link": true
     },
     {
+      "path": "benchmark/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "benchmark/runner.py",
       "decision": "REVIEW_FAIL_CLOSED",
       "reason": "previously effectful file without safe classification",
@@ -99,6 +180,24 @@
       "original_sha256": "0112f828ab3559365b61ea142cd3087eb29a9821d601301d3b98633d5f7616e9",
       "active_sha256": "0112f828ab3559365b61ea142cd3087eb29a9821d601301d3b98633d5f7616e9",
       "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "main.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "0c8c0af2591ce2ac8acdb97034b89e180fc192e80116e288f1a1ae160dfc01a3",
+      "active_sha256": "0c8c0af2591ce2ac8acdb97034b89e180fc192e80116e288f1a1ae160dfc01a3",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "modules/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
       "link": false
     },
     {
@@ -108,7 +207,7 @@
       "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "quarantine": null,
-      "link": false
+      "link": true
     },
     {
       "path": "modules/api/server.py",
@@ -116,6 +215,15 @@
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "5ff8027a60bf37e9712eeaef25456d87982bb6850949c91c3f42b4496ea177b9",
       "active_sha256": "5ff8027a60bf37e9712eeaef25456d87982bb6850949c91c3f42b4496ea177b9",
+      "quarantine": null,
+      "link": true
+    },
+    {
+      "path": "modules/evasion/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "quarantine": null,
       "link": false
     },
@@ -136,6 +244,51 @@
       "active_sha256": "dd9c16711fcf8e21e390ebc94b58eceeb8c948b1942418fa1962bd6bbfa04936",
       "quarantine": "_yaiwes_upstream_quarantine/modules/evasion/lolbins.py.original",
       "link": true
+    },
+    {
+      "path": "modules/evasion/polymorph.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "b0bb38d5b0ab8f9ae3ad697b680eda078b3d268de7b1d36bdfe071744927a632",
+      "active_sha256": "b0bb38d5b0ab8f9ae3ad697b680eda078b3d268de7b1d36bdfe071744927a632",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "modules/learner/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "modules/learner/hypothesis.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "5cc805377e4783ef6d3ccdf3148ae2195f4b70084ea81c26163a60ea5410ebb2",
+      "active_sha256": "5cc805377e4783ef6d3ccdf3148ae2195f4b70084ea81c26163a60ea5410ebb2",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "modules/learner/skills.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "4deb071de3f063ff329a7beafe9e8f17851a24604da457842ea4398008f16de5",
+      "active_sha256": "4deb071de3f063ff329a7beafe9e8f17851a24604da457842ea4398008f16de5",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "modules/learner/strategy.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "79f600e7e7fd6cd2487616c5438eaf2779316f5dd0ee1c4b46bab0c02b0405d2",
+      "active_sha256": "79f600e7e7fd6cd2487616c5438eaf2779316f5dd0ee1c4b46bab0c02b0405d2",
+      "quarantine": null,
+      "link": false
     },
     {
       "path": "modules/low_hanging.py",
@@ -174,6 +327,15 @@
       "link": true
     },
     {
+      "path": "modules/social/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "modules/social/deepfake.py",
       "decision": "REVIEW_FAIL_CLOSED",
       "reason": "previously effectful file without safe classification",
@@ -181,6 +343,15 @@
       "active_sha256": "1c01c0ac6b99e46395a5dad479defaa1d096b8f8b5ad29431ebabe83b221eb5b",
       "quarantine": "_yaiwes_upstream_quarantine/modules/social/deepfake.py.original",
       "link": true
+    },
+    {
+      "path": "modules/social/engine.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "9269b4633af3ede7b2636b7235655c811d474e52a4fd37a2f711b82a9ccda8bf",
+      "active_sha256": "9269b4633af3ede7b2636b7235655c811d474e52a4fd37a2f711b82a9ccda8bf",
+      "quarantine": null,
+      "link": false
     },
     {
       "path": "modules/social/phishing.py",
@@ -192,6 +363,15 @@
       "link": true
     },
     {
+      "path": "modules/stego/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "modules/stego/c2.py",
       "decision": "REVIEW_FAIL_CLOSED",
       "reason": "previously effectful file without safe classification",
@@ -199,6 +379,33 @@
       "active_sha256": "4bb9d7af5b86829d3d58f2795e247d364cd85eb4ce51a8e84516ff8de2a112e7",
       "quarantine": "_yaiwes_upstream_quarantine/modules/stego/c2.py.original",
       "link": true
+    },
+    {
+      "path": "modules/stego/stego.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e38c8f34e24ec3fb4ca6a4df8afbbc518c309fa321ccecd3d1ada3b6338b4d78",
+      "active_sha256": "e38c8f34e24ec3fb4ca6a4df8afbbc518c309fa321ccecd3d1ada3b6338b4d78",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "modules/supplychain/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "modules/supplychain/cicd.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "349988d83caa4c3968125ffd19d9494b4ea9f470225f557ebc6114c98616f4af",
+      "active_sha256": "349988d83caa4c3968125ffd19d9494b4ea9f470225f557ebc6114c98616f4af",
+      "quarantine": null,
+      "link": false
     },
     {
       "path": "modules/supplychain/poison.py",
@@ -228,20 +435,41 @@
       "link": true
     },
     {
+      "path": "modules/web/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "modules/writeups/__init__.py",
+      "decision": "KEEP_UNCHANGED",
+      "reason": "audited; no transformation required",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "test_db.py",
       "decision": "RESTORE_BENIGN",
       "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "9f77ef2e2ab1500ebe71efe92fe922347d0c1b45e1d9ab9cf34724fac7719312",
       "active_sha256": "9f77ef2e2ab1500ebe71efe92fe922347d0c1b45e1d9ab9cf34724fac7719312",
       "quarantine": null,
-      "link": false
+      "link": true
     }
   ],
   "counts": {
-    "accounted": 25,
+    "accounted": 50,
+    "keep_unchanged": 25,
     "restored_benign": 8,
     "blocked_offensive": 11,
     "review_fail_closed": 6,
-    "links": 17
-  }
+    "links": 25
+  },
+  "source_code_available": true,
+  "source_code_status": "AVAILABLE"
 }
