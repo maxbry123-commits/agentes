@@ -1,0 +1,58 @@
+{
+  "bundle_bytes": 63149371,
+  "bundle_sha256": "e519d6183818d0d096e5fde9b217f2782faddbdae58eeaeeb5e7e9fe1a8fcad0",
+  "extracted_tree": {
+    "bytes": 68435990,
+    "files": 507,
+    "sha256": "bcb29183c573e82813cfc2df623d20b2ad412b0abe6788de9607675f866a5f4c"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "01-DeepAudit.bundle.zip.part-0001",
+      "sha256": "31e27764ed77afb77bd518ac42261bb2afa454af9b08bc1f2e06d292abcc5746"
+    },
+    {
+      "bytes": 12582912,
+      "name": "01-DeepAudit.bundle.zip.part-0002",
+      "sha256": "8a47ea0260432866146cbc9114a169dac5fb9d4fe170792323204802a5d29074"
+    },
+    {
+      "bytes": 12582912,
+      "name": "01-DeepAudit.bundle.zip.part-0003",
+      "sha256": "f38a83f97d9418b87734417031253d62635bd6ee8829a4f035d5a5255914c4f0"
+    },
+    {
+      "bytes": 12582912,
+      "name": "01-DeepAudit.bundle.zip.part-0004",
+      "sha256": "79275569ce7354b3d2ba0decfa587a6bb0afcad3c316dace8d92beec69c23fea"
+    },
+    {
+      "bytes": 12582912,
+      "name": "01-DeepAudit.bundle.zip.part-0005",
+      "sha256": "370cfd5d07d932ec39e9439c9796a613bea456b5bb08d918d070464a9cb3f728"
+    },
+    {
+      "bytes": 234811,
+      "name": "01-DeepAudit.bundle.zip.part-0006",
+      "sha256": "3ab77f2a3fe5da95f5d3ae0bb69613c44eda9a483836425c291da6d949a8604e"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "01-DeepAudit",
+  "source_bytes": 68435990,
+  "source_commit": "324133fe60b540327d182fbb8c800aa65a613349",
+  "source_files": 507,
+  "source_ref": "HEAD",
+  "source_repo": "lintsinghua/DeepAudit",
+  "source_tree": {
+    "bytes": 68435990,
+    "files": 507,
+    "sha256": "bcb29183c573e82813cfc2df623d20b2ad412b0abe6788de9607675f866a5f4c"
+  }
+}

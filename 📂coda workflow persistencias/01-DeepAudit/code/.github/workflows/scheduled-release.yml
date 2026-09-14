@@ -1,0 +1,79 @@
+name: 定时发布
+
+# 定时触发（每月1号自动发布）
+on:
+  schedule:
+    # 每月1号的 UTC 00:00 (北京时间 08:00)
+    - cron: '0 0 1 * *'
+  
+  # 也支持手动触发
+  workflow_dispatch:
+
+jobs:
+  check-and-release:
+    name: 检查并发布
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+    
+    steps:
+      # 1. 检出代码
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      # 2. 检查是否有新的提交
+      - name: 检查是否有新提交
+        id: check
+        run: |
+          # 获取最后一个 tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          
+          if [ -z "$LAST_TAG" ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "version=v2.0.0" >> $GITHUB_OUTPUT
+          else
+            # 检查自上次 tag 以来是否有新的提交
+            COMMITS_SINCE_TAG=$(git rev-list $LAST_TAG..HEAD --count)
+            
+            if [ "$COMMITS_SINCE_TAG" -gt "0" ]; then
+              echo "has_changes=true" >> $GITHUB_OUTPUT
+              
+              # 自动计算下一个版本号（小版本号 +1）
+              VERSION_NO_V="${LAST_TAG#v}"
+              IFS='.' read -r -a VERSION_PARTS <<< "$VERSION_NO_V"
+              MAJOR="${VERSION_PARTS[0]}"
+              MINOR="${VERSION_PARTS[1]}"
+              PATCH="${VERSION_PARTS[2]}"
+              
+              # 增加 minor 版本
+              NEXT_MINOR=$((MINOR + 1))
+              NEXT_VERSION="v${MAJOR}.${NEXT_MINOR}.0"
+              
+              echo "version=$NEXT_VERSION" >> $GITHUB_OUTPUT
+            else
+              echo "has_changes=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+      
+      # 3. 创建新的 tag
+      - name: 创建版本标签
+        if: steps.check.outputs.has_changes == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a ${{ steps.check.outputs.version }} -m "自动发布: ${{ steps.check.outputs.version }}"
+          git push origin ${{ steps.check.outputs.version }}
+      
+      # 4. 触发发布工作流
+      - name: 触发发布
+        if: steps.check.outputs.has_changes == 'true'
+        run: |
+          echo "✅ 新版本 ${{ steps.check.outputs.version }} 已创建"
+          echo "🚀 Release 工作流将自动开始构建和发布"
+          echo "📦 将发布以下组件："
+          echo "  - 前端 Docker 镜像"
+          echo "  - 后端 Docker 镜像"
+          echo "  - 构建产物和源码包"
