@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Trigger internal 24-component transform run v2.
+# Trigger internal 24-component transform run v3.
 from __future__ import annotations
 
 import ast
@@ -139,11 +139,11 @@ def transform_component(comp: Path):
             ns = s
             if p.suffix.lower() == ".py":
                 ns, n = safe_python(s, str(rel))
-                if n:
+                if n and not has_side_effect(ns):
                     item["kind"] = f"PY_FUNCTIONS:{n}"
                 else:
                     ns = stub(".py", str(rel), s)
-                    item["kind"] = "PY_FILE_STUB"
+                    item["kind"] = f"PY_FILE_STUB_AFTER_FUNCTIONS:{n}"
             else:
                 ns = stub(p.suffix.lower(), str(rel), s)
                 item["kind"] = "SAFE_STUB"
@@ -176,6 +176,9 @@ def validate(reports):
                 except SyntaxError as e: errors.append(f"PY_SYNTAX:{r['component']}:{f['path']}:{e}")
             q=comp/"code"/f["quarantine"]
             if not q.is_file(): errors.append(f"NO_QUARANTINE:{r['component']}:{f['path']}")
+            active = text(p)
+            if active is not None and has_side_effect(active):
+                errors.append(f"RESIDUAL:{r['component']}:{f['path']}")
     return errors
 
 
