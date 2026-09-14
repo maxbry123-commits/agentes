@@ -1,81 +1,11 @@
 {
   "schema": "yaiwes.core-component-inventory/v1",
-  "generated_at": "2026-09-11T19:42:47.529539+00:00",
+  "generated_at": "2026-09-14T03:49:56.157134+00:00",
   "repository": "maxbry123-commits/agentes",
   "root": "Core kernel Yaiwes",
-  "component_count": 175,
+  "component_count": 167,
   "kernel_signal_count": 4,
   "components": [
-    {
-      "name": "AG2",
-      "path": "Core kernel Yaiwes/Componentes recuperados B/AG2",
-      "bucket": "Componentes recuperados B",
-      "readme": "Core kernel Yaiwes/Componentes recuperados B/AG2/README.md",
-      "function_source": "AG2 is an open-source programming framework for building AI agents and facilitating cooperation among multiple agents to solve tasks. AG2 aims to streamline the development and research of agentic AI. It offers features such as agents capable of interacting with each other, facilitates the use of various large language models (LLMs) and tool use support, autonomous and human-in-the-loop workflows, and multi-agent con",
-      "kernel_signal": false,
-      "kernel_signals": [],
-      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": 28,
-      "wall_status": "PASS",
-      "wall_current_step": 3,
-      "wall_target": "Agente Yaiwes principal/agent-fleet-parallelism/ag2/"
-    },
-    {
-      "name": "Agenta",
-      "path": "Core kernel Yaiwes/Componentes recuperados B/Agenta",
-      "bucket": "Componentes recuperados B",
-      "readme": "Core kernel Yaiwes/Componentes recuperados B/Agenta/README.md",
-      "function_source": "Build agents that **automate your work** by chatting with them. Share them with **your team**, connect them to the apps you use, and run them in the **background**.",
-      "kernel_signal": false,
-      "kernel_signals": [],
-      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": 29,
-      "wall_status": "PASS",
-      "wall_current_step": 3,
-      "wall_target": "Agente Yaiwes principal/agent-fleet-parallelism/agenta/"
-    },
-    {
-      "name": "Agno",
-      "path": "Core kernel Yaiwes/Componentes recuperados B/Agno",
-      "bucket": "Componentes recuperados B",
-      "readme": "Core kernel Yaiwes/Componentes recuperados B/Agno/README.md",
-      "function_source": "Build, run, and manage agent platforms.",
-      "kernel_signal": false,
-      "kernel_signals": [],
-      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": 30,
-      "wall_status": "PASS",
-      "wall_current_step": 3,
-      "wall_target": "Agente Yaiwes principal/agent-fleet-parallelism/agno/"
-    },
-    {
-      "name": "AI-Scientist",
-      "path": "Core kernel Yaiwes/Componentes recuperados B/AI-Scientist",
-      "bucket": "Componentes recuperados B",
-      "readme": null,
-      "function_source": "README_FUNCTION_NOT_FOUND",
-      "kernel_signal": false,
-      "kernel_signals": [],
-      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": 34,
-      "wall_status": "PASS",
-      "wall_current_step": 3,
-      "wall_target": "Agente Yaiwes principal/agent-fleet-parallelism/ai-scientist/"
-    },
-    {
-      "name": "AI-Scientist-v2",
-      "path": "Core kernel Yaiwes/Componentes recuperados B/AI-Scientist-v2",
-      "bucket": "Componentes recuperados B",
-      "readme": "Core kernel Yaiwes/Componentes recuperados B/AI-Scientist-v2/README.md",
-      "function_source": "📚 [Paper] | 📝 [Blog Post] | 📂 [ICLR2025 Workshop Experiment]",
-      "kernel_signal": false,
-      "kernel_signals": [],
-      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": 35,
-      "wall_status": "PASS",
-      "wall_current_step": 3,
-      "wall_target": "Agente Yaiwes principal/agent-fleet-parallelism/ai-scientist-v2/"
-    },
     {
       "name": "Aider",
       "path": "Core kernel Yaiwes/Componentes recuperados B/Aider",
@@ -103,20 +33,6 @@
       "wall_status": null,
       "wall_current_step": null,
       "wall_target": null
-    },
-    {
-      "name": "Anthropic-Skills",
-      "path": "Core kernel Yaiwes/Componentes recuperados B/Anthropic-Skills",
-      "bucket": "Componentes recuperados B",
-      "readme": "Core kernel Yaiwes/Componentes recuperados B/Anthropic-Skills/README.md",
-      "function_source": "Skills are folders of instructions, scripts, and resources that Claude loads dynamically to improve performance on specialized tasks. Skills teach Claude how to complete specific tasks in a repeatable way, whether that's creating documents with your company's brand guidelines, analyzing data using your organization's specific workflows, or automating personal tasks.",
-      "kernel_signal": false,
-      "kernel_signals": [],
-      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": 31,
-      "wall_status": "PASS",
-      "wall_current_step": 3,
-      "wall_target": "Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/anthropic-skills/"
     },
     {
       "name": "APScheduler",
@@ -175,20 +91,6 @@
       "wall_target": null
     },
     {
-      "name": "BullMQ",
-      "path": "Core kernel Yaiwes/Componentes recuperados B/BullMQ",
-      "bucket": "Componentes recuperados B",
-      "readme": "Core kernel Yaiwes/Componentes recuperados B/BullMQ/README.md",
-      "function_source": "The fastest, most reliable, Redis-based distributed queue for Node.js, Python, Elixir, .NET, Rust, PHP, and more. Carefully written for rock solid stability and atomicity. Read the documentation",
-      "kernel_signal": false,
-      "kernel_signals": [],
-      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": 33,
-      "wall_status": "GAP_STEP3",
-      "wall_current_step": 3,
-      "wall_target": "Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/bullmq/"
-    },
-    {
       "name": "business-rules",
       "path": "Core kernel Yaiwes/Componentes recuperados A/business-rules",
       "bucket": "Componentes recuperados A",
@@ -215,20 +117,6 @@
       "wall_status": null,
       "wall_current_step": null,
       "wall_target": null
-    },
-    {
-      "name": "Casbin",
-      "path": "Core kernel Yaiwes/Componentes recuperados B/Casbin",
-      "bucket": "Componentes recuperados B",
-      "readme": "Core kernel Yaiwes/Componentes recuperados B/Casbin/README.md",
-      "function_source": "Licensed to the Apache Software Foundation (ASF) under one or more contributor license agreements. See the NOTICE file distributed with this work for additional information regarding copyright ownership. The ASF licenses this file to you under the Apache License, Version 2.0 (the \"License\"); you may not use this file except in compliance with the License. You may obtain a copy of the License at",
-      "kernel_signal": false,
-      "kernel_signals": [],
-      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": 32,
-      "wall_status": "PASS",
-      "wall_current_step": 3,
-      "wall_target": "Agente Yaiwes principal/definition-registry/authorization-model/casbin/"
     },
     {
       "name": "Celery",
