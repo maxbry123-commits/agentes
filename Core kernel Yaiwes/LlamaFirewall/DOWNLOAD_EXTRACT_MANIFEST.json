@@ -1,0 +1,54 @@
+{
+  "bundle_bytes": 24904567,
+  "bundle_sha256": "377c4efe421a865b6c1d618e846b9011209832d1f7bbd0a0e817d8dfaab1ae1f",
+  "extracted_tree": {
+    "bytes": 28566984,
+    "files": 96,
+    "sha256": "de3c215734fca3c1b123cd566a05634b8ef390316d974515ea63c94e78ca4424"
+  },
+  "extraction_verified": true,
+  "lfs_pointer_count": 0,
+  "lfs_pointers_preserved": [],
+  "motor1": {
+    "archive": "/tmp/yaiwes-gap-v3-q6ubtkyi/rebuilt.zip",
+    "batch_size": 100,
+    "extracted_verified": 96,
+    "failed": 0,
+    "pending": 0,
+    "schema": "yaiwes.frontend.extract-only.v1",
+    "state_file": "/tmp/yaiwes-gap-v3-q6ubtkyi/motor1.json",
+    "total_members": 96,
+    "tree": {
+      "bytes": 28566984,
+      "files": 96,
+      "sha256": "de3c215734fca3c1b123cd566a05634b8ef390316d974515ea63c94e78ca4424"
+    },
+    "verdict": "VERIFIED_CLOSED"
+  },
+  "motor1_blob": "a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500",
+  "normalization_policy": "materialize_in_repo_symlink_targets_before_zip",
+  "normalizations": [],
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "LlamaFirewall.bundle.zip.part-0001",
+      "sha256": "9d4b19261a50fd519656f229233386559760c84516e05df0659d51d8aca1ae3f"
+    },
+    {
+      "bytes": 12321655,
+      "name": "LlamaFirewall.bundle.zip.part-0002",
+      "sha256": "4eaff88529df2f1d787b97e1b81cf56ae7910a247b2bb9180f6c8cdf7e6f4c5b"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.kernel.exact-source-download-extract/v3",
+  "slug": "LlamaFirewall",
+  "source_commit": "4be64c3a24442b51c76175e6ec67722cc3f5fe38",
+  "source_repo": "meta-llama/PurpleLlama",
+  "source_subdir": "LlamaFirewall",
+  "source_tree": {
+    "bytes": 28566984,
+    "files": 96,
+    "sha256": "de3c215734fca3c1b123cd566a05634b8ef390316d974515ea63c94e78ca4424"
+  }
+}
