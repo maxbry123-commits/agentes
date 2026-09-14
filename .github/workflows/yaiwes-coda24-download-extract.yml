@@ -114,3 +114,5 @@ jobs:
               raise SystemExit(1)
           print('CODA24_DOWNLOAD_EXTRACT=PASS_24_OF_24')
           PY
+
+# launch-trigger: 2026-09-14
