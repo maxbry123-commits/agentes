@@ -1,0 +1,349 @@
+{
+  "timestamp": "20251020_204435",
+  "test_config": {
+    "models": [
+      "gpt-4o",
+      "gpt-4o-mini"
+    ],
+    "azure_endpoint": "https://hanqing-ncus.openai.azure.com/",
+    "num_calls": 5,
+    "temperature": 1.0,
+    "method": "structured_output_beta_parse",
+    "scenarios": [
+      "Planning",
+      "Proposal",
+      "Commitment"
+    ]
+  },
+  "results": [
+    {
+      "method": "structured",
+      "response_format": "AgentPlan",
+      "num_calls": 5,
+      "num_errors": 0,
+      "min_time": 0.8270494579919614,
+      "max_time": 1.2335157089983113,
+      "mean_time": 0.9801204920047895,
+      "median_time": 0.9467851670342498,
+      "std_dev": 0.1528165579818937,
+      "total_time": 4.900602460023947,
+      "all_times": [
+        1.2335157089983113,
+        0.8270494579919614,
+        0.9467851670342498,
+        0.9813875840045512,
+        0.9118645419948734
+      ],
+      "responses": [
+        {
+          "latency": 1.2335157089983113,
+          "tokens": 1455,
+          "response_length": 401,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.8270494579919614,
+          "tokens": 1455,
+          "response_length": 401,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.9467851670342498,
+          "tokens": 1455,
+          "response_length": 401,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.9813875840045512,
+          "tokens": 1455,
+          "response_length": 401,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.9118645419948734,
+          "tokens": 1455,
+          "response_length": 401,
+          "parsed_successfully": true
+        }
+      ],
+      "errors": [],
+      "test_name": "gpt-4o_Planning",
+      "model": "gpt-4o"
+    },
+    {
+      "method": "structured",
+      "response_format": "TaskProposal",
+      "num_calls": 5,
+      "num_errors": 0,
+      "min_time": 0.8191139579867013,
+      "max_time": 1.064355708018411,
+      "mean_time": 0.9482936748070643,
+      "median_time": 0.9333301250007935,
+      "std_dev": 0.11017787256865384,
+      "total_time": 4.741468374035321,
+      "all_times": [
+        1.0566228750394657,
+        0.8191139579867013,
+        0.9333301250007935,
+        1.064355708018411,
+        0.8680457079899497
+      ],
+      "responses": [
+        {
+          "latency": 1.0566228750394657,
+          "tokens": 890,
+          "response_length": 295,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.8191139579867013,
+          "tokens": 904,
+          "response_length": 341,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.9333301250007935,
+          "tokens": 886,
+          "response_length": 306,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 1.064355708018411,
+          "tokens": 876,
+          "response_length": 234,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.8680457079899497,
+          "tokens": 893,
+          "response_length": 325,
+          "parsed_successfully": true
+        }
+      ],
+      "errors": [],
+      "test_name": "gpt-4o_Proposal",
+      "model": "gpt-4o"
+    },
+    {
+      "method": "structured",
+      "response_format": "TaskCommitment",
+      "num_calls": 5,
+      "num_errors": 0,
+      "min_time": 0.34634329099208117,
+      "max_time": 0.5210410000290722,
+      "mean_time": 0.42396000820444896,
+      "median_time": 0.3928142079967074,
+      "std_dev": 0.0806907390219249,
+      "total_time": 2.119800041022245,
+      "all_times": [
+        0.3928142079967074,
+        0.3606754579814151,
+        0.34634329099208117,
+        0.5210410000290722,
+        0.498926084022969
+      ],
+      "responses": [
+        {
+          "latency": 0.3928142079967074,
+          "tokens": 426,
+          "response_length": 46,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.3606754579814151,
+          "tokens": 426,
+          "response_length": 46,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.34634329099208117,
+          "tokens": 426,
+          "response_length": 46,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.5210410000290722,
+          "tokens": 426,
+          "response_length": 46,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.498926084022969,
+          "tokens": 426,
+          "response_length": 46,
+          "parsed_successfully": true
+        }
+      ],
+      "errors": [],
+      "test_name": "gpt-4o_Commitment",
+      "model": "gpt-4o"
+    },
+    {
+      "method": "structured",
+      "response_format": "AgentPlan",
+      "num_calls": 5,
+      "num_errors": 0,
+      "min_time": 1.4813368339673616,
+      "max_time": 4.1342095420113765,
+      "mean_time": 2.056006466806866,
+      "median_time": 1.5686632500146516,
+      "std_dev": 1.1628754058932873,
+      "total_time": 10.280032334034331,
+      "all_times": [
+        4.1342095420113765,
+        1.6032237920444459,
+        1.5686632500146516,
+        1.4813368339673616,
+        1.4925989159964956
+      ],
+      "responses": [
+        {
+          "latency": 4.1342095420113765,
+          "tokens": 1455,
+          "response_length": 397,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 1.6032237920444459,
+          "tokens": 1455,
+          "response_length": 401,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 1.5686632500146516,
+          "tokens": 1455,
+          "response_length": 401,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 1.4813368339673616,
+          "tokens": 1455,
+          "response_length": 405,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 1.4925989159964956,
+          "tokens": 1455,
+          "response_length": 405,
+          "parsed_successfully": true
+        }
+      ],
+      "errors": [],
+      "test_name": "gpt-4o-mini_Planning",
+      "model": "gpt-4o-mini"
+    },
+    {
+      "method": "structured",
+      "response_format": "TaskProposal",
+      "num_calls": 5,
+      "num_errors": 0,
+      "min_time": 0.9987667079549283,
+      "max_time": 3.2651090410072356,
+      "mean_time": 1.5598005497828127,
+      "median_time": 1.0693559999926947,
+      "std_dev": 0.966380366029338,
+      "total_time": 7.799002748914063,
+      "all_times": [
+        3.2651090410072356,
+        1.4038317919475958,
+        1.0693559999926947,
+        1.0619392080116086,
+        0.9987667079549283
+      ],
+      "responses": [
+        {
+          "latency": 3.2651090410072356,
+          "tokens": 878,
+          "response_length": 244,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 1.4038317919475958,
+          "tokens": 914,
+          "response_length": 382,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 1.0693559999926947,
+          "tokens": 881,
+          "response_length": 249,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 1.0619392080116086,
+          "tokens": 881,
+          "response_length": 240,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.9987667079549283,
+          "tokens": 895,
+          "response_length": 330,
+          "parsed_successfully": true
+        }
+      ],
+      "errors": [],
+      "test_name": "gpt-4o-mini_Proposal",
+      "model": "gpt-4o-mini"
+    },
+    {
+      "method": "structured",
+      "response_format": "TaskCommitment",
+      "num_calls": 5,
+      "num_errors": 0,
+      "min_time": 0.9813995409640484,
+      "max_time": 2.7624760839971714,
+      "mean_time": 1.5139432666008361,
+      "median_time": 1.0441567090456374,
+      "std_dev": 0.7759803712794513,
+      "total_time": 7.56971633300418,
+      "all_times": [
+        2.7624760839971714,
+        0.9938924579764716,
+        1.0441567090456374,
+        1.7877915410208516,
+        0.9813995409640484
+      ],
+      "responses": [
+        {
+          "latency": 2.7624760839971714,
+          "tokens": 426,
+          "response_length": 46,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.9938924579764716,
+          "tokens": 426,
+          "response_length": 46,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 1.0441567090456374,
+          "tokens": 426,
+          "response_length": 46,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 1.7877915410208516,
+          "tokens": 426,
+          "response_length": 46,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.9813995409640484,
+          "tokens": 426,
+          "response_length": 46,
+          "parsed_successfully": true
+        }
+      ],
+      "errors": [],
+      "test_name": "gpt-4o-mini_Commitment",
+      "model": "gpt-4o-mini"
+    }
+  ],
+  "summary": {
+    "gpt4o_avg_time": 0.7841247250054342,
+    "gpt4o_mini_avg_time": 1.7099167610635049,
+    "speedup_factor": 0.4585747931482569
+  }
+}

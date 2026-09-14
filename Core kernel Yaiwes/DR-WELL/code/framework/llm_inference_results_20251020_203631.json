@@ -1,0 +1,208 @@
+{
+  "timestamp": "20251020_203631",
+  "test_config": {
+    "azure_model": "gpt-4o",
+    "azure_endpoint": "https://hanqing-ncus.openai.azure.com/",
+    "num_calls": 5,
+    "max_tokens": 200,
+    "prompt_length": 529,
+    "system_prompt_length": 1302,
+    "total_input_length": 1831,
+    "test_configurations": [
+      "regular_temp_0.0",
+      "regular_temp_0.7",
+      "structured_temp_0.0",
+      "structured_temp_0.7"
+    ]
+  },
+  "results": [
+    {
+      "model": "gpt-4o_regular_temp_0.0",
+      "num_calls": 5,
+      "num_errors": 0,
+      "min_time": 1.5327089170459658,
+      "max_time": 1.9983795420266688,
+      "mean_time": 1.7208876417949797,
+      "median_time": 1.6747812919784337,
+      "std_dev": 0.1727788096317149,
+      "total_time": 8.604438208974898,
+      "all_times": [
+        1.9983795420266688,
+        1.5327089170459658,
+        1.6747812919784337,
+        1.7436569159617648,
+        1.6549115419620648
+      ],
+      "responses": [
+        {
+          "latency": 1.9983795420266688,
+          "tokens": 115,
+          "response_length": 633
+        },
+        {
+          "latency": 1.5327089170459658,
+          "tokens": 118,
+          "response_length": 667
+        },
+        {
+          "latency": 1.6747812919784337,
+          "tokens": 135,
+          "response_length": 695
+        },
+        {
+          "latency": 1.7436569159617648,
+          "tokens": 137,
+          "response_length": 696
+        },
+        {
+          "latency": 1.6549115419620648,
+          "tokens": 133,
+          "response_length": 757
+        }
+      ],
+      "errors": [],
+      "output_type": "regular_temp_0.0"
+    },
+    {
+      "model": "gpt-4o_regular_temp_0.7",
+      "num_calls": 5,
+      "num_errors": 0,
+      "min_time": 1.6355845839716494,
+      "max_time": 1.843567540985532,
+      "mean_time": 1.7431345667922868,
+      "median_time": 1.7335194580373354,
+      "std_dev": 0.08553132241044371,
+      "total_time": 8.715672833961435,
+      "all_times": [
+        1.843567540985532,
+        1.7335194580373354,
+        1.69077083398588,
+        1.6355845839716494,
+        1.8122304169810377
+      ],
+      "responses": [
+        {
+          "latency": 1.843567540985532,
+          "tokens": 143,
+          "response_length": 714
+        },
+        {
+          "latency": 1.7335194580373354,
+          "tokens": 139,
+          "response_length": 751
+        },
+        {
+          "latency": 1.69077083398588,
+          "tokens": 126,
+          "response_length": 702
+        },
+        {
+          "latency": 1.6355845839716494,
+          "tokens": 141,
+          "response_length": 703
+        },
+        {
+          "latency": 1.8122304169810377,
+          "tokens": 131,
+          "response_length": 709
+        }
+      ],
+      "errors": [],
+      "output_type": "regular_temp_0.7"
+    },
+    {
+      "model": "gpt-4o_structured_temp_0.0",
+      "num_calls": 5,
+      "num_errors": 0,
+      "min_time": 0.5536648749839514,
+      "max_time": 0.6220491669955663,
+      "mean_time": 0.5856738917878829,
+      "median_time": 0.5895335829700343,
+      "std_dev": 0.026542239822973376,
+      "total_time": 2.9283694589394145,
+      "all_times": [
+        0.5960780419991352,
+        0.5536648749839514,
+        0.5895335829700343,
+        0.5670437919907272,
+        0.6220491669955663
+      ],
+      "responses": [
+        {
+          "latency": 0.5960780419991352,
+          "tokens": 9,
+          "response_length": 103
+        },
+        {
+          "latency": 0.5536648749839514,
+          "tokens": 9,
+          "response_length": 103
+        },
+        {
+          "latency": 0.5895335829700343,
+          "tokens": 9,
+          "response_length": 103
+        },
+        {
+          "latency": 0.5670437919907272,
+          "tokens": 9,
+          "response_length": 103
+        },
+        {
+          "latency": 0.6220491669955663,
+          "tokens": 9,
+          "response_length": 103
+        }
+      ],
+      "errors": [],
+      "output_type": "structured_temp_0.0"
+    },
+    {
+      "model": "gpt-4o_structured_temp_0.7",
+      "num_calls": 5,
+      "num_errors": 0,
+      "min_time": 0.5360907919821329,
+      "max_time": 0.6645529579836875,
+      "mean_time": 0.6066768581978976,
+      "median_time": 0.593136916984804,
+      "std_dev": 0.05196758762071393,
+      "total_time": 3.0333842909894884,
+      "all_times": [
+        0.6645529579836875,
+        0.593136916984804,
+        0.6509677080321126,
+        0.5360907919821329,
+        0.5886359160067514
+      ],
+      "responses": [
+        {
+          "latency": 0.6645529579836875,
+          "tokens": 15,
+          "response_length": 139
+        },
+        {
+          "latency": 0.593136916984804,
+          "tokens": 9,
+          "response_length": 103
+        },
+        {
+          "latency": 0.6509677080321126,
+          "tokens": 12,
+          "response_length": 123
+        },
+        {
+          "latency": 0.5360907919821329,
+          "tokens": 9,
+          "response_length": 101
+        },
+        {
+          "latency": 0.5886359160067514,
+          "tokens": 9,
+          "response_length": 104
+        }
+      ],
+      "errors": [],
+      "output_type": "structured_temp_0.7"
+    }
+  ]
+}
