@@ -1,0 +1,14 @@
+{
+  "autogen_old20_closed": false,
+  "catalog47_closed": 46,
+  "catalog47_gaps": [
+    {
+      "gap": "MANIFEST_MISSING",
+      "id": "C47-036",
+      "slug": "LlamaFirewall"
+    }
+  ],
+  "catalog47_total": 47,
+  "global_verified": false,
+  "schema": "yaiwes.kernel.catalog47.final-gap-gate/v1"
+}
