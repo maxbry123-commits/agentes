@@ -1,29 +1,27 @@
-name: YAIWES linear internal workflow V6.3
+name: YAIWES canonical linear internal workflow
 
 on:
   push:
-    branches:
-      - main
-      - yaiwes-linear-chain-v63
+    branches: [main]
     paths:
       - '.github/workflows/yaiwes-linear-workflows-v63.yml'
       - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v63.py'
-      - '📂coda workflow persistencias/🏈 YAIWES 24/code/workflow.py'
-      - '📂coda workflow persistencias/🏈 YAIWES 24/INTERNAL-SURGICAL-MANIFEST-V5.json'
+      - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v63_core.py'
+      - '📂coda workflow persistencias/🏈 YAIWES **'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: yaiwes-linear-workflows-v63-${{ github.ref }}
+  group: yaiwes-canonical-linear-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   strict-linear-chain:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout active internal workflow sources
+      - name: Checkout canonical internal workflow sources
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
@@ -41,26 +39,26 @@ jobs:
             /📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v61.py
             /📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v62.py
             /📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v63.py
-            /📂coda workflow persistencias/🏈 YAIWES 24/code/workflow.py
+            /📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v63_core.py
             /📂coda workflow persistencias/🏈 cancha deportiva de fútbol/*
 
-      - name: Compile V6.3 chain
+      - name: Compile canonical chain
         run: |
           set -euo pipefail
           python3 -m py_compile '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v6.py'
           python3 -m py_compile '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v61.py'
           python3 -m py_compile '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v62.py'
+          python3 -m py_compile '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v63_core.py'
           python3 -m py_compile '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v63.py'
-          python3 -m py_compile '📂coda workflow persistencias/🏈 YAIWES 24/code/workflow.py'
 
-      - name: Execute strict 24-link chain
+      - name: Execute strict 24-link canonical chain
         env:
           PYTHONUNBUFFERED: '1'
         run: |
           set -euo pipefail
           python3 '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v63.py'
 
-      - name: Verify 24 completed real workflows
+      - name: Verify 24 real workflows and handoff continuity
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -76,24 +74,13 @@ jobs:
           assert d['status'] == 'CLOSED_24_OF_24', d
           ev=d['evidence']
           assert len(ev) == 24
+          assert [x['component'] for x in ev] == [f'YAIWES {i:02d}' for i in range(1,25)]
           assert all(x['status'] == 'RELEASED' for x in ev)
           assert all(x['real_internal_workflow'] is True for x in ev)
           assert all(x['workflow_status'] == 'COMPLETED' for x in ev)
-          for i in range(1, 24):
-              assert ev[i]['input_hash'] == ev[i-1]['output_hash'], (i, ev[i], ev[i-1])
+          assert not any(x.get('checkpoint') == 'CLOSURE_ONLY' for x in ev)
+          for i in range(1,24):
+              assert ev[i]['input_hash'] == ev[i-1]['output_hash']
           assert ev[-1]['handoff'] == 'UNIVERSAL_PLUG'
-          print('YAIWES_LINEAR_CHAIN_PASS=24/24')
-          PY
-
-      - name: Verify false closures are denied
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          d=json.loads(Path('📂coda workflow persistencias/🏈 cancha deportiva de fútbol/YAIWES-LINEAR-WORKFLOW-REPORT-V63.json').read_text(encoding='utf-8'))
-          assert not any(x.get('workflow_status') == 'SOURCE_UNAVAILABLE_CLOSURE' for x in d['evidence'])
-          assert not any(x.get('checkpoint') == 'CLOSURE_ONLY' for x in d['evidence'])
-          assert d['evidence'][-1]['engine'] == 'YAIWES24_LOCAL_SAFE_INTERNAL_WORKFLOW'
-          print('FALSE_CLOSURE_DENIED=PASS')
+          print('YAIWES_CANONICAL_LINEAR_PASS=24/24')
           PY

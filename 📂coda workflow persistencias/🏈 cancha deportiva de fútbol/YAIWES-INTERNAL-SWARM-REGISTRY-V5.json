@@ -1,225 +1,35 @@
 {
   "schema": "yaiwes.internal.swarm/v5",
-  "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.2",
+  "team": "YAIWES",
+  "version": "YAIWES-CANONICAL-LINEAR-v6.4",
   "count": 24,
   "topology": "LINEAR_FAIL_CLOSED",
+  "canonical_runner": "Fables enchufe universal/yaiwes_real_workflow_chain_v63.py",
   "components": [
-    {
-      "order": 1,
-      "component": "🏈 01-DeepAudit",
-      "manifest": "🏈 01-DeepAudit/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 01-DeepAudit/code/yaiwes_internal/persistence_runtime.py",
-      "links": 230,
-      "previous": null,
-      "next": "🏈 02-CyberStrikeAI"
-    },
-    {
-      "order": 2,
-      "component": "🏈 02-CyberStrikeAI",
-      "manifest": "🏈 02-CyberStrikeAI/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 02-CyberStrikeAI/code/yaiwes_internal/persistence_runtime.py",
-      "links": 450,
-      "previous": "🏈 01-DeepAudit",
-      "next": "🏈 03-LuaN1aoAgent"
-    },
-    {
-      "order": 3,
-      "component": "🏈 03-LuaN1aoAgent",
-      "manifest": "🏈 03-LuaN1aoAgent/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 03-LuaN1aoAgent/code/yaiwes_internal/persistence_runtime.py",
-      "links": 57,
-      "previous": "🏈 02-CyberStrikeAI",
-      "next": "🏈 04-AI-Pentest"
-    },
-    {
-      "order": 4,
-      "component": "🏈 04-AI-Pentest",
-      "manifest": "🏈 04-AI-Pentest/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 04-AI-Pentest/code/yaiwes_internal/persistence_runtime.py",
-      "links": 25,
-      "previous": "🏈 03-LuaN1aoAgent",
-      "next": "🏈 05-AI-Infra-Guard"
-    },
-    {
-      "order": 5,
-      "component": "🏈 05-AI-Infra-Guard",
-      "manifest": "🏈 05-AI-Infra-Guard/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 05-AI-Infra-Guard/code/yaiwes_internal/persistence_runtime.py",
-      "links": 622,
-      "previous": "🏈 04-AI-Pentest",
-      "next": "🏈 06-PentAGI"
-    },
-    {
-      "order": 6,
-      "component": "🏈 06-PentAGI",
-      "manifest": "🏈 06-PentAGI/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 06-PentAGI/code/yaiwes_internal/persistence_runtime.py",
-      "links": 503,
-      "previous": "🏈 05-AI-Infra-Guard",
-      "next": "🏈 07-Strix"
-    },
-    {
-      "order": 7,
-      "component": "🏈 07-Strix",
-      "manifest": "🏈 07-Strix/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 07-Strix/code/yaiwes_internal/persistence_runtime.py",
-      "links": 99,
-      "previous": "🏈 06-PentAGI",
-      "next": "🏈 08-Redcell"
-    },
-    {
-      "order": 8,
-      "component": "🏈 08-Redcell",
-      "manifest": "🏈 08-Redcell/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 08-Redcell/code/yaiwes_internal/persistence_runtime.py",
-      "links": 103,
-      "previous": "🏈 07-Strix",
-      "next": "🏈 09-Shel"
-    },
-    {
-      "order": 9,
-      "component": "🏈 09-Shel",
-      "manifest": "🏈 09-Shel/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 09-Shel/code/yaiwes_internal/persistence_runtime.py",
-      "links": 25,
-      "previous": "🏈 08-Redcell",
-      "next": "🏈 10-Pentest-Swarm-AI"
-    },
-    {
-      "order": 10,
-      "component": "🏈 10-Pentest-Swarm-AI",
-      "manifest": "🏈 10-Pentest-Swarm-AI/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 10-Pentest-Swarm-AI/code/yaiwes_internal/persistence_runtime.py",
-      "links": 151,
-      "previous": "🏈 09-Shel",
-      "next": "🏈 11-LLM-CTF-Solver"
-    },
-    {
-      "order": 11,
-      "component": "🏈 11-LLM-CTF-Solver",
-      "manifest": "🏈 11-LLM-CTF-Solver/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 11-LLM-CTF-Solver/code/yaiwes_internal/persistence_runtime.py",
-      "links": 47,
-      "previous": "🏈 10-Pentest-Swarm-AI",
-      "next": "🏈 12-PentestGPT"
-    },
-    {
-      "order": 12,
-      "component": "🏈 12-PentestGPT",
-      "manifest": "🏈 12-PentestGPT/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 12-PentestGPT/code/yaiwes_internal/persistence_runtime.py",
-      "links": 38,
-      "previous": "🏈 11-LLM-CTF-Solver",
-      "next": "🏈 13-Auto-Pentest-LLM"
-    },
-    {
-      "order": 13,
-      "component": "🏈 13-Auto-Pentest-LLM",
-      "manifest": "🏈 13-Auto-Pentest-LLM/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 13-Auto-Pentest-LLM/code/yaiwes_internal/persistence_runtime.py",
-      "links": 4,
-      "previous": "🏈 12-PentestGPT",
-      "next": "🏈 14-Dark-Moon"
-    },
-    {
-      "order": 14,
-      "component": "🏈 14-Dark-Moon",
-      "manifest": "🏈 14-Dark-Moon/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 14-Dark-Moon/code/yaiwes_internal/persistence_runtime.py",
-      "links": 14,
-      "previous": "🏈 13-Auto-Pentest-LLM",
-      "next": "🏈 15-Pentdem"
-    },
-    {
-      "order": 15,
-      "component": "🏈 15-Pentdem",
-      "manifest": "🏈 15-Pentdem/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 15-Pentdem/code/yaiwes_internal/persistence_runtime.py",
-      "links": 41,
-      "previous": "🏈 14-Dark-Moon",
-      "next": "🏈 16-Autonomous-Pentest-Agent"
-    },
-    {
-      "order": 16,
-      "component": "🏈 16-Autonomous-Pentest-Agent",
-      "manifest": "🏈 16-Autonomous-Pentest-Agent/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 16-Autonomous-Pentest-Agent/code/yaiwes_internal/persistence_runtime.py",
-      "links": 13,
-      "previous": "🏈 15-Pentdem",
-      "next": "🏈 17-AI-Red-Team-Agent"
-    },
-    {
-      "order": 17,
-      "component": "🏈 17-AI-Red-Team-Agent",
-      "manifest": "🏈 17-AI-Red-Team-Agent/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 17-AI-Red-Team-Agent/code/yaiwes_internal/persistence_runtime.py",
-      "links": 4,
-      "previous": "🏈 16-Autonomous-Pentest-Agent",
-      "next": "🏈 18-Agent-Smith"
-    },
-    {
-      "order": 18,
-      "component": "🏈 18-Agent-Smith",
-      "manifest": "🏈 18-Agent-Smith/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 18-Agent-Smith/code/yaiwes_internal/persistence_runtime.py",
-      "links": 121,
-      "previous": "🏈 17-AI-Red-Team-Agent",
-      "next": "🏈 19-TPT-Agent"
-    },
-    {
-      "order": 19,
-      "component": "🏈 19-TPT-Agent",
-      "manifest": "🏈 19-TPT-Agent/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 19-TPT-Agent/code/yaiwes_internal/persistence_runtime.py",
-      "links": 9,
-      "previous": "🏈 18-Agent-Smith",
-      "next": "🏈 20-OpenWhale"
-    },
-    {
-      "order": 20,
-      "component": "🏈 20-OpenWhale",
-      "manifest": "🏈 20-OpenWhale/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 20-OpenWhale/code/yaiwes_internal/persistence_runtime.py",
-      "links": 8,
-      "previous": "🏈 19-TPT-Agent",
-      "next": "🏈 21-H-Pentest"
-    },
-    {
-      "order": 21,
-      "component": "🏈 21-H-Pentest",
-      "manifest": "🏈 21-H-Pentest/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 21-H-Pentest/code/yaiwes_internal/persistence_runtime.py",
-      "links": 28,
-      "previous": "🏈 20-OpenWhale",
-      "next": "🏈 22-PHANTOM"
-    },
-    {
-      "order": 22,
-      "component": "🏈 22-PHANTOM",
-      "manifest": "🏈 22-PHANTOM/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 22-PHANTOM/code/yaiwes_internal/persistence_runtime.py",
-      "links": 68,
-      "previous": "🏈 21-H-Pentest",
-      "next": "🏈 23-HackSynth"
-    },
-    {
-      "order": 23,
-      "component": "🏈 23-HackSynth",
-      "manifest": "🏈 23-HackSynth/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 23-HackSynth/code/yaiwes_internal/persistence_runtime.py",
-      "links": 5,
-      "previous": "🏈 22-PHANTOM",
-      "next": "🏈 24-Security-AI-Agent"
-    },
-    {
-      "order": 24,
-      "component": "🏈 24-Security-AI-Agent",
-      "manifest": "🏈 24-Security-AI-Agent/INTERNAL-SURGICAL-MANIFEST-V5.json",
-      "runtime": "🏈 24-Security-AI-Agent/code/yaiwes_internal/persistence_runtime.py",
-      "links": 0,
-      "previous": "🏈 23-HackSynth",
-      "next": null
-    }
-  ]
+    {"order":1,"component":"🏈 YAIWES 01","manifest":"🏈 YAIWES 01/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":null,"next":"🏈 YAIWES 02"},
+    {"order":2,"component":"🏈 YAIWES 02","manifest":"🏈 YAIWES 02/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":"🏈 YAIWES 01","next":"🏈 YAIWES 03"},
+    {"order":3,"component":"🏈 YAIWES 03","manifest":"🏈 YAIWES 03/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":"🏈 YAIWES 02","next":"🏈 YAIWES 04"},
+    {"order":4,"component":"🏈 YAIWES 04","manifest":"🏈 YAIWES 04/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":"🏈 YAIWES 03","next":"🏈 YAIWES 05"},
+    {"order":5,"component":"🏈 YAIWES 05","manifest":"🏈 YAIWES 05/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":"🏈 YAIWES 04","next":"🏈 YAIWES 06"},
+    {"order":6,"component":"🏈 YAIWES 06","manifest":"🏈 YAIWES 06/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":"🏈 YAIWES 05","next":"🏈 YAIWES 07"},
+    {"order":7,"component":"🏈 YAIWES 07","manifest":"🏈 YAIWES 07/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":"🏈 YAIWES 06","next":"🏈 YAIWES 08"},
+    {"order":8,"component":"🏈 YAIWES 08","manifest":"🏈 YAIWES 08/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":"🏈 YAIWES 07","next":"🏈 YAIWES 09"},
+    {"order":9,"component":"🏈 YAIWES 09","manifest":"🏈 YAIWES 09/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":"🏈 YAIWES 08","next":"🏈 YAIWES 10"},
+    {"order":10,"component":"🏈 YAIWES 10","manifest":"🏈 YAIWES 10/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":"🏈 YAIWES 09","next":"🏈 YAIWES 11"},
+    {"order":11,"component":"🏈 YAIWES 11","manifest":"🏈 YAIWES 11/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":"🏈 YAIWES 10","next":"🏈 YAIWES 12"},
+    {"order":12,"component":"🏈 YAIWES 12","manifest":"🏈 YAIWES 12/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":"🏈 YAIWES 11","next":"🏈 YAIWES 13"},
+    {"order":13,"component":"🏈 YAIWES 13","manifest":"🏈 YAIWES 13/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":"🏈 YAIWES 12","next":"🏈 YAIWES 14"},
+    {"order":14,"component":"🏈 YAIWES 14","manifest":"🏈 YAIWES 14/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":"🏈 YAIWES 13","next":"🏈 YAIWES 15"},
+    {"order":15,"component":"🏈 YAIWES 15","manifest":"🏈 YAIWES 15/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":"🏈 YAIWES 14","next":"🏈 YAIWES 16"},
+    {"order":16,"component":"🏈 YAIWES 16","manifest":"🏈 YAIWES 16/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":"🏈 YAIWES 15","next":"🏈 YAIWES 17"},
+    {"order":17,"component":"🏈 YAIWES 17","manifest":"🏈 YAIWES 17/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":"🏈 YAIWES 16","next":"🏈 YAIWES 18"},
+    {"order":18,"component":"🏈 YAIWES 18","manifest":"🏈 YAIWES 18/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":"🏈 YAIWES 17","next":"🏈 YAIWES 19"},
+    {"order":19,"component":"🏈 YAIWES 19","manifest":"🏈 YAIWES 19/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":"🏈 YAIWES 18","next":"🏈 YAIWES 20"},
+    {"order":20,"component":"🏈 YAIWES 20","manifest":"🏈 YAIWES 20/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":"🏈 YAIWES 19","next":"🏈 YAIWES 21"},
+    {"order":21,"component":"🏈 YAIWES 21","manifest":"🏈 YAIWES 21/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":"🏈 YAIWES 20","next":"🏈 YAIWES 22"},
+    {"order":22,"component":"🏈 YAIWES 22","manifest":"🏈 YAIWES 22/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":"🏈 YAIWES 21","next":"🏈 YAIWES 23"},
+    {"order":23,"component":"🏈 YAIWES 23","manifest":"🏈 YAIWES 23/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":"🏈 YAIWES 22","next":"🏈 YAIWES 24"},
+    {"order":24,"component":"🏈 YAIWES 24","manifest":"🏈 YAIWES 24/INTERNAL-SURGICAL-MANIFEST-V5.json","previous":"🏈 YAIWES 23","next":null}
+  ],
+  "universal_plug":{"after":"🏈 YAIWES 24","component":"Fables enchufe universal"}
 }
