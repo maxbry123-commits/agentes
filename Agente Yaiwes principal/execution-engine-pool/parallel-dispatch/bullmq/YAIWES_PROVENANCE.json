@@ -1,0 +1,29 @@
+{
+  "schema": "yaiwes.provenance/v1",
+  "component": "BullMQ",
+  "source_url": "https://github.com/taskforcesh/bullmq.git",
+  "source_commit": "ad5b79c2a6d49275b760892382252f47f0bba1d7",
+  "source_version": "6.3.4",
+  "source_package_git_blob": "6c059cb46bd4b43f2462a3a5710b0408a5a4c280",
+  "source_snapshot_sha256": "0a38a940c39fc354caa19fbe093fc9b8c5572ed6a875e550dc1de12c825a5fa5",
+  "sha256_scope": "destination canonical snapshot excluding yaiwes/ and provenance files",
+  "source_before": {
+    "path": "Core kernel Yaiwes/Componentes recuperados B/BullMQ",
+    "commit": "ccabd9e0166fe1de68d6bf607dffab219789699b",
+    "tree_sha": "604737cd870d5f9fa624fb0aa25c9db6f67c3ab3"
+  },
+  "move_after": {
+    "path": "Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/bullmq",
+    "commit": "f8b8d9f48925827ab98df5fc216842586c6c54a9",
+    "tree_sha": "604737cd870d5f9fa624fb0aa25c9db6f67c3ab3"
+  },
+  "step2_move_repeated": false,
+  "step3_validation": {
+    "run_id": 34834756951,
+    "job_id": 103945934361,
+    "runtime": "node-22.22.2",
+    "microtest": "PASS",
+    "result": {"input": 21, "output": 42},
+    "evidence_levels": ["L2_build", "L3_runtime", "L4_feature"]
+  }
+}
