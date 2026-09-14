@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 12055224,
+  "bundle_sha256": "64d05837e2d4d77e0a8425d85a5f1fccec7607f986dd98ad44d4f43d7dd3a8c4",
+  "extracted_tree": {
+    "bytes": 14099679,
+    "files": 1027,
+    "sha256": "3e7cac986c2e049a59330c9254330a4a7da3385fcdedb68825e0563c68f54759"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12055224,
+      "name": "Claude-Code.bundle.zip.part-0001",
+      "sha256": "64d05837e2d4d77e0a8425d85a5f1fccec7607f986dd98ad44d4f43d7dd3a8c4"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Claude-Code",
+  "source_bytes": 14099679,
+  "source_commit": "18be13be81538c38efa5cb157fb2fc8da7469855",
+  "source_files": 1027,
+  "source_ref": "HEAD",
+  "source_repo": "anthropics/claude-code",
+  "source_tree": {
+    "bytes": 14099679,
+    "files": 1027,
+    "sha256": "3e7cac986c2e049a59330c9254330a4a7da3385fcdedb68825e0563c68f54759"
+  }
+}
