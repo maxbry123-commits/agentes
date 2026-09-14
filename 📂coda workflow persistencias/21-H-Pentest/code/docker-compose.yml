@@ -1,0 +1,97 @@
+version: '3.8'
+
+services:
+  # ============================================
+  # 后端服务
+  # ============================================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: h-pentest-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app/backend
+      - ./knowledge:/app/knowledge  # 知识库
+      - ./cache:/app/cache  # Embedding缓存
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+      - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker沙箱
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+      # LLM配置
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+      - OPENAI_MODEL=${OPENAI_MODEL}
+      - OPENAI_MODEL_MINI=${OPENAI_MODEL_MINI}
+      - OPENAI_TEMPERATURE=${OPENAI_TEMPERATURE}
+      - OPENAI_MAX_TOKENS=${OPENAI_MAX_TOKENS}
+      # 阿里云DashScope配置
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
+      - DASHSCOPE_BASE_URL=${DASHSCOPE_BASE_URL}
+      # Embedding配置
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
+      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY}
+      - EMBEDDING_BASE_URL=${EMBEDDING_BASE_URL}
+      # Rerank配置
+      - RERANK_MODEL=${RERANK_MODEL}
+      - RERANK_API_KEY=${RERANK_API_KEY}
+      - RERANK_BASE_URL=${RERANK_BASE_URL}
+      # 数据库配置
+      - DATABASE_URL=sqlite+aiosqlite:////app/data/h-pentest.db
+    restart: unless-stopped
+    networks:
+      - h-pentest-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============================================
+  # 前端服务
+  # ============================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: h-pentest-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      # 🔥 动态挂载前端代码，方便实时修改
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/vite.config.ts:/app/vite.config.ts
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    restart: unless-stopped
+    networks:
+      - h-pentest-network
+    depends_on:
+      - backend
+
+  # ============================================
+  # Kali沙箱服务（预装工具）
+  # ============================================
+  kali-sandbox:
+    build:
+      context: .
+      dockerfile: Dockerfile.kali
+    image: h-pentest-kali:latest
+    container_name: h-pentest-kali
+    volumes:
+      - ./tools:/tools  # 工具配置目录
+      - ./reports:/reports  # 扫描报告输出
+    networks:
+      - h-pentest-network
+    restart: unless-stopped
+
+networks:
+  h-pentest-network:
+    driver: bridge

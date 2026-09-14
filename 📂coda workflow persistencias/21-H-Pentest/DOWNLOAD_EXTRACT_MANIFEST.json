@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 1517507,
+  "bundle_sha256": "cd8189c2df4c54bbe2bc84522dd37c36dc26ecc0aa8270a4dc52ee15c421778a",
+  "extracted_tree": {
+    "bytes": 7089966,
+    "files": 132,
+    "sha256": "3eb96dae6fb6063d466170069955c6c4662620f9c499653edde4bc8d21d4ffbc"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 1517507,
+      "name": "21-H-Pentest.bundle.zip.part-0001",
+      "sha256": "cd8189c2df4c54bbe2bc84522dd37c36dc26ecc0aa8270a4dc52ee15c421778a"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "21-H-Pentest",
+  "source_bytes": 7089966,
+  "source_commit": "1d775a2c787c740a4a99a925979c8a56c2f42e78",
+  "source_files": 132,
+  "source_ref": "HEAD",
+  "source_repo": "hexian2001/H-Pentest",
+  "source_tree": {
+    "bytes": 7089966,
+    "files": 132,
+    "sha256": "3eb96dae6fb6063d466170069955c6c4662620f9c499653edde4bc8d21d4ffbc"
+  }
+}
