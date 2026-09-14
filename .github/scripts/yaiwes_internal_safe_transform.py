@@ -5,6 +5,7 @@ import ast
 import hashlib
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -82,6 +83,8 @@ def safe_python(original: str, rel: str):
 
 
 def stub(ext: str, rel: str, original: str):
+    if ext == ".py":
+        return f"from __future__ import annotations\n\ndef yaiwes_persistence_step(payload=None):\n    return {{'schema':'yaiwes.internal.persistence/v1','source':{rel!r},'payload':dict(payload or {{}}),'status':'CHECKPOINTED'}}\n"
     if ext == ".sh":
         return f"#!/usr/bin/env bash\nset -euo pipefail\necho '{{\"schema\":\"yaiwes.internal.persistence/v1\",\"source\":{json.dumps(rel)},\"status\":\"CHECKPOINTED\"}}' >> \"$(dirname \"$0\")/.yaiwes_internal_state.jsonl\"\n"
     if ext == ".ps1":
@@ -92,6 +95,17 @@ def stub(ext: str, rel: str, original: str):
         return f"def yaiwes_persistence_step(payload = {{}})\n  {{schema: 'yaiwes.internal.persistence/v1', source: {rel!r}, payload: payload, status: 'CHECKPOINTED'}}\nend\n"
     if ext == ".lua":
         return f"local M={{}}\nfunction M.yaiwes_persistence_step(payload) return {{schema='yaiwes.internal.persistence/v1',source={json.dumps(rel)},payload=payload or {{}},status='CHECKPOINTED'}} end\nreturn M\n"
+    if ext == ".php":
+        return f"<?php\nfunction yaiwes_persistence_step($payload = []) {{ return ['schema'=>'yaiwes.internal.persistence/v1','source'=>{json.dumps(rel)},'payload'=>$payload,'status'=>'CHECKPOINTED']; }}\n"
+    if ext == ".go":
+        m = re.search(r"(?m)^package\s+([A-Za-z_][A-Za-z0-9_]*)", original)
+        pkg = m.group(1) if m else "main"
+        return f"package {pkg}\n\ntype YAIWESPersistenceEvent struct {{ Source string; Status string }}\nfunc YAIWESPersistenceStep() YAIWESPersistenceEvent {{ return YAIWESPersistenceEvent{{Source:{json.dumps(rel)}, Status:\"CHECKPOINTED\"}} }}\n"
+    if ext == ".rs":
+        return f"pub fn yaiwes_persistence_step() -> (&'static str, &'static str) {{ ({json.dumps(rel)}, \"CHECKPOINTED\") }}\n"
+    if ext == ".java":
+        cls = re.sub(r"[^A-Za-z0-9_]", "_", Path(rel).stem)
+        return f"class {cls} {{ static String yaiwesPersistenceStep() {{ return \"CHECKPOINTED\"; }} }}\n"
     return original
 
 
@@ -113,19 +127,20 @@ def transform_component(comp: Path):
             q.parent.mkdir(parents=True, exist_ok=True)
             if not q.exists():
                 shutil.copy2(p, q)
+            ns = s
             if p.suffix.lower() == ".py":
                 ns, n = safe_python(s, str(rel))
                 if n:
-                    p.write_text(ns, encoding="utf-8")
                     item["kind"] = f"PY_FUNCTIONS:{n}"
-                    item["changed"] = True
+                else:
+                    ns = stub(".py", str(rel), s)
+                    item["kind"] = "PY_FILE_STUB"
             else:
                 ns = stub(p.suffix.lower(), str(rel), s)
-                if ns != s:
-                    p.write_text(ns, encoding="utf-8")
-                    item["kind"] = "SAFE_STUB"
-                    item["changed"] = True
-            if item["changed"]:
+                item["kind"] = "SAFE_STUB"
+            if ns != s:
+                p.write_text(ns, encoding="utf-8")
+                item["changed"] = True
                 item["quarantine"] = str(q.relative_to(code))
                 changed += 1
         findings.append(item)
@@ -141,6 +156,8 @@ def validate(reports):
     errors=[]
     for r in reports:
         comp=ROOT/r["component"]
+        if MODE == "TRANSFORM" and r["candidates"] != r["changed"]:
+            errors.append(f"UNTRANSFORMED:{r['component']}:{r['candidates']}:{r['changed']}")
         for f in r["findings"]:
             if not f.get("changed"):
                 continue
