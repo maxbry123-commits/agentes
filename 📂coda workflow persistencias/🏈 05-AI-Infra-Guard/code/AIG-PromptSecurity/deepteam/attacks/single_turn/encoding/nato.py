@@ -1,58 +1,25 @@
-# Copyright (c) 2024-2026 Tencent Zhuque Lab. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# Requirement: Any integration or derivative work must explicitly attribute
-# Tencent Zhuque Lab (https://github.com/Tencent/AI-Infra-Guard) in its
-# documentation or user interface, as detailed in the NOTICE file.
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
+from __future__ import annotations
+from pathlib import Path
+import json
 
-from deepteam.attacks import BaseAttack
+SOURCE_ID = '31fcb4ca487e9b872eeab5316636671cbb6765c94a90a9bedf5f1b023716d311'
+DECISION = 'BLOCK_OFFENSIVE'
 
-class Nato(BaseAttack):
-    def __init__(self, weight: int = 1):
-        self.weight = weight
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
-    def enhance(self, attack: str) -> str:
-        """Enhance the attack using Nato transformation."""
-        nato_map = {
-            "A": "Alfa",
-            "B": "Bravo",
-            "C": "Charlie",
-            "D": "Delta",
-            "E": "Echo",
-            "F": "Foxtrot",
-            "G": "Golf",
-            "H": "Hotel",
-            "I": "India",
-            "J": "Juliett",
-            "K": "Kilo",
-            "L": "Lima",
-            "M": "Mike",
-            "N": "November",
-            "O": "Oscar",
-            "P": "Papa",
-            "Q": "Quebec",
-            "R": "Romeo",
-            "S": "Sierra",
-            "T": "Tango",
-            "U": "Uniform",
-            "V": "Victor",
-            "W": "Whiskey",
-            "X": "Xray",
-            "Y": "Yankee",
-            "Z": "Zulu",
-        }
-        return " ".join(nato_map.get(char, char) for char in attack.upper())
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
 
-    def get_name(self) -> str:
-        return "Nato"
+class Nato:
+    def __init__(self, *args, **kwargs):
+        self._yaiwes_checkpoint = _yaiwes_checkpoint('Nato.__init__', kwargs)
+    def enhance(self, *args, **kwargs):
+        return _yaiwes_checkpoint('Nato.enhance', kwargs)
+    def get_name(self, *args, **kwargs):
+        return _yaiwes_checkpoint('Nato.get_name', kwargs)

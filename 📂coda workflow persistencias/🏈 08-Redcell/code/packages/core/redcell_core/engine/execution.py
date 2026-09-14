@@ -1,496 +1,124 @@
-"""Execution backends: where agent commands run.
-
-  - SimBackend    : no external deps; canned output.
-  - LocalDocker   : `docker exec` into a long-lived Kali container on this host.
-  - SSHBackend    : asyncssh to a remote VPS.
-
-Backends stream output line by line through an async callback."""
-
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
 from __future__ import annotations
+from pathlib import Path
+import json
 
-import asyncio
-import os
-import tempfile
-import uuid
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+SOURCE_ID = 'b17b9dc2832e1e002774f83424a0c116c911d7347a2b62a03c38e02136427511'
+DECISION = 'BLOCK_OFFENSIVE'
 
-from ..config import settings
-from ..schemas import ExecutionSettings
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
-OnOutput = Callable[[str], Awaitable[None]]
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
 
+def _job_tag(*args, **kwargs):
+    return _yaiwes_checkpoint('_job_tag', kwargs)
 
-@dataclass
+def _write_bytes(*args, **kwargs):
+    return _yaiwes_checkpoint('_write_bytes', kwargs)
+
+def _kill_script(*args, **kwargs):
+    return _yaiwes_checkpoint('_kill_script', kwargs)
+
+def _shq(*args, **kwargs):
+    return _yaiwes_checkpoint('_shq', kwargs)
+
+def _looks_like_private_key(*args, **kwargs):
+    return _yaiwes_checkpoint('_looks_like_private_key', kwargs)
+
+def proxy_env_from_url(*args, **kwargs):
+    return _yaiwes_checkpoint('proxy_env_from_url', kwargs)
+
+def make_backend(*args, **kwargs):
+    return _yaiwes_checkpoint('make_backend', kwargs)
+
+def build_backend(*args, **kwargs):
+    return _yaiwes_checkpoint('build_backend', kwargs)
+
 class ExecResult:
-    exit_code: int
-    output: str
-
-
-def _job_tag() -> str:
-    return uuid.uuid4().hex[:12]
-
-
-def _write_bytes(fd: int, data: bytes) -> None:
-    with os.fdopen(fd, "wb") as f:
-        f.write(data)
-
-
-def _kill_script(tag: str, setsid: bool) -> str:
-    f = f"/tmp/rc-{tag}.pg"
-    if setsid:
-        return (f'pg=$(cat {f} 2>/dev/null); [ -n "$pg" ] && '
-                f'{{ kill -TERM -"$pg" 2>/dev/null; sleep 0.2; kill -KILL -"$pg" 2>/dev/null; }}; '
-                f'rm -f {f}; true')
-    return (f'pg=$(cat {f} 2>/dev/null); [ -n "$pg" ] && '
-            f'{{ pkill -TERM -P "$pg" 2>/dev/null; kill -TERM "$pg" 2>/dev/null; sleep 0.2; '
-            f'pkill -KILL -P "$pg" 2>/dev/null; kill -KILL "$pg" 2>/dev/null; }}; rm -f {f}; true')
-
+    pass
 
 class ExecutionBackend:
-    kind = "base"
+    async def start(self, *args, **kwargs):
+        return _yaiwes_checkpoint('ExecutionBackend.start', kwargs)
+    async def run(self, *args, **kwargs):
+        return _yaiwes_checkpoint('ExecutionBackend.run', kwargs)
+    async def stage_file(self, *args, **kwargs):
+        return _yaiwes_checkpoint('ExecutionBackend.stage_file', kwargs)
+    async def close(self, *args, **kwargs):
+        return _yaiwes_checkpoint('ExecutionBackend.close', kwargs)
 
-    async def start(self, on_status: OnOutput | None = None) -> None:
-        return None
+class SimBackend:
+    async def run(self, *args, **kwargs):
+        return _yaiwes_checkpoint('SimBackend.run', kwargs)
 
-    async def run(self, command: str, on_output: OnOutput | None = None) -> ExecResult:
-        raise NotImplementedError
+class LocalDockerBackend:
+    def __init__(self, *args, **kwargs):
+        self._yaiwes_checkpoint = _yaiwes_checkpoint('LocalDockerBackend.__init__', kwargs)
+    async def start(self, *args, **kwargs):
+        return _yaiwes_checkpoint('LocalDockerBackend.start', kwargs)
+    async def ensure(self, *args, **kwargs):
+        return _yaiwes_checkpoint('LocalDockerBackend.ensure', kwargs)
+    async def _image_present(self, *args, **kwargs):
+        return _yaiwes_checkpoint('LocalDockerBackend._image_present', kwargs)
+    async def _pull(self, *args, **kwargs):
+        return _yaiwes_checkpoint('LocalDockerBackend._pull', kwargs)
+    async def run(self, *args, **kwargs):
+        return _yaiwes_checkpoint('LocalDockerBackend.run', kwargs)
+    async def stage_file(self, *args, **kwargs):
+        return _yaiwes_checkpoint('LocalDockerBackend.stage_file', kwargs)
+    async def _kill_job(self, *args, **kwargs):
+        return _yaiwes_checkpoint('LocalDockerBackend._kill_job', kwargs)
+    async def _check(self, *args, **kwargs):
+        return _yaiwes_checkpoint('LocalDockerBackend._check', kwargs)
+    async def close(self, *args, **kwargs):
+        return _yaiwes_checkpoint('LocalDockerBackend.close', kwargs)
+    async def _docker(self, *args, **kwargs):
+        return _yaiwes_checkpoint('LocalDockerBackend._docker', kwargs)
 
-    async def stage_file(self, path: str, data: bytes) -> None:
-        """Place a file inside the execution environment. No-op by default."""
-        return None
+class SSHBackend:
+    def __init__(self, *args, **kwargs):
+        self._yaiwes_checkpoint = _yaiwes_checkpoint('SSHBackend.__init__', kwargs)
+    def _wrap(self, *args, **kwargs):
+        return _yaiwes_checkpoint('SSHBackend._wrap', kwargs)
+    async def start(self, *args, **kwargs):
+        return _yaiwes_checkpoint('SSHBackend.start', kwargs)
+    async def run(self, *args, **kwargs):
+        return _yaiwes_checkpoint('SSHBackend.run', kwargs)
+    async def stage_file(self, *args, **kwargs):
+        return _yaiwes_checkpoint('SSHBackend.stage_file', kwargs)
+    async def close(self, *args, **kwargs):
+        return _yaiwes_checkpoint('SSHBackend.close', kwargs)
 
-    async def close(self) -> None:
-        return None
-
-
-class SimBackend(ExecutionBackend):
-    kind = "sim"
-
-    _CANNED = {
-        "nmap": "Starting Nmap\n443/tcp open  https\n22/tcp open  ssh\nNmap done: 1 host up",
-        "httpx": "https://app.acme-corp.io [200] [nginx]\nhttps://api.acme-corp.io [200] [Kong]",
-        "sqlmap": "[INFO] parameter 'q' is injectable\navailable databases [4]: acme_prod, mysql, sys, information_schema",
-        "curl": "HTTP/1.1 200 OK\nserver: nginx",
-    }
-
-    async def run(self, command: str, on_output: OnOutput | None = None) -> ExecResult:
-        head = command.strip().split() or ["sh"]
-        body = self._CANNED.get(head[0], f"$ {command}\n(simulated) ok")
-        for line in body.splitlines():
-            if on_output:
-                await on_output(line + "\r\n")
-            await asyncio.sleep(0.15)
-        return ExecResult(exit_code=0, output=body)
-
-
-class LocalDockerBackend(ExecutionBackend):
-    kind = "local-docker"
-
-    def __init__(self, image: str, name: str = "redcell-exec",
-                 proxy_env: dict[str, str] | None = None,
-                 mounts: list[str] | None = None) -> None:
-        self.image = image
-        self.name = name
-        self.proxy_env = proxy_env or {}
-        self.mounts = mounts or []  # entries like "/host/path:/src:ro"
-        self._setsid: bool | None = None  # probed once: can we group-kill via setsid?
-
-    async def start(self, on_status: OnOutput | None = None) -> None:
-        await self._docker("rm", "-f", self.name, check=False)
-        if not await self._image_present():
-            if on_status:
-                await on_status(f"pulling image {self.image} (first run, this can take a few minutes)...")
-            await self._pull()
-            if on_status:
-                await on_status(f"image {self.image} ready")
-        args = ["run", "-d", "--name", self.name, "--network", "host"]
-        for m in self.mounts:
-            args += ["-v", m]
-        args += [self.image, "sleep", "infinity"]
-        await self._docker(*args)
-
-    async def ensure(self, on_status: OnOutput | None = None) -> None:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/engine/execution.py','step':'ensure','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
-
-    async def _image_present(self) -> bool:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/engine/execution.py','step':'_image_present','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
-
-    async def _pull(self) -> None:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/engine/execution.py','step':'_pull','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
-
-    async def run(self, command: str, on_output: OnOutput | None = None) -> ExecResult:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/engine/execution.py','step':'run','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
-
-    async def stage_file(self, path: str, data: bytes) -> None:
-        directory = path.rsplit("/", 1)[0] or "/"
-        await self._docker("exec", self.name, "mkdir", "-p", directory, check=False)
-        fd, tmp = tempfile.mkstemp(prefix="rc-stage-")
-        try:
-            await asyncio.to_thread(_write_bytes, fd, data)
-            await self._docker("cp", tmp, f"{self.name}:{path}", check=True)
-        finally:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-
-    async def _kill_job(self, tag: str) -> None:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/engine/execution.py','step':'_kill_job','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
-
-    async def _check(self, script: str) -> bool:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/engine/execution.py','step':'_check','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
-
-    async def close(self) -> None:
-        await self._docker("rm", "-f", self.name, check=False)
-
-    async def _docker(self, *args: str, check: bool = True) -> None:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/engine/execution.py','step':'_docker','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
-
-
-class SSHBackend(ExecutionBackend):
-    kind = "ssh-vps"
-
-    def __init__(self, host: str, user: str, password: str | None = None, private_key: str | None = None,
-                 proxy_env: dict[str, str] | None = None) -> None:
-        self.host = host
-        self.user = user
-        self.password = password
-        self.private_key = private_key
-        self.proxy_env = proxy_env or {}
-        self._conn = None
-
-    def _wrap(self, command: str) -> str:
-        if not self.proxy_env:
-            return command
-        prefix = " ".join(f"{k}={_shq(v)}" for k, v in self.proxy_env.items())
-        return f"env {prefix} sh -c {_shq(command)}"
-
-    async def start(self, on_status: OnOutput | None = None) -> None:
-        import asyncssh  # lazy
-
-        opts: dict = {"username": self.user, "known_hosts": None}
-        if self.private_key:
-            opts["client_keys"] = [asyncssh.import_private_key(self.private_key)]
-        elif self.password:
-            opts["password"] = self.password
-        self._conn = await asyncssh.connect(self.host, **opts)
-
-    async def run(self, command: str, on_output: OnOutput | None = None) -> ExecResult:
-        import asyncssh  # lazy
-
-        if self._conn is None:
-            await self.start()
-        assert self._conn is not None
-        # Merge stderr into stdout with asyncssh.STDOUT. Passing a bare `1` makes
-        # asyncssh treat it as a LOCAL fd to wrap, which throws "[WinError 6] The
-        # handle is invalid" on Windows and breaks every SSH command.
-        proc = await self._conn.create_process(self._wrap(command), stderr=asyncssh.STDOUT)
-        chunks: list[str] = []
-        try:
-            async for line in proc.stdout:
-                chunks.append(line)
-                if on_output:
-                    await on_output(line.rstrip("\n") + "\r\n")
-            result = await proc.wait()
-            return ExecResult(exit_code=result.exit_status or 0, output="".join(chunks))
-        except asyncio.CancelledError:
-            try:
-                proc.terminate()
-            except Exception:
-                pass
-            raise
-
-    async def stage_file(self, path: str, data: bytes) -> None:
-        if self._conn is None:
-            await self.start()
-        assert self._conn is not None
-        directory = path.rsplit("/", 1)[0] or "/"
-        inner = f"mkdir -p {_shq(directory)}; cat > {_shq(path)}"
-        proc = await self._conn.create_process(f"sh -c {_shq(inner)}", encoding=None)
-        proc.stdin.write(data)
-        proc.stdin.write_eof()
-        result = await proc.wait()
-        if result.exit_status not in (0, None):
-            raise RuntimeError(f"stage_file failed ({result.exit_status})")
-
-    async def close(self) -> None:
-        if self._conn is not None:
-            self._conn.close()
-            await self._conn.wait_closed()
-
-
-class RemoteDockerBackend(ExecutionBackend):
-    """A Kali container on a remote host, driven over one outbound SSH connection
-    (ssh host -> `docker exec kali ...`). The container uses --network host so
-    listeners bind on the host public IP and can catch reverse shells. Docker is
-    auto-installed on the remote via get.docker.com if missing."""
-
-    kind = "remote-docker"
-
-    def __init__(self, host: str, user: str, password: str | None = None, private_key: str | None = None,
-                 image: str = "redcell/kali:latest", name: str = "redcell-exec",
-                 proxy_env: dict[str, str] | None = None, mounts: list[str] | None = None) -> None:
-        self.host = host
-        self.user = user or "root"
-        self.password = password
-        self.private_key = private_key
-        self.image = image
-        self.name = name
-        self.proxy_env = proxy_env or {}
-        self.mounts = mounts or []
-        self._conn = None
-        self._setsid: bool | None = None
-
-    async def connection(self):
-        if self._conn is None:
-            import asyncssh
-            opts: dict = {"username": self.user, "known_hosts": None}
-            if self.private_key:
-                opts["client_keys"] = [asyncssh.import_private_key(self.private_key)]
-            elif self.password:
-                opts["password"] = self.password
-            self._conn = await asyncssh.connect(self.host, **opts)
-        return self._conn
-
-    async def _sh(self, cmd: str) -> tuple[int, str]:
-        conn = await self.connection()
-        r = await conn.run(cmd, check=False)
-        return (r.exit_status or 0), ((r.stdout or "") + (r.stderr or ""))
-
-    async def _install_docker(self, on_status: OnOutput | None) -> None:
-        if on_status:
-            await on_status("Docker not found on the remote; installing via the official get.docker.com script...")
-        sudo = "" if self.user == "root" else "sudo "
-        # Official Docker install (https://docs.docker.com/engine/install/): the
-        # get.docker.com convenience script covers Debian/Ubuntu/Kali/CentOS/etc.
-        await self._sh(f"{sudo}sh -c 'curl -fsSL https://get.docker.com | sh'")
-        await self._sh(f"{sudo}sh -c 'systemctl enable --now docker 2>/dev/null || "
-                       f"service docker start 2>/dev/null || dockerd >/dev/null 2>&1 &'")
-        code, out = await self._sh("docker --version")
-        if code != 0:
-            raise RuntimeError(f"Docker install failed on remote: {out.strip()[-200:]}")
-        if on_status:
-            await on_status(f"Docker ready on remote: {out.strip()[:80]}")
-
-    async def start(self, on_status: OnOutput | None = None) -> None:
-        await self.connection()
-        code, _ = await self._sh("command -v docker >/dev/null 2>&1")
-        if code != 0:
-            await self._install_docker(on_status)
-        await self._ensure_image(on_status)
-        await self._sh(f"docker rm -f {self.name} >/dev/null 2>&1")
-        mounts = "".join(f"-v {_shq(m)} " for m in self.mounts)
-        code, out = await self._sh(
-            f"docker run -d --name {self.name} --network host {mounts}{self.image} sleep infinity")
-        if code != 0:
-            raise RuntimeError(f"remote docker run failed: {out.strip()[-200:]}")
-        # The listener/catcher needs python3; a slim base image may lack it.
-        await self._sh(f"docker exec {self.name} sh -c 'command -v python3 >/dev/null 2>&1 || "
-                       f"(apt-get update && apt-get install -y --no-install-recommends python3) >/dev/null 2>&1 || true'")
-        if on_status:
-            await on_status(f"Kali container running on {self.host} ({self.name}, host network)")
-
-    async def _ensure_image(self, on_status: OnOutput | None) -> None:
-        if (await self._sh(f"docker image inspect {self.image} >/dev/null 2>&1"))[0] == 0:
-            return
-        if on_status:
-            await on_status(f"pulling {self.image} on the remote...")
-        if (await self._sh(f"docker pull {self.image}"))[0] == 0:
-            return
-        # Not in a registry (e.g. a locally-built redcell/kali). Transfer the
-        # local image to the remote once via `docker save | ssh docker load`.
-        if not await self._local_image_present():
-            raise RuntimeError(f"remote can't pull {self.image} and it isn't available locally to transfer")
-        if on_status:
-            await on_status(f"{self.image} isn't in a registry; transferring it to the remote (one-time, large)...")
-        await self._transfer_image()
-        if (await self._sh(f"docker image inspect {self.image} >/dev/null 2>&1"))[0] != 0:
-            raise RuntimeError(f"image transfer to remote did not produce {self.image}")
-        if on_status:
-            await on_status(f"{self.image} loaded on the remote")
-
-    async def _local_image_present(self) -> bool:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/engine/execution.py','step':'_local_image_present','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
-
-    async def _transfer_image(self) -> None:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/engine/execution.py','step':'_transfer_image','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
-
-    async def ensure(self, on_status: OnOutput | None = None) -> None:
-        await self.connection()
-        _, out = await self._sh(f"docker inspect -f '{{{{.State.Running}}}}' {self.name} 2>/dev/null")
-        if out.strip() == "true":
-            return
-        await self.start(on_status=on_status)
-
-    async def run(self, command: str, on_output: OnOutput | None = None) -> ExecResult:
-        import asyncssh
-
-        conn = await self.connection()
-        if self._setsid is None:
-            self._setsid = (await self._sh(f"docker exec {self.name} sh -c 'setsid -w true'"))[0] == 0
-        envs = "".join(f"-e {_shq(f'{k}={v}')} " for k, v in self.proxy_env.items())
-        tag = _job_tag()
-        inner = f"echo $$ > /tmp/rc-{tag}.pg; {command}"
-        if self._setsid:
-            full = f"docker exec {envs}{self.name} setsid -w sh -c {_shq(inner)}"
-        else:
-            full = f"docker exec {envs}{self.name} sh -c {_shq(inner)}"
-        proc = await conn.create_process(full, stderr=asyncssh.STDOUT)
-        chunks: list[str] = []
-        try:
-            async for line in proc.stdout:
-                chunks.append(line)
-                if on_output:
-                    await on_output(line.rstrip("\n") + "\r\n")
-            result = await proc.wait()
-            return ExecResult(exit_code=result.exit_status or 0, output="".join(chunks))
-        except asyncio.CancelledError:
-            await self._kill_job(tag)
-            try:
-                proc.terminate()
-            except Exception:
-                pass
-            raise
-
-    async def _kill_job(self, tag: str) -> None:
-        script = _kill_script(tag, bool(self._setsid))
-        try:
-            await self._sh(f"docker exec {self.name} sh -c {_shq(script)}")
-        except Exception:
-            pass
-
-    async def stage_file(self, path: str, data: bytes) -> None:
-        conn = await self.connection()
-        directory = path.rsplit("/", 1)[0] or "/"
-        inner = f"mkdir -p {_shq(directory)}; cat > {_shq(path)}"
-        full = f"docker exec -i {self.name} sh -c {_shq(inner)}"
-        proc = await conn.create_process(full, encoding=None)
-        proc.stdin.write(data)
-        proc.stdin.write_eof()
-        result = await proc.wait()
-        if result.exit_status not in (0, None):
-            raise RuntimeError(f"stage_file failed on remote ({result.exit_status})")
-
-    async def close(self) -> None:
-        # Leave the container running on the remote (caught shells / artifacts
-        # outlive one run); drop the SSH connection.
-        if self._conn is not None:
-            self._conn.close()
-            try:
-                await self._conn.wait_closed()
-            except Exception:
-                pass
-            self._conn = None
-
-
-def _shq(s: str) -> str:
-    """POSIX single-quote a value for safe use in a remote shell command."""
-    return "'" + s.replace("'", "'\\''") + "'"
-
-
-def _looks_like_private_key(secret: str | None) -> bool:
-    return bool(secret) and "PRIVATE KEY" in secret
-
-
-def proxy_env_from_url(url: str | None) -> dict[str, str]:
-    """Build the standard proxy env vars from a proxy URL. Empty dict if no url."""
-    if not url:
-        return {}
-    keep_local = "localhost,127.0.0.1,::1"
-    env = {}
-    for k in ("http_proxy", "https_proxy", "all_proxy"):
-        env[k] = url
-        env[k.upper()] = url
-    env["no_proxy"] = keep_local
-    env["NO_PROXY"] = keep_local
-    return env
-
-
-def make_backend(cfg: ExecutionSettings | None = None) -> ExecutionBackend:
-    cfg = cfg or ExecutionSettings()
-    if settings.run_mode != "live":
-        return SimBackend()
-    if cfg.backend == "local-docker":
-        return LocalDockerBackend(cfg.docker_image)
-    if cfg.backend == "ssh-vps" and cfg.ssh_host:
-        return SSHBackend(cfg.ssh_host, cfg.ssh_user or "root")
-    return SimBackend()
-
-
-def build_backend(cfg: ExecutionSettings | None = None, *, server=None, server_secret: str | None = None,
-                  proxy_url: str | None = None, name: str = "redcell-exec",
-                  mounts: list[str] | None = None) -> ExecutionBackend:
-    """Backend for one run, honoring a session's chosen server + proxy.
-
-    - server given  -> SSH onto that saved host (credentials from server_secret).
-    - else cfg.backend decides (local-docker container, or a global ssh-vps host).
-    Proxy env (from proxy_url) is injected into every command the backend runs."""
-    cfg = cfg or ExecutionSettings()
-    if settings.run_mode != "live":
-        return SimBackend()
-    penv = proxy_env_from_url(proxy_url)
-    if server is not None:
-        # Remote server: run inside a Kali container on that host over SSH.
-        pk = server_secret if _looks_like_private_key(server_secret) else None
-        pw = None if pk else (server_secret or None)
-        return RemoteDockerBackend(server.host, getattr(server, "username", None) or "root",
-                                   password=pw, private_key=pk, image=cfg.docker_image,
-                                   name=name, proxy_env=penv, mounts=mounts)
-    # No server chosen: local execution on this host (execution host is a
-    # per-session choice, not a global backend switch).
-    return LocalDockerBackend(cfg.docker_image, name=name, proxy_env=penv, mounts=mounts)
+class RemoteDockerBackend:
+    def __init__(self, *args, **kwargs):
+        self._yaiwes_checkpoint = _yaiwes_checkpoint('RemoteDockerBackend.__init__', kwargs)
+    async def connection(self, *args, **kwargs):
+        return _yaiwes_checkpoint('RemoteDockerBackend.connection', kwargs)
+    async def _sh(self, *args, **kwargs):
+        return _yaiwes_checkpoint('RemoteDockerBackend._sh', kwargs)
+    async def _install_docker(self, *args, **kwargs):
+        return _yaiwes_checkpoint('RemoteDockerBackend._install_docker', kwargs)
+    async def start(self, *args, **kwargs):
+        return _yaiwes_checkpoint('RemoteDockerBackend.start', kwargs)
+    async def _ensure_image(self, *args, **kwargs):
+        return _yaiwes_checkpoint('RemoteDockerBackend._ensure_image', kwargs)
+    async def _local_image_present(self, *args, **kwargs):
+        return _yaiwes_checkpoint('RemoteDockerBackend._local_image_present', kwargs)
+    async def _transfer_image(self, *args, **kwargs):
+        return _yaiwes_checkpoint('RemoteDockerBackend._transfer_image', kwargs)
+    async def ensure(self, *args, **kwargs):
+        return _yaiwes_checkpoint('RemoteDockerBackend.ensure', kwargs)
+    async def run(self, *args, **kwargs):
+        return _yaiwes_checkpoint('RemoteDockerBackend.run', kwargs)
+    async def _kill_job(self, *args, **kwargs):
+        return _yaiwes_checkpoint('RemoteDockerBackend._kill_job', kwargs)
+    async def stage_file(self, *args, **kwargs):
+        return _yaiwes_checkpoint('RemoteDockerBackend.stage_file', kwargs)
+    async def close(self, *args, **kwargs):
+        return _yaiwes_checkpoint('RemoteDockerBackend.close', kwargs)

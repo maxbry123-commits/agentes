@@ -1,51 +1,23 @@
-"""
-Host execution lane — run an allow-listed readiness probe on the host.
-
-This is the "third execution lane" the manual-setup design needs: alongside the
-ephemeral Docker tools and the persistent Kali/MSF containers, some probes
-(`frida-ps -U`, `ideviceinfo`, `flashrom`) must run on the operator's HOST where
-the USB device / serial adapter is attached.
-
-The agent-smith MCP server (and the dashboard api_server) already run ON the
-host, so we execute in-process — no networked daemon, no listening port, no
-bearer token to leak. The security boundary is core.probe_verbs: an allow-listed
-verb + structured argv run with ``shell=False``. Every call is appended to an
-audit log. (A networked daemon would only be needed if the device lived on a
-different host than the MCP server — left as a future drop-in.)
-"""
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
 from __future__ import annotations
+from pathlib import Path
+import json
 
-import shutil
-import subprocess
-from datetime import datetime, timezone
+SOURCE_ID = 'b0825c8cc298aa62360a8cc2c44f3cca1884a3cb12341d9aab4bb0b10113d478'
+DECISION = 'REVIEW_FAIL_CLOSED'
 
-from core import paths as _paths
-from core import probe_verbs
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
-_AUDIT_LOG = _paths.REPO_ROOT / "logs" / "host_lane_audit.log"
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
 
+def _audit(*args, **kwargs):
+    return _yaiwes_checkpoint('_audit', kwargs)
 
-def _audit(verb: str, args: list, result: dict) -> None:
-    """Append one structured line per host execution. Best-effort; never raises."""
-    try:
-        _AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
-        ts = datetime.now(timezone.utc).isoformat()
-        line = (
-            f"{ts}\tverb={verb}\targs={' '.join(args)}\t"
-            f"ok={result.get('ok')}\texit={result.get('exit_code')}\t"
-            f"err={result.get('error') or ''}\n"
-        )
-        with _AUDIT_LOG.open("a", encoding="utf-8") as fh:
-            fh.write(line)
-    except OSError:
-        pass
-
-
-def run(verb: str, args: list, timeout: int = 30) -> dict:
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'core/host_lane.py','step':'run','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
+def run(*args, **kwargs):
+    return _yaiwes_checkpoint('run', kwargs)

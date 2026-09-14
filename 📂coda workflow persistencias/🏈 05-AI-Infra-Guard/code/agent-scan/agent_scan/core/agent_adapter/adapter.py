@@ -621,22 +621,137 @@ class AIProviderClient:
             max_messages: int,
             max_response_bytes: int,
     ) -> Tuple[List[Any], List[str], Optional[ProviderTestResult]]:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'agent-scan/agent_scan/core/agent_adapter/adapter.py','step':'_receive_websocket_messages','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
+        """Receive bounded WebSocket messages and extract response text."""
+        raw_messages: List[Any] = []
+        output_parts: List[str] = []
+        total_response_bytes = 0
+
+        for _ in range(max_messages):
+            try:
+                response_message = websocket.recv(timeout=timeout)
+            except TimeoutError:
+                break
+            except ConnectionClosed:
+                break
+
+            if isinstance(response_message, bytes):
+                total_response_bytes += len(response_message)
+            else:
+                total_response_bytes += len(str(response_message).encode("utf-8"))
+            if total_response_bytes > max_response_bytes:
+                return raw_messages, output_parts, ProviderTestResult(
+                    success=False,
+                    message=f"❌ WebSocket response exceeded {max_response_bytes} bytes",
+                    provider_response=ProviderResponseInfo(
+                        raw=raw_messages,
+                        error="response size limit exceeded",
+                    )
+                )
+
+            parsed_message = self._parse_ws_message(response_message)
+            raw_messages.append(parsed_message)
+
+            output = self._append_ws_message_output(parsed_message, config.transform_response)
+            if output:
+                output_parts.append(output)
+
+            if self._is_ws_done_message(parsed_message):
+                break
+
+        return raw_messages, output_parts, None
 
     def _call_websocket_provider(self, provider: ProviderOptions, prompt: str) -> ProviderTestResult:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'agent-scan/agent_scan/core/agent_adapter/adapter.py','step':'_call_websocket_provider','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
+        """Call a request-response style WebSocket endpoint."""
+        config = provider.config
+        validation_error = self._validate_websocket_config(config)
+        if validation_error:
+            return validation_error
+
+        url = self._get_provider_url(config)
+        timeout = self._get_timeout_seconds(config)
+        headers = self._get_headers(config)
+
+        body = self._render_prompt_body(config.body, prompt)
+        message = json.dumps(body, ensure_ascii=False) if isinstance(body, (dict, list)) else str(body)
+        max_messages, max_response_bytes = self._get_ws_limits(config)
+
+        start_time = time.time()
+
+        try:
+            with websocket_connect(
+                    url,
+                    additional_headers=headers or None,
+                    open_timeout=timeout,
+                    close_timeout=min(timeout, 5),
+                    max_size=max_response_bytes,
+            ) as websocket:
+                websocket.send(message)
+                raw_messages, output_parts, receive_error = self._receive_websocket_messages(
+                    websocket,
+                    config,
+                    timeout,
+                    max_messages,
+                    max_response_bytes,
+                )
+                if receive_error:
+                    receive_error.provider_response.metadata = {
+                        "url": url,
+                        "elapsed_time": f"{time.time() - start_time:.2f}s",
+                        "transport": "websocket",
+                    }
+                    return receive_error
+
+            elapsed = time.time() - start_time
+            raw_response: Any = raw_messages[-1] if len(raw_messages) == 1 else raw_messages
+            output = "".join(output_parts) if output_parts else self._extract_output(raw_response, config.transform_response)
+
+            provider_response = ProviderResponseInfo(
+                raw=raw_response,
+                output=output,
+                metadata={
+                    "elapsed_time": f"{elapsed:.2f}s",
+                    "url": url,
+                    "transport": "websocket",
+                    "message_count": len(raw_messages),
+                }
+            )
+
+            if output:
+                return ProviderTestResult(
+                    success=True,
+                    message=f"✅ WebSocket connection successful! Messages: {len(raw_messages)}, Time: {elapsed:.2f}s",
+                    provider_response=provider_response
+                )
+            return ProviderTestResult(
+                success=False,
+                message="❌ WebSocket response did not contain extractable output",
+                provider_response=provider_response
+            )
+
+        except TimeoutError:
+            return ProviderTestResult(
+                success=False,
+                message=f"⏱️ WebSocket request timed out after {timeout:.0f} seconds",
+                provider_response=ProviderResponseInfo(error="Timeout", metadata={"url": url})
+            )
+        except WebSocketException as e:
+            return ProviderTestResult(
+                success=False,
+                message=f"🔌 WebSocket connection failed: {str(e)}",
+                provider_response=ProviderResponseInfo(error=str(e), metadata={"url": url})
+            )
+        except OSError as e:
+            return ProviderTestResult(
+                success=False,
+                message=f"🔌 WebSocket connection failed: {str(e)}",
+                provider_response=ProviderResponseInfo(error=str(e), metadata={"url": url})
+            )
+        except Exception as e:
+            return ProviderTestResult(
+                success=False,
+                message=f"❌ WebSocket error: {str(e)}",
+                provider_response=ProviderResponseInfo(error=str(e), metadata={"url": url})
+            )
 
     def _call_dify_provider(self, provider: ProviderOptions, prompt: str) -> ProviderTestResult:
         """
@@ -832,13 +947,90 @@ class AIProviderClient:
             body: Any,
             transform_response: Optional[str] = None
     ) -> ProviderTestResult:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'agent-scan/agent_scan/core/agent_adapter/adapter.py','step':'_make_http_request','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
+        """Make HTTP request and return standardized result."""
+        start_time = time.time()
+
+        try:
+            with httpx.Client(timeout=self.timeout) as client:
+                response = client.request(
+                    method=method,
+                    url=url,
+                    headers=headers,
+                    json=body if isinstance(body, dict) else None,
+                    content=body if isinstance(body, str) else None
+                )
+
+                elapsed = time.time() - start_time
+                response_headers = dict(response.headers)
+                status_code = response.status_code
+                content_type = response_headers.get("content-type", "").lower()
+
+                # Check if response is SSE format
+                is_sse = "text/event-stream" in content_type
+
+                if is_sse:
+                    # Parse SSE response
+                    raw_response, token_usage = self._parse_sse_response(response.text)
+                else:
+                    try:
+                        raw_response = response.json()
+                    except:
+                        raw_response = response.text
+                    token_usage = raw_response.get("usage") if isinstance(raw_response, dict) else None
+
+                output = self._extract_output(raw_response, transform_response)
+
+                provider_response = ProviderResponseInfo(
+                    raw=raw_response,
+                    output=output,
+                    headers=response_headers,
+                    token_usage=token_usage,
+                    metadata={
+                        "status_code": status_code,
+                        "elapsed_time": f"{elapsed:.2f}s",
+                        "url": url,
+                        "method": method,
+                        "is_sse": is_sse
+                    }
+                )
+
+                if 200 <= status_code < 300:
+                    return ProviderTestResult(
+                        success=True,
+                        message=f"✅ Connection successful! Status: {status_code}, Time: {elapsed:.2f}s",
+                        provider_response=provider_response
+                    )
+                else:
+                    error_msg = ""
+                    if isinstance(raw_response, dict):
+                        error_msg = raw_response.get("error", {}).get("message", "") or str(raw_response.get("error", "")) or raw_response.get("message", "")
+                    elif isinstance(raw_response, str):
+                        error_msg = raw_response
+                    return ProviderTestResult(
+                        success=False,
+                        message=f"❌ Request failed with status {status_code}: {error_msg or 'Unknown error'}",
+                        provider_response=provider_response
+                    )
+
+
+        except httpx.TimeoutException:
+            return ProviderTestResult(
+                success=False,
+                message=f"⏱️ Request timed out after {self.timeout} seconds",
+                provider_response=ProviderResponseInfo(error="Timeout", metadata={"url": url})
+            )
+        except httpx.ConnectError as e:
+            return ProviderTestResult(
+                success=False,
+                message=f"🔌 Connection refused: Cannot connect to {url}",
+                provider_response=ProviderResponseInfo(error=str(e), metadata={"url": url})
+            )
+        except Exception as e:
+            return ProviderTestResult(
+                success=False,
+                message=f"❌ Error: {str(e)}",
+                provider_response=ProviderResponseInfo(error=str(e), metadata={"url": url})
+            )
 
     def _parse_sse_response(self, sse_text: str) -> tuple:
         """

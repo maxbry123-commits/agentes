@@ -1,13 +1,20 @@
-import sys
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
+from __future__ import annotations
 from pathlib import Path
+import json
 
+SOURCE_ID = '9ddf06f3f611231d2f7e125865c5c7dac11843ae919a8657769b4cfa749d3b1e'
+DECISION = 'BLOCK_OFFENSIVE'
 
-def get_phantom_resource_path(*parts: str) -> Path:
-    frozen_base = getattr(sys, "_MEIPASS", None)
-    if frozen_base:
-        base = Path(frozen_base) / "phantom"
-        if base.exists():
-            return base.joinpath(*parts)
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
-    base = Path(__file__).resolve().parent.parent
-    return base.joinpath(*parts)
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
+
+def get_phantom_resource_path(*args, **kwargs):
+    return _yaiwes_checkpoint('get_phantom_resource_path', kwargs)

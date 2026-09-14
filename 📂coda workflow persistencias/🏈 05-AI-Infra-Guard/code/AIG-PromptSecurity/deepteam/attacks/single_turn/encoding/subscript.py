@@ -1,31 +1,23 @@
-# Copyright (c) 2024-2026 Tencent Zhuque Lab. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# Requirement: Any integration or derivative work must explicitly attribute
-# Tencent Zhuque Lab (https://github.com/Tencent/AI-Infra-Guard) in its
-# documentation or user interface, as detailed in the NOTICE file.
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
+from __future__ import annotations
+from pathlib import Path
+import json
 
-from deepteam.attacks import BaseAttack
+SOURCE_ID = 'b4ec5964549da9a86a9ccb02d6ea993b0bca5e4f869ba0254d39e373d931cf10'
+DECISION = 'BLOCK_OFFENSIVE'
 
-class Subscript(BaseAttack):
-    def __init__(self, weight: int = 1):
-        self.weight = weight
-        self.subscript_map = {
-            '0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉',
-            'a':'ₐ','e':'ₑ','h':'ₕ','i':'ᵢ','j':'ⱼ','k':'ₖ','l':'ₗ','m':'ₘ','n':'ₙ','o':'ₒ','p':'ₚ','r':'ᵣ','s':'ₛ','t':'ₜ','u':'ᵤ','v':'ᵥ','x':'ₓ'
-        }
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
-    def enhance(self, attack: str) -> str:
-        """Convert characters to subscript"""
-        return ''.join([self.subscript_map.get(c, c) for c in attack])
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
+
+class Subscript:
+    def __init__(self, *args, **kwargs):
+        self._yaiwes_checkpoint = _yaiwes_checkpoint('Subscript.__init__', kwargs)
+    def enhance(self, *args, **kwargs):
+        return _yaiwes_checkpoint('Subscript.enhance', kwargs)

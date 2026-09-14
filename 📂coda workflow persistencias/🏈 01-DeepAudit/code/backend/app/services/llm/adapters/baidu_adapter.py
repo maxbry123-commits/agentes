@@ -26,13 +26,48 @@ class BaiduAdapter(BaseLLMAdapter):
         self._base_url = config.base_url or "https://aip.baidubce.com"
     
     async def _get_access_token(self) -> str:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'backend/app/services/llm/adapters/baidu_adapter.py','step':'_get_access_token','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
+        """获取百度API的access_token
+        
+        注意：百度API使用API Key和Secret Key来获取access_token
+        这里假设api_key格式为: "api_key:secret_key"
+        """
+        if self._access_token:
+            return self._access_token
+        
+        # 解析API Key和Secret Key
+        if ":" not in self.config.api_key:
+            raise LLMError(
+                "百度API需要同时提供API Key和Secret Key，格式：api_key:secret_key",
+                provider="baidu"
+            )
+        
+        api_key, secret_key = self.config.api_key.split(":", 1)
+        
+        url = f"{self._base_url}/oauth/2.0/token"
+        params = {
+            "grant_type": "client_credentials",
+            "client_id": api_key,
+            "client_secret": secret_key,
+        }
+        
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(url, params=params)
+            if response.status_code != 200:
+                raise LLMError(
+                    f"获取百度access_token失败: {response.text}",
+                    provider="baidu",
+                    status_code=response.status_code
+                )
+            
+            data = response.json()
+            self._access_token = data.get("access_token")
+            if not self._access_token:
+                raise LLMError(
+                    f"百度API返回的access_token为空: {response.text}",
+                    provider="baidu"
+                )
+            
+            return self._access_token
     
     async def complete(self, request: LLMRequest) -> LLMResponse:
         """执行实际的API调用"""

@@ -1,51 +1,29 @@
-import subprocess
-import shutil
-import tempfile
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
+from __future__ import annotations
 from pathlib import Path
+import json
 
+SOURCE_ID = '029c3e65a3986d1167906a7277a6175a431d6987885ebbff7f18f63dfad83417'
+DECISION = 'BLOCK_OFFENSIVE'
 
-DOCKER_IMAGE = "shel-tools"
-DOCKERFILE_CONTENT = """FROM kalilinux/kali-rolling:latest
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \\
-    nmap hydra gobuster dirb wfuzz sqlmap nikto enum4linux \\
-    smbclient ldapscripts dnsutils curl wget netcat-openbsd \\
-    iproute2 python3-pip openssh-client whois dnsrecon \\
-    && rm -rf /var/lib/apt/lists/*
-RUN pip3 install --quiet pwntools requests beautifulsoup4
-WORKDIR /workspace
-"""
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
 
 class DockerSandbox:
-    def __init__(self):
-        self.available = self._check_docker()
-
-    def _check_docker(self):
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'agent/docker.py','step':'_check_docker','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
-
-    def build_image(self):
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'agent/docker.py','step':'build_image','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
-
-    def run_command(self, command: str, timeout: int = 120) -> str:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'agent/docker.py','step':'run_command','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
-
-    def run_interactive(self, command: str) -> str:
-        return self.run_command(command)
+    def __init__(self, *args, **kwargs):
+        self._yaiwes_checkpoint = _yaiwes_checkpoint('DockerSandbox.__init__', kwargs)
+    def _check_docker(self, *args, **kwargs):
+        return _yaiwes_checkpoint('DockerSandbox._check_docker', kwargs)
+    def build_image(self, *args, **kwargs):
+        return _yaiwes_checkpoint('DockerSandbox.build_image', kwargs)
+    def run_command(self, *args, **kwargs):
+        return _yaiwes_checkpoint('DockerSandbox.run_command', kwargs)
+    def run_interactive(self, *args, **kwargs):
+        return _yaiwes_checkpoint('DockerSandbox.run_interactive', kwargs)

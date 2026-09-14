@@ -383,13 +383,25 @@ def is_claude_model(model: str) -> bool:
 
 
 def _validate_target_address(hostname: str, port: int | None) -> None:
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'services/api_checker/server.py','step':'_validate_target_address','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
+    if ALLOW_PRIVATE_TARGETS:
+        return
+    try:
+        candidates = {
+            item[4][0]
+            for item in socket.getaddrinfo(
+                hostname,
+                port,
+                type=socket.SOCK_STREAM,
+            )
+        }
+    except socket.gaierror as exc:
+        raise HTTPException(400, f"base_url 主机无法解析: {hostname}") from exc
+    if not candidates:
+        raise HTTPException(400, f"base_url 主机无法解析: {hostname}")
+    for candidate in candidates:
+        address = ipaddress.ip_address(candidate)
+        if not address.is_global:
+            raise HTTPException(400, "base_url 不允许指向环回、私网、链路本地或保留地址")
 
 
 # ================================================================

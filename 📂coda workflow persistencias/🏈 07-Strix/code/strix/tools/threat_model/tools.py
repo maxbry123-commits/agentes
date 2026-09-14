@@ -59,13 +59,20 @@ _REQUIRED_SECTIONS = (
 
 
 def _git(repo: Path, args: list[str]) -> str | None:
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/tools/threat_model/tools.py','step':'_git','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
+    try:
+        result = subprocess.run(  # noqa: S603
+            ["git", "-C", str(repo), *args],  # noqa: S607
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_GIT_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.SubprocessError):
+        logger.debug("git %s failed in %s", args, repo, exc_info=True)
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
 
 
 def _local_directory(target: str) -> Path | None:

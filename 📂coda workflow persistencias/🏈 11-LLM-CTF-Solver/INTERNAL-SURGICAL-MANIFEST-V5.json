@@ -1,0 +1,427 @@
+{
+  "schema": "yaiwes.internal.surgical/v5",
+  "component": "🏈 11-LLM-CTF-Solver",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.0",
+  "policy": {
+    "restore_benign": true,
+    "offensive_execution": false,
+    "ambiguous": "FAIL_CLOSED",
+    "network_default_for_replacements": "deny",
+    "source_execution_during_audit": false
+  },
+  "files": [
+    {
+      "path": "agent/attack_surface.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "3313d3474d703922641a668b92de14f8abf8e75f330f31c5a680c57fd2042747",
+      "active_sha256": "926460345038784d00a33789acd64388ead7c5f8de37433fb433aff3dcc0822f",
+      "quarantine": "_yaiwes_upstream_quarantine/agent/attack_surface.py.original",
+      "link": true
+    },
+    {
+      "path": "agent/checkpoint.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "6be21bb159eb0e4bfb8407ce77f8468603dc6dafa43e77c79ab4edbf38635baa",
+      "active_sha256": "6be21bb159eb0e4bfb8407ce77f8468603dc6dafa43e77c79ab4edbf38635baa",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "agent/memory.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "048d22939b24b4890e9164d1f369170eec9696f6c7c6247daf2a8b221f690cab",
+      "active_sha256": "048d22939b24b4890e9164d1f369170eec9696f6c7c6247daf2a8b221f690cab",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "agent/workflow.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "95b7f7e27fb2bca9d5e0cdf4d8e3e124e4536f76b534303438921e3461b68408",
+      "active_sha256": "95b7f7e27fb2bca9d5e0cdf4d8e3e124e4536f76b534303438921e3461b68408",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "backend/app/adapters/__init__.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "backend/app/adapters/web_ui_interface.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "4ffb455daa11da901d7995a499b87d0af17d64aee496d41a532dfde666f2bbcd",
+      "active_sha256": "4ffb455daa11da901d7995a499b87d0af17d64aee496d41a532dfde666f2bbcd",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "backend/app/routers/task_router.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "5eed93f1d4c7c670ee5044e6dbb47a3fe731c50f7693fcd94f4f62d2327c9b65",
+      "active_sha256": "5eed93f1d4c7c670ee5044e6dbb47a3fe731c50f7693fcd94f4f62d2327c9b65",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "backend/app/routers/ws_router.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "ef87a1513b7cdb454fc34be2fcb86fdcd9df1c0a762be1bb4f5a4912180845dd",
+      "active_sha256": "94325ba85401eb53d4db792b45494cd0ab47a466f69d87b93cf69c777d15b68f",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/routers/ws_router.py.original",
+      "link": true
+    },
+    {
+      "path": "backend/app/schemas/__init__.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "backend/app/schemas/enums.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "fdfae3c3ae4ba125c235864251ae07b8a7510313bcfddc29030c49686450604c",
+      "active_sha256": "fdfae3c3ae4ba125c235864251ae07b8a7510313bcfddc29030c49686450604c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "backend/app/schemas/messages.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "838568e515a85818806a054dca7d629b076007ea67e2fcf6d091eb1f587b9d62",
+      "active_sha256": "838568e515a85818806a054dca7d629b076007ea67e2fcf6d091eb1f587b9d62",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "backend/app/schemas/request.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "91cece3c6f2aa31f98c6028902b9084e0616c0859fbf74e11d8dad905fee72c2",
+      "active_sha256": "91cece3c6f2aa31f98c6028902b9084e0616c0859fbf74e11d8dad905fee72c2",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "backend/app/services/__init__.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "backend/app/services/redis_manager.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "fa10ef2ca4cb7bed8bd96b6eb0d03d8a6721b366e0b90b988546ed9417dab676",
+      "active_sha256": "fa10ef2ca4cb7bed8bd96b6eb0d03d8a6721b366e0b90b988546ed9417dab676",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "backend/app/services/state_store.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "9d77b1b1eedd44170acbc642fc9c62f8f9ef103c62800032fc12560638081c28",
+      "active_sha256": "9d77b1b1eedd44170acbc642fc9c62f8f9ef103c62800032fc12560638081c28",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "backend/app/services/ws_manager.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "182df7dcec26e89f166250f799a2a380fa9e82d47ff2b94b3225cae60962f2c8",
+      "active_sha256": "182df7dcec26e89f166250f799a2a380fa9e82d47ff2b94b3225cae60962f2c8",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/ws_manager.py.original",
+      "link": false
+    },
+    {
+      "path": "backend/app/utils/task_id.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "5b94e0800972fce060d585ce80252bc31f48d97fd61867b81e23a6280926da57",
+      "active_sha256": "5b94e0800972fce060d585ce80252bc31f48d97fd61867b81e23a6280926da57",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "backend/test_e2e.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive content plus execution surface",
+      "original_sha256": "9dcc10d89b771c2bf2aa21dc2760d5e9f892c22a77cbcff2a7f57fcba4dbc73c",
+      "active_sha256": "e3ae7611a47ec0fe6ab7e3b65137a0dc198d9faeaf6d247fa9b1ccfadf1765bc",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/test_e2e.py.original",
+      "link": true
+    },
+    {
+      "path": "config.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "2918ee0691d64c397a89be858538cf33da9c05d013e522cb6d68202b4c5b2ac3",
+      "active_sha256": "2918ee0691d64c397a89be858538cf33da9c05d013e522cb6d68202b4c5b2ac3",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "ctf_tool/android_tools.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "11a32a1a33a389423fefdd9d52cc2232d15f45c1508798d66b56002ca3d7660e",
+      "active_sha256": "6e01bda65fde275f3584b39a124480f32cdcb020a92b1a0e89103d7bebfc4afe",
+      "quarantine": "_yaiwes_upstream_quarantine/ctf_tool/android_tools.py.original",
+      "link": true
+    },
+    {
+      "path": "ctf_tool/crypto_attacks.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "62bbd01195eeb91698c8572150dd5cd37e908cfa051d216fe8256468284b3b55",
+      "active_sha256": "8778a7556bf294a786d4d410c1cf573e969ab604a7afb8cf6d8bcafd4176e1fe",
+      "quarantine": "_yaiwes_upstream_quarantine/ctf_tool/crypto_attacks.py.original",
+      "link": true
+    },
+    {
+      "path": "ctf_tool/exploit_templates.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "ecece249744845fade49b47736f04479dcdf853b89d070895c236be0088b8bbf",
+      "active_sha256": "4d107a7e273bb41763aa6ee7728aad26256bde4baaa30ee5749576adfd5b435f",
+      "quarantine": "_yaiwes_upstream_quarantine/ctf_tool/exploit_templates.py.original",
+      "link": true
+    },
+    {
+      "path": "ctf_tool/forensics_tools.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "053186046813fe5c7347a66a7c4c7ce38b3108d1907de738764b14fa6447466c",
+      "active_sha256": "5443b5b3d3d3be088e69485005e716b01b732bcac288d6e216d034c237b6ca2b",
+      "quarantine": "_yaiwes_upstream_quarantine/ctf_tool/forensics_tools.py.original",
+      "link": true
+    },
+    {
+      "path": "ctf_tool/mcp_adapter.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "13b7ecdb5d65a64689e63d9d85b47ee1d29b397ee614c0413a6b1a5f3f9795fc",
+      "active_sha256": "13b7ecdb5d65a64689e63d9d85b47ee1d29b397ee614c0413a6b1a5f3f9795fc",
+      "quarantine": "_yaiwes_upstream_quarantine/ctf_tool/mcp_adapter.py.original",
+      "link": false
+    },
+    {
+      "path": "ctf_tool/network.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "f71061c73a70ae53ffc3504c472b95424491071d931c48119afec7963836af9d",
+      "active_sha256": "d5b9f9384b895e2a925bd4770a17feb55eec89c90d6eaf2a11003c4e82f58014",
+      "quarantine": "_yaiwes_upstream_quarantine/ctf_tool/network.py.original",
+      "link": true
+    },
+    {
+      "path": "ctf_tool/python.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "2fd78ba5625cfda40a47d9052ab4c3d03cac64523016215e03b82a22d2513406",
+      "active_sha256": "0b94b999b176354b2659b57270d765f90bfda2c9e57e7e91ea5922134b39f716",
+      "quarantine": "_yaiwes_upstream_quarantine/ctf_tool/python.py.original",
+      "link": true
+    },
+    {
+      "path": "ctf_tool/reverse_tools.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "7700c806adfb4b984086f46819ae8a93810ed837f607e3835724d1b75e691691",
+      "active_sha256": "9162731bf24a673ec499f696cef20ff192c0d5b3cd5a554a3b78a21a08ddf24b",
+      "quarantine": "_yaiwes_upstream_quarantine/ctf_tool/reverse_tools.py.original",
+      "link": true
+    },
+    {
+      "path": "ctf_tool/ssh_shell.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive content plus execution surface",
+      "original_sha256": "a0f02c4475fc1777a46186808b49aa04241f1c393ac14beb813a17ebe2206edd",
+      "active_sha256": "4dc4effe2ff5d2718dffee6d3f3b6fe3d9a012cc478ed4fb4f3e2f16194d2a99",
+      "quarantine": "_yaiwes_upstream_quarantine/ctf_tool/ssh_shell.py.original",
+      "link": true
+    },
+    {
+      "path": "ctf_tool/web_tools.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "71f006bbd2eb001c88574147a6328be8ae38cc27199c487a06720a260e97c4c7",
+      "active_sha256": "597b4987ea747cbb70b39961c7aa9697ca3599c39d36c5724821afd5e5cadd19",
+      "quarantine": "_yaiwes_upstream_quarantine/ctf_tool/web_tools.py.original",
+      "link": true
+    },
+    {
+      "path": "frontend/postcss.config.js",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "190c877db466995bf1482f4a16abd06e04a89ede3119341e2a86ff96e1737b27",
+      "active_sha256": "190c877db466995bf1482f4a16abd06e04a89ede3119341e2a86ff96e1737b27",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "frontend/src/stores/task.ts",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "8ed8d0b61d9e563e8b667e33a760b93bd076233bc8c44887b8be166536c5dfe4",
+      "active_sha256": "8ed8d0b61d9e563e8b667e33a760b93bd076233bc8c44887b8be166536c5dfe4",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "frontend/src/utils/websocket.ts",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "a23db9d1e7dcb3644b51ee18ecd171c65c9ab8c960ed892b995fff85f22f6614",
+      "active_sha256": "a2629f6e3e0384f1984ac73632698459dc9d2e776c6fa3e5feb862405bf8021f",
+      "quarantine": "_yaiwes_upstream_quarantine/frontend/src/utils/websocket.ts.original",
+      "link": true
+    },
+    {
+      "path": "frontend/tailwind.config.js",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "60ffa64b55c18f97bb8a6eb7fdf67d19a759815ee21b875b03533f16b90535b4",
+      "active_sha256": "60ffa64b55c18f97bb8a6eb7fdf67d19a759815ee21b875b03533f16b90535b4",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "frontend/vite.config.ts",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "a9ad1d97efa98735db1801c86be1469fc11996a7bab8ef9ae933e7a66503909c",
+      "active_sha256": "a9ad1d97efa98735db1801c86be1469fc11996a7bab8ef9ae933e7a66503909c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "rag/knowledge_base.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "486f121a1c0ccad20f3d647e0be6a850e64420ddf2d1dad88ff2e7d65c6e4e9d",
+      "active_sha256": "486f121a1c0ccad20f3d647e0be6a850e64420ddf2d1dad88ff2e7d65c6e4e9d",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "rag/memory_base.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "af5f02a46554a944b2ec04964a73ce3c0678a76d1fd20fd39a1bb9303c332237",
+      "active_sha256": "af5f02a46554a944b2ec04964a73ce3c0678a76d1fd20fd39a1bb9303c332237",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "rag/rag_service.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "c18a3a7cf468fa9e93d857ef3664a0ffde2541a8a71e7ff9de9d26157ca05cb9",
+      "active_sha256": "c18a3a7cf468fa9e93d857ef3664a0ffde2541a8a71e7ff9de9d26157ca05cb9",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "rag/seed_knowledge.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "63b296d675220f226ab27566f533e555b1ac78207f28ed09a415ddc25a7e1fb5",
+      "active_sha256": "63b296d675220f226ab27566f533e555b1ac78207f28ed09a415ddc25a7e1fb5",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "test_llm.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "9f839ebaeb09e24895b6c855be3f869ae5935ab30b2aede8bea3928e70afb580",
+      "active_sha256": "9f839ebaeb09e24895b6c855be3f869ae5935ab30b2aede8bea3928e70afb580",
+      "quarantine": "_yaiwes_upstream_quarantine/test_llm.py.original",
+      "link": false
+    },
+    {
+      "path": "tui/widgets/attack_path.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "414d303a7d030f8dca099aef184f7ed0befb24e2630857d6bc74bee9f162cc10",
+      "active_sha256": "ed153cfe004162cbfc91a41b4f13b205d505bb29d81877525f0b79afc4395ae7",
+      "quarantine": "_yaiwes_upstream_quarantine/tui/widgets/attack_path.py.original",
+      "link": true
+    },
+    {
+      "path": "tui/widgets/attack_surface_tree.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "413df10f19004323c2ea763dca93e8a7e1717ae0bac879bb65fd695072111412",
+      "active_sha256": "724fddc76ec57a1634d69903ab3ccdb6f05f4dadda73538e6e5956ec7ceefab7",
+      "quarantine": "_yaiwes_upstream_quarantine/tui/widgets/attack_surface_tree.py.original",
+      "link": true
+    },
+    {
+      "path": "utils/env_probe.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive content plus execution surface",
+      "original_sha256": "4e33c07b36b3b62ab53fc86cd6f03f68caf0a82201c6d967f07b3624fa59ce5a",
+      "active_sha256": "cbac83b3764990453e1ffa5bbc19372be36d7e03298db4e943490e3aa07b4070",
+      "quarantine": "_yaiwes_upstream_quarantine/utils/env_probe.py.original",
+      "link": true
+    },
+    {
+      "path": "utils/llm_request.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "5ce27ff3fb835d1bbf2738c61f965776904896b8851279b5eedb3911b74686c6",
+      "active_sha256": "5ce27ff3fb835d1bbf2738c61f965776904896b8851279b5eedb3911b74686c6",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "utils/semantic_cache.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "17f907c42aae0c02e134e0dad7b9bf3e79c07ddf7c776fa0842c49b89e6c89d8",
+      "active_sha256": "17f907c42aae0c02e134e0dad7b9bf3e79c07ddf7c776fa0842c49b89e6c89d8",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "utils/tool_cache.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "51a763b08ed07b57c33e2b951a06923079f55c773fbacb932955c0c2bc3a6037",
+      "active_sha256": "51a763b08ed07b57c33e2b951a06923079f55c773fbacb932955c0c2bc3a6037",
+      "quarantine": null,
+      "link": false
+    }
+  ],
+  "counts": {
+    "accounted": 45,
+    "restored_benign": 29,
+    "blocked_offensive": 8,
+    "review_fail_closed": 8,
+    "links": 16
+  }
+}

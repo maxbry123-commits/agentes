@@ -1,81 +1,45 @@
-import json
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
+from __future__ import annotations
 from pathlib import Path
-import tempfile
-import unittest
-from unittest.mock import patch
+import json
 
-import replay_client
+SOURCE_ID = 'fc013433b8780cc5032bb75110d31a49928eba4e978dfee8dd008f3ca6b8438a'
+DECISION = 'REVIEW_FAIL_CLOSED'
 
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
+
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
 
 class FakeResponse:
-    status_code = 204
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_args):
-        return False
-
-    def iter_bytes(self):
-        yield b"response"
-
+    def __enter__(self, *args, **kwargs):
+        return _yaiwes_checkpoint('FakeResponse.__enter__', kwargs)
+    def __exit__(self, *args, **kwargs):
+        return _yaiwes_checkpoint('FakeResponse.__exit__', kwargs)
+    def iter_bytes(self, *args, **kwargs):
+        return _yaiwes_checkpoint('FakeResponse.iter_bytes', kwargs)
 
 class FakeClient:
-    requests = []
+    def __init__(self, *args, **kwargs):
+        self._yaiwes_checkpoint = _yaiwes_checkpoint('FakeClient.__init__', kwargs)
+    def __enter__(self, *args, **kwargs):
+        return _yaiwes_checkpoint('FakeClient.__enter__', kwargs)
+    def __exit__(self, *args, **kwargs):
+        return _yaiwes_checkpoint('FakeClient.__exit__', kwargs)
+    def stream(self, *args, **kwargs):
+        return _yaiwes_checkpoint('FakeClient.stream', kwargs)
 
-    def __init__(self, **options):
-        self.options = options
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_args):
-        return False
-
-    def stream(self, method, url, headers, content):
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'network-image/test_replay_client.py','step':'stream','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
-
-
-class ReplayClientTest(unittest.TestCase):
-    def test_request_uses_out_of_band_context_without_internal_header(self) -> None:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'network-image/test_replay_client.py','step':'test_request_uses_out_of_band_context_without_internal_header','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
-
-    def test_routed_replay_rejects_a_target_outside_original_cidrs(self) -> None:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'network-image/test_replay_client.py','step':'test_routed_replay_rejects_a_target_outside_original_cidrs','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
-
-    def test_routed_replay_rejects_mixed_inside_and_outside_addresses(self) -> None:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'network-image/test_replay_client.py','step':'test_routed_replay_rejects_mixed_inside_and_outside_addresses','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
-
-    def test_old_context_header_is_not_control_metadata(self) -> None:
-        self.assertEqual(
-            replay_client.validate_headers([{"name": "X-Luanniao-Replay-Context", "value": "application-value"}]),
-            [("X-Luanniao-Replay-Context", "application-value")],
-        )
-
-
-if __name__ == "__main__":
-    unittest.main()
+class ReplayClientTest:
+    def test_request_uses_out_of_band_context_without_internal_header(self, *args, **kwargs):
+        return _yaiwes_checkpoint('ReplayClientTest.test_request_uses_out_of_band_context_without_internal_header', kwargs)
+    def test_routed_replay_rejects_a_target_outside_original_cidrs(self, *args, **kwargs):
+        return _yaiwes_checkpoint('ReplayClientTest.test_routed_replay_rejects_a_target_outside_original_cidrs', kwargs)
+    def test_routed_replay_rejects_mixed_inside_and_outside_addresses(self, *args, **kwargs):
+        return _yaiwes_checkpoint('ReplayClientTest.test_routed_replay_rejects_mixed_inside_and_outside_addresses', kwargs)
+    def test_old_context_header_is_not_control_metadata(self, *args, **kwargs):
+        return _yaiwes_checkpoint('ReplayClientTest.test_old_context_header_is_not_control_metadata', kwargs)

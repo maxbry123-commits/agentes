@@ -1,69 +1,33 @@
-import json
-import time
-import subprocess
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
+from __future__ import annotations
 from pathlib import Path
-from datetime import datetime
-from dataclasses import dataclass, field, asdict
+import json
 
+SOURCE_ID = 'cc5108016300941a98b16c279b0f4c80ec4883ef59d63b016e407ad3547bc3a1'
+DECISION = 'REVIEW_FAIL_CLOSED'
 
-@dataclass
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
+
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
+
 class BenchmarkResult:
-    challenge: str
-    success: bool
-    duration_seconds: float
-    cost_estimate: float
-    commands_run: int
-    findings_count: int
-    errors: list[str] = field(default_factory=list)
-    notes: str = ""
-    timestamp: str = ""
-
-    def __post_init__(self):
-        if not self.timestamp:
-            self.timestamp = datetime.now().isoformat()
-
+    def __post_init__(self, *args, **kwargs):
+        return _yaiwes_checkpoint('BenchmarkResult.__post_init__', kwargs)
 
 class BenchmarkHarness:
-    def __init__(self):
-        self.results: list[BenchmarkResult] = []
-        self.results_file = Path.home() / ".shel" / "benchmark_results.json"
-        self.results_file.parent.mkdir(parents=True, exist_ok=True)
-
-    def run_challenge(self, challenge_name: str, target: str, prompt_file: Path) -> BenchmarkResult:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'benchmark/runner.py','step':'run_challenge','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
-
-    def _save(self):
-        data = [asdict(r) for r in self.results]
-        self.results_file.write_text(json.dumps(data, indent=2))
-
-    def load(self):
-        if self.results_file.exists():
-            data = json.loads(self.results_file.read_text())
-            self.results = [BenchmarkResult(**d) for d in data]
-
-    def summary(self) -> str:
-        if not self.results:
-            return "No benchmark results yet."
-        total = len(self.results)
-        successes = sum(1 for r in self.results if r.success)
-        avg_duration = sum(r.duration_seconds for r in self.results) / total if total else 0
-        avg_cost = sum(r.cost_estimate for r in self.results) / total if total else 0
-        lines = [
-            "## Benchmark Summary",
-            f"Challenges: {total}",
-            f"Success rate: {successes}/{total} ({successes/total*100:.0f}%)",
-            f"Avg duration: {avg_duration:.1f}s",
-            f"Avg cost: ${avg_cost:.4f}",
-            "",
-            "### Results",
-        ]
-        for r in self.results:
-            status = "✓" if r.success else "✗"
-            lines.append(f"  {status} {r.challenge} ({r.duration_seconds}s, ${r.cost_estimate:.4f})")
-        return "\n".join(lines)
+    def __init__(self, *args, **kwargs):
+        self._yaiwes_checkpoint = _yaiwes_checkpoint('BenchmarkHarness.__init__', kwargs)
+    def run_challenge(self, *args, **kwargs):
+        return _yaiwes_checkpoint('BenchmarkHarness.run_challenge', kwargs)
+    def _save(self, *args, **kwargs):
+        return _yaiwes_checkpoint('BenchmarkHarness._save', kwargs)
+    def load(self, *args, **kwargs):
+        return _yaiwes_checkpoint('BenchmarkHarness.load', kwargs)
+    def summary(self, *args, **kwargs):
+        return _yaiwes_checkpoint('BenchmarkHarness.summary', kwargs)

@@ -31,13 +31,29 @@ def _is_enabled() -> bool:
 
 
 def _send(event: str, properties: dict[str, Any]) -> bool:
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/telemetry/posthog.py','step':'_send','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
+    if not _is_enabled():
+        logger.debug("posthog disabled; skipping event %s", event)
+        return False
+    try:
+        payload = {
+            "api_key": _POSTHOG_PUBLIC_API_KEY,
+            "event": event,
+            "distinct_id": SESSION_ID,
+            "properties": {
+                **properties,
+                "$lib": "strix-cli",
+                "$lib_version": get_version(),
+                "$process_person_profile": False,
+            },
+        }
+        with requests.post(f"{_POSTHOG_HOST}/capture/", json=payload, timeout=SEND_TIMEOUT):
+            pass
+    except Exception:  # noqa: BLE001
+        logger.debug("posthog send failed for event %s", event, exc_info=True)
+        return False
+    else:
+        logger.debug("posthog event sent: %s", event)
+        return True
 
 
 def start(

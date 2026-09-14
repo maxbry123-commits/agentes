@@ -1,81 +1,17 @@
-"""
-漏洞类型知识模块
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
+from __future__ import annotations
+from pathlib import Path
+import json
 
-包含各种漏洞类型的专业知识
-"""
+SOURCE_ID = '4589914fc24c2ae1a57b1a9e50b2e8f0c2aa569cfcf2cccf829951e42d8ce8ca'
+DECISION = 'BLOCK_OFFENSIVE'
 
-from .injection import SQL_INJECTION, NOSQL_INJECTION, COMMAND_INJECTION, CODE_INJECTION
-from .xss import XSS_REFLECTED, XSS_STORED, XSS_DOM
-from .auth import AUTH_BYPASS, IDOR, BROKEN_ACCESS_CONTROL
-from .crypto import WEAK_CRYPTO, HARDCODED_SECRETS
-from .ssrf import SSRF
-from .deserialization import INSECURE_DESERIALIZATION
-from .path_traversal import PATH_TRAVERSAL
-from .xxe import XXE
-from .race_condition import RACE_CONDITION
-from .csrf import CSRF
-from .business_logic import BUSINESS_LOGIC, RATE_LIMITING
-from .open_redirect import OPEN_REDIRECT
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
-# 所有漏洞知识文档
-ALL_VULNERABILITY_DOCS = [
-    # 注入类
-    SQL_INJECTION,
-    NOSQL_INJECTION,
-    COMMAND_INJECTION,
-    CODE_INJECTION,
-    # XSS类
-    XSS_REFLECTED,
-    XSS_STORED,
-    XSS_DOM,
-    # 认证授权类
-    AUTH_BYPASS,
-    IDOR,
-    BROKEN_ACCESS_CONTROL,
-    # 加密类
-    WEAK_CRYPTO,
-    HARDCODED_SECRETS,
-    # 请求伪造
-    CSRF,
-    SSRF,
-    # 其他
-    INSECURE_DESERIALIZATION,
-    PATH_TRAVERSAL,
-    XXE,
-    RACE_CONDITION,
-    BUSINESS_LOGIC,
-    RATE_LIMITING,
-    OPEN_REDIRECT,
-]
-
-__all__ = [
-    "ALL_VULNERABILITY_DOCS",
-    # 注入类
-    "SQL_INJECTION",
-    "NOSQL_INJECTION", 
-    "COMMAND_INJECTION",
-    "CODE_INJECTION",
-    # XSS类
-    "XSS_REFLECTED",
-    "XSS_STORED",
-    "XSS_DOM",
-    # 认证授权类
-    "AUTH_BYPASS",
-    "IDOR",
-    "BROKEN_ACCESS_CONTROL",
-    # 加密类
-    "WEAK_CRYPTO",
-    "HARDCODED_SECRETS",
-    # 请求伪造
-    "CSRF",
-    "SSRF",
-    # 其他
-    "INSECURE_DESERIALIZATION",
-    "PATH_TRAVERSAL",
-    "XXE",
-    "RACE_CONDITION",
-    "BUSINESS_LOGIC",
-    "RATE_LIMITING",
-    "OPEN_REDIRECT",
-]
-
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)

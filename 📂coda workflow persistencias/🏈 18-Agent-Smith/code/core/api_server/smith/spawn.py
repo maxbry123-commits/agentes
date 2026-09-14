@@ -28,13 +28,42 @@ def _spawn_source_tag(source: str) -> str:
 
 
 def _latest_opencode_session(directory: str) -> str | None:
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'core/api_server/smith/spawn.py','step':'_latest_opencode_session','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
+    """Newest opencode session whose directory matches `directory` — i.e. the
+    scan's own session, so a watchdog respawn can ``--session <id>`` resume it
+    (keeping the agent's in-context memory of what it already tested and which
+    tools fail here) instead of cold-starting from the recovery brief and
+    re-walking the same dead ends.
+
+    Read-only and best-effort: shells out to opencode's own ``session list``
+    rather than coupling to its SQLite schema, and returns None on ANY problem
+    so the caller cleanly falls back to a cold start (first launch, opencode
+    missing, mismatched dir, parse error, timeout).
+    """
+    import json
+    import os
+    import shutil
+    import subprocess
+    try:
+        binary = shutil.which("opencode")
+        if not binary:
+            return None
+        target = os.path.realpath(directory)
+        out = subprocess.run(
+            [binary, "session", "list", "--format", "json", "-n", "20"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if out.returncode != 0 or not out.stdout.strip():
+            return None
+        sessions = json.loads(out.stdout)
+        if not isinstance(sessions, list):
+            return None
+        for s in sessions:  # session list returns newest-first
+            d = s.get("directory")
+            if d and s.get("id") and os.path.realpath(d) == target:
+                return s["id"]
+        return None
+    except Exception:
+        return None
 
 
 def _recorded_claude_session() -> str | None:
@@ -190,13 +219,37 @@ async def _resolve_session_plan(client: str, directive_text: str, loop):
 
 def _build_spawn_args(binary: str, client: str, resume_sid: str | None, prompt: str,
                       assign_session_id: str | None = None) -> list[str]:
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'core/api_server/smith/spawn.py','step':'_build_spawn_args','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
+    """Assemble argv for the client subprocess.
+
+    claude and opencode-cold both pass --dangerously-skip-permissions: a detached
+    background spawn has no controlling TTY, so an interactive permission prompt would
+    hang on closed stdin or exit. opencode auto-approves prompts not explicitly denied in
+    opencode.json's permission.deny block (the installer recommends a starter set of
+    destructive-command denials).
+
+    A resume rehydrates the scan's prior conversation linearly (not a fork): ``--resume
+    <id>`` for claude, ``--session <id>`` for opencode. On a COLD claude start we instead
+    MINT the session with ``--session-id <assign_session_id>`` so the next respawn can
+    resume exactly it — we never directory-scan for a session to resume. An optional
+    ``SMITH_SPAWN_MODEL`` adds ``--model`` for claude.
+    """
+    model = _spawn_model()
+    if client == "claude":
+        args = [binary, "--dangerously-skip-permissions"]
+        if model:
+            args += ["--model", model]
+        if resume_sid:
+            # Resume the scan's OWN recorded session (kept context, visibly authorized).
+            args += ["--resume", resume_sid]
+        elif assign_session_id:
+            # Cold start: mint an explicit id so the NEXT respawn resumes exactly this
+            # session — not whatever transcript happens to be largest on disk.
+            args += ["--session-id", assign_session_id]
+        args += ["-p", prompt]
+        return args
+    if resume_sid:
+        return [binary, "run", "--session", resume_sid, "--dangerously-skip-permissions", prompt]
+    return [binary, "run", "--dangerously-skip-permissions", prompt]
 
 
 def _spawn_child_env(client: str) -> dict:

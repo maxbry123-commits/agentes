@@ -1,74 +1,25 @@
-# Copyright (c) 2024-2026 Tencent Zhuque Lab. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# Requirement: Any integration or derivative work must explicitly attribute
-# Tencent Zhuque Lab (https://github.com/Tencent/AI-Infra-Guard) in its
-# documentation or user interface, as detailed in the NOTICE file.
-
-import json
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
+from __future__ import annotations
 from pathlib import Path
-from deepteam.attacks import BaseAttack
+import json
 
-class Emoji(BaseAttack):
-    def __init__(self, weight: int = 1):
-        self.weight = weight
+SOURCE_ID = 'fc544219cebea6984e4c788fa5a01253e4abeb7a399d4da56dac8a02eada6309'
+DECISION = 'BLOCK_OFFENSIVE'
 
-    def enhance(self, attack: str) -> str:
-        """Enhance the attack using Emoji transformation."""
-        # 加载Emoji映射
-        json_path = Path(__file__).resolve().parent / "emoji.json"
-        with open(json_path, "r", encoding="utf-8") as f:
-            emoji_map = json.load(f)
-        
-        # 按旧词长度降序排序，避免短词误匹配
-        sorted_words = sorted(emoji_map.keys(), key=lambda x: -len(x))
-        
-        # 记录所有需要替换的位置和对应的新词
-        replacements = []
-        
-        for word in sorted_words:
-            if word in attack:
-                # 找到所有匹配的位置
-                start_index = 0
-                while True:
-                    index = attack.find(word, start_index)
-                    if index == -1:
-                        break
-                    # 记录替换信息：(start_index, end_index, new_word)
-                    replacements.append((index, index + len(word), emoji_map[word][0]))
-                    start_index = index + len(word)  # 移动到匹配词之后，避免重叠匹配
-        
-        # 如果没有需要替换的内容，直接返回原文本
-        if not replacements:
-            return attack
-        
-        # 按照起始位置排序替换信息
-        replacements.sort(key=lambda x: x[0])
-        
-        # 构建结果字符串
-        result = []
-        last_end = 0
-        
-        for start, end, new_word in replacements:
-            # 添加未匹配的部分
-            result.append(attack[last_end:start])
-            # 添加新词
-            result.append(new_word)
-            last_end = end
-        
-        result.append(attack[last_end:])
-        return "".join(result)
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
-    def get_name(self) -> str:
-        return "Emoji"
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
+
+class Emoji:
+    def __init__(self, *args, **kwargs):
+        self._yaiwes_checkpoint = _yaiwes_checkpoint('Emoji.__init__', kwargs)
+    def enhance(self, *args, **kwargs):
+        return _yaiwes_checkpoint('Emoji.enhance', kwargs)
+    def get_name(self, *args, **kwargs):
+        return _yaiwes_checkpoint('Emoji.get_name', kwargs)

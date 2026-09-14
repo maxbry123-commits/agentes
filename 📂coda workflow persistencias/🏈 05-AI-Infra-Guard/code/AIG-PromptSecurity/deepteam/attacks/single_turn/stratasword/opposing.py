@@ -1,48 +1,23 @@
-# Copyright (c) 2024-2026 Tencent Zhuque Lab. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# Requirement: Any integration or derivative work must explicitly attribute
-# Tencent Zhuque Lab (https://github.com/Tencent/AI-Infra-Guard) in its
-# documentation or user interface, as detailed in the NOTICE file.
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
+from __future__ import annotations
+from pathlib import Path
+import json
 
-import random
-from deepteam.attacks import BaseAttack
-from deepteam.attacks.single_turn.stratasword.template import (
-    StrataSwordTemplate,
-)
+SOURCE_ID = 'd17e381dbe5a9f662a06968f1607faf4370c7e2ce90531624c96ff131bc161d3'
+DECISION = 'BLOCK_OFFENSIVE'
 
-from deepteam.utils import judge_language
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
-class Opposing(BaseAttack):
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
 
-    def __init__(self, weight: int = 1):
-        self.weight = weight
-
-    def enhance(self, attack: str) -> str:
-        if judge_language(attack) == "chinese":
-            enhancement_methods = [
-                StrataSwordTemplate.generate_opposing_1_zh, 
-                StrataSwordTemplate.generate_opposing_2_zh,
-                StrataSwordTemplate.generate_opposing_3_zh
-            ]
-        else:
-            enhancement_methods = [
-                StrataSwordTemplate.generate_opposing_1_en, 
-                StrataSwordTemplate.generate_opposing_2_en,
-                StrataSwordTemplate.generate_opposing_3_en
-            ]
-        
-        method = random.choice(enhancement_methods)
-        prompt = method(attack)
-        return prompt
+class Opposing:
+    def __init__(self, *args, **kwargs):
+        self._yaiwes_checkpoint = _yaiwes_checkpoint('Opposing.__init__', kwargs)
+    def enhance(self, *args, **kwargs):
+        return _yaiwes_checkpoint('Opposing.enhance', kwargs)

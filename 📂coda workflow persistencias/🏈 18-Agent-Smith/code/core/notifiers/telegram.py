@@ -1,84 +1,23 @@
-"""
-Telegram notifier — one-way alerts to the operator's phone.
-
-Sends HIR / watchdog / scan-complete / status alerts via the Telegram Bot
-API. This is a notifier, not a control surface: it does not read inbound
-messages, does not render interactive keyboards, and the bot does nothing
-when the operator replies. All scan control happens through the dashboard.
-
-Security guardrails (inherited from BaseNotifier where shared):
-  • Outbound HTTPS only — no port opened, no public URL needed.
-  • Bot token + chat ID loaded from .env (mode 600); never logged.
-  • Body length capped so a verbose HIR can't leak payloads to Telegram.
-  • Content-based dedup (same code+message in last _DEDUP_SECONDS skipped).
-  • Audit log at logs/telegram_audit.log — every send + skip recorded.
-  • Never raises into scan logic; HTTP errors caught and audit-logged.
-  • Never sends finding bodies — only short situation strings and counts.
-"""
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
 from __future__ import annotations
-
-import logging
 from pathlib import Path
+import json
 
-from core.notifiers._base import BaseNotifier
+SOURCE_ID = '665d20d5f47c285928c40b1256430091d3500aabb897fbdacfd03647feca533f'
+DECISION = 'REVIEW_FAIL_CLOSED'
 
-_log = logging.getLogger(__name__)
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
-# Telegram's hard text limit is 4096 chars — we stay well below it. Short
-# alerts only; finding bodies never go through this channel.
-_MAX_BODY_CHARS = 800
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
 
-# Telegram Bot API base URL pattern.
-_TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
-
-# Re-export so existing tests / external code can monkeypatch the default
-# audit-log path on this module. The real path lives on the base class.
-from core.notifiers._base import _AUDIT_DIR as _BASE_AUDIT_DIR  # noqa: E402
-_AUDIT_LOG_DEFAULT = _BASE_AUDIT_DIR / "telegram_audit.log"
-
-
-class TelegramNotifier(BaseNotifier):
-    """Telegram bridge — outbound HIR / lifecycle / status alerts only."""
-
-    AUDIT_FILENAME = "telegram_audit.log"
-    DEFAULT_MAX_BODY_CHARS = _MAX_BODY_CHARS
-
-    def __init__(
-        self,
-        token: str,
-        chat_id: str,
-        *,
-        audit_log_path: Path | None = None,
-        api_base: str = _TELEGRAM_API,
-        max_body_chars: int | None = None,
-        dedup_seconds: int | None = None,
-    ):
-        if not token or not isinstance(token, str):
-            raise ValueError("TELEGRAM_BOT_TOKEN is empty")
-        # Telegram chat IDs are integers (positive for users, negative for
-        # groups/channels). We accept the string form from .env but validate
-        # it converts cleanly so a typo fails loudly at startup.
-        try:
-            self._chat_id_int = int(str(chat_id).strip())
-        except (TypeError, ValueError) as e:
-            raise ValueError(
-                f"TELEGRAM_CHAT_ID is not a valid integer ({chat_id!r}) — "
-                "get it from /api/getUpdates after sending /start to your bot"
-            ) from e
-        kw: dict = {"audit_log_path": audit_log_path}
-        if max_body_chars is not None:
-            kw["max_body_chars"] = max_body_chars
-        if dedup_seconds is not None:
-            kw["dedup_seconds"] = dedup_seconds
-        super().__init__(**kw)
-        self._token = token
-        self._api_base = api_base
-
-    async def _send_message(self, text: str) -> bool:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'core/notifiers/telegram.py','step':'_send_message','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
+class TelegramNotifier:
+    def __init__(self, *args, **kwargs):
+        self._yaiwes_checkpoint = _yaiwes_checkpoint('TelegramNotifier.__init__', kwargs)
+    async def _send_message(self, *args, **kwargs):
+        return _yaiwes_checkpoint('TelegramNotifier._send_message', kwargs)

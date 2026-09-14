@@ -1,447 +1,72 @@
-"""
-Kunlun-M 静态代码分析工具集成
-
-Kunlun-M (昆仑镜) 是一款开源的静态代码安全审计工具，
-支持 PHP、JavaScript 等语言的语义分析和漏洞检测。
-
-MIT License
-Copyright (c) 2017 Feei. <feei@feei.cn> All rights reserved
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-原始项目: https://github.com/LoRexxar/Kunlun-M
-"""
-
-import asyncio
-import json
-import logging
-import os
-import sys
-import tempfile
-import subprocess
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
+from __future__ import annotations
 from pathlib import Path
-
-from .base import AgentTool, ToolResult
-
-logger = logging.getLogger(__name__)
-
-# Kunlun-M 安装路径（相对于项目根目录）
-KUNLUN_M_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))),
-    "Kunlun-M-master"
-)
-
-
-class KunlunScanInput(BaseModel):
-    """Kunlun-M 扫描输入"""
-    target_path: str = Field(
-        description="要扫描的目录或文件路径（相对于项目根目录）"
-    )
-    language: Optional[str] = Field(
-        default=None,
-        description="指定扫描语言: php, javascript, solidity, chromeext。不指定则自动检测"
-    )
-    rules: Optional[str] = Field(
-        default=None,
-        description="指定规则ID，多个规则用逗号分隔，如: 1000,1001,1002"
-    )
-    tamper: Optional[str] = Field(
-        default=None,
-        description="指定 tamper 名称，用于自定义修复函数检测"
-    )
-    include_unconfirmed: bool = Field(
-        default=False,
-        description="是否包含未确认的漏洞（疑似漏洞）"
-    )
-    max_results: int = Field(
-        default=50,
-        description="最大返回结果数"
-    )
-
-
-class KunlunRuleListInput(BaseModel):
-    """Kunlun-M 规则列表输入"""
-    language: Optional[str] = Field(
-        default=None,
-        description="按语言过滤规则: php, javascript, solidity, chromeext"
-    )
-
-
-class KunlunMTool(AgentTool):
-    """
-    Kunlun-M (昆仑镜) 静态代码安全审计工具
-
-    特点：
-    - 语义分析：深度AST分析，减少误报
-    - 多语言支持：PHP、JavaScript 语义分析，Solidity、Chrome Extension 基础扫描
-    - 函数回溯：支持污点追踪和数据流分析
-    - 丰富的规则库：覆盖 OWASP Top 10 等常见漏洞
-
-    支持的漏洞类型：
-    - SQL 注入
-    - XSS 跨站脚本
-    - 命令注入
-    - 代码执行
-    - 文件包含
-    - 文件上传
-    - 反序列化
-    - SSRF
-    - XXE
-    - 等等...
-
-    使用场景：
-    - PHP 代码深度安全审计
-    - JavaScript 代码安全扫描
-    - 智能合约安全检查
-    - Chrome 扩展安全审计
-
-    原始项目: https://github.com/LoRexxar/Kunlun-M
-    License: MIT
-    """
-
-    SUPPORTED_LANGUAGES = ["php", "javascript", "solidity", "chromeext"]
-
-    def __init__(self, project_root: str):
-        super().__init__()
-        self.project_root = project_root
-        self.kunlun_path = KUNLUN_M_PATH
-        self._initialized = False
-        self._db_initialized = False
-
-    @property
-    def name(self) -> str:
-        return "kunlun_scan"
-
-    @property
-    def description(self) -> str:
-        return """使用 Kunlun-M (昆仑镜) 进行静态代码安全审计。
-Kunlun-M 是一款专注于代码安全审计的工具，特别擅长 PHP 和 JavaScript 的语义分析。
-
-支持的语言：
-- php: PHP 语义分析（最完善）
-- javascript: JavaScript 语义分析
-- solidity: 智能合约基础扫描
-- chromeext: Chrome 扩展安全检查
-
-主要功能：
-- 深度 AST 语义分析
-- 污点追踪和函数回溯
-- 自定义规则和 tamper 支持
-- 支持识别常见安全漏洞
-
-使用场景：
-- 对 PHP/JS 代码进行深度安全审计
-- 检测 SQL 注入、XSS、命令注入等漏洞
-- 分析代码中的危险函数调用
-- 追踪用户输入的传播路径"""
-
-    @property
-    def args_schema(self):
-        return KunlunScanInput
-
-    async def _ensure_initialized(self) -> bool:
-        """确保 Kunlun-M 已初始化"""
-        if self._initialized:
-            return True
-
-        # 检查 Kunlun-M 是否存在
-        if not os.path.exists(self.kunlun_path):
-            logger.error(f"Kunlun-M not found at {self.kunlun_path}")
-            return False
-
-        kunlun_py = os.path.join(self.kunlun_path, "kunlun.py")
-        if not os.path.exists(kunlun_py):
-            logger.error(f"kunlun.py not found at {kunlun_py}")
-            return False
-
-        # 检查数据库是否已初始化
-        db_path = os.path.join(self.kunlun_path, "db.sqlite3")
-        if not os.path.exists(db_path):
-            logger.info("Kunlun-M database not found, initializing...")
-            try:
-                await self._initialize_database()
-            except Exception as e:
-                logger.error(f"Failed to initialize Kunlun-M database: {e}")
-                return False
-
-        self._initialized = True
-        return True
-
-    async def _initialize_database(self):
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'backend/app/services/agent/tools/kunlun_tool.py','step':'_initialize_database','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
-
-    async def _execute(
-        self,
-        target_path: str = ".",
-        language: Optional[str] = None,
-        rules: Optional[str] = None,
-        tamper: Optional[str] = None,
-        include_unconfirmed: bool = False,
-        max_results: int = 50,
-        **kwargs
-    ) -> ToolResult:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'backend/app/services/agent/tools/kunlun_tool.py','step':'_execute','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
-
-    async def _parse_results(
-        self,
-        stdout: str,
-        stderr: str,
-        output_file: str
-    ) -> List[Dict[str, Any]]:
-        """解析 Kunlun-M 扫描结果"""
-        findings = []
-
-        # 尝试从输出文件读取 JSON
-        try:
-            if os.path.exists(output_file):
-                with open(output_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    if isinstance(data, list):
-                        findings.extend(data)
-                    elif isinstance(data, dict) and 'vulnerabilities' in data:
-                        findings.extend(data['vulnerabilities'])
-        except Exception as e:
-            logger.debug(f"Failed to parse output file: {e}")
-
-        # 如果没有 JSON 输出，尝试从 stdout 解析
-        if not findings and stdout:
-            # 尝试提取 JSON 部分
-            try:
-                json_start = stdout.find('[')
-                json_end = stdout.rfind(']') + 1
-                if json_start >= 0 and json_end > json_start:
-                    json_str = stdout[json_start:json_end]
-                    findings = json.loads(json_str)
-            except:
-                pass
-
-            # 尝试解析表格格式输出
-            if not findings:
-                findings = self._parse_table_output(stdout)
-
-        return findings
-
-    def _parse_table_output(self, output: str) -> List[Dict[str, Any]]:
-        """解析 Kunlun-M 表格格式输出"""
-        findings = []
-        lines = output.split('\n')
-
-        for line in lines:
-            # 匹配漏洞行格式: | index | CVI-xxxx | rule_name | language | file:line | ...
-            if '|' in line and 'CVI' in line:
-                parts = [p.strip() for p in line.split('|') if p.strip()]
-                if len(parts) >= 6:
-                    try:
-                        finding = {
-                            "id": parts[1],  # CVI-xxxx
-                            "rule_name": parts[2],
-                            "language": parts[3],
-                            "location": parts[4],
-                            "author": parts[5] if len(parts) > 5 else "",
-                            "code": parts[6] if len(parts) > 6 else "",
-                            "analysis": parts[7] if len(parts) > 7 else "",
-                        }
-                        findings.append(finding)
-                    except:
-                        pass
-
-        return findings
-
-    def _format_findings(self, findings: List[Dict[str, Any]], target: str) -> str:
-        """格式化漏洞发现"""
-        output_parts = [
-            f"🔍 Kunlun-M 扫描结果",
-            f"目标: {target}",
-            f"发现 {len(findings)} 个潜在安全问题:\n"
-        ]
-
-        severity_icons = {
-            "CRITICAL": "🔴",
-            "HIGH": "🟠",
-            "MEDIUM": "🟡",
-            "LOW": "🟢",
-            "INFO": "⚪"
-        }
-
-        for i, finding in enumerate(findings, 1):
-            # 获取严重程度
-            severity = finding.get("severity", "MEDIUM")
-            if isinstance(severity, int):
-                if severity >= 9:
-                    severity = "CRITICAL"
-                elif severity >= 6:
-                    severity = "HIGH"
-                elif severity >= 3:
-                    severity = "MEDIUM"
-                else:
-                    severity = "LOW"
-
-            icon = severity_icons.get(severity.upper(), "⚪")
-
-            output_parts.append(f"\n{icon} [{i}] {finding.get('rule_name', 'Unknown')}")
-            output_parts.append(f"   ID: {finding.get('id', 'N/A')}")
-            output_parts.append(f"   语言: {finding.get('language', 'N/A')}")
-
-            location = finding.get('location') or finding.get('file_path', '')
-            line_number = finding.get('line_number', '')
-            if location:
-                if line_number:
-                    output_parts.append(f"   位置: {location}:{line_number}")
-                else:
-                    output_parts.append(f"   位置: {location}")
-
-            code = finding.get('code') or finding.get('code_content', '')
-            if code:
-                code_preview = code[:100].strip().replace('\n', ' ')
-                output_parts.append(f"   代码: {code_preview}")
-
-            analysis = finding.get('analysis', '')
-            if analysis:
-                output_parts.append(f"   分析: {analysis}")
-
-        return "\n".join(output_parts)
-
-
-class KunlunRuleListTool(AgentTool):
-    """
-    查看 Kunlun-M 可用的扫描规则
-
-    可以按语言过滤规则，了解支持检测的漏洞类型。
-    """
-
-    def __init__(self, project_root: str):
-        super().__init__()
-        self.project_root = project_root
-        self.kunlun_path = KUNLUN_M_PATH
-
-    @property
-    def name(self) -> str:
-        return "kunlun_list_rules"
-
-    @property
-    def description(self) -> str:
-        return """查看 Kunlun-M 可用的扫描规则。
-
-可以按语言过滤：
-- php: PHP 规则
-- javascript: JavaScript 规则
-- solidity: 智能合约规则
-- chromeext: Chrome 扩展规则
-
-返回规则ID、名称、描述等信息，帮助选择合适的规则进行扫描。"""
-
-    @property
-    def args_schema(self):
-        return KunlunRuleListInput
-
-    async def _execute(
-        self,
-        language: Optional[str] = None,
-        **kwargs
-    ) -> ToolResult:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'backend/app/services/agent/tools/kunlun_tool.py','step':'_execute','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
-
-
-class KunlunPluginInput(BaseModel):
-    """Kunlun-M 插件输入"""
-    plugin_name: str = Field(
-        description="插件名称: php_unserialize_chain_tools (PHP反序列化链分析), entrance_finder (入口点发现)"
-    )
-    target_path: str = Field(
-        description="要分析的目标路径（相对于项目根目录）"
-    )
-    depth: int = Field(
-        default=3,
-        description="分析深度（仅对 entrance_finder 有效）"
-    )
-
-
-class KunlunPluginTool(AgentTool):
-    """
-    Kunlun-M 插件工具
-
-    提供额外的分析功能：
-    - php_unserialize_chain_tools: 自动化寻找 PHP 反序列化链
-    - entrance_finder: 发现 PHP 代码中的入口点/路由
-    """
-
-    AVAILABLE_PLUGINS = {
-        "php_unserialize_chain_tools": "PHP 反序列化链分析工具，用于发现潜在的反序列化攻击链",
-        "entrance_finder": "入口点发现工具，帮助找到 PHP 代码中的入口页面和路由",
-    }
-
-    def __init__(self, project_root: str):
-        super().__init__()
-        self.project_root = project_root
-        self.kunlun_path = KUNLUN_M_PATH
-
-    @property
-    def name(self) -> str:
-        return "kunlun_plugin"
-
-    @property
-    def description(self) -> str:
-        return """运行 Kunlun-M 插件进行专项分析。
-
-可用插件：
-- php_unserialize_chain_tools: 自动分析 PHP 反序列化链，寻找 POP 链
-- entrance_finder: 发现 PHP 入口点和路由
-
-使用场景：
-- 分析 PHP 框架的反序列化漏洞利用链
-- 快速定位大型 PHP 项目的入口文件"""
-
-    @property
-    def args_schema(self):
-        return KunlunPluginInput
-
-    async def _execute(
-        self,
-        plugin_name: str,
-        target_path: str = ".",
-        depth: int = 3,
-        **kwargs
-    ) -> ToolResult:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'backend/app/services/agent/tools/kunlun_tool.py','step':'_execute','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
+import json
+
+SOURCE_ID = 'fa12ab754b4e73d4221b1b1d52b9dd13d19fdca002950208d2297e511c669b50'
+DECISION = 'BLOCK_OFFENSIVE'
+
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
+
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
+
+class KunlunScanInput:
+    pass
+
+class KunlunRuleListInput:
+    pass
+
+class KunlunMTool:
+    def __init__(self, *args, **kwargs):
+        self._yaiwes_checkpoint = _yaiwes_checkpoint('KunlunMTool.__init__', kwargs)
+    def name(self, *args, **kwargs):
+        return _yaiwes_checkpoint('KunlunMTool.name', kwargs)
+    def description(self, *args, **kwargs):
+        return _yaiwes_checkpoint('KunlunMTool.description', kwargs)
+    def args_schema(self, *args, **kwargs):
+        return _yaiwes_checkpoint('KunlunMTool.args_schema', kwargs)
+    async def _ensure_initialized(self, *args, **kwargs):
+        return _yaiwes_checkpoint('KunlunMTool._ensure_initialized', kwargs)
+    async def _initialize_database(self, *args, **kwargs):
+        return _yaiwes_checkpoint('KunlunMTool._initialize_database', kwargs)
+    async def _execute(self, *args, **kwargs):
+        return _yaiwes_checkpoint('KunlunMTool._execute', kwargs)
+    async def _parse_results(self, *args, **kwargs):
+        return _yaiwes_checkpoint('KunlunMTool._parse_results', kwargs)
+    def _parse_table_output(self, *args, **kwargs):
+        return _yaiwes_checkpoint('KunlunMTool._parse_table_output', kwargs)
+    def _format_findings(self, *args, **kwargs):
+        return _yaiwes_checkpoint('KunlunMTool._format_findings', kwargs)
+
+class KunlunRuleListTool:
+    def __init__(self, *args, **kwargs):
+        self._yaiwes_checkpoint = _yaiwes_checkpoint('KunlunRuleListTool.__init__', kwargs)
+    def name(self, *args, **kwargs):
+        return _yaiwes_checkpoint('KunlunRuleListTool.name', kwargs)
+    def description(self, *args, **kwargs):
+        return _yaiwes_checkpoint('KunlunRuleListTool.description', kwargs)
+    def args_schema(self, *args, **kwargs):
+        return _yaiwes_checkpoint('KunlunRuleListTool.args_schema', kwargs)
+    async def _execute(self, *args, **kwargs):
+        return _yaiwes_checkpoint('KunlunRuleListTool._execute', kwargs)
+
+class KunlunPluginInput:
+    pass
+
+class KunlunPluginTool:
+    def __init__(self, *args, **kwargs):
+        self._yaiwes_checkpoint = _yaiwes_checkpoint('KunlunPluginTool.__init__', kwargs)
+    def name(self, *args, **kwargs):
+        return _yaiwes_checkpoint('KunlunPluginTool.name', kwargs)
+    def description(self, *args, **kwargs):
+        return _yaiwes_checkpoint('KunlunPluginTool.description', kwargs)
+    def args_schema(self, *args, **kwargs):
+        return _yaiwes_checkpoint('KunlunPluginTool.args_schema', kwargs)
+    async def _execute(self, *args, **kwargs):
+        return _yaiwes_checkpoint('KunlunPluginTool._execute', kwargs)

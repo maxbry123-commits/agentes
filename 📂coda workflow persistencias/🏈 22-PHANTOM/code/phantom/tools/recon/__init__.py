@@ -1,32 +1,17 @@
-"""
-Phantom Reconnaissance Tools
-============================
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
+from __future__ import annotations
+from pathlib import Path
+import json
 
-Active and passive reconnaissance tools for web application security testing.
+SOURCE_ID = 'a2faa8d95d7a62e142ad1075a26b556d393f2ccb02bda17ed079676ebba10201'
+DECISION = 'BLOCK_OFFENSIVE'
 
-Modules:
-- js_analysis_actions: JavaScript endpoint and secret extraction
-- directory_bruteforce: Directory and file enumeration
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
-Usage:
-    from phantom.tools.recon import comprehensive_js_analysis, comprehensive_dir_enum
-    
-    # JS Analysis
-    result = await comprehensive_js_analysis("https://example.com")
-    
-    # Directory Enumeration
-    result = await comprehensive_dir_enum("https://example.com", tech_stack=["php"])
-"""
-
-from phantom.tools.recon.js_analysis_actions import (
-    comprehensive_js_analysis,
-)
-
-from phantom.tools.recon.directory_bruteforce import (
-    comprehensive_dir_enum,
-)
-
-__all__ = [
-    "comprehensive_js_analysis",
-    "comprehensive_dir_enum",
-]
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)

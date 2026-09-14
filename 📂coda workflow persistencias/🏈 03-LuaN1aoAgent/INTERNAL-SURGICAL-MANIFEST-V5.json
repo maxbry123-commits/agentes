@@ -1,0 +1,346 @@
+{
+  "schema": "yaiwes.internal.surgical/v5",
+  "component": "🏈 03-LuaN1aoAgent",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.0",
+  "policy": {
+    "restore_benign": true,
+    "offensive_execution": false,
+    "ambiguous": "FAIL_CLOSED",
+    "network_default_for_replacements": "deny",
+    "source_execution_during_audit": false
+  },
+  "files": [
+    {
+      "path": "network-image/conntrack_telemetry.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "909b41ea0cb0b33ed7ba548ca9370ae158da820d387d3aff162141609c31c442",
+      "active_sha256": "909b41ea0cb0b33ed7ba548ca9370ae158da820d387d3aff162141609c31c442",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "network-image/gateway-tun/certificate_authority.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "9b1c09489818423aac884829a7ef6eb7688c8ebc593bc878c3e89340a3d66f70",
+      "active_sha256": "9b1c09489818423aac884829a7ef6eb7688c8ebc593bc878c3e89340a3d66f70",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "network-image/gateway-tun/protocol_gateway.go",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "008b57126580e75b9e6e8b334661038aaf13fadfe0e9375cc6b87e3e79e03525",
+      "active_sha256": "2c737c9ab7f12522218cfad3efe84b8a4a4c2d8b422677b2dc605001a30b277d",
+      "quarantine": "_yaiwes_upstream_quarantine/network-image/gateway-tun/protocol_gateway.go.original",
+      "link": true
+    },
+    {
+      "path": "network-image/index_server.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "cd7eed79661c3deb0b9eb1dd4d8c8973c6492c160b9eaa5b845347cf75c27c73",
+      "active_sha256": "d730d287d262919eb64fce85158f3132ec8864b0a27730baae6043ec7ceceb0f",
+      "quarantine": "_yaiwes_upstream_quarantine/network-image/index_server.py.original",
+      "link": true
+    },
+    {
+      "path": "network-image/replay_client.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "e3bef61af1bcc7c7c26d811317f24341d4db86e6c1658285a4376a4d8b191109",
+      "active_sha256": "18f419a5dc69264c3aa9617fb9031345af205a9b31adb19f8edb94bc00fe7f26",
+      "quarantine": "_yaiwes_upstream_quarantine/network-image/replay_client.py.original",
+      "link": true
+    },
+    {
+      "path": "network-image/scope_dns.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "a4503da7a52b14a93781d6d45bf5ea3772d6e8d8a142c72a706ad21ae040c9c7",
+      "active_sha256": "2a8b1140124fd2bf4e5ae53e19877ce289e876f1481921481d59f1cb814cc1f9",
+      "quarantine": "_yaiwes_upstream_quarantine/network-image/scope_dns.py.original",
+      "link": true
+    },
+    {
+      "path": "network-image/test_conntrack_telemetry.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "c5e0f4927398e4e288036b1b8a3d7fea0e5ddaa96d5e6c1541b993f2af455e22",
+      "active_sha256": "c5e0f4927398e4e288036b1b8a3d7fea0e5ddaa96d5e6c1541b993f2af455e22",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "network-image/test_index_server.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "478f603bdb5b03e93bf5cdb1c18abef007d9cadafcf25c9a7298f03c14f5da55",
+      "active_sha256": "e12321467c1e5a9971d2b8d94db9c48dd263e3c61bc004639f77d2f1c1a9cea1",
+      "quarantine": "_yaiwes_upstream_quarantine/network-image/test_index_server.py.original",
+      "link": true
+    },
+    {
+      "path": "network-image/test_replay_client.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "0fa9fb806b322484ab439a0312c207ae05b40016c70ce0dcfd69d9499ae064c8",
+      "active_sha256": "9e88579b4d07d20c589b1c04f1b719e4e93fc2dd45d9fbe00a1cc6b201e9607d",
+      "quarantine": "_yaiwes_upstream_quarantine/network-image/test_replay_client.py.original",
+      "link": true
+    },
+    {
+      "path": "src/connectivity/host-egress-broker.ts",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "f58a7718c0ab1b70aed15f173763bbd9c768f522fcb1db6d4651415094d769fd",
+      "active_sha256": "bccc412ebb85037fb82c917934760e448faefbb882b4b203a758abd0380f1c03",
+      "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/host-egress-broker.ts.original",
+      "link": true
+    },
+    {
+      "path": "src/connectivity/mitm-flow-client.ts",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "5607b4ad6a9506753aa3d0284ccf8465ddc2145f468d8ec10b5237a22720b2d3",
+      "active_sha256": "953ca00ed83baa2d84aa00060339d20e0f55602505e80b9e0aa0dd7da1ada816",
+      "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/mitm-flow-client.ts.original",
+      "link": true
+    },
+    {
+      "path": "src/connectivity/network-sandbox-manager.ts",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "697bbf464a7267c0aa696ad1b857f0d65a2092ed60e35b836260d9ca181bcb6d",
+      "active_sha256": "697bbf464a7267c0aa696ad1b857f0d65a2092ed60e35b836260d9ca181bcb6d",
+      "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/network-sandbox-manager.ts.original",
+      "link": false
+    },
+    {
+      "path": "src/connectivity/replay-gateway-runtime.ts",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "2c20201bd043af23f55915545bd26e9fa340724e43a720ed27e60868e4a131c8",
+      "active_sha256": "9b52e4bec3adbca34c57e1c488223fe4b9383a6780922e46747f81176be5b26e",
+      "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/replay-gateway-runtime.ts.original",
+      "link": true
+    },
+    {
+      "path": "src/connectivity/runtime-owner-lease.ts",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "d7f3c174242232d404bd969245ef6749ef5376b0ebdd50fcc6ca5992ac805cc6",
+      "active_sha256": "ececb27a53a4e228abfa072767856bcd85793b52bc1020988c64f145881ef1c4",
+      "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/runtime-owner-lease.ts.original",
+      "link": true
+    },
+    {
+      "path": "src/connectivity/traffic-proxy-client.ts",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "992f72696aa32256b305526de701d105c0c7eef48d5586962330a2759765b89b",
+      "active_sha256": "81266800cd080cabff719a0367f549754ea4ce7d1e2d92626b9feb8199455956",
+      "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/traffic-proxy-client.ts.original",
+      "link": true
+    },
+    {
+      "path": "src/connectivity/traffic-proxy-manager.ts",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "6a95dc06e0db67e8aa7bfe5512f8b1e9deaad655b32755a971339a3a2497184b",
+      "active_sha256": "6a9c1e83a709846b93689c74424d5d31016e6dab9687654e991c0dab9e449f91",
+      "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/traffic-proxy-manager.ts.original",
+      "link": true
+    },
+    {
+      "path": "src/controller.ts",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive content plus execution surface",
+      "original_sha256": "e1a3e11559247035c2e37ee77b116c1f3d4152f0d057bc7c152610f1347b650b",
+      "active_sha256": "3a693d7b6f6dcb0678d185191f44d58a80f790442366ffaa145752adfb8b5519",
+      "quarantine": "_yaiwes_upstream_quarantine/src/controller.ts.original",
+      "link": true
+    },
+    {
+      "path": "src/docker-resource-reaper.ts",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "6268a93b8fac66ae002ddb0b8795413ad2682523863df26e573649b3805c17d5",
+      "active_sha256": "117bd5b14bfba1781288f7eead07fbac9d44bb6b092e5df795033d9054030ba2",
+      "quarantine": "_yaiwes_upstream_quarantine/src/docker-resource-reaper.ts.original",
+      "link": true
+    },
+    {
+      "path": "src/executor-environment.ts",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive content plus execution surface",
+      "original_sha256": "70384bcb35790fa91b9ed5b80d9eec5e76123ea8306e0fa8e8c88793b406f6a4",
+      "active_sha256": "6f5356889a0ae6b9e18be7a04de63bc3fe2daa6b3f7a70bc269c1db70769450f",
+      "quarantine": "_yaiwes_upstream_quarantine/src/executor-environment.ts.original",
+      "link": true
+    },
+    {
+      "path": "src/executor-sandbox-docker.ts",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "930371bef3299019c505e34435dec524282ccf7c59fe0c0f9e6b92118691e13c",
+      "active_sha256": "930371bef3299019c505e34435dec524282ccf7c59fe0c0f9e6b92118691e13c",
+      "quarantine": "_yaiwes_upstream_quarantine/src/executor-sandbox-docker.ts.original",
+      "link": false
+    },
+    {
+      "path": "src/executor-sandbox.ts",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "b29fc8ae0ca2b6ef995e2f3e20a7e1f257f162b182b910c0f8817d757224160d",
+      "active_sha256": "b29fc8ae0ca2b6ef995e2f3e20a7e1f257f162b182b910c0f8817d757224160d",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/llm-config.ts",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "1a79b32b51b8cd2c644e5dda53c529a7be6620d4b2cfb98ae38bbce8369c57db",
+      "active_sha256": "1a79b32b51b8cd2c644e5dda53c529a7be6620d4b2cfb98ae38bbce8369c57db",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/prompts.ts",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "d74f4adb538533a4119fdd088492031e62620241e5821b31d160046256abccf4",
+      "active_sha256": "d74f4adb538533a4119fdd088492031e62620241e5821b31d160046256abccf4",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/proxy-config.ts",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "005cdc3b2a8d0aed4d23400217b473477ab2229c6bad7243a7d26831e2db6fe7",
+      "active_sha256": "005cdc3b2a8d0aed4d23400217b473477ab2229c6bad7243a7d26831e2db6fe7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "src/stores/graph-store.ts",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive content plus execution surface",
+      "original_sha256": "7e48022888c806cbdc5d513dca7baa74e9458a801c0a6daff145d40d14432ab8",
+      "active_sha256": "5b7c44b0c7d089fb057843c7301dd642007b8a4b74a3673556f5611b5cfd012a",
+      "quarantine": "_yaiwes_upstream_quarantine/src/stores/graph-store.ts.original",
+      "link": true
+    },
+    {
+      "path": "src/tools/browser-tools.ts",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "367f02c1094d9b26488be0fcb01cc269906badf76ff312fd5cc8b6f9c6809222",
+      "active_sha256": "aa6353025af5af26413df55acb5a74d2cef36c440520b631493b004614b8397e",
+      "quarantine": "_yaiwes_upstream_quarantine/src/tools/browser-tools.ts.original",
+      "link": true
+    },
+    {
+      "path": "src/tools/research-tools.ts",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive content plus execution surface",
+      "original_sha256": "5a1cd46b05413ed50324e18558d53c8831708420d21cd017c41e5cf869f0d83f",
+      "active_sha256": "c3eb9d276e26bb328dab10e22bd7426317b91ba09925a2417dea0700bbbdb437",
+      "quarantine": "_yaiwes_upstream_quarantine/src/tools/research-tools.ts.original",
+      "link": true
+    },
+    {
+      "path": "src/web-auth.ts",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "7b79ad660bff930860dc3ef507bc09431d9c198908b7ed567e38e4a29a2655c4",
+      "active_sha256": "7b79ad660bff930860dc3ef507bc09431d9c198908b7ed567e38e4a29a2655c4",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/AuthRoot.tsx",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "6a71e28234fca86bdeac320d1d69c0d63e469ef60f4e59f7f5e0294dbcd87f20",
+      "active_sha256": "6a71e28234fca86bdeac320d1d69c0d63e469ef60f4e59f7f5e0294dbcd87f20",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/api.test.ts",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "b39c1a6c9fa740a8c2ce8b26b331b8423ff84b0e8dc1a635466205dd549a15f4",
+      "active_sha256": "b39c1a6c9fa740a8c2ce8b26b331b8423ff84b0e8dc1a635466205dd549a15f4",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/api.ts",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "ac2bc9105830b3b480c2a24297f50e9c43437779413231266b0405a643a2042a",
+      "active_sha256": "ac2bc9105830b3b480c2a24297f50e9c43437779413231266b0405a643a2042a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/components/AuthScreen.tsx",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "a36ae818bb8ea2ca4906b73e1bf6ae8c5be8d8c009780391cffa59539771084e",
+      "active_sha256": "a36ae818bb8ea2ca4906b73e1bf6ae8c5be8d8c009780391cffa59539771084e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/components/TrafficInspector.tsx",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "0f222fb40a80bfd2a6b63d0fe3181997b982d3312359b214ca9adfa3559ef8f4",
+      "active_sha256": "1c05b686d691b57c339f28209460a35eaf3def6740e83e5dfe427acafa26f933",
+      "quarantine": "_yaiwes_upstream_quarantine/web/src/components/TrafficInspector.tsx.original",
+      "link": true
+    },
+    {
+      "path": "web/src/useAuth.test.tsx",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "73627dcaa410257ccf33fca1d7b6143a170ab8a82ff743c86d983d508f0dd171",
+      "active_sha256": "73627dcaa410257ccf33fca1d7b6143a170ab8a82ff743c86d983d508f0dd171",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/src/useAuth.ts",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "9d2298a714a59b4129a7f58b118e888159375a88ab1da7097d2976d62c149626",
+      "active_sha256": "9d2298a714a59b4129a7f58b118e888159375a88ab1da7097d2976d62c149626",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/vite.config.ts",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "511e742230df7b1984382c570a81af62cb3535a7b29fa5461806ce903c6d1be6",
+      "active_sha256": "511e742230df7b1984382c570a81af62cb3535a7b29fa5461806ce903c6d1be6",
+      "quarantine": null,
+      "link": false
+    }
+  ],
+  "counts": {
+    "accounted": 36,
+    "restored_benign": 17,
+    "blocked_offensive": 5,
+    "review_fail_closed": 14,
+    "links": 19
+  }
+}

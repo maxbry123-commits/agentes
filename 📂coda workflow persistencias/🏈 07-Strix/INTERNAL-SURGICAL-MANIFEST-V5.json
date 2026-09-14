@@ -1,0 +1,688 @@
+{
+  "schema": "yaiwes.internal.surgical/v5",
+  "component": "🏈 07-Strix",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.0",
+  "policy": {
+    "restore_benign": true,
+    "offensive_execution": false,
+    "ambiguous": "FAIL_CLOSED",
+    "network_default_for_replacements": "deny",
+    "source_execution_during_audit": false
+  },
+  "files": [
+    {
+      "path": "scripts/tui_sidecar_hook.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "b14c8151558920a05dcdbadfbe8f3a0b364745fdff1aab288558fb0d28f73997",
+      "active_sha256": "97d3c6bfc42e85372c233ef826cad390c18285ec9aae5c99fec4132aa7cfdb7b",
+      "quarantine": "_yaiwes_upstream_quarantine/scripts/tui_sidecar_hook.py.original",
+      "link": true
+    },
+    {
+      "path": "strix/agents/prompt.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "2b30f1ecee988f9effed96c54af2baecd3a6506b6bcfdc5bd9a0f325cf540a33",
+      "active_sha256": "2b30f1ecee988f9effed96c54af2baecd3a6506b6bcfdc5bd9a0f325cf540a33",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/config/__init__.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "98cbbdaad44b29431fb05dfb471af34bb014b20458ca3e87cd10e50f8934c5fa",
+      "active_sha256": "98cbbdaad44b29431fb05dfb471af34bb014b20458ca3e87cd10e50f8934c5fa",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/config/codex.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "59ce71271d90c6a60405d89d5ac07e16e9809e1b0a589326538acdb1ca4dffd7",
+      "active_sha256": "59ce71271d90c6a60405d89d5ac07e16e9809e1b0a589326538acdb1ca4dffd7",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/config/codex.py.original",
+      "link": false
+    },
+    {
+      "path": "strix/config/loader.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "ea93ba975d6ed5cb6f41aa79b63f2cac4199eeefbcd264572bd46d22dd1a78e8",
+      "active_sha256": "ea93ba975d6ed5cb6f41aa79b63f2cac4199eeefbcd264572bd46d22dd1a78e8",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/config/models.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "9e6828869473ec10f51130e2392eef5de1faeb4c38680c4c049df06b747ed9c7",
+      "active_sha256": "9e6828869473ec10f51130e2392eef5de1faeb4c38680c4c049df06b747ed9c7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/config/settings.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "0278183e691254f4089d801f935632ce8fb419a9e831f3102b19facb1f87b0bd",
+      "active_sha256": "0278183e691254f4089d801f935632ce8fb419a9e831f3102b19facb1f87b0bd",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/config/tool_call_ids.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "fd1028fa5bc5fb1dedee8fc2bba6d6b99687eb44dee6204bff47a9cfa2f44706",
+      "active_sha256": "fd1028fa5bc5fb1dedee8fc2bba6d6b99687eb44dee6204bff47a9cfa2f44706",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/config/tool_call_limits.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "49873389ab79660a68e2bc78ea927c1ee0604c333193f40736c9e9ceb76a7290",
+      "active_sha256": "49873389ab79660a68e2bc78ea927c1ee0604c333193f40736c9e9ceb76a7290",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/auth_cli.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "802a6d7dd6e0446ce2c9141d9124b24894b73db471b1a9a858cb817c003e8caa",
+      "active_sha256": "802a6d7dd6e0446ce2c9141d9124b24894b73db471b1a9a858cb817c003e8caa",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/cloud/billing.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "92f1bfffefff2b9aa4762dc4146fb7bc60d1bb95ed78bb072dde8dc50dbc0e08",
+      "active_sha256": "1b60316989eff39e26a0941342d9cea63db208e6c65f90b265e4a84cb86d05c6",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/billing.py.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/cloud/http.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "ccb00c9073264289d301715e11417748fa8d8a52baa747875bf2bd886185c3f2",
+      "active_sha256": "372f1ff668aa09a257d952753ef166050ba5a7f043bf5764169a6e74869c15bf",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/http.py.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/cloud/payment_proxy.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "fbcb1676a940cdd7e3516b9b4c87e5c73bc7a10ca057259395ed8b05058722a6",
+      "active_sha256": "6c8018ab224bc2fbdf1f9aab250f26176c57eccf60ef2fd503badae57b21e329",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/payment_proxy.py.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/cloud/runner.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "92cd5b30101824d95f459d97e55a22899c454a1744cd0f4696d4eab0645fd7be",
+      "active_sha256": "5e01a493296c279b1228e0dd99569e6532aaac123c52410003be069086b6971a",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/runner.py.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/cloud/source_scan.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "af50bcaa359a11f01fe0682c2a41b13c5ca6643b9003fc654a345ccca6f3a985",
+      "active_sha256": "cc2e3d1e2c1a892c592b921e290589013715a1d6b7e04b0bc09839534f89771b",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/source_scan.py.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/cloud/source_upload.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "1e1b6a2cca5d4a88f506c4844286d73b093203c127e37e721ac64df157c05b39",
+      "active_sha256": "452242641d10bcccc2dbe8d471df05af29d297a53a4e3e5c40c10d3b36365123",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/source_upload.py.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/cloud/spec.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "369f21c777537f46288553c9be09ee3c3199872fd7fe1286d33e62fa686088da",
+      "active_sha256": "40f23fc0ffe6398d89c04779306f28e00a352144dfcaacad57a144dfdbd8f450",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/spec.py.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/platform_cli.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "528fa1ff6bf9478d41c510c856ccdc4c64566a4e6768e25f3e319e4ddc79c33c",
+      "active_sha256": "6a383c5cd324d2f632bf1993459b5b339582efb0b10a8405d7d6f4c1c78fd033",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/platform_cli.py.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/tui/backend/server.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "610311cfb1107ecfd90ef699f0acff452c8b75d915b222cf5b6a8cb65f64b953",
+      "active_sha256": "8fbe458c13383783f93a9abe7d0522c9cf778d1471707690174ea33f81d440d0",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/tui/backend/server.py.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/tui/internal/app/model.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "ce9b0439deff4b44cf75e00b19ca7b7b61bf0b0600cc9ef4c8c0476a5a184f64",
+      "active_sha256": "ce9b0439deff4b44cf75e00b19ca7b7b61bf0b0600cc9ef4c8c0476a5a184f64",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/app/model_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "000e6074d74d912a72e1f365578911e5888e9bcfd625032dd52485ef2a81dafe",
+      "active_sha256": "000e6074d74d912a72e1f365578911e5888e9bcfd625032dd52485ef2a81dafe",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/app/setup_prompt_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "6382494c3586abbd6ef77a51edccd1351e15937613e9d0850ffd498aa159a797",
+      "active_sha256": "6382494c3586abbd6ef77a51edccd1351e15937613e9d0850ffd498aa159a797",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/app/vulnerabilities.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "48537e02297a533a492aee8d8759ffd26ba282e84aa91ffd50770f05de64a0b4",
+      "active_sha256": "d5f21bf9930f8c774201c70fc98e9a31aa5b00cfe20d1fe34f439d5bf6259038",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/tui/internal/app/vulnerabilities.go.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/tui/internal/render/coverage.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "3add0b4098306b65ec6760fc9b7a74b6d423ad7e53da9b5bf5122b95d15b9915",
+      "active_sha256": "3add0b4098306b65ec6760fc9b7a74b6d423ad7e53da9b5bf5122b95d15b9915",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/render/coverage_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "478688fc8d5cc444b0faad795cbac18a65ff168becb6f017ecadae046fd226c0",
+      "active_sha256": "478688fc8d5cc444b0faad795cbac18a65ff168becb6f017ecadae046fd226c0",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/internal/render/threat_model.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "121e2628628613e78158d29d591ba3ee83b9bd7bd45c51f95b788573f9e9a041",
+      "active_sha256": "121e2628628613e78158d29d591ba3ee83b9bd7bd45c51f95b788573f9e9a041",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/tui/runtime.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "2240d84a5e0f543182d97ea17046d3dbf22b1946522a07979c5896e1306dd13d",
+      "active_sha256": "f0535998e7d66c8f935268750b368a9f56bde02c06fbbffa9d48031faa11cdcb",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/tui/runtime.py.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/tui/sidecar.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "ea530d9c4d9edcd27f13d005f3167591615b97ae2edf3977e4fdb7e89033fa99",
+      "active_sha256": "83d813a847d9658e1bbfeb209cdc20c73cc0c7a8f9195d474108b79b4944af0f",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/tui/sidecar.py.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/update_check.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "d554d206effd46b59427ec50375f80bc3ddb9988ca81cfc630c0655633f314fb",
+      "active_sha256": "bb40d2a1fcb2ae8dd0cf266bef9d8544fd3ce4e8f0671dee19d3292822b50dc0",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/update_check.py.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/utils.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "cf5838f8b2f1d29e63e9fffa0633e0ea902e1d44e7c8885b5d585637e2b0a425",
+      "active_sha256": "8e3fc1e065ea8e2753702118e2c2b88ff299ed929f9917c62aea4409877cd7c3",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/utils.py.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/viewer/auth.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "27439a44c2aad8baca3c5dc34a3246c0a6d86fcf192365f6b958bc020fa6e658",
+      "active_sha256": "27439a44c2aad8baca3c5dc34a3246c0a6d86fcf192365f6b958bc020fa6e658",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/auth.py.original",
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/AddRepositoryDialog.tsx",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "0bf7a9c5a1e67304f7386c268d3ea36833c75cd60142ebfd92e79bae3105f494",
+      "active_sha256": "0bf7a9c5a1e67304f7386c268d3ea36833c75cd60142ebfd92e79bae3105f494",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/EmailReportView.tsx",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "3f05304ad37afba6b4984bb3fca8523e06d428fb62984876e74d7322ea666ff7",
+      "active_sha256": "a000d5aa202f5e1e4dbf78b28fcf15153501100369cff1b22deedf65434b6885",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/frontend/src/components/EmailReportView.tsx.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/EmailVerifyInline.tsx",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "2bc3cfa52cac8f9f2ff3c426332db64e239ef8157351d11b1cf42103e16f0fd6",
+      "active_sha256": "ffc2eb6c98160b1bf4bdc38541afb32c988230b0dd555196606f4d274f8ebdf3",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/frontend/src/components/EmailVerifyInline.tsx.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/FeedbackView.tsx",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "3432ed5053a42a06923fddb9c8051015e16bfc17ddb110cc9edededa40ad6399",
+      "active_sha256": "3432ed5053a42a06923fddb9c8051015e16bfc17ddb110cc9edededa40ad6399",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/ScanPromptComposer.tsx",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "2c64cff168e443f05d68aad6e3d972587389625b3c0d673c82ffe48187793f06",
+      "active_sha256": "2c64cff168e443f05d68aad6e3d972587389625b3c0d673c82ffe48187793f06",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/CoverageRenderer.tsx",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "d475bfa0c80e701ecb165f14e46fb35097a08b5037ce8e3dfbde1dbfd497a838",
+      "active_sha256": "d475bfa0c80e701ecb165f14e46fb35097a08b5037ce8e3dfbde1dbfd497a838",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/ProxyRenderer.tsx",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "c1cbfefdd73d022e3540174cdbd341286fa246cd6b9a07a475b22a439adc28af",
+      "active_sha256": "1b75ed6565ac919c2d2a51707b51088d22f7e04984c1cc6a0ae289b8e6b93cd9",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/frontend/src/components/live/tool-renderers/ProxyRenderer.tsx.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/ThreatModelRenderer.tsx",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "f811c1209a7c925f3e759e263e779ce577168f162d66410216024a33d592927a",
+      "active_sha256": "f811c1209a7c925f3e759e263e779ce577168f162d66410216024a33d592927a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/vulnerability/CodeDiffBlock.tsx",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "6d4ca8dc2900b406b1ffb1332c508262a016d8ee2ab6f38bb570be999d4cbb8c",
+      "active_sha256": "77efad48d4f747f47685130c683632b701d019827a9c678b21c323dd093058c7",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/frontend/src/components/vulnerability/CodeDiffBlock.tsx.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/vulnerability/ContentSection.tsx",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "96de81f76cc3d37652f4a82555138200e10d011d45dee25b52c81f5034189900",
+      "active_sha256": "f7fe54ea6e4ebf119af589dc8021a679c6f4193e4b4f936eb3f4fc712c7a9494",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/frontend/src/components/vulnerability/ContentSection.tsx.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/vulnerability/IssueSidebar.tsx",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "dd34390c70aaf1bb64f71bce4f26af3844d215077875c48a6c54ae03b95a39bd",
+      "active_sha256": "141d7208051949e0535c256b88d177872efa15bb8d9c5e3fcd1a4d9b4607a08b",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/frontend/src/components/vulnerability/IssueSidebar.tsx.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/vulnerability/MdCodeBlock.tsx",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "1ac7e7edf6c3b684b8442896964249b00f8be101cfcd688f0d168fe97425cbb0",
+      "active_sha256": "8e7c91b2195869ef53f302ddfe0ac175cc3e3d8ba7ff0074a1f6aa1196d35eff",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/frontend/src/components/vulnerability/MdCodeBlock.tsx.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/vulnerability/PocBlock.tsx",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "bf1d6ba4210bca2b1d90bf954a7a1ba38aab160f1b42d8b4b832d5c153181c0a",
+      "active_sha256": "81af359764d5f5ff5e01fcb69dd9954651099ab061d74d4583e5a058dd3719df",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/frontend/src/components/vulnerability/PocBlock.tsx.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/vulnerability/VulnerabilityDetail.tsx",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "4bd02648a0f289fbf041d9255633fa9c966066423e54d974d487a0c8e63c6cd7",
+      "active_sha256": "d94a830a6fb4137433e9c94a6c9e1121441af7082ff43ed3d4646ddb858b1da5",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/frontend/src/components/vulnerability/VulnerabilityDetail.tsx.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/data/serverSource.ts",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "b3d84895a8e429c268d9ea9e652cf3391525234119e67e645062699e7d4cd14d",
+      "active_sha256": "a73f60f4f476b86e47c3fbb18c5736613d2eada341f94adc605e52fcdc974ed1",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/frontend/src/data/serverSource.ts.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/lib/vulnerability-utils.ts",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "db651a8a2fa1e359c7a83d41903dbe9e3b09d77e4c0146645dcd9b215ab44139",
+      "active_sha256": "7d42e4aa4c317ac4be3590de4ba380603ab63b4a1547b72a991e80cb9562ca6e",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/frontend/src/lib/vulnerability-utils.ts.original",
+      "link": true
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/stores/auth.ts",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "e5e896ef287f3e55a61a129fe1aafca472dc1ea4ddbbb06d4ef707bbaa638d4e",
+      "active_sha256": "e5e896ef287f3e55a61a129fe1aafca472dc1ea4ddbbb06d4ef707bbaa638d4e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/frontend/vite.config.ts",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "8489b1f7589ef1554675d613a6fcd541d81912b84a688bdfb33f6db6173013f9",
+      "active_sha256": "8489b1f7589ef1554675d613a6fcd541d81912b84a688bdfb33f6db6173013f9",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/interface/viewer/static/assets/index-B94ANU8d.js",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "108fa90acc7f717ce763e5c2bfccfbe741e34a3ebf5b40147f292dad33313d8e",
+      "active_sha256": "4463ae9027449f7c0e13e61f9f9b38ce6000a5299b31d3bcc67547e824a3be6f",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/static/assets/index-B94ANU8d.js.original",
+      "link": true
+    },
+    {
+      "path": "strix/llm/__init__.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "b67cc29f0c95abbd98da35fc0c4dc5ce0b71ddf224905e9963da61e51367fde6",
+      "active_sha256": "b67cc29f0c95abbd98da35fc0c4dc5ce0b71ddf224905e9963da61e51367fde6",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/llm/compaction.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "409960da6a3534ad7d4b1a55df609e538acd139a85bd255330ccfe6441be6fb7",
+      "active_sha256": "409960da6a3534ad7d4b1a55df609e538acd139a85bd255330ccfe6441be6fb7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/llm/context_budget.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "379f7c3274acc6616af5c0b6ce349188e4f1321122ec606e1e8c4719268d7797",
+      "active_sha256": "379f7c3274acc6616af5c0b6ce349188e4f1321122ec606e1e8c4719268d7797",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/llm/warmup.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "91f349fb993ccece78ddd944767146458106724f4ddef7171cc070f43f0ff40c",
+      "active_sha256": "91f349fb993ccece78ddd944767146458106724f4ddef7171cc070f43f0ff40c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/report/coverage.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "d41661775b450a6407e14e168aa73dd81f2330c8b75accda930d46472b071b87",
+      "active_sha256": "d41661775b450a6407e14e168aa73dd81f2330c8b75accda930d46472b071b87",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/report/state.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "a946cfc1c94c7196165f827e8bdb9facb3c3f2c522a2ca99df483f8fa662b11a",
+      "active_sha256": "a946cfc1c94c7196165f827e8bdb9facb3c3f2c522a2ca99df483f8fa662b11a",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/report/state.py.original",
+      "link": false
+    },
+    {
+      "path": "strix/runtime/docker_client.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive content plus execution surface",
+      "original_sha256": "081563d467cce5957818f50a7d4fce3df64a503d737d3b9332f56593178d8c4f",
+      "active_sha256": "0a4192d5490a6340ac4c470e4b148238b839295ba7296d6f7a87863d84b1b1c7",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/runtime/docker_client.py.original",
+      "link": true
+    },
+    {
+      "path": "strix/telemetry/__init__.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "9ac4aa22608029a998587a08fcfd32d541c396bb1111eb9340644b17c650e9ec",
+      "active_sha256": "9ac4aa22608029a998587a08fcfd32d541c396bb1111eb9340644b17c650e9ec",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/telemetry/_common.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "57fa57f14548520e879d14cabe6325ac8ba0e63dbb8556c40ad9705853aca63b",
+      "active_sha256": "57fa57f14548520e879d14cabe6325ac8ba0e63dbb8556c40ad9705853aca63b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/telemetry/logging.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "df908b7e0bbc364f1a4eb410888eb545b81b9523884593801466d71292bbf560",
+      "active_sha256": "df908b7e0bbc364f1a4eb410888eb545b81b9523884593801466d71292bbf560",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/telemetry/posthog.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "122f80dd93db562b05179eb95fcdeea609337fe61a12afe1b24c49a326e1c33d",
+      "active_sha256": "122f80dd93db562b05179eb95fcdeea609337fe61a12afe1b24c49a326e1c33d",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/telemetry/posthog.py.original",
+      "link": false
+    },
+    {
+      "path": "strix/telemetry/scarf.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "227766fd3ee094e0bed566c97fe7633930bd26da347107cb453171cad04f31c0",
+      "active_sha256": "227766fd3ee094e0bed566c97fe7633930bd26da347107cb453171cad04f31c0",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/telemetry/scarf.py.original",
+      "link": false
+    },
+    {
+      "path": "strix/tools/coverage/__init__.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "286fd46f279c060ff8e92c79e4d046a2c6a65561eddb669d2ef39820129e6faa",
+      "active_sha256": "286fd46f279c060ff8e92c79e4d046a2c6a65561eddb669d2ef39820129e6faa",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/tools/coverage/tools.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "10b77c2bd092ef7ec8cd5f80933ed537bd1d8753a36409229d7dd6816996b6c1",
+      "active_sha256": "10b77c2bd092ef7ec8cd5f80933ed537bd1d8753a36409229d7dd6816996b6c1",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/tools/mcp/client.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "6e969fb64133bf5564e8de6d3d60f97aa4db680c2c30d6cbd86f248e3813167d",
+      "active_sha256": "37817c9a811a579b75b8ebee88f48d92a9f6ae936ef5532ef6bc7d5c88a07225",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/tools/mcp/client.py.original",
+      "link": true
+    },
+    {
+      "path": "strix/tools/mcp/config.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "685a640666caa9761a12d55e333fa4932357f25fa7298dd49b752a13beed1669",
+      "active_sha256": "685a640666caa9761a12d55e333fa4932357f25fa7298dd49b752a13beed1669",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/tools/mcp/config.py.original",
+      "link": false
+    },
+    {
+      "path": "strix/tools/mcp/failures.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "abc73667b12b077489fdf6f65aa824fbde8af0af88a416d9c73589a57ce9dd55",
+      "active_sha256": "d3bf58936e6a4adb4dad7b9e93c668e0b03c3d938f1950556a3dac80a5825764",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/tools/mcp/failures.py.original",
+      "link": true
+    },
+    {
+      "path": "strix/tools/proxy/caido_api.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "5555aef4112ea3479d33f271830483de96ce1e26983d91f03bf4a9ad38f202bb",
+      "active_sha256": "5555aef4112ea3479d33f271830483de96ce1e26983d91f03bf4a9ad38f202bb",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/tools/proxy/tools.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "2e0819fef34d45e0d09a58f08d0a3202f822638d7cd2b59f22337b3a5645d2f6",
+      "active_sha256": "c280f9a2a1b36d33c8b84a6e810ec324eac36315448c35d2b3a92f02dd220e22",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/tools/proxy/tools.py.original",
+      "link": true
+    },
+    {
+      "path": "strix/tools/threat_model/__init__.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "e25439267022facc77a8386532f139cba6e8c2ea00bb80d2e75a291e8ad03989",
+      "active_sha256": "e25439267022facc77a8386532f139cba6e8c2ea00bb80d2e75a291e8ad03989",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "strix/tools/threat_model/tools.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "be7c5909ac7ef8558c2d0674d6054a06a921c89b21eaecb4dce66531c4adfd0e",
+      "active_sha256": "be7c5909ac7ef8558c2d0674d6054a06a921c89b21eaecb4dce66531c4adfd0e",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/tools/threat_model/tools.py.original",
+      "link": false
+    },
+    {
+      "path": "strix/tools/web_search/tool.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive content plus execution surface",
+      "original_sha256": "49963f4593f421d9db5578568d28874baa66766ba31c941937954c104cf3d7e5",
+      "active_sha256": "a876f36bde2c9d5eb553b25063efdd8c998379cc7342c36015518a0e94bd67bd",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/tools/web_search/tool.py.original",
+      "link": true
+    },
+    {
+      "path": "strix/utils/api_spec.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "1552c47c9512714878ce26a50e87d2f2559c672a0e2351377cb87012ad8983ca",
+      "active_sha256": "1552c47c9512714878ce26a50e87d2f2559c672a0e2351377cb87012ad8983ca",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/utils/api_spec.py.original",
+      "link": false
+    },
+    {
+      "path": "strix/utils/resource_paths.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "e9835920cbd8396ae5f21915f4b6a49971dbae005b3b0aaee9c6bc99238b96fe",
+      "active_sha256": "8e1185d7f1884f3e07b73d2212c6faec257d28a72217b79688d588a09f66d2b4",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/utils/resource_paths.py.original",
+      "link": true
+    }
+  ],
+  "counts": {
+    "accounted": 74,
+    "restored_benign": 41,
+    "blocked_offensive": 14,
+    "review_fail_closed": 19,
+    "links": 33
+  }
+}

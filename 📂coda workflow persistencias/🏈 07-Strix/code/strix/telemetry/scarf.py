@@ -33,13 +33,27 @@ def _is_enabled() -> bool:
 
 
 def _send(event: str, properties: dict[str, Any]) -> bool:
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/telemetry/scarf.py','step':'_send','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
+    if not _is_enabled():
+        logger.debug("scarf disabled; skipping event %s", event)
+        return False
+    try:
+        props = dict(properties)
+        version = str(props.pop("strix_version", get_version()) or "unknown")
+        path = f"/{urllib.parse.quote(event, safe='')}/{urllib.parse.quote(version, safe='')}"
+        query = urllib.parse.urlencode(
+            {k: ("" if v is None else str(v)) for k, v in props.items()},
+        )
+        url = f"{_SCARF_ENDPOINT}{path}"
+        if query:
+            url = f"{url}?{query}"
+        with requests.post(url, timeout=SEND_TIMEOUT):
+            pass
+    except Exception:  # noqa: BLE001
+        logger.debug("scarf send failed for event %s", event, exc_info=True)
+        return False
+    else:
+        logger.debug("scarf event sent: %s", event)
+        return True
 
 
 def start(

@@ -1,0 +1,94 @@
+{
+  "schema": "yaiwes.internal.surgical/v5",
+  "component": "🏈 19-TPT-Agent",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.0",
+  "policy": {
+    "restore_benign": true,
+    "offensive_execution": false,
+    "ambiguous": "FAIL_CLOSED",
+    "network_default_for_replacements": "deny",
+    "source_execution_during_audit": false
+  },
+  "files": [
+    {
+      "path": "scripts/install-service.sh",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "d57d924c2d91a0eff1a0ea7f0fffb432055765d7bb4bfa52d4a7f72fc0ddc539",
+      "active_sha256": "d57d924c2d91a0eff1a0ea7f0fffb432055765d7bb4bfa52d4a7f72fc0ddc539",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "tpt_agent/config.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "dfbac895c273d74e0f36591622c289e1e34f8c0272d246c10ae5d0439844ac95",
+      "active_sha256": "dfbac895c273d74e0f36591622c289e1e34f8c0272d246c10ae5d0439844ac95",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "tpt_agent/llm_client.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "f76b4ff6406ac560069dbc2de8f16450c5d56dd30b2a46e72821a2ac790ad9a0",
+      "active_sha256": "f76b4ff6406ac560069dbc2de8f16450c5d56dd30b2a46e72821a2ac790ad9a0",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "tpt_agent/memory.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "9cb373d2779594d0d7971ae19dcdcea287c6cdaf7d43e19a929d60c8fd24ff29",
+      "active_sha256": "9cb373d2779594d0d7971ae19dcdcea287c6cdaf7d43e19a929d60c8fd24ff29",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "tpt_agent/prompts.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive content plus execution surface",
+      "original_sha256": "06825ebb2ac4c26eea7ee1b55d2de8ffb121e1346447814ccc87accf535b603b",
+      "active_sha256": "b8e7947f3c12c25f358aa5b1871722fbd9807c41324efacbfd3ae6793bb50ce7",
+      "quarantine": "_yaiwes_upstream_quarantine/tpt_agent/prompts.py.original",
+      "link": true
+    },
+    {
+      "path": "tpt_agent/sandbox.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "ae021d801c645671d28ffcfd7bf759f224193a8edc2bf153ace8a5ee13e383e8",
+      "active_sha256": "ae021d801c645671d28ffcfd7bf759f224193a8edc2bf153ace8a5ee13e383e8",
+      "quarantine": "_yaiwes_upstream_quarantine/tpt_agent/sandbox.py.original",
+      "link": false
+    },
+    {
+      "path": "tpt_agent/storage.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "558556bb0c4070c587795245afa26e3a5bf4f4821209d122acb73cabf67527d5",
+      "active_sha256": "558556bb0c4070c587795245afa26e3a5bf4f4821209d122acb73cabf67527d5",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "tpt_agent/tools.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive content plus execution surface",
+      "original_sha256": "70e34f0c47b8296575ab8816f897a49aa4786a7d44bf06fc7cef2ab2fcba7d26",
+      "active_sha256": "d47d86eea063c5bc1b1003db00eac190fe3629d307ff6ab6d110bb9ea9c4ec72",
+      "quarantine": "_yaiwes_upstream_quarantine/tpt_agent/tools.py.original",
+      "link": true
+    }
+  ],
+  "counts": {
+    "accounted": 8,
+    "restored_benign": 6,
+    "blocked_offensive": 2,
+    "review_fail_closed": 0,
+    "links": 2
+  }
+}

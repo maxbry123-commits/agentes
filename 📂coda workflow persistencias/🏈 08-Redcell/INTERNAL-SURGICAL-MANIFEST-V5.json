@@ -1,0 +1,670 @@
+{
+  "schema": "yaiwes.internal.surgical/v5",
+  "component": "🏈 08-Redcell",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.0",
+  "policy": {
+    "restore_benign": true,
+    "offensive_execution": false,
+    "ambiguous": "FAIL_CLOSED",
+    "network_default_for_replacements": "deny",
+    "source_execution_during_audit": false
+  },
+  "files": [
+    {
+      "path": "apps/api/app/__init__.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/api/app/deps.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "a5609ee2d0bef32316e77b44b8c99ee4df163c3ea0099ab6483b0900d3242309",
+      "active_sha256": "a5609ee2d0bef32316e77b44b8c99ee4df163c3ea0099ab6483b0900d3242309",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/api/app/main.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "808000da03e62d1e274642b86feb1166c2b70006f0e2c652b193d90359b81bfc",
+      "active_sha256": "808000da03e62d1e274642b86feb1166c2b70006f0e2c652b193d90359b81bfc",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/api/app/ratelimit.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "284247602a0bee1af72d2ddcd816933590b16c13b2fade861c7bfb75b381f037",
+      "active_sha256": "284247602a0bee1af72d2ddcd816933590b16c13b2fade861c7bfb75b381f037",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/api/app/routers/__init__.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/api/app/routers/ai.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "a578c6b3e098cc4d734beae3e12840d6963702783adde7cd9f17359032528e1e",
+      "active_sha256": "a578c6b3e098cc4d734beae3e12840d6963702783adde7cd9f17359032528e1e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/api/app/routers/auth.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "f532b256a1d4b53f97ce3523547cb44826143653b4bd69519b65a9132b6f1315",
+      "active_sha256": "f532b256a1d4b53f97ce3523547cb44826143653b4bd69519b65a9132b6f1315",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/api/app/routers/files.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "f46e3385748d71cb7f3eb51e4e6d3cb4a14dc5ab45d3235f284e78ed893e90c8",
+      "active_sha256": "f46e3385748d71cb7f3eb51e4e6d3cb4a14dc5ab45d3235f284e78ed893e90c8",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/api/app/routers/infra.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "268c9d53acece0bb475fb98297fb5702627569f10028ac3a1f96390a415aa785",
+      "active_sha256": "268c9d53acece0bb475fb98297fb5702627569f10028ac3a1f96390a415aa785",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/api/app/routers/notifications.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "1d20c9612eab612a875e262fafabc56f6c59cefe85626b430b1e221903e1358d",
+      "active_sha256": "1d20c9612eab612a875e262fafabc56f6c59cefe85626b430b1e221903e1358d",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/api/app/routers/reports.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "e561017fda3fe1b9b93c21b2fc8c04ecfb2690a16b44252ca3e07cc3ccc914fb",
+      "active_sha256": "e561017fda3fe1b9b93c21b2fc8c04ecfb2690a16b44252ca3e07cc3ccc914fb",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/api/app/routers/resources.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "b3c3b9b82a96cce151eff137d63b756bbe7218b6efb1591adef123362c9a59da",
+      "active_sha256": "2114fdc47ba2bd0fb327bbfea95b365b70bec223de68e2ae1f71cc1e704cd819",
+      "quarantine": "_yaiwes_upstream_quarantine/apps/api/app/routers/resources.py.original",
+      "link": true
+    },
+    {
+      "path": "apps/api/app/routers/settings.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "dddbc1245dd3ec7c4432affe48aa2bbd9d58be71d729950650892793851dfcbe",
+      "active_sha256": "dddbc1245dd3ec7c4432affe48aa2bbd9d58be71d729950650892793851dfcbe",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/api/app/routers/system.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "c685f73f76de820923c7018bc4f848f5de0d95149847b247f85c1a410f11a20c",
+      "active_sha256": "c685f73f76de820923c7018bc4f848f5de0d95149847b247f85c1a410f11a20c",
+      "quarantine": "_yaiwes_upstream_quarantine/apps/api/app/routers/system.py.original",
+      "link": false
+    },
+    {
+      "path": "apps/api/app/routers/ws.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "7775f8ddfa7647697d67a6db3377879200a71acd47403005f3825eb0231017a5",
+      "active_sha256": "7775f8ddfa7647697d67a6db3377879200a71acd47403005f3825eb0231017a5",
+      "quarantine": "_yaiwes_upstream_quarantine/apps/api/app/routers/ws.py.original",
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/AuthGate.test.tsx",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "5b7aa206c471deb9fe1fc179f5534a428a74a755d7272b2f77594e9268c57526",
+      "active_sha256": "5b7aa206c471deb9fe1fc179f5534a428a74a755d7272b2f77594e9268c57526",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/AuthGate.tsx",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "8ef6982d03ffeaa35838eabddac45873ce7be1fafdd65af938e6a130a67c267d",
+      "active_sha256": "8ef6982d03ffeaa35838eabddac45873ce7be1fafdd65af938e6a130a67c267d",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/src/app/pages/SettingsPage.tsx",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive content plus execution surface",
+      "original_sha256": "1ac0d347b8c890b10441d5e57dfb571db08f7466a701f9f5345b75a5c1e11fde",
+      "active_sha256": "492d1bad21bc27012ab7f60e25912d0e8083aa1b9c9de6c2b5c5b04f119b674a",
+      "quarantine": "_yaiwes_upstream_quarantine/apps/web/src/app/pages/SettingsPage.tsx.original",
+      "link": true
+    },
+    {
+      "path": "apps/web/src/app/panels/AttackSurfacePanel.tsx",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "d3916c3f3738c8a7245fbc362fff42142b4b08cb8805c69c4eac8be6020b0acb",
+      "active_sha256": "232f48fe695df1c9ef0c718a20d26f062eae9a28fc3ca165622e4324e9b41785",
+      "quarantine": "_yaiwes_upstream_quarantine/apps/web/src/app/panels/AttackSurfacePanel.tsx.original",
+      "link": true
+    },
+    {
+      "path": "apps/web/src/app/panels/BrowserPanel.test.tsx",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "209e9704df94de82e60e1bdbce3b5b718e76bfebb3f95c825982dd918b9a5aea",
+      "active_sha256": "e553325b82be1323bbec7c1f20b2c4e414f301b97bb72c4de7e74c3d3fbffd7e",
+      "quarantine": "_yaiwes_upstream_quarantine/apps/web/src/app/panels/BrowserPanel.test.tsx.original",
+      "link": true
+    },
+    {
+      "path": "apps/web/src/features/hooks.ts",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "a71fedea2f901170f06a1a8c74f8a95ee9509bae8d9691dc0d33a19a89df9f51",
+      "active_sha256": "5eeaed5653519cdcf260b2b371968805b5f3208021ae793d545a214fa3f2d05d",
+      "quarantine": "_yaiwes_upstream_quarantine/apps/web/src/features/hooks.ts.original",
+      "link": true
+    },
+    {
+      "path": "apps/web/src/lib/api.tsx",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "513739a26cb578264555e92bfb527d908a3025eb82f189d95ee2058c593370e1",
+      "active_sha256": "513739a26cb578264555e92bfb527d908a3025eb82f189d95ee2058c593370e1",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/web/vite.config.ts",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "f213f214076ef8746a97166e43228f97de4c9a32caf8e3e649dc45f25daaa3ef",
+      "active_sha256": "f213f214076ef8746a97166e43228f97de4c9a32caf8e3e649dc45f25daaa3ef",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/worker/worker/settings.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "76a73722681ee44f042fcbf0734ec7c9d9e6afa8eac310cd3b6cb6077410f6e5",
+      "active_sha256": "76a73722681ee44f042fcbf0734ec7c9d9e6afa8eac310cd3b6cb6077410f6e5",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "apps/worker/worker/tasks.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "76420d88ef7cb4e6a4627e6455e3f34f47e5635d09093f4734121a24c31424ac",
+      "active_sha256": "76420d88ef7cb4e6a4627e6455e3f34f47e5635d09093f4734121a24c31424ac",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/api-client/src/client.ts",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "43fb203a0568b3a8e21ccd54df4fad0bb805816c44e4d0f01f7851db9220452d",
+      "active_sha256": "43fb203a0568b3a8e21ccd54df4fad0bb805816c44e4d0f01f7851db9220452d",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/api-client/src/factory.ts",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "b1ffb087abe54084ca3cb48b90a85ebbdbbf4639b7aeb4484f6cc0a5352da744",
+      "active_sha256": "b1ffb087abe54084ca3cb48b90a85ebbdbbf4639b7aeb4484f6cc0a5352da744",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/api-client/src/http/httpClient.ts",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "fdf67da9b0fcde0b28a54bc477d704c0c4007777204026cc6415c272b5f547f3",
+      "active_sha256": "fdf67da9b0fcde0b28a54bc477d704c0c4007777204026cc6415c272b5f547f3",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/api-client/src/index.ts",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "5770cb0c513a48dd26911d8c09883e64062dcfd9f3ff7d40d33911aee437b2cf",
+      "active_sha256": "5770cb0c513a48dd26911d8c09883e64062dcfd9f3ff7d40d33911aee437b2cf",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/api-client/src/mock/fixtures.ts",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "937d09a2ee316a8bdffb52f20c3d6e1289eedad701043fda73de4d233e705406",
+      "active_sha256": "937d09a2ee316a8bdffb52f20c3d6e1289eedad701043fda73de4d233e705406",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/api-client/src/mock/mockClient.ts",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "b2ea000b9b6aab2602302efda9fab1e5a4fc83fa3ad2130563cf429dec86b7d7",
+      "active_sha256": "b2ea000b9b6aab2602302efda9fab1e5a4fc83fa3ad2130563cf429dec86b7d7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/api-client/src/types.ts",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "a1db862dcccbbaefc2c02460a6e70843672a18b8a8df5dcb81f48f273d4815a7",
+      "active_sha256": "a1db862dcccbbaefc2c02460a6e70843672a18b8a8df5dcb81f48f273d4815a7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/alembic/versions/393d982aee01_initial_schema.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "58fdbb3f2504572a24101a8a8c69d84932ee0e0b57393620d74ceb8e38b87d61",
+      "active_sha256": "58fdbb3f2504572a24101a8a8c69d84932ee0e0b57393620d74ceb8e38b87d61",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/alembic/versions/c1a2b3d4e5f6_session_kind_server_proxy_model.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "87a5d2ba624b510213647ead2e3200db32625d58736b54d0b1bc1db2121720ef",
+      "active_sha256": "87a5d2ba624b510213647ead2e3200db32625d58736b54d0b1bc1db2121720ef",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/alembic/versions/e3c4d5f6a7b8_proxy_health_facts.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "6f108e6ea9ba67622eccc51a18bf29ff813e662c6012e66c51777bdb59ff7844",
+      "active_sha256": "6f108e6ea9ba67622eccc51a18bf29ff813e662c6012e66c51777bdb59ff7844",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/cache.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "e0b3f131e11274dacb3ad339c22edcd9053d81cb7680c2f2a83163b227605067",
+      "active_sha256": "e0b3f131e11274dacb3ad339c22edcd9053d81cb7680c2f2a83163b227605067",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/cli.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "e3dd30fbd112daa7186143ba48ab5fb5e12474e2626b86dbce9e206736860515",
+      "active_sha256": "171d17c9afa41ab37c4daa683e769cca07a384c79679bf0f90e29fbfdd7df388",
+      "quarantine": "_yaiwes_upstream_quarantine/packages/core/redcell_core/cli.py.original",
+      "link": true
+    },
+    {
+      "path": "packages/core/redcell_core/config.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "810cc3a798f93a80983cb14cbf71e739a4944aa0ed7cadf767579e3adf270c16",
+      "active_sha256": "810cc3a798f93a80983cb14cbf71e739a4944aa0ed7cadf767579e3adf270c16",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/db.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "a97441f1379a1cd450bf1e74f17f2952e85c6ba5df81eb2c7bc7e15b72632b22",
+      "active_sha256": "a97441f1379a1cd450bf1e74f17f2952e85c6ba5df81eb2c7bc7e15b72632b22",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/engine/checkpoint.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "22aa8652e100ce9a89cd012004d3445bf68c614af4317b83eaa442880edd2a22",
+      "active_sha256": "22aa8652e100ce9a89cd012004d3445bf68c614af4317b83eaa442880edd2a22",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/engine/execution.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive content plus execution surface",
+      "original_sha256": "ba1a932d9d219d9c5a159d458dee72650306fe97f258cdb5857188fa972a5acc",
+      "active_sha256": "48139f76110c6a2afa144932535dd1904497ce982d0e95268b7ca89a8e1dc1a4",
+      "quarantine": "_yaiwes_upstream_quarantine/packages/core/redcell_core/engine/execution.py.original",
+      "link": true
+    },
+    {
+      "path": "packages/core/redcell_core/engine/llm.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "228341f67d76802f94bdf4f6dc067a98efadc84020ec36448d8173190b9a93d3",
+      "active_sha256": "228341f67d76802f94bdf4f6dc067a98efadc84020ec36448d8173190b9a93d3",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/engine/ngrok.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "c766256b7f9d3803f7718f2554f625e83c5effe3f325007f3fb84f525a3ff554",
+      "active_sha256": "2be224f1e7bb6c182856c6e42c7e19cc903ee065287f89376fd11ef54a862dc9",
+      "quarantine": "_yaiwes_upstream_quarantine/packages/core/redcell_core/engine/ngrok.py.original",
+      "link": true
+    },
+    {
+      "path": "packages/core/redcell_core/engine/nmap.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "340ddca4c809f5d4849531a24412d61a09b2784c814e12d0faa99b52e231f1b1",
+      "active_sha256": "9568123c5c3779dd5dde84397460f3a2ce3ab3dc97217343a9d6398a92321bb7",
+      "quarantine": "_yaiwes_upstream_quarantine/packages/core/redcell_core/engine/nmap.py.original",
+      "link": true
+    },
+    {
+      "path": "packages/core/redcell_core/engine/runner.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive content plus execution surface",
+      "original_sha256": "ec2da2419acbb73b00892ce1a0301c9ecef4c07cf6757757aca766ee3517fd15",
+      "active_sha256": "a5cc193ee291924fb0e2ad38258be8a19040bcbddcc1c19315f5cf8caea93de6",
+      "quarantine": "_yaiwes_upstream_quarantine/packages/core/redcell_core/engine/runner.py.original",
+      "link": true
+    },
+    {
+      "path": "packages/core/redcell_core/models/__init__.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "317cd09b879afaa3f5c9a3a94ab90e0122000306380acc637eccaaeffc5c5b93",
+      "active_sha256": "317cd09b879afaa3f5c9a3a94ab90e0122000306380acc637eccaaeffc5c5b93",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/models/agent.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "8fea83dbaddb92dbb464b6385d6cdea5aa6f02c455f0f4dba6fdae3ec03d2b2e",
+      "active_sha256": "8fea83dbaddb92dbb464b6385d6cdea5aa6f02c455f0f4dba6fdae3ec03d2b2e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/models/chat.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "02c9c85008806d219f2ca3d3f03b965102f8e8a5a89d1b4d01e1043d161fd5e3",
+      "active_sha256": "02c9c85008806d219f2ca3d3f03b965102f8e8a5a89d1b4d01e1043d161fd5e3",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/models/event.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "a4aaeaad7e841eb6b91ae89cb39fba7b0c96bbc6f534ea9a65b6b89afc61b2b4",
+      "active_sha256": "a4aaeaad7e841eb6b91ae89cb39fba7b0c96bbc6f534ea9a65b6b89afc61b2b4",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/models/file.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "8fcbc16d876d0bb44f71a1f77861e19536a33af9c4f453965217e58be325fc33",
+      "active_sha256": "8fcbc16d876d0bb44f71a1f77861e19536a33af9c4f453965217e58be325fc33",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/models/finding.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "b061d29ab8289f6405ad1cc770f2e79a1e04657b1e5a4e632703ec8b5a019dbf",
+      "active_sha256": "b061d29ab8289f6405ad1cc770f2e79a1e04657b1e5a4e632703ec8b5a019dbf",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/models/host.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "6c3fd44bd4475bf0eb340740279b10733b6004edbf3eafa0110d1bc118eb85db",
+      "active_sha256": "6c3fd44bd4475bf0eb340740279b10733b6004edbf3eafa0110d1bc118eb85db",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/models/listener.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "82829a5ea0b0fec7d2514ad7bf07eee8df4d542a603e35203f1ca8e89faf1ba7",
+      "active_sha256": "82829a5ea0b0fec7d2514ad7bf07eee8df4d542a603e35203f1ca8e89faf1ba7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/models/loot.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "91674cdd76cbe99edb4d4d6b1b341d78d07ab5197a9337450ac154fd36190c90",
+      "active_sha256": "91674cdd76cbe99edb4d4d6b1b341d78d07ab5197a9337450ac154fd36190c90",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/models/notification.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "b5dce03e227b6180a9e0459adb88f3a22edadd57ea04fc557a88630656564c46",
+      "active_sha256": "b5dce03e227b6180a9e0459adb88f3a22edadd57ea04fc557a88630656564c46",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/models/provider.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "220b0b4d7706ea051024e1e6d6bed7aba3982e17f3ad90d629e0f2ad6c54211b",
+      "active_sha256": "220b0b4d7706ea051024e1e6d6bed7aba3982e17f3ad90d629e0f2ad6c54211b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/models/provider_credential.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "dd7eb05e0516bd9cba872ef21cb2a629ba6b34b5addcebf9666e7e77089742f0",
+      "active_sha256": "dd7eb05e0516bd9cba872ef21cb2a629ba6b34b5addcebf9666e7e77089742f0",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/models/proxy.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "1c7424375f519153d41f67e41ebfb5c114b96d2e4a233a33250edcb650eb02e2",
+      "active_sha256": "1c7424375f519153d41f67e41ebfb5c114b96d2e4a233a33250edcb650eb02e2",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/models/proxy_entry.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "aa36411fb78d36315f0ccad75f309dcf121f7fa1b818ad8730764612d7a0f26e",
+      "active_sha256": "aa36411fb78d36315f0ccad75f309dcf121f7fa1b818ad8730764612d7a0f26e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/models/report.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "37557eef2cdf7ec5fa13b44200954ff7fb6a5f95a53238390a5ba9f15691566f",
+      "active_sha256": "37557eef2cdf7ec5fa13b44200954ff7fb6a5f95a53238390a5ba9f15691566f",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/models/run.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "d4c15f701a66a072c48be8ae595f83509ed9e7ed4f9054a426bd77939fc57294",
+      "active_sha256": "d4c15f701a66a072c48be8ae595f83509ed9e7ed4f9054a426bd77939fc57294",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/models/secret.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "a79ae596b04666636b007402da52bbb172d5c55d33198545f30351c2187deb73",
+      "active_sha256": "a79ae596b04666636b007402da52bbb172d5c55d33198545f30351c2187deb73",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/models/server.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "e576bb1c8c5ed5096b421f11a8360dda024dbd8b72a2fff5a578cec7d1901f69",
+      "active_sha256": "e576bb1c8c5ed5096b421f11a8360dda024dbd8b72a2fff5a578cec7d1901f69",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/models/session.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "4a14d3f5397339fb32e873df40748ef7204803f91b419f0e5898af335841e231",
+      "active_sha256": "4a14d3f5397339fb32e873df40748ef7204803f91b419f0e5898af335841e231",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/models/settings.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "7e7bc810ac5162276e6dea47913ccfc3a829e0759e04829570090f85daa6abd9",
+      "active_sha256": "7e7bc810ac5162276e6dea47913ccfc3a829e0759e04829570090f85daa6abd9",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/models/shell.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "77d521677b062ad9f63267c34b5f2e400cd0d0a5b6b947daed8250962a909d93",
+      "active_sha256": "77d521677b062ad9f63267c34b5f2e400cd0d0a5b6b947daed8250962a909d93",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/models/user.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "788a951e7e7f069b7d07decf492cf829970c55d89556376a6c683ab62846bcb0",
+      "active_sha256": "788a951e7e7f069b7d07decf492cf829970c55d89556376a6c683ab62846bcb0",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/probe.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "44fca4463927952e8c2338f9c5b25c9f4490b3041e21e890fde8d67f6cbeb91a",
+      "active_sha256": "965354edfd377bb191bf6d33d1459e83e6a7db95d08415664a7d32fd75b4a046",
+      "quarantine": "_yaiwes_upstream_quarantine/packages/core/redcell_core/probe.py.original",
+      "link": true
+    },
+    {
+      "path": "packages/core/redcell_core/queue.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "2e563e1eb296934e7dc09b3e109ff7227d2f3b68765393db59c22572b4f5d1c3",
+      "active_sha256": "2e563e1eb296934e7dc09b3e109ff7227d2f3b68765393db59c22572b4f5d1c3",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/repositories/settings.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "0d81d18d77856a1fa825dfab1fefe11fb9e4646ab2f95ca174cae9ff3522423b",
+      "active_sha256": "0d81d18d77856a1fa825dfab1fefe11fb9e4646ab2f95ca174cae9ff3522423b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/schemas.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "1e625ae54accc8e951e31a7ca29c3033d9665255dd3052a45f69010fdd36e84f",
+      "active_sha256": "1e625ae54accc8e951e31a7ca29c3033d9665255dd3052a45f69010fdd36e84f",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "packages/core/redcell_core/storage.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "3a603831c09f99f76e347e16b3e43fb5adc8e3c237e2cdc81ebec25eca68f6e0",
+      "active_sha256": "3a603831c09f99f76e347e16b3e43fb5adc8e3c237e2cdc81ebec25eca68f6e0",
+      "quarantine": null,
+      "link": false
+    }
+  ],
+  "counts": {
+    "accounted": 72,
+    "restored_benign": 61,
+    "blocked_offensive": 6,
+    "review_fail_closed": 5,
+    "links": 11
+  }
+}

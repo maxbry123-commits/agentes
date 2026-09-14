@@ -61,13 +61,52 @@ def _get_salt_file() -> Path:
 
 
 def _get_machine_id() -> bytes:
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/config/secrets.py','step':'_get_machine_id','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
+    """Get a machine-unique identifier for key derivation."""
+    # Try various sources of machine identity
+    machine_id = ""
+    
+    # Windows: use machine GUID
+    if os.name == "nt":
+        try:
+            import winreg
+            with winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE,
+                r"SOFTWARE\Microsoft\Cryptography"
+            ) as key:
+                machine_id = winreg.QueryValueEx(key, "MachineGuid")[0]
+        except Exception:
+            pass
+    
+    # Linux: /etc/machine-id
+    if not machine_id:
+        try:
+            machine_id = Path("/etc/machine-id").read_text().strip()
+        except Exception:
+            pass
+    
+    # macOS: hardware UUID
+    if not machine_id:
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["ioreg", "-rd1", "-c", "IOPlatformExpertDevice"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            for line in result.stdout.split("\n"):
+                if "IOPlatformUUID" in line:
+                    machine_id = line.split('"')[-2]
+                    break
+        except Exception:
+            pass
+    
+    # Fallback: use hostname + username
+    if not machine_id:
+        import socket
+        machine_id = f"{socket.gethostname()}-{os.getlogin() if hasattr(os, 'getlogin') else 'user'}"
+    
+    return machine_id.encode("utf-8")
 
 
 def _get_or_create_salt() -> bytes:

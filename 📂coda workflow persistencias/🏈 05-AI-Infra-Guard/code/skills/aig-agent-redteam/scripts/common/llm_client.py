@@ -1,101 +1,35 @@
-"""OpenAI-compatible LLM client for mutation-attack.
-
-Minimal wrapper that supports:
-- Single-turn chat
-- Multi-turn chat with history
-- Robust error handling (timeouts, 401, rate limits)
-"""
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
 from __future__ import annotations
+from pathlib import Path
+import json
 
-import os
-from dataclasses import dataclass, field
-from typing import List, Optional
+SOURCE_ID = 'db79a8153ab897bc03e8aab40dd4fa27334830b86a1bea988b1720f0cbd71732'
+DECISION = 'BLOCK_OFFENSIVE'
 
-try:
-    from openai import OpenAI, APIError, APIConnectionError, AuthenticationError, RateLimitError
-except ImportError:
-    OpenAI = None  # type: ignore
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
 
-@dataclass
 class LLMResponse:
-    text: str = ""
-    model: str = ""
-    error: Optional[str] = None
-    usage: dict = field(default_factory=dict)
-    raw: Optional[dict] = None
-
-    def ok(self) -> bool:
-        return self.error is None
-
+    def ok(self, *args, **kwargs):
+        return _yaiwes_checkpoint('LLMResponse.ok', kwargs)
 
 class LLMClient:
-    def __init__(
-        self,
-        model: str,
-        token: str,
-        base_url: str,
-        timeout: float = 60.0,
-    ):
-        if OpenAI is None:
-            raise RuntimeError("openai package not installed; run pip install -r requirements.txt")
-        self.model = model
-        self.client = OpenAI(api_key=token, base_url=base_url, timeout=timeout)
-
-    @classmethod
-    def from_env(cls) -> "LLMClient":
-        return cls(
-            model=os.environ["AIG_TARGET_MODEL"],
-            token=os.environ["AIG_TARGET_TOKEN"],
-            base_url=os.environ["AIG_TARGET_BASE_URL"],
-        )
-
-    def chat(
-        self,
-        user: str,
-        system: str = "",
-        temperature: float = 0.9,
-        max_tokens: int = 1024,
-    ) -> LLMResponse:
-        messages = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": user})
-        return self._call(messages, temperature, max_tokens)
-
-    def chat_with_history(
-        self,
-        messages: List[dict],
-        temperature: float = 0.9,
-        max_tokens: int = 1024,
-    ) -> LLMResponse:
-        return self._call(messages, temperature, max_tokens)
-
-    def _call(self, messages: list, temperature: float, max_tokens: int) -> LLMResponse:
-        try:
-            resp = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-            text = resp.choices[0].message.content if resp.choices else ""
-            usage = resp.usage.model_dump() if resp.usage else {}
-            return LLMResponse(text=text or "", model=self.model, usage=usage)
-        except AuthenticationError as e:
-            return LLMResponse(error=f"auth_error: {e}")
-        except RateLimitError as e:
-            return LLMResponse(error=f"rate_limit: {e}")
-        except APIConnectionError as e:
-            return LLMResponse(error=f"connection_error: {e}")
-        except APIError as e:
-            return LLMResponse(error=f"api_error: {e}")
-        except Exception as e:
-            return LLMResponse(error=f"{type(e).__name__}: {e}")
-
-    def list_models(self) -> List[str]:
-        try:
-            resp = self.client.models.list()
-            return [m.id for m in resp.data]
-        except Exception:
-            return []
+    def __init__(self, *args, **kwargs):
+        self._yaiwes_checkpoint = _yaiwes_checkpoint('LLMClient.__init__', kwargs)
+    def from_env(self, *args, **kwargs):
+        return _yaiwes_checkpoint('LLMClient.from_env', kwargs)
+    def chat(self, *args, **kwargs):
+        return _yaiwes_checkpoint('LLMClient.chat', kwargs)
+    def chat_with_history(self, *args, **kwargs):
+        return _yaiwes_checkpoint('LLMClient.chat_with_history', kwargs)
+    def _call(self, *args, **kwargs):
+        return _yaiwes_checkpoint('LLMClient._call', kwargs)
+    def list_models(self, *args, **kwargs):
+        return _yaiwes_checkpoint('LLMClient.list_models', kwargs)

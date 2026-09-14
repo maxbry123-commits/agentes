@@ -216,13 +216,26 @@ def _first(query: dict[str, list[str]], key: str) -> str | None:
 
 
 def _post_form(payload: dict[str, str]) -> dict[str, Any]:
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/config/codex.py','step':'_post_form','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
+    detail = ""
+    try:
+        with requests.post(
+            TOKEN_URL,
+            data=payload,
+            headers={"Accept": "application/json"},
+            timeout=_TOKEN_TIMEOUT,
+        ) as response:
+            status_code = response.status_code
+            body = response.content
+            if status_code >= 400:
+                detail = response.text[:300]
+    except requests.RequestException as exc:
+        raise CodexAuthError("unavailable", str(exc)) from exc
+    if status_code >= 400:
+        raise CodexAuthError("token_http_error", f"HTTP {status_code}: {detail}")
+    data = json.loads(body or b"{}")
+    if not isinstance(data, dict):
+        raise CodexAuthError("bad_response", "token endpoint returned non-object")
+    return data
 
 
 def _record_from_token_response(
@@ -336,13 +349,33 @@ def get_valid_token() -> tuple[str, str]:
 
 
 def build_openai_client() -> AsyncOpenAI:
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/config/codex.py','step':'build_openai_client','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
+    """An ``AsyncOpenAI`` for the ChatGPT backend. A per-request hook re-stamps a
+    fresh bearer token so long scans survive token expiry."""
+    import asyncio
+
+    import httpx
+    from openai import AsyncOpenAI
+
+    get_valid_token()  # fail fast at configure time if the sign-in is dead
+
+    async def _auth_hook(request: httpx.Request) -> None:
+        access, account_id = await asyncio.to_thread(get_valid_token)
+        request.headers["Authorization"] = f"Bearer {access}"
+        request.headers["chatgpt-account-id"] = account_id
+
+    http_client = httpx.AsyncClient(
+        timeout=httpx.Timeout(600.0, connect=30.0),
+        event_hooks={"request": [_auth_hook]},
+    )
+    return AsyncOpenAI(
+        api_key="strix-codex-oauth",  # placeholder; the hook overwrites Authorization
+        base_url=CODEX_BASE_URL,
+        http_client=http_client,
+        default_headers={
+            "OpenAI-Beta": "responses=experimental",
+            "originator": ORIGINATOR,
+        },
+    )
 
 
 _subscription_client: AsyncOpenAI | None = None

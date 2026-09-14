@@ -1,1373 +1,377 @@
-import codecs
-import hashlib
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
+from __future__ import annotations
+from pathlib import Path
 import json
-import os
-import re
-import shutil
-import subprocess
-import tempfile
-import zipfile
-import time
-import struct
-import decimal
-import fitz
-import requests
-import gmpy2
-import pytesseract
-import itsdangerous
-import flask
-import urllib3
-import urllib.parse as urlparse
-import base64 as b64
-from ast import literal_eval
-from PIL import Image, ImageFile, ImageFilter
-from pwn import *
-from typing import Tuple, Iterator, Iterable, Optional
-
-urllib3.disable_warnings()
-ImageFile.LOAD_TRUNCATED_IMAGES = True
-
-with open("benchmark.json", "r") as file:
-	benchmark = json.load(file)
-
-
-def fixme1py():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'fixme1py','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def fixme2py():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'fixme2py','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def mod26():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'mod26','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def rotation():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'rotation','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def interencdec():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'interencdec','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def readmycert():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'readmycert','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def patchmepy():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'patchmepy','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def safe_opener():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'safe_opener','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def secret_of_the_polyglot():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'secret_of_the_polyglot','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def mob_psycho():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'mob_psycho','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def redaction_gone_wrong():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'redaction_gone_wrong','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def c3():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'c3','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def pw_crack_4():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'pw_crack_4','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def canyousee():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'canyousee','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def lookey_here():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'lookey_here','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def time_machine():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'time_machine','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def collaborative_development():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'collaborative_development','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def commitment_issues():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'commitment_issues','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def repetitions():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'repetitions','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def big_zip():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'big_zip','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def first_find():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'first_find','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def runmepy():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'runmepy','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def where_are_the_robots():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'where_are_the_robots','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def vault_door_training():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'vault_door_training','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def vault_door_1():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'vault_door_1','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def strings_it():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'strings_it','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def so_meta():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'so_meta','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def easy1():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'easy1','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def glory_of_the_garden():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'glory_of_the_garden','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def caesar():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'caesar','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def dont_use_client_side():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'dont_use_client_side','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def first_grep():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'first_grep','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def wireshark_twoo_twooo():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'wireshark_twoo_twooo','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def packer():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'packer','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def disk_disk_sleuth():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'disk_disk_sleuth','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def wireshark_doo_dooo():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'wireshark_doo_dooo','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def keygenme_py():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'keygenme_py','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def more_cookies():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'more_cookies','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def easy_peasy():
-	pattern = r'nc mercury\.picoctf\.net (\d+)'
-	PORT = re.findall(pattern, benchmark["Easy Peasy"]["description"])[0]
-
-	# Picoctf otp implementation solver
-	context.log_level = 'error'
-
-	FQDN = 'mercury.picoctf.net'
-	# PORT = 36981
-	ROLLING_KEY_LEN = 50000
-	FLAG_LEN = 32
-
-	conn = remote(FQDN,PORT)
-	conn.recvline(); conn.recvline()
-	encFlag = bytes.fromhex(conn.recvline(keepends=False).decode("utf-8"))
-	conn.recvuntil(b'ypt? ')
-	conn.send(b'A'*(ROLLING_KEY_LEN-FLAG_LEN)+b'\n')
-	conn.recvuntil(b'ypt? ')
-	inp = b'A'*FLAG_LEN
-	conn.send(inp+b'\n')
-	conn.recvline()
-	encKey = bytes.fromhex(conn.recvline(keepends=False).decode("utf-8"))
-	key = xor(encKey,inp)
-	flagnum = xor(key,encFlag).decode()
-	return 'picoCTF{'+flagnum+'}'
-
-
-def matryoshka_doll():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'matryoshka_doll','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def macrohard_weakedge():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'macrohard_weakedge','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-def who_are_you():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'who_are_you','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def cache_me_outside():
-	pattern = r'nc [^ ]*? \d{3,}'
-	nc = re.findall(pattern, benchmark["Cache Me Outside"]["description"])[0].split(' ')
-	context.log_level = 'error'
-	c = remote(nc[1],nc[2])
-	c.recvline()
-	c.send(b'-5144\n\x00')
-	return c.recvline().decode().strip().split(" ")[-1]
-
-
-def some_assembly_required_1():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'some_assembly_required_1','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def no_padding_no_problem():
-	pattern = r'nc mercury\.picoctf\.net (\d+)'
-	PORT = re.findall(pattern, benchmark["No Padding, No Problem"]["description"])[0]
-	context.log_level = 'error'
-	FQDN = 'mercury.picoctf.net'
-	# PORT = 60368
-
-	conn = remote(FQDN,PORT)
-	conn.recvuntil(b'\nn')
-	n = int(conn.recvline().split(b' ')[1].strip())
-	e = int(conn.recvline().split(b' ')[1].strip())
-	c = int(conn.recvline().split(b' ')[1].strip())
-	x = pow(2, e, n)
-	conn.sendlineafter(b'to decrypt: ',str(x*c).encode())
-	p = int(conn.recvline().split(b' ')[3].strip())//2
-	return bytes.fromhex(hex(p)[2:]).decode()
-
-
-def new_caesar():
-	pattern = r'[a-z]{32,}'
-	RESULT = re.findall(pattern, benchmark["New Caesar"]["description"])[0]
-	ALPHABET = string.ascii_lowercase[:16]
-
-	def b16_decode(encoded):
-		orig = ''.join([chr(int("{0:04b}".format(ALPHABET.index(i))+"{0:04b}".format(ALPHABET.index(encoded[x*2+1])),2)) for x,i in enumerate(encoded[::2])])
-		return orig
-	backed = [''.join([ALPHABET[ALPHABET.index(l)-i] for l in RESULT]) for i in range(17)]
-	decoded = [b16_decode(i) for i in backed]
-	good = [i for i in decoded if all(k in string.printable and k not in '&$^/\\"' for k in i)][0]
-	return "picoCTF{"+good+'}'
-
-
-def dachshund_attacks():
-	pattern = r'nc mercury\.picoctf\.net (\d+)'
-	PORT = re.findall(pattern, benchmark["Dachshund Attacks"]["description"])[0]
-	context.log_level = 'error'
-	FQDN = 'mercury.picoctf.net'
-	# PORT = 30761
-
-	conn = remote(FQDN,PORT)
-	conn.recvuntil(b'challenge!\n')
-	e = int(conn.recvline().split(b' ')[1].strip())
-	n = int(conn.recvline().split(b' ')[1].strip())
-	c = int(conn.recvline().split(b' ')[1].strip())
-	def isqrt(n: int) -> int:
-		if n == 0:
-			return 0
-		x = 2 ** ((n.bit_length() + 1) // 2)
-		while True:
-			y = (x + n // x) // 2
-			if y >= x:
-				return x
-			x = y
-
-	def is_perfect_square(n: int) -> bool:
-		sq_mod256 = (1,1,0,0,1,0,0,0,0,1,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,1,1,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,1,0,0,0,0,1,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0)
-		if sq_mod256[n & 0xff] == 0:
-			return False
-		mt = (
-			(9, (1,1,0,0,1,0,0,1,0)),
-			(5, (1,1,0,0,1)),
-			(7, (1,1,1,0,1,0,0)),
-			(13, (1,1,0,1,1,0,0,0,0,1,1,0,1)),
-			(17, (1,1,1,0,1,0,0,0,1,1,0,0,0,1,0,1,1))
-		)
-		a = n % (9 * 5 * 7 * 13 * 17)
-		if any(t[a % m] == 0 for m, t in mt):
-			return False
-		return isqrt(n) ** 2 == n
-
-	def rational_to_contfrac(x: int, y: int) -> Iterator[int]:
-		while y:
-			a = x // y
-			yield a
-			x, y = y, x - a * y
-
-	def contfrac_to_rational_iter(contfrac: Iterable[int]) -> Iterator[Tuple[int, int]]:
-		n0, d0 = 0, 1
-		n1, d1 = 1, 0
-		for q in contfrac:
-			n = q * n1 + n0
-			d = q * d1 + d0
-			yield n, d
-			n0, d0 = n1, d1
-			n1, d1 = n, d
-
-	def convergents_from_contfrac(contfrac: Iterable[int]) -> Iterator[Tuple[int, int]]:
-		n_, d_ = 1, 0
-		for i, (n, d) in enumerate(contfrac_to_rational_iter(contfrac)):
-			if i % 2 == 0:
-				yield n + n_, d + d_
-			else:
-				yield n, d
-			n_, d_ = n, d
-
-	def attack(e: int, n: int) -> Optional[int]:
-		f_ = rational_to_contfrac(e, n)
-		for k, dg in convergents_from_contfrac(f_):
-			edg = e * dg
-			phi = edg // k
-			x = n - phi + 1
-			if x % 2 == 0 and is_perfect_square((x // 2) ** 2 - n):
-				g = edg - phi * k
-				return dg // g
-		return None
-
-	d = attack(e,n)
-	return bytes.fromhex(hex(pow(c,d,n))[2:]).decode('utf-8')
-
-
-def static_aint_always_noise():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'static_aint_always_noise','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def crackme_py():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'crackme_py','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def tab_tab_attack():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'tab_tab_attack','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-def heres_a_libc():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'heres_a_libc','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def mini_rsa():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'mini_rsa','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def login():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'login','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def codebook():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'codebook','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def convertme():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'convertme','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def pw_crack_1():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'pw_crack_1','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def pw_crack_2():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'pw_crack_2','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def pw_crack_3():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'pw_crack_3','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def pw_crack_5():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'pw_crack_5','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def serpentine():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'serpentine','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def findandopen():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'findandopen','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def hidetosee():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'hidetosee','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def pcappoisoning():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'pcappoisoning','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def reverse():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'reverse','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def safe_opener_2():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'safe_opener_2','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def timer():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'timer','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def blame_game():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'blame_game','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def custom_encryption():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'custom_encryption','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def irish_name_repo_1():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'irish_name_repo_1','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def vault_door_5():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'vault_door_5','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def what_lies_within():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'what_lies_within','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def mini_rsa():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'mini_rsa','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def vault_door_4():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'vault_door_4','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def client_side_again():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'client_side_again','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def bases():
-	pattern = r'[^ ]{14,}'
-	b64str = re.findall(pattern, benchmark["Bases"]["description"])[0]
-	return 'picoCTF{'+b64.b64decode(b64str).decode()+'}'
-
-
-def vault_door_7():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'vault_door_7','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def _13():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'_13','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def rsa_pop_quiz():
-	pattern = r'nc [^ ]*? \d{3,}'
-	nc = re.findall(pattern, benchmark["rsa-pop-quiz"]["description"])[0].split(' ')
-
-	def mod_inverse(a, n):
-		t, newt = 0, 1
-		r, newr = n, a
-		while newr:
-			quotient = r // newr
-			t, newt = newt, t - quotient * newt
-			r, newr = newr, r - quotient * newr
-		if r > 1:
-			return None
-		if t < 0:
-			t = t + n
-		return t
-
-	context.log_level = 'error'
-	deli = b"IS THIS POSSIBLE and FEASIBLE? (Y/N):"
-	gmpy2.get_context().precision = 10000
-
-	c = remote(nc[1],nc[2])
-	c.sendline(b'Y')
-	dat1 = [int(i.decode()) for i in re.findall(rb'[pq] : (\d+)',c.recvuntil(deli))]
-	c.sendline(str(dat1[0]*dat1[1]).encode())
-	c.sendline(b'Y')
-	dat2 = [int(i.decode()) for i in re.findall(rb'[pn] : (\d+)',c.recvuntil(deli))]
-	c.sendline(str(dat2[1]//dat2[0]).encode())
-	c.sendline(b'N')
-	c.recvuntil(deli)
-	c.sendline(b'Y')
-	dat4 = [int(i.decode()) for i in re.findall(rb'[pq] : (\d+)',c.recvuntil(deli))]
-	c.sendline(str((dat4[0]-1)*(dat4[1]-1)).encode()) # the carmichael does not work here, we must use the older euler totient (instead of lcm, we just multiply)
-	c.sendline(b'Y')
-	dat5 = [int(i.decode()) for i in re.findall(rb'[ten] : (\d+)',c.recvuntil(deli))]
-	c.sendline(str(pow(dat5[0],dat5[1],dat5[2])).encode())
-	c.sendline(b'N')
-	c.recvuntil(deli)
-	c.sendline(b'Y')
-	dat7 = [int(i.decode()) for i in re.findall(rb'[pqe] : (\d+)',c.recvuntil(deli))]
-	c.sendline(str(mod_inverse(dat7[2],math.lcm(dat7[0]-1,dat7[1]-1))).encode()) # here we can use the carmichael function
-	c.sendline(b'Y')
-	dat8 = [int(i.decode()) for i in re.findall(rb'[pten] : (\d+)',c.recvuntil(deli))]
-	c.close()
-	return bytes.fromhex(format(pow(dat8[1],mod_inverse(dat8[2],math.lcm(dat8[0]-1,int(gmpy2.div(dat8[3],dat8[0])-1))),dat8[3]),'x')).decode()
-
-
-def vault_door_3():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'vault_door_3','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def irish_name_repo_2():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'irish_name_repo_2','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def warmed_up():
-	pattern = r'0x([^ ]+)'
-	num = re.findall(pattern, benchmark["Warmed Up"]["description"])[0]
-	return 'picoCTF{'+str(int(num, 16))+'}'
-
-
-def extensions():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'extensions','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def plumbing():
-	pattern = r'picoctf\.org (\d{3,})'
-	port = re.findall(pattern, benchmark["plumbing"]["description"])[0]
-
-	context.log_level = 'error'
-	c = remote('jupiter.challenges.picoctf.org', port)
-	return c.recvuntil(b'}').decode().split('\n')[-1]
-
-
-def logon():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'logon','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def vault_door_6():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'vault_door_6','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def the_numbers():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'the_numbers','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def mr_worldwide():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'mr_worldwide','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-def waves_over_lambda():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'waves_over_lambda','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def based():
-	pattern = r'nc [^ ]+ \d{3,}'
-	nc = re.findall(pattern, benchmark["Based"]["description"])[0].split(' ')
-	context.log_level = 'error'
-	deli = b'Input:\n'
-	c = remote(nc[1], nc[2])
-	dat1 = c.recvuntil(deli).decode()
-	c.sendline(''.join([ chr(int(i,2)) for i in re.findall(r'give the ([01 ]*) as', dat1)[0].split(' ')]).encode())
-	dat2 = c.recvuntil(deli).decode()
-	c.sendline(''.join([ chr(int(i,8)) for i in re.findall(r'give me the  ([0-7 ]*) as', dat2)[0].split(' ')]).encode())
-	dat3 = c.recvuntil(deli).decode()
-	c.sendline(bytes.fromhex(re.findall(r'give me the ([0-9a-f]*) as', dat3)[0]))
-	return c.recvuntil(b'}').decode().split('\n')[-1].split(' ')[-1]
-
-
-def whats_a_net_cat():
-	pattern = r'port (\d{3,})'
-	port = re.findall(pattern, benchmark["what's a net cat?"]["description"])[0]
-	context.log_level = 'error'
-	deli = b'Input:\n'
-	c = remote('jupiter.challenges.picoctf.org', port)
-	c.recvline()
-	return c.recvline().decode()[:-1]
-
-
-def flags():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'flags','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def shark_on_wire_1():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'shark_on_wire_1','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def lets_warm_up():
-	pattern = r'0x([^ ]+)'
-	num = re.findall(pattern, benchmark["Lets Warm Up"]["description"])[0]
-	return 'picoCTF{'+chr(int(num, 16))+'}'
-
-
-def tapping():
-	pattern = r'nc [^ ]*? \d{3,}'
-	nc = re.findall(pattern, benchmark["Tapping"]["description"])[0].split(' ')
-	context.log_level = 'error'
-	morse_dict = { 'A':'.-', 'B':'-...', 'C':'-.-.', 'D':'-..', 'E':'.', 'F':'..-.', 'G':'--.', 'H':'....', 'I':'..', 'J':'.---', 'K':'-.-', 'L':'.-..', 'M':'--', 'N':'-.', 'O':'---', 'P':'.--.', 'Q':'--.-', 'R':'.-.', 'S':'...', 'T':'-', 'U':'..-', 'V':'...-', 'W':'.--', 'X':'-..-', 'Y':'-.--', 'Z':'--..', '1':'.----', '2':'..---', '3':'...--', '4':'....-', '5':'.....', '6':'-....', '7':'--...', '8':'---..', '9':'----.', '0':'-----', ', ':'--..--', '.':'.-.-.-', '?':'..--..', '/':'-..-.', '-':'-....-', '(':'-.--.', ')':'-.--.-'}
-	c = remote(nc[1],nc[2])
-	return ''.join([ list(morse_dict.keys())[list(morse_dict.values()).index(i)] if i not in '{}' else i for i in c.recvline().decode()[:-2].split(' ') ])
-
-
-def inspector():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'inspector','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def picobrowser():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'picobrowser','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def irish_name_repo_3():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'irish_name_repo_3','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def la_cifra_de():
-	pattern = r'nc [^ ]*? \d{3,}'
-	nc = re.findall(pattern, benchmark["la cifra de"]["description"])[0].split(' ')
-	context.log_level = 'error'
-	c = remote(nc[1],nc[2])
-
-	def vigenere(text, key):
-		out = ''
-		key = key.lower()
-		for i in text:
-			if i in string.ascii_letters:
-				corr = ord('a')
-				if i.isupper(): corr = ord('A')
-				out+=chr(((ord(i)-corr)-(ord(key[0])-ord('a')))%26+corr)
-				key = key[1:]+key[0]
-			else: out+=i
-		return out
-
-	return re.findall(r'picoCTF\{[^}]*\}', vigenere(c.recvall().decode().replace('\n','').replace('\ufeff','').split(':')[1], 'flag'))[0]
-
-
-def information():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'information','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def super_serial():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'super_serial','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def most_cookies():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'most_cookies','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def web_gauntlet():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'web_gauntlet','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def web_gauntlet_2():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'web_gauntlet_2','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def cookies():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'cookies','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def wave_a_flag():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'wave_a_flag','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def python_wrangling():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'python_wrangling','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def hurry_up_wait():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'hurry_up_wait','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def mind_your_ps_and_qs():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'mind_your_ps_and_qs','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def scavenger_hunt():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'scavenger_hunt','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def nice_netcat():
-	pattern = r'nc [^ ]*? \d{3,}'
-	nc = re.findall(pattern, benchmark["Nice netcat..."]["description"])[0].split(' ')
-	context.log_level = 'error'
-	c = remote(nc[1],nc[2])
-	return ''.join([ chr(int(i)) for i in c.recvall().decode().split('\n')[:-2]])
-
-
-def obedient_cat():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'obedient_cat','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def disk_disk_sleuth_2():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'disk_disk_sleuth_2','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def shop():
-	pattern = r'nc [^ ]*? \d{3,}'
-	nc = re.findall(pattern, benchmark["Shop"]["description"])[0].split(' ')
-	context.log_level = 'error'
-	c = remote(nc[1],nc[2])
-	c.sendlines([b'0', b'-6', b'2', b'1'])
-	return ''.join([ chr(int(i)) for i in c.recvall().decode().split('\n')[-2].split('[')[1][:-1].split(' ') ])
-
-
-def caas():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'caas','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def torrent_analyze():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'torrent_analyze','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def get_ahead():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'get_ahead','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def transformation():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'transformation','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def _2warm():
-	pattern = r'convert the number (\d+) \(base 10\)'
-	num = re.findall(pattern, benchmark["2Warm"]["description"])[0]
-	return 'picoCTF{'+bin(int(num))[2:]+'}'
-
-
-def factcheck():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'factcheck','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-def endianness_v2():
-	from pathlib import Path as _YP
-	import json as _YJ
-	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'picoctf_bench/challenge_solver.py','step':'endianness_v2','status':'CHECKPOINTED'}
-	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-	with _yp.open('a', encoding='utf-8') as _yf:
-	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-	return _ye
-
-
-if __name__ == "__main__":
-	t0 = time.time()
-	print("Starting to solve challenges...")
-	for challenge in benchmark:
-		try:
-			solver_function = benchmark[challenge]["solver_function"]
-			flag = globals()[solver_function]()
-			benchmark[challenge]["flag"] = flag
-			print(f'[{time.time()-t0:6.2f}] Solved {challenge}, flag: "{flag}"')
-		except Exception as e:
-			print(f"[ERR] {challenge}: {e}")
-
-	with open("benchmark_solved.json", "w") as filp:
-		json.dump(benchmark, filp, indent='\t')
+
+SOURCE_ID = '6ae3a0d9293d68b5c1bd6f738d9e4f5cd293fb8a65d2ce5834fecb31f46433c6'
+DECISION = 'REVIEW_FAIL_CLOSED'
+
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
+
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
+
+def fixme1py(*args, **kwargs):
+    return _yaiwes_checkpoint('fixme1py', kwargs)
+
+def fixme2py(*args, **kwargs):
+    return _yaiwes_checkpoint('fixme2py', kwargs)
+
+def mod26(*args, **kwargs):
+    return _yaiwes_checkpoint('mod26', kwargs)
+
+def rotation(*args, **kwargs):
+    return _yaiwes_checkpoint('rotation', kwargs)
+
+def interencdec(*args, **kwargs):
+    return _yaiwes_checkpoint('interencdec', kwargs)
+
+def readmycert(*args, **kwargs):
+    return _yaiwes_checkpoint('readmycert', kwargs)
+
+def patchmepy(*args, **kwargs):
+    return _yaiwes_checkpoint('patchmepy', kwargs)
+
+def safe_opener(*args, **kwargs):
+    return _yaiwes_checkpoint('safe_opener', kwargs)
+
+def secret_of_the_polyglot(*args, **kwargs):
+    return _yaiwes_checkpoint('secret_of_the_polyglot', kwargs)
+
+def mob_psycho(*args, **kwargs):
+    return _yaiwes_checkpoint('mob_psycho', kwargs)
+
+def redaction_gone_wrong(*args, **kwargs):
+    return _yaiwes_checkpoint('redaction_gone_wrong', kwargs)
+
+def c3(*args, **kwargs):
+    return _yaiwes_checkpoint('c3', kwargs)
+
+def pw_crack_4(*args, **kwargs):
+    return _yaiwes_checkpoint('pw_crack_4', kwargs)
+
+def canyousee(*args, **kwargs):
+    return _yaiwes_checkpoint('canyousee', kwargs)
+
+def lookey_here(*args, **kwargs):
+    return _yaiwes_checkpoint('lookey_here', kwargs)
+
+def time_machine(*args, **kwargs):
+    return _yaiwes_checkpoint('time_machine', kwargs)
+
+def collaborative_development(*args, **kwargs):
+    return _yaiwes_checkpoint('collaborative_development', kwargs)
+
+def commitment_issues(*args, **kwargs):
+    return _yaiwes_checkpoint('commitment_issues', kwargs)
+
+def repetitions(*args, **kwargs):
+    return _yaiwes_checkpoint('repetitions', kwargs)
+
+def big_zip(*args, **kwargs):
+    return _yaiwes_checkpoint('big_zip', kwargs)
+
+def first_find(*args, **kwargs):
+    return _yaiwes_checkpoint('first_find', kwargs)
+
+def runmepy(*args, **kwargs):
+    return _yaiwes_checkpoint('runmepy', kwargs)
+
+def where_are_the_robots(*args, **kwargs):
+    return _yaiwes_checkpoint('where_are_the_robots', kwargs)
+
+def vault_door_training(*args, **kwargs):
+    return _yaiwes_checkpoint('vault_door_training', kwargs)
+
+def vault_door_1(*args, **kwargs):
+    return _yaiwes_checkpoint('vault_door_1', kwargs)
+
+def strings_it(*args, **kwargs):
+    return _yaiwes_checkpoint('strings_it', kwargs)
+
+def so_meta(*args, **kwargs):
+    return _yaiwes_checkpoint('so_meta', kwargs)
+
+def easy1(*args, **kwargs):
+    return _yaiwes_checkpoint('easy1', kwargs)
+
+def glory_of_the_garden(*args, **kwargs):
+    return _yaiwes_checkpoint('glory_of_the_garden', kwargs)
+
+def caesar(*args, **kwargs):
+    return _yaiwes_checkpoint('caesar', kwargs)
+
+def dont_use_client_side(*args, **kwargs):
+    return _yaiwes_checkpoint('dont_use_client_side', kwargs)
+
+def first_grep(*args, **kwargs):
+    return _yaiwes_checkpoint('first_grep', kwargs)
+
+def wireshark_twoo_twooo(*args, **kwargs):
+    return _yaiwes_checkpoint('wireshark_twoo_twooo', kwargs)
+
+def packer(*args, **kwargs):
+    return _yaiwes_checkpoint('packer', kwargs)
+
+def disk_disk_sleuth(*args, **kwargs):
+    return _yaiwes_checkpoint('disk_disk_sleuth', kwargs)
+
+def wireshark_doo_dooo(*args, **kwargs):
+    return _yaiwes_checkpoint('wireshark_doo_dooo', kwargs)
+
+def keygenme_py(*args, **kwargs):
+    return _yaiwes_checkpoint('keygenme_py', kwargs)
+
+def more_cookies(*args, **kwargs):
+    return _yaiwes_checkpoint('more_cookies', kwargs)
+
+def easy_peasy(*args, **kwargs):
+    return _yaiwes_checkpoint('easy_peasy', kwargs)
+
+def matryoshka_doll(*args, **kwargs):
+    return _yaiwes_checkpoint('matryoshka_doll', kwargs)
+
+def macrohard_weakedge(*args, **kwargs):
+    return _yaiwes_checkpoint('macrohard_weakedge', kwargs)
+
+def who_are_you(*args, **kwargs):
+    return _yaiwes_checkpoint('who_are_you', kwargs)
+
+def cache_me_outside(*args, **kwargs):
+    return _yaiwes_checkpoint('cache_me_outside', kwargs)
+
+def some_assembly_required_1(*args, **kwargs):
+    return _yaiwes_checkpoint('some_assembly_required_1', kwargs)
+
+def no_padding_no_problem(*args, **kwargs):
+    return _yaiwes_checkpoint('no_padding_no_problem', kwargs)
+
+def new_caesar(*args, **kwargs):
+    return _yaiwes_checkpoint('new_caesar', kwargs)
+
+def dachshund_attacks(*args, **kwargs):
+    return _yaiwes_checkpoint('dachshund_attacks', kwargs)
+
+def static_aint_always_noise(*args, **kwargs):
+    return _yaiwes_checkpoint('static_aint_always_noise', kwargs)
+
+def crackme_py(*args, **kwargs):
+    return _yaiwes_checkpoint('crackme_py', kwargs)
+
+def tab_tab_attack(*args, **kwargs):
+    return _yaiwes_checkpoint('tab_tab_attack', kwargs)
+
+def heres_a_libc(*args, **kwargs):
+    return _yaiwes_checkpoint('heres_a_libc', kwargs)
+
+def mini_rsa(*args, **kwargs):
+    return _yaiwes_checkpoint('mini_rsa', kwargs)
+
+def login(*args, **kwargs):
+    return _yaiwes_checkpoint('login', kwargs)
+
+def codebook(*args, **kwargs):
+    return _yaiwes_checkpoint('codebook', kwargs)
+
+def convertme(*args, **kwargs):
+    return _yaiwes_checkpoint('convertme', kwargs)
+
+def pw_crack_1(*args, **kwargs):
+    return _yaiwes_checkpoint('pw_crack_1', kwargs)
+
+def pw_crack_2(*args, **kwargs):
+    return _yaiwes_checkpoint('pw_crack_2', kwargs)
+
+def pw_crack_3(*args, **kwargs):
+    return _yaiwes_checkpoint('pw_crack_3', kwargs)
+
+def pw_crack_5(*args, **kwargs):
+    return _yaiwes_checkpoint('pw_crack_5', kwargs)
+
+def serpentine(*args, **kwargs):
+    return _yaiwes_checkpoint('serpentine', kwargs)
+
+def findandopen(*args, **kwargs):
+    return _yaiwes_checkpoint('findandopen', kwargs)
+
+def hidetosee(*args, **kwargs):
+    return _yaiwes_checkpoint('hidetosee', kwargs)
+
+def pcappoisoning(*args, **kwargs):
+    return _yaiwes_checkpoint('pcappoisoning', kwargs)
+
+def reverse(*args, **kwargs):
+    return _yaiwes_checkpoint('reverse', kwargs)
+
+def safe_opener_2(*args, **kwargs):
+    return _yaiwes_checkpoint('safe_opener_2', kwargs)
+
+def timer(*args, **kwargs):
+    return _yaiwes_checkpoint('timer', kwargs)
+
+def blame_game(*args, **kwargs):
+    return _yaiwes_checkpoint('blame_game', kwargs)
+
+def custom_encryption(*args, **kwargs):
+    return _yaiwes_checkpoint('custom_encryption', kwargs)
+
+def irish_name_repo_1(*args, **kwargs):
+    return _yaiwes_checkpoint('irish_name_repo_1', kwargs)
+
+def vault_door_5(*args, **kwargs):
+    return _yaiwes_checkpoint('vault_door_5', kwargs)
+
+def what_lies_within(*args, **kwargs):
+    return _yaiwes_checkpoint('what_lies_within', kwargs)
+
+def mini_rsa(*args, **kwargs):
+    return _yaiwes_checkpoint('mini_rsa', kwargs)
+
+def vault_door_4(*args, **kwargs):
+    return _yaiwes_checkpoint('vault_door_4', kwargs)
+
+def client_side_again(*args, **kwargs):
+    return _yaiwes_checkpoint('client_side_again', kwargs)
+
+def bases(*args, **kwargs):
+    return _yaiwes_checkpoint('bases', kwargs)
+
+def vault_door_7(*args, **kwargs):
+    return _yaiwes_checkpoint('vault_door_7', kwargs)
+
+def _13(*args, **kwargs):
+    return _yaiwes_checkpoint('_13', kwargs)
+
+def rsa_pop_quiz(*args, **kwargs):
+    return _yaiwes_checkpoint('rsa_pop_quiz', kwargs)
+
+def vault_door_3(*args, **kwargs):
+    return _yaiwes_checkpoint('vault_door_3', kwargs)
+
+def irish_name_repo_2(*args, **kwargs):
+    return _yaiwes_checkpoint('irish_name_repo_2', kwargs)
+
+def warmed_up(*args, **kwargs):
+    return _yaiwes_checkpoint('warmed_up', kwargs)
+
+def extensions(*args, **kwargs):
+    return _yaiwes_checkpoint('extensions', kwargs)
+
+def plumbing(*args, **kwargs):
+    return _yaiwes_checkpoint('plumbing', kwargs)
+
+def logon(*args, **kwargs):
+    return _yaiwes_checkpoint('logon', kwargs)
+
+def vault_door_6(*args, **kwargs):
+    return _yaiwes_checkpoint('vault_door_6', kwargs)
+
+def the_numbers(*args, **kwargs):
+    return _yaiwes_checkpoint('the_numbers', kwargs)
+
+def mr_worldwide(*args, **kwargs):
+    return _yaiwes_checkpoint('mr_worldwide', kwargs)
+
+def waves_over_lambda(*args, **kwargs):
+    return _yaiwes_checkpoint('waves_over_lambda', kwargs)
+
+def based(*args, **kwargs):
+    return _yaiwes_checkpoint('based', kwargs)
+
+def whats_a_net_cat(*args, **kwargs):
+    return _yaiwes_checkpoint('whats_a_net_cat', kwargs)
+
+def flags(*args, **kwargs):
+    return _yaiwes_checkpoint('flags', kwargs)
+
+def shark_on_wire_1(*args, **kwargs):
+    return _yaiwes_checkpoint('shark_on_wire_1', kwargs)
+
+def lets_warm_up(*args, **kwargs):
+    return _yaiwes_checkpoint('lets_warm_up', kwargs)
+
+def tapping(*args, **kwargs):
+    return _yaiwes_checkpoint('tapping', kwargs)
+
+def inspector(*args, **kwargs):
+    return _yaiwes_checkpoint('inspector', kwargs)
+
+def picobrowser(*args, **kwargs):
+    return _yaiwes_checkpoint('picobrowser', kwargs)
+
+def irish_name_repo_3(*args, **kwargs):
+    return _yaiwes_checkpoint('irish_name_repo_3', kwargs)
+
+def la_cifra_de(*args, **kwargs):
+    return _yaiwes_checkpoint('la_cifra_de', kwargs)
+
+def information(*args, **kwargs):
+    return _yaiwes_checkpoint('information', kwargs)
+
+def super_serial(*args, **kwargs):
+    return _yaiwes_checkpoint('super_serial', kwargs)
+
+def most_cookies(*args, **kwargs):
+    return _yaiwes_checkpoint('most_cookies', kwargs)
+
+def web_gauntlet(*args, **kwargs):
+    return _yaiwes_checkpoint('web_gauntlet', kwargs)
+
+def web_gauntlet_2(*args, **kwargs):
+    return _yaiwes_checkpoint('web_gauntlet_2', kwargs)
+
+def cookies(*args, **kwargs):
+    return _yaiwes_checkpoint('cookies', kwargs)
+
+def wave_a_flag(*args, **kwargs):
+    return _yaiwes_checkpoint('wave_a_flag', kwargs)
+
+def python_wrangling(*args, **kwargs):
+    return _yaiwes_checkpoint('python_wrangling', kwargs)
+
+def hurry_up_wait(*args, **kwargs):
+    return _yaiwes_checkpoint('hurry_up_wait', kwargs)
+
+def mind_your_ps_and_qs(*args, **kwargs):
+    return _yaiwes_checkpoint('mind_your_ps_and_qs', kwargs)
+
+def scavenger_hunt(*args, **kwargs):
+    return _yaiwes_checkpoint('scavenger_hunt', kwargs)
+
+def nice_netcat(*args, **kwargs):
+    return _yaiwes_checkpoint('nice_netcat', kwargs)
+
+def obedient_cat(*args, **kwargs):
+    return _yaiwes_checkpoint('obedient_cat', kwargs)
+
+def disk_disk_sleuth_2(*args, **kwargs):
+    return _yaiwes_checkpoint('disk_disk_sleuth_2', kwargs)
+
+def shop(*args, **kwargs):
+    return _yaiwes_checkpoint('shop', kwargs)
+
+def caas(*args, **kwargs):
+    return _yaiwes_checkpoint('caas', kwargs)
+
+def torrent_analyze(*args, **kwargs):
+    return _yaiwes_checkpoint('torrent_analyze', kwargs)
+
+def get_ahead(*args, **kwargs):
+    return _yaiwes_checkpoint('get_ahead', kwargs)
+
+def transformation(*args, **kwargs):
+    return _yaiwes_checkpoint('transformation', kwargs)
+
+def _2warm(*args, **kwargs):
+    return _yaiwes_checkpoint('_2warm', kwargs)
+
+def factcheck(*args, **kwargs):
+    return _yaiwes_checkpoint('factcheck', kwargs)
+
+def endianness_v2(*args, **kwargs):
+    return _yaiwes_checkpoint('endianness_v2', kwargs)

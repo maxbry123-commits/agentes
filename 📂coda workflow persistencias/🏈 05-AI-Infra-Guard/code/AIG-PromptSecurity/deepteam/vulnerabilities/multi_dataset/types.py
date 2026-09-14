@@ -1,24 +1,20 @@
-# Copyright (c) 2024-2026 Tencent Zhuque Lab. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# Requirement: Any integration or derivative work must explicitly attribute
-# Tencent Zhuque Lab (https://github.com/Tencent/AI-Infra-Guard) in its
-# documentation or user interface, as detailed in the NOTICE file.
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
+from __future__ import annotations
+from pathlib import Path
+import json
 
-from enum import Enum
+SOURCE_ID = '275d501320ad401704b370a42e17eadd600a421f0310a326877dfb2c2e34957d'
+DECISION = 'BLOCK_OFFENSIVE'
 
-class MultiDatasetVulnerabilityType(Enum):
-    """多数据集漏洞类型枚举"""
-    MULTI_DATASET_VULNERABILITY = "multi dataset vulnerability"
-    OFFICIAL_MULTI_DATASET_VULNERABILITY = "official"
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
+
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
+
+class MultiDatasetVulnerabilityType:
+    pass

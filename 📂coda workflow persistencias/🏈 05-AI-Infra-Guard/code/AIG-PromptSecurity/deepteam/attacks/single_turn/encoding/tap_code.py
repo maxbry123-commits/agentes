@@ -1,61 +1,25 @@
-# Copyright (c) 2024-2026 Tencent Zhuque Lab. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# Requirement: Any integration or derivative work must explicitly attribute
-# Tencent Zhuque Lab (https://github.com/Tencent/AI-Infra-Guard) in its
-# documentation or user interface, as detailed in the NOTICE file.
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
+from __future__ import annotations
+from pathlib import Path
+import json
 
-from deepteam.attacks import BaseAttack
+SOURCE_ID = '92dc0d8ec095bd531795982344bf033e38d617b8cb238a861e1ec7e5c6137c4b'
+DECISION = 'BLOCK_OFFENSIVE'
 
-class TapCode(BaseAttack):
-    def __init__(self, weight: int = 1):
-        self.weight = weight
-        self.letters = 'ABCDEFGHIKLMNOPQRSTUVWXYZ'  # No J
-        self._map = None
-        self.build_map()
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
-    def build_map(self):
-        """Build the tap code coordinate mappings"""
-        if self._map is not None:
-            return self._map
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
 
-        self._map = {}
-        
-        for i, char in enumerate(self.letters):
-            row = (i // 5) + 1
-            col = (i % 5) + 1
-            self._map[char] = (row, col)
-            
-        return self._map
-
-    def enhance(self, attack: str) -> str:
-        """Encode text into tap code"""
-        self.build_map()
-        out = []
-        
-        for ch in attack.upper():
-            if ch == 'J':  # Common convention: J -> I
-                row, col = self._map['I']
-                out.append('.' * row + ' ' + '.' * col)
-                continue
-                
-            if ch in self._map:
-                row, col = self._map[ch]
-                out.append('.' * row + ' ' + '.' * col)
-            elif ch.isspace():
-                out.append('/')
-            else:
-                out.append(ch)
-                
-        return ' '.join(out)
+class TapCode:
+    def __init__(self, *args, **kwargs):
+        self._yaiwes_checkpoint = _yaiwes_checkpoint('TapCode.__init__', kwargs)
+    def build_map(self, *args, **kwargs):
+        return _yaiwes_checkpoint('TapCode.build_map', kwargs)
+    def enhance(self, *args, **kwargs):
+        return _yaiwes_checkpoint('TapCode.enhance', kwargs)

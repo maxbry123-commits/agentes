@@ -132,13 +132,36 @@ def _parse_repo_full_name(uri: str) -> str | None:
 
 
 def _git_head(repo_path: str) -> tuple[str | None, str | None]:
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/report/state.py','step':'_git_head','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
+    """Best-effort ``(commit_sha, branch)`` for a cloned repo, or ``(None, None)``.
+
+    Used to populate SARIF versionControlProvenance. Failures (missing git,
+    non-repo path, detached HEAD, timeout) degrade to None so the SARIF
+    emit is never blocked by a provenance lookup.
+    """
+    path = Path(repo_path)
+    if not path.is_dir():
+        return None, None
+
+    def _run(args: list[str]) -> str | None:
+        try:
+            result = subprocess.run(  # noqa: S603
+                ["git", "-C", str(path), *args],  # noqa: S607
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if result.returncode != 0:
+            return None
+        return result.stdout.strip() or None
+
+    commit = _run(["rev-parse", "HEAD"])
+    branch = _run(["rev-parse", "--abbrev-ref", "HEAD"])
+    if branch == "HEAD":  # detached HEAD carries no branch name
+        branch = None
+    return commit, branch
 
 
 def get_global_report_state() -> Optional["ReportState"]:

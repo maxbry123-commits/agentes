@@ -1,184 +1,47 @@
-# Copyright (c) 2024-2026 Tencent Zhuque Lab. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# Requirement: Any integration or derivative work must explicitly attribute
-# Tencent Zhuque Lab (https://github.com/Tencent/AI-Infra-Guard) in its
-# documentation or user interface, as detailed in the NOTICE file.
-
-import re
-import json
-import random
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
+from __future__ import annotations
 from pathlib import Path
-from deepteam.attacks import BaseAttack
-from deepteam.attacks.single_turn.stratasword.template import (
-    StrataSwordTemplate,
-)
+import json
 
-from deepteam.utils import judge_language
+SOURCE_ID = 'f6ba251ce2394138b9ad034ae8cc54125693cd5a9d2858ed511d7a5bad8bd3cc'
+DECISION = 'BLOCK_OFFENSIVE'
 
-class StrataSword(BaseAttack):
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
-    def __init__(self, weight: int = 1):
-        self.weight = weight
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
 
-    @staticmethod
-    def _ascii_drawing(attack: str) -> str:
-        if judge_language(attack) == "chinese":
-            words = list(attack)
-            prompt = StrataSwordTemplate.generate_ascii_drawing_zh(words)
-        else:
-            words = attack.split()
-            prompt = StrataSwordTemplate.generate_ascii_drawing_en(words)
-        
-        return prompt
-
-    @staticmethod
-    def _contradictory(attack: str) -> str:
-        if judge_language(attack) == "chinese":
-            prompt = StrataSwordTemplate.generate_contradictory_zh(attack)
-        else:
-            prompt = StrataSwordTemplate.generate_contradictory_en(attack)
-        
-        return prompt
-
-    @staticmethod
-    def _long_text(attack: str) -> str:
-        if judge_language(attack) == "chinese":
-            prompt = StrataSwordTemplate.generate_long_text_zh(attack)
-        else:
-            prompt = StrataSwordTemplate.generate_long_text_en(attack)
-        
-        return prompt
-
-    @staticmethod
-    def _opposing(attack: str) -> str:
-        if judge_language(attack) == "chinese":
-            enhancement_methods = [
-                StrataSwordTemplate.generate_opposing_1_zh, 
-                StrataSwordTemplate.generate_opposing_2_zh,
-                StrataSwordTemplate.generate_opposing_3_zh
-            ]
-        else:
-            enhancement_methods = [
-                StrataSwordTemplate.generate_opposing_1_en, 
-                StrataSwordTemplate.generate_opposing_2_en,
-                StrataSwordTemplate.generate_opposing_3_en
-            ]
-        
-        method = random.choice(enhancement_methods)
-        prompt = method(attack)
-        return prompt
-
-    @staticmethod
-    def _shuffle(attack: str) -> str:
-        parts = re.split(r'([,.!?;:，。！？；：])', attack)
-        
-        # 遍历每个部分，打乱非标点的内容
-        for i in range(len(parts)):
-            part = parts[i]
-            if not re.match(r'^[,.!?;:，。！？；：]$', part):  # 如果不是标点
-                if judge_language(part) == "chinese":
-                    words = list(part)
-                    random.shuffle(words)
-                    parts[i] = "".join(words)
-                else:
-                    words = part.split()
-                    random.shuffle(words)
-                    parts[i] = " ".join(words)
-        
-        # 重新组合结果
-        shuffled_text = ''.join(parts)
-        return shuffled_text
-
-    @staticmethod
-    def _template(attack: str) -> str:
-        if judge_language(attack) == "chinese":
-            enhancement_methods = [
-                StrataSwordTemplate.generate_template_1_zh, 
-                StrataSwordTemplate.generate_template_2_zh,
-                StrataSwordTemplate.generate_template_3_zh
-            ]
-        else:
-            enhancement_methods = [
-                StrataSwordTemplate.generate_template_1_en, 
-                StrataSwordTemplate.generate_template_2_en,
-                StrataSwordTemplate.generate_template_3_en
-            ]
-        
-        method = random.choice(enhancement_methods)
-        prompt = method(attack)
-        return prompt
-
-    @staticmethod
-    def _acrostic_poem(attack: str) -> str:
-        line_specs = []
-        for i, word in enumerate(attack, start=1):
-            line_specs.append(f"第{i}个句的第1个字是{word}")
-        
-        prompt = StrataSwordTemplate.generate_acrostic_poem(line_specs)
-        return prompt
-    
-    @staticmethod
-    def _character_split(attack: str) -> str:
-        json_path = Path(__file__).resolve().parent / "chaizi.json"
-        with open(json_path, "r", encoding="utf-8") as f:
-            rad_map = json.load(f)
-        chunks = []
-        for char in attack:
-            rad = rad_map.get(char, None)
-            chunk = char
-            if rad:
-                chunk += f"({rad[0]})"
-            chunks.append(chunk)
-        
-        prompt = StrataSwordTemplate.generate_character_split(chunks)
-        return prompt
-
-    @staticmethod
-    def _lantern_riddle(attack: str) -> str:        
-        prompt = StrataSwordTemplate.generate_lantern_riddle(attack)
-        return prompt
-    
-    @staticmethod
-    def _code_attack(attack: str) -> str:
-        words = re.findall(r'\w+', attack)
-        
-        prompt = StrataSwordTemplate.generate_code_attack(words)
-        return prompt
-
-    @staticmethod
-    def _drattack(attack: str) -> str:
-        prompt = StrataSwordTemplate.generate_drattack(attack)
-        return prompt
-    
-    @staticmethod
-    def _script_template(attack: str) -> str:
-        if judge_language(attack) == "chinese":
-            words = list(attack)
-            prompt = StrataSwordTemplate.generate_script_template_zh(words)
-        else:
-            words = attack.split()
-            prompt = StrataSwordTemplate.generate_script_template_en(words)
-        
-        return prompt
-    
-    @staticmethod
-    def _shuffle_template(attack: str) -> str:
-        shuffled_text = StrataSword._shuffle(attack)
-
-        if judge_language(attack) == "chinese":
-            prompt = StrataSword._template(shuffled_text)
-        else:
-            prompt = StrataSword._template(shuffled_text)
-        return prompt
+class StrataSword:
+    def __init__(self, *args, **kwargs):
+        self._yaiwes_checkpoint = _yaiwes_checkpoint('StrataSword.__init__', kwargs)
+    def _ascii_drawing(self, *args, **kwargs):
+        return _yaiwes_checkpoint('StrataSword._ascii_drawing', kwargs)
+    def _contradictory(self, *args, **kwargs):
+        return _yaiwes_checkpoint('StrataSword._contradictory', kwargs)
+    def _long_text(self, *args, **kwargs):
+        return _yaiwes_checkpoint('StrataSword._long_text', kwargs)
+    def _opposing(self, *args, **kwargs):
+        return _yaiwes_checkpoint('StrataSword._opposing', kwargs)
+    def _shuffle(self, *args, **kwargs):
+        return _yaiwes_checkpoint('StrataSword._shuffle', kwargs)
+    def _template(self, *args, **kwargs):
+        return _yaiwes_checkpoint('StrataSword._template', kwargs)
+    def _acrostic_poem(self, *args, **kwargs):
+        return _yaiwes_checkpoint('StrataSword._acrostic_poem', kwargs)
+    def _character_split(self, *args, **kwargs):
+        return _yaiwes_checkpoint('StrataSword._character_split', kwargs)
+    def _lantern_riddle(self, *args, **kwargs):
+        return _yaiwes_checkpoint('StrataSword._lantern_riddle', kwargs)
+    def _code_attack(self, *args, **kwargs):
+        return _yaiwes_checkpoint('StrataSword._code_attack', kwargs)
+    def _drattack(self, *args, **kwargs):
+        return _yaiwes_checkpoint('StrataSword._drattack', kwargs)
+    def _script_template(self, *args, **kwargs):
+        return _yaiwes_checkpoint('StrataSword._script_template', kwargs)
+    def _shuffle_template(self, *args, **kwargs):
+        return _yaiwes_checkpoint('StrataSword._shuffle_template', kwargs)

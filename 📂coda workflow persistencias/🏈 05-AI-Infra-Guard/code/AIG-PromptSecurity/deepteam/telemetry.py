@@ -47,23 +47,21 @@ def telemetry_opt_out():
 
 
 def blocked_by_firewall():
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'AIG-PromptSecurity/deepteam/telemetry.py','step':'blocked_by_firewall','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
+    try:
+        socket.create_connection(("www.google.com", 80))
+        return False
+    except OSError:
+        return True
 
 
 def get_anonymous_public_ip():
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'AIG-PromptSecurity/deepteam/telemetry.py','step':'get_anonymous_public_ip','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
+    try:
+        response = requests.get("https://api.ipify.org", timeout=5)
+        if response.status_code == 200:
+            return response.text
+    except requests.RequestException:
+        pass
+    return None
 
 
 anonymous_public_ip = None

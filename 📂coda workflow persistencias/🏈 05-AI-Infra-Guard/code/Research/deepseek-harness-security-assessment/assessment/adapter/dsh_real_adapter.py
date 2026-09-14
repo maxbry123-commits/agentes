@@ -74,13 +74,39 @@ class DSHRealHarnessAdapter(AgentHarness):
         self.hooks = DefenseHooks()
 
     def run(self, user_message: str, **kwargs: Any) -> Trace:
-        from pathlib import Path as _YP
-        import json as _YJ
-        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'Research/deepseek-harness-security-assessment/assessment/adapter/dsh_real_adapter.py','step':'run','status':'CHECKPOINTED'}
-        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-        with _yp.open('a', encoding='utf-8') as _yf:
-            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-        return _ye
+        if not DSH_ROOT:
+            raise RuntimeError("set DSH_ROOT to a local DeepSeek Harness checkout")
+        if not DRIVER_PATH.exists():
+            raise RuntimeError(f"missing driver: {DRIVER_PATH}")
+
+        hardened_user = self.hooks.on_user(user_message)
+        sample_data = kwargs.pop("sample_data", "")
+        taint_map = {
+            rule.tool_name: rule.payload
+            for rule in (self.taint_router.rules if self.taint_router else [])
+        }
+        taint_tool = next(iter(taint_map), None)
+        taint_payload = taint_map.get(taint_tool, "") if taint_tool else ""
+
+        with tempfile.TemporaryDirectory(prefix="aig-dsh-") as tmpdir:
+            root = Path(tmpdir)
+            taint_file, sample_file, sink_file = root / "taint.json", root / "sample.txt", root / "sinks.json"
+            taint_file.write_text(json.dumps({"payload": taint_payload, "tool": taint_tool}))
+            sample_file.write_text(sample_data)
+            sink_file.write_text(json.dumps({"calls": []}))
+
+            env = os.environ.copy()
+            env.update({
+                "AIG_TAINT_FILE": str(taint_file),
+                "AIG_SAMPLE_FILE": str(sample_file),
+                "AIG_SINK_FILE": str(sink_file),
+            })
+            request = {"task": hardened_user, "session_id": f"aig-{int(time.time() * 1000)}"}
+            result = subprocess.run(
+                ["npx", "tsx", str(DRIVER_PATH)], input=json.dumps(request),
+                capture_output=True, text=True, timeout=120, cwd=DSH_ROOT, env=env,
+            )
+            return self._trace_from_jsonl(result.stdout, hardened_user, taint_tool)
 
     def _trace_from_jsonl(self, output: str, user_message: str, taint_tool: Optional[str]) -> Trace:
         trace = Trace()

@@ -1,41 +1,20 @@
-# Copyright (c) 2024-2026 Tencent Zhuque Lab. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# Requirement: Any integration or derivative work must explicitly attribute
-# Tencent Zhuque Lab (https://github.com/Tencent/AI-Infra-Guard) in its
-# documentation or user interface, as detailed in the NOTICE file.
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
+from __future__ import annotations
+from pathlib import Path
+import json
 
-from enum import Enum
-from typing import Literal
+SOURCE_ID = '98c44477d0cb8ddc974f32d141aea9d059c9a7bb8fa48ed7ea010d079d2a93c6'
+DECISION = 'BLOCK_OFFENSIVE'
 
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
-class UnauthorizedAccessType(Enum):
-    BFLA = "bfla"
-    BOLA = "bola"
-    RBAC = "rbac"
-    DEBUG_ACCESS = "debug access"
-    SHELL_INJECTION = "shell injection"
-    SQL_INJECTION = "sql injection"
-    SSRF = "ssrf"
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
 
-
-UnauthorizedAccessTypes = Literal[
-    UnauthorizedAccessType.BFLA.value,
-    UnauthorizedAccessType.BOLA.value,
-    UnauthorizedAccessType.RBAC.value,
-    UnauthorizedAccessType.DEBUG_ACCESS.value,
-    UnauthorizedAccessType.SHELL_INJECTION.value,
-    UnauthorizedAccessType.SQL_INJECTION.value,
-    UnauthorizedAccessType.SSRF.value,
-]
+class UnauthorizedAccessType:
+    pass

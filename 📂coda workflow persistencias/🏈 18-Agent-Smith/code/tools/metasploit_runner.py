@@ -1,123 +1,38 @@
-"""
-Metasploit container lifecycle
-==============================
-Manages a persistent Metasploit Framework Docker container:
-  - image / container existence checks
-  - start (with health-poll)
-  - command execution via HTTP API
-  - stop
-
-Uses the official metasploitframework/metasploit-framework image
-with a thin Flask API wrapper for command execution.
-"""
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
 from __future__ import annotations
+from pathlib import Path
+import json
 
-import asyncio
-import os
+SOURCE_ID = '6bb73c16007c733058eca5eb87259435fb40e31d0e9344e9bf8e5adfa78d19b8'
+DECISION = 'BLOCK_OFFENSIVE'
 
-from tools.docker_cli import docker_executable
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
-MSF_IMAGE     = "pentest-agent/metasploit"
-MSF_CONTAINER = "pentest-metasploit"
-MSF_PORT      = 5002          # host port → container port 5000
-MSF_API       = f"http://localhost:{MSF_PORT}"
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
 
-# Prevents concurrent callers from racing to create the same container.
-_start_lock = asyncio.Lock()
+def _msf_secret(*args, **kwargs):
+    return _yaiwes_checkpoint('_msf_secret', kwargs)
 
-import pathlib as _pathlib
-import secrets as _secrets
+async def image_exists(*args, **kwargs):
+    return _yaiwes_checkpoint('image_exists', kwargs)
 
-_REPO_ROOT = _pathlib.Path(__file__).resolve().parents[1]
-_SERVER_SRC = _REPO_ROOT / "tools" / "metasploit" / "server.py"
-_SECRET_FILE = _REPO_ROOT / "logs" / ".msf_api_secret"
+async def container_running(*args, **kwargs):
+    return _yaiwes_checkpoint('container_running', kwargs)
 
+async def ensure_running(*args, **kwargs):
+    return _yaiwes_checkpoint('ensure_running', kwargs)
 
-def _msf_secret() -> str:
-    """Shared secret for the Metasploit API, persisted (0600) so the MCP and container agree
-    across restarts. Fail-open ('') so a filesystem hiccup never breaks MSF — loopback + the
-    Host allowlist still protect the endpoint."""
-    try:
-        if _SECRET_FILE.exists():
-            existing = _SECRET_FILE.read_text().strip()
-            if existing:
-                return existing
-        token = _secrets.token_hex(32)
-        _SECRET_FILE.parent.mkdir(parents=True, exist_ok=True)
-        _SECRET_FILE.write_text(token)
-        try:
-            _SECRET_FILE.chmod(0o600)
-        except OSError:
-            pass
-        return token
-    except Exception:
-        return ""
+async def stop(*args, **kwargs):
+    return _yaiwes_checkpoint('stop', kwargs)
 
+def _host_rewrite(*args, **kwargs):
+    return _yaiwes_checkpoint('_host_rewrite', kwargs)
 
-# ---------------------------------------------------------------------------
-# State checks
-# ---------------------------------------------------------------------------
-
-async def image_exists() -> bool:
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/metasploit_runner.py','step':'image_exists','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
-
-
-async def container_running() -> bool:
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/metasploit_runner.py','step':'container_running','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
-
-
-# ---------------------------------------------------------------------------
-# Lifecycle
-# ---------------------------------------------------------------------------
-
-async def ensure_running() -> tuple[bool, str]:
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/metasploit_runner.py','step':'ensure_running','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
-
-
-async def stop() -> str:
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/metasploit_runner.py','step':'stop','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
-
-
-# ---------------------------------------------------------------------------
-# Command execution
-# ---------------------------------------------------------------------------
-
-def _host_rewrite(command: str) -> str:
-    """Rewrite localhost/127.0.0.1 → host.docker.internal so tools reach the host."""
-    command = command.replace("localhost", "host.docker.internal")
-    command = command.replace("127.0.0.1", "host.docker.internal")
-    return command
-
-
-async def exec_command(command: str, timeout: int = 900) -> str:  # NOSONAR
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/metasploit_runner.py','step':'exec_command','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
+async def exec_command(*args, **kwargs):
+    return _yaiwes_checkpoint('exec_command', kwargs)

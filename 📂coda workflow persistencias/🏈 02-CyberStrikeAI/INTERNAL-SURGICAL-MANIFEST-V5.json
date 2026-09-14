@@ -1,0 +1,2245 @@
+{
+  "schema": "yaiwes.internal.surgical/v5",
+  "component": "🏈 02-CyberStrikeAI",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.0",
+  "policy": {
+    "restore_benign": true,
+    "offensive_execution": false,
+    "ambiguous": "FAIL_CLOSED",
+    "network_default_for_replacements": "deny",
+    "source_execution_during_audit": false
+  },
+  "files": [
+    {
+      "path": "cmd/test-config/main.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "eb5183a0f169b6b56ad6154a88e0b81d3cc714254dd6b7a3af5beb3e5b14ea46",
+      "active_sha256": "eb5183a0f169b6b56ad6154a88e0b81d3cc714254dd6b7a3af5beb3e5b14ea46",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/agent/default_single_system_prompt.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "891435aae6652b8988819307c1b6a6cbc6484ba81e49d515a3e282f48d4358bf",
+      "active_sha256": "891435aae6652b8988819307c1b6a6cbc6484ba81e49d515a3e282f48d4358bf",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/app/mcp_authorization.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "ca4de740b690d5921a36de2c31104af9de2874f6063445cdcbafac289196e588",
+      "active_sha256": "ca4de740b690d5921a36de2c31104af9de2874f6063445cdcbafac289196e588",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/app/mcp_authorization_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "dc63a07de4a00ef4d5c37930d1eaeef2d0e9945bc9f97602b50af0429d592d3b",
+      "active_sha256": "dc63a07de4a00ef4d5c37930d1eaeef2d0e9945bc9f97602b50af0429d592d3b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/app/mcp_http_auth_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "b989030324bfa03fb44ed2d081357ab89d10ed6fb75c2d2f6c3672ef9ff42fa7",
+      "active_sha256": "b989030324bfa03fb44ed2d081357ab89d10ed6fb75c2d2f6c3672ef9ff42fa7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/app/vulnerability_tools.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "ba1e193729cf5a8a665de5fb225a428583a4d12d5c729420400b7824657dde79",
+      "active_sha256": "299de4f80b075ace1601c2610d3cef6454c5105049410d20e17b21f2bf0fd96b",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/app/vulnerability_tools.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/attackchain/builder.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "3e987ca75249542845fd099d2bc6dfd5b7d6944294a132a1fe4289878079cfa7",
+      "active_sha256": "ab09be72fcd49553e95a61f1e717cbbf4d0dbc843114da0b37168f6483270a06",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/attackchain/builder.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/attackchain/promote_project.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "2d7aef81f965771b9e1dc062f23df3908f01241f316cece8c317d0f9f53f279f",
+      "active_sha256": "403bc9db1f4b965c7632b5454923472966f3f9c050eb1a7618a5982713e9ae9c",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/attackchain/promote_project.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/attackchain/truncate.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "14bc1fe71c0d4ead41c99f116598c97ade4406afef24d0955a3e6aedd3f5ad4e",
+      "active_sha256": "ca8ab2e7132fd123879658b30596d738cec91ba64b8f71d1e468192769d14824",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/attackchain/truncate.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/attackchain/truncate_test.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "57d490fb74cb7740c93adda7c70986c83c27b486b25b60128f86f1d13a3aa0f5",
+      "active_sha256": "a9e8241a768bd5e3acdcfd4e5a9edc2039feeca9dee2d26a6a464d86a601edad",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/attackchain/truncate_test.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/audit/resource_availability.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "970c664d48638973662f1fbe7589987ccea8f395ed5069999a397d285b327333",
+      "active_sha256": "3d080fac683d916d910b5d77196ae429750300a91f4d5debba9614d27a49e277",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/audit/resource_availability.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/audit/service.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "b2528025a200383b7827dd0d83b3305cd17234cba0c966c78700654e95dd1880",
+      "active_sha256": "b2528025a200383b7827dd0d83b3305cd17234cba0c966c78700654e95dd1880",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/authctx/principal.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "fbdea08748180ad9378962d26334b6c5669cc7a5a4feef5a81a18d71305e40df",
+      "active_sha256": "fbdea08748180ad9378962d26334b6c5669cc7a5a4feef5a81a18d71305e40df",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/c2/listener_websocket.go",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "9a2af3adbe47df9c9862f3db549874eadeec3ff61b25442871f66f265aa51c76",
+      "active_sha256": "381b0d0c7576d8a131ec55f24b4eddd7b3f506d331e06ebc166cb738b76482b2",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/c2/listener_websocket.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/c2/payload_builder.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "71360f1a21766517f4eebf1b3a9308d4c781cfe7ae5fa71feee3941590a00d8c",
+      "active_sha256": "32c83b0292986a74bb32cd9185754a66898dbd56ac4c22dfd583260413d17937",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/c2/payload_builder.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/c2/payload_encoding.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "e8f406a9dd9b44ae0e2a392f957be9bec77c76884f8cc53eb8ab97984855f510",
+      "active_sha256": "e9efbed14ce48c1215350738d84a1775729124b652debffe50e8ec5d96b77ef5",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/c2/payload_encoding.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/c2/payload_oneliner.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "edc29a856ddab66573f3d208d4b0595c4d39068cb5a609604e5066c71201bf9f",
+      "active_sha256": "b0cff9d1aa64a0265000590fcd926daa978a07b108fcd7172b066324421538d5",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/c2/payload_oneliner.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/config/config.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive content plus execution surface",
+      "original_sha256": "39443a4f0a3e22456f469844df80c8ed5976aec2c627324a735bd27ce959e6d5",
+      "active_sha256": "96d5e46242253a378ef5fa3ef5e0d8be1741c1d2fbac4038484a42bded243bca",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/config/config.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/config/config_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "dc3d218f077490fcb6a60961b61ce6eb9a1886417625ebcae3d2be421fec33ca",
+      "active_sha256": "dc3d218f077490fcb6a60961b61ce6eb9a1886417625ebcae3d2be421fec33ca",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/config/envexpand.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "cfa8d184c6ca3f9e1c95864d74d2093f7d92ca2768be83a80e3920437be92059",
+      "active_sha256": "cfa8d184c6ca3f9e1c95864d74d2093f7d92ca2768be83a80e3920437be92059",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/config/envexpand_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "043f1bca4968141451b08d297c0dd4a584157344a0f4b1f3fe86442a34ca35ee",
+      "active_sha256": "043f1bca4968141451b08d297c0dd4a584157344a0f4b1f3fe86442a34ca35ee",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/config/hitl_prompt_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "52ee78b191a521c18736b42f8789bde932bc96124b9d746ec692c23e83ee7ad4",
+      "active_sha256": "52ee78b191a521c18736b42f8789bde932bc96124b9d746ec692c23e83ee7ad4",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/config/robots_validate_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "5424b6373fcda4925ffe4a9f4de04ac404564f978a79027a4b90d9a35fcdc451",
+      "active_sha256": "5424b6373fcda4925ffe4a9f4de04ac404564f978a79027a4b90d9a35fcdc451",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/config/server_https_bootstrap.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "d86cd7921b5df690a6746ae710c06dfdd708eceb3877bb9bda97c18e34cd26fc",
+      "active_sha256": "d86cd7921b5df690a6746ae710c06dfdd708eceb3877bb9bda97c18e34cd26fc",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/config/server_https_bootstrap_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "1470da54eec161b15a856f292154abe2de951bd42884c2f7b5266724b066c1df",
+      "active_sha256": "1470da54eec161b15a856f292154abe2de951bd42884c2f7b5266724b066c1df",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/config/tool_guard.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "60336aea6aee1138bde36f22a24d4f99c4c48118e0cd5d77476cc3afd2b3f659",
+      "active_sha256": "60336aea6aee1138bde36f22a24d4f99c4c48118e0cd5d77476cc3afd2b3f659",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/config/tool_guard_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "8243a4b11b9065e9be1908de2f9b5800fff3f28164e44ab11f5d4d4cc08a58e9",
+      "active_sha256": "8243a4b11b9065e9be1908de2f9b5800fff3f28164e44ab11f5d4d4cc08a58e9",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/config/tools_reload_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "94e694062a99640e01ec858b98514992dcb59c3d2e9eb16ca9927fee7ffa3571",
+      "active_sha256": "94e694062a99640e01ec858b98514992dcb59c3d2e9eb16ca9927fee7ffa3571",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/config/vision.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "eb7d6400833a88d298a44de7fed30627da55928726451202bde95c1675839b3a",
+      "active_sha256": "eb7d6400833a88d298a44de7fed30627da55928726451202bde95c1675839b3a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/config/vision_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "9be6f88f8337857b8bdbcc425f08ff4d0338de737a9e61b879893559e81cdfc6",
+      "active_sha256": "9be6f88f8337857b8bdbcc425f08ff4d0338de737a9e61b879893559e81cdfc6",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/asset.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "d32b40d75a52e94406390919d0e9b497af47ac0297df830b6612c89518fcb706",
+      "active_sha256": "d32b40d75a52e94406390919d0e9b497af47ac0297df830b6612c89518fcb706",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/asset_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "3733b2ddfc5d59a781c29acd1895582d21264f7fb712d6b9b30421f2bbaf9c75",
+      "active_sha256": "3733b2ddfc5d59a781c29acd1895582d21264f7fb712d6b9b30421f2bbaf9c75",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/attackchain.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "74cf1dd032adad8af29e9ad4798bbd6a008c3875c7d7e786f8acfbbba770c9ca",
+      "active_sha256": "bec0bb54573e6326d186b6e42f689de85a491fe9869931f59ff31036a89a55bd",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/database/attackchain.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/database/audit.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "4ed2fd50b8ee65d327a5342667a754873ca0acb32d3cfa82e7b72cb1e2603881",
+      "active_sha256": "4ed2fd50b8ee65d327a5342667a754873ca0acb32d3cfa82e7b72cb1e2603881",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/audit_time_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "68f1a5b05a4eb0ca5f809767321652dc95740f46c95fbc81e498b928f01c3b77",
+      "active_sha256": "68f1a5b05a4eb0ca5f809767321652dc95740f46c95fbc81e498b928f01c3b77",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/batch_hitl_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "1f437a868b62abc5544b9e03c787701f9746fa09e168ca0c48950b9e614e2d36",
+      "active_sha256": "1f437a868b62abc5544b9e03c787701f9746fa09e168ca0c48950b9e614e2d36",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/batch_task.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "ab21d456b2a88167e47c9985b0c595e3449ec75a3600c3cd591ee4ebe0207ad3",
+      "active_sha256": "ab21d456b2a88167e47c9985b0c595e3449ec75a3600c3cd591ee4ebe0207ad3",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/blocked_execution_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "37713968bf2220d34e1cd29bbd257ec67ca3c56dda927bf3a5811cc312796fdd",
+      "active_sha256": "37713968bf2220d34e1cd29bbd257ec67ca3c56dda927bf3a5811cc312796fdd",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/c2.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "6fc2faa43e163e3d28b2f441edfbb18fe26ba8a8b44d70d4e0196b9326dcb4d2",
+      "active_sha256": "6fc2faa43e163e3d28b2f441edfbb18fe26ba8a8b44d70d4e0196b9326dcb4d2",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/c2_payload.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "b97634ad87be2d53d7719e793826d45d69b5ac56fe9518077e7fbb6e1d8963ea",
+      "active_sha256": "ddbd98f97a92ddf7b0605d10e2179bccd8992ac8c807166159b37b402ac7c141",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/database/c2_payload.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/database/chat_upload.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "1520540a6be2810a0e9dd237f2ee0ce35b9806510e9b61dc90f105459ccc540d",
+      "active_sha256": "1520540a6be2810a0e9dd237f2ee0ce35b9806510e9b61dc90f105459ccc540d",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/conversation.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive content plus execution surface",
+      "original_sha256": "9832f0c1516c0fd7e3177120b64fe77839855814a5a814f604f2d75f9200cb84",
+      "active_sha256": "c9be6527adcadb18500c5cff20a8194e2136145156ab9dd1e9a05a4f16bf8dcb",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/database/conversation.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/database/conversation_cleanup_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "415d2e88e38dec291754465d47619c86543bce10bed6d82d6ac44868487b4004",
+      "active_sha256": "415d2e88e38dec291754465d47619c86543bce10bed6d82d6ac44868487b4004",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/conversation_create_meta.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "8cb66d795dccb6d2d85f569142b13b1c0578945a2e1ccc68a9127ceda8617112",
+      "active_sha256": "8cb66d795dccb6d2d85f569142b13b1c0578945a2e1ccc68a9127ceda8617112",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/conversation_project_filter_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "ddf79d3fa2d3705b1f207a5e5028390074302164dcfa32902182dcee41c92e1b",
+      "active_sha256": "ddf79d3fa2d3705b1f207a5e5028390074302164dcfa32902182dcee41c92e1b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/conversation_turn_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "e334c590b580c82af2c4e87b42a68d369ca656617782667df1feaf5f4a87ad37",
+      "active_sha256": "e334c590b580c82af2c4e87b42a68d369ca656617782667df1feaf5f4a87ad37",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/conversation_vulnerability_test.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "b78a7cb78bc60ab6c0c30bbd5a91ade34e9cf82b9ffc6b0534c408f2f19ee753",
+      "active_sha256": "76e4c3fba90d1d916107b34b9cae93909ab6647505f476585fe13eeb6ad249ff",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/database/conversation_vulnerability_test.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/database/database.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "4f632e32930d76bab7c14bfe030a95ee08eb6d8cf5f79bfeb75fe14ac9cf461c",
+      "active_sha256": "4f632e32930d76bab7c14bfe030a95ee08eb6d8cf5f79bfeb75fe14ac9cf461c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/hitl_logs.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "07f004a3bad24fc234acfde075feaa07cff7cc9e792e3f9946063b4b593e0a19",
+      "active_sha256": "07f004a3bad24fc234acfde075feaa07cff7cc9e792e3f9946063b4b593e0a19",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/hitl_logs_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "af551fedc78e4ecaa02082fbdf92117b7577da6d633bac4c32e04d12c6ddc04e",
+      "active_sha256": "af551fedc78e4ecaa02082fbdf92117b7577da6d633bac4c32e04d12c6ddc04e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/model_token_usage.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "dff42414e3797e4287c4a6c673b15b7ed3a4c3e784839a68061f370282222896",
+      "active_sha256": "dff42414e3797e4287c4a6c673b15b7ed3a4c3e784839a68061f370282222896",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/model_token_usage_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "1f5ef42e31d9225afa50039f30af71922425f48fa817afaad9911868c88ab63a",
+      "active_sha256": "1f5ef42e31d9225afa50039f30af71922425f48fa817afaad9911868c88ab63a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/monitor.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "1f622de6c6801746fb6e951ae3a4e72242496270d22c0051dcfb792f31160545",
+      "active_sha256": "1f622de6c6801746fb6e951ae3a4e72242496270d22c0051dcfb792f31160545",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/monitor_reconcile_test.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "c3f64e13110fd49bc7c459f6ed8948c2dc8e72579baac36a08e882be948f229e",
+      "active_sha256": "c0059230b6c6f7ee2b91ff6b164074e3adc3bb52b98de83377f1a8ac907d0fee",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/database/monitor_reconcile_test.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/database/monitor_retention_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "0edb49364310e496372497d773c36499f2abdbbcf96d656a2f3f7cc956be89fd",
+      "active_sha256": "0edb49364310e496372497d773c36499f2abdbbcf96d656a2f3f7cc956be89fd",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/monitor_summary_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "d75664ead1ecb7dc0e3dc62f5f0f4ef742a4afae9abc1a7ff7b767d2503741f3",
+      "active_sha256": "d75664ead1ecb7dc0e3dc62f5f0f4ef742a4afae9abc1a7ff7b767d2503741f3",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/plantask.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "6678c691a3bb6c8f4faeb82d917900572b253f576cd9b374a540a99869444386",
+      "active_sha256": "6678c691a3bb6c8f4faeb82d917900572b253f576cd9b374a540a99869444386",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/plantask_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "2a04ae2ecf6c3c25e13f26d0d5c69d87a32adeda43a38cc34447b877b0f2af81",
+      "active_sha256": "2a04ae2ecf6c3c25e13f26d0d5c69d87a32adeda43a38cc34447b877b0f2af81",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/process_detail_dedupe.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "e9a62165c025e6dcb69d369496eccbad767b605edc7df1af49ba750606b4e5fc",
+      "active_sha256": "e9a62165c025e6dcb69d369496eccbad767b605edc7df1af49ba750606b4e5fc",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/process_details_summary_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "3d0c99dbbe02893513797cadcb75b2664782c8ce4fb76f41ab271aac1cac8a64",
+      "active_sha256": "3d0c99dbbe02893513797cadcb75b2664782c8ce4fb76f41ab271aac1cac8a64",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/project.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "9ba475ce9c6ab98a26845424217a24be8a4674663243673b49babe68d9cecf73",
+      "active_sha256": "9ba475ce9c6ab98a26845424217a24be8a4674663243673b49babe68d9cecf73",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/project_dashboard.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "6de2382c9ae68f441f04c9cb4b9e6eeb600000a62bb154eef5f35b5ac22b8c33",
+      "active_sha256": "6de2382c9ae68f441f04c9cb4b9e6eeb600000a62bb154eef5f35b5ac22b8c33",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/project_fact_edges.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "0fdf4c429566bc7fe8d55b4e95d8a43284fb012f907020f7aa38136913797884",
+      "active_sha256": "0fdf4c429566bc7fe8d55b4e95d8a43284fb012f907020f7aa38136913797884",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/project_fact_upsert_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "2987cef32d650bf27d02368562281a41d4735d74e4f3bab860579824006b33a8",
+      "active_sha256": "2987cef32d650bf27d02368562281a41d4735d74e4f3bab860579824006b33a8",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/project_search_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "64c69b120019f4eabdfe7b25d35a4d7f439bec7ffd503a3432822fcae68e16ef",
+      "active_sha256": "64c69b120019f4eabdfe7b25d35a4d7f439bec7ffd503a3432822fcae68e16ef",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/project_stats.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "10dd9b987db086280a6a3146d96aeea4925a54eb79c584eb70a8ab0f4b4dba40",
+      "active_sha256": "10dd9b987db086280a6a3146d96aeea4925a54eb79c584eb70a8ab0f4b4dba40",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/project_time_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "2da55ebbdfc5cbfcb297d051577f0fec6f455501a3e0595ecd23d0cb5e6333eb",
+      "active_sha256": "2da55ebbdfc5cbfcb297d051577f0fec6f455501a3e0595ecd23d0cb5e6333eb",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/rbac.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "9dc4d98761c75a56a46dff429aaef97ccf6642bdd362ed81429d44f32b22b482",
+      "active_sha256": "9dc4d98761c75a56a46dff429aaef97ccf6642bdd362ed81429d44f32b22b482",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/rbac_access_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "35c29e65a6f3c69cafd9255ab5346005967ea3ff7c298af8405632f777173f8e",
+      "active_sha256": "35c29e65a6f3c69cafd9255ab5346005967ea3ff7c298af8405632f777173f8e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/robot_identity.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "5dc63c18dae0d82cc75921eda8ed22e6446d866b5de2a9edeeb22d1520f78ece",
+      "active_sha256": "5dc63c18dae0d82cc75921eda8ed22e6446d866b5de2a9edeeb22d1520f78ece",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/robot_identity_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "5d3bb404aee66354223b21fd33f6651d2a703b204abbf007763813bcc32b2184",
+      "active_sha256": "5d3bb404aee66354223b21fd33f6651d2a703b204abbf007763813bcc32b2184",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/robot_session.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "60a3e80f13c3e26740e0a73b86d835a29323ab07cf7e8cccfa4064fe7ddc7273",
+      "active_sha256": "60a3e80f13c3e26740e0a73b86d835a29323ab07cf7e8cccfa4064fe7ddc7273",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/skill_stats.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "6d75bf0b8d349a684a01e67748cb16ce169742263ccc5f2f29b2ad8eed86d1ca",
+      "active_sha256": "6d75bf0b8d349a684a01e67748cb16ce169742263ccc5f2f29b2ad8eed86d1ca",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/sqltime.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "d43b6ee68bd7ce66711b369fc16238fb47c5695325c77517dd31618484e121d8",
+      "active_sha256": "d43b6ee68bd7ce66711b369fc16238fb47c5695325c77517dd31618484e121d8",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/tool_execution_args_lookup.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "5f4b4cbb6d08337b4a649b626337d0d6db2e29ff25f8d3f5aa3548a119398da2",
+      "active_sha256": "5f4b4cbb6d08337b4a649b626337d0d6db2e29ff25f8d3f5aa3548a119398da2",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/tool_guard_migration.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "c63b1b08d73ef2639b6cbf04b6b4d3770eea728ed1206c997d1f34a5832813d3",
+      "active_sha256": "c63b1b08d73ef2639b6cbf04b6b4d3770eea728ed1206c997d1f34a5832813d3",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/vulnerability.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "229f637aa690c41929574608965205fa5e9fe405c6459b37495c7b8cb3b7210c",
+      "active_sha256": "c63e4abe75432a4abc4b0f4fe2226abf90c6e6d7d328197a97104ae899bbfd89",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/database/vulnerability.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/database/vulnerability_alert.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "1d7dd53fc01a5a186cadfc42c9da2752337830ea3637e7939f03d7c3ffc062b0",
+      "active_sha256": "c312e75d6146a3b9233855dd8f0e0556b157c8c22b6e6f0f5ac60d0b3645c8dc",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/database/vulnerability_alert.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/database/vulnerability_alert_test.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "3d8bdbb99adb9e88bde24b71e0312c269e70e1c30d28e9de6c9c9bd27c932db9",
+      "active_sha256": "af1109275a809eb6a14a6b1c6c8a645caccd0dd7ff3c75266e9b3d6ed9a7895d",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/database/vulnerability_alert_test.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/database/webshell.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "66bb998a4fdb48aad4cbf43b67e87938a21e4ee41d30727ceab250b5bfe9b2e7",
+      "active_sha256": "66bb998a4fdb48aad4cbf43b67e87938a21e4ee41d30727ceab250b5bfe9b2e7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/workflow.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "20a6765cf07ecec1ec92c508fed419cba7e9f94f6a371b88eab6d735ec114eab",
+      "active_sha256": "20a6765cf07ecec1ec92c508fed419cba7e9f94f6a371b88eab6d735ec114eab",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/workflow_package.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "b1a5799cfd86e70a19ebe6261330569420cd30f2d8f2988a2209a009bce11e3c",
+      "active_sha256": "b1a5799cfd86e70a19ebe6261330569420cd30f2d8f2988a2209a009bce11e3c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/database/workflow_package_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "bbebdcc8b4ae68b4c351f1da314862cb3615c38bc3d3f572c6d4d35e8f0d7ec1",
+      "active_sha256": "bbebdcc8b4ae68b4c351f1da314862cb3615c38bc3d3f572c6d4d35e8f0d7ec1",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/handler/attackchain.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "5fb32df39307ae56b5e4d6e2d414335affe953effd30710ad15d69be3aca9512",
+      "active_sha256": "70b714cf4dd34c619fa0aeaadf7aa3191dd28bbca87ae4045583806e357b304c",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/handler/attackchain.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/handler/auth.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "4629e50d5ef79aafdf2449f24ddf2b6575f851c8ba110ec6fc93fc5e5bf76745",
+      "active_sha256": "4629e50d5ef79aafdf2449f24ddf2b6575f851c8ba110ec6fc93fc5e5bf76745",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/handler/batch_queue_executor.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "7d4d9c7099768e9d0fe5b6fafa5c4c390b55434b9eae1fb563193bf17ceb4755",
+      "active_sha256": "7d4d9c7099768e9d0fe5b6fafa5c4c390b55434b9eae1fb563193bf17ceb4755",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/handler/batch_task_manager.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "2d0efe11359a26865f93849553a0e4ebd1ecd74ae319d5d4dff3c2f18002adbf",
+      "active_sha256": "2d0efe11359a26865f93849553a0e4ebd1ecd74ae319d5d4dff3c2f18002adbf",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/handler/batch_task_manager_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "0f860164a501609e3fcbd8f19d019b6d076092253f85ca0d84534accdaf02df6",
+      "active_sha256": "0f860164a501609e3fcbd8f19d019b6d076092253f85ca0d84534accdaf02df6",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/handler/batch_task_mcp.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "625229e20014a1f40ce07960ad8354110940993ae4d8633222500531dfa34785",
+      "active_sha256": "625229e20014a1f40ce07960ad8354110940993ae4d8633222500531dfa34785",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/handler/config.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "32bd5c8ce87f6d9cc5c3b3041756e8c1be6a3b858e6e18611c6c433a4e27535c",
+      "active_sha256": "32bd5c8ce87f6d9cc5c3b3041756e8c1be6a3b858e6e18611c6c433a4e27535c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/handler/config_eino_resilience_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "c721109bb6015bea8f8d3746149e543a72fa0f1ebc04710ae9da23965320ff20",
+      "active_sha256": "c721109bb6015bea8f8d3746149e543a72fa0f1ebc04710ae9da23965320ff20",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/handler/config_file.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "c7b8d60c75982b43fd16bf4e3bbb56deb3274c42acf1f666821915b44a1ae36e",
+      "active_sha256": "c7b8d60c75982b43fd16bf4e3bbb56deb3274c42acf1f666821915b44a1ae36e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/handler/conversation_delete_task_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "4a242cb2a544606fff01b9a4d5e38ac43035c216d94344c644b09667e220ff0f",
+      "active_sha256": "4a242cb2a544606fff01b9a4d5e38ac43035c216d94344c644b09667e220ff0f",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/handler/conversation_plantask_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "dd5feb78e84d43d5c12e5db2d114e3198013ea53f4499fda2bd6a60f41003495",
+      "active_sha256": "dd5feb78e84d43d5c12e5db2d114e3198013ea53f4499fda2bd6a60f41003495",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/handler/openapi.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "d15464c03297763cc7ca12c6ad08569a1f6db72bdf84c55fa66d8a6218bfed7c",
+      "active_sha256": "d15464c03297763cc7ca12c6ad08569a1f6db72bdf84c55fa66d8a6218bfed7c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/handler/openapi_i18n.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "f00a666920eff06e4ae59ac4c14ddbbea0a3e94f45681bbbebb0ac797149d58f",
+      "active_sha256": "f00a666920eff06e4ae59ac4c14ddbbea0a3e94f45681bbbebb0ac797149d58f",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/handler/openapi_i18n_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "9907e9c01eafb2b2048d44a673372cafdfd7212272038e148231291f1aa14ca5",
+      "active_sha256": "9907e9c01eafb2b2048d44a673372cafdfd7212272038e148231291f1aa14ca5",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/handler/task_event_bus.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "5a1ec370c475158747bd5dc82f6c3afcb84b0b90b442f8ee1cfd6e6fa0a26b44",
+      "active_sha256": "5a1ec370c475158747bd5dc82f6c3afcb84b0b90b442f8ee1cfd6e6fa0a26b44",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/handler/task_manager.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "481e6b8b56cb5a43385a8c35dc3bb0b1f13e88f566133f3d11695228ae468873",
+      "active_sha256": "481e6b8b56cb5a43385a8c35dc3bb0b1f13e88f566133f3d11695228ae468873",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/handler/task_manager_eino_execute_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "a0bbdac12225584800dfd55195ec34f9e86fb6151da9ea4027ea6a75d0976141",
+      "active_sha256": "a0bbdac12225584800dfd55195ec34f9e86fb6151da9ea4027ea6a75d0976141",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/handler/task_manager_order_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "49350d6b0e3873bf09967a08b3d4f7e6f1bb562f76e0f5ab2865d8410109d3d8",
+      "active_sha256": "49350d6b0e3873bf09967a08b3d4f7e6f1bb562f76e0f5ab2865d8410109d3d8",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/handler/task_manager_tool_cancel_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "abf9edac892c65fea038080aa9aaf874829aae0742c83e8fd44da61af123fe29",
+      "active_sha256": "abf9edac892c65fea038080aa9aaf874829aae0742c83e8fd44da61af123fe29",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/handler/terminal_ws_unix.go",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "8ae66d99a76647d7c40ab7ffe4f094d7652fc54c7677c3b6acf79ce7134a557e",
+      "active_sha256": "dc755ef72ee54ef90aa0147c21fd0649c4b8097b77bc7646251727e67c37a4e4",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/handler/terminal_ws_unix.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/handler/vulnerability.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "aadb811b5674a6fd61a9629aa2ae6e1fe0a74a087c685250827e2b37868d7ac2",
+      "active_sha256": "b39e3203b796d57a11416cd0ba57f01f72d0bc15b47ef4da4f14e7cc511a4a5e",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/handler/vulnerability.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/handler/vulnerability_alert.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "3c5fd504717e3a8b580fbf5c23ed91db46520055d8529b30ddef19385bdce7be",
+      "active_sha256": "6b807e22e200d5b7d129ab5c7549e4cdcac6f5c01a83a4d38eba1d7cc9c15208",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/handler/vulnerability_alert.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/handler/vulnerability_alert_test.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "4e8f32fa117fd99c9600bb377fc6dda8234e459d11294026949c4ec4b329b342",
+      "active_sha256": "8ecd9f2f59cdf20bea4ae20b741870b345f395b5c4319c69a81706536fb2fd69",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/handler/vulnerability_alert_test.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/handler/workflow.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "85ad627eb4b229e440cf2a4562fe8b41d47b6780c470da1d1a902b71fefb9dc2",
+      "active_sha256": "85ad627eb4b229e440cf2a4562fe8b41d47b6780c470da1d1a902b71fefb9dc2",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/handler/workflow_integration.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "e332f8ae485eab169f7fd6fdfd9fbae6175f28bb274d98e5fd8659714785bd64",
+      "active_sha256": "e332f8ae485eab169f7fd6fdfd9fbae6175f28bb274d98e5fd8659714785bd64",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/handler/workflow_package.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "ffcc0918af7b67a92c2821698fc539f190959c0e7c8d6b270a77d470f448d1b0",
+      "active_sha256": "ffcc0918af7b67a92c2821698fc539f190959c0e7c8d6b270a77d470f448d1b0",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/handler/workflow_package_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "c203c2f799bcb8f19df5200fa01174aa2634064f1523f2eb74fd0f6adbb7154e",
+      "active_sha256": "c203c2f799bcb8f19df5200fa01174aa2634064f1523f2eb74fd0f6adbb7154e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/handler/workflow_run.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "1c61051c9bfa7db32dcf0db6c988857caf4c64db2c077e299a0cad2bf60f466b",
+      "active_sha256": "1c61051c9bfa7db32dcf0db6c988857caf4c64db2c077e299a0cad2bf60f466b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/knowledge/eino_retriever_adapter.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "52ef48a0807c8f257e906f6b6266e5664e4928cd8a09778245cfaf8190319b5f",
+      "active_sha256": "52ef48a0807c8f257e906f6b6266e5664e4928cd8a09778245cfaf8190319b5f",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/knowledge/indexer_rebuild_state_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "5f4332f780a11414e92f158d23ee9b5e81a9d85e07068c3c32aa93e55869e08a",
+      "active_sha256": "5f4332f780a11414e92f158d23ee9b5e81a9d85e07068c3c32aa93e55869e08a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/knowledge/schema_migrate.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "58f85ba726619646556961c25f72d32e8d4366be65cc8f69e580c53752defb32",
+      "active_sha256": "58f85ba726619646556961c25f72d32e8d4366be65cc8f69e580c53752defb32",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/llm/agentic_chat_adapter.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "3981aa08c566d833877eeecbf9b734f0188f9af51acb97443eba87e75c292f20",
+      "active_sha256": "3981aa08c566d833877eeecbf9b734f0188f9af51acb97443eba87e75c292f20",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/llm/claude.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "0fd73c20c9d60a5a760b39953d53d898bebe97d1cfcad6e47b60219f51d905f8",
+      "active_sha256": "0fd73c20c9d60a5a760b39953d53d898bebe97d1cfcad6e47b60219f51d905f8",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/llm/deepseek_anthropic_compat.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "c3c945f06ee92a27e8019d019e57fe7e5aee1da63dd678f751b07b1ce278439e",
+      "active_sha256": "c3c945f06ee92a27e8019d019e57fe7e5aee1da63dd678f751b07b1ce278439e",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/llm/deepseek_anthropic_compat.go.original",
+      "link": false
+    },
+    {
+      "path": "internal/llm/deepseek_anthropic_compat_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "03c128e1096f3046bdd1b87ea4d843cc8b62ecf605524fc260308220e9452d1f",
+      "active_sha256": "03c128e1096f3046bdd1b87ea4d843cc8b62ecf605524fc260308220e9452d1f",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/logger/daily_writer.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "a6b594ac2b4bae9f1a6671a6d7ef426354c57e12cfefaa25acc062c8a92de0e7",
+      "active_sha256": "a6b594ac2b4bae9f1a6671a6d7ef426354c57e12cfefaa25acc062c8a92de0e7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/logger/logger.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "5a73e6b123d95c67d15a959c2174786712cb4d98c3817e5e192fe09952d071e7",
+      "active_sha256": "5a73e6b123d95c67d15a959c2174786712cb4d98c3817e5e192fe09952d071e7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/logger/logger_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "804c31dcefcf91a8170b242ba5e84a79f87174632756b08ebd32f9f4fec12469",
+      "active_sha256": "804c31dcefcf91a8170b242ba5e84a79f87174632756b08ebd32f9f4fec12469",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/mcp/client_sdk.go",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "dcb788a8c08deee617a316c0f67eb887d7da68655b51a85744f54777f1cabd75",
+      "active_sha256": "a807396961e8efe5577170aac60343c849b1268b302d33ea8c0199e10c79e9dd",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/mcp/client_sdk.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/mcp/connection_recovery.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "f12bf91b7eedee4495b03c4e2051f19302dda8009e7245ebb5929cfc0c831ae0",
+      "active_sha256": "f12bf91b7eedee4495b03c4e2051f19302dda8009e7245ebb5929cfc0c831ae0",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/mcp/connection_recovery_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "2f44296bc2c2a95453902deadb9f380c5107cd5eaf067cce1b50023f39531ce1",
+      "active_sha256": "2f44296bc2c2a95453902deadb9f380c5107cd5eaf067cce1b50023f39531ce1",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/mcp/execution_service.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "12a216e2ea2621583da6b1dcd11dc9cfd07fb586c873f07af6264edaaa1fd0d9",
+      "active_sha256": "12a216e2ea2621583da6b1dcd11dc9cfd07fb586c873f07af6264edaaa1fd0d9",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/mcp/execution_service_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "f006158a2f5ce03c92d9f136e3daf43c1fbd2f434e8a3fd3059d01fc4473bd9f",
+      "active_sha256": "f006158a2f5ce03c92d9f136e3daf43c1fbd2f434e8a3fd3059d01fc4473bd9f",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/mcp/server_authorization_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "88edfd0bcaf5043790cea72a9299bedcd92f9a564b49f7a2e7e62f2b1a7a753c",
+      "active_sha256": "88edfd0bcaf5043790cea72a9299bedcd92f9a564b49f7a2e7e62f2b1a7a753c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/monitor/reconcile.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "2a6420a7af8ee45f95a44c85f2569c1c4a1044ee733939b55fb6281b9df9ff29",
+      "active_sha256": "f8c862e09301a418e48d5810fcd85de5d649ad790d5e04ce7f4f27019dd02945",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/monitor/reconcile.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/monitor/reconcile_test.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "cfd5e67e6058f04202536818c68a7120086a92a095d57da27841a2b370a3b974",
+      "active_sha256": "077a5b0e345eb5a850f5c5fcdfe7d020e089889ab80bfde05a3f3e6dedeaa4cf",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/monitor/reconcile_test.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/multiagent/agentic_tool_pair_reconciler_middleware.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "ddf7dbc1508433c57f8449494a3dfb1d31429357327f455800f7262733d860fe",
+      "active_sha256": "8c69fae2a1832455419db7e84c8155e5d9356fe23d563dcd5ced2ccd24099bc0",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/multiagent/agentic_tool_pair_reconciler_middleware.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/multiagent/agentic_tool_pair_reconciler_middleware_test.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "853e6945f9990d5e605187fe890ca3122f2e1c8799120a3e8faa12991e74d77c",
+      "active_sha256": "19a5ce6fa2b98bf16d438fb8eaec33a3faa25454d065ef044ee154df942aa723",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/multiagent/agentic_tool_pair_reconciler_middleware_test.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/multiagent/eino_agentic_agent_adapter.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "7e3920a40cbf817bc84e5cb1ed5d23759ee15215a11d89d0eb72ec722257981a",
+      "active_sha256": "7e3920a40cbf817bc84e5cb1ed5d23759ee15215a11d89d0eb72ec722257981a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_agentic_agent_adapter_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "48a1c77b300d98b404c017e33ccbb067af211cdb0028cdf251c2bb4895d10bc6",
+      "active_sha256": "48a1c77b300d98b404c017e33ccbb067af211cdb0028cdf251c2bb4895d10bc6",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_agentic_chat_model_agent.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "9624e343467c57e685e6d953b3bb95c18f18eff2ca83f17308d490f44c0de3c9",
+      "active_sha256": "9624e343467c57e685e6d953b3bb95c18f18eff2ca83f17308d490f44c0de3c9",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_agentic_chat_model_agent_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "c726d3895fd672201af11e2297bdaf9becd122d8c67ab822008f861099cfc93b",
+      "active_sha256": "c726d3895fd672201af11e2297bdaf9becd122d8c67ab822008f861099cfc93b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_agentic_chat_model_tail_middleware.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "11294ae534f4908764e66c506492cf710d1782d8b0d1e6170b9049cc446afa24",
+      "active_sha256": "11294ae534f4908764e66c506492cf710d1782d8b0d1e6170b9049cc446afa24",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_agentic_chat_model_tail_middleware_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "8e5df5736a71e74c644c61417fa28b5fcbfb7d9a9575f16e43eaa4cd7f7d46f5",
+      "active_sha256": "8e5df5736a71e74c644c61417fa28b5fcbfb7d9a9575f16e43eaa4cd7f7d46f5",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_agentic_event_adapter.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "daad92b7222cb04c8b78c348a4482270bba0eeb77e122d36c53ead0f06ba5e7f",
+      "active_sha256": "daad92b7222cb04c8b78c348a4482270bba0eeb77e122d36c53ead0f06ba5e7f",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_agentic_event_adapter_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "7262dcbdd74231701cb072591848aa00ae8b95ad97d7118ab806dbe7662f4698",
+      "active_sha256": "7262dcbdd74231701cb072591848aa00ae8b95ad97d7118ab806dbe7662f4698",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_agentic_model_gate.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "ac71d1bb3ee9b8bff2874f32604dc290ffa7aaabf88c9a8fa2eea2e941cbc6cc",
+      "active_sha256": "ac71d1bb3ee9b8bff2874f32604dc290ffa7aaabf88c9a8fa2eea2e941cbc6cc",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_agentic_model_gate_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "38c7eabba6a5fd1913c6fd9f25629685065e98e4819769faf202b6785df03c16",
+      "active_sha256": "38c7eabba6a5fd1913c6fd9f25629685065e98e4819769faf202b6785df03c16",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_agentic_tool_calling_adapter.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "33342b8859784adbab21099d56a58eba965e20de228d3c9bc2909fbc0551e2ad",
+      "active_sha256": "33342b8859784adbab21099d56a58eba965e20de228d3c9bc2909fbc0551e2ad",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_agentic_tool_calling_adapter_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "8a1b7113a73003d9a3548adfdfd852c314af8a16a8c9288fe1d0b609ad6f7566",
+      "active_sha256": "8a1b7113a73003d9a3548adfdfd852c314af8a16a8c9288fe1d0b609ad6f7566",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_chat_model_tail_middleware.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "e3f93a31282e3bbea1b9816d8b40b478f048afe188ee481eb6796636f313d795",
+      "active_sha256": "e3f93a31282e3bbea1b9816d8b40b478f048afe188ee481eb6796636f313d795",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_checkpoint.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "3bdaf2518dc03a6b0e7c130000136063b37009d454da308b78c77379ab5d4a28",
+      "active_sha256": "3bdaf2518dc03a6b0e7c130000136063b37009d454da308b78c77379ab5d4a28",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_checkpoint_resume_handler.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "24a7e22201bb075684e220de9766c55731f24f9764bff47867c0fc93eb67fc2b",
+      "active_sha256": "24a7e22201bb075684e220de9766c55731f24f9764bff47867c0fc93eb67fc2b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_checkpoint_resume_handler_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "5bb53e7a311f8e077ea08c1cbbebc6fdb22a729974ee5289974b9d50916abd80",
+      "active_sha256": "5bb53e7a311f8e077ea08c1cbbebc6fdb22a729974ee5289974b9d50916abd80",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_checkpoint_runtime.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "e564518cc3af9c35fefcf7f9db9c9363c76fbe6255f1691c19681c0a23fd6cd7",
+      "active_sha256": "e564518cc3af9c35fefcf7f9db9c9363c76fbe6255f1691c19681c0a23fd6cd7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_checkpoint_runtime_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "9889002bd7edd2ef461075ba3a2d8f94d6e6bcef7ec5144447e164afed695fe9",
+      "active_sha256": "9889002bd7edd2ef461075ba3a2d8f94d6e6bcef7ec5144447e164afed695fe9",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_context_overflow_retry.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "a258de817556cbf03f3310c915b0aa380b1a9ef3651f8f8782352b141f6c3c60",
+      "active_sha256": "a258de817556cbf03f3310c915b0aa380b1a9ef3651f8f8782352b141f6c3c60",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_context_overflow_retry_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "65bfc3261ff550e58c95ffe30aaec8a1b189c487920c4e917837f62ba334e4b3",
+      "active_sha256": "65bfc3261ff550e58c95ffe30aaec8a1b189c487920c4e917837f62ba334e4b3",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_input_telemetry.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "301b82a833e6499f212dd8c59ba35876276900cb4b16f4896d1d95c3f68d8736",
+      "active_sha256": "301b82a833e6499f212dd8c59ba35876276900cb4b16f4896d1d95c3f68d8736",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_model_facing_persistence_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "43c4589c029e08311bce3dcbaf796025009bd91f8af7593bdab203032a0b2635",
+      "active_sha256": "43c4589c029e08311bce3dcbaf796025009bd91f8af7593bdab203032a0b2635",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_model_facing_trace.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "4028cabd12cb0a9cb06eae0c376c387505e90f08a2b77090343bab4f143a2805",
+      "active_sha256": "4028cabd12cb0a9cb06eae0c376c387505e90f08a2b77090343bab4f143a2805",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_model_resilience.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "a5528cc80e7b9406cf985c85c1a58a546748b2d97b6cc16f642db2abbeac6e92",
+      "active_sha256": "a5528cc80e7b9406cf985c85c1a58a546748b2d97b6cc16f642db2abbeac6e92",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_model_resilience_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "389ef3ecda2ced1c6595bebc684f7a2fc57be5b1e75310eef361234f333c546c",
+      "active_sha256": "389ef3ecda2ced1c6595bebc684f7a2fc57be5b1e75310eef361234f333c546c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_model_rewrite_pipeline.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "b97ba7997979fb9c7c1c19206137757feeb5f478e9a6facbe36af967598ed6cb",
+      "active_sha256": "b97ba7997979fb9c7c1c19206137757feeb5f478e9a6facbe36af967598ed6cb",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_native_model_retry_progress.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "6e11cff9778b847236d77dc6a49935fd5a6540fc70f5d14f64bb0fa678cb432a",
+      "active_sha256": "6e11cff9778b847236d77dc6a49935fd5a6540fc70f5d14f64bb0fa678cb432a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_native_model_retry_progress_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "f7aeb7297804d3ffe00fabc01efc2599f31f7e67e6d163b74215ff80c15fc5dc",
+      "active_sha256": "f7aeb7297804d3ffe00fabc01efc2599f31f7e67e6d163b74215ff80c15fc5dc",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_run_recovery_handler.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "d5c893c2f38d57bcd93f71a736665166d0bdc77dfcd029a68b851b59abd33081",
+      "active_sha256": "d5c893c2f38d57bcd93f71a736665166d0bdc77dfcd029a68b851b59abd33081",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_run_recovery_handler_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "1c6743532fbcd579fa51aaa1148e52ca0db00db368a836bae993874bad55d165",
+      "active_sha256": "1c6743532fbcd579fa51aaa1148e52ca0db00db368a836bae993874bad55d165",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_summarize_model_guard.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "53aa2166b3c93d20feac4379dd397cbb16d3d44208cce0cde4b1d40f9b30276e",
+      "active_sha256": "53aa2166b3c93d20feac4379dd397cbb16d3d44208cce0cde4b1d40f9b30276e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_summarize_model_guard_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "9c91582441e0dd278b4958298de98f0e98be592d5fcc6e528eec33121ccec761",
+      "active_sha256": "9c91582441e0dd278b4958298de98f0e98be592d5fcc6e528eec33121ccec761",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_summarize_payload.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "4b420fa5505ab477b2404b6a347e737f4426a938847b1919841dc6ab1610d1db",
+      "active_sha256": "76af1881388618f30cef04223190b8e244466517de099ed9f67eabb8efa46d47",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/multiagent/eino_summarize_payload.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/multiagent/eino_summarize_payload_test.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "9dbbc0c3fc41c2b666236b3ea3ebe6c355195ba61c5b5e1e583a943844eeca70",
+      "active_sha256": "52271a25e0ee16821c24fd0a6ed17473b848ebf28be17080bcda648bf30a8795",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/multiagent/eino_summarize_payload_test.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/multiagent/eino_tool_name_injection.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "f1ae7f54b65bcd74b95ff6abd705c80d68dc462d163c2ce0e7a38c56507cc6f3",
+      "active_sha256": "3043d1d276e742a3a4a6266db1c03fc2daf5d27de7528b2e2cc35431e284d2f1",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/multiagent/eino_tool_name_injection.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/multiagent/eino_transient_retry.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "cadf743955962650083280bc8c04723ca6ff7d2575f7b373592566e9097210c3",
+      "active_sha256": "cadf743955962650083280bc8c04723ca6ff7d2575f7b373592566e9097210c3",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_transient_retry_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "ce6a2afc57edb27805c69ae8d5cbe383e6ec7a6291a3c423e6482331d529f740",
+      "active_sha256": "ce6a2afc57edb27805c69ae8d5cbe383e6ec7a6291a3c423e6482331d529f740",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_transient_run_retry_handler.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "93a4966793e8ec0dab4ec2704c002dcc4f1323ec643c753da56007fbb2110310",
+      "active_sha256": "93a4966793e8ec0dab4ec2704c002dcc4f1323ec643c753da56007fbb2110310",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/eino_transient_run_retry_handler_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "66f84d5fde5b76941adfa8dbc488693e9747aec188aec223ac4ced1e5747497b",
+      "active_sha256": "66f84d5fde5b76941adfa8dbc488693e9747aec188aec223ac4ced1e5747497b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/gen_model_input.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "1c9c69e64659555b9423638fb44ec2dfcede270b9c637ad27bdc5b6c1fd3b877",
+      "active_sha256": "1c9c69e64659555b9423638fb44ec2dfcede270b9c637ad27bdc5b6c1fd3b877",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/gen_model_input_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "2a091d32bf587510d5046fc782d7b0f036d792d65c0cabfbe4e0df358eb369b7",
+      "active_sha256": "2a091d32bf587510d5046fc782d7b0f036d792d65c0cabfbe4e0df358eb369b7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/model_input_soft_budget_middleware.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "7c1108deb88666a77da6ca38170a3ee8bb302b368f7a32ce6f70efb3adc76bbb",
+      "active_sha256": "7c1108deb88666a77da6ca38170a3ee8bb302b368f7a32ce6f70efb3adc76bbb",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/model_output_recovery_compat.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "d4b8d4776d04760fefc57e3c39daf077950d15a5f6b9f69adeff0884709ebb04",
+      "active_sha256": "d4b8d4776d04760fefc57e3c39daf077950d15a5f6b9f69adeff0884709ebb04",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/model_output_recovery_compat_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "5414049eaa22186d41ab567864fb658d3b402c4d623eeb6c2aa54eb2d8a585bf",
+      "active_sha256": "5414049eaa22186d41ab567864fb658d3b402c4d623eeb6c2aa54eb2d8a585bf",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/no_nested_task.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "cc2e2fe39627e9d93f3b9fcf895e4434c93987f484d221b3f3ce243d227574f2",
+      "active_sha256": "cc2e2fe39627e9d93f3b9fcf895e4434c93987f484d221b3f3ce243d227574f2",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/plantask_local_backend.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "2938b3420c9fd3e78a84a4652fc453e656fda6aaa9fbd060ad4c4d0be9f1b332",
+      "active_sha256": "2938b3420c9fd3e78a84a4652fc453e656fda6aaa9fbd060ad4c4d0be9f1b332",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/plantask_local_backend_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "097b0ad3eb50328698c0c8ec10f0e8422c4a7ebd1264bb3559a6fac42e18b506",
+      "active_sha256": "097b0ad3eb50328698c0c8ec10f0e8422c4a7ebd1264bb3559a6fac42e18b506",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/multiagent/tool_pair_reconciler_middleware.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "1a9b9eb45ac758adee25cd080af18de1f1ab93e7f45ad6f27e31a676d508e8ec",
+      "active_sha256": "ac2393ef2681cb9d2bc0be15e865dbee32ecde1a1b6eb20f451d162a80199a2e",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/multiagent/tool_pair_reconciler_middleware.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/multiagent/tool_pair_reconciler_middleware_test.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "17f5bc2bc483bb5151b02e336cce321361536a849e35f170b8ba64ec58b44f7a",
+      "active_sha256": "9f1d621d79aa344a97f11c52c39bcdc54cc4cabe64a3061383cfbd2208f9aa5f",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/multiagent/tool_pair_reconciler_middleware_test.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/openai/reasoning_payload.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "88587a46ea256ed55a687a22aa4bf1bd48ace5bc7d45baa7acb99c1f6cb06c9f",
+      "active_sha256": "706874ce1694766855f2eb204805b854065e1ef1526dad006014bffe921abd3e",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/openai/reasoning_payload.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/openai/reasoning_payload_test.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "1ea6b32e688268c6b51f5fa881e73e580d55bc5a264554a9368e4074b2ffeb19",
+      "active_sha256": "7fab66b888e7ee6eccad57d336e0f2827663d15f26af4db4981c43e55f7a367c",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/openai/reasoning_payload_test.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/project/fact_recording_prompt.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "23053d049e71fc347494ab6dd9aae01c79c0d3bef194b91a6cff8203bf7f6cba",
+      "active_sha256": "23053d049e71fc347494ab6dd9aae01c79c0d3bef194b91a6cff8203bf7f6cba",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/project/vision_image_prompt.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "b394dac483e3c4a69c199cf93e4d02751bb46eb721073326cd10aed84b938f3d",
+      "active_sha256": "b394dac483e3c4a69c199cf93e4d02751bb46eb721073326cd10aed84b938f3d",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/projectprompt/blackboard.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "01c1dc06cc4186038d7393efd0dafadbd4e4258c243ac0a8f461f06e6e887e4f",
+      "active_sha256": "01c1dc06cc4186038d7393efd0dafadbd4e4258c243ac0a8f461f06e6e887e4f",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/projectprompt/shell_tools.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "61e24665e6a7a35f7a9b6cb56eca3a383a739bbb55b2c5040663cb25485080df",
+      "active_sha256": "61e24665e6a7a35f7a9b6cb56eca3a383a739bbb55b2c5040663cb25485080df",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/reasoning/eino.go",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "0981bda12e03d9836494210c9b07e79c634cf68dfeb11fbfc4d084b0b7fe9759",
+      "active_sha256": "11f21f091411e146b3dda896fd1302c34e5a6058492c1762c327b42dcb0c459e",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/reasoning/eino.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/robot/reconnect.go",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "49903a6b2de1de7c39fd0cd03bf98e838174a1cadffef468173b5451e85dcfaa",
+      "active_sha256": "3696cd8bf3010689708bdd157d926b9686e6bcaf85089ffa988bdd206e9354df",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/robot/reconnect.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/security/auth_manager.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "a6761319adb4075a0e8cf4bd3790fc28c0919eb0dc3c2103e768e370ef0d15b9",
+      "active_sha256": "a6761319adb4075a0e8cf4bd3790fc28c0919eb0dc3c2103e768e370ef0d15b9",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/security/auth_manager_bootstrap_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "ac4ac140deb728a4e11e34ed970e4d263179f34a3237769b6743bf06bf26c48a",
+      "active_sha256": "ac4ac140deb728a4e11e34ed970e4d263179f34a3237769b6743bf06bf26c48a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/security/auth_manager_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "6d15f47cfb95b955a8be6d3ad56c86c4d7ae47566b6ebed561187386e74a9a2e",
+      "active_sha256": "6d15f47cfb95b955a8be6d3ad56c86c4d7ae47566b6ebed561187386e74a9a2e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/security/auth_middleware.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "c0f15cb79b72b9ff0117098076289d2782abf7c4faa7199e47caf91b55c711ff",
+      "active_sha256": "c0f15cb79b72b9ff0117098076289d2782abf7c4faa7199e47caf91b55c711ff",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/security/command_failure_format_test.go",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "d095362080f6e368dbdb70526620fa1fd7b372f56ac9155515a2ffcd56812d04",
+      "active_sha256": "cb1f20862a50dc63f1a762f11fb9c7f66de56e515af8b5c3b4d3e06e41e178d8",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/security/command_failure_format_test.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/security/procattr_windows.go",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "ccff09eeefb17067219019130c92d160166c9d6fb451b05cab1f202b8e956d7c",
+      "active_sha256": "4e9d010c7886359f6fb5a59d6ca10c5288e0e5a4bc8ca64bbf0ee9e0a42c9fb7",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/security/procattr_windows.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/security/ratelimit.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "4cfcffe7b0767e33e05c00d57a459963e329ffed72acb7d1cff0969ee7a166c8",
+      "active_sha256": "4cfcffe7b0767e33e05c00d57a459963e329ffed72acb7d1cff0969ee7a166c8",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/security/shell_noninteractive_test.go",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "81c8f6ed8c85b4135373458dd2f3da6f924ea76f1170cebbfff0aea17dfd2a65",
+      "active_sha256": "bae00a022a09ac1ccb29d87a12e22cbdc091e8e437e6430ac9a13a0f943a3d33",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/security/shell_noninteractive_test.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/security/shell_session_test.go",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "6b7b0a5d79161900acb8796c7f906c4df79aad1b51724c2cf11e36dfd6ee720e",
+      "active_sha256": "8ff1c50bfce83b244f53b92c2dedf58d46f9e38fca13960145970f2afd243a0c",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/security/shell_session_test.go.original",
+      "link": true
+    },
+    {
+      "path": "internal/security/workflow_package_rbac_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "5061ff219210e5e128cbc30b001338cbce0cf1318f09bb75aae9ef70f7fdf937",
+      "active_sha256": "5061ff219210e5e128cbc30b001338cbce0cf1318f09bb75aae9ef70f7fdf937",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/skillpackage/service.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "0cbbbf37701e8c51b1115ccf61e2f07eeccfa9d2895f48f23fbb9df2d1b90dbf",
+      "active_sha256": "0cbbbf37701e8c51b1115ccf61e2f07eeccfa9d2895f48f23fbb9df2d1b90dbf",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/agent_subgraph.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "cfab527670eaf655d31286a7177e961c866eb43ab37b11e8bd961e1397c9c9d9",
+      "active_sha256": "cfab527670eaf655d31286a7177e961c866eb43ab37b11e8bd961e1397c9c9d9",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/bindings.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "88eb6b37bf38fa6c2977a9e123dff08824fea488cbc4b1b673067bbebf786fd0",
+      "active_sha256": "88eb6b37bf38fa6c2977a9e123dff08824fea488cbc4b1b673067bbebf786fd0",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/checkpoint_store.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "6b7416f46aa885fa30c25e115c50c63158722f98a791d5e59c435a122cd5d2c0",
+      "active_sha256": "6b7416f46aa885fa30c25e115c50c63158722f98a791d5e59c435a122cd5d2c0",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/draft_generator.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "9d1a108a9dcb3c6fc4b6b739b018c93ead795740748372efecc2285ee6960276",
+      "active_sha256": "9d1a108a9dcb3c6fc4b6b739b018c93ead795740748372efecc2285ee6960276",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/draft_generator_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "8e02d0de5b86ee3f19909b55bd6cbc754c2f98db209f6cc2be6e7ab296ac90b6",
+      "active_sha256": "8e02d0de5b86ee3f19909b55bd6cbc754c2f98db209f6cc2be6e7ab296ac90b6",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/dry_run.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "4691adcfcf5dca9d6cbdbb3d6de7007d4f9c010b484b3b848685f7f319456e6b",
+      "active_sha256": "4691adcfcf5dca9d6cbdbb3d6de7007d4f9c010b484b3b848685f7f319456e6b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/eino_branch.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "a44a810334eee139f833e5c2f67578c02cc24dc05e972a21bf3643dfdd203abe",
+      "active_sha256": "a44a810334eee139f833e5c2f67578c02cc24dc05e972a21bf3643dfdd203abe",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/eino_callbacks.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "784c823460e9ad4d5c8e7e6da3861d7d33139b66a3e72dc92f11b81ff67fb52b",
+      "active_sha256": "784c823460e9ad4d5c8e7e6da3861d7d33139b66a3e72dc92f11b81ff67fb52b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/eino_compile.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "00b032212ba4356870fd97f742c1ea6b3565c3814374fa0c46d59b5e31609b3c",
+      "active_sha256": "00b032212ba4356870fd97f742c1ea6b3565c3814374fa0c46d59b5e31609b3c",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/eino_compile_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "bafca7536ce298b69933b51c48fd0c2d39e81adcfa40a7bbf356acde1995469b",
+      "active_sha256": "bafca7536ce298b69933b51c48fd0c2d39e81adcfa40a7bbf356acde1995469b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/eino_runtime.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "9708582184f618d523a3c73838f96c55bc2085e1949d40491d01f660a36e7523",
+      "active_sha256": "9708582184f618d523a3c73838f96c55bc2085e1949d40491d01f660a36e7523",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/engine.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "85e6a406bec4008e186d002ba7303dbcc08caeef231fda047b40ec7ad4844abd",
+      "active_sha256": "85e6a406bec4008e186d002ba7303dbcc08caeef231fda047b40ec7ad4844abd",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/errors.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "82e1364c597217339cf78dd81f659dfbc76e1258cb643e2b0a53554f8d431085",
+      "active_sha256": "82e1364c597217339cf78dd81f659dfbc76e1258cb643e2b0a53554f8d431085",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/expression.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "597aff0276f18226081a808b115efafd5a0b47fa4494d3a44d12028d77bf49e1",
+      "active_sha256": "597aff0276f18226081a808b115efafd5a0b47fa4494d3a44d12028d77bf49e1",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/expression_join_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "84689b81882011d1b6085882f662830a843bf656e9b8d54fb2c9fb90bd4bd338",
+      "active_sha256": "84689b81882011d1b6085882f662830a843bf656e9b8d54fb2c9fb90bd4bd338",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/graph_types.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "3da0f2d4af5a60424bf63add85958df5149e778793219003ecce64d06863ef23",
+      "active_sha256": "3da0f2d4af5a60424bf63add85958df5149e778793219003ecce64d06863ef23",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/hitl_wait.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "1db040b3067e9864b4f1a412aa3e9e6a6f9bf86478810991679c09a9742d78c8",
+      "active_sha256": "1db040b3067e9864b4f1a412aa3e9e6a6f9bf86478810991679c09a9742d78c8",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/join.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "271551710c7f5d70c41e08666297975bd8c0addd672834bd385bf8857d96de7e",
+      "active_sha256": "271551710c7f5d70c41e08666297975bd8c0addd672834bd385bf8857d96de7e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/jsonpath.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "a7f6cd8374729b877e32d9ea74e9ffc75630a1e1c2e3c647da97c960d68160c1",
+      "active_sha256": "a7f6cd8374729b877e32d9ea74e9ffc75630a1e1c2e3c647da97c960d68160c1",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/metrics.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "9a1a07ac63f5f599303edb92fd8a547198fe4f5e7658820d63da4329e0ed9a69",
+      "active_sha256": "9a1a07ac63f5f599303edb92fd8a547198fe4f5e7658820d63da4329e0ed9a69",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/node_exec.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "066cf9745b704eaa33ead13b71e7b4e6ada01a0ccd0c5f3591467e8d6f696cc1",
+      "active_sha256": "066cf9745b704eaa33ead13b71e7b4e6ada01a0ccd0c5f3591467e8d6f696cc1",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/nodes.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "96eaf3dc17f80fd4eedbb70ea6b18c4ead322864a70ef52422c4347412b34eda",
+      "active_sha256": "96eaf3dc17f80fd4eedbb70ea6b18c4ead322864a70ef52422c4347412b34eda",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/package/exporter.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "4e03348541a6da88f7ac7c86a9372f646e9c4322f9d449f0976f03063232e0ba",
+      "active_sha256": "4e03348541a6da88f7ac7c86a9372f646e9c4322f9d449f0976f03063232e0ba",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/package/exporter_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "e4c4e9ca9e0c26856be26da0f20cac3e4ae0fc400a33d590da7a178e14c56105",
+      "active_sha256": "e4c4e9ca9e0c26856be26da0f20cac3e4ae0fc400a33d590da7a178e14c56105",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/package/inspector.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "aa4e9ccda5aa9e82c7a5fe88c094a1b4b1592a9abc50362bd8686586fbb252ee",
+      "active_sha256": "aa4e9ccda5aa9e82c7a5fe88c094a1b4b1592a9abc50362bd8686586fbb252ee",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/package/inspector_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "05ca9813c55f25adbf268a04ec124d397caabc47ff4cbb1177c79b7f5dc46b70",
+      "active_sha256": "05ca9813c55f25adbf268a04ec124d397caabc47ff4cbb1177c79b7f5dc46b70",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/package/manifest.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "f7df1cadeebe53b7f2f730cf3d322ac0c151bac2d8a53df8edb9269deab6faf1",
+      "active_sha256": "f7df1cadeebe53b7f2f730cf3d322ac0c151bac2d8a53df8edb9269deab6faf1",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/runner.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "0c6e3cee3369719d37f74b1e1fb4c0811c42c9b6594cc170055658fe6434ae21",
+      "active_sha256": "0c6e3cee3369719d37f74b1e1fb4c0811c42c9b6594cc170055658fe6434ae21",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/state.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "a0e6ebcc257c2441158b4a5b7e9feeabd81faca0b6d1a1b8407ff33cd740b220",
+      "active_sha256": "a0e6ebcc257c2441158b4a5b7e9feeabd81faca0b6d1a1b8407ff33cd740b220",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/structured_outputs.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "bc4fce98702af3315d1e8fd695abceeebf728c3aab59027ea3b6b9fe02336db7",
+      "active_sha256": "bc4fce98702af3315d1e8fd695abceeebf728c3aab59027ea3b6b9fe02336db7",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/tool_output_budget_test.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "8355f7431be7f32bf5d1e233ce4f8ba173f5179e53bdb5bda445671f5504032a",
+      "active_sha256": "8355f7431be7f32bf5d1e233ce4f8ba173f5179e53bdb5bda445671f5504032a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/types.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "09f46e9470a55e4c160c22cd8b6ae858407e19b4e2a8f41e6bc2c048bbdb1363",
+      "active_sha256": "09f46e9470a55e4c160c22cd8b6ae858407e19b4e2a8f41e6bc2c048bbdb1363",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "internal/workflow/validation.go",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "e91d5d9930e627b02d79f2a4d24bf33b1342f8decdf4a58a4134a37fff2b2cfd",
+      "active_sha256": "e91d5d9930e627b02d79f2a4d24bf33b1342f8decdf4a58a4134a37fff2b2cfd",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp-servers/reverse_shell/mcp_reverse_shell.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "70658f25771157767200569b706e8c414903a535a8546059718fe2a48267cc82",
+      "active_sha256": "020792ac0989db6eff1462accf03fe00c47ec16faf13ea368f8c3f24c99e646b",
+      "quarantine": "_yaiwes_upstream_quarantine/mcp-servers/reverse_shell/mcp_reverse_shell.py.original",
+      "link": true
+    },
+    {
+      "path": "plugins/browser-extension/cyberstrikeai-browser-extension/background/service-worker.js",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "78053feaadc79e742ad92abeb15c038a162c58dc9ab8ec338d003ac08c8be2b3",
+      "active_sha256": "78053feaadc79e742ad92abeb15c038a162c58dc9ab8ec338d003ac08c8be2b3",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "plugins/browser-extension/cyberstrikeai-browser-extension/lib/api.js",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "f0e82a125a7fb92056db352f425577fc686171f7e78a8be16007e53c6b97332e",
+      "active_sha256": "f0e82a125a7fb92056db352f425577fc686171f7e78a8be16007e53c6b97332e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "plugins/browser-extension/cyberstrikeai-browser-extension/lib/auth-session.js",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "a9567f0426df25e419966bc78fb6d36d09e716c756babd060e6f3c14dfae94e6",
+      "active_sha256": "a9567f0426df25e419966bc78fb6d36d09e716c756babd060e6f3c14dfae94e6",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "plugins/browser-extension/cyberstrikeai-browser-extension/lib/catalog-cache.js",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "2dbba6ed04f9c22af0e6fa50b179d663330140348814570aebbb6460ef35a403",
+      "active_sha256": "2dbba6ed04f9c22af0e6fa50b179d663330140348814570aebbb6460ef35a403",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "plugins/browser-extension/cyberstrikeai-browser-extension/lib/storage.js",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive content plus execution surface",
+      "original_sha256": "6a089b65ebf2287b95cc636fcc02b05f086ddae1bf483204803e24d387359e13",
+      "active_sha256": "3720ce1c6abbaf4d216836d8fd5d8d9cc7973a0bba3257de1468f5ef16c9ada9",
+      "quarantine": "_yaiwes_upstream_quarantine/plugins/browser-extension/cyberstrikeai-browser-extension/lib/storage.js.original",
+      "link": true
+    },
+    {
+      "path": "plugins/burp-suite/cyberstrikeai-burp-extension/src/main/java/burp/SslTrustAll.java",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "8a03faee7bae25fda29a15fcfd42ae04fb09cc8c8b528fc409e46bef61dc5ca3",
+      "active_sha256": "c96f77bcd981d142af696b9d3a8361bedf90496029d981dc21ae1e53202847ca",
+      "quarantine": "_yaiwes_upstream_quarantine/plugins/burp-suite/cyberstrikeai-burp-extension/src/main/java/burp/SslTrustAll.java.original",
+      "link": true
+    },
+    {
+      "path": "web/static/js/api-docs.js",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "279316f1ce8c0086c4a26e85d7e25f779afcd962d64fa6222e6337b72f1888f5",
+      "active_sha256": "279316f1ce8c0086c4a26e85d7e25f779afcd962d64fa6222e6337b72f1888f5",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/static/js/auth.js",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "bc07d66cd07d6e4da3f2f0295dd8a044b319f7d5d8568b3856addf0460faafd4",
+      "active_sha256": "bc07d66cd07d6e4da3f2f0295dd8a044b319f7d5d8568b3856addf0460faafd4",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/static/js/settings.js",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "59a468edbe8e662a6cdf3a3bb38157af213a4ccd1c08ade899be16f205b121eb",
+      "active_sha256": "59a468edbe8e662a6cdf3a3bb38157af213a4ccd1c08ade899be16f205b121eb",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/static/js/tasks.js",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "5f9cc84dab9379c272c8ee5950a7407264faed83d684c25930ecd47b353ee7d8",
+      "active_sha256": "5f9cc84dab9379c272c8ee5950a7407264faed83d684c25930ecd47b353ee7d8",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/static/js/terminal.js",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "630877bb6e77257d6c06e156c3f402a1c4f2eb53ea96e6e3169787fdd7e9b0b8",
+      "active_sha256": "6d6aa505788b20241f9f41817f1165efdd2f3c2e234307b38fcd98997435b6ef",
+      "quarantine": "_yaiwes_upstream_quarantine/web/static/js/terminal.js.original",
+      "link": true
+    },
+    {
+      "path": "web/static/js/vulnerability.js",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive path semantics",
+      "original_sha256": "2761bb4859d83496e48e0932b93d577d3b0f651c40da445966c08e91658d24ef",
+      "active_sha256": "e0324f23bf66fce54fdf20a22a41765ea3f668488b1130616f1cd48598521af6",
+      "quarantine": "_yaiwes_upstream_quarantine/web/static/js/vulnerability.js.original",
+      "link": true
+    },
+    {
+      "path": "web/static/js/workflow-package-client.js",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "0c1201ffc90c4ea6046754efe27c6d3d17ab74df6680d7395dfa4e5eb3c661dc",
+      "active_sha256": "0c1201ffc90c4ea6046754efe27c6d3d17ab74df6680d7395dfa4e5eb3c661dc",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "web/static/js/workflows.js",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "b3a9862f74955dfd20ccd8359fd2012c7981498d3594d381a08ab79ddb55c002",
+      "active_sha256": "b3a9862f74955dfd20ccd8359fd2012c7981498d3594d381a08ab79ddb55c002",
+      "quarantine": null,
+      "link": false
+    }
+  ],
+  "counts": {
+    "accounted": 247,
+    "restored_benign": 200,
+    "blocked_offensive": 37,
+    "review_fail_closed": 10,
+    "links": 47
+  }
+}

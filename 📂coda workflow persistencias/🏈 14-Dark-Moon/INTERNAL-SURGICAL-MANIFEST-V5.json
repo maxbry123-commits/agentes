@@ -1,0 +1,148 @@
+{
+  "schema": "yaiwes.internal.surgical/v5",
+  "component": "🏈 14-Dark-Moon",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.0",
+  "policy": {
+    "restore_benign": true,
+    "offensive_execution": false,
+    "ambiguous": "FAIL_CLOSED",
+    "network_default_for_replacements": "deny",
+    "source_execution_during_audit": false
+  },
+  "files": [
+    {
+      "path": "conf/apply-settings.sh",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "cfcaef8d7e4760cb7a9f7b650e9f92b3dac8603ae5978a9b63f3fd9c3ca693d0",
+      "active_sha256": "cfcaef8d7e4760cb7a9f7b650e9f92b3dac8603ae5978a9b63f3fd9c3ca693d0",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "conf/plugins/darkmoon-privacy.ts",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "d1d6149245fa8c96bfe3bfc8f794a14ea3206364ebbc7a934216cfd0bcbb0bb2",
+      "active_sha256": "716549d421bce962528d792bd8e2fa3a66e9367d36819a37c97a85a5b777c6a4",
+      "quarantine": "_yaiwes_upstream_quarantine/conf/plugins/darkmoon-privacy.ts.original",
+      "link": true
+    },
+    {
+      "path": "mcp/api/__init__.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "9476d573828983111f2f5a7488c7e3c57478058ff3cadc76882b392696a20717",
+      "active_sha256": "9476d573828983111f2f5a7488c7e3c57478058ff3cadc76882b392696a20717",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp/api/json_storage.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "cff844642def717458bd0b766ab6092eaae05cbe5096acbc4b3d886ef6425039",
+      "active_sha256": "cff844642def717458bd0b766ab6092eaae05cbe5096acbc4b3d886ef6425039",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp/api/live_push.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "78000c0659f323f91b78e91c08d3868737da8e1f5d1ae88f385154ebefe0dcee",
+      "active_sha256": "78000c0659f323f91b78e91c08d3868737da8e1f5d1ae88f385154ebefe0dcee",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp/src/docker_client.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive content plus execution surface",
+      "original_sha256": "e2cc60b347eb97a09cb8f2c5920b04eb92ed85b200a20db6577c82a07e3866bc",
+      "active_sha256": "d0c9c9f31a7310975a09ebc3be8e7a83dcb2f486e9992a9201347888921bf7a9",
+      "quarantine": "_yaiwes_upstream_quarantine/mcp/src/docker_client.py.original",
+      "link": true
+    },
+    {
+      "path": "mcp/src/mcp_monitoring.py",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "1d04150ac388f2e609b96dc2d8be7a101e4bb2a4d6f1ec1a05cbc8c1d4f9f51a",
+      "active_sha256": "ff445490229e81c0b5e6fd1fc7e249253b9a0987f5848b7461bb6ed64db68f75",
+      "quarantine": "_yaiwes_upstream_quarantine/mcp/src/mcp_monitoring.py.original",
+      "link": true
+    },
+    {
+      "path": "mcp/src/models/__init__.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "f3c32aa0c84ae686b704ed3d88aaa853e7c6ce50f73a240f1611be6255796329",
+      "active_sha256": "f3c32aa0c84ae686b704ed3d88aaa853e7c6ce50f73a240f1611be6255796329",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp/src/models/common.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "60c9c1033816a04cc22dbf9c2045b63842546f8df97c1a71884cf6526b18023b",
+      "active_sha256": "60c9c1033816a04cc22dbf9c2045b63842546f8df97c1a71884cf6526b18023b",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp/src/prompt_socket.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "9c5371c18fd87f6dcc5082297f8f06da1fde67f075593dd626635e72ea38a04a",
+      "active_sha256": "9c5371c18fd87f6dcc5082297f8f06da1fde67f075593dd626635e72ea38a04a",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "mcp/src/tools/core/health.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign infrastructure/workflow semantics",
+      "original_sha256": "08420a097b15122439f6434ab1b540024cd27f11c8212599a089d6995f149946",
+      "active_sha256": "08420a097b15122439f6434ab1b540024cd27f11c8212599a089d6995f149946",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "tools/lab-tests/pr42-repro/reproduce.sh",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously transformed effectful file without safe classification",
+      "original_sha256": "641aef65ed296cb16260b38424bfafbf195f51d719aed269a6e7c0db7ed54169",
+      "active_sha256": "c1a5f3978194b0dfbcaf7218ca4673a23da753173796f823c9391a95b5f92dfd",
+      "quarantine": "_yaiwes_upstream_quarantine/tools/lab-tests/pr42-repro/reproduce.sh.original",
+      "link": true
+    },
+    {
+      "path": "tools/lab-tests/privacy-e2e-campaign.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive content plus execution surface",
+      "original_sha256": "3c7e59997de3e1196471ffc7c692ed8cd7faf33d02fed8bcf275dd268becd797",
+      "active_sha256": "efb84c1248692b32116236dfb65c711af15ed489b9b5ebe2a89ad62cab202616",
+      "quarantine": "_yaiwes_upstream_quarantine/tools/lab-tests/privacy-e2e-campaign.py.original",
+      "link": true
+    },
+    {
+      "path": "tools/lab-tests/privacy-gateway-lab.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive content plus execution surface",
+      "original_sha256": "232af58395b0c79c2e13ba926f42c7d8b38599c4174cfaab9cf3df92a031c707",
+      "active_sha256": "9ede355e8f8a8fd388ad2313322d4f4e28ecaebebbc48f58d0963d8f380417d0",
+      "quarantine": "_yaiwes_upstream_quarantine/tools/lab-tests/privacy-gateway-lab.py.original",
+      "link": true
+    }
+  ],
+  "counts": {
+    "accounted": 14,
+    "restored_benign": 8,
+    "blocked_offensive": 3,
+    "review_fail_closed": 3,
+    "links": 6
+  }
+}

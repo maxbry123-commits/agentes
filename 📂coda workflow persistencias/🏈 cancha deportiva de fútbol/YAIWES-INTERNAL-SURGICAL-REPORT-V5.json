@@ -1,0 +1,206 @@
+{
+  "schema": "yaiwes.internal.surgical.report/v5",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.0",
+  "components": 24,
+  "files_accounted": 2121,
+  "restored_benign": 1322,
+  "blocked_offensive": 657,
+  "review_fail_closed": 142,
+  "links": 799,
+  "errors": [],
+  "summary": [
+    {
+      "component": "🏈 01-DeepAudit",
+      "accounted": 200,
+      "restored_benign": 168,
+      "blocked_offensive": 31,
+      "review_fail_closed": 1,
+      "links": 32
+    },
+    {
+      "component": "🏈 02-CyberStrikeAI",
+      "accounted": 247,
+      "restored_benign": 200,
+      "blocked_offensive": 37,
+      "review_fail_closed": 10,
+      "links": 47
+    },
+    {
+      "component": "🏈 03-LuaN1aoAgent",
+      "accounted": 36,
+      "restored_benign": 17,
+      "blocked_offensive": 5,
+      "review_fail_closed": 14,
+      "links": 19
+    },
+    {
+      "component": "🏈 04-AI-Pentest",
+      "accounted": 21,
+      "restored_benign": 9,
+      "blocked_offensive": 12,
+      "review_fail_closed": 0,
+      "links": 12
+    },
+    {
+      "component": "🏈 05-AI-Infra-Guard",
+      "accounted": 604,
+      "restored_benign": 236,
+      "blocked_offensive": 351,
+      "review_fail_closed": 17,
+      "links": 368
+    },
+    {
+      "component": "🏈 06-PentAGI",
+      "accounted": 400,
+      "restored_benign": 355,
+      "blocked_offensive": 34,
+      "review_fail_closed": 11,
+      "links": 45
+    },
+    {
+      "component": "🏈 07-Strix",
+      "accounted": 74,
+      "restored_benign": 41,
+      "blocked_offensive": 14,
+      "review_fail_closed": 19,
+      "links": 33
+    },
+    {
+      "component": "🏈 08-Redcell",
+      "accounted": 72,
+      "restored_benign": 61,
+      "blocked_offensive": 6,
+      "review_fail_closed": 5,
+      "links": 11
+    },
+    {
+      "component": "🏈 09-Shel",
+      "accounted": 24,
+      "restored_benign": 8,
+      "blocked_offensive": 10,
+      "review_fail_closed": 6,
+      "links": 16
+    },
+    {
+      "component": "🏈 10-Pentest-Swarm-AI",
+      "accounted": 119,
+      "restored_benign": 58,
+      "blocked_offensive": 51,
+      "review_fail_closed": 10,
+      "links": 61
+    },
+    {
+      "component": "🏈 11-LLM-CTF-Solver",
+      "accounted": 45,
+      "restored_benign": 29,
+      "blocked_offensive": 8,
+      "review_fail_closed": 8,
+      "links": 16
+    },
+    {
+      "component": "🏈 12-PentestGPT",
+      "accounted": 36,
+      "restored_benign": 3,
+      "blocked_offensive": 33,
+      "review_fail_closed": 0,
+      "links": 33
+    },
+    {
+      "component": "🏈 13-Auto-Pentest-LLM",
+      "accounted": 4,
+      "restored_benign": 4,
+      "blocked_offensive": 0,
+      "review_fail_closed": 0,
+      "links": 0
+    },
+    {
+      "component": "🏈 14-Dark-Moon",
+      "accounted": 14,
+      "restored_benign": 8,
+      "blocked_offensive": 3,
+      "review_fail_closed": 3,
+      "links": 6
+    },
+    {
+      "component": "🏈 15-Pentdem",
+      "accounted": 36,
+      "restored_benign": 9,
+      "blocked_offensive": 17,
+      "review_fail_closed": 10,
+      "links": 27
+    },
+    {
+      "component": "🏈 16-Autonomous-Pentest-Agent",
+      "accounted": 10,
+      "restored_benign": 5,
+      "blocked_offensive": 4,
+      "review_fail_closed": 1,
+      "links": 5
+    },
+    {
+      "component": "🏈 17-AI-Red-Team-Agent",
+      "accounted": 3,
+      "restored_benign": 2,
+      "blocked_offensive": 1,
+      "review_fail_closed": 0,
+      "links": 1
+    },
+    {
+      "component": "🏈 18-Agent-Smith",
+      "accounted": 75,
+      "restored_benign": 51,
+      "blocked_offensive": 13,
+      "review_fail_closed": 11,
+      "links": 24
+    },
+    {
+      "component": "🏈 19-TPT-Agent",
+      "accounted": 8,
+      "restored_benign": 6,
+      "blocked_offensive": 2,
+      "review_fail_closed": 0,
+      "links": 2
+    },
+    {
+      "component": "🏈 20-OpenWhale",
+      "accounted": 7,
+      "restored_benign": 4,
+      "blocked_offensive": 0,
+      "review_fail_closed": 3,
+      "links": 3
+    },
+    {
+      "component": "🏈 21-H-Pentest",
+      "accounted": 25,
+      "restored_benign": 19,
+      "blocked_offensive": 3,
+      "review_fail_closed": 3,
+      "links": 6
+    },
+    {
+      "component": "🏈 22-PHANTOM",
+      "accounted": 56,
+      "restored_benign": 29,
+      "blocked_offensive": 20,
+      "review_fail_closed": 7,
+      "links": 27
+    },
+    {
+      "component": "🏈 23-HackSynth",
+      "accounted": 5,
+      "restored_benign": 0,
+      "blocked_offensive": 2,
+      "review_fail_closed": 3,
+      "links": 5
+    },
+    {
+      "component": "🏈 24-Security-AI-Agent",
+      "accounted": 0,
+      "restored_benign": 0,
+      "blocked_offensive": 0,
+      "review_fail_closed": 0,
+      "links": 0
+    }
+  ]
+}

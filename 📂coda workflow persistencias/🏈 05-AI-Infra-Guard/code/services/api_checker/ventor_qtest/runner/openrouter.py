@@ -19,13 +19,58 @@ def fetch_model_endpoints(
     timeout: float = 30.0,
     base_url: str = OPENROUTER_BASE_URL,
 ) -> List[Dict[str, Any]]:
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'services/api_checker/ventor_qtest/runner/openrouter.py','step':'fetch_model_endpoints','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
+    """Fetch model endpoints from OpenRouter.
+
+    Response example endpoint:
+    ``GET /api/v1/models/{model}/endpoints``.
+    """
+
+    model = str(model or "").strip()
+    if not model:
+        raise ValueError("model 不能为空")
+
+    model_path = quote(model, safe="/")
+    url = f"{base_url.rstrip('/')}/api/v1/models/{model_path}/endpoints"
+    headers: Dict[str, str] = {"Accept": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    response = requests.get(url, headers=headers, timeout=timeout)
+    response.raise_for_status()
+    payload = response.json()
+
+    data = payload.get("data")
+    if not isinstance(data, Mapping):
+        raise RuntimeError("OpenRouter 返回格式异常：缺少 data 字段")
+
+    endpoints = data.get("endpoints")
+    if not isinstance(endpoints, list):
+        raise RuntimeError("OpenRouter 返回格式异常：缺少 endpoints 列表")
+
+    normalized: List[Dict[str, Any]] = []
+    for endpoint in endpoints:
+        if not isinstance(endpoint, Mapping):
+            continue
+        tag = str(endpoint.get("tag") or "").strip()
+        if not tag:
+            continue
+        normalized.append(
+            {
+                "provider_name": endpoint.get("provider_name"),
+                "tag": tag,
+                "quantization": endpoint.get("quantization"),
+                "context_length": endpoint.get("context_length"),
+                "max_completion_tokens": endpoint.get("max_completion_tokens"),
+                "uptime_last_30m": endpoint.get("uptime_last_30m"),
+                "latency_last_30m": endpoint.get("latency_last_30m"),
+                "throughput_last_30m": endpoint.get("throughput_last_30m"),
+                "pricing": endpoint.get("pricing"),
+            }
+        )
+
+    if not normalized:
+        raise RuntimeError(f"模型 {model} 未发现可用 provider endpoint")
+    return normalized
 
 
 def extract_provider_tags(endpoints: Sequence[Mapping[str, Any]]) -> List[str]:

@@ -1,4 +1,26 @@
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
 from __future__ import annotations
+from pathlib import Path
+import json
+
+SOURCE_ID = '8a5aa9960ce4229739a2e72675e027fe18f0ecc14b61503f6c67ae39eb6a8383'
+DECISION = 'REVIEW_FAIL_CLOSED'
+
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
 def yaiwes_persistence_step(payload=None):
-    return {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/cloud/spec.py','payload':dict(payload or {}),'status':'CHECKPOINTED'}
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
+
+def _q(*args, **kwargs):
+    return _yaiwes_checkpoint('_q', kwargs)
+
+class P:
+    pass
+
+class Cmd:
+    pass

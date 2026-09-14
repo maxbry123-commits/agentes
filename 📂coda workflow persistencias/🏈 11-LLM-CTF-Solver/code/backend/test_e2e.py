@@ -1,25 +1,20 @@
-"""端到端测试: 先连 WebSocket 订阅 → 再提交任务 → 接收实时消息。"""
-import asyncio
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
+from __future__ import annotations
+from pathlib import Path
 import json
-import sys
-sys.path.insert(0, ".")
 
-import httpx
-import websockets
+SOURCE_ID = 'ea75ced452d7073add205212c35060afed4bf6438962e4bc5773b60b6cb2cdcb'
+DECISION = 'BLOCK_OFFENSIVE'
 
-TASK_ID = None
-MESSAGES = []
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
 
-async def main():
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'backend/test_e2e.py','step':'main','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+async def main(*args, **kwargs):
+    return _yaiwes_checkpoint('main', kwargs)

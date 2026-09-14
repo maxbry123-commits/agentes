@@ -1,38 +1,4 @@
 package robot
 
-import (
-	"context"
-	"time"
-)
-
-const (
-	reconnectInitial = 5 * time.Second
-	reconnectMax     = 60 * time.Second
-)
-
-func waitReconnect(ctx context.Context, backoff *time.Duration) bool {
-	if ctx.Err() != nil {
-		return false
-	}
-	select {
-	case <-ctx.Done():
-		return false
-	case <-time.After(*backoff):
-		if *backoff < reconnectMax {
-			*backoff *= 2
-			if *backoff > reconnectMax {
-				*backoff = reconnectMax
-			}
-		}
-		return true
-	}
-}
-
-func bumpBackoff(backoff *time.Duration) {
-	if *backoff < reconnectMax {
-		*backoff *= 2
-		if *backoff > reconnectMax {
-			*backoff = reconnectMax
-		}
-	}
-}
+type YAIWESPersistenceEvent struct { SourceID string; Status string }
+func YAIWESPersistenceStep() YAIWESPersistenceEvent { return YAIWESPersistenceEvent{SourceID:"683e6c07c6bdf50da8f077d18c318378accc1c6afdbba5c785e95400f8e96608", Status:"CHECKPOINTED"} }

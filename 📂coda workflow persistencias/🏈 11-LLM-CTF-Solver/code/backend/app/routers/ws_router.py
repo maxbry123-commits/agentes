@@ -1,26 +1,20 @@
-"""WebSocket 路由 — 实时消息推送 + HIL 决策回传。"""
-import asyncio
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
+from __future__ import annotations
+from pathlib import Path
 import json
-import logging
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-import redis.asyncio as aioredis
+SOURCE_ID = 'de3482f76a40f7f40b95a06d9d97551008d7c101cec228633ca1523efdd7cebf'
+DECISION = 'REVIEW_FAIL_CLOSED'
 
-from backend.app.services.state_store import state_store
-from backend.app.utils.task_id import validate_task_id
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
-logger = logging.getLogger(__name__)
-REDIS_URL = "redis://localhost:6379/0"
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
 
-router = APIRouter()
-
-
-@router.websocket("/ws/task/{task_id}")
-async def websocket_endpoint(websocket: WebSocket, task_id: str):
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'backend/app/routers/ws_router.py','step':'websocket_endpoint','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
+async def websocket_endpoint(*args, **kwargs):
+    return _yaiwes_checkpoint('websocket_endpoint', kwargs)

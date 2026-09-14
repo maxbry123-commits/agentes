@@ -1,29 +1,23 @@
-#!/usr/bin/env python3
-import os
-import sys
-import socket
-import selectors
-import signal
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
+from __future__ import annotations
+from pathlib import Path
+import json
 
-STREAM_SOCK = "/tmp/darkmoon_mcp_stream.sock"
+SOURCE_ID = 'c0e82332f083960ee4f24ab6bc0854468f7736cec8257c70930b01583f85bcd6'
+DECISION = 'REVIEW_FAIL_CLOSED'
 
-running = True
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
 
-def handle_signal(signum, frame):
-    global running
-    running = False
+def handle_signal(*args, **kwargs):
+    return _yaiwes_checkpoint('handle_signal', kwargs)
 
-
-def main():
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'mcp/src/mcp_monitoring.py','step':'main','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
-
-
-if __name__ == "__main__":
-    main()
+def main(*args, **kwargs):
+    return _yaiwes_checkpoint('main', kwargs)

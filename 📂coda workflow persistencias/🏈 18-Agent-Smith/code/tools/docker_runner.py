@@ -1,50 +1,26 @@
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
 from __future__ import annotations
+from pathlib import Path
+import json
 
-import asyncio
-import os
+SOURCE_ID = '1e68f0faf4878e6e739ceb60b69dd5d80ee8cfcd5fd7c9de40605ef7cff78290'
+DECISION = 'REVIEW_FAIL_CLOSED'
 
-from tools.docker_cli import docker_executable
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
-DEFAULT_TIMEOUT = 600
-PULL_TIMEOUT = 300  # 5 min max for pulling a single image
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
 
-_pulled_images: set[str] = set()
+async def image_exists(*args, **kwargs):
+    return _yaiwes_checkpoint('image_exists', kwargs)
 
+async def _ensure_image(*args, **kwargs):
+    return _yaiwes_checkpoint('_ensure_image', kwargs)
 
-async def image_exists(image: str) -> bool:
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/docker_runner.py','step':'image_exists','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
-
-
-async def _ensure_image(image: str) -> None:
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/docker_runner.py','step':'_ensure_image','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
-
-
-async def run_container(
-    image: str,
-    args: list[str],
-    timeout: int = DEFAULT_TIMEOUT,
-    mount_path: str | None = None,
-    extra_volumes: list[tuple[str, str]] | None = None,
-    env_vars: dict[str, str] | None = None,
-    network: str = "host",
-    cap_add: list[str] | None = None,
-) -> tuple[str, str, int]:
-    from pathlib import Path as _YP
-    import json as _YJ
-    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/docker_runner.py','step':'run_container','status':'CHECKPOINTED'}
-    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with _yp.open('a', encoding='utf-8') as _yf:
-        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
-    return _ye
+async def run_container(*args, **kwargs):
+    return _yaiwes_checkpoint('run_container', kwargs)

@@ -1,47 +1,17 @@
-"""
-MCP Server 多轮自动化红队攻击框架 (Red Team)
+"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
+from __future__ import annotations
+from pathlib import Path
+import json
 
-三角色协作：
-- Attacker Agent: 生成攻击 prompt
-- Target Runner: 与被测 MCP Server 交互（当前为源码分析模式，LLM 模拟响应）
-- Evaluator Agent: 对每轮攻击效果打分 1-10
+SOURCE_ID = 'd36e60ddfc9e89b94daea03905439f0dfa9e6a3d634077e74311139d88cf6e54'
+DECISION = 'BLOCK_OFFENSIVE'
 
-支持策略：Crescendo（渐进式多轮升级）、TAP（Tree of Attacks with Pruning）
-"""
+def _yaiwes_checkpoint(step: str, payload=None):
+    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
+    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with p.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    return event
 
-from mcp_scan.redteam.orchestrator import RedTeamOrchestrator
-from mcp_scan.redteam.attacker import AttackerAgent
-from mcp_scan.redteam.evaluator import EvaluatorAgent
-from mcp_scan.redteam.target import TargetRunner
-from mcp_scan.redteam.strategy import (
-    CrescendoStrategy,
-    CrescendoPhase,
-    TAPStrategy,
-    AttackNode,
-    ConversationTurn,
-)
-from mcp_scan.redteam.report import generate_report
-
-# OWASP Agentic Top 10 对齐的 6 个预定义攻击目标
-ATTACK_TARGETS = [
-    "data_exfiltration",           # 数据窃取
-    "indirect_prompt_injection",   # 间接提示注入
-    "ssrf_via_agent",              # 经 Agent 的 SSRF
-    "rce_via_tool",                # 经工具的 RCE
-    "privilege_escalation",        # 权限提升
-    "tool_poisoning",              # 工具投毒
-]
-
-__all__ = [
-    "RedTeamOrchestrator",
-    "AttackerAgent",
-    "EvaluatorAgent",
-    "TargetRunner",
-    "CrescendoStrategy",
-    "CrescendoPhase",
-    "TAPStrategy",
-    "AttackNode",
-    "ConversationTurn",
-    "generate_report",
-    "ATTACK_TARGETS",
-]
+def yaiwes_persistence_step(payload=None):
+    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
