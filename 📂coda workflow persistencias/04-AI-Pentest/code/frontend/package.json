@@ -1,0 +1,31 @@
+{
+  "name": "ai-pentest-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "autoprefixer": "^10.4.24",
+    "axios": "^1.13.5",
+    "echarts": "^6.0.0",
+    "lucide-vue-next": "^0.564.0",
+    "postcss": "^8.5.6",
+    "tailwind-merge": "^3.4.0",
+    "tailwindcss": "^3.4.0",
+    "tdesign-icons-vue-next": "^0.4.2",
+    "tdesign-vue-next": "^1.18.2",
+    "vue": "^3.5.12",
+    "vue-echarts": "^8.0.1",
+    "vue-router": "^4.4.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.1.4",
+    "typescript": "~5.6.2",
+    "vite": "^5.4.10",
+    "vue-tsc": "^2.1.8"
+  }
+}

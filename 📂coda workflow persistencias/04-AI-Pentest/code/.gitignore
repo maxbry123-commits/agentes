@@ -1,0 +1,101 @@
+# ------------------------------
+# Operating system
+# ------------------------------
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ------------------------------
+# Editor / IDE
+# ------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ------------------------------
+# Python
+# ------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.Python
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Logs
+*.log
+logs/
+
+# ------------------------------
+# Node.js / Frontend
+# ------------------------------
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ------------------------------
+# Environment files
+# Keep example files tracked
+# ------------------------------
+.env
+.env.*
+!.env.example
+!backend/.env.example
+
+# ------------------------------
+# Project outputs
+# ------------------------------
+results/
+reports/
+artifacts/
+tmp/
+temp/
+*.tmp
+*.bak
+
+# Security scan outputs
+*.xml
+*.nessus
+*.pcap
+*.har
+
+# ------------------------------
+# Runtime / cache
+# ------------------------------
+*.pid
+*.seed
+*.out
+*.err
+.cache/

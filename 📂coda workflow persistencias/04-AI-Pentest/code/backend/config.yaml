@@ -1,0 +1,234 @@
+# 大模型Agent驱动的自动化渗透测试系统配置
+
+# ==================== 大模型配置 ====================
+llm:
+  # 默认使用的模型提供者
+  provider: "deepseek"  # 可选: deepseek, glm, qwen, openai
+
+  # API配置
+  api_keys:
+    deepseek: "${DEEPSEEK_API_KEY}"      # DeepSeek API Key
+    glm: "${GLM_API_KEY}"                 # 智谱AI API Key
+    qwen: "${QWEN_API_KEY}"               # 阿里云Qwen API Key
+    openai: "${OPENAI_API_KEY}"           # OpenAI API Key
+
+  # API端点 (如使用代理或自定义端点)
+  endpoints:
+    deepseek: "https://api.deepseek.com/v1"
+    glm: "https://open.bigmodel.cn/api/paas/v4"
+    qwen: "https://dashscope.aliyuncs.com/api/v1"
+    openai: "https://api.openai.com/v1"
+
+  # 模型配置
+  models:
+    deepseek: "deepseek-chat"
+    glm: "glm-4"
+    qwen: "qwen-turbo"
+    openai: "gpt-3.5-turbo"
+
+  # 请求配置
+  request:
+    timeout: 120              # 请求超时时间(秒)
+    max_retries: 3            # 最大重试次数
+    temperature: 0.7          # 温度参数
+    max_tokens: 4096          # 最大输出 tokens
+
+# ==================== 系统配置 ====================
+system:
+  # 工作模式
+  mode: "auto"  # auto: 自动模式, semi: 半自动模式, manual: 手动模式
+
+  # 并发控制
+  max_concurrent_tasks: 3     # 最大并发任务数
+
+  # 结果保存
+  save_results: true
+  results_dir: "./results"
+
+  # 日志配置
+  log_level: "INFO"           # DEBUG, INFO, WARNING, ERROR
+  log_file: "./logs/pentest.log"
+
+  # Kali工具配置
+  kali:
+    # 允许执行危险命令
+    allow_dangerous: false
+    
+    # 工具路径（Kali Linux默认路径）
+    tool_paths:
+      nmap: "/usr/bin/nmap"
+      masscan: "/usr/bin/masscan"
+      nikto: "/usr/bin/nikto"
+      dirb: "/usr/bin/dirb"
+      whatweb: "/usr/bin/whatweb"
+      sqlmap: "/usr/bin/sqlmap"
+      hydra: "/usr/bin/hydra"
+      medusa: "/usr/bin/medusa"
+      john: "/usr/bin/john"
+      hashcat: "/usr/bin/hashcat"
+      searchsploit: "/usr/bin/searchsploit"
+      msfconsole: "/usr/bin/msfconsole"
+      msfvenom: "/usr/bin/msfvenom"
+      nuceli: "/usr/bin/nuclei"
+      gobuster: "/usr/bin/gobuster"
+      ffuf: "/usr/bin/ffuf"
+      wpscan: "/usr/bin/wpscan"
+      responder: "/usr/bin/responder"
+      crackmapexec: "/usr/bin/crackmapexec"
+      empire: "/usr/bin/empire"
+      bloodhound: "/usr/bin/bloodhound"
+    
+    # 字典路径
+    wordlists:
+      default: "/usr/share/wordlists"
+      dirb_common: "/usr/share/wordlists/dirb/common.txt"
+      dirb_big: "/usr/share/wordlists/dirb/big.txt"
+      rockyou: "/usr/share/wordlists/rockyou.txt"
+      fasttrack: "/usr/share/fasttrack.txt"
+    
+    # 禁止执行的命令
+    blocklist:
+      - "rm -rf /"
+      - "dd if="
+      - ":(){:|:&};:"
+      - "mkfs"
+      - "fdisk"
+
+# ==================== 工具配置 ====================
+tools:
+  # 网络扫描工具
+  network:
+    nmap:
+      enabled: true
+      default_args: "-sV -sC -O"
+      timing: "T4"
+
+    masscan:
+      enabled: true
+      rate: 10000
+
+  # Web扫描工具
+  web:
+    nikto:
+      enabled: true
+      timeout: 300
+
+    dirb:
+      enabled: true
+      wordlist: "/usr/share/wordlists/dirb/common.txt"
+
+  # 漏洞扫描
+  vulnerability:
+    nvd_api_key: "${NVD_API_KEY}"
+
+  # 暴力破解
+  brute_force:
+    hydra:
+      enabled: true
+      max_tasks: 18
+
+    medusa:
+      enabled: true
+
+  # 后渗透
+  post_exploit:
+    meterpreter: false
+    cobalt_strike: false
+
+# ==================== 目标配置 ====================
+target:
+  # 支持的平台类型
+  platforms:
+    - linux
+    - windows
+    - web
+    - network设备
+
+  # 默认端口列表
+  common_ports: "21,22,23,25,53,80,110,139,143,443,445,993,995,3306,3389,5432,5900,8080,8443"
+
+  # Web服务默认端口
+  web_ports: "80,443,8080,8443,8888"
+
+# ==================== 渗透测试阶段配置 ====================
+phases:
+  # 信息收集阶段
+  recon:
+    enabled: true
+    steps:
+      - passive_dns
+      - whois
+      - port_scan
+      - service_detection
+      - os_detection
+
+  # 漏洞分析阶段
+  vuln_analysis:
+    enabled: true
+    steps:
+      - vulnerability_scan
+      - web_vulnerability_test
+      - configuration_audit
+
+  # 漏洞利用阶段
+  exploitation:
+    enabled: true
+    steps:
+      - exploit_attempt
+      - brute_force
+      - privilege_escalation
+
+  # 报告阶段
+  reporting:
+    enabled: true
+    format: ["json", "html", "markdown"]  # 输出格式
+    include_screenshots: false
+
+# ==================== 安全配置 ====================
+security:
+  # 速率限制
+  rate_limit:
+    enabled: true
+    requests_per_minute: 60
+
+  # 目标限制
+  target_restrictions:
+    # 禁止测试的IP范围
+    blocklist:
+      - "127.0.0.0/8"
+      - "10.0.0.0/8"
+      - "172.16.0.0/12"
+      - "192.168.0.0/16"
+
+    # 需要确认的IP范围
+    confirmlist: []
+
+  # 操作限制
+  restrictions:
+    # 禁止的危险操作
+    dangerous_operations:
+      - "ddos"
+      - "malware_deployment"
+      - "data_destruction"
+
+# ==================== 报告配置 ====================
+report:
+  # 报告模板
+  template: "default"
+
+  # 报告内容
+  include:
+    executive_summary: true
+    methodology: true
+    vulnerability_details: true
+    remediation: true
+    screenshots: false
+    raw_output: true
+
+  # 严重等级定义
+  severity:
+    critical: 9.0
+    high: 7.0
+    medium: 4.0
+    low: 1.0
+    info: 0.0
