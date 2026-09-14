@@ -1,0 +1,135 @@
+import { fork } from "node:child_process";
+import { toStringifiedError } from "@openclaw/normalization-core/error-coercion";
+import type { FileIdentityStat } from "./fs-safe-advanced.js";
+import { resolveRuntimeProcessEntrypointUrl } from "./runtime-process-url.js";
+import { resolveRuntimeWorkerArgv } from "./runtime-worker-url.js";
+import { readSqliteIntegrityFileIdentity } from "./sqlite-file-generation.js";
+import {
+  readSqliteInspectionBudget,
+  sqliteInspectionTimeoutError,
+} from "./sqlite-readonly-worker.js";
+
+export type SqliteIntegrityWorkerInput = {
+  pathname: string;
+  databaseLabel: string;
+  identity: FileIdentityStat;
+  busyTimeoutMs: number;
+};
+
+export type SqliteIntegrityWorkerResult =
+  | { ok: true }
+  | {
+      ok: false;
+      error: {
+        name: string;
+        message: string;
+        code?: string;
+        errcode?: number;
+        cause?: { message: string; code?: string; errcode?: number };
+      };
+    };
+
+export type SqliteIntegrityWorkerPhase = "opening" | "checking" | "closing";
+
+export type SqliteIntegrityWorkerMessage =
+  | SqliteIntegrityWorkerResult
+  | { type: "phase"; phase: SqliteIntegrityWorkerPhase };
+
+/** The caller retains its owning lease or private snapshot until the read-only child closes. */
+export function assertSqliteIntegrityInWorker(
+  pathname: string,
+  busyTimeoutMs: number,
+  signal: AbortSignal,
+  databaseLabel = pathname,
+): Promise<void> {
+  signal.throwIfAborted();
+  // The caller retains its owning lease through native exit. This witness
+  // detects observed path swaps; it is not native descriptor authority.
+  const identity = readSqliteIntegrityFileIdentity(pathname);
+  const { timeoutMs, size } = readSqliteInspectionBudget(
+    "integrity check",
+    databaseLabel,
+    identity.size,
+  );
+  const entry = resolveRuntimeProcessEntrypointUrl("sqliteIntegrity");
+  const worker = fork(entry, [], {
+    execArgv: resolveRuntimeWorkerArgv(entry).slice(0, -1),
+    serialization: "advanced",
+    stdio: ["ignore", "ignore", "ignore", "ipc"],
+    timeout: timeoutMs,
+    killSignal: "SIGKILL",
+    signal,
+  });
+  return new Promise((resolve, reject) => {
+    let result: SqliteIntegrityWorkerResult | undefined;
+    let failure: Error | undefined;
+    let lastObservedPhase: SqliteIntegrityWorkerPhase | "starting" | "result-received" = "starting";
+    worker.on("message", (message: SqliteIntegrityWorkerMessage) => {
+      if ("type" in message && message.type === "phase") {
+        if (
+          !result &&
+          (message.phase === "opening" ||
+            message.phase === "checking" ||
+            message.phase === "closing")
+        ) {
+          lastObservedPhase = message.phase;
+        }
+      } else if ("ok" in message) {
+        result = message;
+        lastObservedPhase = "result-received";
+      }
+    });
+    worker.on("error", (error) => {
+      failure = toStringifiedError(error);
+    });
+    // Native cancellation/timeout kills the child; ownership ends only at close.
+    worker.once("close", (code, closeSignal) => {
+      try {
+        signal.throwIfAborted();
+        if (failure) {
+          throw failure;
+        }
+        if (worker.killed && closeSignal === "SIGKILL") {
+          const error = sqliteInspectionTimeoutError(
+            "integrity check",
+            databaseLabel,
+            timeoutMs,
+            size,
+          );
+          error.message += ` (lastObservedPhase=${lastObservedPhase})`;
+          throw error;
+        }
+        if (code !== 0 || !result) {
+          throw new Error(
+            `SQLite integrity worker exited ${code} without a completed check (lastObservedPhase=${lastObservedPhase})`,
+          );
+        }
+        readSqliteIntegrityFileIdentity(pathname, identity);
+        if (!result.ok) {
+          const cause = result.error.cause
+            ? Object.assign(new Error(result.error.cause.message), result.error.cause)
+            : undefined;
+          throw Object.assign(new Error(result.error.message, cause ? { cause } : undefined), {
+            name: result.error.name,
+            code: result.error.code,
+            errcode: result.error.errcode,
+          });
+        }
+        resolve();
+      } catch (error) {
+        reject(toStringifiedError(error));
+      }
+    });
+    if (!signal.aborted) {
+      worker.send(
+        { pathname, databaseLabel, identity, busyTimeoutMs } satisfies SqliteIntegrityWorkerInput,
+        (error) => {
+          if (error) {
+            failure = error;
+            worker.kill("SIGKILL");
+          }
+        },
+      );
+    }
+  });
+}
