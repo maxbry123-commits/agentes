@@ -1,80 +1,15 @@
 name: YAIWES CODA Internal Transform V1
+
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/yaiwes-coda-internal-transform-v1.yml'
-      - '.github/scripts/yaiwes_internal_safe_transform.py'
+
 permissions:
   contents: write
+
 jobs:
   transform:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout CODA only
-        uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 1
-          lfs: false
-          filter: blob:none
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /.github/scripts/yaiwes_internal_safe_transform.py
-            /.github/workflows/yaiwes-coda-internal-transform-v1.yml
-            /📂coda workflow persistencias/
-      - name: Audit internal source surfaces
-        env:
-          YAIWES_MODE: AUDIT
+      - name: Deprecated in favor of V4
         run: |
-          set -euo pipefail
-          python3 .github/scripts/yaiwes_internal_safe_transform.py
-      - name: Transform internal source surfaces
-        env:
-          YAIWES_MODE: TRANSFORM
-        run: |
-          set -euo pipefail
-          python3 .github/scripts/yaiwes_internal_safe_transform.py
-      - name: Verify 24 component reports
-        run: |
-          set -euo pipefail
-          ROOT='📂coda workflow persistencias'
-          count=$(find "$ROOT" -maxdepth 2 -type f -name INTERNAL-TRANSFORM-AUDIT.json | wc -l)
-          echo "COMPONENT_REPORTS=$count"
-          test "$count" -eq 24
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          p=Path('📂coda workflow persistencias/🏈 cancha deportiva de fútbol/YAIWES-INTERNAL-TRANSFORM-V1.json')
-          d=json.loads(p.read_text(encoding='utf-8'))
-          assert d['components']==24
-          assert not d['errors'], d['errors']
-          assert d['changed'] > 0, d
-          print('SOURCE_FILES',d['source_files'],'CANDIDATES',d['candidates'],'CHANGED',d['changed'])
-          PY
-      - name: Re-test YAIWES persistence adapters
-        run: |
-          set -euo pipefail
-          ROOT='📂coda workflow persistencias'
-          count=0
-          while IFS= read -r -d '' tf; do
-            d="$(dirname "$tf")"
-            PYTHONPATH="$d" python3 "$tf"
-            count=$((count+1))
-          done < <(find "$ROOT" -type f -path '*/code/coda_persistence/test_yaiwes_persistence_adapter.py' -print0 | sort -z)
-          echo "ADAPTER_TESTS=$count"
-          test "$count" -eq 24
-      - name: Persist transformed internal code
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- '📂coda workflow persistencias'
-          if git diff --cached --quiet; then echo 'NO_CHANGES'; exit 1; fi
-          git commit -m 'feat(coda): transform 24 internal codebases to persistence steps'
-          git push origin HEAD:main
-      - name: Final readback
-        run: |
-          set -euo pipefail
-          git fetch origin main --depth=1
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo 'Use yaiwes-coda-internal-transform-v4.yml for the authoritative internal transformation pipeline.'
