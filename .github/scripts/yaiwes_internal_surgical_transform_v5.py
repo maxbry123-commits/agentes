@@ -167,7 +167,7 @@ def safe_replacement(ext: str, rel: str, original: str, decision: str) -> str:
         body.append("export default yaiwesPersistenceStep;")
         return "\n".join(body) + "\n"
     if ext == ".sh":
-        return "#!/usr/bin/env bash\nset -euo pipefail\necho '" + event + "' >> \"${BASH_SOURCE[0]%/*}/.yaiwes_internal_state.jsonl\"\n"
+        return f'#!/usr/bin/env bash\nset -euo pipefail\nprintf \'%s\\n\' \'{{"schema":"yaiwes.internal.persistence/v5","source_id":"{sid}","status":"CHECKPOINTED"}}\' >> .yaiwes_internal_state.jsonl\n'
     if ext == ".ps1":
         return "$e = '" + event + "'\nAdd-Content -Path (Join-Path $PSScriptRoot '.yaiwes_internal_state.jsonl') -Value $e\n"
     if ext == ".rb":
