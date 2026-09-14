@@ -1,0 +1,43 @@
+{
+  "bundle_bytes": 36346688,
+  "bundle_sha256": "db7449ab8f518a1aac30f957e12a2ea1be9a8afaed3c825f9891cf2f36e282d7",
+  "extracted_tree": {
+    "bytes": 44943465,
+    "files": 1102,
+    "sha256": "bdda767856e665136f43751e3b1eef9076c0d9845407b0d9b3efe1a46f1c097e"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "TencentDB-Agent-Memory.bundle.zip.part-0001",
+      "sha256": "313243cd063ab47f0877bd44308b82dcc63ab0ea6f7e4e1f361914e6396bcde2"
+    },
+    {
+      "bytes": 12582912,
+      "name": "TencentDB-Agent-Memory.bundle.zip.part-0002",
+      "sha256": "7b000f1887c9346fbada57acdc58f75905f5caf1a3b034f9718fcad4fd965d64"
+    },
+    {
+      "bytes": 11180864,
+      "name": "TencentDB-Agent-Memory.bundle.zip.part-0003",
+      "sha256": "f6e808726d883c135df9dbf46d8813a5e0470e689c0e8c0ee4f8e5508584b976"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "TencentDB-Agent-Memory",
+  "source_bytes": 44943465,
+  "source_commit": "0468a2a5b50eaafc54758ed1e2e6609472e5b6ce",
+  "source_files": 1102,
+  "source_ref": "HEAD",
+  "source_repo": "TencentCloud/TencentDB-Agent-Memory",
+  "source_tree": {
+    "bytes": 44943465,
+    "files": 1102,
+    "sha256": "bdda767856e665136f43751e3b1eef9076c0d9845407b0d9b3efe1a46f1c097e"
+  }
+}
