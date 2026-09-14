@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 4501295,
+  "bundle_sha256": "77d48b90b11eee5988b92587aac8ae3f65ba2ca550e55ba34f25d8f46c11d7f2",
+  "extracted_tree": {
+    "bytes": 13819235,
+    "files": 673,
+    "sha256": "7224a137687bb84b563e87bebbba523c820c7a4bf47ea740a0cacc9ebeb10c5e"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 4501295,
+      "name": "LangGraph.bundle.zip.part-0001",
+      "sha256": "77d48b90b11eee5988b92587aac8ae3f65ba2ca550e55ba34f25d8f46c11d7f2"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "LangGraph",
+  "source_bytes": 13819235,
+  "source_commit": "e539ac122f4126f6dd850581c1494948cf620e31",
+  "source_files": 673,
+  "source_ref": "HEAD",
+  "source_repo": "langchain-ai/langgraph",
+  "source_tree": {
+    "bytes": 13819235,
+    "files": 673,
+    "sha256": "7224a137687bb84b563e87bebbba523c820c7a4bf47ea740a0cacc9ebeb10c5e"
+  }
+}
