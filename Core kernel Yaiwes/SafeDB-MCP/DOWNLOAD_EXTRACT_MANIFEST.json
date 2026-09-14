@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 78210,
+  "bundle_sha256": "bc51f76266a52be807ac6772dc23cf963af2ce985437d3b41358f4ef2d87c28b",
+  "extracted_tree": {
+    "bytes": 273956,
+    "files": 47,
+    "sha256": "5902faf984ebcd706b532c4345c03b791ffd39b584f95dd6208562014b5c9002"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 78210,
+      "name": "SafeDB-MCP.bundle.zip.part-0001",
+      "sha256": "bc51f76266a52be807ac6772dc23cf963af2ce985437d3b41358f4ef2d87c28b"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "SafeDB-MCP",
+  "source_bytes": 273956,
+  "source_commit": "3a2f2cabb4c60e44d25822498b8a3b0fd9ded7b0",
+  "source_files": 47,
+  "source_ref": "HEAD",
+  "source_repo": "narekmalk/safedb-mcp",
+  "source_tree": {
+    "bytes": 273956,
+    "files": 47,
+    "sha256": "5902faf984ebcd706b532c4345c03b791ffd39b584f95dd6208562014b5c9002"
+  }
+}
