@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 652915,
+  "bundle_sha256": "8356047741b14ef57b06b903d5ac2b497e79be8a3cdc6505463eb8070b4e585e",
+  "extracted_tree": {
+    "bytes": 2216161,
+    "files": 190,
+    "sha256": "63785bcccce36aa39f9c496e02528b31f1b3d6f30cf9b1817b905d7205172d5a"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 652915,
+      "name": "MemForge.bundle.zip.part-0001",
+      "sha256": "8356047741b14ef57b06b903d5ac2b497e79be8a3cdc6505463eb8070b4e585e"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "MemForge",
+  "source_bytes": 2216161,
+  "source_commit": "16e2f15c5881a38911f64ca81b3dc0b25d6207ec",
+  "source_files": 190,
+  "source_ref": "HEAD",
+  "source_repo": "salishforge/memforge",
+  "source_tree": {
+    "bytes": 2216161,
+    "files": 190,
+    "sha256": "63785bcccce36aa39f9c496e02528b31f1b3d6f30cf9b1817b905d7205172d5a"
+  }
+}

@@ -1,0 +1,49 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-memforge}
+      POSTGRES_USER: ${POSTGRES_USER:-memforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env or environment}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./schema/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-memforge} -d ${POSTGRES_DB:-memforge}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  memforge:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-memforge}:${POSTGRES_PASSWORD:?err}@postgres:5432/${POSTGRES_DB:-memforge}
+      REDIS_URL: redis://redis:6379
+      PORT: ${PORT:-3333}
+    ports:
+      - "${PORT:-3333}:${PORT:-3333}"
+
+volumes:
+  pgdata:

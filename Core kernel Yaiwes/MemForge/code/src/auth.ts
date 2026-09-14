@@ -1,0 +1,197 @@
+// Bearer token authentication middleware for MemForge
+// Supports two modes:
+//   1. Simple token: compare against MEMFORGE_TOKEN (default)
+//   2. OAuth2 introspect: validate against external OAuth2 server (OAUTH2_REQUIRED=true)
+//
+// Multi-device note: when OAuth2 is in use, each device is provisioned with a
+// distinct OAuth2 client. The introspection response's `client_id` becomes
+// the per-device identity that downstream code can attach to memory rows for
+// audit/forensics and for the Phase 2.5 conflict-resolution device-freshness
+// tie-breaker. Use getClientId(req) to read it. With the simple bearer token
+// path, all devices share one token and getClientId() returns undefined —
+// per-device identity then surfaces only via the X-Memforge-Session-Id header.
+
+import type { Request, Response, NextFunction } from 'express';
+import { createHash, timingSafeEqual } from 'crypto';
+import { getLogger } from './logger.js';
+import { OAuthIntrospectSchema } from './schemas.js';
+import type { ValidatedOAuthIntrospect } from './schemas.js';
+
+const log = getLogger('auth');
+
+// Extend Express Request type with oauth2 context
+declare global {
+  namespace Express {
+    interface Request {
+      oauth2?: { client_id: string; scope: string };
+    }
+  }
+}
+
+const MEMFORGE_TOKEN = process.env['MEMFORGE_TOKEN'] ?? '';
+const OAUTH2_REQUIRED = process.env['OAUTH2_REQUIRED'] === 'true';
+
+const INTROSPECT_URL =
+  process.env['OAUTH2_INTROSPECT_URL'] ?? 'http://localhost:3005/oauth2/introspect';
+
+if (OAUTH2_REQUIRED) {
+  try {
+    const parsed = new URL(INTROSPECT_URL);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error('must use http or https');
+    }
+  } catch (err) {
+    throw new Error(`Invalid OAUTH2_INTROSPECT_URL: ${(err as Error).message}`);
+  }
+}
+
+interface TokenInfo {
+  active: boolean;
+  client_id: string;
+  scope: string;
+  cachedAt: number;
+}
+
+// 30-second in-process cache to avoid hammering the OAuth2 server.
+// Capped at 10,000 entries to prevent memory exhaustion from token spray attacks.
+const TOKEN_CACHE = new Map<string, TokenInfo>();
+const CACHE_TTL_MS = 30_000;
+const CACHE_MAX_SIZE = 10_000;
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, entry] of TOKEN_CACHE) {
+    if (now - entry.cachedAt > CACHE_TTL_MS) TOKEN_CACHE.delete(token);
+  }
+}, 60_000).unref();
+
+function constantTimeEqual(a: string, b: string): boolean {
+  const ha = createHash('sha256').update(a).digest();
+  const hb = createHash('sha256').update(b).digest();
+  return timingSafeEqual(ha, hb);
+}
+
+/**
+ * Express middleware: validate Bearer token and set req.oauth2.
+ *
+ * Auth modes (checked in order):
+ *   1. OAUTH2_REQUIRED=true → introspect against external server
+ *   2. MEMFORGE_TOKEN set → constant-time compare bearer token
+ *   3. Neither → unauthenticated pass-through (dev/test only)
+ */
+export async function bearerAuth(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  const authHeader = req.headers['authorization'];
+  const hasBearer = authHeader?.startsWith('Bearer ');
+
+  // No bearer token provided
+  if (!hasBearer) {
+    if (!OAUTH2_REQUIRED && !MEMFORGE_TOKEN) {
+      req.oauth2 = { client_id: 'anonymous', scope: 'memforge:read memforge:write' };
+      next();
+      return;
+    }
+    res.status(401).json({ ok: false, error: 'Authorization: Bearer <token> header required' });
+    return;
+  }
+
+  const token = authHeader!.slice(7);
+
+  // Mode 1: Simple token comparison (MEMFORGE_TOKEN)
+  if (MEMFORGE_TOKEN && !OAUTH2_REQUIRED) {
+    if (constantTimeEqual(token, MEMFORGE_TOKEN)) {
+      req.oauth2 = { client_id: 'token', scope: 'memforge:read memforge:write' };
+      next();
+      return;
+    }
+    res.status(401).json({ ok: false, error: 'Invalid token' });
+    return;
+  }
+
+  // Mode 2: OAuth2 introspect
+  const tokenKey = createHash('sha256').update(token).digest('hex');
+
+  const cached = TOKEN_CACHE.get(tokenKey);
+  if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
+    if (!cached.active) {
+      res.status(401).json({ ok: false, error: 'Token expired or revoked' });
+      return;
+    }
+    req.oauth2 = { client_id: cached.client_id, scope: cached.scope };
+    next();
+    return;
+  }
+
+  let data: ValidatedOAuthIntrospect;
+  try {
+    const response = await fetch(INTROSPECT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `token=${encodeURIComponent(token)}`,
+      signal: AbortSignal.timeout(5000),
+    });
+    const raw = await response.json();
+    const parseResult = OAuthIntrospectSchema.safeParse(raw);
+    if (!parseResult.success) {
+      log.error({ issues: parseResult.error.issues }, 'invalid introspect response');
+      res.status(503).json({ ok: false, error: 'OAuth2 server returned invalid response' });
+      return;
+    }
+    data = parseResult.data;
+  } catch (err) {
+    log.error({ err }, 'introspect failed');
+    res.status(503).json({ ok: false, error: 'OAuth2 server unavailable' });
+    return;
+  }
+
+  if (TOKEN_CACHE.size >= CACHE_MAX_SIZE) {
+    const firstKey = TOKEN_CACHE.keys().next().value;
+    if (firstKey !== undefined) TOKEN_CACHE.delete(firstKey);
+  }
+
+  TOKEN_CACHE.set(tokenKey, { ...data, cachedAt: Date.now() });
+
+  if (!data.active) {
+    res.status(401).json({ ok: false, error: 'Token expired or revoked' });
+    return;
+  }
+
+  req.oauth2 = { client_id: data.client_id, scope: data.scope };
+  next();
+}
+
+/**
+ * Express middleware: require a specific scope.
+ * Must run after bearerAuth (depends on req.oauth2 being set).
+ */
+/**
+ * Per-device identity (OAuth2 client_id) when introspection auth is active.
+ * Returns undefined under the simple-bearer path or when OAuth2 didn't
+ * provide a client_id. Anonymous fallback ('anonymous', 'unknown') is also
+ * mapped to undefined so downstream code never persists a placeholder.
+ */
+export function getClientId(req: Request): string | undefined {
+  const cid = req.oauth2?.client_id;
+  if (!cid || cid === 'anonymous' || cid === 'unknown') return undefined;
+  return cid;
+}
+
+export function requireScope(scope: string) {
+  return function scopeGuard(req: Request, res: Response, next: NextFunction): void {
+    const granted = req.oauth2?.scope?.split(/\s+/).filter(Boolean) ?? [];
+    if (granted.includes(scope)) {
+      next();
+      return;
+    }
+    const clientId = req.oauth2?.client_id ?? 'unknown';
+    log.warn({ clientId, required: scope, granted: req.oauth2?.scope ?? 'none', method: req.method, path: req.path }, 'scope denied');
+    res.status(403).json({
+      ok: false,
+      error: 'insufficient_scope',
+      required_scope: scope,
+    });
+  };
+}

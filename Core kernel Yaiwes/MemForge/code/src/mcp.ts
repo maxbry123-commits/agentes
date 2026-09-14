@@ -1,0 +1,1120 @@
+#!/usr/bin/env node
+// MemForge — Model Context Protocol (MCP) Server
+//
+// Exposes MemForge operations as MCP tools for use with Claude Code, Cursor,
+// and other MCP-compatible AI tools.
+//
+// Usage:
+//   npx memforge-mcp                         # stdio transport (default)
+//   MEMFORGE_URL=http://localhost:3333 npx memforge-mcp
+//
+// Add to Claude Code settings (~/.claude/settings.json):
+//   { "mcpServers": { "memforge": { "command": "npx", "args": ["memforge-mcp"] } } }
+//
+// Multi-device note:
+//   Each MCP launch generates a fresh per-process session_id (or honors
+//   MEMFORGE_SESSION_ID from the environment for stable per-device identity
+//   across restarts). The session_id is sent on every request as
+//   X-Memforge-Session-Id and isolates this device's hot-tier writes from
+//   other concurrent devices sharing the same agent_id. Set MEMFORGE_NAMESPACE
+//   to scope this MCP launch to a specific project (e.g. project-memforge).
+
+import { randomUUID } from 'crypto';
+import { MemForgeClient } from './client.js';
+import { VERSION } from './version.js';
+import type { JsonSchemaProperty } from './types.js';
+
+// ─── MCP Protocol Types ──────────────────────────────────────────────────────
+// Minimal types for MCP stdio transport — no external SDK dependency required.
+
+interface MCPRequest {
+  jsonrpc: '2.0';
+  id: number | string;
+  method: string;
+  params?: Record<string, unknown>;
+}
+
+interface MCPResponse {
+  jsonrpc: '2.0';
+  id: number | string;
+  result?: unknown;
+  error?: { code: number; message: string };
+}
+
+interface MCPToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: {
+    type: 'object';
+    properties: Record<string, JsonSchemaProperty>;
+    required?: string[];
+  };
+}
+
+// ─── Tool Registry ───────────────────────────────────────────────────────────
+
+const TOOLS: MCPToolDefinition[] = [
+  {
+    name: 'memforge_add',
+    description: 'Store a memory event in the hot tier. Use for recording interactions, decisions, facts, or observations.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        content: { type: 'string', description: 'Memory content to store' },
+        metadata: { type: 'object', description: 'Optional structured metadata' },
+        namespace: { type: 'string', description: 'Memory namespace (default: "default")' },
+      },
+      required: ['agent_id', 'content'],
+    },
+  },
+  {
+    name: 'memforge_query',
+    description: 'Search long-term memory. Supports keyword, semantic, and hybrid modes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        q: { type: 'string', description: 'Natural language search query' },
+        limit: { type: 'integer', description: 'Max results (default 10)' },
+        mode: { type: 'string', enum: ['keyword', 'semantic', 'hybrid'], description: 'Search mode' },
+        namespace: { type: 'string', description: 'Memory namespace (default: "default")' },
+        snippet_tokens: { type: 'integer', description: 'Return only the passages of each memory relevant to q, within this per-result token budget. A stored memory is often a whole conversation while the answer is one exchange, so this usually cuts context substantially. Omit for full content.' },
+      },
+      required: ['agent_id', 'q'],
+    },
+  },
+  {
+    name: 'memforge_timeline',
+    description: 'Retrieve memories in chronological order within an optional time range.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        from: { type: 'string', description: 'Start of time range (ISO 8601)' },
+        to: { type: 'string', description: 'End of time range (ISO 8601)' },
+        limit: { type: 'integer', description: 'Max results (default 50)' },
+        namespace: { type: 'string', description: 'Memory namespace (default: "default")' },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_entities',
+    description: 'Search knowledge graph entities (people, systems, organizations, concepts).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        q: { type: 'string', description: 'Search entity names' },
+        type: { type: 'string', description: 'Filter by entity type' },
+        limit: { type: 'integer', description: 'Max results (default 20)' },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_graph',
+    description: 'Traverse the knowledge graph from a specific entity. Returns connected nodes and edges.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        entity: { type: 'string', description: 'Starting entity name' },
+        depth: { type: 'integer', description: 'Traversal depth (default 2, max 5)' },
+      },
+      required: ['agent_id', 'entity'],
+    },
+  },
+  {
+    name: 'memforge_reflect',
+    description: 'Trigger a reflection — synthesizes insights and contradictions from recent memories.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        limit: { type: 'integer', description: 'Max memories to review (default 20)' },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_reflections',
+    description: 'Retrieve stored reflections (synthesized insights from past reviews).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        limit: { type: 'integer', description: 'Max results (default 10)' },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_consolidate',
+    description: 'Consolidate hot-tier events into searchable warm-tier memory. Call after adding multiple events.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        mode: { type: 'string', enum: ['concat', 'summarize'], description: 'Consolidation mode' },
+        namespace: { type: 'string', description: 'Memory namespace (default: "default")' },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_procedures',
+    description: 'Retrieve learned procedures — condition→action rules extracted from reflections.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        q: { type: 'string', description: 'Filter by condition/action text' },
+        limit: { type: 'integer', description: 'Max results (default 20)' },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_sleep',
+    description: 'Trigger a sleep cycle — scores importance, evicts low-value memories, revises low-confidence memories via LLM, maintains graph. Agent-wide: processes all namespaces for the agent.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        token_budget: { type: 'integer', description: 'Max tokens for LLM calls (default 100000)' },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_health',
+    description: 'Get memory health metrics — importance, confidence, revision velocity, stability, contradiction rate.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_stats',
+    description: 'Get memory statistics — counts across tiers, entities, relationships, and reflections.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        namespace: { type: 'string', description: 'Memory namespace (default: overall stats)' },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_feedback',
+    description: 'Record whether retrieved memories led to good outcomes. Links retrieval events to success/failure for self-improvement.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        retrieval_ids: { type: 'array', items: { type: 'integer' }, description: 'Retrieval log IDs to provide feedback on' },
+        outcome: { type: 'string', enum: ['positive', 'negative', 'neutral'], description: 'Whether the retrieved memories were helpful' },
+      },
+      required: ['agent_id', 'retrieval_ids', 'outcome'],
+    },
+  },
+  {
+    name: 'memforge_meta_reflect',
+    description: 'Trigger meta-reflection — synthesizes higher-order principles from accumulated first-order reflections.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        limit: { type: 'integer', description: 'Max reflections to review (default 10, min 3)' },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_dedup_entities',
+    description: 'Detect and merge duplicate entities in the knowledge graph using trigram similarity.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        threshold: { type: 'number', description: 'Similarity threshold 0.3-1.0 (default 0.7)' },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_active_recall',
+    description: 'Proactively surface relevant memories and procedures before taking an action. Use this to check "what should I know before doing X?"',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        context: { type: 'string', description: 'What the agent is about to do (natural language)' },
+        limit: { type: 'integer', description: 'Max memories to surface (default 5)' },
+      },
+      required: ['agent_id', 'context'],
+    },
+  },
+  {
+    name: 'memforge_cold_search',
+    description: 'Search archived (cold tier) memories. Use for audit, recovery, and compliance. Returns rows still within retention window.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        q: { type: 'string', description: 'Substring match on content (case-insensitive)' },
+        namespace: { type: 'string', description: 'Filter by namespace (default: "default")' },
+        from: { type: 'string', description: 'Filter archived_at >= from (ISO 8601)' },
+        to: { type: 'string', description: 'Filter archived_at <= to (ISO 8601)' },
+        source_table: { type: 'string', enum: ['hot_tier', 'warm_tier'], description: 'Filter by source table' },
+        limit: { type: 'integer', description: 'Max results (default 50, max 500)' },
+        offset: { type: 'integer', description: 'Rows to skip for pagination' },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_cold_restore',
+    description: 'Restore a cold tier row to warm tier for reactivation. Non-destructive — the cold row is preserved for audit.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        cold_id: { type: 'string', description: 'cold_tier row id to restore' },
+        namespace: { type: 'string', description: 'Override namespace on restore (defaults to cold row\'s original namespace)' },
+      },
+      required: ['agent_id', 'cold_id'],
+    },
+  },
+  {
+    name: 'memforge_sleep_advisory',
+    description: 'Get an adaptive sleep-cycle recommendation. Advisory only — MemForge has no built-in scheduler. Callers (cron jobs, control planes) read the urgency and reason and decide whether to call memforge_sleep.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_publish_procedures',
+    description: 'Publish an agent\'s active procedures (condition→action rules) to a shared pool. Applies a 0.8× confidence discount per hop. The agent must be a pool member.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent whose procedures to publish' },
+        pool_id: { type: 'string', description: 'Target shared pool ID' },
+        min_confidence: { type: 'number', description: 'Minimum confidence threshold (0–1, default 0)', minimum: 0, maximum: 1 },
+        namespace: { type: 'string', description: 'Namespace to filter procedures (default: "default")' },
+      },
+      required: ['agent_id', 'pool_id'],
+    },
+  },
+  {
+    name: 'memforge_shared_procedures',
+    description: 'List active procedures shared in a pool, ranked by confidence and corroboration. Use to discover what condition→action rules other agents have learned.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pool_id: { type: 'string', description: 'Pool ID to query' },
+        q: { type: 'string', description: 'Optional text filter on condition or action' },
+        limit: { type: 'number', description: 'Max results (default 50, max 200)', minimum: 1, maximum: 200 },
+      },
+      required: ['pool_id'],
+    },
+  },
+  {
+    name: 'memforge_expertise',
+    description: 'Discover which pool members know the most about a topic. Returns agents ranked by relevance score with sample matching memories. Use to route questions to the right agent.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pool_id: { type: 'string', description: 'Pool to search across' },
+        q: { type: 'string', description: 'Topic or question to match against agent memories' },
+        limit: { type: 'number', description: 'Max agents to return (default 10, max 50)', minimum: 1, maximum: 50 },
+      },
+      required: ['pool_id', 'q'],
+    },
+  },
+  {
+    name: 'memforge_declare_role',
+    description: 'Declare an expertise domain for an agent. Roles are used by expertise discovery and for routing queries in multi-agent systems. Upserts on (agent_id, domain).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent to declare the role for' },
+        domain: { type: 'string', description: 'Domain name (e.g. "security", "frontend", "person")' },
+        confidence: { type: 'number', description: 'Confidence in this role (0–1)', minimum: 0, maximum: 1 },
+        description: { type: 'string', description: 'Human-readable description of the role' },
+      },
+      required: ['agent_id', 'domain'],
+    },
+  },
+  {
+    name: 'memforge_roles',
+    description: 'Get all declared expertise roles for an agent, ordered by confidence. Includes both manually declared and auto-detected roles.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_detect_roles',
+    description: 'Auto-detect expertise roles from an agent\'s knowledge graph and active procedures. Updates or creates role entries with auto_detected=true.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_set_validity',
+    description: 'Set or clear the validity window on a warm-tier memory. Memories past valid_until are penalized during sleep cycles.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        warm_id: { type: 'string', description: 'warm_tier row id' },
+        valid_until: { type: 'string', description: 'ISO-8601 expiry; omit or null to clear' },
+      },
+      required: ['agent_id', 'warm_id'],
+    },
+  },
+  {
+    name: 'memforge_record_procedure_outcome',
+    description: 'Record the outcome of executing a procedure. Success/failure counts drive confidence evolution during sleep cycles.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        procedure_id: { type: 'string', description: 'procedures row id' },
+        outcome: { type: 'string', enum: ['positive', 'negative', 'neutral'], description: 'Outcome classification' },
+      },
+      required: ['agent_id', 'procedure_id', 'outcome'],
+    },
+  },
+  {
+    name: 'memforge_drift',
+    description: 'Fetch drift-detection report based on recent drift_signals snapshots. Trend classification: stable | degrading | recovering | insufficient_data.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_deprecate_namespace',
+    description: 'Mark a namespace as deprecated. Sleep cycles will actively decay importance and confidence of memories in this namespace each cycle, eventually evicting them. Reversible.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        namespace: { type: 'string', description: 'Namespace to deprecate' },
+        reason: { type: 'string', description: 'Optional human-readable reason' },
+      },
+      required: ['agent_id', 'namespace'],
+    },
+  },
+  {
+    name: 'memforge_undeprecate_namespace',
+    description: 'Reverse a namespace deprecation. Future sleep cycles stop decaying its rows.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        namespace: { type: 'string', description: 'Namespace to restore' },
+      },
+      required: ['agent_id', 'namespace'],
+    },
+  },
+  {
+    name: 'memforge_list_deprecated_namespaces',
+    description: "List the agent's deprecated namespaces, newest first.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_dreams_create',
+    description: 'Enqueue a dream run — async sleep-cycle job mirroring Anthropic Claude Dreaming. Returns a run id (status="pending"); poll memforge_dreams_status until terminal.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        namespace: { type: 'string', description: 'Memory namespace; defaults to "default"' },
+        session_ids: {
+          type: 'array',
+          description: 'Subset of per-device session_ids to scope the run to. Hard cap 100 (matches Anthropic Dreams).',
+          items: { type: 'string' },
+        },
+        model: { type: 'string', description: 'Model identifier — pass-through for source="anthropic", advisory for "local".' },
+        instructions: { type: 'string', description: 'Free-text guidance plumbed into Phase 3 (Revision) prompt. Max 4096 chars.' },
+        source: { type: 'string', enum: ['local', 'anthropic'], description: "'local' uses MemForge's own cycle (default). 'anthropic' delegates to Anthropic Dreams (requires Service layer)." },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_dreams_status',
+    description: 'Fetch a dream run by id. Useful for polling pending or running cycles.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        run_id: { type: 'string', description: 'Dream run UUID returned by memforge_dreams_create.' },
+      },
+      required: ['agent_id', 'run_id'],
+    },
+  },
+  {
+    name: 'memforge_dreams_list',
+    description: 'List dream runs for an agent. Filter by status or source.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        status: { type: 'string', enum: ['pending', 'running', 'completed', 'failed', 'canceled'], description: 'Filter by run status.' },
+        source: { type: 'string', enum: ['local', 'anthropic', 'bridge_pull', 'bridge_push'], description: 'Filter by run source.' },
+        limit: { type: 'number', description: 'Max results (default 50, max 500)', minimum: 1, maximum: 500 },
+        offset: { type: 'number', description: 'Rows to skip', minimum: 0 },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_dreams_cancel',
+    description: 'Request cancellation of a dream run. Pending runs go straight to "canceled"; running runs exit at the next phase boundary.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        run_id: { type: 'string', description: 'Dream run UUID.' },
+      },
+      required: ['agent_id', 'run_id'],
+    },
+  },
+  {
+    name: 'memforge_anthropic_push',
+    description: 'Bridge: export warm-tier rows for an agent/namespace to an Anthropic Memory Store. Requires DREAMS_PROVIDER=anthropic + ANTHROPIC_API_KEY on the server.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        namespace: { type: 'string', description: 'Memory namespace; defaults to "default"' },
+        limit: { type: 'number', description: 'Max rows to push (default 1000, max 5000)', minimum: 1, maximum: 5000 },
+        external_store_id: { type: 'string', description: 'Existing memory store id to update; omit to create a new one.' },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_anthropic_pull',
+    description: "Bridge: import records from an Anthropic Memory Store into warm_tier. Strategies: anthropic-wins (default — overwrite), memforge-wins (insert net-new only), merge (overwrite content, preserve local metadata).",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        external_store_id: { type: 'string', description: 'Anthropic memory store id to read from.' },
+        namespace: { type: 'string', description: 'Target namespace; defaults to "default"' },
+        strategy: { type: 'string', enum: ['memforge-wins', 'anthropic-wins', 'merge'], description: "Conflict policy. Default 'anthropic-wins'." },
+      },
+      required: ['agent_id', 'external_store_id'],
+    },
+  },
+  {
+    name: 'memforge_anthropic_sync_state',
+    description: 'Bridge: report current sync state for an agent/namespace — known store links, last push/pull timestamps, and a drift indicator (warm rows newer than the most recent push).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        namespace: { type: 'string', description: 'Memory namespace; defaults to "default"' },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_certainty',
+    description: 'Query memories filtered by epistemic confidence level. Returns only results at or above the specified certainty threshold. Use only_established for the most reliable memories, include_provisional for most queries, include_contested to see what the agent is uncertain about, or all to see everything including deprecated/inferred.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        q: { type: 'string', description: 'Search query' },
+        epistemic: { type: 'string', enum: ['only_established', 'include_provisional', 'include_contested', 'all'], description: 'Epistemic filter level (default: include_provisional)' },
+        limit: { type: 'integer', description: 'Max results (default 10)', minimum: 1, maximum: 200 },
+        namespace: { type: 'string', description: 'Memory namespace (default: "default")' },
+      },
+      required: ['agent_id', 'q'],
+    },
+  },
+  {
+    name: 'memforge_epistemic_profile',
+    description: 'Return the count of warm-tier memories per epistemic_status for an agent. Useful for gauging how much of the knowledge base is well-corroborated (established) vs. newly accepted (provisional) vs. uncertain (contested/inferred/deprecated).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_explain',
+    description: "Explain a warm-tier memory's current state — scores, epistemic status, access patterns, and its standing against the sleep-cycle score thresholds (eviction and low-confidence revision channels).",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        warm_id: { type: 'string', description: 'warm_tier row id to explain (numeric string, int8 range)' },
+      },
+      required: ['agent_id', 'warm_id'],
+    },
+  },
+  {
+    name: 'memforge_causal_chain',
+    description: 'Traverse causal relationships from a warm-tier memory. Returns a chain of cause/effect memories with edge strength and confidence.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        memory_id: { type: 'string', description: 'Starting warm_tier row id (numeric string, int8 range)' },
+        direction: { type: 'string', enum: ['causes', 'effects'], description: "'effects' walks downstream (what this memory led to), 'causes' upstream (what led to it)" },
+        depth: { type: 'integer', description: 'Max traversal depth (default 3)', minimum: 1, maximum: 10 },
+      },
+      required: ['agent_id', 'memory_id', 'direction'],
+    },
+  },
+  {
+    name: 'memforge_predict',
+    description: 'Predict probable next events for a context, based on causal edges mined from memory sequences. Probability is a relative ranking signal (confidence-scaled, monotonic in edge strength), not a calibrated probability.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        context: { type: 'string', description: 'Current situation description (max 10000 chars)' },
+        namespace: { type: 'string', description: 'Memory namespace (default: "default")' },
+      },
+      required: ['agent_id', 'context'],
+    },
+  },
+  {
+    name: 'memforge_principles',
+    description: "Retrieve an agent's active principles — cross-cutting rules distilled from meta-reflections by the sleep cycle. Ordered by confidence then recency, capped at 50.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        namespace: { type: 'string', description: 'Memory namespace (default: "default")' },
+        limit: { type: 'integer', description: 'Max results (default 50)', minimum: 1, maximum: 50 },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_mental_models',
+    description: "Return an agent's stored mental_model-level abstractions. Sleep Phase 5.11 currently auto-extracts only the 'principle' level, so this is empty until a future phase (or a direct database write) creates mental_model rows.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Agent/session identifier' },
+        namespace: { type: 'string', description: 'Memory namespace (default: "default")' },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'memforge_bootstrap',
+    description: 'Bootstrap a new agent from an experienced one: copies established memories, active procedures, and active principles at half confidence. Memories and procedures are marked _transferred_from (principles carry no marker — no metadata column). Idempotent — knowledge the target already carries is skipped. Both agents must live in this deployment.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        source_agent_id: { type: 'string', description: 'Agent to copy knowledge from' },
+        target_agent_id: { type: 'string', description: 'Agent to bootstrap' },
+        namespace: { type: 'string', description: 'Memory namespace (default: "default")' },
+        max_memories: { type: 'integer', description: 'Max memories to transfer (default 100, max 1000)', minimum: 0, maximum: 1000 },
+        max_procedures: { type: 'integer', description: 'Max procedures to transfer (default 20, max 100)', minimum: 0, maximum: 100 },
+        max_principles: { type: 'integer', description: 'Max principles to transfer (default 10, max 100)', minimum: 0, maximum: 100 },
+      },
+      required: ['source_agent_id', 'target_agent_id'],
+    },
+  },
+];
+
+// ─── Input Validation ────────────────────────────────────────────────────────
+
+const AGENT_ID_RE = /^[\w.@:=-]+$/;
+
+// Tools that use pool_id or their own agent pair instead of a generic agent_id
+const POOL_ONLY_TOOLS = new Set(['memforge_shared_procedures', 'memforge_expertise', 'memforge_bootstrap']);
+
+function validateToolArgs(name: string, args: Record<string, unknown>): void {
+  // agent_id: required for agent-scoped tools
+  if (!POOL_ONLY_TOOLS.has(name)) {
+    const agentId = args['agent_id'];
+    if (typeof agentId !== 'string' || agentId.length < 1 || agentId.length > 256 || !AGENT_ID_RE.test(agentId)) {
+      throw new Error('agent_id must be a string of 1-256 characters matching /^[\\w.@:=-]+$/');
+    }
+  }
+
+  // q param: string, max 10000 chars
+  if ('q' in args && args['q'] !== undefined) {
+    if (typeof args['q'] !== 'string' || args['q'].length > 10000) {
+      throw new Error('q must be a string of at most 10000 characters');
+    }
+  }
+
+  // limit param: number, 1-200
+  if ('limit' in args && args['limit'] !== undefined) {
+    const limit = args['limit'];
+    if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 200) {
+      throw new Error('limit must be an integer between 1 and 200');
+    }
+  }
+
+  // content param: string, max 100000 chars (100KB)
+  if ('content' in args && args['content'] !== undefined) {
+    if (typeof args['content'] !== 'string' || args['content'].length > 100000) {
+      throw new Error('content must be a string of at most 100000 characters');
+    }
+  }
+
+  // memforge_explain warm_id: numeric string within int8 range (warm_tier.id is BIGSERIAL)
+  if (name === 'memforge_explain') {
+    const warmId = args['warm_id'];
+    if (typeof warmId !== 'string' || !/^\d+$/.test(warmId) || BigInt(warmId) > 9223372036854775807n) {
+      throw new Error('warm_id must be a numeric string within int8 range');
+    }
+  }
+
+  // memforge_causal_chain: memory_id numeric string within int8 range
+  // (warm_tier.id is BIGSERIAL); direction must be the validated enum
+  if (name === 'memforge_causal_chain') {
+    const memoryId = args['memory_id'];
+    if (typeof memoryId !== 'string' || !/^\d+$/.test(memoryId) || BigInt(memoryId) > 9223372036854775807n) {
+      throw new Error('memory_id must be a numeric string within int8 range');
+    }
+    const direction = args['direction'];
+    if (direction !== 'causes' && direction !== 'effects') {
+      throw new Error("direction must be 'causes' or 'effects'");
+    }
+  }
+
+  // memforge_predict context: non-empty string, max 10000 chars
+  if (name === 'memforge_predict') {
+    const context = args['context'];
+    if (typeof context !== 'string' || context.length < 1 || context.length > 10000) {
+      throw new Error('context must be a non-empty string of at most 10000 characters');
+    }
+  }
+
+  // memforge_principles limit: the REST route rejects limit > 50, tighter
+  // than the generic 1-200 rule above
+  if (name === 'memforge_principles' && 'limit' in args && args['limit'] !== undefined) {
+    const limit = args['limit'];
+    if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 50) {
+      throw new Error('limit must be an integer between 1 and 50');
+    }
+  }
+
+  // memforge_bootstrap: validates its own agent pair (POOL_ONLY skips the generic agent_id rule)
+  if (name === 'memforge_bootstrap') {
+    for (const key of ['source_agent_id', 'target_agent_id'] as const) {
+      const value = args[key];
+      if (typeof value !== 'string' || value.length < 1 || value.length > 256 || !AGENT_ID_RE.test(value)) {
+        throw new Error(`${key} must be a string of 1-256 characters matching /^[\\w.@:=-]+$/`);
+      }
+    }
+    if (args['source_agent_id'] === args['target_agent_id']) {
+      throw new Error('source_agent_id and target_agent_id must be different');
+    }
+  }
+
+  // memforge_sleep tokenBudget: max 200000
+  if (name === 'memforge_sleep' && 'token_budget' in args && args['token_budget'] !== undefined) {
+    const tokenBudget = args['token_budget'];
+    if (typeof tokenBudget !== 'number' || tokenBudget > 200000) {
+      throw new Error('token_budget must be a number no greater than 200000');
+    }
+  }
+}
+
+// ─── Tool Executor ───────────────────────────────────────────────────────────
+
+async function executeTool(client: MemForgeClient, name: string, args: Record<string, unknown>): Promise<unknown> {
+  validateToolArgs(name, args);
+
+  const agentId = args['agent_id'] as string;
+
+  switch (name) {
+    case 'memforge_add':
+      return client.add(agentId, args['content'] as string, args['metadata'] as Record<string, unknown> | undefined, args['namespace'] as string | undefined);
+
+    case 'memforge_query':
+      return client.query(agentId, {
+        q: args['q'] as string,
+        limit: args['limit'] as number | undefined,
+        mode: args['mode'] as 'keyword' | 'semantic' | 'hybrid' | undefined,
+        namespace: args['namespace'] as string | undefined,
+        snippetTokens: args['snippet_tokens'] as number | undefined,
+      });
+
+    case 'memforge_timeline':
+      return client.timeline(agentId, {
+        from: args['from'] as string | undefined,
+        to: args['to'] as string | undefined,
+        limit: args['limit'] as number | undefined,
+        namespace: args['namespace'] as string | undefined,
+      });
+
+    case 'memforge_entities':
+      return client.searchEntities(agentId, {
+        q: args['q'] as string | undefined,
+        type: args['type'] as string | undefined,
+        limit: args['limit'] as number | undefined,
+      });
+
+    case 'memforge_graph':
+      return client.graphTraverse(agentId, args['entity'] as string, args['depth'] as number | undefined);
+
+    case 'memforge_reflect':
+      return client.reflect(agentId, { limit: args['limit'] as number | undefined });
+
+    case 'memforge_reflections':
+      return client.getReflections(agentId, args['limit'] as number | undefined);
+
+    case 'memforge_consolidate':
+      return client.consolidate(agentId, args['mode'] as 'concat' | 'summarize' | undefined, args['namespace'] as string | undefined);
+
+    case 'memforge_procedures':
+      return client.getProcedures(agentId, {
+        q: args['q'] as string | undefined,
+        limit: args['limit'] as number | undefined,
+      });
+
+    case 'memforge_sleep':
+      return client.sleep(agentId, {
+        tokenBudget: args['token_budget'] as number | undefined,
+      });
+
+    case 'memforge_health':
+      return client.memoryHealth(agentId);
+
+    case 'memforge_stats':
+      return client.stats(agentId, args['namespace'] as string | undefined);
+
+    case 'memforge_feedback':
+      return client.feedback(agentId, args['retrieval_ids'] as number[], args['outcome'] as 'positive' | 'negative' | 'neutral');
+
+    case 'memforge_meta_reflect':
+      return client.metaReflect(agentId, args['limit'] as number | undefined);
+
+    case 'memforge_dedup_entities':
+      return client.deduplicateEntities(agentId, args['threshold'] as number | undefined);
+
+    case 'memforge_active_recall':
+      return client.activeRecall(agentId, args['context'] as string, args['limit'] as number | undefined);
+
+    case 'memforge_cold_search':
+      return client.searchColdTier(agentId, {
+        q: args['q'] as string | undefined,
+        namespace: args['namespace'] as string | undefined,
+        from: args['from'] as string | undefined,
+        to: args['to'] as string | undefined,
+        sourceTable: args['source_table'] as 'hot_tier' | 'warm_tier' | undefined,
+        limit: args['limit'] as number | undefined,
+        offset: args['offset'] as number | undefined,
+      });
+
+    case 'memforge_cold_restore':
+      return client.restoreColdTier(agentId, args['cold_id'] as string, {
+        namespace: args['namespace'] as string | undefined,
+      });
+
+    case 'memforge_sleep_advisory':
+      return client.sleepAdvisory(agentId);
+
+    case 'memforge_publish_procedures':
+      return client.publishProcedures(agentId, args['pool_id'] as string, {
+        minConfidence: args['min_confidence'] as number | undefined,
+        namespace: args['namespace'] as string | undefined,
+      });
+
+    case 'memforge_shared_procedures':
+      return client.getSharedProcedures(args['pool_id'] as string, {
+        q: args['q'] as string | undefined,
+        limit: args['limit'] as number | undefined,
+      });
+
+    case 'memforge_expertise':
+      return client.expertiseDiscovery(args['pool_id'] as string, args['q'] as string, {
+        limit: args['limit'] as number | undefined,
+      });
+
+    case 'memforge_declare_role':
+      return client.declareRole(agentId, args['domain'] as string, {
+        confidence: args['confidence'] as number | undefined,
+        description: args['description'] as string | undefined,
+      });
+
+    case 'memforge_roles':
+      return client.getRoles(agentId);
+
+    case 'memforge_detect_roles':
+      return client.autoDetectRoles(agentId);
+
+    case 'memforge_set_validity': {
+      const validUntilRaw = args['valid_until'];
+      let validUntil: Date | string | null = null;
+      if (validUntilRaw !== undefined && validUntilRaw !== null) {
+        if (typeof validUntilRaw !== 'string') throw new Error('valid_until must be an ISO-8601 string or null');
+        validUntil = validUntilRaw;
+      }
+      return client.setMemoryValidity(agentId, args['warm_id'] as string, validUntil);
+    }
+
+    case 'memforge_record_procedure_outcome':
+      return client.recordProcedureOutcome(
+        agentId,
+        args['procedure_id'] as string,
+        args['outcome'] as 'positive' | 'negative' | 'neutral',
+      );
+
+    case 'memforge_drift':
+      return client.detectDrift(agentId);
+
+    case 'memforge_deprecate_namespace':
+      return client.deprecateNamespace(
+        agentId,
+        args['namespace'] as string,
+        typeof args['reason'] === 'string' ? (args['reason'] as string) : undefined,
+      );
+
+    case 'memforge_undeprecate_namespace':
+      return client.undeprecateNamespace(agentId, args['namespace'] as string);
+
+    case 'memforge_list_deprecated_namespaces':
+      return client.listDeprecatedNamespaces(agentId);
+
+    case 'memforge_dreams_create':
+      return client.dreams.create(agentId, {
+        namespace: args['namespace'] as string | undefined,
+        sessionIds: args['session_ids'] as string[] | undefined,
+        model: args['model'] as string | undefined,
+        instructions: args['instructions'] as string | undefined,
+        source: args['source'] as 'local' | 'anthropic' | undefined,
+      });
+
+    case 'memforge_dreams_status':
+      return client.dreams.status(agentId, args['run_id'] as string);
+
+    case 'memforge_dreams_list':
+      return client.dreams.list(agentId, {
+        status: args['status'] as 'pending' | 'running' | 'completed' | 'failed' | 'canceled' | undefined,
+        source: args['source'] as 'local' | 'anthropic' | 'bridge_pull' | 'bridge_push' | undefined,
+        limit: args['limit'] as number | undefined,
+        offset: args['offset'] as number | undefined,
+      });
+
+    case 'memforge_dreams_cancel':
+      return client.dreams.cancel(agentId, args['run_id'] as string);
+
+    case 'memforge_anthropic_push':
+      return client.anthropic.push(agentId, {
+        namespace: args['namespace'] as string | undefined,
+        limit: args['limit'] as number | undefined,
+        externalStoreId: args['external_store_id'] as string | undefined,
+      });
+
+    case 'memforge_anthropic_pull':
+      return client.anthropic.pull(agentId, {
+        externalStoreId: args['external_store_id'] as string,
+        namespace: args['namespace'] as string | undefined,
+        strategy: args['strategy'] as 'memforge-wins' | 'anthropic-wins' | 'merge' | undefined,
+      });
+
+    case 'memforge_anthropic_sync_state':
+      return client.anthropic.syncState(agentId, args['namespace'] as string | undefined);
+
+    case 'memforge_certainty':
+      return client.query(agentId, {
+        q: args['q'] as string,
+        limit: args['limit'] as number | undefined,
+        namespace: args['namespace'] as string | undefined,
+        epistemic: args['epistemic'] as 'only_established' | 'include_provisional' | 'include_contested' | 'all' | undefined,
+      });
+
+    case 'memforge_epistemic_profile':
+      return client.epistemicProfile(agentId);
+
+    case 'memforge_explain':
+      return client.explainMemory(agentId, args['warm_id'] as string);
+
+    case 'memforge_causal_chain':
+      return client.getCausalChain(
+        agentId,
+        args['memory_id'] as string,
+        args['direction'] as 'causes' | 'effects',
+        args['depth'] as number | undefined,
+      );
+
+    case 'memforge_predict':
+      return client.predict(agentId, args['context'] as string, args['namespace'] as string | undefined);
+
+    case 'memforge_principles':
+      return client.getPrinciples(agentId, args['namespace'] as string | undefined, args['limit'] as number | undefined);
+
+    case 'memforge_mental_models':
+      return client.getAbstractions(agentId, 'mental_model', args['namespace'] as string | undefined);
+
+    case 'memforge_bootstrap':
+      return client.bootstrapAgent(args['target_agent_id'] as string, {
+        sourceAgentId: args['source_agent_id'] as string,
+        namespace: args['namespace'] as string | undefined,
+        maxMemories: args['max_memories'] as number | undefined,
+        maxProcedures: args['max_procedures'] as number | undefined,
+        maxPrinciples: args['max_principles'] as number | undefined,
+      });
+
+    default:
+      throw new Error(`Unknown tool: ${name}`);
+  }
+}
+
+// ─── MCP stdio transport ─────────────────────────────────────────────────────
+
+function send(msg: MCPResponse): void {
+  const json = JSON.stringify(msg);
+  process.stdout.write(`Content-Length: ${Buffer.byteLength(json)}\r\n\r\n${json}`);
+}
+
+async function handleRequest(client: MemForgeClient, req: MCPRequest): Promise<void> {
+  switch (req.method) {
+    case 'initialize':
+      send({
+        jsonrpc: '2.0',
+        id: req.id,
+        result: {
+          protocolVersion: '2024-11-05',
+          capabilities: { tools: {} },
+          serverInfo: { name: 'memforge', version: VERSION },
+        },
+      });
+      break;
+
+    case 'notifications/initialized':
+      // No response needed for notifications
+      break;
+
+    case 'tools/list':
+      send({
+        jsonrpc: '2.0',
+        id: req.id,
+        result: { tools: TOOLS },
+      });
+      break;
+
+    case 'tools/call': {
+      const toolName = (req.params?.['name'] ?? '') as string;
+      const toolArgs = (req.params?.['arguments'] ?? {}) as Record<string, unknown>;
+
+      try {
+        const result = await executeTool(client, toolName, toolArgs);
+        send({
+          jsonrpc: '2.0',
+          id: req.id,
+          result: {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          },
+        });
+      } catch (err) {
+        send({
+          jsonrpc: '2.0',
+          id: req.id,
+          result: {
+            content: [{ type: 'text', text: `Error: ${(err as Error).message}` }],
+            isError: true,
+          },
+        });
+      }
+      break;
+    }
+
+    default:
+      send({
+        jsonrpc: '2.0',
+        id: req.id,
+        error: { code: -32601, message: `Method not found: ${req.method}` },
+      });
+  }
+}
+
+// ─── Main ────────────────────────────────────────────────────────────────────
+
+async function main(): Promise<void> {
+  // Derive per-launch session_id. Honor MEMFORGE_SESSION_ID when provided so
+  // operators can pin a stable identity per device (e.g. set to hostname);
+  // otherwise generate a fresh UUID so each launch is a distinct session.
+  const sessionId = process.env['MEMFORGE_SESSION_ID'] ?? `mcp-${randomUUID()}`;
+  const client = new MemForgeClient({ defaultSessionId: sessionId });
+
+  let buffer = '';
+
+  process.stdin.setEncoding('utf-8');
+  process.stdin.on('data', (chunk: string) => {
+    buffer += chunk;
+
+    // Parse Content-Length framed messages
+    while (true) {
+      const headerEnd = buffer.indexOf('\r\n\r\n');
+      if (headerEnd === -1) break;
+
+      const header = buffer.slice(0, headerEnd);
+      const match = header.match(/Content-Length:\s*(\d+)/i);
+      if (!match) {
+        buffer = buffer.slice(headerEnd + 4);
+        continue;
+      }
+
+      const contentLength = parseInt(match[1]!, 10);
+      const bodyStart = headerEnd + 4;
+
+      if (buffer.length < bodyStart + contentLength) break;
+
+      const body = buffer.slice(bodyStart, bodyStart + contentLength);
+      buffer = buffer.slice(bodyStart + contentLength);
+
+      try {
+        const req = JSON.parse(body) as MCPRequest;
+        void handleRequest(client, req);
+      } catch {
+        // Skip malformed messages
+      }
+    }
+  });
+
+  process.stdin.on('end', () => process.exit(0));
+}
+
+main().catch((err) => {
+  process.stderr.write(`[memforge-mcp] Fatal: ${(err as Error).message}\n`);
+  process.exit(1);
+});

@@ -1,0 +1,114 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  ci:
+    name: CI (full suite)
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: Publish to npm
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          registry-url: "https://registry.npmjs.org"
+      # Install npm >= 11.5.1 to a dedicated prefix so Trusted Publishing
+      # (OIDC) works. The npm bundled with Node 22 on runners is 10.x, which
+      # does NOT speak the TP publish flow. Installing to a separate prefix
+      # (not global) avoids the self-replace corruption that
+      # `npm install -g npm@latest` causes. Corepack was tried first but
+      # gave us 10.9 — either it doesn't fully support npm in Node 22 or
+      # its `@latest` resolution is stale.
+      - name: Install recent npm to a separate prefix
+        run: |
+          mkdir -p /tmp/fresh-npm
+          npm install --prefix /tmp/fresh-npm --no-save --no-package-lock npm@latest
+          echo "/tmp/fresh-npm/node_modules/.bin" >> $GITHUB_PATH
+      - run: npm ci
+      - run: npm run build
+      # Derive the npm dist-tag from the package.json version. npm >= 11
+      # refuses to publish a prerelease version (e.g. 3.0.0-beta.4) without
+      # an explicit --tag, otherwise the prerelease would hijack `latest`.
+      # Stable versions (no hyphen suffix) publish to `latest`; prereleases
+      # publish to the channel named in the suffix (beta, alpha, rc, next).
+      - name: Determine dist-tag from version
+        id: dist_tag
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ "$VERSION" == *"-"* ]]; then
+            TAG=$(echo "$VERSION" | sed -E 's/^[^-]+-([a-z]+).*/\1/')
+            [ -z "$TAG" ] && TAG="next"
+          else
+            TAG="latest"
+          fi
+          echo "Publishing ${VERSION} with dist-tag ${TAG}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+      # Auth via npm Trusted Publishing (OIDC). Validated end-to-end by
+      # the manual `npm-auth-test.yml` workflow — dry-run publish succeeds
+      # with NO token set, proving OIDC alone authenticates. The npm CLI
+      # requests an OIDC token from the GitHub Actions runner (id-token:
+      # write permission) and exchanges it with npm's registry, which
+      # validates against the trusted publisher configured at Packages →
+      # @salishforge/memforge → Settings → Trusted publishing.
+      #
+      # `--provenance` signs an attestation into the sigstore transparency
+      # log so downstream consumers can verify the release came from this
+      # specific repo + workflow. Requires id-token: write (same claim).
+      - name: Publish package
+        run: npm publish --access public --provenance --tag "${{ steps.dist_tag.outputs.tag }}"
+
+  github-release:
+    name: Create GitHub Release
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Fetch full history so CHANGELOG is present
+          fetch-depth: 0
+      - name: Extract CHANGELOG section for this tag
+        id: changelog
+        run: |
+          # Strip leading 'v' from the tag name to match CHANGELOG headers like ## [3.0.0-beta.3]
+          VERSION="${GITHUB_REF_NAME#v}"
+          NOTES=$(awk "/^## \[${VERSION}\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md)
+          if [ -z "$NOTES" ]; then
+            echo "WARNING: No CHANGELOG section found for version ${VERSION}"
+            NOTES="See [CHANGELOG.md](./CHANGELOG.md) for details."
+          fi
+          # Use GitHub's multiline output delimiter
+          {
+            echo "notes<<EOF_RELEASE_NOTES"
+            echo "$NOTES"
+            echo "EOF_RELEASE_NOTES"
+          } >> "$GITHUB_OUTPUT"
+      - name: Determine if prerelease
+        id: prerelease
+        run: |
+          if echo "$GITHUB_REF_NAME" | grep -qE '\-(alpha|beta|rc)'; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: ${{ steps.changelog.outputs.notes }}
+          prerelease: ${{ steps.prerelease.outputs.is_prerelease }}

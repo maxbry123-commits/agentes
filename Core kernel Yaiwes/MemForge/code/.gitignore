@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment files (contain secrets)
+.env
+.env.local
+.env.production
+*.env
+
+# Keep .env.example and .env.docker (no secrets)
+!.env.example
+!.env.docker
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# TypeScript
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+
+# Benchmark data and results (downloaded/generated)
+benchmarks/data/
+benchmarks/results/
+__pycache__/
+*.pyc
+benchmarks/longmemeval-qa/results/
