@@ -1,0 +1,116 @@
+name: YAIWES CODA24 Download Extract
+
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-coda24-download-extract.yml'
+      - '📂coda workflow persistencias/CODA24-DOWNLOAD-QUEUE-20260914.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-coda24-download-extract
+  cancel-in-progress: false
+
+jobs:
+  download-extract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      QUEUE_FILE: 📂coda workflow persistencias/CODA24-DOWNLOAD-QUEUE-20260914.json
+      STATE_FILE: 📂coda workflow persistencias/CODA24-DOWNLOAD-STATE-20260914.json
+      INDEX_PATH: 📂coda workflow persistencias/CODA24-DOWNLOAD-INDEX-20260914.md
+      ENGINE_PATH: Motores/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py
+      MAX_RETRIES: '3'
+      LOOP_SLEEP_SECONDS: '1'
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout queue and immutable motors
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-coda24-download-extract.yml
+            /Motores/MOTOR-CODE-LOCK.json
+            /Motores/📂Motor descarga de componentes y extracción de zip/
+            /📂coda workflow persistencias/CODA24-DOWNLOAD-QUEUE-20260914.json
+
+      - name: Verify immutable Motor2 and combined engine blobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          M2='Motores/📂Motor descarga de componentes y extracción de zip/motor_2_queue_download_extract.py'
+          ENG='Motores/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py'
+          test "$(git hash-object "$M2")" = '84d566e2ee4e98e42eb3a864026d067d48caabd9'
+          test "$(git hash-object "$ENG")" = '91e6e4486692eab314be5c7130d8310d3c855397'
+          echo 'MOTOR2_LOCK=PASS'
+          echo 'COMBINED_ENGINE_LOCK=PASS'
+
+      - name: Execute persistent Motor2 queue
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 'Motores/📂Motor descarga de componentes y extracción de zip/motor_2_queue_download_extract.py' | tee /tmp/coda24-motor2-result.jsonl
+          test -f "$STATE_FILE"
+          test -f "$INDEX_PATH"
+          cp "$STATE_FILE" /tmp/CODA24-DOWNLOAD-STATE-20260914.json
+          cp "$INDEX_PATH" /tmp/CODA24-DOWNLOAD-INDEX-20260914.md
+
+      - name: Persist CODA24 queue state and index
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f /tmp/CODA24-DOWNLOAD-STATE-20260914.json || exit 1
+          test -f /tmp/CODA24-DOWNLOAD-INDEX-20260914.md || exit 1
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin main
+          git reset --hard origin/main
+          mkdir -p '📂coda workflow persistencias'
+          cp /tmp/CODA24-DOWNLOAD-STATE-20260914.json "$STATE_FILE"
+          cp /tmp/CODA24-DOWNLOAD-INDEX-20260914.md "$INDEX_PATH"
+          git add --sparse -- "$STATE_FILE" "$INDEX_PATH"
+          if ! git diff --cached --quiet; then
+            git commit -m 'watchdog(coda): persist CODA24 download extraction state'
+            ok=0
+            for attempt in 1 2 3 4; do
+              git fetch origin main
+              if git rebase origin/main && git push origin HEAD:main; then ok=1; break; fi
+              git rebase --abort || true
+              sleep $((attempt * 3))
+            done
+            test "$ok" -eq 1
+          fi
+
+      - name: Fail closed unless all 24 components verified
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git reset --hard origin/main
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('📂coda workflow persistencias/CODA24-DOWNLOAD-STATE-20260914.json')
+          d=json.loads(p.read_text())
+          rows=list(d['items'].values())
+          ok=[r for r in rows if r.get('status')=='VERIFIED_CLOSED']
+          bad=[r for r in rows if r.get('status')!='VERIFIED_CLOSED']
+          print('QUEUED_TOTAL=',len(rows))
+          print('VERIFIED_CLOSED=',len(ok))
+          print('GAPS=',len(bad))
+          for r in bad:
+              print('GAP',r.get('slug'),r.get('status'),(r.get('error') or '')[-1200:])
+          if len(rows)!=24:
+              raise SystemExit('EXPECTED_24_QUEUE_ITEMS')
+          if bad:
+              raise SystemExit(1)
+          print('CODA24_DOWNLOAD_EXTRACT=PASS_24_OF_24')
+          PY
