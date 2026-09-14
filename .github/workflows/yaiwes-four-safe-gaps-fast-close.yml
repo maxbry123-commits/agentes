@@ -1,0 +1,221 @@
+name: YAIWES Four Safe Gaps Fast Close
+
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-four-safe-gaps-fast-close.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-four-safe-gaps-fast-close
+  cancel-in-progress: false
+
+jobs:
+  close-four:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      MOTOR1: Motores/➡️📂 Motor de extracción zip/motor_1_extract_only.py
+      DEST_ROOT: Core kernel Yaiwes
+    steps:
+      - name: Checkout Motor1 only
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-four-safe-gaps-fast-close.yml
+            /Motores/➡️📂 Motor de extracción zip/motor_1_extract_only.py
+
+      - name: Lock Motor1
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object "$MOTOR1")" = 'a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500'
+          echo MOTOR1_LOCK=PASS
+
+      - name: Download normalize extract publish deep-readback four safe gaps
+        id: close
+        continue-on-error: true
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64,hashlib,json,os,pathlib,shutil,stat,subprocess,sys,tempfile,time,zipfile
+          ROOT=pathlib.Path.cwd(); MOTOR1=ROOT/os.environ['MOTOR1']; TOKEN=os.environ['GITHUB_TOKEN']; DEST_ROOT=os.environ['DEST_ROOT']; PART=12*1024*1024
+          ITEMS=[
+            {'id':'C47-003','slug':'Hermes-Agent','repo':'NousResearch/hermes-agent','subdir':None},
+            {'id':'C47-011','slug':'ZERA','repo':'younatics/zera-agent','subdir':None},
+            {'id':'C47-036','slug':'LlamaFirewall','repo':'meta-llama/PurpleLlama','subdir':'LlamaFirewall'},
+            {'id':'OLD20-AUTOGEN','slug':'AutoGen-Core','repo':'microsoft/autogen','subdir':None},
+          ]
+          def run(a,cwd=None,env=None,check=True):
+            p=subprocess.run(a,cwd=cwd,env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+            if check and p.returncode: raise RuntimeError(f"COMMAND_FAILED:{a[0]}:{p.returncode}:{p.stdout[-5000:]}")
+            return p
+          def sha(p):
+            h=hashlib.sha256()
+            with open(p,'rb') as f:
+              for b in iter(lambda:f.read(1048576),b''): h.update(b)
+            return h.hexdigest()
+          def tree_hash(d):
+            h=hashlib.sha256(); n=0; z=0
+            for p in sorted((x for x in d.rglob('*') if x.is_file()),key=lambda x:x.relative_to(d).as_posix()):
+              r=p.relative_to(d).as_posix(); s=p.stat().st_size; dg=sha(p); h.update(r.encode()+b'\0'+dg.encode()+b'\0'+str(s).encode()+b'\n'); n+=1; z+=s
+            return {'files':n,'bytes':z,'sha256':h.hexdigest()}
+          def auth():
+            e=dict(os.environ); raw=base64.b64encode(f'x-access-token:{TOKEN}'.encode()).decode(); e.update({'GIT_CONFIG_COUNT':'1','GIT_CONFIG_KEY_0':'http.https://github.com/.extraheader','GIT_CONFIG_VALUE_0':f'AUTHORIZATION: basic {raw}','GIT_TERMINAL_PROMPT':'0','GIT_LFS_SKIP_SMUDGE':'1'}); return e
+          def no_lfs(d):
+            hp=d/'.yaiwes-empty-hooks'; hp.mkdir(exist_ok=True); run(['git','config','core.hooksPath',str(hp)],d); run(['git','config','filter.lfs.clean','cat'],d); run(['git','config','filter.lfs.smudge','cat'],d); run(['git','config','--unset-all','filter.lfs.process'],d,check=False); run(['git','config','filter.lfs.required','false'],d)
+          def matches(item,d):
+            return isinstance(d,dict) and d.get('extraction_verified') is True and d.get('source_repo')==item['repo'] and (item['subdir'] is None or d.get('source_subdir')==item['subdir'])
+          def current(item):
+            run(['git','fetch','origin','+refs/heads/main:refs/remotes/origin/main'],ROOT); path=f"{DEST_ROOT}/{item['slug']}/DOWNLOAD_EXTRACT_MANIFEST.json"; p=run(['git','show',f'origin/main:{path}'],ROOT,check=False)
+            if p.returncode:return None
+            try:return json.loads(p.stdout)
+            except:return None
+          def acquire(item,w):
+            src=w/'source'; src.mkdir(); run(['git','init','-q'],src); run(['git','remote','add','origin',f"https://github.com/{item['repo']}.git"],src); env=dict(os.environ); env['GIT_LFS_SKIP_SMUDGE']='1'
+            if item['subdir']:
+              run(['git','sparse-checkout','init','--no-cone'],src); (src/'.git/info/sparse-checkout').write_text('/'+item['subdir'].strip('/')+'/\n')
+            run(['git','fetch','--depth=1','--filter=blob:none','origin','HEAD'],src,env=env); run(['git','checkout','-q','--detach','FETCH_HEAD'],src,env=env); commit=run(['git','rev-parse','HEAD'],src).stdout.strip(); base=src/(item['subdir'] or '')
+            if not base.is_dir(): raise RuntimeError('SOURCE_SUBDIR_GAP:'+str(item['subdir']))
+            return src,base,commit
+          def normalize(src,base,norm):
+            repo_root=src.resolve(); normal=[]; lfs=[]
+            def cp(s,d,stack):
+              if s.name=='.git':return
+              st=s.lstat()
+              if stat.S_ISLNK(st.st_mode):
+                target=os.readlink(s); resolved=(s.parent/target).resolve()
+                try:resolved.relative_to(repo_root)
+                except:raise RuntimeError(f'SYMLINK_OUTSIDE_REPO:{s.relative_to(src)}->{target}')
+                if not resolved.exists():raise RuntimeError(f'BROKEN_SYMLINK:{s.relative_to(src)}->{target}')
+                rr=str(resolved)
+                if rr in stack:raise RuntimeError(f'SYMLINK_CYCLE:{s.relative_to(src)}->{target}')
+                normal.append({'path':s.relative_to(src).as_posix(),'target':target,'action':'materialized_in_repo_target'}); cp(resolved,d,stack+[rr]); return
+              if stat.S_ISDIR(st.st_mode):
+                d.mkdir(parents=True,exist_ok=True); rr=str(s.resolve())
+                for c in sorted(s.iterdir(),key=lambda p:p.name):
+                  if c.name!='.git':cp(c,d/c.name,stack+[rr])
+                return
+              if stat.S_ISREG(st.st_mode):
+                d.parent.mkdir(parents=True,exist_ok=True); shutil.copyfile(s,d)
+                if d.stat().st_size<=1024 and d.read_bytes().startswith(b'version https://git-lfs.github.com/spec/v1\n'):lfs.append(d.relative_to(norm).as_posix())
+                return
+              raise RuntimeError('UNSUPPORTED_SPECIAL_FILE:'+s.relative_to(src).as_posix())
+            norm.mkdir()
+            for c in sorted(base.iterdir(),key=lambda p:p.name):cp(c,norm/c.name,[str(base.resolve())])
+            return normal,lfs
+          def pack(norm,w,slug):
+            z=w/f'{slug}.bundle.zip'
+            with zipfile.ZipFile(z,'w',zipfile.ZIP_DEFLATED,allowZip64=True) as a:
+              for p in sorted((x for x in norm.rglob('*') if x.is_file()),key=lambda x:x.relative_to(norm).as_posix()):a.write(p,p.relative_to(norm).as_posix())
+            with zipfile.ZipFile(z) as a:
+              bad=a.testzip()
+              if bad:raise RuntimeError('ZIP_CRC_FAIL:'+bad)
+            zsha=sha(z); pd=w/'parts';pd.mkdir();rows=[]
+            with z.open('rb') as f:
+              i=1
+              while True:
+                b=f.read(PART)
+                if not b:break
+                p=pd/f'{slug}.bundle.zip.part-{i:04d}';p.write_bytes(b);rows.append({'name':p.name,'bytes':p.stat().st_size,'sha256':sha(p)});i+=1
+            rb=w/'rebuilt.zip'
+            with rb.open('wb') as out:
+              for r in rows:
+                p=pd/r['name']
+                if sha(p)!=r['sha256']:raise RuntimeError('PART_HASH_GAP:'+r['name'])
+                with p.open('rb') as q:shutil.copyfileobj(q,out,1048576)
+            if sha(rb)!=zsha:raise RuntimeError('REBUILD_HASH_GAP')
+            return z,zsha,pd,rows,rb
+          def extract(rb,ext,state):
+            env=dict(os.environ);env.update({'ARCHIVE_INPUT':str(rb),'DEST_DIR':str(ext),'STATE_FILE':str(state),'BATCH_SIZE':'100','MAX_BATCHES':'0'});p=run([sys.executable,str(MOTOR1)],env=env);payload=None
+            for line in reversed([x.strip() for x in p.stdout.splitlines() if x.strip()]):
+              try:
+                x=json.loads(line)
+                if isinstance(x,dict):payload=x;break
+              except:pass
+            if not payload or payload.get('verdict')!='VERIFIED_CLOSED':raise RuntimeError('MOTOR1_GAP:'+p.stdout[-2500:])
+            return payload
+          def publish(item,ext,pd,m,w):
+            e=auth();rel=f"{DEST_ROOT}/{item['slug']}";d=w/'dest';d.mkdir();run(['git','init','-q'],d);no_lfs(d);run(['git','remote','add','origin','https://github.com/maxbry123-commits/agentes.git'],d);run(['git','sparse-checkout','init','--no-cone'],d);(d/'.git/info/sparse-checkout').write_text('/'+rel+'/\n');run(['git','fetch','--depth=50','--filter=blob:none','origin','+refs/heads/main:refs/remotes/origin/main'],d,env=e);run(['git','checkout','-q','-B','main','origin/main'],d,env=e);t=d/rel
+            if t.exists():
+              old=None;mf=t/'DOWNLOAD_EXTRACT_MANIFEST.json'
+              if mf.exists():
+                try:old=json.loads(mf.read_text())
+                except:pass
+              if matches(item,old):return {'verdict':'ALREADY_PRESENT_EXACT_SOURCE_VERIFIED'}
+              if not isinstance(old,dict) or old.get('source_repo')!=item['repo']:raise RuntimeError('DESTINATION_PROVENANCE_COLLISION:'+rel)
+              shutil.rmtree(t)
+            t.mkdir(parents=True);shutil.copytree(ext,t/'code');ad=t/'_archives';ad.mkdir()
+            for p in pd.iterdir():
+              if p.is_file():shutil.copy2(p,ad/p.name)
+            (t/'DOWNLOAD_EXTRACT_MANIFEST.json').write_text(json.dumps(m,indent=2,sort_keys=True)+'\n');no_lfs(d);run(['git','config','user.name','yaiwes-fast-gap-close'],d);run(['git','config','user.email','yaiwes-fast-gap-close@users.noreply.github.com'],d);run(['git','add','-f','--sparse','--',rel],d);run(['git','commit','-m',f"build(yaiwes): fast-close {item['slug']} download gap"],d)
+            for attempt in range(1,21):
+              p=run(['git','-c','core.hooksPath=/dev/null','push','origin','HEAD:main'],d,env=e,check=False)
+              if p.returncode==0:break
+              run(['git','fetch','--depth=50','--filter=blob:none','origin','+refs/heads/main:refs/remotes/origin/main'],d,env=e);q=run(['git','rebase','origin/main'],d,env=e,check=False)
+              if q.returncode:run(['git','rebase','--abort'],d,check=False);raise RuntimeError('REBASE_CONFLICT:'+q.stdout[-2500:])
+              time.sleep(min(attempt*2,10))
+            else:raise RuntimeError('PUSH_RETRIES_EXHAUSTED')
+            commit=run(['git','rev-parse','HEAD'],d).stdout.strip();rd=w/'readback';rd.mkdir();run(['git','init','-q'],rd);no_lfs(rd);run(['git','remote','add','origin','https://github.com/maxbry123-commits/agentes.git'],rd);run(['git','sparse-checkout','init','--no-cone'],rd);(rd/'.git/info/sparse-checkout').write_text('/'+rel+'/\n');run(['git','fetch','--depth=1','--filter=blob:none','origin','+refs/heads/main:refs/remotes/origin/main'],rd,env=e);run(['git','checkout','-q','--detach','origin/main'],rd,env=e);remote=json.loads((rd/rel/'DOWNLOAD_EXTRACT_MANIFEST.json').read_text())
+            if not matches(item,remote):raise RuntimeError('READBACK_PROVENANCE_GAP')
+            actual=tree_hash(rd/rel/'code')
+            if actual!=remote['extracted_tree']:raise RuntimeError('READBACK_TREE_GAP')
+            for r in remote['parts']:
+              p=rd/rel/'_archives'/r['name']
+              if not p.exists() or sha(p)!=r['sha256']:raise RuntimeError('READBACK_ARCHIVE_GAP:'+r['name'])
+            return {'verdict':'PUBLISHED_EXACT_SOURCE_AND_DEEP_READBACK_VERIFIED','commit':commit,'tree':actual}
+          state={'schema':'yaiwes.kernel.four-safe-gaps-fast-close/v1','items':{}};failed=[]
+          for item in ITEMS:
+            row={'slug':item['slug'],'source_repo':item['repo'],'source_subdir':item['subdir']}
+            try:
+              old=current(item)
+              if matches(item,old):row.update({'status':'VERIFIED_CLOSED','publish':{'verdict':'ALREADY_PRESENT_EXACT_SOURCE_VERIFIED'}});state['items'][item['id']]=row;continue
+              with tempfile.TemporaryDirectory(prefix='yaiwes-fast4-') as td:
+                w=pathlib.Path(td);src,base,commit=acquire(item,w);norm=w/'normalized';normal,lfs=normalize(src,base,norm);st=tree_hash(norm);z,zsha,pd,parts,rb=pack(norm,w,item['slug']);ext=w/'extracted';motor=extract(rb,ext,w/'motor1.json');et=tree_hash(ext)
+                if st!=et:raise RuntimeError('SOURCE_EXTRACTED_TREE_MISMATCH')
+                m={'schema':'yaiwes.kernel.exact-source-download-extract/fast4-v1','slug':item['slug'],'source_repo':item['repo'],'source_subdir':item['subdir'],'source_commit':commit,'motor1_blob':'a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500','normalization_policy':'materialize_in_repo_symlink_targets_before_zip','normalizations':normal,'lfs_pointer_count':len(lfs),'lfs_pointers_preserved':lfs,'bundle_bytes':z.stat().st_size,'bundle_sha256':zsha,'parts':parts,'source_tree':st,'extracted_tree':et,'reconstruction_verified':True,'extraction_verified':True,'motor1':motor};pub=publish(item,ext,pd,m,w);row.update({'status':'VERIFIED_CLOSED','source_commit':commit,'source_tree':st,'extracted_tree':et,'normalizations':len(normal),'lfs_pointer_count':len(lfs),'publish':pub})
+            except Exception as ex:row.update({'status':'FAILED','error':str(ex)});failed.append(item['id'])
+            state['items'][item['id']]=row;pathlib.Path('/tmp/fast4-state.json').write_text(json.dumps(state,indent=2,sort_keys=True)+'\n')
+          print(json.dumps(state,ensure_ascii=False))
+          if failed:raise SystemExit('FAST4_GAPS:'+','.join(failed))
+          print('YAIWES_FAST4=VERIFIED_CLOSED_4_OF_4')
+          PY
+
+      - name: Persist fast4 state
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f /tmp/fast4-state.json
+          cp /tmp/fast4-state.json /tmp/state.keep.json
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          out='Core kernel Yaiwes/Crack wall bitácora stated JSON/FOUR-SAFE-GAPS-FAST-CLOSE-STATE-20260914.json'
+          for attempt in 1 2 3 4 5 6 7 8 9 10;do
+            git fetch origin +refs/heads/main:refs/remotes/origin/main;git reset --hard origin/main;mkdir -p "$(dirname "$out")";cp /tmp/state.keep.json "$out";git add -f --sparse -- "$out"
+            if git diff --cached --quiet;then break;fi
+            git commit -m 'watchdog(yaiwes): persist fast4 gap close state'
+            if git push origin HEAD:main;then break;fi
+            sleep $((attempt*2))
+          done
+
+      - name: Enforce four safe gaps
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,pathlib
+          d=json.loads(pathlib.Path('/tmp/fast4-state.json').read_text());bad=[k for k,v in d['items'].items() if v.get('status')!='VERIFIED_CLOSED']
+          if bad:raise SystemExit('FAST4_PENDING:'+','.join(bad))
+          print('YAIWES_FAST4=VERIFIED_CLOSED_4_OF_4')
+          PY
