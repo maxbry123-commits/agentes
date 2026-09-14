@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 1031708,
+  "bundle_sha256": "cb8175daee35b787ba43201fdc3df26f7ea16f95d904cd6bbbdd0704e0b83060",
+  "extracted_tree": {
+    "bytes": 1234373,
+    "files": 39,
+    "sha256": "77326bad6026982f3deb13a0420d3fe650f96f6fd793272c6281a6060b28f7c0"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 1031708,
+      "name": "SCOPE.bundle.zip.part-0001",
+      "sha256": "cb8175daee35b787ba43201fdc3df26f7ea16f95d904cd6bbbdd0704e0b83060"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "SCOPE",
+  "source_bytes": 1234373,
+  "source_commit": "4dc0da5e7843dce84a851bd7a53e4e45932b27d0",
+  "source_files": 39,
+  "source_ref": "HEAD",
+  "source_repo": "JarvisPei/SCOPE",
+  "source_tree": {
+    "bytes": 1234373,
+    "files": 39,
+    "sha256": "77326bad6026982f3deb13a0420d3fe650f96f6fd793272c6281a6060b28f7c0"
+  }
+}
