@@ -1,0 +1,124 @@
+name: YAIWES CODA Internal Surgical V5
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/yaiwes_internal_surgical_transform_v5.py'
+      - '.github/workflows/yaiwes-coda-internal-surgical-v5.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-coda-internal-surgical-v5
+  cancel-in-progress: false
+
+jobs:
+  surgical-transform:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout CODA internal scope
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/scripts/yaiwes_internal_surgical_transform_v5.py
+            /.github/workflows/yaiwes-coda-internal-surgical-v5.yml
+            /📂coda workflow persistencias/
+
+      - name: Transform internal source surgically
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/yaiwes_internal_surgical_transform_v5.py
+
+      - name: Validate 24 manifests and policies
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('📂coda workflow persistencias')
+          comps=sorted(p for p in root.iterdir() if p.is_dir() and p.name.startswith('🏈 ') and p.name!='🏈 cancha deportiva de fútbol')
+          assert len(comps)==24, len(comps)
+          total=0
+          for c in comps:
+              p=c/'INTERNAL-SURGICAL-MANIFEST-V5.json'
+              assert p.is_file(), p
+              d=json.loads(p.read_text(encoding='utf-8'))
+              assert d['schema']=='yaiwes.internal.surgical/v5'
+              assert d['policy']['offensive_execution'] is False
+              assert d['policy']['ambiguous']=='FAIL_CLOSED'
+              total += d['counts']['links']
+          assert total > 0, total
+          print('V5_MANIFESTS=24 LINKS=', total)
+          PY
+
+      - name: Parse all generated Python replacements
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import ast,json
+          from pathlib import Path
+          root=Path('📂coda workflow persistencias')
+          count=0
+          for m in root.glob('🏈 */INTERNAL-SURGICAL-MANIFEST-V5.json'):
+              d=json.loads(m.read_text(encoding='utf-8'))
+              code=m.parent/'code'
+              for x in d['files']:
+                  if x['decision'] in {'BLOCK_OFFENSIVE','REVIEW_FAIL_CLOSED'} and x['path'].endswith('.py'):
+                      ast.parse((code/x['path']).read_text(encoding='utf-8'))
+                      count+=1
+          print('PY_REPLACEMENTS_PARSED=',count)
+          PY
+
+      - name: Run Fables 24-component end-to-end
+        run: |
+          set -euo pipefail
+          F='📂coda workflow persistencias/Fables enchufe universal'
+          PYTHONPATH="$F" python3 "$F/test_yaiwes_internal_swarm_chain_v5.py"
+
+      - name: Verify quarantine never wired as executable
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          f=Path('📂coda workflow persistencias/Fables enchufe universal/yaiwes_internal_swarm_chain_v5.py').read_text(encoding='utf-8')
+          assert '_yaiwes_upstream_quarantine' not in f
+          assert 'subprocess' not in f and 'os.system' not in f
+          print('QUARANTINE_EXECUTION=DENIED')
+          PY
+
+      - name: Persist V5 transformation
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- '📂coda workflow persistencias'
+          if git diff --cached --quiet; then
+            echo 'NO_CHANGES'
+          else
+            git commit -m 'feat(coda): surgical internal persistence transform v5'
+            git push origin HEAD:main
+          fi
+
+      - name: Final readback
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          git rev-parse HEAD
+          git rev-parse origin/main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('📂coda workflow persistencias/🏈 cancha deportiva de fútbol/YAIWES-INTERNAL-SURGICAL-REPORT-V5.json')
+          d=json.loads(p.read_text(encoding='utf-8'))
+          assert d['components']==24 and not d['errors']
+          print('FINAL_V5_PASS', d['files_accounted'], d['links'])
+          PY
