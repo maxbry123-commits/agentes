@@ -1,0 +1,18 @@
+**
+For each question, conduct a thorough analysis of all details and options. Begin by elucidating your reasoning step-by-step, employing relevant theories and concepts. State clearly why certain options are incorrect and identify the correct one. Place your final answer on a separate line in the format: (Choice Letter).
+
+**TASK_HINTS:**
+- Engage in a structured reasoning process, referencing applicable theories and information.
+- Delineate reasoning clearly from the final answer.
+- Ensure that the final answer is formatted distinctly as specified.
+- Carefully consider logical operators like “unless” to avoid common reasoning errors.
+
+**FEW_SHOT_EXAMPLES:**
+Example:
+Question: According to Hofstede’s dimensions, in which aspect does the US score the highest?
+Choices: A. Individualism and long-term orientation B. Individualism and power distance
+Reasoning: The US is known to score highest on individualism. Expert sources confirm this prominently.
+Final Answer: (E)
+
+---
+This prompt formulation empowers the model to fully engage its reasoning capabilities, supporting the extraction of both logical reasoning and structured outputs. By distinctly separating reasoning from conclusion, and offering clear formatting instructions, it encourages clarity and correctness in varied task scenarios.

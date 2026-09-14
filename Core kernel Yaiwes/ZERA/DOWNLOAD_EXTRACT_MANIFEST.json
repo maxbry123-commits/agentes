@@ -1,0 +1,58 @@
+{
+  "bundle_bytes": 63708649,
+  "bundle_sha256": "71785753890ee700b945ebe366dfdd77878791e08321122cdbb25f2767b250bc",
+  "extracted_tree": {
+    "bytes": 193065397,
+    "files": 240,
+    "sha256": "6282f410001cd80940baf02fb120668a9dedee0d5b0b3f41ebc0b5d13a775aef"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "ZERA.bundle.zip.part-0001",
+      "sha256": "18b456ea34b00a4db1ee0a4d3ffe9f1aea6aa337d5dcaf36e569b2dcca1d1e11"
+    },
+    {
+      "bytes": 12582912,
+      "name": "ZERA.bundle.zip.part-0002",
+      "sha256": "0d206214c77851d9517c1769e91379ef0788269634f8ca64de5c3826ec8eceb8"
+    },
+    {
+      "bytes": 12582912,
+      "name": "ZERA.bundle.zip.part-0003",
+      "sha256": "d59ba8c580950314b698a63f2fd3d05db8af85a3572f4b860596eef5e7f6e3b8"
+    },
+    {
+      "bytes": 12582912,
+      "name": "ZERA.bundle.zip.part-0004",
+      "sha256": "537da3f88716d0df6d8174d0b4c4330c8809b920351c4d67cb231bbe1b4b48c4"
+    },
+    {
+      "bytes": 12582912,
+      "name": "ZERA.bundle.zip.part-0005",
+      "sha256": "16a5d87bd5058ec6a872a1541a05af5579a872c9b3dcbdcb711258717e1efad1"
+    },
+    {
+      "bytes": 794089,
+      "name": "ZERA.bundle.zip.part-0006",
+      "sha256": "ccc8c345bd5fffae9a91307c8a8b41ba9ae4786364c9aa7d77f7500534576399"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "ZERA",
+  "source_bytes": 193065397,
+  "source_commit": "40267c46e97fd386371f5e8d96f48529170503ba",
+  "source_files": 240,
+  "source_ref": "HEAD",
+  "source_repo": "younatics/zera-agent",
+  "source_tree": {
+    "bytes": 193065397,
+    "files": 240,
+    "sha256": "6282f410001cd80940baf02fb120668a9dedee0d5b0b3f41ebc0b5d13a775aef"
+  }
+}

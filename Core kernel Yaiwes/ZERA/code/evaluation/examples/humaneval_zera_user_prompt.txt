@@ -1,0 +1,59 @@
+**
+Implement the specified function accurately and concisely according to the provided requirements. Use advanced Python features, such as list comprehensions and built-in functions, to streamline your implementation. Focus on meeting the functional criteria:
+
+- Analyze the function description and examples carefully.
+- Directly translate the requirements into code with a focus on accuracy.
+- Ensure the code is efficient and handles all provided examples and edge cases correctly.
+
+**TASK_DISCRIMINATOR_HINT:**
+Focus strictly on the functional implementation of requirements without making assumptions. Maintain simplicity and accuracy.
+
+**TASK_HINTS:**
+- Include all necessary logic and checks without unnecessary complexity.
+- Utilize Python built-in functions for better performance and readability.
+- Avoid complex nested logic but ensure the code remains clear and readable.
+- Precisely handle all edge cases as demonstrated in examples.
+
+**FEW_SHOT_EXAMPLES:**
+
+*Example 1:*
+
+**Question:**
+
+```python
+def file_name_check(file_name):
+    """ Validate a file name based on specific criteria. 
+    file_name_check("example.txt") => 'Yes'
+    file_name_check("1example.dll") => 'No'
+    """
+```
+
+**Answer:**
+
+```python
+def file_name_check(file_name):
+    suf = ['txt', 'exe', 'dll']
+    lst = file_name.split(sep='.')
+    return 'Yes' if len(lst) == 2 and lst[1] in suf and lst[0].isalpha() and sum(c.isdigit() for c in lst[0]) <= 3 else 'No'
+```
+
+*Example 2:*
+
+**Question:**
+
+```python
+def count_distinct_characters(string: str) -> int:
+    """ 
+    count_distinct_characters('xyzXYZ') => 3 
+    count_distinct_characters('Jerry') => 4 
+    """
+```
+
+**Answer:**
+
+```python
+def count_distinct_characters(string: str) -> int:
+    return len(set(string.lower()))
+```
+
+By following these guidelines and examples, ensure that your implementations are both accurate and efficient, meeting the task's functional requirements effectively.

@@ -1,0 +1,1025 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional
+import logging
+from agent.common.api_client import Model
+import os
+import random
+import statistics
+import csv
+import io
+import json
+from .iteration_result import IterationResult, TestCaseResult
+
+
+DEFAULT_TASK_TYPE = "General Task"
+DEFAULT_TASK_DESCRIPTION = "General task requiring outputs to various questions"
+DEFAULT_SCORE_WEIGHT = 0.5
+
+PROMPT_TEMPLATE_FILES = {
+    "initial_system_prompt": "initial_system_prompt.txt",
+    "initial_user_prompt": "initial_user_prompt.txt",
+    "evaluation_system_prompt_template": "evaluation_system_prompt.txt",
+    "evaluation_user_prompt_template": "evaluation_user_prompt.txt",
+    "meta_system_prompt_template": "meta_system_prompt.txt",
+    "meta_user_prompt_template": "meta_user_prompt.txt",
+}
+
+META_PROMPT_SECTION_PATTERNS = {
+    "task_type": ("TASK_TYPE:", "Task Type:", "Task type:"),
+    "task_description": (
+        "TASK_DESCRIPTION:",
+        "Task Description:",
+        "Task description:",
+    ),
+    "system_prompt": ("SYSTEM_PROMPT:", "System Prompt:", "System prompt:"),
+    "user_prompt": ("USER_PROMPT:", "User Prompt:", "User prompt:"),
+}
+
+
+@dataclass(frozen=True)
+class PromptSections:
+    task_type: str
+    task_description: str
+    system_prompt: str
+    user_prompt: str
+    raw_text: str
+
+
+class PromptTuner:
+    """
+    A class for automatically fine-tuning system prompts for LLMs.
+    """
+    
+    def __init__(
+        self,
+        model_name: str = "solar",
+        evaluator_model_name: str = "solar",
+        meta_prompt_model_name: str = "solar",
+        model_version: str = None,
+        evaluator_model_version: str = None,
+        meta_prompt_model_version: str = None,
+        model_factory: Callable[..., Model] = Model,
+    ):
+        """
+        Initialize the PromptTuner with specific models.
+        
+        Args:
+            model_name (str): The name of the model to use for tuning (default: "solar")
+            evaluator_model_name (str): The name of the model to use for evaluation (default: "solar")
+            meta_prompt_model_name (str): The name of the model to use for meta prompt generation (default: "solar")
+            model_version (str): The version of the model to use for tuning (default: None)
+            evaluator_model_version (str): The version of the model to use for evaluation (default: None)
+            meta_prompt_model_version (str): The version of the model to use for meta prompt generation (default: None)
+        """
+        self.model = model_factory(model_name, version=model_version)
+        self.evaluator = model_factory(evaluator_model_name, version=evaluator_model_version)
+        self.meta_prompt_model = model_factory(
+            meta_prompt_model_name,
+            version=meta_prompt_model_version,
+        )
+        self.iteration_results = []
+        self.progress_callback = None
+        self.iteration_callback = None
+        self.best_prompt_callback = None
+        self.prompt_improvement_start_callback = None
+        self.meta_prompt_generated_callback = None
+        self.prompt_updated_callback = None
+        self.logger = logging.getLogger(__name__)
+        
+        # Initialize statistics for cost tracking
+        self.model_stats = self._initialize_stats("Model calls")
+        self.evaluator_stats = self._initialize_stats("Evaluator calls") 
+        self.meta_prompt_stats = self._initialize_stats("Meta prompt generation")
+        self._load_prompt_templates()
+
+    def _load_prompt_templates(self) -> None:
+        """Load bundled prompt templates into instance attributes."""
+        prompts_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "prompts")
+        for attribute, filename in PROMPT_TEMPLATE_FILES.items():
+            setattr(self, attribute, self._read_prompt_file(prompts_dir, filename))
+
+    @staticmethod
+    def _read_prompt_file(prompts_dir: str, filename: str) -> str:
+        with open(os.path.join(prompts_dir, filename), "r", encoding="utf-8") as file:
+            return file.read()
+    
+    def _initialize_stats(self, stat_type: str) -> Dict:
+        """Initialize dictionary for statistics tracking."""
+        return {
+            "type": stat_type,
+            "total_calls": 0,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "total_tokens": 0,
+            "total_cost": 0.0,
+            "total_duration": 0.0,
+            "calls_by_iteration": {}
+        }
+
+    def _update_stats(self, stats: Dict, metadata: Dict, iteration: int = None):
+        """Update statistics."""
+        stats["total_calls"] += 1
+        stats["total_input_tokens"] += metadata.get("input_tokens", 0)
+        stats["total_output_tokens"] += metadata.get("output_tokens", 0)
+        stats["total_tokens"] += metadata.get("total_tokens", 0)
+        stats["total_cost"] += metadata.get("cost", 0.0)
+        stats["total_duration"] += metadata.get("duration", 0.0)
+        
+        if iteration is not None:
+            if iteration not in stats["calls_by_iteration"]:
+                stats["calls_by_iteration"][iteration] = {
+                    "calls": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0,
+                    "cost": 0.0,
+                    "duration": 0.0
+                }
+            
+            iteration_stats = stats["calls_by_iteration"][iteration]
+            iteration_stats["calls"] += 1
+            iteration_stats["input_tokens"] += metadata.get("input_tokens", 0)
+            iteration_stats["output_tokens"] += metadata.get("output_tokens", 0)
+            iteration_stats["total_tokens"] += metadata.get("total_tokens", 0)
+            iteration_stats["cost"] += metadata.get("cost", 0.0)
+            iteration_stats["duration"] += metadata.get("duration", 0.0)
+
+    def set_evaluation_prompt(self, system_prompt_template: str, user_prompt_template: str):
+        """
+        Set evaluation prompt templates.
+        
+        Args:
+            system_prompt_template (str): Evaluation system prompt template
+            user_prompt_template (str): Evaluation user prompt template
+        """
+        self.evaluation_system_prompt_template = system_prompt_template
+        self.evaluation_user_prompt_template = user_prompt_template
+    
+    def set_meta_prompt(self, system_prompt_template: str, user_prompt_template: str):
+        """
+        Set meta prompt templates.
+        
+        Args:
+            system_prompt_template (str): Meta system prompt template
+            user_prompt_template (str): Meta user prompt template
+        """
+        self.meta_system_prompt_template = system_prompt_template
+        self.meta_user_prompt_template = user_prompt_template
+    
+    def set_initial_prompt(self, system_prompt: str, user_prompt: str):
+        """
+        Set initial prompts.
+        
+        Args:
+            system_prompt (str): Initial system prompt
+            user_prompt (str): Initial user prompt
+        """
+        self.initial_system_prompt = system_prompt
+        self.initial_user_prompt = user_prompt
+
+    @staticmethod
+    def _extract_json_object(text: str) -> str:
+        """Return the first outer JSON object embedded in a model response."""
+        response_text = (text or "").strip()
+        json_start = response_text.find("{")
+        json_end = response_text.rfind("}") + 1
+
+        if json_start == -1 or json_end == 0:
+            raise ValueError("JSON object not found in response")
+        return response_text[json_start:json_end]
+
+    def _score_details(self, details: Any) -> tuple[float, Dict[str, Any]]:
+        if isinstance(details, str):
+            score = self._convert_to_float(details)
+            return score, {
+                "score": score,
+                "current_state": details,
+                "improvement_action": "",
+                "weight": DEFAULT_SCORE_WEIGHT,
+            }
+
+        if isinstance(details, dict):
+            score = self._convert_to_float(details.get("score", 0))
+            weight = self._convert_to_float(details.get("weight", DEFAULT_SCORE_WEIGHT))
+            return score, {
+                "score": score,
+                "current_state": details.get("current_state", ""),
+                "improvement_action": details.get("improvement_action", ""),
+                "weight": weight,
+            }
+
+        score = self._convert_to_float(details)
+        return score, {
+            "score": score,
+            "current_state": "",
+            "improvement_action": "",
+            "weight": DEFAULT_SCORE_WEIGHT,
+        }
+
+    def _parse_evaluation_response(self, evaluation: str) -> tuple[float, Dict[str, Any]]:
+        evaluation_data = json.loads(self._extract_json_object(evaluation))
+        scores_data = evaluation_data.get("scores")
+        if not isinstance(scores_data, dict):
+            raise ValueError("JSON response missing scores field")
+
+        evaluation_details = {"category_scores": {}}
+        total_weighted_score = 0.0
+        total_weight = 0.0
+
+        for category, details in scores_data.items():
+            score, normalized_details = self._score_details(details)
+            weight = normalized_details["weight"]
+            evaluation_details["category_scores"][category] = normalized_details
+            total_weighted_score += score * weight
+            total_weight += weight
+
+        final_score = total_weighted_score / total_weight if total_weight > 0 else 0.0
+        return final_score, evaluation_details
+    
+    def _evaluate_output(self, output: str, expected: str, question: str, task_type: str, task_description: str, iteration: int = None) -> tuple[float, Dict]:
+        """
+        Evaluate an output using the evaluator model.
+        
+        Args:
+            output (str): The actual output to evaluate
+            expected (str): The expected output
+            question (str): The original question
+            task_type (str): The type of task being evaluated
+            task_description (str): The description of the task being evaluated
+            iteration (int): Current iteration number for cost tracking
+            
+        Returns:
+            tuple[float, Dict]: A tuple containing the score and evaluation details
+        """
+        try:
+            # Generate evaluation user prompt
+            evaluation_prompt = self.evaluation_user_prompt_template.format(
+                response=output,
+                expected=expected,
+                question=question,
+                task_type=task_type,
+                task_description=task_description
+            )
+            
+            # Generate evaluation system prompt
+            evaluation_system_prompt = self.evaluation_system_prompt_template.format(
+                task_type=task_type,
+                task_description=task_description
+            )
+            
+            # Perform evaluation using evaluation model and update statistics
+            evaluation, metadata = self.evaluator.ask(
+                question=evaluation_prompt,
+                system_prompt=evaluation_system_prompt
+            )
+            
+            # Update evaluator statistics
+            self._update_stats(self.evaluator_stats, metadata, iteration)
+            self.logger.info(f"Evaluating output:")
+            self.logger.info(f"Question: {question}")
+            self.logger.info(f"Actual output: {output}")
+            self.logger.info(f"Expected output: {expected}")
+            self.logger.info(f"Evaluation: {evaluation}")
+            
+            try:
+                final_score, evaluation_details = self._parse_evaluation_response(evaluation)
+                self.logger.info(f"Evaluation score: {final_score}")
+                self.logger.info(f"Evaluation details: {evaluation_details}")
+                return final_score, evaluation_details
+                
+            except (ValueError, TypeError, json.JSONDecodeError) as e:
+                self.logger.error(f"Error occurred during evaluation: {str(e)}")
+                # Return default value when error occurs
+                return 0.0, {'final_score': 0.0, 'category_scores': {}, 'error': str(e)}
+            
+        except (ValueError, TypeError, json.JSONDecodeError) as e:
+            self.logger.error(f"Error during evaluation: {str(e)}")
+            return 0.0, {'final_score': 0.0, 'category_scores': {}}
+
+    def _convert_to_float(self, value) -> float:
+        """
+        Convert a value to float, handling special cases like 'PASS'
+        
+        Args:
+            value: The value to convert
+            
+        Returns:
+            float: The converted value
+        """
+        if isinstance(value, (int, float)):
+            return float(value)
+        elif isinstance(value, str):
+            value = value.upper().strip()
+            if value == 'PASS':
+                return 0.5
+            elif value == 'FAIL':
+                return 0.0
+            try:
+                return float(value)
+            except (ValueError, TypeError):
+                return 0.0
+        return 0.0
+
+    def tune_prompt(self, initial_system_prompt: str, initial_user_prompt: str, initial_test_cases: List[Dict], num_iterations: int = 3, score_threshold: Optional[float] = None, evaluation_score_threshold: float = 0.8, use_meta_prompt: bool = True, num_samples: Optional[int] = None) -> List[IterationResult]:
+        """
+        Tune a system prompt using a set of test cases.
+        
+        Args:
+            initial_system_prompt (str): The initial system prompt
+            initial_user_prompt (str): The initial user prompt
+            initial_test_cases (List[Dict]): List of test cases, each containing 'question' and 'expected'
+            num_iterations (int): Number of iterations to perform
+            score_threshold (Optional[float]): Threshold to stop tuning if average score exceeds this value
+            evaluation_score_threshold (float): Threshold to trigger prompt improvement
+            use_meta_prompt (bool): Whether to use meta prompt for improvement
+            num_samples (Optional[int]): Number of samples to use for evaluate prompt
+            
+        Returns:
+            List[IterationResult]: List of iteration results
+        """
+        current_system_prompt = initial_system_prompt
+        current_user_prompt = initial_user_prompt
+        best_avg_score = 0.0
+        
+        # Log initial prompts
+        self.logger.info(f"📝 Initial prompts:")
+        self.logger.info(f"   System prompt: {initial_system_prompt[:200]}{'...' if len(initial_system_prompt) > 200 else ''}")
+        self.logger.info(f"   User prompt: {initial_user_prompt[:200]}{'...' if len(initial_user_prompt) > 200 else ''}")
+        
+        # Set initial task_type and task_description
+        current_task_type = DEFAULT_TASK_TYPE
+        current_task_description = DEFAULT_TASK_DESCRIPTION
+        
+        # Log tuning configuration
+        self.logger.info(f"🎯 Prompt tuning configuration:")
+        self.logger.info(f"   num_iterations: {num_iterations}")
+        self.logger.info(f"   score_threshold: {score_threshold}")
+        self.logger.info(f"   evaluation_score_threshold: {evaluation_score_threshold}")
+        self.logger.info(f"   use_meta_prompt: {use_meta_prompt}")
+        self.logger.info(f"   num_samples: {num_samples}")
+        self.logger.info(f"   Total test cases: {len(initial_test_cases)}")
+        
+        for iteration in range(num_iterations):
+            self.logger.info(f"\n{'='*60}")
+            self.logger.info(f"🔄 Iteration {iteration + 1}/{num_iterations} started")
+            self.logger.info(f"{'='*60}")
+            self.logger.info(f"📋 Current iteration prompts:")
+            self.logger.info(f"   System: {current_system_prompt[:150]}{'...' if len(current_system_prompt) > 150 else ''}")
+            self.logger.info(f"   User: {current_user_prompt[:150]}{'...' if len(current_user_prompt) > 150 else ''}")
+            self.logger.info(f"   Task type: {current_task_type}")
+            self.logger.info(f"   Task description: {current_task_description[:100]}{'...' if len(current_task_description) > 100 else ''}")
+            
+            iteration_scores = []
+            test_case_results = []
+            iteration_best_sample_score = 0.0  # Initialize best score for this iteration
+            
+            # Random sampling for each iteration
+            test_cases = random.sample(initial_test_cases, num_samples) if num_samples is not None and num_samples < len(initial_test_cases) else initial_test_cases
+            
+            # Execute and evaluate test cases
+            for i, test_case in enumerate(test_cases):
+                self.logger.info(f"\nTest Case {i}/{len(test_cases)}")
+                self.logger.info(f"Question: {test_case['question']}")
+                
+                # Generate output using current prompt and update statistics
+                output, model_metadata = self.model.ask(test_case['question'], system_prompt=current_system_prompt, user_prompt=current_user_prompt)
+                self._update_stats(self.model_stats, model_metadata, iteration + 1)
+                self.logger.info(f"Output: {output}")
+                
+                # Evaluate output
+                score, evaluation_details = self._evaluate_output(
+                    output=output,
+                    expected=test_case['expected'],
+                    question=test_case['question'],
+                    task_type=current_task_type,
+                    task_description=current_task_description,
+                    iteration=iteration + 1
+                )
+                self.logger.info(f"📊 Score: {score}")
+                self.logger.info(f"📝 Evaluation details: {evaluation_details}")
+                
+                # Save score and output
+                iteration_scores.append(score)
+                self.logger.info(f"🎯 Test case {i+1}/{len(test_cases)} completed - Score: {score}")
+                
+                # Create TestCaseResult
+                test_case_result = TestCaseResult(
+                    test_case=i,
+                    question=test_case['question'],
+                    expected_output=test_case['expected'],
+                    actual_output=output,
+                    score=score,
+                    evaluation_details=evaluation_details if isinstance(evaluation_details, dict) else {'error': str(evaluation_details), 'category_scores': {}}
+                )
+                test_case_results.append(test_case_result)
+                
+                # Update best individual score
+                if score is not None and score > iteration_best_sample_score:
+                    iteration_best_sample_score = score
+                
+                # Update progress bar
+                if self.progress_callback:
+                    self.progress_callback(iteration + 1, i + 1)
+            
+            # Calculate average score after iteration ends
+            valid_scores = [score for score in iteration_scores if score is not None]
+            self.logger.info(f"\n📊 Iteration {iteration + 1} score summary:")
+            self.logger.info(f"   All scores: {iteration_scores}")
+            self.logger.info(f"   Valid scores: {valid_scores} (Total: {len(valid_scores)})")
+            
+            if valid_scores:
+                avg_score = sum(valid_scores) / len(valid_scores)
+                # Calculate standard deviation
+                std_dev = statistics.stdev(valid_scores) if len(valid_scores) > 1 else 0.0
+                # Calculate top3 average score
+                top3_scores = sorted(valid_scores, reverse=True)[:3]
+                top3_avg_score = sum(top3_scores) / len(top3_scores)
+                
+                self.logger.info(f"   Average score: {avg_score:.3f}")
+                self.logger.info(f"   Standard deviation: {std_dev:.3f}")
+                self.logger.info(f"   Top3 scores: {top3_scores}")
+                self.logger.info(f"   Top3 average: {top3_avg_score:.3f}")
+            else:
+                avg_score = 0.0
+                std_dev = 0.0
+                top3_avg_score = 0.0
+                self.logger.warning(f"   ⚠️ No valid scores!")
+            
+            # Compare with best average score so far
+            self.logger.info(f"🏆 Best score comparison: Current {avg_score:.3f} vs Previous best {best_avg_score:.3f}")
+            if avg_score > best_avg_score:
+                self.logger.info(f"🎉 New best score achieved! {best_avg_score:.3f} → {avg_score:.3f}")
+                best_avg_score = avg_score
+                
+                # Call callback for real-time best prompt saving
+                if self.best_prompt_callback:
+                    self.best_prompt_callback(iteration + 1, avg_score, current_system_prompt, current_user_prompt)
+            else:
+                self.logger.info(f"📊 Best score maintained: {best_avg_score:.3f} (Current: {avg_score:.3f})")
+            
+            # Create IterationResult
+            iteration_result = IterationResult(
+                iteration=iteration + 1,
+                system_prompt=current_system_prompt,
+                user_prompt=current_user_prompt,
+                avg_score=avg_score,
+                std_dev=std_dev,
+                top3_avg_score=top3_avg_score,
+                best_avg_score=best_avg_score,
+                best_sample_score=iteration_best_sample_score,
+                test_case_results=test_case_results,
+                meta_prompt=None,
+                task_type=current_task_type,
+                task_description=current_task_description
+            )
+            self.iteration_results.append(iteration_result)
+            
+            # Check score threshold
+            if score_threshold is not None and avg_score >= score_threshold:
+                self.logger.info(f"Average score is above threshold ({score_threshold}). Stopping tuning.")
+                if self.progress_callback:
+                    self.progress_callback(num_iterations, len(test_cases))
+
+                if self.iteration_callback:
+                    self.iteration_callback(iteration_result)
+
+                break
+            
+            # Prompt improvement (when average score is below evaluation threshold)
+            self.logger.info(f"🔍 Meta prompt trigger condition check:")
+            self.logger.info(f"   use_meta_prompt: {use_meta_prompt}")
+            self.logger.info(f"   avg_score: {avg_score:.3f}")
+            self.logger.info(f"   evaluation_score_threshold: {evaluation_score_threshold}")
+            self.logger.info(f"   Condition met: {use_meta_prompt and avg_score < evaluation_score_threshold}")
+            
+            if use_meta_prompt and avg_score < evaluation_score_threshold:
+                self.logger.info("🔄 Prompt improvement condition met! Executing meta prompt...")
+                
+                # Call prompt improvement start callback
+                if self.prompt_improvement_start_callback:
+                    self.prompt_improvement_start_callback(
+                        iteration=iteration + 1,
+                        avg_score=avg_score,
+                        current_system_prompt=current_system_prompt,
+                        current_user_prompt=current_user_prompt
+                    )
+                
+                # Improve current prompt using meta prompt
+                improvement_prompt = self._generate_meta_prompt(
+                    current_system_prompt, 
+                    current_user_prompt, 
+                    self._get_recent_prompts(), 
+                    test_case_results,
+                    current_task_type,
+                    current_task_description
+                )
+                
+                # Call meta prompt generation completion callback
+                if self.meta_prompt_generated_callback:
+                    self.meta_prompt_generated_callback(
+                        iteration=iteration + 1,
+                        meta_prompt=improvement_prompt
+                    )
+                
+                # Add meta prompt to result
+                iteration_result.meta_prompt = improvement_prompt
+                
+                # Use meta prompt to improve prompt and update statistics
+                self.logger.info(f"🤖 Querying meta prompt model...")
+                improved_prompts, meta_metadata = self.meta_prompt_model.ask(
+                    question=improvement_prompt,
+                    system_prompt=self.meta_system_prompt_template
+                )
+                self._update_stats(self.meta_prompt_stats, meta_metadata, iteration + 1)
+                
+                self.logger.info(f"🔍 Meta prompt response received (length: {len(improved_prompts) if improved_prompts else 0} characters)")
+                self.logger.info(f"📄 Meta prompt original response:\n{'-'*50}\n{improved_prompts}\n{'-'*50}")
+                
+                parsed_prompt = self.parse_meta_prompt_response(improved_prompts)
+                if parsed_prompt:
+                    previous_system_prompt = current_system_prompt
+                    previous_user_prompt = current_user_prompt
+                    previous_task_type = current_task_type
+                    previous_task_description = current_task_description
+
+                    current_task_type = parsed_prompt.task_type
+                    current_task_description = parsed_prompt.task_description
+                    current_system_prompt = parsed_prompt.system_prompt
+                    current_user_prompt = parsed_prompt.user_prompt
+
+                    self._log_prompt_update(
+                        previous_system_prompt=previous_system_prompt,
+                        previous_user_prompt=previous_user_prompt,
+                        previous_task_type=previous_task_type,
+                        previous_task_description=previous_task_description,
+                        parsed_prompt=parsed_prompt,
+                    )
+
+                    if self.prompt_updated_callback:
+                        self.prompt_updated_callback(
+                            iteration=iteration + 1,
+                            previous_system_prompt=previous_system_prompt,
+                            previous_user_prompt=previous_user_prompt,
+                            previous_task_type=previous_task_type,
+                            previous_task_description=previous_task_description,
+                            new_system_prompt=current_system_prompt,
+                            new_user_prompt=current_user_prompt,
+                            new_task_type=current_task_type,
+                            new_task_description=current_task_description,
+                            raw_improved_prompts=parsed_prompt.raw_text
+                        )
+                else:
+                    self.logger.warning("❌ Prompt parsing failed or response was empty.")
+                    self.logger.warning("   Keeping current prompt unchanged.")
+            else:
+                self.logger.info(f"⏭️ Prompt improvement skipped - condition not met or threshold exceeded")
+            
+            if self.iteration_callback:
+                self.iteration_callback(iteration_result)
+        
+        return self.iteration_results
+
+    @staticmethod
+    def _find_section_pattern(text: str, patterns: tuple[str, ...]) -> tuple[int, Optional[str]]:
+        for pattern in patterns:
+            position = text.find(pattern)
+            if position != -1:
+                return position, pattern
+        return -1, None
+
+    @classmethod
+    def parse_meta_prompt_response(cls, response: Optional[str]) -> Optional[PromptSections]:
+        """Parse a meta model response into its expected prompt sections."""
+        raw_text = (response or "").strip()
+        if not raw_text:
+            return None
+
+        markers = []
+        for section, patterns in META_PROMPT_SECTION_PATTERNS.items():
+            position, pattern = cls._find_section_pattern(raw_text, patterns)
+            if position == -1 or pattern is None:
+                return None
+            markers.append((section, position, pattern))
+
+        ordered_markers = sorted(markers, key=lambda marker: marker[1])
+        expected_order = list(META_PROMPT_SECTION_PATTERNS.keys())
+        if [section for section, _, _ in ordered_markers] != expected_order:
+            return None
+
+        sections = {}
+        for index, (section, position, pattern) in enumerate(ordered_markers):
+            content_start = position + len(pattern)
+            content_end = (
+                ordered_markers[index + 1][1]
+                if index + 1 < len(ordered_markers)
+                else len(raw_text)
+            )
+            sections[section] = raw_text[content_start:content_end].strip()
+
+        return PromptSections(raw_text=raw_text, **sections)
+
+    def _log_prompt_update(
+        self,
+        previous_system_prompt: str,
+        previous_user_prompt: str,
+        previous_task_type: str,
+        previous_task_description: str,
+        parsed_prompt: PromptSections,
+    ) -> None:
+        self.logger.info("✅ Prompt parsing successful!")
+        self.logger.info("📝 Parsed meta prompt results:")
+        self.logger.info(f"{'='*60}")
+        self.logger.info(f"🏷️  New task type:\n    {parsed_prompt.task_type}")
+        self.logger.info(f"📋 New task description:\n    {parsed_prompt.task_description}")
+        self.logger.info(f"⚙️  New system prompt:\n    {parsed_prompt.system_prompt}")
+        self.logger.info(f"👤 New user prompt:\n    {parsed_prompt.user_prompt}")
+        self.logger.info(f"{'='*60}")
+
+        self.logger.info("🔄 Prompt change summary:")
+        self._log_text_change("Task type", previous_task_type, parsed_prompt.task_type)
+        self._log_text_change(
+            "Task description",
+            previous_task_description,
+            parsed_prompt.task_description,
+            include_lengths=True,
+        )
+        self._log_text_change(
+            "System prompt",
+            previous_system_prompt,
+            parsed_prompt.system_prompt,
+            include_lengths=True,
+        )
+        self._log_text_change(
+            "User prompt",
+            previous_user_prompt,
+            parsed_prompt.user_prompt,
+            include_lengths=True,
+        )
+
+    def _log_text_change(
+        self,
+        label: str,
+        previous_value: str,
+        new_value: str,
+        include_lengths: bool = False,
+    ) -> None:
+        if previous_value == new_value:
+            if include_lengths:
+                self.logger.info(f"   {label} maintained ({len(new_value)} characters)")
+            else:
+                self.logger.info(f"   {label} maintained: '{new_value}'")
+            return
+
+        if include_lengths:
+            self.logger.info(
+                f"   {label} changed ({len(previous_value)} → {len(new_value)} characters)"
+            )
+        else:
+            self.logger.info(f"   {label} changed: '{previous_value}' → '{new_value}'")
+
+    def _get_recent_prompts(self, num_prompts: int = 5) -> List[Dict]:
+        """Return recent prompt results."""
+        recent_results = self.iteration_results[-num_prompts:] if len(self.iteration_results) >= num_prompts else self.iteration_results
+        return [{
+            'iteration': result.iteration,
+            'system_prompt': result.system_prompt,
+            'user_prompt': result.user_prompt,
+            'avg_score': result.avg_score,
+            'evaluation_details': [test_case.evaluation_details for test_case in result.test_case_results]
+        } for result in recent_results]
+
+    def _get_best_prompt(self) -> Dict:
+        """Return the best performing prompt."""
+        if not self.iteration_results:
+            return None
+        
+        best_result = max(self.iteration_results, key=lambda x: x.avg_score)
+        return {
+            'system_prompt': best_result.system_prompt,
+            'user_prompt': best_result.user_prompt,
+            'avg_score': best_result.avg_score
+        }
+
+    def _generate_meta_prompt(self, system_prompt: str, user_prompt: str, recent_prompts: List[Dict], valid_outputs: List[TestCaseResult], task_type: str, task_description: str) -> str:
+        """
+        Generate meta prompt template.
+        
+        Args:
+            system_prompt (str): Current system prompt
+            user_prompt (str): Current user prompt
+            recent_prompts (List[Dict]): Recent prompt history
+            valid_outputs (List[TestCaseResult]): All evaluation cases
+            task_type (str): Current task type
+            task_description (str): Current task description
+            
+        Returns:
+            str: Generated meta prompt template
+        """
+        # Sort cases by score
+        sorted_cases = sorted(valid_outputs, key=lambda x: x.score)
+        
+        # Format top 3 cases
+        formatted_top3_cases = "\n\n".join([
+            f"[Top Case {i+1}]\n"
+            f"Question: {case.question}\n"
+            f"Expected Output: {case.expected_output}\n"
+            f"Actual Output: {case.actual_output}\n"
+            f"Score: {case.score:.2f}\n"
+            f"Evaluation Details: {case.evaluation_details}"
+            for i, case in enumerate(reversed(sorted_cases[-3:]))  # Top 3 in reverse order
+        ])
+        
+        # Format bottom 2 cases
+        formatted_bottom2_cases = "\n\n".join([
+            f"[Bottom Case {i+1}]\n"
+            f"Question: {case.question}\n"
+            f"Expected Output: {case.expected_output}\n"
+            f"Actual Output: {case.actual_output}\n"
+            f"Score: {case.score:.2f}\n"
+            f"Evaluation Details: {case.evaluation_details}"
+            for i, case in enumerate(sorted_cases[:2])  # Bottom 2
+        ])
+        
+        # Format recent prompts
+        formatted_recent_prompts = chr(10).join([
+            f"Iteration {p['iteration']} (Average Score: {p['avg_score']:.2f}):{chr(10)}"
+            f"System Prompt: {p['system_prompt']}{chr(10)}"
+            f"User Prompt: {p['user_prompt']}{chr(10)}"
+            f"Evaluation Details: {p.get('evaluation_details', 'No evaluation details available')}"
+            for p in recent_prompts[:-1]  # Recent 3 excluding current prompt
+        ])
+        
+        # Format best performing prompt
+        best_prompt = self._get_best_prompt()
+        if best_prompt:
+            formatted_best_prompt = f"""
+System: {best_prompt['system_prompt']}
+User: {best_prompt['user_prompt']}
+Average Score: {best_prompt['avg_score']:.2f}
+"""
+        else:
+            formatted_best_prompt = "No best performing prompt available yet."
+        
+        # Generate meta prompt template
+        improvement_prompt = self.meta_user_prompt_template.format(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            random_cases=formatted_top3_cases + "\n\n" + formatted_bottom2_cases,  # Combine top/bottom cases
+            recent_prompts=formatted_recent_prompts,
+            formatted_best_prompt=formatted_best_prompt,
+            task_type=task_type,
+            task_description=task_description
+        )
+        
+        return improvement_prompt
+
+    @staticmethod
+    def _rows_to_csv(rows: List[Dict[str, Any]]) -> str:
+        if not rows:
+            return ""
+
+        fieldnames = []
+        for row in rows:
+            for key in row.keys():
+                if key not in fieldnames:
+                    fieldnames.append(key)
+
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+        return output.getvalue()
+
+    def save_results_to_csv(self):
+        """Return results as CSV formatted string."""
+        data = []
+        
+        # Cost analysis data
+        try:
+            cost_breakdown = self.get_iteration_cost_breakdown()
+            cost_summary = self.get_cost_summary()
+            self.logger.info(f"Cost summary generation completed: Total cost ${cost_summary.get('total_cost', 0.0):.4f}")
+            self.logger.info(f"Iteration cost analysis: {len(cost_breakdown)} iterations")
+        except Exception as e:
+            self.logger.error(f"Error generating cost analysis data: {str(e)}")
+            cost_breakdown = {}
+            cost_summary = {
+                'model_stats': {
+                    'total_cost': 0.0,
+                    'total_tokens': 0,
+                    'total_calls': 0,
+                    'total_input_tokens': 0,
+                    'total_output_tokens': 0,
+                    'total_duration': 0.0
+                },
+                'evaluator_stats': {
+                    'total_cost': 0.0,
+                    'total_tokens': 0,
+                    'total_calls': 0,
+                    'total_input_tokens': 0,
+                    'total_output_tokens': 0,
+                    'total_duration': 0.0
+                },
+                'meta_prompt_stats': {
+                    'total_cost': 0.0,
+                    'total_tokens': 0,
+                    'total_calls': 0,
+                    'total_input_tokens': 0,
+                    'total_output_tokens': 0,
+                    'total_duration': 0.0
+                },
+                'total_cost': 0.0,
+                'total_tokens': 0,
+                'total_duration': 0.0,
+                'total_calls': 0
+            }
+        
+        # Convert each iteration and test case results to data
+        for iteration_result in self.iteration_results:
+            iteration_cost_info = cost_breakdown.get(f"iteration_{iteration_result.iteration}", {}) if cost_breakdown else {}
+            
+            for test_case in iteration_result.test_case_results:
+                row = {
+                    'Iteration': iteration_result.iteration,
+                    'Average Score': iteration_result.avg_score,
+                    'Standard Deviation': iteration_result.std_dev,
+                    'Top3 Average Score': iteration_result.top3_avg_score,
+                    'Best Average Score': iteration_result.best_avg_score,
+                    'Best Sample Score': iteration_result.best_sample_score,
+                    'Task Type': iteration_result.task_type,
+                    'Task Description': iteration_result.task_description,
+                    'Test Case': test_case.test_case,
+                    'Question': test_case.question,
+                    'Expected Output': test_case.expected_output,
+                    'Actual Output': test_case.actual_output,
+                    'Score': test_case.score,
+                    'System Prompt': iteration_result.system_prompt,
+                    'User Prompt': iteration_result.user_prompt,
+                    'Created At': iteration_result.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                    
+                    # Add cost information (safe access method)
+                    'Iteration_Model_Cost': iteration_cost_info.get('model_cost', 0.0),
+                    'Iteration_Evaluator_Cost': iteration_cost_info.get('evaluator_cost', 0.0),
+                    'Iteration_Meta_Prompt_Cost': iteration_cost_info.get('meta_prompt_cost', 0.0),
+                    'Iteration_Total_Cost': iteration_cost_info.get('total_cost', 0.0),
+                    'Total_Model_Cost': cost_summary.get('model_stats', {}).get('total_cost', 0.0),
+                    'Total_Evaluator_Cost': cost_summary.get('evaluator_stats', {}).get('total_cost', 0.0),
+                    'Total_Meta_Prompt_Cost': cost_summary.get('meta_prompt_stats', {}).get('total_cost', 0.0),
+                    'Total_Cost': cost_summary.get('total_cost', 0.0),
+                    'Total_Tokens': cost_summary.get('total_tokens', 0),
+                    'Total_Duration': cost_summary.get('total_duration', 0.0),
+                    'Total_Calls': cost_summary.get('total_calls', 0),
+                    'Total_Model_Tokens': cost_summary.get('model_stats', {}).get('total_tokens', 0),
+                    'Total_Evaluator_Tokens': cost_summary.get('evaluator_stats', {}).get('total_tokens', 0),
+                    'Total_Meta_Prompt_Tokens': cost_summary.get('meta_prompt_stats', {}).get('total_tokens', 0),
+                    'Total_Model_Calls': cost_summary.get('model_stats', {}).get('total_calls', 0),
+                    'Total_Evaluator_Calls': cost_summary.get('evaluator_stats', {}).get('total_calls', 0),
+                    'Total_Meta_Prompt_Calls': cost_summary.get('meta_prompt_stats', {}).get('total_calls', 0)
+                }
+                
+                # Add category scores and feedback
+                if test_case.evaluation_details and 'category_scores' in test_case.evaluation_details:
+                    for category, details in test_case.evaluation_details['category_scores'].items():
+                        row[f"{category}_Score"] = details['score']
+                        row[f"{category}_State"] = details['current_state']
+                        row[f"{category}_Action"] = details['improvement_action']
+                        row[f"{category}_Weight"] = details['weight']
+                
+                data.append(row)
+        
+        return self._rows_to_csv(data)
+
+    def get_cost_summary(self) -> Dict:
+        """Return overall cost summary."""
+        return {
+            "model_stats": self.model_stats.copy(),
+            "evaluator_stats": self.evaluator_stats.copy(),
+            "meta_prompt_stats": self.meta_prompt_stats.copy(),
+            "total_cost": self.model_stats["total_cost"] + self.evaluator_stats["total_cost"] + self.meta_prompt_stats["total_cost"],
+            "total_tokens": self.model_stats["total_tokens"] + self.evaluator_stats["total_tokens"] + self.meta_prompt_stats["total_tokens"],
+            "total_duration": self.model_stats["total_duration"] + self.evaluator_stats["total_duration"] + self.meta_prompt_stats["total_duration"],
+            "total_calls": self.model_stats["total_calls"] + self.evaluator_stats["total_calls"] + self.meta_prompt_stats["total_calls"]
+        }
+
+    def get_model_stats(self) -> Dict:
+        """Return model call statistics."""
+        return self.model_stats.copy()
+
+    def get_evaluator_stats(self) -> Dict:
+        """Return evaluator call statistics."""
+        return self.evaluator_stats.copy()
+
+    def get_meta_prompt_stats(self) -> Dict:
+        """Return meta prompt generation statistics."""
+        return self.meta_prompt_stats.copy()
+
+    def print_cost_summary(self):
+        """Print cost summary to console."""
+        summary = self.get_cost_summary()
+        
+        print("\n=== Cost and Usage Summary ===")
+        print(f"Total Cost: ${summary['total_cost']:.4f}")
+        print(f"Total Tokens: {summary['total_tokens']:,}")
+        print(f"Total Time: {summary['total_duration']:.2f} seconds")
+        print(f"Total Calls: {summary['total_calls']}")
+        
+        print("\n--- Model-specific Details ---")
+        for model_type in ["model_stats", "evaluator_stats", "meta_prompt_stats"]:
+            stats = summary[model_type]
+            print(f"\n{stats['type']}:")
+            print(f"  Call Count: {stats['total_calls']}")
+            print(f"  Input Tokens: {stats['total_input_tokens']:,}")
+            print(f"  Output Tokens: {stats['total_output_tokens']:,}")
+            print(f"  Total Tokens: {stats['total_tokens']:,}")
+            print(f"  Cost: ${stats['total_cost']:.4f}")
+            print(f"  Time: {stats['total_duration']:.2f} seconds")
+
+    def get_iteration_cost_breakdown(self) -> Dict:
+        """Return cost breakdown by iteration."""
+        breakdown = {}
+        
+        try:
+            if not self.iteration_results:
+                return breakdown
+                
+            for iteration in range(1, len(self.iteration_results) + 1):
+                iteration_cost = {
+                    "model_cost": 0.0,
+                    "evaluator_cost": 0.0,
+                    "meta_prompt_cost": 0.0,
+                    "total_cost": 0.0,
+                    "model_calls": 0,
+                    "evaluator_calls": 0,
+                    "meta_prompt_calls": 0,
+                    "total_calls": 0
+                }
+                
+                # Collect iteration statistics for each model type
+                for stats_name, stats in [("model", self.model_stats), ("evaluator", self.evaluator_stats), ("meta_prompt", self.meta_prompt_stats)]:
+                    if stats and "calls_by_iteration" in stats and iteration in stats["calls_by_iteration"]:
+                        iter_stats = stats["calls_by_iteration"][iteration]
+                        iteration_cost[f"{stats_name}_cost"] = iter_stats.get("cost", 0.0)
+                        iteration_cost[f"{stats_name}_calls"] = iter_stats.get("calls", 0)
+                        iteration_cost["total_cost"] += iter_stats.get("cost", 0.0)
+                        iteration_cost["total_calls"] += iter_stats.get("calls", 0)
+                
+                breakdown[f"iteration_{iteration}"] = iteration_cost
+        except Exception as e:
+            self.logger.error(f"Error during iteration cost breakdown: {str(e)}")
+            return {}
+        
+        return breakdown 
+
+    def reset_stats(self):
+        """Reset all statistics."""
+        self.model_stats = self._initialize_stats("Model calls")
+        self.evaluator_stats = self._initialize_stats("Evaluator calls")
+        self.meta_prompt_stats = self._initialize_stats("Meta prompt generation")
+        self.iteration_results = []
+        self.logger.info("All statistics have been reset.")
+
+    def export_cost_summary_to_csv(self) -> str:
+        """Export cost summary to CSV format."""
+        summary = self.get_cost_summary()
+        breakdown = self.get_iteration_cost_breakdown()
+        
+        # Overall summary data
+        summary_data = [{
+            'Type': 'Total Summary',
+            'Total_Cost': summary['total_cost'],
+            'Total_Tokens': summary['total_tokens'],
+            'Total_Duration': summary['total_duration'],
+            'Total_Calls': summary['total_calls'],
+            'Model_Cost': summary['model_stats']['total_cost'],
+            'Model_Calls': summary['model_stats']['total_calls'],
+            'Model_Tokens': summary['model_stats']['total_tokens'],
+            'Evaluator_Cost': summary['evaluator_stats']['total_cost'],
+            'Evaluator_Calls': summary['evaluator_stats']['total_calls'],
+            'Evaluator_Tokens': summary['evaluator_stats']['total_tokens'],
+            'Meta_Prompt_Cost': summary['meta_prompt_stats']['total_cost'],
+            'Meta_Prompt_Calls': summary['meta_prompt_stats']['total_calls'],
+            'Meta_Prompt_Tokens': summary['meta_prompt_stats']['total_tokens']
+        }]
+        
+        # Add iteration-wise data
+        for iteration_key, iteration_data in breakdown.items():
+            summary_data.append({
+                'Type': iteration_key.replace('_', ' ').title(),
+                'Total_Cost': iteration_data['total_cost'],
+                'Total_Tokens': 0,  # Token information per iteration needs separate calculation
+                'Total_Duration': 0,  # Time information per iteration needs separate calculation
+                'Total_Calls': iteration_data['total_calls'],
+                'Model_Cost': iteration_data['model_cost'],
+                'Model_Calls': iteration_data['model_calls'],
+                'Model_Tokens': 0,
+                'Evaluator_Cost': iteration_data['evaluator_cost'],
+                'Evaluator_Calls': iteration_data['evaluator_calls'],
+                'Evaluator_Tokens': 0,
+                'Meta_Prompt_Cost': iteration_data['meta_prompt_cost'],
+                'Meta_Prompt_Calls': iteration_data['meta_prompt_calls'],
+                'Meta_Prompt_Tokens': 0
+            })
+        
+        return self._rows_to_csv(summary_data)

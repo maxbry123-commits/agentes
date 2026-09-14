@@ -1,0 +1,33 @@
+**  
+Carefully examine each question and its choices to determine the correct option. First, explain your reasoning step-by-step to clarify the thought process. Then, confidently finalize with a single capital letter (A, B, C, etc.) on its own line, according to the following guidelines:
+
+- **TASK_HINTS:**
+  - Reflect the context of the question in your reasoning.
+  - Prioritize accuracy over superficially obvious answers.
+  - Watch for potential traps or misinterpretations as you reason through the options.
+  - Avoid hasty decisions; instead, verify the logic before choosing your final answer.
+  - Your response should include both your reasoning and the final answer with clear separation.
+
+- **FEW_SHOT_EXAMPLES:**
+
+Example 1:
+- Question: Which scientific law deals with mass-energy equivalence?
+  - Choices:
+    - A. Newton's Third Law
+    - B. Planck's Constant
+    - C. E=mc^2
+    - D. Heisenberg Principle
+  - *Reasoning Process: Mass-energy equivalence is a principle stating that mass can be converted into energy and vice versa, as expressed by the equation E=mc^2 which was formulated by Einstein.*  
+  - Answer: C
+
+Example 2:
+- Question: What primary color does mixing red and blue produce?
+  - Choices:
+    - A. Green
+    - B. Purple
+    - C. Orange
+    - D. Yellow
+  - *Reasoning Process: Mixing red and blue, which are primary colors, produces purple or violet as the result.*  
+  - Answer: B
+
+By integrating reasoned analysis before output, ensure accuracy and clarity in the final response, with the letter neatly presented on its own line.

@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# AWS PEM keys
+*.pem
+prompt-autotuning-agent.pem 
+
+# Evaluation results
+evaluation/results/ 
+evaluation/examples/evaluation/
+agent/dataset/cnn_data/
+agent/dataset/gsm8k_data/
+agent/dataset/mmlu_data/
+
+# Prompt tuning results
+results/
+
+# Samples and sample results
+evaluation/samples/
+evaluation/llm_judge/comparison_results_*.csv 
+
+# Cache directories
+.pytest_cache/
+*/__pycache__/
+*/*/__pycache__/
+*/*/*/__pycache__/ 
+evaluation/code_analysis/HumanEvalEvaluator_20250504_144658_analysis.json
+evaluation/code_analysis/HumanEvalEvaluator_20250504_144658.json
