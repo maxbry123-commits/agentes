@@ -1,0 +1,32 @@
+{
+  "closed": [
+    {
+      "files": 653,
+      "slug": "Fast-Downward",
+      "source_commit": "5a5fd1ef1db4e4ab99242cdcd104196e5bc16a63",
+      "tree_sha256": "a28edf743413217c1973a289555291ddf5083b270b96a91d0a5e155cac635ed3"
+    },
+    {
+      "files": 667,
+      "slug": "Unified-Planning",
+      "source_commit": "8921852c469970213da96f445d343461f504402a",
+      "tree_sha256": "f042d47d19db9bc14c0a2200d50b92e9b4a55c37236aedaece4c9874bbd6537f"
+    },
+    {
+      "files": 836,
+      "slug": "Pyperplan",
+      "source_commit": "586b99f060bfe457f359aa8b4bae1a299fa4e8c7",
+      "tree_sha256": "d98b02ff888f9c4b0b898605f068b4411b453dca82a621de1271a91c4012c4b1"
+    },
+    {
+      "files": 31,
+      "slug": "GTPyhop",
+      "source_commit": "1ca7773963443476d0e83d03f10efab325327565",
+      "tree_sha256": "5b7fbc716a417b88d83fce8973dc10bed81af7212f77e7c3ca0c75a9ca9cbfff"
+    }
+  ],
+  "gaps": [],
+  "global_verified": true,
+  "schema": "yaiwes.kernel.planner-decomposer4.final-gate/v2",
+  "total": 4
+}
