@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 5915071,
+  "bundle_sha256": "12624ddce2ebeb1a5b75354cb98b8abe8cfa1e0222edd494ddd9b115294733f5",
+  "extracted_tree": {
+    "bytes": 8518671,
+    "files": 251,
+    "sha256": "89e1fac940b55de105351ecf04205c5a7b4c0f4b4cbc7048fcc0415df609fd63"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 5915071,
+      "name": "AIOS.bundle.zip.part-0001",
+      "sha256": "12624ddce2ebeb1a5b75354cb98b8abe8cfa1e0222edd494ddd9b115294733f5"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "AIOS",
+  "source_bytes": 8518671,
+  "source_commit": "292d98f78c835499df18cdb6de6325bba1895862",
+  "source_files": 251,
+  "source_ref": "HEAD",
+  "source_repo": "agiresearch/AIOS",
+  "source_tree": {
+    "bytes": 8518671,
+    "files": 251,
+    "sha256": "89e1fac940b55de105351ecf04205c5a7b4c0f4b4cbc7048fcc0415df609fd63"
+  }
+}

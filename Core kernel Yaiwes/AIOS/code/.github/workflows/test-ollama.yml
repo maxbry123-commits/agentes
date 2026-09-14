@@ -1,0 +1,94 @@
+# .github/workflows/test-ollama.yml
+name: Test Ollama
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  push:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      OLLAMA_MAX_WAIT: 60
+      KERNEL_MAX_WAIT: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install uv
+          uv venv
+          source .venv/bin/activate
+          uv pip install -r requirements.txt
+      
+      - name: Create config from example
+        run: cp aios/config/config.yaml.example aios/config/config.yaml
+
+      - name: Install Ollama
+        run: | 
+          curl -fsSL https://ollama.com/install.sh | sh
+
+          ollama serve > ollama-llm.log 2>&1 &
+
+          for ((i=1;i<=${OLLAMA_MAX_WAIT};i++)); do
+            curl -s http://localhost:11434/api/version && echo "Ollama ready" && break
+            echo "Waiting for Ollama… ($i/${OLLAMA_MAX_WAIT})"; sleep 1
+          done
+    
+          ollama pull qwen3:1.7b
+          ollama pull qwen3:4b
+
+      - name: Run AIOS kernel in background
+        run: |
+          source .venv/bin/activate
+          bash runtime/launch_kernel.sh >./kernel.log 2>&1 &
+
+          for ((i=1;i<=${KERNEL_MAX_WAIT};i++)); do
+            curl -s http://localhost:8000/status && echo "Kernel ready" && break
+            echo "Waiting for Kernel… ($i/${KERNEL_MAX_WAIT})"; sleep 1
+          done
+      
+      - name: Run Ollama tests
+        run: |
+          source .venv/bin/activate  
+          mkdir -p test_results
+          
+          # Run Ollama tests
+          mapfile -t OLLAMA_TESTS < <(find . -type f -path "*/llm/ollama/*" -name "*.py")
+          if [ "${#OLLAMA_TESTS[@]}" -eq 0 ]; then
+            echo "⚠️  No llm/ollama tests found – skipping."
+          else
+            for t in "${OLLAMA_TESTS[@]}"; do
+              echo "▶️  Running Ollama test: $t"
+              python -m unittest "$t" 2>&1 | tee -a test_results/ollama_tests.log
+              echo "----------------------------------------"
+            done
+          fi
+      
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: |
+            ollama-llm.log
+            kernel.log
+            test_results/
