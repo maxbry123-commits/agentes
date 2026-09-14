@@ -1,0 +1,114 @@
+package kg
+
+import (
+	"time"
+
+	"github.com/angelnicolasc/graymatter/pkg/memory"
+)
+
+// GraphAdapter wraps *Graph to satisfy the memory.GraphAccessor interface.
+// This keeps pkg/memory free of a direct dependency on pkg/kg.
+type GraphAdapter struct {
+	g *Graph
+}
+
+// NewGraphAdapter returns a GraphAdapter for use as a memory.GraphAccessor.
+func NewGraphAdapter(g *Graph) *GraphAdapter { return &GraphAdapter{g: g} }
+
+// UpsertNode implements memory.GraphAccessor.
+func (a *GraphAdapter) UpsertNode(id, label, entityType string) error {
+	return a.g.Upsert(Node{ID: id, Label: label, EntityType: entityType})
+}
+
+// LinkNodes creates an edge between two nodes. Implements mcp.KGLinker.
+func (a *GraphAdapter) LinkNodes(from, to, relation string) error {
+	return a.g.Link(Edge{From: from, To: to, Relation: relation})
+}
+
+// LinkEdges implements memory.EdgeWriter: consolidation links the
+// co-mentioned pairs an extractor produced, attributing them to sourceFactID
+// (the graph merges receipts across facts, capped at ten per edge).
+func (a *GraphAdapter) LinkEdges(links []memory.EntityLink, sourceFactID string) error {
+	for _, l := range links {
+		e := Edge{From: l.From, To: l.To, Relation: l.Relation}
+		if sourceFactID != "" {
+			e.Sources = []string{sourceFactID}
+		}
+		if err := a.g.Link(e); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// NeighborTexts implements memory.GraphAccessor.
+// It returns the Label of each node reachable from nodeID within depth hops.
+func (a *GraphAdapter) NeighborTexts(nodeID string, depth int) ([]string, error) {
+	nodes, _, err := a.g.Neighbors(nodeID, depth)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		out = append(out, n.Label)
+	}
+	return out, nil
+}
+
+// DecayGraph implements memory.GraphDecayer: consolidation calls it once per
+// cycle so graph weights follow the same lifecycle as fact weights.
+func (a *GraphAdapter) DecayGraph(halfLife time.Duration) error {
+	return a.g.DecayGraph(halfLife)
+}
+
+// ExtractorAdapter wraps EntityExtractor to satisfy memory.EntityExtractorAccessor.
+type ExtractorAdapter struct {
+	e EntityExtractor
+}
+
+// NewExtractorAdapter returns an ExtractorAdapter.
+func NewExtractorAdapter(e EntityExtractor) *ExtractorAdapter {
+	return &ExtractorAdapter{e: e}
+}
+
+// ExtractIDs implements memory.EntityExtractorAccessor.
+// It returns canonical node IDs for all entities found in text.
+func (a *ExtractorAdapter) ExtractIDs(text string) ([]string, error) {
+	nodes, _, err := a.e.Extract(text)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		if n.ID != "" {
+			ids = append(ids, n.ID)
+		}
+	}
+	return ids, nil
+}
+
+// ExtractTyped implements memory.TypedEntityExtractor: it preserves the
+// label and entity type the extractor produced instead of collapsing
+// everything to a bare ID.
+func (a *ExtractorAdapter) ExtractTyped(text string) ([]memory.EntityRef, []memory.EntityLink, error) {
+	nodes, edges, err := a.e.Extract(text)
+	if err != nil {
+		return nil, nil, err
+	}
+	refs := make([]memory.EntityRef, 0, len(nodes))
+	for _, n := range nodes {
+		if n.ID == "" {
+			continue
+		}
+		refs = append(refs, memory.EntityRef{ID: n.ID, Label: n.Label, EntityType: n.EntityType})
+	}
+	links := make([]memory.EntityLink, 0, len(edges))
+	for _, e := range edges {
+		links = append(links, memory.EntityLink{From: e.From, To: e.To, Relation: e.Relation})
+	}
+	return refs, links, nil
+}
+
+// Compile-time proof the adapter carries the optional decay capability;
+// consolidation type-asserts this interface at Step 5.
+var _ memory.GraphDecayer = (*GraphAdapter)(nil)

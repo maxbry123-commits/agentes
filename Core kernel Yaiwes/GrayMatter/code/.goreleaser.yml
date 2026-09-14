@@ -1,0 +1,96 @@
+version: 2
+
+project_name: graymatter
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: graymatter
+    main: ./cmd/graymatter
+    binary: graymatter
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - id: default
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+# Homebrew, Scoop and Nix publish into three separate repositories, and the
+# workflow's default GITHUB_TOKEN is scoped to this one — it cannot write to
+# any of them. Each publisher therefore takes its own credential, and the
+# release job refuses to start without it rather than discovering the problem
+# after the binaries are already uploaded.
+brews:
+  - repository:
+      owner: angelnicolasc
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/angelnicolasc/graymatter
+    description: "Persistent memory for AI agents. Single binary, zero infrastructure."
+    license: MIT
+    skip_upload: auto
+
+scoops:
+  - repository:
+      owner: angelnicolasc
+      name: scoop-bucket
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/angelnicolasc/graymatter
+    description: "Persistent memory for AI agents. Single binary, zero infrastructure."
+    license: MIT
+
+nix:
+  - repository:
+      owner: angelnicolasc
+      name: nur-packages
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/angelnicolasc/graymatter
+    description: "Persistent memory for AI agents. Single binary, zero infrastructure."
+    license: mit
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+      - Merge pull request
+      - Merge branch
+
+release:
+  github:
+    owner: angelnicolasc
+    name: graymatter
+  draft: false
+  prerelease: auto
+  name_template: "GrayMatter {{.Tag}}"

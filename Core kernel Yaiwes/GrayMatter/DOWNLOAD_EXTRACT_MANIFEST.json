@@ -1,0 +1,38 @@
+{
+  "bundle_bytes": 15598493,
+  "bundle_sha256": "2200f6b3873378d320f8c8083eb41d0710ec7348d5f4e15695779dc238a3ac9d",
+  "extracted_tree": {
+    "bytes": 18361906,
+    "files": 397,
+    "sha256": "700557f936697204638b01532be94e594ca15fd51248e93f64c1dbeb872d5e72"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "GrayMatter.bundle.zip.part-0001",
+      "sha256": "7d44d00f2a264c35766dd2ab2289984954cb8934a46c433c0fc95d2b6eafb069"
+    },
+    {
+      "bytes": 3015581,
+      "name": "GrayMatter.bundle.zip.part-0002",
+      "sha256": "e3a495575792b4301b663d7beefacae80a0429e1b76b1db2b0b7d83e4b89d7cb"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "GrayMatter",
+  "source_bytes": 18361906,
+  "source_commit": "d03c408e22c935d232d3c9456ed03188300eff28",
+  "source_files": 397,
+  "source_ref": "HEAD",
+  "source_repo": "angelnicolasc/graymatter",
+  "source_tree": {
+    "bytes": 18361906,
+    "files": 397,
+    "sha256": "700557f936697204638b01532be94e594ca15fd51248e93f64c1dbeb872d5e72"
+  }
+}
