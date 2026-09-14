@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 1003885,
+  "bundle_sha256": "6caf995e8ef3e4fe8c1f54e4b20b70ee550636a4b4e60fe7839593970255e17f",
+  "extracted_tree": {
+    "bytes": 2722289,
+    "files": 304,
+    "sha256": "5292085bb7dc63a286ce5aee909c61f8a8f8b984f0835c869a3b444ecbae8a26"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 1003885,
+      "name": "OpenGuardrails.bundle.zip.part-0001",
+      "sha256": "6caf995e8ef3e4fe8c1f54e4b20b70ee550636a4b4e60fe7839593970255e17f"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "OpenGuardrails",
+  "source_bytes": 2722289,
+  "source_commit": "a982f7c84ca567043b21697f0c634c659ef3aeba",
+  "source_files": 304,
+  "source_ref": "HEAD",
+  "source_repo": "openguardrails/openguardrails",
+  "source_tree": {
+    "bytes": 2722289,
+    "files": 304,
+    "sha256": "5292085bb7dc63a286ce5aee909c61f8a8f8b984f0835c869a3b444ecbae8a26"
+  }
+}
