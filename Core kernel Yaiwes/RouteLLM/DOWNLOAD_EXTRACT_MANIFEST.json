@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 5380681,
+  "bundle_sha256": "9d3b6bc88fa9deb99095f749a1d0dbdc73f390ca835b5667105f469403de18c1",
+  "extracted_tree": {
+    "bytes": 16791607,
+    "files": 108,
+    "sha256": "dd6c19f77746d6a7f4ac568eafba1d897e41feb7bfdd04005aea1f767b87b35a"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 5380681,
+      "name": "RouteLLM.bundle.zip.part-0001",
+      "sha256": "9d3b6bc88fa9deb99095f749a1d0dbdc73f390ca835b5667105f469403de18c1"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "RouteLLM",
+  "source_bytes": 16791607,
+  "source_commit": "0b64fdafe049e596a3f5657c219329f24af24198",
+  "source_files": 108,
+  "source_ref": "HEAD",
+  "source_repo": "lm-sys/RouteLLM",
+  "source_tree": {
+    "bytes": 16791607,
+    "files": 108,
+    "sha256": "dd6c19f77746d6a7f4ac568eafba1d897e41feb7bfdd04005aea1f767b87b35a"
+  }
+}
