@@ -1,0 +1,16 @@
+# 示例用例 — 占位，用于验证基准测试框架连通性
+# 将此文件替换为真实 CTF 题目即可运行基准测试
+
+id: example_demo
+name: "示例用例（不实际运行）"
+category: demo
+difficulty: easy
+mode: ctf
+timeout: 10
+description: |
+  这是一个占位用例，不包含真正的挑战逻辑。
+  基准测试框架会在 10 秒后超时返回。
+flag_regex: "placeholder_flag"
+tags:
+  - demo
+  - placeholder

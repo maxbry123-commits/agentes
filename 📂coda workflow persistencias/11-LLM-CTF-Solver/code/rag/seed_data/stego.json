@@ -1,0 +1,37 @@
+[
+  {
+    "title": "LSB 隐写提取",
+    "content": "LSB (Least Significant Bit) 隐写: 将数据隐藏在像素的最低有效位. 提取方法: 1) zsteg (PNG/BMP 自动检测): zsteg -a file.png; 2) Python PIL 手工提取: 取每个像素 R/G/B 通道的 bit 0, 拼合为字节. 技巧: 提取时需考虑通道顺序和比特顺序 (MSB first / LSB first). 全通道扫描: 分别提取 R0, G0, B0, R1, G1, B1 等组合. 调色板隐写: 索引色 PNG 可在调色板中隐藏数据. 工具: zsteg (gem install zsteg), stegsolve (GUI 手动扫描), StegoToolKit.",
+    "tags": "stego,lsb,隐写,zsteg,png,bmp",
+    "tools": "stego_tools, execute_shell_command",
+    "checklist": "1. 确认图片类型; 2. zsteg 自动扫描; 3. PIL 手工提取各通道; 4. 检查调色板; 5. 检查文件末尾附加数据"
+  },
+  {
+    "title": "图片元数据隐写",
+    "content": "EXIF/元数据隐写: 信息隐藏在图片的 EXIF 标签中 (拍摄时间、GPS 坐标、制造商等). 提取: exiftool file.jpg, PIL Image.getexif(). 工具: exiftool (最全面), PIL (Python). 技巧: 检查长字符串字段 (Artist, Comment, ImageDescription) 中是否有 base64/flag 格式文本. Windows 属性: 右键属性-详细信息也可查看部分元数据. 检查是否有自定义标签或 MakerNote 字段.",
+    "tags": "stego,exif,metadata,exiftool",
+    "tools": "stego_tools, execute_shell_command",
+    "checklist": "1. exiftool 提取全部元数据; 2. 检查描述/评论字段; 3. 检查自定义标签; 4. 解码可疑字符串"
+  },
+  {
+    "title": "文件附加数据与拼接",
+    "content": "拼接文件隐写: 在图片/音频后直接附加数据 (如 cat flag.zip >> image.jpg). 检测: 检查文件结束标记后的额外数据 (JPEG: FFD9, PNG: IEND, GIF: 3B). 提取: binwalk -e file (自动提取嵌入式文件), foremost -i file -o out (文件雕刻), dd if=image.jpg bs=1 skip=END_OFFSET. CTF 常见: 图片后跟 ZIP 压缩包, 用 binwalk 或 foremost 提取. 文件拼接检测: 用 stego_tools 的 freq 动作 (文件尾附加数据检测).",
+    "tags": "stego,forensics,binwalk,foremost,append,文件拼接",
+    "tools": "stego_tools, forensics_tools, execute_shell_command",
+    "checklist": "1. 检查文件大小; 2. binwalk 分析; 3. 检查文件末尾; 4. foremost 文件雕刻"
+  },
+  {
+    "title": "音频隐写分析",
+    "content": "音频隐写: 1) 频谱图: 音频频谱中隐藏图像/文字 (用 Audacity/Sonic Visualiser 查看); 2) LSB 音频隐写: wav 文件的采样点 LSB 隐藏数据; 3) DTMF 解码: 电话按键音解码; 4) 莫尔斯电码: 音频中包含长短音; 5) 倒放: 音频反向播放包含隐藏信息. 工具: Audacity (频谱图, 倒放, 变速), Sonic Visualiser, DTMF 解码器. 检查: 查看频谱图, 找异常峰值或图像模式.",
+    "tags": "stego,audio,wav,mp3,spectrogram,隐写",
+    "tools": "execute_shell_command, codec_tool",
+    "checklist": "1. 听音频找异常; 2. 查看频谱图; 3. 检查 LSB; 4. 尝试倒放; 5. DTMF 解码"
+  },
+  {
+    "title": "二维码隐写",
+    "content": "二维码 (QR Code) 分析: 1) 扫描二维码获取直接内容; 2) 修改二维码的纠错级别 (L/M/Q/H) 恢复破损二维码; 3) QR 码颜色掩码: 某些像素在不同颜色中隐藏数据; 4) 微二维码 (Micro QR Code) 识别. 工具: pyzbar (Python QR 解码), qrcode (生成), zbar (命令行). CTF 技巧: 将二维码的黑色/白色像素提取为二进制, 修改二维码模块颜色 (蓝/红也代表二进制位).",
+    "tags": "stego,qr,二维码,qrcode,barcode",
+    "tools": "execute_python_code, stego_tools",
+    "checklist": "1. 扫描二维码; 2. 检查纠错级别; 3. 提取像素数据; 4. 尝试不同掩码"
+  }
+]

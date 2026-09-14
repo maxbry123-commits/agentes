@@ -1,0 +1,37 @@
+[
+  {
+    "title": "PCAP 流量分析",
+    "content": "PCAP 分析流程: 1) 查看协议统计 (tshark -z io,phs -r file.pcap); 2) HTTP 请求提取 (tshark -Y 'http.request' -T fields -e http.request.uri); 3) 提取文件 (foremost -i file.pcap, binwalk -e file.pcap); 4) 过滤特定 IP/端口 (tshark -Y 'ip.addr==IP'); 5) TCP 流重组 (follow TCP stream in Wireshark); 6) DNS 查询分析 (tshark -Y 'dns.flags.response==0'); 7) 检测异常流量 (大包、端口扫描、SQL 注入请求). 工具: tshark/wireshark, scapy, forensics_tools (pcap_summary).",
+    "tags": "forensics,pcap,traffic,tshark,wireshark",
+    "tools": "forensics_tools, execute_shell_command",
+    "checklist": "1. 协议总览; 2. 筛选 HTTP/DNS; 3. 提取文件对象; 4. 跟踪 TCP 流; 5. 关注异常包"
+  },
+  {
+    "title": "内存取证 (Volatility)",
+    "content": "Volatility 内存取证: 1) 识别镜像 (volatility -f mem.dmp imageinfo); 2) 列出进程 (volatility -f mem.dmp --profile=Win10 pslist); 3) 提取进程 (volatility -f mem.dmp procdump -p PID -D out/); 4) 扫描 cmdline (volatility cmdline); 5) 扫描网络 (volatility netscan); 6) 提取文件 (volatility filescan + dumpfiles); 7) 提取哈希 (volatility hashdump); 8) 剪贴板 (volatility clipboard). Volatility3 语法: vol -f mem.dmp windows.pslist. 注意: profile 正确选择是关键.",
+    "tags": "forensics,memory,volatility,dump,取证",
+    "tools": "execute_shell_command",
+    "checklist": "1. 识别镜像类型和 profile; 2. 进程列表分析; 3. 提取可疑进程; 4. 网络连接; 5. 命令行历史; 6. 密码哈希提取"
+  },
+  {
+    "title": "文件雕刻与恢复",
+    "content": "文件雕刻 (Carving): 从原始二进制/磁盘镜像中根据文件签名恢复文件. 常见签名: PNG (89504E47), JPEG (FFD8FF), PDF (25504446), ZIP (504B0304), ELF (7F454C46). 工具: binwalk (自动提取, 支持多种格式), foremost (基于 header/footer 雕刻), photorec (专注于图片恢复), scalpel (基于配置文件). 使用: foremost -i input.dd -o output/, binwalk -e file.bin. 注意: 恢复后需检查文件完整性.",
+    "tags": "forensics,carve,binwalk,foremost,file recovery",
+    "tools": "forensics_tools, execute_shell_command",
+    "checklist": "1. 确认文件格式; 2. foremost/binwalk 自动提取; 3. 手动检查未识别的数据; 4. 检查恢复的文件"
+  },
+  {
+    "title": "磁盘镜像分析",
+    "content": "磁盘镜像分析: 1) 识别镜像格式 (raw dd, E01, VHD, VMDK, qcow2); 2) 获取分区信息 (fdisk -l image.dd, mmls image.dd); 3) 挂载镜像 (mount -o loop,ro image.dd /mnt); 4) NTFS 分析: icat, fls (The Sleuth Kit); 5) 恢复已删除文件: extundelete, photorec, testdisk. 工具: The Sleuth Kit (tsk), Autopsy (GUI), xmount, qemu-img. 注意: 取证需全程只读挂载, 使用 write-blocker.",
+    "tags": "forensics,disk,image,ntfs,ext4,取证",
+    "tools": "execute_shell_command",
+    "checklist": "1. 识别镜像格式; 2. 获取分区表; 3. 挂载/浏览文件系统; 4. 恢复已删除文件; 5. 查找隐藏数据"
+  },
+  {
+    "title": "日志分析与取证",
+    "content": "日志分析: 1) Apache/Nginx access.log: 检查异常请求 (sqlmap, 扫描器 UA, 大量 404); 2) auth.log/secure: SSH 爆破痕迹; 3) Windows Event Log (.evtx): 登录事件 (4624=成功, 4625=失败), 进程创建 (4688), PowerShell (4103/4104). 工具: evtx_dump (evtx→json), grep/sed/awk (命令行), ElastAlert (大规模). 命令: grep -E 'POST.*(SELECT|UNION|DROP)' access.log, grep 'Failed password' auth.log | awk '{print $11}' | sort | uniq -c.",
+    "tags": "forensics,log,evtx,access.log,analysis",
+    "tools": "execute_shell_command",
+    "checklist": "1. 识别日志类型; 2. 关注时间线; 3. 提取异常事件; 4. 关联多个日志源"
+  }
+]

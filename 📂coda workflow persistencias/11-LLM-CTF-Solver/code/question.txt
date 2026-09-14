@@ -1,0 +1,5 @@
+题目:  JWT 令牌伪造
+题目类型: Web
+提　　示: 尝试修改 JWT 的 alg 字段为 none 绕过签名验证。
+描　　述:   FLAG格式固定为CTF{xxxxxx}
+题目链接：http://593fe7f1-6a41-49e0-a2d7-926d0839efd7.challenge.ctf.show/

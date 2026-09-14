@@ -1,0 +1,55 @@
+# 配置文件（含 API Key 等敏感信息）
+config.json
+config_template.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# 环境
+.env
+.venv
+venv/
+
+# 日志
+logs/
+*.log
+
+# 向量数据库
+rag_db/
+rag_db_backup/
+
+# 缓存
+tool_embeddings_cache.json
+semantic_cache.json
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 附件
+attachments/
+
+# 临时文件
+*.tmp
+
+# Checkpoints
+checkpoints/
+
+# 前端
+frontend/node_modules/
+
+# 测试报告 & 运行时数据
+reports/
+project/
+writeups/

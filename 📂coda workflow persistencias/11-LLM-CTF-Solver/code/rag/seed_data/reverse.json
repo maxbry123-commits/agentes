@@ -1,0 +1,30 @@
+[
+  {
+    "title": "逆向工程基础流程",
+    "content": "RE 流程: 1) file 命令识别文件类型和架构; 2) strings 提取可读字符串查找线索; 3) 查找 main/关键函数入口; 4) 识别加密算法常量 (S-box, 魔数, 查找表); 5) 动态调试跟踪关键逻辑. 常用工具: radare2/rizin (命令行), IDA Pro/Ghidra (图形化), x64dbg/OllyDbg (动态). 常见反调试: ptrace 检测 (调试器附加时 ptrace 返回 -1), 时间检测, /proc/self/status TracerPid 检测. 绕过: patch 二进制, LD_PRELOAD 劫持 ptrace, 使用反反调试插件.",
+    "tags": "reverse,逆向,ida,radare2,ghidra",
+    "tools": "binary_analysis, file_analyzer, execute_shell_command",
+    "checklist": "1. file 识别类型; 2. strings 找线索; 3. 找 flag check 逻辑; 4. 还原算法; 5. 提取 flag"
+  },
+  {
+    "title": "代码混淆与反混淆",
+    "content": "常见混淆: 1) 控制流平坦化 (Ollvm): switch-dispatch 结构, 可用 deflat.py 恢复; 2) 虚假控制流: 插入无效基本块; 3) 指令替换: ADD→SUB/XOR 组合; 4) 字符串加密: 运行时解密; 5) 自修改代码 (SMC): 代码在运行时被修改. 反混淆: unidollvm (Ollvm 反混淆), angr (符号执行自动化解题), Triton (动态二进制插桩). Python 混淆: pyarmor, 可通过解包+反编译恢复. PyInstaller: pyi-archive_viewer 提取, uncompyle6/decompyle3 反编译 Python 字节码.",
+    "tags": "reverse,obfuscation,ollvm,angr,deobfuscate",
+    "tools": "execute_shell_command, execute_python_code",
+    "checklist": "1. 识别混淆类型; 2. 选择对应反混淆工具; 3. 恢复原始逻辑; 4. 提取 flag"
+  },
+  {
+    "title": "APK 逆向分析",
+    "content": "APK 逆向: 1) apktool d app.apk — 解包得到 smali 和资源; 2) jadx-gui app.apk — 直接反编译为 Java 代码; 3) dex2jar + jd-gui: classes.dex → jar → Java 源码. 关键分析点: AndroidManifest.xml (入口 Activity, 权限, 组件导出), res/values/strings.xml (硬编码字符串), lib/ (native so 库). Hook 框架: Frida (跨平台), Xposed (Java 层), Objection (免 Root). 常用 Frida 命令: frida -U -l script.js com.example.app, frida-ps -U 列出进程.",
+    "tags": "reverse,mobile,apk,android,jadx,frida,apktool",
+    "tools": "execute_shell_command",
+    "checklist": "1. apktool 解包; 2. jadx 反编译; 3. 检查 AndroidManifest; 4. 分析关键代码; 5. Hook/Frida 动态分析"
+  },
+  {
+    "title": "angr 符号执行入门",
+    "content": "angr 用于自动化逆向分析: 1) 建立项目: proj = angr.Project('./binary'); 2) 找目标地址: flag 验证成功的地址; 3) 避开失败地址; 4) 执行符号执行: simgr = proj.factory.simulation_manager(entry); simgr.explore(find=success_addr, avoid=fail_addr); 5) 获取输入: simgr.found[0].posix.dumps(0). 注意: angr 处理复杂路径可能消耗大量内存, 建议设置 time_limit. 适用于: flag 验证逻辑简单的题目 (逐个字符比较, 线性路径).",
+    "tags": "reverse,angr,symbolic execution,automation",
+    "tools": "execute_python_code",
+    "checklist": "1. 找成功/失败地址; 2. 建立 angr 项目; 3. 设置 find/avoid; 4. 执行符号执行; 5. 提取 flag"
+  }
+]

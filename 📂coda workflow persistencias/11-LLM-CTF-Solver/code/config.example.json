@@ -1,0 +1,72 @@
+{
+    "llm":{
+        "analyzer":{
+            "model": "openai/deepseek-v4-pro",
+            "api_key": "sk-xxxx",
+            "api_base": "https://api.deepseek.com"
+        },
+        "solve_agent":{
+            "model": "openai/deepseek-v4-pro",
+            "api_key": "sk-xxxx",
+            "api_base": "https://api.deepseek.com"
+        },
+        "pre_processor":{
+            "model": "openai/deepseek-v4-flash",
+            "api_key": "sk-xxxx",
+            "api_base": "https://api.deepseek.com"
+        },
+        "embedding":{
+            "model": "openai/Qwen/Qwen3-VL-Embedding-8B",
+            "api_key": "sk-xxxx",
+            "api_base": "https://api.siliconflow.cn/v1"
+        }
+    },
+    "prompt_version": "v1",
+    "max_solve_steps": 100,
+    "max_solve_cost_usd": 5.0,
+    "max_history_steps": 50,
+    "max_stuck_steps": 5,
+    "compression_threshold": 8,
+    "checkpoint_interval": 5,
+    "command_blacklist": [],
+    "tool_config":{
+        "ssh_shell":
+        {
+            "host": "192.168.1.100",
+            "port": 22,
+            "username": "kali",
+            "password": "your-password"
+        },
+        "python":
+        {
+        }
+    },
+    "semantic_cache": {
+        "enabled": true,
+        "similarity_threshold": 0.92,
+        "max_entries": 500
+    },
+    "tool_cache_ttl": 300,
+    "http_response_max_chars": 16384,
+    "llm_summary_threshold": 16384,
+    "output_summary_threshold": 2048,
+    "output_summary_max_chars": 800,
+    "knowledge_entry_max_chars": 2000,
+    "mcp_server": {
+        "burp": {
+            "type": "stdio",
+            "command": "java",
+            "args": [
+                "-jar",
+                "mcp-proxy.jar",
+                "--sse-url",
+                "http://127.0.0.1:9876"
+            ],
+            "lazy": true,
+            "catalog_desc": "Burp Suite (HTTP代理/Repeater/Intruder/Scanner/Collaborator) — Web渗透专用",
+            "aliases": ["burpsuite", "burp_suite", "burp suite"],
+            "auto_activate_for": ["web"]
+        }
+
+    }
+}

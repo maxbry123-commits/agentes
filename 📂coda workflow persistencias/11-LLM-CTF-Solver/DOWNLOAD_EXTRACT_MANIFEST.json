@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 639770,
+  "bundle_sha256": "8611bd71495f18227b99f204f6ee344cf93f942d6e0e672c19abe40257c4e02a",
+  "extracted_tree": {
+    "bytes": 1624700,
+    "files": 361,
+    "sha256": "5aed10979bc6a51a2a787eea514487f2defb6a719ec82db192c88ab00d8052c9"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 639770,
+      "name": "11-LLM-CTF-Solver.bundle.zip.part-0001",
+      "sha256": "8611bd71495f18227b99f204f6ee344cf93f942d6e0e672c19abe40257c4e02a"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "11-LLM-CTF-Solver",
+  "source_bytes": 1624700,
+  "source_commit": "3170994bcff7b254f2fa7b7e5d6734ab70da0449",
+  "source_files": 361,
+  "source_ref": "HEAD",
+  "source_repo": "gehewu/LLM-CTF-Solver",
+  "source_tree": {
+    "bytes": 1624700,
+    "files": 361,
+    "sha256": "5aed10979bc6a51a2a787eea514487f2defb6a719ec82db192c88ab00d8052c9"
+  }
+}

