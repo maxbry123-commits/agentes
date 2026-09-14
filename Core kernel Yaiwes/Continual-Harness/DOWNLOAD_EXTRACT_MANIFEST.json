@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 6234960,
+  "bundle_sha256": "c507569b4d571218563b1d13c5350c95ad3d0e0cf433b23be6acc994886d9d99",
+  "extracted_tree": {
+    "bytes": 33961192,
+    "files": 3950,
+    "sha256": "a22840b11b437a381644f7315757130cf0304af3b5f75ba33a0cb3f22bf3e5ec"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 6234960,
+      "name": "Continual-Harness.bundle.zip.part-0001",
+      "sha256": "c507569b4d571218563b1d13c5350c95ad3d0e0cf433b23be6acc994886d9d99"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Continual-Harness",
+  "source_bytes": 33961192,
+  "source_commit": "bbab97ad73e460b7cd7c08527d10ced30cc03fbe",
+  "source_files": 3950,
+  "source_ref": "HEAD",
+  "source_repo": "sethkarten/continual-harness",
+  "source_tree": {
+    "bytes": 33961192,
+    "files": 3950,
+    "sha256": "a22840b11b437a381644f7315757130cf0304af3b5f75ba33a0cb3f22bf3e5ec"
+  }
+}
