@@ -175,7 +175,8 @@ class MemorySkill(BaseSkill):
         c = conn.cursor()
 
         c.execute("SELECT * FROM sessions WHERE id = ?", (session_id,))
-        session = dict(c.fetchone()) if c.fetchone() else None
+        row = c.fetchone()
+        session = dict(row) if row else None
 
         if not session:
             conn.close()
