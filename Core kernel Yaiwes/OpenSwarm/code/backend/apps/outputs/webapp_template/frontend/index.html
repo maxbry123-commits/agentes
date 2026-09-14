@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/logo.png" />
+  <title>OpenSwarm</title>
+  <!--
+    Cold-start splash with the Bayer-dithering pixel-blast effect baked
+    in as vanilla WebGL2. Painted before any JS bundle is fetched, so
+    the user sees something within ~50ms of the webview pointing here
+    instead of waiting 1-3s for Vite + React + MUI to download and mount.
+
+    Zero deps on three.js / postprocessing / React — the shader is a
+    raw <canvas> + WebGL2 program. When the React bundle finishes
+    booting and `createRoot(rootEl).render(...)` runs, React clears
+    `#root`'s children, which removes the canvas + overlay automatically.
+
+    Shader adapted from github.com/zavalit/bayer-dithering-webgl-demo,
+    same as the React PixelBlast component referenced in the design.
+  -->
+  <style>
+    html, body, #root { height: 100%; margin: 0; }
+    body {
+      background: #1a1a1a;
+      color: #f5f5f5;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+    }
+    .openswarm-splash {
+      position: fixed;
+      inset: 0;
+      background: #1a1a1a;
+      overflow: hidden;
+    }
+    .openswarm-splash canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .openswarm-splash-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      pointer-events: none;
+      text-align: center;
+      padding: 0 24px;
+    }
+    .openswarm-splash-title {
+      font-family: Charter, Georgia, serif;
+      font-size: 2rem;
+      font-weight: 500;
+      letter-spacing: -0.02em;
+      color: #f5f5f5;
+      text-shadow: 0 2px 24px rgba(26, 26, 26, 0.8);
+    }
+    .openswarm-splash-sub {
+      font-size: 0.9rem;
+      color: #b8b8b8;
+      max-width: 420px;
+      line-height: 1.55;
+      text-shadow: 0 2px 24px rgba(26, 26, 26, 0.8);
+    }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <div class="openswarm-splash" id="openswarm-splash">
+      <canvas id="openswarm-splash-canvas"></canvas>
+      <div class="openswarm-splash-overlay">
+        <div class="openswarm-splash-title">What're we brewing?</div>
+        <div class="openswarm-splash-sub">Drop the recipe below. I'll handle the rest.</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    // Vanilla-WebGL2 PixelBlast — runs IMMEDIATELY on HTML parse, no JS
+    // bundle wait. Graceful: if WebGL2 isn't available (super old GPU,
+    // a deliberately-disabled context, etc.) the splash falls back to a
+    // plain CSS background and the title/subtitle still show.
+    (function () {
+      var canvas = document.getElementById('openswarm-splash-canvas');
+      if (!canvas) return;
+      var gl = canvas.getContext('webgl2', { antialias: true, alpha: true, premultipliedAlpha: false });
+      if (!gl) return; // fallback: solid background, text still readable
+      var VS = '#version 300 es\n' +
+        'in vec2 a; void main() { gl_Position = vec4(a, 0.0, 1.0); }';
+      // Bayer-dither pixel-grid shader. Same algorithm as the React
+      // PixelBlast component (Bayer8 thresholding + FBM noise), just
+      // without the click-ripple uniform array (we don't need pointer
+      // interaction on a 2s splash).
+      var FS = '#version 300 es\n' +
+        'precision highp float;\n' +
+        'out vec4 fragColor;\n' +
+        'uniform vec2 uResolution;\n' +
+        'uniform float uTime;\n' +
+        'uniform float uPixelSize;\n' +
+        'uniform vec3 uColor;\n' +
+        'float Bayer2(vec2 a){ a = floor(a); return fract(a.x/2.0 + a.y*a.y*0.75); }\n' +
+        '#define Bayer4(a) (Bayer2(0.5*(a))*0.25 + Bayer2(a))\n' +
+        '#define Bayer8(a) (Bayer4(0.5*(a))*0.25 + Bayer2(a))\n' +
+        'float hash11(float n){ return fract(sin(n)*43758.5453); }\n' +
+        'float vnoise(vec3 p){\n' +
+        '  vec3 ip = floor(p); vec3 fp = fract(p);\n' +
+        '  float n000 = hash11(dot(ip + vec3(0,0,0), vec3(1.0,57.0,113.0)));\n' +
+        '  float n100 = hash11(dot(ip + vec3(1,0,0), vec3(1.0,57.0,113.0)));\n' +
+        '  float n010 = hash11(dot(ip + vec3(0,1,0), vec3(1.0,57.0,113.0)));\n' +
+        '  float n110 = hash11(dot(ip + vec3(1,1,0), vec3(1.0,57.0,113.0)));\n' +
+        '  float n001 = hash11(dot(ip + vec3(0,0,1), vec3(1.0,57.0,113.0)));\n' +
+        '  float n101 = hash11(dot(ip + vec3(1,0,1), vec3(1.0,57.0,113.0)));\n' +
+        '  float n011 = hash11(dot(ip + vec3(0,1,1), vec3(1.0,57.0,113.0)));\n' +
+        '  float n111 = hash11(dot(ip + vec3(1,1,1), vec3(1.0,57.0,113.0)));\n' +
+        '  vec3 w = fp*fp*fp*(fp*(fp*6.0-15.0)+10.0);\n' +
+        '  float x00 = mix(n000,n100,w.x); float x10 = mix(n010,n110,w.x);\n' +
+        '  float x01 = mix(n001,n101,w.x); float x11 = mix(n011,n111,w.x);\n' +
+        '  float y0  = mix(x00,x10,w.y); float y1 = mix(x01,x11,w.y);\n' +
+        '  return mix(y0,y1,w.z) * 2.0 - 1.0;\n' +
+        '}\n' +
+        'float fbm2(vec2 uv, float t){\n' +
+        '  vec3 p = vec3(uv * 2.0, t);\n' +
+        '  float amp = 1.0; float freq = 1.0; float sum = 1.0;\n' +
+        '  for (int i = 0; i < 5; i++) {\n' +
+        '    sum  += amp * vnoise(p * freq);\n' +
+        '    freq *= 1.25;\n' +
+        '  }\n' +
+        '  return sum * 0.5 + 0.5;\n' +
+        '}\n' +
+        'void main(){\n' +
+        '  vec2 fragCoord = gl_FragCoord.xy - uResolution * 0.5 + vec2(137.5, 137.5);\n' +
+        '  float aspectRatio = uResolution.x / uResolution.y;\n' +
+        '  float cellPixelSize = 8.0 * uPixelSize;\n' +
+        '  vec2 cellId = floor(fragCoord / cellPixelSize);\n' +
+        '  vec2 cellCoord = cellId * cellPixelSize;\n' +
+        '  vec2 uv = cellCoord / uResolution * vec2(aspectRatio, 1.0);\n' +
+        '  float base = fbm2(uv, uTime * 0.05);\n' +
+        '  base = base * 0.5 - 0.62;\n' +
+        '  float feed = base + 0.5 * 0.3;\n' +
+        '  float bayer = Bayer8(fragCoord / uPixelSize) - 0.5;\n' +
+        '  float bw = step(0.5, feed + bayer);\n' +
+        '  vec2 norm = gl_FragCoord.xy / uResolution;\n' +
+        '  float edge = min(min(norm.x, norm.y), min(1.0 - norm.x, 1.0 - norm.y));\n' +
+        '  float fade = smoothstep(0.0, 0.3, edge);\n' +
+        '  float M = bw * fade;\n' +
+        '  vec3 srgb = mix(uColor * 12.92, 1.055 * pow(uColor, vec3(1.0/2.4)) - 0.055, step(0.0031308, uColor));\n' +
+        '  fragColor = vec4(srgb, M);\n' +
+        '}';
+      function compile(type, src) {
+        var s = gl.createShader(type);
+        gl.shaderSource(s, src);
+        gl.compileShader(s);
+        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+          // Compile failed — bail out gracefully, the text overlay still shows.
+          return null;
+        }
+        return s;
+      }
+      var vs = compile(gl.VERTEX_SHADER, VS);
+      var fs = compile(gl.FRAGMENT_SHADER, FS);
+      if (!vs || !fs) return;
+      var prog = gl.createProgram();
+      gl.attachShader(prog, vs);
+      gl.attachShader(prog, fs);
+      gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return;
+      gl.useProgram(prog);
+
+      // Full-screen quad (two triangles).
+      var buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+      var aLoc = gl.getAttribLocation(prog, 'a');
+      gl.enableVertexAttribArray(aLoc);
+      gl.vertexAttribPointer(aLoc, 2, gl.FLOAT, false, 0, 0);
+
+      var uResolution = gl.getUniformLocation(prog, 'uResolution');
+      var uTime = gl.getUniformLocation(prog, 'uTime');
+      var uPixelSize = gl.getUniformLocation(prog, 'uPixelSize');
+      var uColor = gl.getUniformLocation(prog, 'uColor');
+
+      gl.uniform3f(uColor, 0xcc / 255, 0x78 / 255, 0x5c / 255);
+
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      function resize() {
+        var w = Math.floor(canvas.clientWidth * dpr);
+        var h = Math.floor(canvas.clientHeight * dpr);
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w;
+          canvas.height = h;
+        }
+        gl.viewport(0, 0, w, h);
+        gl.uniform2f(uResolution, w, h);
+        gl.uniform1f(uPixelSize, 4.0 * dpr);
+      }
+      resize();
+      window.addEventListener('resize', resize, { passive: true });
+
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+      var start = performance.now();
+      var raf;
+      function frame() {
+        var t = (performance.now() - start) / 1000;
+        gl.uniform1f(uTime, t * 0.5);
+        gl.clearColor(0.10, 0.10, 0.10, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        raf = requestAnimationFrame(frame);
+      }
+      raf = requestAnimationFrame(frame);
+
+      // When React mounts and clears #root, the canvas is removed from
+      // the DOM; cancel the rAF loop so we don't keep burning GPU on a
+      // disposed canvas. MutationObserver fires when the splash node is
+      // removed (which is what createRoot().render() does to existing
+      // children on first commit).
+      var splash = document.getElementById('openswarm-splash');
+      if (splash && window.MutationObserver) {
+        var mo = new MutationObserver(function () {
+          if (!document.body.contains(splash)) {
+            cancelAnimationFrame(raf);
+            window.removeEventListener('resize', resize);
+            mo.disconnect();
+            try { gl.getExtension('WEBGL_lose_context').loseContext(); } catch (_) {}
+          }
+        });
+        mo.observe(document.getElementById('root'), { childList: true, subtree: true });
+      }
+    })();
+  </script>
+  <script type="module" src="/src/index.tsx"></script>
+</body>
+</html>

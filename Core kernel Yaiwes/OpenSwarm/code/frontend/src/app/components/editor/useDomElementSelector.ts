@@ -1,0 +1,455 @@
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { SelectedElement, useElementSelection } from './ElementSelectionContext';
+import { useDashboardActive } from '@/shared/hooks/useDashboardActive';
+
+const SELECT_ATTR = 'data-select-type';
+const SELECT_ID_ATTR = 'data-select-id';
+const SELECT_META_ATTR = 'data-select-meta';
+
+const DRAG_SELECT_TYPES = ['agent-card', 'view-card', 'browser-card', 'workflow-card', 'settings-option'] as const;
+const DRAG_SELECTOR = DRAG_SELECT_TYPES.map((t) => `[${SELECT_ATTR}="${t}"]`).join(',');
+
+// The Workflows app window is a full app surface, not a card you attach as context, so the selection tool never targets it (neither drag nor click).
+const NON_SELECTABLE_TYPES = new Set<string>(['workflows-hub-card']);
+
+export interface OverlayState {
+  visible: boolean;
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+  label: string;
+  clipLeft: number;
+  clipTop: number;
+}
+
+export interface DragRect {
+  visible: boolean;
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+const EMPTY_OVERLAY: OverlayState = { visible: false, top: 0, left: 0, width: 0, height: 0, label: '', clipLeft: 0, clipTop: 0 };
+const EMPTY_DRAG: DragRect = { visible: false, top: 0, left: 0, width: 0, height: 0 };
+
+const SEMANTIC_LABELS: Record<string, string> = {
+  'agent-card': 'Agent',
+  'message': 'Message',
+  'tool-call': 'Tool Call',
+  'tool-group': 'Tool Group',
+  'view-card': 'View',
+  'browser-card': 'Browser',
+  'workflow-card': 'Workflow',
+  'workflows-hub-card': 'Workflows',
+  'settings-option': 'Setting',
+};
+
+function findSelectableAncestor(target: Element, excludeId?: string | null): Element | null {
+  let current: Element | null = target;
+  while (current) {
+    if (current.hasAttribute(SELECT_ATTR)) {
+      const type = current.getAttribute(SELECT_ATTR);
+      if (type && NON_SELECTABLE_TYPES.has(type)) return null;
+      if (excludeId && current.getAttribute(SELECT_ID_ATTR) === excludeId) return null;
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return null;
+}
+
+function buildSemanticLabel(type: string, meta: Record<string, any>): string {
+  const prefix = SEMANTIC_LABELS[type] || type;
+  if (meta.name) return `${prefix}: ${meta.name}`;
+  if (meta.role && meta.content) {
+    const truncated = String(meta.content).slice(0, 40);
+    return `${prefix} (${meta.role}): ${truncated}${String(meta.content).length > 40 ? '…' : ''}`;
+  }
+  if (meta.label) return `${prefix}: ${meta.label}`;
+  if (meta.tool) return `${prefix}: ${meta.tool}`;
+  return prefix;
+}
+
+function rectsIntersect(
+  a: { top: number; left: number; bottom: number; right: number },
+  b: { top: number; left: number; bottom: number; right: number },
+): boolean {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+export interface ClippedRect {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+  hidden: boolean;
+  clipLeft: number;
+  clipTop: number;
+}
+
+export function clipRectToAncestors(el: Element, raw: DOMRect): ClippedRect {
+  let left = raw.left;
+  let top = raw.top;
+  let right = raw.right;
+  let bottom = raw.bottom;
+  let clipLeft = -Infinity;
+  let clipTop = -Infinity;
+  let p: Element | null = el.parentElement;
+  while (p && p !== document.body && p !== document.documentElement) {
+    const s = getComputedStyle(p);
+    if (s.overflowX !== 'visible' || s.overflowY !== 'visible') {
+      const r = p.getBoundingClientRect();
+      left = Math.max(left, r.left);
+      top = Math.max(top, r.top);
+      right = Math.min(right, r.right);
+      bottom = Math.min(bottom, r.bottom);
+      clipLeft = Math.max(clipLeft, r.left);
+      clipTop = Math.max(clipTop, r.top);
+    }
+    p = p.parentElement;
+  }
+  const width = right - left;
+  const height = bottom - top;
+  return {
+    top,
+    left,
+    width,
+    height,
+    hidden: width <= 0 || height <= 0,
+    clipLeft: clipLeft === -Infinity ? raw.left : clipLeft,
+    clipTop: clipTop === -Infinity ? raw.top : clipTop,
+  };
+}
+
+function buildSelectedElement(el: Element): SelectedElement {
+  const type = el.getAttribute(SELECT_ATTR) || '';
+  const selectId = el.getAttribute(SELECT_ID_ATTR) || '';
+  let meta: Record<string, any> = {};
+  try { meta = JSON.parse(el.getAttribute(SELECT_META_ATTR) || '{}'); } catch {}
+  const rect = el.getBoundingClientRect();
+  const semanticLabel = buildSemanticLabel(type, meta);
+
+  return {
+    id: `sel-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    selectorPath: `[${SELECT_ATTR}="${type}"][${SELECT_ID_ATTR}="${selectId}"]`,
+    tagName: el.tagName,
+    className: '',
+    outerHTML: '',
+    computedStyles: {},
+    boundingRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+    semanticType: type as SelectedElement['semanticType'],
+    semanticLabel,
+    semanticData: { ...meta, selectId },
+  };
+}
+
+export interface DragPreviewElement {
+  selectId: string;
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+  label: string;
+  action: 'add' | 'remove';
+  clipLeft: number;
+  clipTop: number;
+}
+
+const DRAG_THRESHOLD = 5;
+
+export interface DomSelectorState {
+  overlay: OverlayState;
+  dragRect: DragRect;
+  dragPreview: DragPreviewElement[];
+}
+
+export function useDomElementSelector(): DomSelectorState {
+  const ctx = useElementSelection();
+  const active = useDashboardActive();
+  const [overlay, setOverlay] = useState<OverlayState>(EMPTY_OVERLAY);
+  const [dragRect, setDragRect] = useState<DragRect>(EMPTY_DRAG);
+  const [dragPreview, setDragPreview] = useState<DragPreviewElement[]>([]);
+  const hoveredRef = useRef<Element | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const dragPreviewRafRef = useRef<number | null>(null);
+
+  const dragOriginRef = useRef<{ x: number; y: number } | null>(null);
+  const isDraggingRef = useRef(false);
+  const dragBoundsRef = useRef<{ left: number; top: number; right: number; bottom: number } | null>(null);
+  const preDragFocusRef = useRef<HTMLElement | null>(null);
+
+  const excludeIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    excludeIdRef.current = ctx?.excludeSelectId ?? null;
+  }, [ctx?.excludeSelectId]);
+
+  const selectedIdsRef = useRef(new Map<string, string>());
+  useEffect(() => {
+    const map = new Map<string, string>();
+    for (const el of (ctx?.selectedElements ?? [])) {
+      if (el.semanticData?.selectId) {
+        map.set(el.semanticData.selectId as string, el.id);
+      }
+    }
+    selectedIdsRef.current = map;
+  }, [ctx?.selectedElements]);
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (dragOriginRef.current) {
+      const origin = dragOriginRef.current;
+      const dx = e.clientX - origin.x;
+      const dy = e.clientY - origin.y;
+
+      if (!isDraggingRef.current && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) {
+        isDraggingRef.current = true;
+      }
+
+      if (isDraggingRef.current) {
+        const bounds = {
+          left: Math.min(origin.x, e.clientX),
+          top: Math.min(origin.y, e.clientY),
+          right: Math.max(origin.x, e.clientX),
+          bottom: Math.max(origin.y, e.clientY),
+        };
+        dragBoundsRef.current = bounds;
+
+        setOverlay(EMPTY_OVERLAY);
+        setDragRect({
+          visible: true,
+          left: bounds.left,
+          top: bounds.top,
+          width: bounds.right - bounds.left,
+          height: bounds.bottom - bounds.top,
+        });
+
+        if (dragPreviewRafRef.current) cancelAnimationFrame(dragPreviewRafRef.current);
+        dragPreviewRafRef.current = requestAnimationFrame(() => {
+          const b = dragBoundsRef.current;
+          if (!b) return;
+          const allSelectables = document.querySelectorAll(DRAG_SELECTOR);
+          const preview: DragPreviewElement[] = [];
+          const seen = new Set<string>();
+          const excId = excludeIdRef.current;
+          allSelectables.forEach((el) => {
+            const selectId = el.getAttribute(SELECT_ID_ATTR) || '';
+            if (excId && selectId === excId) return;
+            const rect = el.getBoundingClientRect();
+            if (rectsIntersect(b, { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom })) {
+              if (seen.has(selectId)) return;
+              const clipped = clipRectToAncestors(el, rect);
+              if (clipped.hidden) return;
+              seen.add(selectId);
+              const type = el.getAttribute(SELECT_ATTR) || '';
+              let meta: Record<string, any> = {};
+              try { meta = JSON.parse(el.getAttribute(SELECT_META_ATTR) || '{}'); } catch {}
+              preview.push({
+                selectId,
+                top: clipped.top,
+                left: clipped.left,
+                width: clipped.width,
+                height: clipped.height,
+                label: buildSemanticLabel(type, meta),
+                action: selectedIdsRef.current.has(selectId) ? 'remove' : 'add',
+                clipLeft: clipped.clipLeft,
+                clipTop: clipped.clipTop,
+              });
+            }
+          });
+          setDragPreview(preview);
+        });
+      }
+      return;
+    }
+
+    const target = e.target as Element;
+    if (!target) {
+      setOverlay(EMPTY_OVERLAY);
+      hoveredRef.current = null;
+      return;
+    }
+
+    if (target.tagName === 'IFRAME') {
+      setOverlay(EMPTY_OVERLAY);
+      hoveredRef.current = null;
+      return;
+    }
+
+    const selectable = findSelectableAncestor(target, excludeIdRef.current);
+    if (!selectable) {
+      setOverlay(EMPTY_OVERLAY);
+      hoveredRef.current = null;
+      return;
+    }
+
+    hoveredRef.current = selectable;
+
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      const rect = selectable.getBoundingClientRect();
+      const clipped = clipRectToAncestors(selectable, rect);
+      if (clipped.hidden) {
+        setOverlay(EMPTY_OVERLAY);
+        return;
+      }
+      const type = selectable.getAttribute(SELECT_ATTR) || '';
+      let meta: Record<string, any> = {};
+      try { meta = JSON.parse(selectable.getAttribute(SELECT_META_ATTR) || '{}'); } catch {}
+      const label = buildSemanticLabel(type, meta);
+      setOverlay({
+        visible: true,
+        top: clipped.top,
+        left: clipped.left,
+        width: clipped.width,
+        height: clipped.height,
+        label,
+        clipLeft: clipped.clipLeft,
+        clipTop: clipped.clipTop,
+      });
+    });
+  }, []);
+
+  const handleMouseDown = useCallback((e: MouseEvent) => {
+    if (e.button !== 0) return;
+    if (e.metaKey || e.ctrlKey) return;
+    const target = e.target as Element;
+    if (target && findSelectableAncestor(target, excludeIdRef.current)) {
+      e.preventDefault();
+      return;
+    }
+    preDragFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dragOriginRef.current = { x: e.clientX, y: e.clientY };
+    isDraggingRef.current = false;
+    // Make webviews pointer-transparent during drag; the OS-level hit-test would otherwise steal mousemove.
+    document.body.classList.add('dashboard-marquee-active');
+  }, []);
+
+  const handleMouseUp = useCallback((e: MouseEvent) => {
+    if (!dragOriginRef.current) return;
+
+    if (isDraggingRef.current && ctx) {
+      const dr = {
+        left: Math.min(dragOriginRef.current.x, e.clientX),
+        top: Math.min(dragOriginRef.current.y, e.clientY),
+        right: Math.max(dragOriginRef.current.x, e.clientX),
+        bottom: Math.max(dragOriginRef.current.y, e.clientY),
+      };
+
+      const allSelectables = document.querySelectorAll(DRAG_SELECTOR);
+      const processed = new Set<string>();
+
+      const excId = excludeIdRef.current;
+      allSelectables.forEach((el) => {
+        const selectId = el.getAttribute(SELECT_ID_ATTR) || '';
+        if (excId && selectId === excId) return;
+        const rect = el.getBoundingClientRect();
+        const elRect = {
+          left: rect.left,
+          top: rect.top,
+          right: rect.right,
+          bottom: rect.bottom,
+        };
+
+        if (rectsIntersect(dr, elRect)) {
+          if (processed.has(selectId)) return;
+          processed.add(selectId);
+
+          const existingId = selectedIdsRef.current.get(selectId);
+          if (existingId) {
+            ctx.removeSelectedElement(existingId);
+          } else {
+            ctx.addSelectedElement(buildSelectedElement(el));
+          }
+        }
+      });
+    }
+
+    const wasDragging = isDraggingRef.current;
+    dragOriginRef.current = null;
+    isDraggingRef.current = false;
+    dragBoundsRef.current = null;
+    setDragRect(EMPTY_DRAG);
+    setDragPreview([]);
+    if (dragPreviewRafRef.current) cancelAnimationFrame(dragPreviewRafRef.current);
+    if (wasDragging && preDragFocusRef.current) {
+      preDragFocusRef.current.focus();
+    }
+    preDragFocusRef.current = null;
+    document.body.classList.remove('dashboard-marquee-active');
+  }, [ctx]);
+
+  const handleClick = useCallback((e: MouseEvent) => {
+    if (!ctx) return;
+    const target = hoveredRef.current;
+    if (!target) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const selectId = target.getAttribute(SELECT_ID_ATTR) || '';
+    const existing = ctx.selectedElements.find(
+      (el) => el.semanticData?.selectId === selectId,
+    );
+    if (existing) {
+      ctx.removeSelectedElement(existing.id);
+    } else {
+      ctx.addSelectedElement(buildSelectedElement(target));
+    }
+  }, [ctx]);
+
+  useEffect(() => {
+    if (!ctx?.selectMode || !active) {
+      setOverlay(EMPTY_OVERLAY);
+      setDragRect(EMPTY_DRAG);
+      setDragPreview([]);
+      hoveredRef.current = null;
+      dragOriginRef.current = null;
+      dragBoundsRef.current = null;
+      isDraggingRef.current = false;
+      preDragFocusRef.current = null;
+      return;
+    }
+
+    const prevUserSelect = document.body.style.userSelect;
+    document.body.style.userSelect = 'none';
+
+    // Escape just exits the tool: turn select mode off but leave the already attached elements alone. Capture + stopPropagation so it doesn't also clear the canvas selection while the tool is the thing in focus.
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      ctx.setSelectMode(false);
+      ctx.setExcludeSelectId(null);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove, true);
+    document.addEventListener('mousedown', handleMouseDown, true);
+    document.addEventListener('mouseup', handleMouseUp, true);
+    document.addEventListener('click', handleClick, true);
+    document.addEventListener('keydown', handleKeyDown, true);
+
+    return () => {
+      document.body.style.userSelect = prevUserSelect;
+      document.removeEventListener('mousemove', handleMouseMove, true);
+      document.removeEventListener('mousedown', handleMouseDown, true);
+      document.removeEventListener('mouseup', handleMouseUp, true);
+      document.removeEventListener('click', handleClick, true);
+      document.removeEventListener('keydown', handleKeyDown, true);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      if (dragPreviewRafRef.current) cancelAnimationFrame(dragPreviewRafRef.current);
+      setOverlay(EMPTY_OVERLAY);
+      setDragRect(EMPTY_DRAG);
+      setDragPreview([]);
+      hoveredRef.current = null;
+      dragOriginRef.current = null;
+      dragBoundsRef.current = null;
+      isDraggingRef.current = false;
+      preDragFocusRef.current = null;
+      // Defensive: if select mode flips off mid-drag, drop the class so webviews regain interactivity.
+      document.body.classList.remove('dashboard-marquee-active');
+    };
+  }, [ctx?.selectMode, active, handleMouseMove, handleMouseDown, handleMouseUp, handleClick]);
+
+  return { overlay, dragRect, dragPreview };
+}

@@ -1,0 +1,38 @@
+{
+  "bundle_bytes": 15789762,
+  "bundle_sha256": "3e68886909952841db009d038f10f03cc7fee363a374c86da44b0c1a0781013c",
+  "extracted_tree": {
+    "bytes": 34956080,
+    "files": 2024,
+    "sha256": "b9d5118442ab5894c25565627760318048f4aef050e83f33a6b06eaff5863400"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "OpenSwarm.bundle.zip.part-0001",
+      "sha256": "92b4d7ece6eef90291a175f2a333c9a5f6b9d69837134fa8ed2457672969188e"
+    },
+    {
+      "bytes": 3206850,
+      "name": "OpenSwarm.bundle.zip.part-0002",
+      "sha256": "905ec69c85051f7112a315d90740522f8863ae6e750dd3b423c4700be72488e1"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "OpenSwarm",
+  "source_bytes": 34956080,
+  "source_commit": "14120a43f7e43cbe5a1263fe379b8dfe0a195fb0",
+  "source_files": 2024,
+  "source_ref": "HEAD",
+  "source_repo": "openswarm-ai/openswarm",
+  "source_tree": {
+    "bytes": 34956080,
+    "files": 2024,
+    "sha256": "b9d5118442ab5894c25565627760318048f4aef050e83f33a6b06eaff5863400"
+  }
+}

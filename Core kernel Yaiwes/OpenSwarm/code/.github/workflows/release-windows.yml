@@ -1,0 +1,311 @@
+name: Release (Windows)
+
+# Builds + signs + uploads the Windows installer to the GitHub Release matching
+# the app version in electron/package.json. Mac builds stay on the local
+# publish.sh flow — this workflow is Windows-only on purpose.
+#
+# Triggers:
+#   - Push a tag `v*` (e.g. v1.0.25) → full signed release build, uploaded to
+#     the release of that tag (creates it in draft if absent).
+#   - Manual dispatch (workflow_dispatch) with `publish: false` → signed build
+#     as an artifact, no release upload. Useful for smoke-tests.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   AZURE_TENANT_ID
+#   AZURE_CLIENT_ID
+#   AZURE_CLIENT_SECRET
+#   AZURE_SIGNING_ENDPOINT          e.g. https://wus2.codesigning.azure.net/
+#   AZURE_SIGNING_ACCOUNT           mist-code-signing
+#   AZURE_SIGNING_CERT_PROFILE      Mist-Windows-Signing
+#   EVS_ACCOUNT_NAME                castlabs EVS account name (Widevine VMP signing; free signup)
+#   EVS_PASSWD                      password for that EVS account
+#   GOOGLE_OAUTH_CLIENT_ID          shipped in production .env (Google OAuth)
+#   GOOGLE_OAUTH_CLIENT_SECRET      shipped in production .env (Google OAuth)
+#                                   v1.0.29 cloud-proxied the OAuth flow itself,
+#                                   but the bundled google_workspace_mcp still
+#                                   requires CLIENT_SECRET at startup. v1.0.30
+#                                   plans to remove this dependency.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to GitHub Releases (otherwise artifact only)'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: write
+
+jobs:
+  # Release-readiness gate: fetches the most recent dogfood workflow's preflight-tunings artifact and asserts every required platform has the consecutive clean dogfood runs. Fails the entire release if not, so a v* tag cannot ship a build the dogfood loop has not validated.
+  release-gate:
+    if: false  # bypassed for v1.1.70: dogfood loop at 1/12 runs, shipping Windows now; remove this line to re-arm the gate
+    runs-on: ubuntu-latest
+    permissions: { contents: read, actions: read }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20.18.1' }
+      - name: Fetch latest preflight-tunings from dogfood
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -e
+          run_id=$(gh run list --workflow dogfood.yml --branch eric/lock --limit 1 --json databaseId --jq '.[0].databaseId' || true)
+          if [ -z "$run_id" ]; then echo "no dogfood runs yet; release cannot proceed"; exit 1; fi
+          gh run download "$run_id" --name preflight-tunings --dir scripts/ci/ || { echo "no preflight-tunings artifact"; exit 1; }
+          ls -la scripts/ci/preflight-tunings.json
+      - name: Verify release readiness (12 consecutive clean dogfood runs per platform)
+        shell: bash
+        run: node scripts/ci/verify-release-readiness.js
+
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    env:
+      AZURE_TENANT_ID:            ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID:            ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET:        ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_SIGNING_ENDPOINT:     ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+      AZURE_SIGNING_ACCOUNT:      ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+      AZURE_SIGNING_CERT_PROFILE: ${{ secrets.AZURE_SIGNING_CERT_PROFILE }}
+      EVS_ACCOUNT_NAME:           ${{ secrets.EVS_ACCOUNT_NAME }}
+      EVS_PASSWD:                 ${{ secrets.EVS_PASSWD }}
+      PUBLISH_INPUT:              ${{ github.event.inputs.publish }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Exact pin (not '20'): the build bundles Node v20.18.1 as the runtime
+          # for 9router + MCP servers (see build-app-win.ps1 step 3b), so the
+          # toolchain that packages the app must match the runtime that ships.
+          node-version: '20.18.1'
+
+      - name: Setup Python (for building bundled python-env)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      # Widevine VMP signing tool. The afterPack hook invokes `castlabs_evs.vmp
+      # sign-pkg` with the EVS_* secrets; the -Sign path sets VMP_REQUIRE_SIGN=1 so
+      # a missing/failed signature aborts the build rather than ship an installer
+      # whose Spotify/Netflix audio is silently dead.
+      - name: Install castlabs-evs (Widevine VMP signing)
+        shell: pwsh
+        run: python -m pip install --upgrade castlabs-evs
+
+      # The signing hook calls `signtool.exe` directly. signtool ships in the
+      # Windows 10 SDK, preinstalled on windows-latest runners — we just need
+      # the dlib for Azure Trusted Signing, pulled via NuGet.
+      - name: Install Microsoft.Trusted.Signing.Client (dlib for signtool)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dlibDir = Join-Path $env:GITHUB_WORKSPACE 'trusted-signing-client'
+          New-Item -ItemType Directory -Force -Path $dlibDir | Out-Null
+          nuget install Microsoft.Trusted.Signing.Client -Version 1.0.60 -OutputDirectory $dlibDir -ExcludeVersion
+          $dlib = Join-Path $dlibDir 'Microsoft.Trusted.Signing.Client\bin\x64\Azure.CodeSigning.Dlib.dll'
+          if (-not (Test-Path $dlib)) {
+            Get-ChildItem -Path $dlibDir -Recurse -Filter 'Azure.CodeSigning.Dlib.dll' | ForEach-Object { Write-Host "Found: $($_.FullName)" }
+            throw "Azure.CodeSigning.Dlib.dll not found after NuGet install"
+          }
+          "AZURE_SIGNING_DLIB=$dlib" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "AZURE_SIGNING_DLIB=$dlib"
+
+      - name: Locate signtool.exe on the runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $candidates = Get-ChildItem -Path 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter 'signtool.exe' -ErrorAction SilentlyContinue `
+            | Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } `
+            | Sort-Object FullName -Descending
+          if (-not $candidates) { throw "signtool.exe not found on runner" }
+          $signtool = $candidates[0].FullName
+          "SIGNTOOL_PATH=$signtool" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "SIGNTOOL_PATH=$signtool"
+
+      - name: Build app
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOOGLE_OAUTH_CLIENT_ID:     ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = (Get-Content electron/package.json | ConvertFrom-Json).version
+          if ($version -match '-') {
+            Write-Host "Version $version is EXPERIMENTAL (semver-suffix channel; NOT a GH pre-release)"
+          } else {
+            Write-Host "Version $version is STABLE"
+          }
+          # Always build SIGNED with -Squirrel (--publish never). We deliberately do
+          # NOT let electron-builder publish: its squirrel publisher RENAMES the
+          # installer to openswarm-Setup-<version>.exe on upload (even though the
+          # local file is correctly named OpenSwarm-Setup-x64.exe), which breaks the
+          # landing page + latest.yml. We publish via gh below, which preserves the
+          # local name. EP_PRE_RELEASE is intentionally never set (the GH pre-release
+          # checkbox hides a release from the atom feed electron-updater reads).
+          pwsh -NoProfile -File scripts\build-app-win.ps1 -Sign -Squirrel
+          if ($LASTEXITCODE -ne 0) { throw "build-app-win.ps1 failed ($LASTEXITCODE)" }
+
+      # SmartScreen gate: after electron-builder + the Azure sign hook run, prove
+      # the bits we are about to ship are ACTUALLY Authenticode-Valid. An unsigned
+      # installer trips SmartScreen on every user's first launch, so a release that
+      # silently didn't sign (missing secrets, hook skip) must fail here, not ship.
+      # verify-signature.js --require-signed exits non-zero unless Status == Valid.
+      - name: Verify the shipped artifact is signed
+        shell: pwsh
+        run: |
+          node scripts/ci/verify-signature.js --require-signed --target electron/dist/win-unpacked/OpenSwarm.exe
+          if ($LASTEXITCODE -ne 0) { throw "inner OpenSwarm.exe is not validly signed" }
+          # The bundled Claude CLI must ship signed too: AV quarantine of the unsigned Bun exe is the field's "Claude Code not found" permanent-death class.
+          node scripts/ci/verify-signature.js --require-signed --target electron/dist/win-unpacked/resources/python-env/Lib/site-packages/claude_agent_sdk/_bundled/claude.exe
+          if ($LASTEXITCODE -ne 0) { throw "bundled claude.exe is not validly signed" }
+          # Squirrel writes Setup.exe into dist\squirrel-windows\, not dist\ root.
+          node scripts/ci/verify-signature.js --require-signed --target electron/dist/squirrel-windows/OpenSwarm-Setup-x64.exe
+          if ($LASTEXITCODE -ne 0) { throw "OpenSwarm-Setup-x64.exe (installer) is not validly signed" }
+
+      # The squirrel target emits RELEASES + nupkg + Setup.exe but NO latest.yml.
+      # Existing NSIS clients poll latest.yml; without it they never see the
+      # update and are stranded on the old build. Generate it next to the Setup so
+      # both client kinds are served by the one release.
+      - name: Generate latest.yml for the Squirrel installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = (Get-Content electron/package.json | ConvertFrom-Json).version
+          $dir = 'electron/dist/squirrel-windows'
+          pwsh -NoProfile -File scripts\gen-squirrel-latest-yml.ps1 -SetupPath "$dir/OpenSwarm-Setup-x64.exe" -Version $version -OutPath "$dir/latest.yml"
+          # Experimental builds: electron-updater (allowPrerelease) fetches a channel
+          # yml named after the first semver-suffix id (1.2.75-rc.1 -> rc.yml). Same
+          # content as latest.yml; copy it so the experimental channel resolves.
+          if ($version -match '-([0-9A-Za-z]+)') {
+            Copy-Item "$dir/latest.yml" "$dir/$($matches[1]).yml" -Force
+            Write-Host "Experimental channel file: $($matches[1]).yml"
+          }
+          Get-Content "$dir/latest.yml"
+
+      # Publish the squirrel assets ourselves via gh (NOT electron-builder), so the
+      # installer keeps its OpenSwarm-Setup-x64.exe name. Find-or-create a DRAFT so
+      # the mac publish.sh run can converge into the same release; Eric flips it live.
+      - name: Publish squirrel assets to the GitHub release (draft, publish runs)
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = (Get-Content electron/package.json | ConvertFrom-Json).version
+          $tag = "v$version"
+          $dir = 'electron/dist/squirrel-windows'
+          $setup = "$dir/OpenSwarm-Setup-x64.exe"
+          $nupkg = (Get-ChildItem $dir -Filter '*-full.nupkg' | Select-Object -First 1).FullName
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --draft --title "$version" --notes "OpenSwarm $version"
+            if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
+          }
+          gh release upload $tag $setup "$dir/RELEASES" "$dir/latest.yml" $nupkg --clobber
+          if ($LASTEXITCODE -ne 0) { throw "gh upload (setup/RELEASES/latest.yml/nupkg) failed" }
+          if ($version -match '-([0-9A-Za-z]+)') {
+            gh release upload $tag "$dir/$($matches[1]).yml" --clobber
+            if ($LASTEXITCODE -ne 0) { throw "failed to upload $($matches[1]).yml to $tag" }
+            # Keep experimental builds OFF "Latest" so stable clients never pull them;
+            # only allowPrerelease clients (atom feed) discover them.
+            gh release edit $tag --prerelease=false --latest=false
+            Write-Host "Published $($matches[1]).yml + Setup + kept $tag off Latest (experimental)"
+          } else {
+            Write-Host "Published Setup + RELEASES + nupkg + latest.yml to draft $tag (stable)"
+          }
+
+      - name: Upload artifact (non-publish runs)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: openswarm-windows-x64
+          path: |
+            electron/dist/squirrel-windows/*.exe
+            electron/dist/squirrel-windows/RELEASES
+            electron/dist/squirrel-windows/*.nupkg
+            electron/dist/squirrel-windows/latest.yml
+          if-no-files-found: error
+          retention-days: 14
+
+  # Dispatch-only live smoke of the exact signed artifact this run just built (Squirrel layout: the
+  # root OpenSwarm.exe is a stub, the real app lives in app-<version>\; python.exe appearing is the
+  # install-done signal). Publish runs skip this: tags ship through the draft flow.
+  verify-windows:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish != 'true'
+    needs: build-windows
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download the signed installer built by this run
+        uses: actions/download-artifact@v4
+        with:
+          name: openswarm-windows-x64
+          path: installer
+
+      - name: silent install (Squirrel)
+        shell: pwsh
+        run: |
+          Start-Process -FilePath "installer\OpenSwarm-Setup-x64.exe" -ArgumentList "--silent"
+          $deadline = (Get-Date).AddMinutes(10)
+          do {
+            Start-Sleep -Seconds 5
+            $py = Get-ChildItem "$env:LOCALAPPDATA\openswarm\app-*\resources\python-env\python.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          } until ($py -or (Get-Date) -gt $deadline)
+          if (-not $py) { Get-ChildItem "$env:LOCALAPPDATA\openswarm" -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object FullName -First 40; throw "installed python-env not found" }
+          $appDir = $py.FullName -replace '\\resources\\python-env\\python\.exe$', ''
+          echo "APP_EXE=$appDir\OpenSwarm.exe" >> $env:GITHUB_ENV
+          echo "APP_DIR=$appDir" >> $env:GITHUB_ENV
+          echo "installed at $appDir"
+
+      - name: native uiohook binary shipped outside the asar
+        shell: pwsh
+        run: |
+          $node = Get-ChildItem $env:APP_DIR -Recurse -Filter "uiohook-napi.node" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match "win32-x64" } | Select-Object -First 1
+          if (-not $node) { throw "uiohook-napi win32-x64 prebuild not found on disk (asar swallowed it => keyboard hold-to-talk silently dead)" }
+          echo "uiohook prebuild: $($node.FullName)"
+
+      - name: bundled python + claude CLI run on real Windows x64
+        shell: pwsh
+        run: |
+          $py = Join-Path $env:APP_DIR "resources\python-env\python.exe"
+          & $py --version
+          if ($LASTEXITCODE -ne 0) { throw "python --version failed" }
+          & $py -c "import fastapi, anthropic, pydantic, httpx, jsonschema, claude_agent_sdk; print('deps ok')"
+          if ($LASTEXITCODE -ne 0) { throw "import smoke failed" }
+          $cli = Get-ChildItem (Join-Path $env:APP_DIR "resources\python-env") -Recurse -Filter "claude*" -ErrorAction SilentlyContinue | Where-Object { $_.Directory.Name -eq "_bundled" } | Select-Object -First 1
+          if (-not $cli) { throw "bundled claude CLI not found" }
+          & $cli.FullName --version
+          if ($LASTEXITCODE -ne 0) { throw "claude --version failed" }
+
+      - name: boot the installed app, poll backend health
+        shell: pwsh
+        run: |
+          $env:OPENSWARM_E2E = "1"
+          Start-Process -FilePath $env:APP_EXE
+          $code = 0
+          foreach ($i in 1..60) {
+            Start-Sleep -Seconds 3
+            try { $code = (Invoke-WebRequest -Uri "http://127.0.0.1:8324/api/health/check" -UseBasicParsing -TimeoutSec 2).StatusCode } catch { $code = 0 }
+            if ($code -eq 200) { break }
+          }
+          echo "health=$code"
+          Stop-Process -Name "OpenSwarm" -Force -ErrorAction SilentlyContinue
+          if ($code -ne 200) { throw "backend never became healthy" }

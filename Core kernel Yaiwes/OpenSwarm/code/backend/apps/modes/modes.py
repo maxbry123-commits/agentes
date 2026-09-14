@@ -1,0 +1,128 @@
+import json
+import os
+import logging
+from contextlib import asynccontextmanager
+from fastapi import HTTPException
+from backend.config.Apps import SubApp
+from backend.apps.modes.models import Mode, ModeCreate, ModeUpdate, BUILTIN_MODES
+
+logger = logging.getLogger(__name__)
+
+from backend.config.paths import MODES_DIR as DATA_DIR
+from backend.config.json_store import read_json_or_none, atomic_write_json
+
+
+@asynccontextmanager
+async def modes_lifespan():
+    os.makedirs(DATA_DIR, exist_ok=True)
+    # Migration: Chat merged into Ask; drop a stale built-in chat.json but leave customized copies alone.
+    chat_path = os.path.join(DATA_DIR, "chat.json")
+    if os.path.exists(chat_path):
+        try:
+            import json as p_json
+            with open(chat_path) as p_f:
+                p_data = p_json.load(p_f)
+            if p_data.get("is_builtin") is True and p_data.get("id") == "chat":
+                os.remove(chat_path)
+                logger.info("Removed deprecated built-in chat.json (merged into ask)")
+        except Exception:
+            logger.exception("Failed to inspect chat.json during migration")
+    for builtin in BUILTIN_MODES:
+        path = os.path.join(DATA_DIR, f"{builtin.id}.json")
+        if not os.path.exists(path):
+            save(builtin)
+    yield
+
+
+modes = SubApp("modes", modes_lifespan)
+
+
+def load_all() -> list[Mode]:
+    result = []
+    if not os.path.exists(DATA_DIR):
+        return result
+    for fname in os.listdir(DATA_DIR):
+        if fname.endswith(".json"):
+            data = read_json_or_none(os.path.join(DATA_DIR, fname))
+            if data is None:
+                continue
+            try:
+                result.append(Mode(**data))
+            except Exception as e:
+                logger.warning("Skipping invalid mode file %s: %s", fname, e)
+    return result
+
+
+def save(mode: Mode):
+    atomic_write_json(os.path.join(DATA_DIR, f"{mode.id}.json"), mode.model_dump())
+
+
+def load(mode_id: str) -> Mode:
+    data = read_json_or_none(os.path.join(DATA_DIR, f"{mode_id}.json"))
+    if data is None:
+        raise HTTPException(status_code=404, detail="Mode not found")
+    return Mode(**data)
+
+
+def load_mode(mode_id: str) -> Mode | None:
+    """Public helper for other modules to resolve a mode by ID."""
+    data = read_json_or_none(os.path.join(DATA_DIR, f"{mode_id}.json"))
+    return Mode(**data) if data is not None else None
+
+
+@modes.router.get("/list")
+async def list_modes():
+    builtin_defaults = {m.id: m.model_dump() for m in BUILTIN_MODES}
+    return {"modes": [m.model_dump() for m in load_all()], "builtin_defaults": builtin_defaults}
+
+
+@modes.router.get("/{mode_id}")
+async def get_mode(mode_id: str):
+    return load(mode_id).model_dump()
+
+
+@modes.router.post("/create")
+async def create_mode(body: ModeCreate):
+    mode = Mode(
+        name=body.name,
+        description=body.description,
+        system_prompt=body.system_prompt,
+        tools=body.tools,
+        default_next_mode=body.default_next_mode,
+        icon=body.icon,
+        color=body.color,
+        default_folder=body.default_folder,
+        is_builtin=False,
+    )
+    save(mode)
+    return {"ok": True, "mode": mode.model_dump()}
+
+
+@modes.router.put("/{mode_id}")
+async def update_mode(mode_id: str, body: ModeUpdate):
+    mode = load(mode_id)
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(mode, k, v)
+    save(mode)
+    return {"ok": True, "mode": mode.model_dump()}
+
+
+@modes.router.post("/{mode_id}/reset")
+async def reset_mode(mode_id: str):
+    """Reset a built-in mode to its hardcoded defaults."""
+    builtin = next((m for m in BUILTIN_MODES if m.id == mode_id), None)
+    if not builtin:
+        raise HTTPException(status_code=400, detail="Only built-in modes can be reset")
+    save(builtin)
+    return {"ok": True, "mode": builtin.model_dump()}
+
+
+@modes.router.delete("/{mode_id}")
+async def delete_mode(mode_id: str):
+    mode = load(mode_id)
+    if mode.is_builtin:
+        raise HTTPException(status_code=403, detail="Cannot delete built-in modes")
+    path = os.path.join(DATA_DIR, f"{mode_id}.json")
+    if os.path.exists(path):
+        os.remove(path)
+    return {"ok": True}

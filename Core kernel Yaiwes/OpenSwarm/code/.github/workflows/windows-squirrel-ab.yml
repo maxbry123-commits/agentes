@@ -1,0 +1,135 @@
+name: Windows Squirrel A/B (experiment)
+
+# Phase 7 experiment: build a Squirrel.Windows installer of the CURRENT app so it
+# can be installed and felt against the shipped NSIS build. NSIS stays the
+# production default; this never replaces it and never publishes.
+#
+# Fires on push to the throwaway `eric/squirrel-test` branch (a push trigger needs
+# no default-branch registration, unlike workflow_dispatch), or manual dispatch.
+# ARTIFACT-only: builds with `--publish never`, so it never writes to the GitHub
+# release feed. (Squirrel uses a RELEASES feed, not latest.yml; publishing it
+# would corrupt auto-update for existing electron-updater clients.)
+# Signing is attempted and REPORTED, not enforced: a personal-test build is useful
+# even if Squirrel-on-electron-builder-26 doesn't honor our custom Azure sign hook.
+#
+# Required repository secrets (same as release-windows.yml):
+#   AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET
+#   AZURE_SIGNING_ENDPOINT / AZURE_SIGNING_ACCOUNT / AZURE_SIGNING_CERT_PROFILE
+#   GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET (baked so the app is
+#                                   functionally identical to the NSIS build)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - squirrel
+
+permissions:
+  contents: read
+
+jobs:
+  build-squirrel:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    env:
+      AZURE_TENANT_ID:            ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID:            ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET:        ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_SIGNING_ENDPOINT:     ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+      AZURE_SIGNING_ACCOUNT:      ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+      AZURE_SIGNING_CERT_PROFILE: ${{ secrets.AZURE_SIGNING_CERT_PROFILE }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Same exact pin as the production build: the bundled Node runtime for
+          # 9router + MCP must match the packaging toolchain.
+          node-version: '20.18.1'
+
+      - name: Setup Python (for building bundled python-env)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install Microsoft.Trusted.Signing.Client (dlib for signtool)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dlibDir = Join-Path $env:GITHUB_WORKSPACE 'trusted-signing-client'
+          New-Item -ItemType Directory -Force -Path $dlibDir | Out-Null
+          nuget install Microsoft.Trusted.Signing.Client -Version 1.0.60 -OutputDirectory $dlibDir -ExcludeVersion
+          $dlib = Join-Path $dlibDir 'Microsoft.Trusted.Signing.Client\bin\x64\Azure.CodeSigning.Dlib.dll'
+          if (-not (Test-Path $dlib)) {
+            Get-ChildItem -Path $dlibDir -Recurse -Filter 'Azure.CodeSigning.Dlib.dll' | ForEach-Object { Write-Host "Found: $($_.FullName)" }
+            throw "Azure.CodeSigning.Dlib.dll not found after NuGet install"
+          }
+          "AZURE_SIGNING_DLIB=$dlib" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "AZURE_SIGNING_DLIB=$dlib"
+
+      - name: Locate signtool.exe on the runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $candidates = Get-ChildItem -Path 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter 'signtool.exe' -ErrorAction SilentlyContinue `
+            | Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } `
+            | Sort-Object FullName -Descending
+          if (-not $candidates) { throw "signtool.exe not found on runner" }
+          $signtool = $candidates[0].FullName
+          "SIGNTOOL_PATH=$signtool" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "SIGNTOOL_PATH=$signtool"
+
+      - name: Build SIGNED Squirrel installer (no publish)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOOGLE_OAUTH_CLIENT_ID:     ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # -Sign (NOT -Publish): signs via the Azure hook, electron-builder runs
+          # with `--publish never`, so nothing leaves this runner except the artifact.
+          pwsh -NoProfile -File scripts\build-app-win.ps1 -Sign -Squirrel
+          if ($LASTEXITCODE -ne 0) { throw "build-app-win.ps1 -Squirrel failed ($LASTEXITCODE)" }
+
+      # Report signing without blocking the artifact: the inner app exe is signed
+      # by the same hook as NSIS, but Squirrel-on-eb26 may not route its Setup.exe
+      # through our custom Azure hook. For a personal-test build we want the
+      # installer regardless, and the log tells you whether to expect SmartScreen.
+      - name: Locate + report the Squirrel installer (signing not enforced)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $inner = 'electron\dist\win-unpacked\OpenSwarm.exe'
+          if (Test-Path $inner) {
+            Write-Host "--- inner app exe ---"
+            node scripts/ci/verify-signature.js --target $inner
+          }
+          # Squirrel writes its Setup.exe into dist\squirrel-windows\, NOT dist\ root,
+          # so search recursively for the largest *Setup*.exe.
+          $setup = Get-ChildItem 'electron\dist' -Recurse -Filter '*Setup*.exe' -ErrorAction SilentlyContinue | Sort-Object Length -Descending | Select-Object -First 1
+          if (-not $setup) { $setup = Get-ChildItem 'electron\dist\squirrel-windows' -Recurse -Filter '*.exe' -ErrorAction SilentlyContinue | Sort-Object Length -Descending | Select-Object -First 1 }
+          if (-not $setup) {
+            Write-Host "dist tree:"; Get-ChildItem 'electron\dist' -Recurse -Filter '*.exe' | Format-Table FullName, Length
+            throw "no Squirrel installer .exe produced (the build step likely failed)"
+          }
+          Write-Host "--- Squirrel installer: $($setup.FullName) ($([math]::Round($setup.Length/1MB))MB) ---"
+          node scripts/ci/verify-signature.js --target $setup.FullName
+          Write-Host "NOTE: signing is REPORTED, not enforced, for this personal-test build."
+
+      - name: Upload Squirrel installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openswarm-windows-squirrel-x64
+          # Squirrel output lives in dist\squirrel-windows\ (Setup.exe + RELEASES).
+          # Skip the ~556MB full nupkg: it's only for differential updates, not the
+          # install-and-feel test, and it doubles the artifact download.
+          path: |
+            electron/dist/squirrel-windows/*.exe
+            electron/dist/squirrel-windows/RELEASES
+          if-no-files-found: error
+          retention-days: 14

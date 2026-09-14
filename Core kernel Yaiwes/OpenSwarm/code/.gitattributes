@@ -1,0 +1,6 @@
+# Vendored MCP server bundles (esbuild output of upstream npm packages).
+# Two patterns because Linguist's pathspec handling of bare `**` is
+# inconsistent — `dir/*` covers files at the root, `dir/**/*` covers
+# anything nested. Together they exclude all 3 bundles from language stats.
+backend/mcp-bundles/* linguist-vendored
+backend/mcp-bundles/**/* linguist-vendored

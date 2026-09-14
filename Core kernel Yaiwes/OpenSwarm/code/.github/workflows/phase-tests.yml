@@ -1,0 +1,23 @@
+name: Phase tests (hermetic)
+
+# Runs every deterministic, no-build test harness from the build-parity plan as a
+# CI gate on each push/PR: Phase 0 (boot timing + file count), Phase 3 (backend
+# smoke logic), Phase 5a (release promotion gate) — each asserts both its pass
+# and failure paths. No packaged artifact, secrets, or network needed, so it's
+# fast and always meaningful. The real packaged-app smoke (build + launch on
+# macOS + Windows) lives in e2e.yml; release signing/upload in release-*.yml.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  hermetic-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.18.1'
+      - run: node scripts/run-phase-tests.js

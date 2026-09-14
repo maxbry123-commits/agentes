@@ -1,0 +1,37 @@
+# gitleaks config — see .github/workflows/gitleaks.yml
+# Extend the default rule set rather than overriding it; allowlists below
+# cover known-safe placeholders and historical paths still in git history
+# that are slated for redaction in a separate filter-repo pass.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Project allowlist for gitleaks"
+
+# Frontend Settings.tsx documents the Anthropic API key prefix in onboarding
+# copy ("It will start with sk-ant-api03-…") — that's instructional text, not
+# a real key. Path-scoped so an actual leak elsewhere in the same file would
+# still trip.
+paths = [
+  '''frontend/src/app/pages/Settings/Settings\.tsx''',
+  # CDP-redaction test: its fixtures are deliberately fake `token=...` URLs it
+  # then asserts get redacted, so a full-history rescan keeps "finding" them.
+  '''electron/cdp-routes\.test\.js''',
+  # Vendored Python venv — never our code.
+  '''backend/\.venv/.*''',
+  # Vendored MCP server bundles (esbuild output of upstream npm packages).
+  '''backend/mcp-bundles/.*''',
+  # Bundled npm 9router (fetched from npm at build time; if a leak shows up
+  # here, the fix is to bump ROUTER_VERSION in scripts/fetch-router.sh, not
+  # to allowlist it — but until then, don't block our own PRs on it).
+  '''electron/build-staging/router/.*''',
+  # Local-only operator scratch dir, never tracked but defensive.
+  '''\.account-factory/.*''',
+]
+
+regexes = [
+  # Documentation/onboarding copy that talks about secret formats.
+  '''sk-ant-api03-…''',
+  '''sk-ant-\.\.\.''',
+]

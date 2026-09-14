@@ -1,0 +1,20 @@
+{
+  "include": ["../../backend"],
+  "exclude": [
+    "../../backend/.venv",
+    "../../backend/uv-bin",
+    "../../backend/data",
+    "../../backend/tests",
+    "../../backend/apps/outputs/webapp_template",
+    "**/__pycache__"
+  ],
+  "venvPath": "../../backend",
+  "venv": ".venv",
+  "pythonVersion": "3.11",
+  "extraPaths": ["../.."],
+  "reportMissingTypeStubs": false,
+  "typeCheckingMode": "off",
+  "reportAttributeAccessIssue": "error",
+  "reportUndefinedVariable": "error",
+  "reportMissingImports": "error"
+}

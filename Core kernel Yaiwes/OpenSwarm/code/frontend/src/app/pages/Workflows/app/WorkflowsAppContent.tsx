@@ -1,0 +1,119 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { useAppDispatch, useAppSelector } from '@/shared/hooks';
+import { clearWorkflowsAppTarget, closeWorkflowsApp, toggleMinimizeCard, WORKFLOWS_HUB_ID } from '@/shared/state/dashboardLayoutSlice';
+import WindowControls from '@/app/pages/Dashboard/cards/WindowControls';
+import {
+  fetchWorkflows, fetchAllRuns, fetchPausedState, fetchActiveRuns, fetchDeletedWorkflows,
+} from '@/shared/state/workflowsSlice';
+import { fetchMissedRuns } from '@/shared/state/missedRunsSlice';
+import ShareButton from '@/app/components/share/ShareButton';
+import { FONT_SANS, FONT_SERIF, useWC } from './uiKit';
+import type { AppMode, CalView, AppNav, CardHeader } from './types';
+import LeftRail from './LeftRail';
+import HomeView from './HomeView';
+import CalendarView from './CalendarView';
+import DetailView from './DetailView';
+import ComposeView from './ComposeView';
+import TrashView from './TrashView';
+
+// The three-pane Workflows body plus its title bar. The card wraps this with drag/resize geometry and passes the drag handlers in; the title bar lives here because Share needs to know which workflow is open.
+const WorkflowsAppContent: React.FC<{ header: CardHeader; tileZone: string | undefined; onTileZone: (zone: string) => void }> = ({ header, tileZone, onTileZone }) => {
+  const WC = useWC();
+  const dispatch = useAppDispatch();
+  const target = useAppSelector((s) => s.dashboardLayout.workflowsAppTarget);
+  const dashboardId = useAppSelector((s) => s.tempState.lastDashboardId) || undefined;
+
+  const [mode, setMode] = useState<AppMode>('home');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [calView, setCalView] = useState<CalView>('month');
+  const [refDate, setRefDate] = useState<Date>(() => new Date());
+
+  // goHome leaves selectedId set, so gate on the mode too or Share lingers in the title bar after leaving the workflow.
+  const shared = useAppSelector((s) => (selectedId ? s.workflows.items[selectedId] : undefined));
+  const selected = mode === 'detail' ? shared : undefined;
+
+  useEffect(() => {
+    dispatch(fetchWorkflows(dashboardId));
+    dispatch(fetchAllRuns(200));
+    dispatch(fetchPausedState());
+    dispatch(fetchActiveRuns());
+    dispatch(fetchMissedRuns());
+    dispatch(fetchDeletedWorkflows(dashboardId));
+  }, [dashboardId, dispatch]);
+
+  // A deep-link target (history/notifications/toasts) jumps to that workflow's detail, then clears so a later manual Home nav isn't overridden.
+  useEffect(() => {
+    if (target) {
+      setSelectedId(target);
+      setMode('detail');
+      dispatch(clearWorkflowsAppTarget());
+    }
+  }, [target, dispatch]);
+
+  const nav: AppNav = useMemo(() => ({
+    mode, selectedId, calView, refDate,
+    goHome: () => setMode('home'),
+    goCalendar: () => setMode('calendar'),
+    goNew: () => { setSelectedId(null); setMode('new'); },
+    goTrash: () => { dispatch(fetchDeletedWorkflows(dashboardId)); setMode('trash'); },
+    selectWorkflow: (id: string) => { setSelectedId(id); setMode('detail'); },
+    setCalView: (v: CalView) => setCalView(v),
+    setRefDate: (d: Date) => setRefDate(d),
+  }), [mode, selectedId, calView, refDate, dashboardId, dispatch]);
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontFamily: FONT_SANS, color: WC.ink, background: WC.page }}>
+      {/* TITLE BAR (drag handle) */}
+      <div
+        onPointerDown={header.onPointerDown}
+        onPointerMove={header.onPointerMove}
+        onPointerUp={header.onPointerUp}
+        onPointerCancel={header.onPointerCancel}
+        onLostPointerCapture={header.onLostPointerCapture}
+        style={{ height: 38, flex: 'none', display: 'flex', alignItems: 'center', padding: '0 14px', background: WC.page, gap: 14, cursor: header.dragging ? 'grabbing' : 'grab', touchAction: 'none', userSelect: 'none' }}
+      >
+        {/* macOS traffic lights: the whole window gets close / minimize / full size view like every card. */}
+        <span
+          className="osw-card"
+          data-no-drag
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          style={{ display: 'flex', alignItems: 'center' }}
+        >
+          <WindowControls
+            onClose={() => dispatch(closeWorkflowsApp())}
+            onMinimize={() => dispatch(toggleMinimizeCard({ cardId: WORKFLOWS_HUB_ID }))}
+            onTile={onTileZone}
+            tiled={!!tileZone}
+          />
+        </span>
+        <div style={{ flex: 1 }} />
+        {selected && (
+          // The share dialog portals to the body but its events still bubble the React tree, so stop them here or dragging the card follows a click inside the modal.
+          <span
+            data-no-drag
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            style={{ display: 'flex' }}
+          >
+            <ShareButton
+              target={{ kind: 'workflow', id: selected.id, name: selected.title || 'Untitled workflow' }}
+              iconFontSize={17}
+            />
+          </span>
+        )}
+      </div>
+
+      <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+        <LeftRail nav={nav} />
+        {mode === 'home' && <HomeView nav={nav} />}
+        {mode === 'calendar' && <CalendarView nav={nav} />}
+        {mode === 'detail' && selectedId && <DetailView workflowId={selectedId} nav={nav} />}
+        {mode === 'new' && <ComposeView nav={nav} />}
+        {mode === 'trash' && <TrashView />}
+      </div>
+    </div>
+  );
+};
+
+export default WorkflowsAppContent;
