@@ -1,0 +1,126 @@
+name: YAIWES identity migration once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/yaiwes-name-migration-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout fresh main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+
+      - name: Rename component identities to YAIWES only
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, re
+
+          root = Path('📂coda workflow persistencias')
+          field = '🏈 cancha deportiva de fútbol'
+          comps = sorted(p for p in root.iterdir() if p.is_dir() and p.name.startswith('🏈 ') and p.name != field)
+          assert len(comps) == 24, len(comps)
+
+          mapping = {}
+          for pos, src in enumerate(comps, 1):
+              m = re.match(r'^🏈\s+(\d{2})[- ]', src.name)
+              idx = m.group(1) if m else f'{pos:02d}'
+              dst_name = f'🏈 YAIWES {idx}'
+              dst = root / dst_name
+              if dst.exists() and dst != src:
+                  raise SystemExit(f'TARGET_EXISTS:{dst}')
+              mapping[src.name] = dst_name
+
+          for src_name, dst_name in mapping.items():
+              src = root / src_name
+              dst = root / dst_name
+              if src != dst:
+                  os.rename(src, dst)
+
+          scopes = [root, Path('.github/scripts'), Path('.github/workflows')]
+          changed = 0
+          for scope in scopes:
+              if not scope.exists():
+                  continue
+              for p in scope.rglob('*'):
+                  if not p.is_file() or p.name == 'yaiwes-name-migration-once.yml':
+                      continue
+                  try:
+                      raw = p.read_text(encoding='utf-8')
+                  except Exception:
+                      continue
+                  out = raw
+                  for old, new in mapping.items():
+                      out = out.replace(old, new)
+                  if out != raw:
+                      p.write_text(out, encoding='utf-8')
+                      changed += 1
+
+          names = sorted(p.name for p in root.iterdir() if p.is_dir() and re.fullmatch(r'🏈 YAIWES \d{2}', p.name))
+          assert names == [f'🏈 YAIWES {i:02d}' for i in range(1,25)], names
+
+          leftovers = []
+          for scope in scopes:
+              if not scope.exists():
+                  continue
+              for p in scope.rglob('*'):
+                  if not p.is_file() or p.name == 'yaiwes-name-migration-once.yml':
+                      continue
+                  try:
+                      txt = p.read_text(encoding='utf-8')
+                  except Exception:
+                      continue
+                  for old in mapping:
+                      if old in txt:
+                          leftovers.append(f'{p}:{old}')
+                          break
+          assert not leftovers, leftovers[:20]
+          print('YAIWES_IDENTITIES=24', 'TEXT_FILES_UPDATED=', changed)
+          PY
+
+      - name: Validate canonical scripts
+        run: |
+          set -euo pipefail
+          python3 -m py_compile .github/scripts/yaiwes_internal_surgical_transform_v5.py
+          python3 -m py_compile .github/scripts/yaiwes_internal_surgical_transform_v52_runner.py
+
+      - name: Self-remove migration workflow
+        run: rm -f .github/workflows/yaiwes-name-migration-once.yml
+
+      - name: Commit rename atomically
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'refactor(coda): canonicalize all component identities as YAIWES'
+          git fetch origin main --depth=1
+          if [ "$(git rev-parse HEAD^)" != "$(git rev-parse origin/main)" ]; then
+            git rebase origin/main
+          fi
+          git push origin HEAD:main
+
+      - name: Final identity readback
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root=Path('📂coda workflow persistencias')
+          names=sorted(p.name for p in root.iterdir() if p.is_dir() and re.fullmatch(r'🏈 YAIWES \d{2}', p.name))
+          assert names == [f'🏈 YAIWES {i:02d}' for i in range(1,25)]
+          print('YAIWES_NAME_MIGRATION_PASS=24')
+          PY
