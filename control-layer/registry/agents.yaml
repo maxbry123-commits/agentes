@@ -1,0 +1,51 @@
+# Agent Registry — agentes como fichas (SOURCE: SALIDA_2_6_IDEAS_PARTE_1 Idea 2)
+# No son procesos vivos. Solo definiciones. Se cargan bajo demanda.
+
+agents:
+  openclaw:
+    id: openclaw
+    version: "1.0.0"
+    role: primary_executor
+    capabilities: [code, tools, mcp, skills]
+    sandbox: medium
+    llm_ratio: 0.3
+    contracts: [C03, C28, C47]
+
+  hermes:
+    id: hermes
+    version: "1.0.0"
+    role: supervisor
+    capabilities: [planning, review, coordination]
+    sandbox: light
+    llm_ratio: 0.5
+    contracts: [C03, C47]
+
+  temporal:
+    id: temporal
+    version: "1.7.3"
+    role: orchestrator
+    capabilities: [workflow, durable_execution, retry]
+    sandbox: none
+    llm_ratio: 0.0
+    contracts: [C03, C28]
+
+  coder:
+    id: coder
+    version: "1.0.0"
+    role: code_generator
+    capabilities: [python, git, multi_file]
+    sandbox: heavy
+    llm_ratio: 0.4
+    contracts: [C03, C47, C52]
+
+  reviewer:
+    id: reviewer
+    version: "1.0.0"
+    role: code_review
+    capabilities: [static_analysis, security, style]
+    sandbox: light
+    llm_ratio: 0.3
+    contracts: [C03, C47]
+
+# Regla: los agentes nunca se llaman entre sí.
+# Siempre pasan por el orquestador / Capa de Control.

@@ -1,0 +1,29 @@
+# C00 — Contract Governance (el contrato cero)
+# SOURCE: SALIDA_4_CONTRATOS Parte 2 §9
+
+contract:
+  id: C00
+  version: "1.0.0"
+  name: Contract Governance
+
+authority:
+  who_can_create: [Director]
+  who_can_modify: [Director]
+  who_can_approve: [Director]
+
+versioning:
+  scheme: semver
+  breaking_change_requires: director_approval
+
+signature:
+  required: true
+  algorithm: gpg
+
+mutation:
+  allowed:
+    - add_new_contract
+    - add_optional_field
+  forbidden:
+    - remove_contract
+    - weaken_security_check
+    - modify_C00

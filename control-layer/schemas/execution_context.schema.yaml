@@ -1,0 +1,30 @@
+# execution_context.schema — generado en runtime (no archivo de proyecto)
+# SOURCE: identidad completa en ejecución
+
+$schema: execution_context.schema/v1
+required:
+  - tenant_id
+  - project_id
+  - agent_id
+  - agent_version
+  - workflow_id
+  - task_id
+  - session_id
+  - memory
+
+fields:
+  tenant_id: string
+  project_id: string
+  agent_id: string
+  agent_version: string
+  workflow_id: string
+  task_id: string
+  session_id: string
+  memory:
+    private_scope: string   # tenant/project/agent
+    project_scope: string   # tenant/project/project
+
+rules:
+  - memory scopes never agent_id alone
+  - context accompanies entire workflow
+  - built by Control Layer, not by agent YAML alone

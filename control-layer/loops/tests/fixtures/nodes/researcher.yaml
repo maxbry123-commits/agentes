@@ -1,0 +1,4 @@
+node:
+  id: researcher
+  capabilities: [research, web_search]
+  priority: 20

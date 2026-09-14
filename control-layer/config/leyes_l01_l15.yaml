@@ -1,0 +1,54 @@
+# 15 Leyes UOOS — checks nativos del Wordflow
+# SOURCE: SALIDA_6 · CAPA DE CONTROL 1
+# Violación = ABORTAR bloque + reportar cuál ley.
+
+leyes:
+  L01:
+    nombre: investigar_oss_antes_de_codigo_nuevo
+    check: "existe source o justificación de ausencia"
+  L02:
+    nombre: un_archivo_una_responsabilidad
+    check: "LOC por archivo <= 200"
+  L03:
+    nombre: nunca_borrar_codigo
+    check: "solo desactivar con feature flag"
+  L04:
+    nombre: flags_solo_en_config
+    check: "flags solo en config.py / config/"
+  L05:
+    nombre: no_inventar_apis
+    check: "solo APIs/librerías verificables"
+  L06:
+    nombre: dependencias_version_exacta
+    check: "pin de versión presente"
+  L07:
+    nombre: archivos_nuevos_requieren_aprobacion
+    check: "alta de archivo nueva documentada o aprobada"
+  L08:
+    nombre: nunca_saltar_dag
+    check: "nodo solo corre si depends_on están done"
+  L09:
+    nombre: ejecucion_solo_en_sandbox_declarado
+    check: "sandbox del nodo no vacío o explícito none"
+  L10:
+    nombre: estado_solo_via_eventos
+    check: "state.json no se edita a mano en runtime"
+  L11:
+    nombre: toda_tarea_genera_evidencia
+    check: "evidence presente o tarea inexistente"
+  L12:
+    nombre: salida_pasa_por_tribunal
+    check: "score tribunal >= umbral y sin veto"
+  L13:
+    nombre: anti_scope_creep
+    check: "solo lo pedido en goal/constraints"
+  L14:
+    nombre: ambiguedad_una_pregunta
+    check: "no asumir; 1 pregunta concreta si falta dato"
+  L15:
+    nombre: reproducibilidad
+    check: "mismo input → mismo output (hash)"
+
+enforcement:
+  on_violation: ABORT
+  report: ley_id + motivo

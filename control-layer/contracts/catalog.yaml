@@ -1,0 +1,93 @@
+# Catálogo completo C00–C85 — definiciones mínimas operativas
+# SOURCE: SALIDA_4. El motor usa routing.yaml; este catálogo documenta todos.
+# severity: critical|high|medium|low · failure: reject|continue
+
+contracts:
+  C00: {name: Governance, layer: C00, severity: critical, failure: reject}
+  C01: {name: Contrato de borde, layer: L1, severity: high, failure: reject}
+  C02: {name: Design by Contract, layer: L1, severity: high, failure: reject}
+  C03: {name: Schema, layer: L1, severity: high, failure: reject}
+  C04: {name: Type, layer: L1, severity: high, failure: reject}
+  C05: {name: ABI, layer: L1, severity: medium, failure: reject}
+  C06: {name: API Versioning, layer: L1, severity: medium, failure: continue}
+  C07: {name: Deprecation, layer: L1, severity: low, failure: continue}
+  C08: {name: Published Language, layer: L1, severity: medium, failure: continue}
+  C09: {name: Consumer-Driven, layer: L2, severity: medium, failure: continue}
+  C10: {name: Provider, layer: L2, severity: low, failure: continue}
+  C11: {name: Customer/Supplier, layer: L2, severity: low, failure: continue}
+  C12: {name: Conformist, layer: L2, severity: low, failure: continue}
+  C13: {name: Partnership, layer: L2, severity: low, failure: continue}
+  C14: {name: Separate Ways, layer: L2, severity: low, failure: continue}
+  C15: {name: Open Host Service, layer: L2, severity: medium, failure: continue}
+  C16: {name: Anti-Corruption Layer, layer: L2, severity: high, failure: reject}
+  C17: {name: Bounded Context, layer: L2, severity: high, failure: reject}
+  C18: {name: Port & Adapter, layer: L2, severity: high, failure: reject}
+  C19: {name: Shared Kernel, layer: L2, severity: medium, failure: continue}
+  C20: {name: Interface Segregation, layer: L2, severity: medium, failure: continue}
+  C21: {name: Dependency Inversion, layer: L2, severity: medium, failure: continue}
+  C22: {name: Purity, layer: L2, severity: medium, failure: continue}
+  C23: {name: Liskov, layer: L3, severity: medium, failure: continue}
+  C24: {name: Behavioral, layer: L3, severity: high, failure: reject}
+  C25: {name: Protocol SM, layer: L3, severity: high, failure: reject}
+  C26: {name: Session Types, layer: L3, severity: low, failure: continue}
+  C27: {name: Immutability, layer: L3, severity: high, failure: reject}
+  C28: {name: Determinism, layer: L3, severity: critical, failure: reject}
+  C29: {name: Idempotency, layer: L3, severity: high, failure: reject}
+  C30: {name: Ordering, layer: L3, severity: medium, failure: continue}
+  C31: {name: Consistency, layer: L3, severity: medium, failure: continue}
+  C32: {name: Isolation, layer: L3, severity: medium, failure: continue}
+  C33: {name: Error, layer: L4, severity: critical, failure: reject}
+  C34: {name: Compensation/Saga, layer: L4, severity: critical, failure: reject}
+  C35: {name: Rollback, layer: L4, severity: critical, failure: reject}
+  C36: {name: Timeout, layer: L4, severity: high, failure: reject}
+  C37: {name: Retry, layer: L4, severity: high, failure: continue}
+  C38: {name: Circuit Breaker, layer: L4, severity: high, failure: reject}
+  C39: {name: Backpressure, layer: L4, severity: high, failure: continue}
+  C40: {name: Fallback, layer: L4, severity: medium, failure: continue}
+  C41: {name: Tolerant Reader, layer: L4, severity: medium, failure: continue}
+  C42: {name: SLO, layer: L5, severity: medium, failure: continue}
+  C43: {name: Resource, layer: L5, severity: high, failure: reject}
+  C44: {name: Capability, layer: L5, severity: high, failure: reject}
+  C45: {name: Ownership, layer: L5, severity: high, failure: reject}
+  C46: {name: Lifecycle, layer: L5, severity: medium, failure: continue}
+  C47: {name: Security, layer: L5, severity: critical, failure: reject}
+  C48: {name: Audit, layer: L5, severity: high, failure: reject}
+  C49: {name: Evidence, layer: L5, severity: critical, failure: reject}
+  C50: {name: Data, layer: L5, severity: medium, failure: continue}
+  C51: {name: Evolution, layer: L6, severity: high, failure: reject}
+  C52: {name: Provenance, layer: L6, severity: high, failure: reject}
+  C53: {name: Test, layer: L6, severity: high, failure: reject}
+  C54: {name: Trust, layer: L6, severity: medium, failure: continue}
+  C55: {name: Promotion, layer: L6, severity: high, failure: reject}
+  C56: {name: Identity, layer: L7, severity: medium, failure: continue}
+  C57: {name: Sandbox, layer: L7, severity: high, failure: reject}
+  C58: {name: Resource Isolation, layer: L7, severity: high, failure: reject}
+  C59: {name: Namespace, layer: L7, severity: medium, failure: continue}
+  C60: {name: Contradiction, layer: L7, severity: high, failure: reject}
+  C61: {name: Consensus, layer: L7, severity: medium, failure: continue}
+  C62: {name: Evidence Chain, layer: L7, severity: high, failure: reject}
+  C63: {name: Migration, layer: L7, severity: medium, failure: continue}
+  C64: {name: Compatibility, layer: L7, severity: medium, failure: continue}
+  C65: {name: Learning Boundary, layer: L7, severity: high, failure: reject}
+  C66: {name: Execution Sandbox, layer: L7, severity: high, failure: reject}
+  C67: {name: Permission Escalation, layer: L7, severity: critical, failure: reject}
+  C68: {name: Network Policy, layer: L7, severity: high, failure: reject}
+  C69: {name: Filesystem Policy, layer: L7, severity: high, failure: reject}
+  C70: {name: Process Limit, layer: L7, severity: medium, failure: continue}
+  C71: {name: Secret Handling, layer: L7, severity: critical, failure: reject}
+  C72: {name: Credential Rotation, layer: L7, severity: medium, failure: continue}
+  C73: {name: Zero Trust, layer: L7, severity: critical, failure: reject}
+  C74: {name: Least Privilege, layer: L7, severity: high, failure: reject}
+  C75: {name: Agent Delegation, layer: L7, severity: high, failure: reject}
+  C76: {name: Event, layer: L7, severity: medium, failure: continue}
+  C77: {name: Consensus Multi-Agent, layer: L7, severity: medium, failure: continue}
+  C78: {name: Telemetry, layer: L7, severity: medium, failure: continue}
+  C79: {name: Recovery, layer: L7, severity: high, failure: reject}
+  C80: {name: Degradation, layer: L7, severity: medium, failure: continue}
+  C81: {name: Research Governance, layer: L7, severity: high, failure: reject}
+  C82: {name: Extension ABI, layer: L8, severity: critical, failure: reject}
+  C83: {name: Mount, layer: L8, severity: critical, failure: reject}
+  C84: {name: Lifecycle Extension, layer: L8, severity: high, failure: reject}
+  C85: {name: Loader, layer: L8, severity: high, failure: reject}
+
+count: 86  # C00 + C01–C85

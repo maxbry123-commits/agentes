@@ -1,0 +1,51 @@
+# D4 Workflow DAG — dag/<id>.yaml v2.0
+# SOURCE: dagu · agentflow · Solace SAM · Swarms GraphWorkflow · Wordflow
+# DAG = QUÉ FLUJO. Router resuelve agent por required_capabilities (no agent_id hardcode).
+
+schema_version: "2.0"
+kind: WORKFLOW_DAG
+
+id: development
+version: "1.0.0"
+project_id: ""
+description: ""
+
+# type: graph (paralelo por depends_on) | chain (secuencial forzado)
+type: graph
+
+nodes:
+  - id: plan
+    depends_on: []
+    required_capabilities: [planning]
+    timeout_seg: 600
+    on_fail: recovery_default      # recovery_default | skip | abort | human_gate
+    loop_strategy: sequential     # sequential | parallel | adversarial | consensus
+    budget_level: tarea
+  - id: implement
+    depends_on: [plan]
+    required_capabilities: [code_generation, debugging]
+    timeout_seg: 3600
+    on_fail: recovery_default
+    loop_strategy: sequential
+    budget_level: fase
+  - id: review
+    depends_on: [implement]
+    required_capabilities: [review]
+    timeout_seg: 900
+    on_fail: human_gate
+    loop_strategy: sequential
+    budget_level: tarea
+
+rules:
+  no_cycles: true
+  no_skip: true
+  all_caps_must_resolve: true
+  fail_fast: false
+  entry: plan
+  exit: [review]
+  max_parallel: 4
+
+# Opcional: edges explícitas (si se omiten, se derivan de depends_on)
+# edges:
+#   - [plan, implement]
+#   - [implement, review]

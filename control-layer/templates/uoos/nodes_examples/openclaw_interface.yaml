@@ -1,0 +1,21 @@
+# Ejemplo — OpenClaw como interface/orquestador
+schema_version: "2.0"
+kind: AGENT_NODE
+id: openclaw_interface
+version: "1.0.0"
+type: agent
+purpose: "Interface y orquestación de tareas del proyecto"
+capabilities:
+  - orchestration
+  - planning
+  - user_interface
+priority: 10
+adapter:
+  id: openclaw
+  entrypoint: openclaw
+budget:
+  level: fase
+  max_iterations: 16
+safety:
+  side_effect_risk: medium
+  requires_human_review: false
