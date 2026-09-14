@@ -1,0 +1,47 @@
+name: YAIWES CODA Internal Kernel V4
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/scripts/yaiwes_internal_transform_v4.py'
+permissions:
+  contents: write
+jobs:
+  transform:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+      - name: Build internal kernels in all 24 components
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/yaiwes_internal_transform_v4.py
+      - name: Test all internal kernels
+        run: |
+          set -euo pipefail
+          ROOT='📂coda workflow persistencias'
+          count=0
+          while IFS= read -r -d '' tf; do
+            d="$(dirname "$tf")"
+            PYTHONPATH="$d" python3 "$tf"
+            count=$((count+1))
+          done < <(find "$ROOT" -type f -path '*/code/yaiwes_internal/test_workflow_kernel.py' -print0 | sort -z)
+          echo "INTERNAL_KERNEL_TESTS=$count"
+          test "$count" -eq 24
+      - name: Persist internal kernels
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- '📂coda workflow persistencias'
+          if git diff --cached --quiet; then echo 'NO_CHANGES'; exit 0; fi
+          git commit -m 'feat(coda): materialize 24 internal YAIWES workflow kernels'
+          git push origin HEAD:main
+      - name: Readback
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
