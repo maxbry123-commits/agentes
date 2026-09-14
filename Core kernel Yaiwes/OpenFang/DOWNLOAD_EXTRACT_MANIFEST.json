@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 6721479,
+  "bundle_sha256": "0de0d76de96f2b035c9ea003213fe867b7544f0826ab42e258b529cfafe2a5bc",
+  "extracted_tree": {
+    "bytes": 15037206,
+    "files": 538,
+    "sha256": "d4c4a60c39bb96edabc53423c7221b3ed57184a99ce49079280c2db66c64f544"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 6721479,
+      "name": "OpenFang.bundle.zip.part-0001",
+      "sha256": "0de0d76de96f2b035c9ea003213fe867b7544f0826ab42e258b529cfafe2a5bc"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "OpenFang",
+  "source_bytes": 15037206,
+  "source_commit": "acf2587e46be174c10200489c9a2d23a39a98aeb",
+  "source_files": 538,
+  "source_ref": "HEAD",
+  "source_repo": "RightNow-AI/openfang",
+  "source_tree": {
+    "bytes": 15037206,
+    "files": 538,
+    "sha256": "d4c4a60c39bb96edabc53423c7221b3ed57184a99ce49079280c2db66c64f544"
+  }
+}
