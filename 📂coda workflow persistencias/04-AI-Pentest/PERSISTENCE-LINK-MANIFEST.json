@@ -1,0 +1,53 @@
+{
+  "schema": "yaiwes.coda.persistence-link-manifest/v1",
+  "link_id": "04-AI-Pentest",
+  "source_repo": "yuanweipeifang/AI_Pentest",
+  "source_commit": "de242f062a79afc2c61e3aaf2a877a3ceacc1644",
+  "source_tree_sha256": "abbe0288a25989adfd5a779c9b72a020f5eb5eb501716fb30d68fd84842ec4f2",
+  "download_extract_verified": true,
+  "role": "event-store-coordination-checkpoint-handoff",
+  "next_link": "05-AI-Infra-Guard",
+  "preserved": [
+    "BaseAgent task abstractions",
+    "SequentialAgent/ParallelAgent coordination patterns",
+    "CoordinatorAgent",
+    "ReportAgent",
+    "EventStore",
+    "InteractionBus",
+    "reporting primitives"
+  ],
+  "quarantined_from_public_surface": [
+    "ReconAgent",
+    "VulnAgent",
+    "ExploitAgent",
+    "NetworkScanner",
+    "WebScanner",
+    "VulnerabilityScanner",
+    "BruteForceTool",
+    "PostExploitTool",
+    "ToolManager",
+    "upstream pentest Orchestrator",
+    "upstream DecisionEngine"
+  ],
+  "safe_runtime": "code/coda_persistence/link.py",
+  "surgical_edits": [
+    "code/backend/agents/__init__.py",
+    "code/backend/tools/__init__.py",
+    "code/backend/core/__init__.py"
+  ],
+  "tests": {
+    "workflow_run_id": 34811012821,
+    "job_id": 103872206202,
+    "result": "PASS",
+    "passed_for_link": 4,
+    "failed_for_link": 0,
+    "accumulated_safe_tests": 16,
+    "checks": [
+      "event_checkpoint_handoff",
+      "resume_idempotent",
+      "forbidden_security_action_fails_closed",
+      "checkpoint_path_contained"
+    ]
+  },
+  "status": "TRANSFORMED_SAFE_LINK_PASS"
+}
