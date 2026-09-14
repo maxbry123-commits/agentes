@@ -1,11 +1,11 @@
-# 🏈 20-OpenWhale — YAIWES-INTERNAL-PERSISTENCE-v5.0
+# 🏈 20-OpenWhale — YAIWES-INTERNAL-PERSISTENCE-v5.1
 
 ## Swarm agent team Navy seals YAIWES
 
 `ORIGINAL → CLASSIFY → RESTORE_BENIGN | BLOCK_OFFENSIVE | REVIEW_FAIL_CLOSED → CHECKPOINT LINK → VERIFY → RELEASE`
 
-- Archivos contabilizados: **7**
-- Restaurados benignos: **4**
+- Archivos contabilizados: **8**
+- Restaurados benignos: **5**
 - Bloqueados ofensivos: **0**
 - Revisión fail-closed: **3**
 - Links internos de persistencia: **3**

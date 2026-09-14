@@ -1,23 +1,42 @@
-"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
-from __future__ import annotations
-from pathlib import Path
-import json
+import asyncio
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
-SOURCE_ID = '96130830fd002cbc5f14446fbfba6e08af7c2f11a1481267d8c8e34d0604bfe8'
-DECISION = 'BLOCK_OFFENSIVE'
+from mcp_scan.redteam.attacker import AttackerAgent
+from mcp_scan.redteam.evaluator import EvaluatorAgent
+from mcp_scan.redteam.strategy import ConversationTurn
+from mcp_scan.redteam.target import TargetRunner
 
-def _yaiwes_checkpoint(step: str, payload=None):
-    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
-    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with p.open('a', encoding='utf-8') as f:
-        f.write(json.dumps(event, ensure_ascii=False) + '\n')
-    return event
 
-def yaiwes_persistence_step(payload=None):
-    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
+def _client_with_response(content: str):
+    create = AsyncMock(
+        return_value=SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=content))]
+        )
+    )
+    client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+    )
+    return client, create
 
-def _client_with_response(*args, **kwargs):
-    return _yaiwes_checkpoint('_client_with_response', kwargs)
 
-def test_redteam_requests_omit_temperature(*args, **kwargs):
-    return _yaiwes_checkpoint('test_redteam_requests_omit_temperature', kwargs)
+def test_redteam_requests_omit_temperature():
+    async def exercise_requests():
+        attacker_client, attacker_create = _client_with_response(
+            '{"thought":"","message":"test","attack_technique":"test","reflection":""}'
+        )
+        evaluator_client, evaluator_create = _client_with_response(
+            '{"on_topic":true,"score":1,"is_successful":false,"reasoning":""}'
+        )
+        target_client, target_create = _client_with_response("target response")
+
+        await AttackerAgent(attacker_client, "gpt-5.5").generate_attack("test", [])
+        await EvaluatorAgent(evaluator_client, "gpt-5.5").evaluate(
+            "test", ConversationTurn("attack", "response")
+        )
+        await TargetRunner(target_client, "gpt-5.5").respond_to_attack("test")
+        return attacker_create, evaluator_create, target_create
+
+    for create in asyncio.run(exercise_requests()):
+        assert create.call_count == 1
+        assert "temperature" not in create.call_args.kwargs

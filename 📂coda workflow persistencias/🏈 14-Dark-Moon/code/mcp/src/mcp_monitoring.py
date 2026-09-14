@@ -1,23 +1,100 @@
-"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
-from __future__ import annotations
-from pathlib import Path
-import json
+#!/usr/bin/env python3
+import os
+import sys
+import socket
+import selectors
+import signal
 
-SOURCE_ID = 'c0e82332f083960ee4f24ab6bc0854468f7736cec8257c70930b01583f85bcd6'
-DECISION = 'REVIEW_FAIL_CLOSED'
+STREAM_SOCK = "/tmp/darkmoon_mcp_stream.sock"
 
-def _yaiwes_checkpoint(step: str, payload=None):
-    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
-    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with p.open('a', encoding='utf-8') as f:
-        f.write(json.dumps(event, ensure_ascii=False) + '\n')
-    return event
+running = True
 
-def yaiwes_persistence_step(payload=None):
-    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
 
-def handle_signal(*args, **kwargs):
-    return _yaiwes_checkpoint('handle_signal', kwargs)
+def handle_signal(signum, frame):
+    global running
+    running = False
 
-def main(*args, **kwargs):
-    return _yaiwes_checkpoint('main', kwargs)
+
+def main():
+    global running
+
+    # Capture Ctrl+C and Docker stop
+    signal.signal(signal.SIGINT, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
+
+    if os.path.exists(STREAM_SOCK):
+        os.remove(STREAM_SOCK)
+
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(STREAM_SOCK)
+    srv.listen(50)
+    os.chmod(STREAM_SOCK, 0o666)
+
+    sel = selectors.DefaultSelector()
+    sel.register(srv, selectors.EVENT_READ)
+
+    clients = set()
+
+    sys.stdout.write("\n\033[1;32mdarkmoon(live)>\033[0m streaming MCP output...\n\n")
+    sys.stdout.flush()
+
+    try:
+        while running:
+            # IMPORTANT: timeout avoids blocking forever
+            events = sel.select(timeout=0.5)
+
+            for key, _ in events:
+                if key.fileobj is srv:
+                    c, _ = srv.accept()
+                    c.setblocking(False)
+                    clients.add(c)
+                    sel.register(c, selectors.EVENT_READ)
+                else:
+                    c = key.fileobj
+                    try:
+                        data = c.recv(4096)
+                        if not data:
+                            sel.unregister(c)
+                            clients.remove(c)
+                            c.close()
+                            continue
+
+                        os.write(sys.stdout.fileno(), data)
+
+                    except Exception:
+                        try:
+                            sel.unregister(c)
+                        except Exception:
+                            pass
+                        try:
+                            clients.remove(c)
+                        except Exception:
+                            pass
+                        try:
+                            c.close()
+                        except Exception:
+                            pass
+
+    finally:
+        sys.stdout.write("\n\033[1;31mdarkmoon(live)>\033[0m stopped.\n")
+        sys.stdout.flush()
+
+        for c in list(clients):
+            try:
+                sel.unregister(c)
+                c.close()
+            except Exception:
+                pass
+
+        try:
+            sel.unregister(srv)
+            srv.close()
+        except Exception:
+            pass
+
+        if os.path.exists(STREAM_SOCK):
+            os.remove(STREAM_SOCK)
+
+
+if __name__ == "__main__":
+    main()

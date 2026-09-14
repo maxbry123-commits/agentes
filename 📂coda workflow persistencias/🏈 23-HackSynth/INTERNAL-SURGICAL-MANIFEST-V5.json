@@ -2,7 +2,7 @@
   "schema": "yaiwes.internal.surgical/v5",
   "component": "🏈 23-HackSynth",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.0",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.1",
   "policy": {
     "restore_benign": true,
     "offensive_execution": false,
@@ -23,7 +23,7 @@
     {
       "path": "overthewire_bench/krypton_solver.py",
       "decision": "REVIEW_FAIL_CLOSED",
-      "reason": "previously transformed effectful file without safe classification",
+      "reason": "previously effectful file without safe classification",
       "original_sha256": "6512e2510d6fef091fe6d772c4ab1cd9501823b7ba95275501fa205b22fdc64f",
       "active_sha256": "8df2df9cc52e19cd8979d46a5c19c7a6a1e16d7ce6b300f7181e7172ca4af506",
       "quarantine": "_yaiwes_upstream_quarantine/overthewire_bench/krypton_solver.py.original",
@@ -32,7 +32,7 @@
     {
       "path": "overthewire_bench/natas_solver.py",
       "decision": "REVIEW_FAIL_CLOSED",
-      "reason": "previously transformed effectful file without safe classification",
+      "reason": "previously effectful file without safe classification",
       "original_sha256": "37567e7b8e6a3241a6c7c42321b9865cc7e0606a0a8bf70a44485ad10163d1b7",
       "active_sha256": "791b47670c2efc0c9ef8c729a7215db0eb51cb0eaed1ee8eb1837840e18d8971",
       "quarantine": "_yaiwes_upstream_quarantine/overthewire_bench/natas_solver.py.original",
@@ -40,17 +40,17 @@
     },
     {
       "path": "pentest_agent.py",
-      "decision": "BLOCK_OFFENSIVE",
-      "reason": "offensive path semantics",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously effectful file without safe classification",
       "original_sha256": "4bffb299637f7e2ad7cfbba0158c3b48fa935df030e35a1e8cdc6e4b6532d49e",
-      "active_sha256": "29aaf8d9a22134dd316419737bf7d393ebc117c145b26ec523b8b1ce1f0ba941",
+      "active_sha256": "bee1ad5a200c33eb3e024b02839e9691172193c5c7ef101fe6f7fa86ab79cfef",
       "quarantine": "_yaiwes_upstream_quarantine/pentest_agent.py.original",
       "link": true
     },
     {
       "path": "picoctf_bench/challenge_solver.py",
       "decision": "REVIEW_FAIL_CLOSED",
-      "reason": "previously transformed effectful file without safe classification",
+      "reason": "previously effectful file without safe classification",
       "original_sha256": "11929338693447c541fc5efa3209cca7b475fc910a9056bf70d8abf38313a076",
       "active_sha256": "43b3881f47a486e7977603abd4c7dbe0e67d6818ccbcdc0f500b5b97a45284a5",
       "quarantine": "_yaiwes_upstream_quarantine/picoctf_bench/challenge_solver.py.original",
@@ -60,8 +60,8 @@
   "counts": {
     "accounted": 5,
     "restored_benign": 0,
-    "blocked_offensive": 2,
-    "review_fail_closed": 3,
+    "blocked_offensive": 1,
+    "review_fail_closed": 4,
     "links": 5
   }
 }

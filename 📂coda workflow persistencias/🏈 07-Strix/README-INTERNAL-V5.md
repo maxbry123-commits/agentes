@@ -1,13 +1,13 @@
-# 🏈 07-Strix — YAIWES-INTERNAL-PERSISTENCE-v5.0
+# 🏈 07-Strix — YAIWES-INTERNAL-PERSISTENCE-v5.1
 
 ## Swarm agent team Navy seals YAIWES
 
 `ORIGINAL → CLASSIFY → RESTORE_BENIGN | BLOCK_OFFENSIVE | REVIEW_FAIL_CLOSED → CHECKPOINT LINK → VERIFY → RELEASE`
 
-- Archivos contabilizados: **74**
-- Restaurados benignos: **41**
-- Bloqueados ofensivos: **14**
-- Revisión fail-closed: **19**
-- Links internos de persistencia: **33**
+- Archivos contabilizados: **99**
+- Restaurados benignos: **68**
+- Bloqueados ofensivos: **10**
+- Revisión fail-closed: **21**
+- Links internos de persistencia: **31**
 
 Los originales permanecen en `_yaiwes_upstream_quarantine/`. El runtime v5 no importa ni ejecuta esos originales; recorre el manifiesto y persiste checkpoints por cada link sanitizado.

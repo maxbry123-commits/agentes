@@ -1,13 +1,13 @@
-# 🏈 15-Pentdem — YAIWES-INTERNAL-PERSISTENCE-v5.0
+# 🏈 15-Pentdem — YAIWES-INTERNAL-PERSISTENCE-v5.1
 
 ## Swarm agent team Navy seals YAIWES
 
 `ORIGINAL → CLASSIFY → RESTORE_BENIGN | BLOCK_OFFENSIVE | REVIEW_FAIL_CLOSED → CHECKPOINT LINK → VERIFY → RELEASE`
 
-- Archivos contabilizados: **36**
-- Restaurados benignos: **9**
+- Archivos contabilizados: **41**
+- Restaurados benignos: **15**
 - Bloqueados ofensivos: **17**
-- Revisión fail-closed: **10**
-- Links internos de persistencia: **27**
+- Revisión fail-closed: **9**
+- Links internos de persistencia: **26**
 
 Los originales permanecen en `_yaiwes_upstream_quarantine/`. El runtime v5 no importa ni ejecuta esos originales; recorre el manifiesto y persiste checkpoints por cada link sanitizado.

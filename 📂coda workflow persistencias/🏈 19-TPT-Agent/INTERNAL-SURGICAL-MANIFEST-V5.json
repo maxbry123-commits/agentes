@@ -2,7 +2,7 @@
   "schema": "yaiwes.internal.surgical/v5",
   "component": "🏈 19-TPT-Agent",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.0",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.1",
   "policy": {
     "restore_benign": true,
     "offensive_execution": false,
@@ -14,7 +14,7 @@
     {
       "path": "scripts/install-service.sh",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "d57d924c2d91a0eff1a0ea7f0fffb432055765d7bb4bfa52d4a7f72fc0ddc539",
       "active_sha256": "d57d924c2d91a0eff1a0ea7f0fffb432055765d7bb4bfa52d4a7f72fc0ddc539",
       "quarantine": null,
@@ -23,7 +23,7 @@
     {
       "path": "tpt_agent/config.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "dfbac895c273d74e0f36591622c289e1e34f8c0272d246c10ae5d0439844ac95",
       "active_sha256": "dfbac895c273d74e0f36591622c289e1e34f8c0272d246c10ae5d0439844ac95",
       "quarantine": null,
@@ -32,7 +32,7 @@
     {
       "path": "tpt_agent/llm_client.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "f76b4ff6406ac560069dbc2de8f16450c5d56dd30b2a46e72821a2ac790ad9a0",
       "active_sha256": "f76b4ff6406ac560069dbc2de8f16450c5d56dd30b2a46e72821a2ac790ad9a0",
       "quarantine": null,
@@ -41,9 +41,18 @@
     {
       "path": "tpt_agent/memory.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "9cb373d2779594d0d7971ae19dcdcea287c6cdaf7d43e19a929d60c8fd24ff29",
       "active_sha256": "9cb373d2779594d0d7971ae19dcdcea287c6cdaf7d43e19a929d60c8fd24ff29",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "tpt_agent/orchestrator.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign planner/memory/orchestration/support semantics",
+      "original_sha256": "a46ee54da7521355c92bd9743d4e2243ecab19518f2fda9236f24ff386ea31b1",
+      "active_sha256": "a46ee54da7521355c92bd9743d4e2243ecab19518f2fda9236f24ff386ea31b1",
       "quarantine": null,
       "link": false
     },
@@ -59,7 +68,7 @@
     {
       "path": "tpt_agent/sandbox.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "ae021d801c645671d28ffcfd7bf759f224193a8edc2bf153ace8a5ee13e383e8",
       "active_sha256": "ae021d801c645671d28ffcfd7bf759f224193a8edc2bf153ace8a5ee13e383e8",
       "quarantine": "_yaiwes_upstream_quarantine/tpt_agent/sandbox.py.original",
@@ -68,7 +77,7 @@
     {
       "path": "tpt_agent/storage.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "558556bb0c4070c587795245afa26e3a5bf4f4821209d122acb73cabf67527d5",
       "active_sha256": "558556bb0c4070c587795245afa26e3a5bf4f4821209d122acb73cabf67527d5",
       "quarantine": null,
@@ -85,8 +94,8 @@
     }
   ],
   "counts": {
-    "accounted": 8,
-    "restored_benign": 6,
+    "accounted": 9,
+    "restored_benign": 7,
     "blocked_offensive": 2,
     "review_fail_closed": 0,
     "links": 2

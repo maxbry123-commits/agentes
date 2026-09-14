@@ -1,11 +1,11 @@
-# 🏈 19-TPT-Agent — YAIWES-INTERNAL-PERSISTENCE-v5.0
+# 🏈 19-TPT-Agent — YAIWES-INTERNAL-PERSISTENCE-v5.1
 
 ## Swarm agent team Navy seals YAIWES
 
 `ORIGINAL → CLASSIFY → RESTORE_BENIGN | BLOCK_OFFENSIVE | REVIEW_FAIL_CLOSED → CHECKPOINT LINK → VERIFY → RELEASE`
 
-- Archivos contabilizados: **8**
-- Restaurados benignos: **6**
+- Archivos contabilizados: **9**
+- Restaurados benignos: **7**
 - Bloqueados ofensivos: **2**
 - Revisión fail-closed: **0**
 - Links internos de persistencia: **2**

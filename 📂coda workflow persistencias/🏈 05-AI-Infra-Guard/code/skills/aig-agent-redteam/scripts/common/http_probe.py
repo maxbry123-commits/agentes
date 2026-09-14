@@ -4,7 +4,7 @@ from pathlib import Path
 import json
 
 SOURCE_ID = 'c6140f16f0da7e8e712cfbb74a18daafc2dfc1cf77b91ecc3831a4f6a1f8fb4b'
-DECISION = 'BLOCK_OFFENSIVE'
+DECISION = 'REVIEW_FAIL_CLOSED'
 
 def _yaiwes_checkpoint(step: str, payload=None):
     event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}

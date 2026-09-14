@@ -2,7 +2,7 @@
   "schema": "yaiwes.internal.surgical/v5",
   "component": "🏈 17-AI-Red-Team-Agent",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.0",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.1",
   "policy": {
     "restore_benign": true,
     "offensive_execution": false,
@@ -23,7 +23,7 @@
     {
       "path": "core/agent_llm.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "d6ef9473f3d2e540e6c7bdb9971781cc0265e0ffdc1cd88e0a05d354bb6de39d",
       "active_sha256": "d6ef9473f3d2e540e6c7bdb9971781cc0265e0ffdc1cd88e0a05d354bb6de39d",
       "quarantine": null,
@@ -32,16 +32,25 @@
     {
       "path": "core/github_api.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "490c200dd3569e6bd8abc4fd1f698f1378308b72a17218bea02568f2059c3858",
       "active_sha256": "490c200dd3569e6bd8abc4fd1f698f1378308b72a17218bea02568f2059c3858",
       "quarantine": "_yaiwes_upstream_quarantine/core/github_api.py.original",
       "link": false
+    },
+    {
+      "path": "core/orchestrator.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign planner/memory/orchestration/support semantics",
+      "original_sha256": "b40dbb566ac898fd608a025c02d9702eea1844042a89cb94ea1afc1f18d15f59",
+      "active_sha256": "b40dbb566ac898fd608a025c02d9702eea1844042a89cb94ea1afc1f18d15f59",
+      "quarantine": null,
+      "link": false
     }
   ],
   "counts": {
-    "accounted": 3,
-    "restored_benign": 2,
+    "accounted": 4,
+    "restored_benign": 3,
     "blocked_offensive": 1,
     "review_fail_closed": 0,
     "links": 1

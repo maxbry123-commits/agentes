@@ -1,17 +1,28 @@
-"""YAIWES v5 safe persistence replacement. Original preserved in quarantine."""
-from __future__ import annotations
-from pathlib import Path
-import json
+"""
+Session Management Tools - Phase 2 Enhancement
+===============================================
 
-SOURCE_ID = '19aa5141b1940c95247ea45a3bab8f386fb15b5f8888efcd4cb6fb096bdcda79'
-DECISION = 'REVIEW_FAIL_CLOSED'
+Authentication and session handling for web application testing.
+Manages cookies, tokens, and session state across requests.
+"""
 
-def _yaiwes_checkpoint(step: str, payload=None):
-    event = {'schema':'yaiwes.internal.persistence/v5','source_id':SOURCE_ID,'step':step,'status':'CHECKPOINTED','payload':dict(payload or {})}
-    p = Path(__file__).with_name('.yaiwes_internal_state.jsonl')
-    with p.open('a', encoding='utf-8') as f:
-        f.write(json.dumps(event, ensure_ascii=False) + '\n')
-    return event
+from phantom.tools.session_mgmt.session_mgmt_actions import (
+    create_session,
+    update_session,
+    extract_csrf_token,
+    manage_cookies,
+)
 
-def yaiwes_persistence_step(payload=None):
-    return _yaiwes_checkpoint('yaiwes_persistence_step', payload)
+from phantom.tools.session_mgmt.auth_automation import (
+    automate_login,
+    refresh_jwt_token,
+)
+
+__all__ = [
+    "create_session",
+    "update_session",
+    "extract_csrf_token",
+    "manage_cookies",
+    "automate_login",
+    "refresh_jwt_token",
+]

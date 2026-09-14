@@ -2,7 +2,7 @@
   "schema": "yaiwes.internal.surgical/v5",
   "component": "🏈 20-OpenWhale",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.0",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.1",
   "policy": {
     "restore_benign": true,
     "offensive_execution": false,
@@ -14,7 +14,7 @@
     {
       "path": "scripts/delayed_autopilot.py",
       "decision": "REVIEW_FAIL_CLOSED",
-      "reason": "previously transformed effectful file without safe classification",
+      "reason": "previously effectful file without safe classification",
       "original_sha256": "93f8bd7939edf23897a411fddf78dd59d18f0595c368c22171bfb2d2cab73c01",
       "active_sha256": "0112228745eca9ab92d0cb9636e8a3a6083a4d68c4c5ad6a8be54494387e3a2e",
       "quarantine": "_yaiwes_upstream_quarantine/scripts/delayed_autopilot.py.original",
@@ -23,7 +23,7 @@
     {
       "path": "scripts/test_claude_api.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "d7185f28fd610189ba48363061e5c1d652002d5f67c9ad5782146fe273b3f255",
       "active_sha256": "d7185f28fd610189ba48363061e5c1d652002d5f67c9ad5782146fe273b3f255",
       "quarantine": null,
@@ -32,7 +32,7 @@
     {
       "path": "scripts/test_openai_api.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "a517569c857072b6af918c8d9b868ca83ef98c936a73cd62d038a5f88c131505",
       "active_sha256": "a517569c857072b6af918c8d9b868ca83ef98c936a73cd62d038a5f88c131505",
       "quarantine": null,
@@ -41,16 +41,25 @@
     {
       "path": "src/openwhale/agents/deepagents_agent.py",
       "decision": "REVIEW_FAIL_CLOSED",
-      "reason": "previously transformed effectful file without safe classification",
+      "reason": "previously effectful file without safe classification",
       "original_sha256": "c3e900374a08e18b0d61686aae084ae61601055ac4c2dc3edbcad8264b21491b",
       "active_sha256": "3ed17f3f87af1b0aa75027710a36fa8db58b107e28bcf72dac6c046f12b72bf5",
       "quarantine": "_yaiwes_upstream_quarantine/src/openwhale/agents/deepagents_agent.py.original",
       "link": true
     },
     {
+      "path": "src/openwhale/agents/factory.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign planner/memory/orchestration/support semantics",
+      "original_sha256": "fd8a6041d27f5512fbc04486cd23638aab8f13ee994bcfdf55549f75eb1b93a9",
+      "active_sha256": "fd8a6041d27f5512fbc04486cd23638aab8f13ee994bcfdf55549f75eb1b93a9",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "src/openwhale/agents/prompts.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "bf7306f90d903cc2a286c9ea3e409f8aa6d540235d944791f3c17b5cdedb9890",
       "active_sha256": "bf7306f90d903cc2a286c9ea3e409f8aa6d540235d944791f3c17b5cdedb9890",
       "quarantine": null,
@@ -59,7 +68,7 @@
     {
       "path": "src/openwhale/main.py",
       "decision": "REVIEW_FAIL_CLOSED",
-      "reason": "previously transformed effectful file without safe classification",
+      "reason": "previously effectful file without safe classification",
       "original_sha256": "e1dfb9c2eb46995ca84d5968e676daa8c05e7a17c364de277d97de73a35a9b46",
       "active_sha256": "6b0c6b420cbd85ac5dced03187f0f0be578d646ec684149a3c1862578cdaac37",
       "quarantine": "_yaiwes_upstream_quarantine/src/openwhale/main.py.original",
@@ -68,7 +77,7 @@
     {
       "path": "src/openwhale/util/logging_config.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "5a84a76c8140d05ae0e7f34cc000d6032bc37e0b9880e189f08af19104cea75f",
       "active_sha256": "5a84a76c8140d05ae0e7f34cc000d6032bc37e0b9880e189f08af19104cea75f",
       "quarantine": null,
@@ -76,8 +85,8 @@
     }
   ],
   "counts": {
-    "accounted": 7,
-    "restored_benign": 4,
+    "accounted": 8,
+    "restored_benign": 5,
     "blocked_offensive": 0,
     "review_fail_closed": 3,
     "links": 3

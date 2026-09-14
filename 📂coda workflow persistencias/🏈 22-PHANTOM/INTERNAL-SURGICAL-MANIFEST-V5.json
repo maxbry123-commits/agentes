@@ -2,7 +2,7 @@
   "schema": "yaiwes.internal.surgical/v5",
   "component": "🏈 22-PHANTOM",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.0",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.1",
   "policy": {
     "restore_benign": true,
     "offensive_execution": false,
@@ -14,7 +14,7 @@
     {
       "path": "phantom/agents/coverage_tracker.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "27b8df137b2465e6c3a109a9271d534684141de3903ea2d77eaff4065fc221e3",
       "active_sha256": "27b8df137b2465e6c3a109a9271d534684141de3903ea2d77eaff4065fc221e3",
       "quarantine": null,
@@ -23,7 +23,7 @@
     {
       "path": "phantom/agents/state.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "f9762349e3c3d115c19d3dcb3208bfbe1c597b622499e292979556b2f1e9dddc",
       "active_sha256": "f9762349e3c3d115c19d3dcb3208bfbe1c597b622499e292979556b2f1e9dddc",
       "quarantine": null,
@@ -32,7 +32,7 @@
     {
       "path": "phantom/checkpoint/__init__.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "a5f30c7c9d9460f76717396c09dc8117eb0ca49b778e0bb157ae6085835ae369",
       "active_sha256": "a5f30c7c9d9460f76717396c09dc8117eb0ca49b778e0bb157ae6085835ae369",
       "quarantine": null,
@@ -41,7 +41,7 @@
     {
       "path": "phantom/checkpoint/checkpoint.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "23b37fe847dc7ddf8dcbfdc022a696f08cba3ac456c9df87382cc7a9bbfa6266",
       "active_sha256": "23b37fe847dc7ddf8dcbfdc022a696f08cba3ac456c9df87382cc7a9bbfa6266",
       "quarantine": null,
@@ -50,7 +50,7 @@
     {
       "path": "phantom/checkpoint/models.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "253f62536da3c537ea867ae107cb61c50de9cbb5c084fcab04b87c20e51be5eb",
       "active_sha256": "253f62536da3c537ea867ae107cb61c50de9cbb5c084fcab04b87c20e51be5eb",
       "quarantine": null,
@@ -59,7 +59,7 @@
     {
       "path": "phantom/config/__init__.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "091e83e215baa8537601eec1c10afcd2d74d0219fb5aaa77616d8d7dfbb5791f",
       "active_sha256": "091e83e215baa8537601eec1c10afcd2d74d0219fb5aaa77616d8d7dfbb5791f",
       "quarantine": null,
@@ -68,7 +68,7 @@
     {
       "path": "phantom/config/config.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "012ca36451af78db9ece35d7deb389470b49ba2a536d25dd6f2002d3449f8578",
       "active_sha256": "012ca36451af78db9ece35d7deb389470b49ba2a536d25dd6f2002d3449f8578",
       "quarantine": null,
@@ -77,7 +77,7 @@
     {
       "path": "phantom/config/secrets.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "54f0c82060beb17387800bc4737c1b5e1e2e50a7a630db89d2c461a2ed7fcbc5",
       "active_sha256": "54f0c82060beb17387800bc4737c1b5e1e2e50a7a630db89d2c461a2ed7fcbc5",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/config/secrets.py.original",
@@ -86,7 +86,7 @@
     {
       "path": "phantom/core/attack_graph.py",
       "decision": "BLOCK_OFFENSIVE",
-      "reason": "offensive path semantics",
+      "reason": "offensive functional leaf",
       "original_sha256": "2b21eeeb874b3e064e4cdc91d369f70d2913611002012f1ff6285d0c53feda09",
       "active_sha256": "063772d066b441364d276d1b9cd7b40043d862319a04cf9bb780d239c6d9986c",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/core/attack_graph.py.original",
@@ -95,7 +95,7 @@
     {
       "path": "phantom/core/diff_scanner.py",
       "decision": "BLOCK_OFFENSIVE",
-      "reason": "offensive path semantics",
+      "reason": "offensive functional leaf",
       "original_sha256": "dd3bc6f56f11cf24436dc0ca264cd55922c0115e9eb9f624937f33c69e8c50da",
       "active_sha256": "38f57264c5efbac0d971fb2edd4039c5ecc2dd1583ca30ed8f9d9700565f37f3",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/core/diff_scanner.py.original",
@@ -104,7 +104,7 @@
     {
       "path": "phantom/core/priority_queue.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "4b36e17c0ccac3f62a0a95e68d58e3b2c62adf275e44441e3f61f56efc3f8ad7",
       "active_sha256": "4b36e17c0ccac3f62a0a95e68d58e3b2c62adf275e44441e3f61f56efc3f8ad7",
       "quarantine": null,
@@ -113,16 +113,34 @@
     {
       "path": "phantom/interface/cli_app.py",
       "decision": "REVIEW_FAIL_CLOSED",
-      "reason": "previously transformed effectful file without safe classification",
+      "reason": "previously effectful file without safe classification",
       "original_sha256": "030c4172cc27da026224f353a6f27c1b2e5c8e1a07d448b46eaee5a4f5076656",
       "active_sha256": "31a1be34e1d3d5b616565e9abfeebfd38c0198b7b93757f648ce5414e0fb4e42",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/interface/cli_app.py.original",
       "link": true
     },
     {
+      "path": "phantom/interface/tool_components/registry.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign planner/memory/orchestration/support semantics",
+      "original_sha256": "32708c7b661369e076f4a35fcbeb6e37ca7e967f1d81d675277e755f9c65e389",
+      "active_sha256": "32708c7b661369e076f4a35fcbeb6e37ca7e967f1d81d675277e755f9c65e389",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "phantom/interface/tool_components/reporting_renderer.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign planner/memory/orchestration/support semantics",
+      "original_sha256": "97e9740f8ba3d8b88ae36b375bd8aa1602140c8341933fd550f0f9c52f13738c",
+      "active_sha256": "97e9740f8ba3d8b88ae36b375bd8aa1602140c8341933fd550f0f9c52f13738c",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "phantom/interface/utils.py",
       "decision": "REVIEW_FAIL_CLOSED",
-      "reason": "previously transformed effectful file without safe classification",
+      "reason": "previously effectful file without safe classification",
       "original_sha256": "79db2448ed9346b7ba892830c393ee90c92f7e903304714297d4cf29ec529498",
       "active_sha256": "ad76f1826287bbed1f2455b2755531e168db9713e7dbf5e6fc5662cf27fa5d75",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/interface/utils.py.original",
@@ -131,7 +149,7 @@
     {
       "path": "phantom/llm/__init__.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "64d129d398c4ee7489112fc112ecaaad8bc745bd092e3d3352708126a728b427",
       "active_sha256": "64d129d398c4ee7489112fc112ecaaad8bc745bd092e3d3352708126a728b427",
       "quarantine": null,
@@ -140,7 +158,7 @@
     {
       "path": "phantom/llm/config.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "53951c1d0915c16e414ab340b124eef49037af3ce47912ba5242cc4654d85c50",
       "active_sha256": "53951c1d0915c16e414ab340b124eef49037af3ce47912ba5242cc4654d85c50",
       "quarantine": null,
@@ -149,7 +167,7 @@
     {
       "path": "phantom/llm/dedupe.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "c1121a22c65496ceffd6a4f77ca3c197dcb05de98d720e3ce631b8fee650a0a6",
       "active_sha256": "c1121a22c65496ceffd6a4f77ca3c197dcb05de98d720e3ce631b8fee650a0a6",
       "quarantine": null,
@@ -158,7 +176,7 @@
     {
       "path": "phantom/llm/llm.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "e59acb87b637c712a339a0ee0aeeb25c71cb53e95844e46bc636f51d5a44fc50",
       "active_sha256": "e59acb87b637c712a339a0ee0aeeb25c71cb53e95844e46bc636f51d5a44fc50",
       "quarantine": null,
@@ -167,7 +185,7 @@
     {
       "path": "phantom/llm/memory_compressor.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "36d901aa9aa991647932e11625ee9a627eb5a37973cb67f7d3c16f195d2eb2d6",
       "active_sha256": "36d901aa9aa991647932e11625ee9a627eb5a37973cb67f7d3c16f195d2eb2d6",
       "quarantine": null,
@@ -176,7 +194,7 @@
     {
       "path": "phantom/llm/pentager/__init__.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "775ba2da5867a7c654171762efc595281580005c2db8f5ac24c92aae0c9a8707",
       "active_sha256": "775ba2da5867a7c654171762efc595281580005c2db8f5ac24c92aae0c9a8707",
       "quarantine": null,
@@ -185,7 +203,7 @@
     {
       "path": "phantom/llm/pentager/reflector.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "62cc03c67d851b336dd164603caf6d7ed3a210ea01745386731dc6fa47af1e32",
       "active_sha256": "62cc03c67d851b336dd164603caf6d7ed3a210ea01745386731dc6fa47af1e32",
       "quarantine": null,
@@ -194,7 +212,7 @@
     {
       "path": "phantom/llm/tracked_completion.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "5f0befda66c6cd683900cbf3d9f5716f421fac20e90e5f2cf60d422f8fdb2e5c",
       "active_sha256": "5f0befda66c6cd683900cbf3d9f5716f421fac20e90e5f2cf60d422f8fdb2e5c",
       "quarantine": null,
@@ -203,7 +221,7 @@
     {
       "path": "phantom/llm/utils.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "7cb93ff35f69485c776771292f04a1955168521c66463aedf7dfee8c38ec666e",
       "active_sha256": "7cb93ff35f69485c776771292f04a1955168521c66463aedf7dfee8c38ec666e",
       "quarantine": null,
@@ -212,7 +230,7 @@
     {
       "path": "phantom/logging/__init__.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "ecd0f6addd05233fb65a242dc0f111ebd3781a751d67ca992cec97be376c4427",
       "active_sha256": "ecd0f6addd05233fb65a242dc0f111ebd3781a751d67ca992cec97be376c4427",
       "quarantine": null,
@@ -221,7 +239,7 @@
     {
       "path": "phantom/logging/audit.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "d316c5ad4129ca0804487b4056e00620f628b829496fcd48d1633a6db190a14a",
       "active_sha256": "d316c5ad4129ca0804487b4056e00620f628b829496fcd48d1633a6db190a14a",
       "quarantine": null,
@@ -230,7 +248,7 @@
     {
       "path": "phantom/models/__init__.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "a2d0d2ff4f79ae3f3b8077313d04b2b5168acc7696f30f00bc8269f38d800e48",
       "active_sha256": "a2d0d2ff4f79ae3f3b8077313d04b2b5168acc7696f30f00bc8269f38d800e48",
       "quarantine": null,
@@ -239,7 +257,7 @@
     {
       "path": "phantom/models/host.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "415336aad84076e065c5ab173a81b16cf315ad64033f4f79170a35fd6397fa4b",
       "active_sha256": "415336aad84076e065c5ab173a81b16cf315ad64033f4f79170a35fd6397fa4b",
       "quarantine": null,
@@ -248,7 +266,7 @@
     {
       "path": "phantom/models/scan.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "e49afaea912f07921a438bb192e559fe82922ef06d2626e8e48f9e3f094df731",
       "active_sha256": "e49afaea912f07921a438bb192e559fe82922ef06d2626e8e48f9e3f094df731",
       "quarantine": null,
@@ -257,7 +275,7 @@
     {
       "path": "phantom/models/vulnerability.py",
       "decision": "BLOCK_OFFENSIVE",
-      "reason": "offensive path semantics",
+      "reason": "offensive functional leaf",
       "original_sha256": "3a90da0ef46ba41470fea23d4c1cfb9ede53b1dca920ab7c88b5f80431562cb7",
       "active_sha256": "e1874376ae31899f19cac0f91374151fe4e3c25aff614c617116b3a480835d07",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/models/vulnerability.py.original",
@@ -275,7 +293,7 @@
     {
       "path": "phantom/telemetry/__init__.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "99639c42d21714ebb7c2fda4855a20c85e05bd76b48d6be5e58ab37e7e0fde43",
       "active_sha256": "99639c42d21714ebb7c2fda4855a20c85e05bd76b48d6be5e58ab37e7e0fde43",
       "quarantine": null,
@@ -284,7 +302,7 @@
     {
       "path": "phantom/telemetry/flags.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "fbe26ee40e867bb9d6855a63c8f6169437576c736b256e5840533f6e95a9f3fa",
       "active_sha256": "fbe26ee40e867bb9d6855a63c8f6169437576c736b256e5840533f6e95a9f3fa",
       "quarantine": null,
@@ -293,7 +311,7 @@
     {
       "path": "phantom/telemetry/tracer.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "efb3e69f4d6fe73c8fb380d49cc74309fa152dd49b63b8223f82b2f3b2d6130c",
       "active_sha256": "efb3e69f4d6fe73c8fb380d49cc74309fa152dd49b63b8223f82b2f3b2d6130c",
       "quarantine": null,
@@ -302,7 +320,7 @@
     {
       "path": "phantom/telemetry/utils.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "d2792f93b85ef124926da3d0cc3376951ed43366da3fed5f5d25bdd553aa0e42",
       "active_sha256": "d2792f93b85ef124926da3d0cc3376951ed43366da3fed5f5d25bdd553aa0e42",
       "quarantine": null,
@@ -311,7 +329,7 @@
     {
       "path": "phantom/tools/api_schema/__init__.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "3044ebf2b6bc80965b84ff31a0c62b6b7dfd422f09e7e84694beb4ba81207cb8",
       "active_sha256": "3044ebf2b6bc80965b84ff31a0c62b6b7dfd422f09e7e84694beb4ba81207cb8",
       "quarantine": null,
@@ -329,11 +347,20 @@
     {
       "path": "phantom/tools/browser/browser_instance.py",
       "decision": "REVIEW_FAIL_CLOSED",
-      "reason": "previously transformed effectful file without safe classification",
+      "reason": "previously effectful file without safe classification",
       "original_sha256": "ccf5c357c8336fd1986a7d21ffaecab48d46fc65545dc4a6ce97363ef59b35ad",
       "active_sha256": "646fb558bf5f3f71e165e924113b6162ab34e14c14039d05d7ea6a24b2677c54",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/browser/browser_instance.py.original",
       "link": true
+    },
+    {
+      "path": "phantom/tools/context.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign planner/memory/orchestration/support semantics",
+      "original_sha256": "40b58ddbddbcb4628252b81bb748b8b33aa90096ca459fd5cb302302f3a915d4",
+      "active_sha256": "40b58ddbddbcb4628252b81bb748b8b33aa90096ca459fd5cb302302f3a915d4",
+      "quarantine": null,
+      "link": false
     },
     {
       "path": "phantom/tools/executor.py",
@@ -347,7 +374,7 @@
     {
       "path": "phantom/tools/fuzzer/__init__.py",
       "decision": "BLOCK_OFFENSIVE",
-      "reason": "offensive path semantics",
+      "reason": "offensive functional path segment",
       "original_sha256": "aac567b6ca72d361fee8a2b4a20c3cd0d16c77b64528268074af5d71d3217a1d",
       "active_sha256": "b15a8a4937a50a97a7970dda0dac8525114a0e406bf1b56a7947fdab73f05377",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/fuzzer/__init__.py.original",
@@ -356,7 +383,7 @@
     {
       "path": "phantom/tools/fuzzer/fuzzer_actions.py",
       "decision": "BLOCK_OFFENSIVE",
-      "reason": "offensive path semantics",
+      "reason": "offensive functional leaf",
       "original_sha256": "238e2a4ec3c888c7221156df304e077a86be968755aac8be9ed9483ab14c6d45",
       "active_sha256": "0b6440b2d500012ae657cac42386c03bf806a08d819cf1e5658363bd59cd1f32",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/fuzzer/fuzzer_actions.py.original",
@@ -365,7 +392,7 @@
     {
       "path": "phantom/tools/fuzzer/fuzzer_manager.py",
       "decision": "BLOCK_OFFENSIVE",
-      "reason": "offensive path semantics",
+      "reason": "offensive functional leaf",
       "original_sha256": "75d18ae479f370330391a20b01c495e5784c878282bf6b2b25cd5764d1681ca5",
       "active_sha256": "94f44e1aba864841d95ced32200e0052cbbdded7d6848109f0a19edf48e4ae3b",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/fuzzer/fuzzer_manager.py.original",
@@ -374,7 +401,7 @@
     {
       "path": "phantom/tools/osint/osint_actions.py",
       "decision": "REVIEW_FAIL_CLOSED",
-      "reason": "previously transformed effectful file without safe classification",
+      "reason": "previously effectful file without safe classification",
       "original_sha256": "9fb2789cf8fdc1f8bcde159b38dd3e9a77a22cec26737f7c0e0a67113ef201b9",
       "active_sha256": "6f72d4116775b5fdc86a24b27a7448ca872226c3a2cd30008d54fead49b283db",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/osint/osint_actions.py.original",
@@ -383,7 +410,7 @@
     {
       "path": "phantom/tools/osint/subdomain_bruteforce.py",
       "decision": "BLOCK_OFFENSIVE",
-      "reason": "offensive path semantics",
+      "reason": "offensive functional leaf",
       "original_sha256": "e17bdec94110f31d6915c5279fc2723c1e9ee620e08c6e6c92095a64cd25e47d",
       "active_sha256": "2ed2e553fadf189431a959d3b5358da248b5593836da0cd04a20274a82cd75b4",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/osint/subdomain_bruteforce.py.original",
@@ -391,17 +418,17 @@
     },
     {
       "path": "phantom/tools/payload_gen/__init__.py",
-      "decision": "BLOCK_OFFENSIVE",
-      "reason": "offensive path semantics",
+      "decision": "REVIEW_FAIL_CLOSED",
+      "reason": "previously effectful file without safe classification",
       "original_sha256": "becc2833e3c332b53a640a0ffb7a810fce5a90366647009e6327894ec1007dde",
-      "active_sha256": "5d70da1535b874e7f8bc7e484b5ab0dada69d97b6f0a60e0c9d341e2ab1ec8a3",
+      "active_sha256": "87ebfcf94223d040f82702880bf29ff039793a1b80a63ec0b4b3e069c78a8c02",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/payload_gen/__init__.py.original",
       "link": true
     },
     {
       "path": "phantom/tools/payload_gen/payload_gen_actions.py",
       "decision": "BLOCK_OFFENSIVE",
-      "reason": "offensive path semantics",
+      "reason": "offensive functional leaf",
       "original_sha256": "f06261cce0f68be94fc356d3c804c2730ead039c35ff853af3a6fb7da5b8ccba",
       "active_sha256": "280ea3536f988779a3f30c10ba421d0a3828f88cf0b14d87480c4ed7165628af",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/payload_gen/payload_gen_actions.py.original",
@@ -419,7 +446,7 @@
     {
       "path": "phantom/tools/recon/__init__.py",
       "decision": "BLOCK_OFFENSIVE",
-      "reason": "offensive path semantics",
+      "reason": "offensive functional path segment",
       "original_sha256": "1f974830b98e0e128c750d9551507b5336ccb14bfa52c8430756e97094305381",
       "active_sha256": "6ff8f6927b31f61ccefde587d3f9d1bc326de60e3c1f4519d2d72f44a57d1d52",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/recon/__init__.py.original",
@@ -428,7 +455,7 @@
     {
       "path": "phantom/tools/recon/directory_bruteforce.py",
       "decision": "BLOCK_OFFENSIVE",
-      "reason": "offensive path semantics",
+      "reason": "offensive functional leaf",
       "original_sha256": "6eabd8e8c2c5a6c36d7e026d263de9971c89c6ab98cff085571f197a10fcf31d",
       "active_sha256": "d5432257974019743cdf528e04bdb346e3d283a3536d445b4f2e2ee16c3c9d73",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/recon/directory_bruteforce.py.original",
@@ -437,34 +464,106 @@
     {
       "path": "phantom/tools/recon/js_analysis_actions.py",
       "decision": "BLOCK_OFFENSIVE",
-      "reason": "offensive path semantics",
+      "reason": "offensive functional path segment",
       "original_sha256": "2898877087abf38b53d0ccd4e3ecb79305fde6babcdf1e5668314d54bb3a3599",
       "active_sha256": "efb04d19b3e9635cfbb20b8af01c76baa6a9a90636f16f32ffdcc6458375c797",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/recon/js_analysis_actions.py.original",
       "link": true
     },
     {
+      "path": "phantom/tools/registry.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign planner/memory/orchestration/support semantics",
+      "original_sha256": "508aaa09576842461b8d22901ba324ddffa799f903aa13e26b42cdc7348f3219",
+      "active_sha256": "508aaa09576842461b8d22901ba324ddffa799f903aa13e26b42cdc7348f3219",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "phantom/tools/reporting/__init__.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign planner/memory/orchestration/support semantics",
+      "original_sha256": "67c2225eda1d0c92c4657aa64e3065776f55c0f5ad290630cf328798fa78fabf",
+      "active_sha256": "67c2225eda1d0c92c4657aa64e3065776f55c0f5ad290630cf328798fa78fabf",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "phantom/tools/reporting/elite_reporting.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign planner/memory/orchestration/support semantics",
+      "original_sha256": "230f60c3bd23e6131b8663d8a2854eae07b2782606c0ed69ff51adeeef3be32d",
+      "active_sha256": "230f60c3bd23e6131b8663d8a2854eae07b2782606c0ed69ff51adeeef3be32d",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "phantom/tools/reporting/nuclei_template_gen.py",
       "decision": "BLOCK_OFFENSIVE",
-      "reason": "offensive path semantics",
+      "reason": "offensive functional leaf",
       "original_sha256": "3d5e40c7a088ee89695cdc93e4538bec77701c2a3956b3a50b143aa25ad30522",
       "active_sha256": "057cdf0cf14b86b5035014c30514e5b2f97dc50a5f63e7826da1fe4e5c010413",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/reporting/nuclei_template_gen.py.original",
       "link": true
     },
     {
+      "path": "phantom/tools/reporting/reporting_actions.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign planner/memory/orchestration/support semantics",
+      "original_sha256": "29050c8975fd0fa5a4cbe6620cc7506b71975cc555b1da4d26704632e8c75f5e",
+      "active_sha256": "29050c8975fd0fa5a4cbe6620cc7506b71975cc555b1da4d26704632e8c75f5e",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "phantom/tools/scan_registry/__init__.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign planner/memory/orchestration/support semantics",
+      "original_sha256": "d378c796b2023b7a9c7c0c539b948d033f099e66603bce82df8a8a57848c1cdd",
+      "active_sha256": "d378c796b2023b7a9c7c0c539b948d033f099e66603bce82df8a8a57848c1cdd",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "phantom/tools/scan_registry/scan_registry_actions.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign planner/memory/orchestration/support semantics",
+      "original_sha256": "e18fd52c871153e092adae47e21cbac197c2a8851b0caac954dc327880825357",
+      "active_sha256": "e18fd52c871153e092adae47e21cbac197c2a8851b0caac954dc327880825357",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "phantom/tools/session/__init__.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign planner/memory/orchestration/support semantics",
+      "original_sha256": "5f74bc432cbe8fbc0ddfb5093811e7d38b42ce09f6957cfd07325f7f4187d305",
+      "active_sha256": "5f74bc432cbe8fbc0ddfb5093811e7d38b42ce09f6957cfd07325f7f4187d305",
+      "quarantine": null,
+      "link": false
+    },
+    {
+      "path": "phantom/tools/session/session_actions.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign planner/memory/orchestration/support semantics",
+      "original_sha256": "80087aa6bb082d042c77fc318b44d2fa05f0ff9429e2bb2d671a393aed1cd39d",
+      "active_sha256": "80087aa6bb082d042c77fc318b44d2fa05f0ff9429e2bb2d671a393aed1cd39d",
+      "quarantine": null,
+      "link": false
+    },
+    {
       "path": "phantom/tools/session_mgmt/__init__.py",
-      "decision": "REVIEW_FAIL_CLOSED",
-      "reason": "previously transformed effectful file without safe classification",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "83b1330c3e81e506be378368c0aee6395204f7a987280042d81b2e8b38cf153b",
-      "active_sha256": "b0aa052ce32514089a9c8cfc8067c4e9685f7a94e771c739b69b1d966b7cdefc",
+      "active_sha256": "83b1330c3e81e506be378368c0aee6395204f7a987280042d81b2e8b38cf153b",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/session_mgmt/__init__.py.original",
-      "link": true
+      "link": false
     },
     {
       "path": "phantom/tools/session_mgmt/auth_automation.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "1fc7c45459e8a94ff32a67579db44d46cf1cf55818b1d5218ff3efe513897534",
       "active_sha256": "1fc7c45459e8a94ff32a67579db44d46cf1cf55818b1d5218ff3efe513897534",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/session_mgmt/auth_automation.py.original",
@@ -472,12 +571,21 @@
     },
     {
       "path": "phantom/tools/session_mgmt/session_mgmt_actions.py",
-      "decision": "REVIEW_FAIL_CLOSED",
-      "reason": "previously transformed effectful file without safe classification",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "93e3f6d7cabf9c4c9c037601d7a1587b869833020339e68af2c8060ccc68580f",
-      "active_sha256": "f677c419428920999264400ede63f0c849d2e1bfce521de03a4a65df06afe7c9",
+      "active_sha256": "93e3f6d7cabf9c4c9c037601d7a1587b869833020339e68af2c8060ccc68580f",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/session_mgmt/session_mgmt_actions.py.original",
-      "link": true
+      "link": false
+    },
+    {
+      "path": "phantom/tools/terminal/terminal_session.py",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign planner/memory/orchestration/support semantics",
+      "original_sha256": "f5ebef79d8b19e639b7abe4067c3400154d5ae6afe79773ebfaed1c563c73f89",
+      "active_sha256": "f5ebef79d8b19e639b7abe4067c3400154d5ae6afe79773ebfaed1c563c73f89",
+      "quarantine": null,
+      "link": false
     },
     {
       "path": "phantom/tools/vuln_intel/vuln_intel_actions.py",
@@ -500,7 +608,7 @@
     {
       "path": "phantom/tools/web_search/web_search_actions.py",
       "decision": "REVIEW_FAIL_CLOSED",
-      "reason": "previously transformed effectful file without safe classification",
+      "reason": "previously effectful file without safe classification",
       "original_sha256": "9d1434375f281cac60b1dccc64ab2df0763a7b69999e8872fd013fa6c8101a4e",
       "active_sha256": "945c12d86c8674b4e4f81562e2c0b1c98ca27fdb8449957885978d177780fc27",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/web_search/web_search_actions.py.original",
@@ -508,19 +616,19 @@
     },
     {
       "path": "phantom/utils/resource_paths.py",
-      "decision": "BLOCK_OFFENSIVE",
-      "reason": "offensive path semantics",
+      "decision": "RESTORE_BENIGN",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "33cf7ecb04c9bee708f505ccefa60b723d421fd7ba395ed54523bf993f4ec439",
-      "active_sha256": "b9e967c0e3bf21859ace6fad7f040f048239e294011faf0006ef6a01d13f1d8a",
+      "active_sha256": "33cf7ecb04c9bee708f505ccefa60b723d421fd7ba395ed54523bf993f4ec439",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/utils/resource_paths.py.original",
-      "link": true
+      "link": false
     }
   ],
   "counts": {
-    "accounted": 56,
-    "restored_benign": 29,
-    "blocked_offensive": 20,
-    "review_fail_closed": 7,
-    "links": 27
+    "accounted": 68,
+    "restored_benign": 44,
+    "blocked_offensive": 18,
+    "review_fail_closed": 6,
+    "links": 24
   }
 }

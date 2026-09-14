@@ -1,5 +1,57 @@
-const SOURCE_ID = "47b617ae7320b55e7e4918c6e2c9820ea5608dd2cd93f990a2af94cb866e29f4";
-function _yaiwesCheckpoint(step, payload = {}) { return {schema:'yaiwes.internal.persistence/v5', source_id:SOURCE_ID, step, payload, status:'CHECKPOINTED'}; }
-export function yaiwesPersistenceStep(payload = {}) { return _yaiwesCheckpoint('yaiwesPersistenceStep', payload); }
-export function useResourcesMkdir(...args) { return _yaiwesCheckpoint("useResourcesMkdir", {args_count: args.length}); }
-export default yaiwesPersistenceStep;
+import { useCallback, useState } from 'react';
+import { toast } from 'sonner';
+import { z } from 'zod';
+
+import { api, getApiErrorMessage } from '@/lib/axios';
+
+import { RESOURCES_MKDIR_API_PATH } from './resources-constants';
+
+export const resourcesMkdirFormSchema = z.object({
+    path: z
+        .string()
+        .trim()
+        .min(1, { message: 'Path cannot be empty' })
+        .refine((value) => !value.startsWith('/'), { message: 'Path must be relative (no leading "/")' })
+        .refine((value) => !value.split('/').includes('..'), { message: 'Path must not contain ".."' }),
+});
+
+export type ResourcesMkdirFormValues = z.infer<typeof resourcesMkdirFormSchema>;
+
+interface MkdirRequestBody {
+    path: string;
+}
+
+interface UseResourcesMkdirResult {
+    isCreating: boolean;
+    mkdir: (values: ResourcesMkdirFormValues) => Promise<boolean>;
+}
+
+/** Wraps `POST /resources/mkdir` (idempotent — returns existing dir on hit). */
+export function useResourcesMkdir(): UseResourcesMkdirResult {
+    const [isCreating, setIsCreating] = useState(false);
+
+    const mkdir = useCallback(async ({ path }: ResourcesMkdirFormValues): Promise<boolean> => {
+        setIsCreating(true);
+
+        try {
+            await api.post<void, MkdirRequestBody>(RESOURCES_MKDIR_API_PATH, { path: path.trim() });
+
+            toast.success('Directory created', { description: `Created at /${path.trim()}` });
+
+            return true;
+        } catch (error) {
+            const description = getApiErrorMessage(error, 'Failed to create directory');
+
+            toast.error('Create directory failed', { description });
+
+            return false;
+        } finally {
+            setIsCreating(false);
+        }
+    }, []);
+
+    return {
+        isCreating,
+        mkdir,
+    };
+}

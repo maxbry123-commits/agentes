@@ -1,11 +1,11 @@
-# 🏈 17-AI-Red-Team-Agent — YAIWES-INTERNAL-PERSISTENCE-v5.0
+# 🏈 17-AI-Red-Team-Agent — YAIWES-INTERNAL-PERSISTENCE-v5.1
 
 ## Swarm agent team Navy seals YAIWES
 
 `ORIGINAL → CLASSIFY → RESTORE_BENIGN | BLOCK_OFFENSIVE | REVIEW_FAIL_CLOSED → CHECKPOINT LINK → VERIFY → RELEASE`
 
-- Archivos contabilizados: **3**
-- Restaurados benignos: **2**
+- Archivos contabilizados: **4**
+- Restaurados benignos: **3**
 - Bloqueados ofensivos: **1**
 - Revisión fail-closed: **0**
 - Links internos de persistencia: **1**

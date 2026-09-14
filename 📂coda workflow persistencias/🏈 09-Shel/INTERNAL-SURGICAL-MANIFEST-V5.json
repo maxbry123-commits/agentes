@@ -2,7 +2,7 @@
   "schema": "yaiwes.internal.surgical/v5",
   "component": "🏈 09-Shel",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.0",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.1",
   "policy": {
     "restore_benign": true,
     "offensive_execution": false,
@@ -23,7 +23,7 @@
     {
       "path": "agent/checkpoints.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "ce0fb4d199e780458ce0e1d660408415c71b018dd6696199ce5c100155701b5d",
       "active_sha256": "ce0fb4d199e780458ce0e1d660408415c71b018dd6696199ce5c100155701b5d",
       "quarantine": null,
@@ -41,7 +41,7 @@
     {
       "path": "agent/llm.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "13e0f3ed1f96591d2a12b1a1400a04a9e8594f734f99565631a080b26f460aa4",
       "active_sha256": "13e0f3ed1f96591d2a12b1a1400a04a9e8594f734f99565631a080b26f460aa4",
       "quarantine": null,
@@ -50,7 +50,7 @@
     {
       "path": "agent/rag.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "807fd12608d0ec0839f1765d87f350661d70a5045f97c10f7a63263a273940e6",
       "active_sha256": "807fd12608d0ec0839f1765d87f350661d70a5045f97c10f7a63263a273940e6",
       "quarantine": null,
@@ -59,7 +59,7 @@
     {
       "path": "agent/state.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "56db3a77788c1536a03dc98c36db55e7d719e7c48b24acff8fb07073dc424270",
       "active_sha256": "56db3a77788c1536a03dc98c36db55e7d719e7c48b24acff8fb07073dc424270",
       "quarantine": null,
@@ -86,7 +86,7 @@
     {
       "path": "benchmark/runner.py",
       "decision": "REVIEW_FAIL_CLOSED",
-      "reason": "previously transformed effectful file without safe classification",
+      "reason": "previously effectful file without safe classification",
       "original_sha256": "4cfc61f93674ff3853a51ea0176118be086e7566eb9ae160601908b80a4a575f",
       "active_sha256": "87427bd76f15c8e929c32f6a95a37c085afc247a13968f230df210d845330bfb",
       "quarantine": "_yaiwes_upstream_quarantine/benchmark/runner.py.original",
@@ -95,7 +95,7 @@
     {
       "path": "config/settings.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "0112f828ab3559365b61ea142cd3087eb29a9821d601301d3b98633d5f7616e9",
       "active_sha256": "0112f828ab3559365b61ea142cd3087eb29a9821d601301d3b98633d5f7616e9",
       "quarantine": null,
@@ -104,7 +104,7 @@
     {
       "path": "modules/api/__init__.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "active_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "quarantine": null,
@@ -113,7 +113,7 @@
     {
       "path": "modules/api/server.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "5ff8027a60bf37e9712eeaef25456d87982bb6850949c91c3f42b4496ea177b9",
       "active_sha256": "5ff8027a60bf37e9712eeaef25456d87982bb6850949c91c3f42b4496ea177b9",
       "quarantine": null,
@@ -122,7 +122,7 @@
     {
       "path": "modules/evasion/edr.py",
       "decision": "REVIEW_FAIL_CLOSED",
-      "reason": "previously transformed effectful file without safe classification",
+      "reason": "previously effectful file without safe classification",
       "original_sha256": "b771c203aa63b6d9e19a44d00c1cea48bc016f9b939473d2051a7cb83d681f39",
       "active_sha256": "92f15757b00df10394fb9e408405c1d4ef6b97cdd68e23a6827c0359f2f0972b",
       "quarantine": "_yaiwes_upstream_quarantine/modules/evasion/edr.py.original",
@@ -140,7 +140,7 @@
     {
       "path": "modules/low_hanging.py",
       "decision": "REVIEW_FAIL_CLOSED",
-      "reason": "previously transformed effectful file without safe classification",
+      "reason": "previously effectful file without safe classification",
       "original_sha256": "7a941a3c0b49649af7fce24fad7109ca2c8f1d4da435ed2f327efb302d1817a3",
       "active_sha256": "7beb894e3df3fccc910a9e05e02e50268b0e2fa2674437a6e87bcd0dfe01611b",
       "quarantine": "_yaiwes_upstream_quarantine/modules/low_hanging.py.original",
@@ -156,9 +156,18 @@
       "link": true
     },
     {
+      "path": "modules/privesc/__init__.py",
+      "decision": "BLOCK_OFFENSIVE",
+      "reason": "offensive functional path segment",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "active_sha256": "a32f5f8d73bde0f9e0216e3a6a0c46ad28c5a11a30f7efeb1c1c6d3fc71fb8cc",
+      "quarantine": "_yaiwes_upstream_quarantine/modules/privesc/__init__.py.original",
+      "link": true
+    },
+    {
       "path": "modules/recon/__init__.py",
       "decision": "BLOCK_OFFENSIVE",
-      "reason": "offensive path semantics",
+      "reason": "offensive functional path segment",
       "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "active_sha256": "92fd9bffc196eec1fec9208db5fae1af60881178b0287cfe17a58b1108e242ff",
       "quarantine": "_yaiwes_upstream_quarantine/modules/recon/__init__.py.original",
@@ -167,7 +176,7 @@
     {
       "path": "modules/social/deepfake.py",
       "decision": "REVIEW_FAIL_CLOSED",
-      "reason": "previously transformed effectful file without safe classification",
+      "reason": "previously effectful file without safe classification",
       "original_sha256": "68e0802604787c184dba85ee294f50275e47c6b44847ddf47cdbd23f641f5b2b",
       "active_sha256": "1c01c0ac6b99e46395a5dad479defaa1d096b8f8b5ad29431ebabe83b221eb5b",
       "quarantine": "_yaiwes_upstream_quarantine/modules/social/deepfake.py.original",
@@ -176,7 +185,7 @@
     {
       "path": "modules/social/phishing.py",
       "decision": "BLOCK_OFFENSIVE",
-      "reason": "offensive path semantics",
+      "reason": "offensive functional leaf",
       "original_sha256": "79e237c40c8026ba66626d9bbc09118550344e7d8a6a566c694a4ca577b69d76",
       "active_sha256": "521651c59b796463eeaba3ae693784a6112bd2501d0220aee5a09600208f92c6",
       "quarantine": "_yaiwes_upstream_quarantine/modules/social/phishing.py.original",
@@ -185,7 +194,7 @@
     {
       "path": "modules/stego/c2.py",
       "decision": "REVIEW_FAIL_CLOSED",
-      "reason": "previously transformed effectful file without safe classification",
+      "reason": "previously effectful file without safe classification",
       "original_sha256": "e3eebcb476ffad9f8357e8acdba4b412820b23780bee30c038aa8409edab334b",
       "active_sha256": "4bb9d7af5b86829d3d58f2795e247d364cd85eb4ce51a8e84516ff8de2a112e7",
       "quarantine": "_yaiwes_upstream_quarantine/modules/stego/c2.py.original",
@@ -194,7 +203,7 @@
     {
       "path": "modules/supplychain/poison.py",
       "decision": "REVIEW_FAIL_CLOSED",
-      "reason": "previously transformed effectful file without safe classification",
+      "reason": "previously effectful file without safe classification",
       "original_sha256": "f81869c530e513d21c5389b6c2dece15fd7aabfef2402f70fe0dc0618fadc0c6",
       "active_sha256": "4a4dc94e35a981653a6c2f9472396f1e1d8718c3d05804bfd01b91dd48dcf053",
       "quarantine": "_yaiwes_upstream_quarantine/modules/supplychain/poison.py.original",
@@ -203,7 +212,7 @@
     {
       "path": "modules/supplychain/recon.py",
       "decision": "BLOCK_OFFENSIVE",
-      "reason": "offensive path semantics",
+      "reason": "offensive functional leaf",
       "original_sha256": "24205e29c7b2fbe4408720712533c7c9099c8541733af4e9c6a3276d50fdc8ca",
       "active_sha256": "041a5a1bf369469422b97fbef00ee9116f963df6c6b26a2bb17feeabf8a4b75a",
       "quarantine": "_yaiwes_upstream_quarantine/modules/supplychain/recon.py.original",
@@ -221,7 +230,7 @@
     {
       "path": "test_db.py",
       "decision": "RESTORE_BENIGN",
-      "reason": "benign infrastructure/workflow semantics",
+      "reason": "benign planner/memory/orchestration/support semantics",
       "original_sha256": "9f77ef2e2ab1500ebe71efe92fe922347d0c1b45e1d9ab9cf34724fac7719312",
       "active_sha256": "9f77ef2e2ab1500ebe71efe92fe922347d0c1b45e1d9ab9cf34724fac7719312",
       "quarantine": null,
@@ -229,10 +238,10 @@
     }
   ],
   "counts": {
-    "accounted": 24,
+    "accounted": 25,
     "restored_benign": 8,
-    "blocked_offensive": 10,
+    "blocked_offensive": 11,
     "review_fail_closed": 6,
-    "links": 16
+    "links": 17
   }
 }
