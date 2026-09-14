@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "namespace": "cognithor-official",
+  "pack_id": "discord-lead-hunter",
+  "version": "1.0.0",
+  "display_name": "Discord Lead Hunter",
+  "description": "Monitor Discord channels for messages matching your product. Scored by your local LLM. Requires COGNITHOR_DISCORD_TOKEN env var.",
+  "license": "apache-2.0",
+  "min_cognithor_version": ">=0.92.0",
+  "entrypoint": "pack.py",
+  "eula_sha256": "6eb4365e6f9c8b78691105d0213617fce7f5149ae85e84377519258f12b1d81d",
+  "publisher": {
+    "id": "cognithor-official",
+    "display_name": "Cognithor",
+    "website": "https://cognithor.ai"
+  },
+  "revenue_share": {
+    "creator": 70,
+    "platform": 30
+  },
+  "lead_sources": ["discord"],
+  "tools": ["discord_scan"],
+  "checkout_url": null,
+  "pricing": {}
+}

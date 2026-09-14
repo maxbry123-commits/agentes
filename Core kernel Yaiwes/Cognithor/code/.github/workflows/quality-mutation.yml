@@ -1,0 +1,109 @@
+name: Quality — Mutation Testing (TRUST core)
+
+# Sprint 1.1 — runs cosmic-ray against the TRUST-critical modules.
+# Heavyweight (~30-90 min depending on cache), so only nightly + on
+# manual dispatch. PRs that touch src/cognithor/audit/ or
+# src/cognithor/security/ get an opt-in label-trigger.
+
+on:
+  schedule:
+    # 04:00 UTC — well after nightly burn-in completes
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+    inputs:
+      module_path:
+        description: "Single module path to mutate (e.g. src/cognithor/audit). Empty = use cosmic-ray-baseline.toml (focused TRUST core)."
+        required: false
+        default: ""
+      test_command:
+        description: "Override test command (only used when module_path is set; default: full TRUST pytest set from cosmic-ray.toml)."
+        required: false
+        default: ""
+
+jobs:
+  mutation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install Cognithor + quality extras
+        run: pip install -e ".[dev,quality]"
+      - name: Resolve mutation config
+        id: config
+        # cosmic-ray init does NOT accept per-path CLI flags — the
+        # mutation scope lives in the TOML's ``module-path`` field. The
+        # earlier ``--paths …`` plumbing was a no-op that errored out
+        # with ``No such option: --paths``. We support two modes:
+        #
+        # 1. **Cron / no inputs**: use ``cosmic-ray-baseline.toml`` (the
+        #    focused TRUST baseline, completes in ~15 min on src/cognithor/
+        #    video/routing.py).
+        #
+        # 2. **Dispatch with ``module_path``**: generate a per-run TOML
+        #    that mirrors cosmic-ray.toml's [cosmic-ray] block + sets
+        #    ``module-path`` to the requested path. Multi-path is NOT
+        #    supported because cosmic-ray sessions are per-path sqlite DBs
+        #    that don't aggregate cleanly; for multiple paths run separate
+        #    dispatches and combine the artefacts manually.
+        run: |
+          MODULE_PATH="${{ inputs.module_path }}"
+          TEST_CMD="${{ inputs.test_command }}"
+          if [ -z "$MODULE_PATH" ]; then
+            echo "config=cosmic-ray-baseline.toml" >> $GITHUB_OUTPUT
+            echo "::notice::Using cosmic-ray-baseline.toml (focused TRUST core)"
+          else
+            BASE_TOML=cosmic-ray.toml
+            DEFAULT_TEST_CMD=$(python -c "import tomllib; print(tomllib.load(open('${BASE_TOML}','rb'))['cosmic-ray']['test-command'])")
+            EFFECTIVE_TEST_CMD="${TEST_CMD:-$DEFAULT_TEST_CMD}"
+            mkdir -p .ci-mutation
+            cat > .ci-mutation/run.toml <<EOT
+          [cosmic-ray]
+          module-path = "${MODULE_PATH}"
+          timeout = 60.0
+          excluded-modules = []
+          test-command = "${EFFECTIVE_TEST_CMD}"
+
+          [cosmic-ray.distributor]
+          name = "local"
+
+          [cosmic-ray.distributor.local]
+          worker-count = 1
+          EOT
+            echo "config=.ci-mutation/run.toml" >> $GITHUB_OUTPUT
+            echo "::notice::Generated .ci-mutation/run.toml for module-path=${MODULE_PATH}"
+          fi
+      - name: Initialise mutation session
+        run: cosmic-ray init "${{ steps.config.outputs.config }}" session.sqlite
+      - name: Run mutation testing
+        run: cosmic-ray exec "${{ steps.config.outputs.config }}" session.sqlite
+        timeout-minutes: 100
+      - name: Generate report
+        run: |
+          mkdir -p docs/quality
+          cosmic-ray dump session.sqlite > docs/quality/mutation-session-raw.json
+          cr-report --show-output session.sqlite > docs/quality/mutation-baseline.md || true
+      - name: Compute mutation score
+        id: score
+        run: |
+          python tests/quality/score_mutations.py session.sqlite > mutation-summary.json
+          cat mutation-summary.json
+          SCORE=$(python -c "import json; print(json.load(open('mutation-summary.json'))['mutation_score_pct'])")
+          echo "score=$SCORE" >> $GITHUB_OUTPUT
+      - name: Fail if score below threshold
+        run: |
+          THRESHOLD=80
+          SCORE="${{ steps.score.outputs.score }}"
+          python -c "import sys; sys.exit(0 if float('$SCORE') >= $THRESHOLD else 1)"
+      - name: Upload artefacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-baseline
+          path: |
+            docs/quality/mutation-baseline.md
+            docs/quality/mutation-session-raw.json
+            mutation-summary.json
+            session.sqlite

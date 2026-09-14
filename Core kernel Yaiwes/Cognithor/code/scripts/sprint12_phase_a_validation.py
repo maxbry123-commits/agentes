@@ -1,0 +1,598 @@
+#!/usr/bin/env python3
+# Licensed under the Apache License, Version 2.0 (see LICENSE).
+"""Sprint-12 Phase-A live A/B validation driver.
+
+Runs an A/B comparison between four Cognithor PSE agents against the
+ARC-AGI-3 games using the in-process arc_agi SDK + EpisodeRunner.
+
+Agents:
+  random_baseline  - RandomActionAgent
+  dsl_baseline     - Sprint10DSLAgent (no Sprint-12 wiring)
+  dsl_full         - Sprint10DSLAgent with all Sprint-12 wirings
+                     (fast-path + frame_analyzer + click_target_sampler
+                     + audit + profile)
+  llm_full         - LLMReasoningAgent over in-process vLLM
+                     (qwen3.6:27b NVFP4) with the same persistence
+  llm_planning     - PlanningLLMReasoningAgent (text-mode, plan_horizon=5)
+  llm_vision       - PlanningLLMReasoningAgent (vision-mode, plan_horizon=5,
+                     Sprint-19 Hebel L-T stack: K=3 candidate sampling,
+                     plan_scorer gates, pixΔ trajectory + histograms,
+                     stalled-progress warnings, RESET / exploration bonuses)
+
+Games (Sprint-19 Hebel U full sweep — 13 games with per-game prompt
+rules wired): bp35, ft09, ls20, cn04, sk48, ar25, tn36, wa30, re86,
+lp85, sc25, su15, lf52. Override with ``--games`` for subsets.
+
+Run from inside an env that has:
+  * arc_agi (the official SDK) installed
+  * cognithor (this repo) installed editable
+  * vllm 0.20.0 + sakamakismile/Qwen3.6-27B-NVFP4 (only needed for llm_*)
+
+Usage::
+
+    cd ~/ARC-AGI-3-Agents
+    uv run python /mnt/d/Jarvis/jarvis\\ complete\\ v20/scripts/sprint12_phase_a_validation.py
+    # or with a subset:
+    uv run python sprint12_phase_a_validation.py --games bp35 --agents llm_vision
+
+Results land in ``cognithor_bench/results/sprint12_phase_a/<timestamp>/``.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import time
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any
+
+# ---------------------------------------------------------------------------
+# Sprint-12 imports — fail fast if the new stack isn't installed.
+# ---------------------------------------------------------------------------
+
+try:
+    from cognithor.channels.program_synthesis.arc_agi3 import (
+        ArcAuditTrail,
+        ClickTargetSampler,
+        EpisodeRunner,
+        FrameAnalyzer,
+        GameProfile,
+        LLMReasoningAgent,
+        LLMTelemetry,
+        MTPStats,
+        PlanningLLMReasoningAgent,
+        RandomActionAgent,
+        Sprint10DSLAgent,
+        build_inprocess_vllm_choice_fn,
+        build_inprocess_vllm_planning_choice_fn,
+        build_inprocess_vllm_vision_planning_choice_fn,
+    )
+except ImportError as exc:
+    print(f"FATAL: cognithor.channels.program_synthesis.arc_agi3 not importable: {exc}")
+    print("Install via: uv pip install -e /path/to/cognithor")
+    sys.exit(1)
+
+
+# Sprint-19 Hebel U: full multi-game default. Until now the driver
+# defaulted to bp35,ft09,lp85 (3 of the 25 environments the ARC-AGI-3
+# API exposes). All 13 games below have per-game prompts wired in
+# ``game_prompts.GAME_PROMPTS`` so the LLM agent gets real per-game
+# rules instead of the generic fallback. Order follows the
+# game_prompts registry; users can override with ``--games`` for
+# subsets / individual games. Games NOT in this list still work with
+# the generic ARC-AGI-3 prompt scaffold but are excluded from the
+# default A/B sweep until per-game observation rules ship.
+DEFAULT_GAMES = [
+    "bp35",
+    "ft09",
+    "ls20",
+    "cn04",
+    "sk48",
+    "ar25",
+    "tn36",
+    "wa30",
+    "re86",
+    "lp85",
+    "sc25",
+    "su15",
+    "lf52",
+]
+DEFAULT_AGENTS = ["random_baseline", "dsl_baseline", "dsl_full", "llm_full"]
+
+
+@dataclass
+class RunResult:
+    """One row in the A/B matrix."""
+
+    agent: str
+    game_id: str
+    levels_completed: int
+    win_levels: int
+    total_steps: int
+    final_state: str
+    won: bool
+    score: float
+    wall_clock_s: float
+    audit_path: str | None
+    error: str | None
+
+
+def _make_random_agent(game_id: str, results_dir: Path) -> tuple[Any, str | None]:
+    return RandomActionAgent(), None
+
+
+def _make_dsl_baseline(game_id: str, results_dir: Path) -> tuple[Any, str | None]:
+    # Plain Sprint10DSLAgent — no Sprint-12 wirings.
+    return Sprint10DSLAgent(), None
+
+
+def _make_dsl_full(game_id: str, results_dir: Path) -> tuple[Any, str | None]:
+    audit_path = results_dir / f"{game_id}_dsl_full.jsonl"
+    trail = ArcAuditTrail(game_id=game_id)
+    profile = GameProfile.load(game_id) or _empty_profile(game_id)
+    agent = Sprint10DSLAgent(
+        audit_trail=trail,
+        game_profile=profile,
+        strategy_name="dsl_full",
+        frame_analyzer=FrameAnalyzer(),
+        click_target_sampler=ClickTargetSampler(),
+        fast_path_enabled=True,
+    )
+    # Stash the trail + path so we can export it post-run.
+    agent.__dict__["_phase_a_trail"] = trail
+    agent.__dict__["_phase_a_audit_path"] = audit_path
+    agent.__dict__["_phase_a_profile"] = profile
+    return agent, str(audit_path)
+
+
+def _make_llm_full(game_id: str, results_dir: Path) -> tuple[Any, str | None]:
+    audit_path = results_dir / f"{game_id}_llm_full.jsonl"
+    trail = ArcAuditTrail(game_id=game_id)
+    profile = GameProfile.load(game_id) or _empty_profile(game_id)
+    # Sprint-15 telemetry aggregators. Both threaded into the choice_fn
+    # (so each llm.chat() pushes a record/snapshot) AND into the agent
+    # (so the audit trail picks them up at log_step time). Without
+    # this dual-wiring the audit fields stay None despite correct
+    # code on main — the silent-None failure mode the reviewer flagged.
+    mtp_stats = MTPStats()
+    telemetry = LLMTelemetry()
+    try:
+        # Sprint-15 Phase-A finalised config (post runs #7-#10).
+        #
+        # Apples-to-apples LLM-call benchmark over 40 steps on bp35:
+        #   MTP=3 (run #7):  2487 s wall, 23.6 tok/s, 0 % acceptance
+        #   MTP=1 (run #10): 2600 s wall, 22.7 tok/s, 0 % acceptance
+        #   MTP off (run #8):3030 s wall, 17.5 tok/s, n/a
+        #
+        # Acceptance is 0 % across ALL spec-decode configurations.
+        # This rules out:
+        #   * Sampling-mismatch (run #7 was already greedy, still 0 %)
+        #   * Out-of-training-position (run #10 with MTP=1 still 0 %)
+        # Remaining cause: separate NVFP4 quantisation passes of
+        # main + drafter checkpoints. FP4 has minimal numerical
+        # headroom (~3 bits of precision per weight); independent
+        # quantisation runs accumulate enough rounding drift that
+        # the drafter's argmax never aligns with the verifier's.
+        #
+        # The throughput win (+30 % over MTP-off) is purely from
+        # spec-decode pipeline activation: vLLM compiles separate
+        # CUDA graphs for the spec-decode path and runs the
+        # forward pass with different memory-access patterns that
+        # happen to be more efficient for our single-stream
+        # workload. MTP=1 and MTP=3 deliver essentially equivalent
+        # throughput (within 4 %); MTP=1 is the more honest config
+        # because it matches the head's training distribution and
+        # uses less GPU power per pass.
+        choice_fn = build_inprocess_vllm_choice_fn(
+            speculative_config={
+                "model": "sakamakismile/Qwen3.6-27B-Text-NVFP4-MTP",
+                "num_speculative_tokens": 1,
+            },
+            kv_cache_dtype="fp8",
+            temperature=0.0,
+            mtp_stats=mtp_stats,
+            telemetry=telemetry,
+        )
+    except RuntimeError as exc:
+        print(f"  [llm_full] vLLM init failed ({exc}); falling back to dsl_full")
+        return _make_dsl_full(game_id, results_dir)
+    # LLM agent intentionally has NO ClickTargetSampler — the LLM is
+    # the click strategy, and a sampler would short-circuit every
+    # ACTION6 emission before the LLM is queried.
+    #
+    # Sprint-16 ROOT-CAUSE: ``fast_path_enabled=True`` was making the
+    # toggle-fast-path fire after step 1 and bypass the LLM decoder
+    # entirely for the rest of the episode. That's why all anti-loop
+    # hebels (state_counter + action_streak_detector) wired into
+    # LLMActionDecoder NEVER GOT A CHANCE TO RUN. Run #19 diag printed
+    # only 2× across 10 steps — confirming the LLM decoder path was
+    # short-circuited after the toggle pair was detected.
+    #
+    # Disabling fast_path on llm_full so the LLM + Hebel 1+2 always
+    # drive every step. The DSL agent still uses fast_path (cheaper),
+    # but for the LLM path we want the hebels active.
+    agent = LLMReasoningAgent(
+        choice_fn=choice_fn,
+        audit_trail=trail,
+        game_profile=profile,
+        strategy_name="llm_full",
+        frame_analyzer=FrameAnalyzer(),
+        fast_path_enabled=False,
+        telemetry=telemetry,
+        mtp_stats=mtp_stats,
+    )
+    agent.__dict__["_phase_a_trail"] = trail
+    agent.__dict__["_phase_a_audit_path"] = audit_path
+    agent.__dict__["_phase_a_profile"] = profile
+    agent.__dict__["_phase_a_mtp_stats"] = mtp_stats
+    agent.__dict__["_phase_a_telemetry"] = telemetry
+    return agent, str(audit_path)
+
+
+def assert_telemetry_active(agent: Any, *, strict: bool = True) -> None:
+    """Sanity-check after the first episode that the telemetry wiring
+    actually catches data.
+
+    Silent-None failure mode: if the choice-fn factory's kwargs aren't
+    threaded through correctly, every code path runs green but the
+    aggregators stay empty. This assertion fails loudly after the
+    first run rather than 20 episodes later when the JSONL is
+    inspected.
+
+    Set ``strict=False`` for debugging when you genuinely expect zero
+    LLM calls (e.g. a pure-DSL fallback episode).
+    """
+    mtp = agent.__dict__.get("_phase_a_mtp_stats")
+    tele = agent.__dict__.get("_phase_a_telemetry")
+    if mtp is None or tele is None:
+        return  # not an llm_full agent
+    issues: list[str] = []
+    if len(tele.records) == 0:
+        issues.append(
+            "LLMTelemetry.records is empty — choice_fn never fired or telemetry kwarg lost"
+        )
+    if len(mtp.snapshots) == 0:
+        issues.append(
+            "MTPStats.snapshots is empty — either MTP off, or mtp_stats kwarg "
+            "lost (check build_inprocess_vllm_choice_fn signature)"
+        )
+    # TTFT coverage check — flags the disable_log_stats trap.
+    if tele.records:
+        with_ttft = sum(1 for r in tele.records if r.ttft_s is not None)
+        coverage = with_ttft / len(tele.records)
+        if coverage < 0.8:
+            issues.append(
+                f"TTFT coverage = {coverage:.0%} — vLLM RequestOutput.metrics not "
+                "populated. Check engine_args.disable_log_stats=False (or the "
+                "vLLM-version-specific equivalent)."
+            )
+    if issues:
+        msg = "; ".join(issues)
+        if strict:
+            raise RuntimeError(f"Sprint-15 telemetry sanity-check failed: {msg}")
+        print(f"  [warn] telemetry sanity-check: {msg}")
+
+
+def _make_llm_planning(game_id: str, results_dir: Path) -> tuple[Any, str | None]:
+    """Sprint-18: planning-agent variant of llm_full.
+
+    Same engine + same telemetry plumbing as ``_make_llm_full``, but
+    swaps the single-step ``LLMReasoningAgent`` for the multi-step
+    ``PlanningLLMReasoningAgent``. The LLM produces a 3-5 step plan
+    per call; the decoder executes the plan one step at a time and
+    re-plans on level transition / stuck-detection.
+
+    Hypothesis (post Run #21): single-step LLM picks productive
+    actions but doesn't sequence them strategically — pixΔ grew
+    monotonically into 600+ destruction, then GAME_OVER at step 35.
+    Plan-horizon should give the LLM a chance to commit to a
+    coherent sequence (e.g. "ACTION3, ACTION3, ACTION7" to
+    accomplish a specific local objective) instead of one-step
+    greedy.
+    """
+    audit_path = results_dir / f"{game_id}_llm_planning.jsonl"
+    trail = ArcAuditTrail(game_id=game_id)
+    profile = GameProfile.load(game_id) or _empty_profile(game_id)
+    mtp_stats = MTPStats()
+    telemetry = LLMTelemetry()
+    try:
+        # Same Sprint-15/16/17 vLLM config as llm_full — only the
+        # decoder differs. Sprint-19 Run #25 audit on the *vision*
+        # variant exposed that ``max_tokens=2048`` length-caps 76/80
+        # plan responses (Qwen3.6 truncates mid-output before the
+        # closing JSON ``}`` so the upstream decoder silently falls
+        # back to DSL). Same fix applies here — multi-step plan-JSON
+        # needs the full 4096 budget.
+        choice_fn = build_inprocess_vllm_planning_choice_fn(
+            speculative_config={
+                "model": "sakamakismile/Qwen3.6-27B-Text-NVFP4-MTP",
+                "num_speculative_tokens": 1,
+            },
+            kv_cache_dtype="fp8",
+            temperature=0.0,
+            max_tokens=4096,
+            mtp_stats=mtp_stats,
+            telemetry=telemetry,
+        )
+    except RuntimeError as exc:
+        print(f"  [llm_planning] vLLM init failed ({exc}); falling back to dsl_full")
+        return _make_dsl_full(game_id, results_dir)
+    # fast_path_enabled=False matches llm_full's Sprint-16 lesson —
+    # the toggle-fast-path bypasses the LLM decoder + anti-loop
+    # hebels. Planning agent has the same reason to keep all decisions
+    # going through the LLM-driven path.
+    agent = PlanningLLMReasoningAgent(
+        choice_fn=choice_fn,
+        audit_trail=trail,
+        game_profile=profile,
+        strategy_name="llm_planning",
+        frame_analyzer=FrameAnalyzer(),
+        fast_path_enabled=False,
+        plan_horizon=5,
+        telemetry=telemetry,
+        mtp_stats=mtp_stats,
+    )
+    agent.__dict__["_phase_a_trail"] = trail
+    agent.__dict__["_phase_a_audit_path"] = audit_path
+    agent.__dict__["_phase_a_profile"] = profile
+    agent.__dict__["_phase_a_mtp_stats"] = mtp_stats
+    agent.__dict__["_phase_a_telemetry"] = telemetry
+    return agent, str(audit_path)
+
+
+def _empty_profile(game_id: str) -> GameProfile:
+    return GameProfile(
+        game_id=game_id,
+        game_type="mixed",
+        available_actions=[],
+        click_zones=[],
+        target_colors=[],
+        movement_effects={},
+        win_condition="",
+        vision_description="",
+        vision_strategy="",
+        strategy_metrics={},
+    )
+
+
+def _make_llm_vision(game_id: str, results_dir: Path) -> tuple[Any, str | None]:
+    """Sprint-19: vision-mode planning agent.
+
+    THE root-cause fix the user identified: prior llm_full / llm_planning
+    agents fed the LLM the 64×64 grid as ASCII text. A 27 B vision-
+    capable model is at its weakest with that representation; it's at
+    its strongest with PNG input. This factory uses the existing
+    ``build_inprocess_vllm_vision_planning_choice_fn`` which:
+
+    * Loads the multimodal ``Qwen3.6-27B-NVFP4`` (no MTP — the
+      MTP-NVFP4 variant is text-only, can't accept images)
+    * Renders each frame as a 16-colour ARC-palette PNG (scale=8,
+      so 64×64 grid → 512×512 image)
+    * Sends a multimodal chat message: ``[image, text-prompt]``
+    * Same plan-horizon=5 as ``_make_llm_planning``
+
+    Trade-off: no MTP speculative decoding (~30 % throughput loss
+    measured in Sprint-15). Win: the LLM can finally SEE the grid
+    structure visually instead of parsing 4 K ASCII tokens.
+    """
+    audit_path = results_dir / f"{game_id}_llm_vision.jsonl"
+    trail = ArcAuditTrail(game_id=game_id)
+    profile = GameProfile.load(game_id) or _empty_profile(game_id)
+    telemetry = LLMTelemetry()
+    try:
+        choice_fn = build_inprocess_vllm_vision_planning_choice_fn(
+            kv_cache_dtype="fp8",
+            temperature=0.0,
+            # Sprint-19 Run #27 finding: 5/48 LLM calls again hit
+            # ``finish_reason="length"`` at the new 4096 budget — the
+            # Hebel M prompt additions (cluster summary + delta-window
+            # with explicit pixΔ trajectory + the longer numeric
+            # PLAN-PRINCIPLE rule) push input + reasoning past 4096.
+            # Bumped to 6144 to restore the slack lost to richer prompt
+            # content. vLLM batches ``n=plan_candidates`` in parallel,
+            # so the wall-clock cost grows roughly linearly with the
+            # *generated* part of the budget, not the cap itself —
+            # most plans still finish well under 4096 (Run #27: 1081–
+            # 4096, median ~2200).
+            max_tokens=6144,
+            grid_scale=8,
+            telemetry=telemetry,
+            # Sprint-19 Hebel L: ask vLLM for 3 plan candidates per
+            # frame in a single batched generation; pick the highest
+            # plan_scorer-rated one. Cheap (shared prefill, parallel
+            # decodes) and lets us reject pure-repetition / coord-less
+            # ACTION6 / dead-action plans before execution.
+            plan_candidates=3,
+            plan_candidate_temperature=0.6,
+        )
+    except RuntimeError as exc:
+        print(f"  [llm_vision] vLLM init failed ({exc}); falling back to dsl_full")
+        return _make_dsl_full(game_id, results_dir)
+    # Sprint-20 Hebel V: wire the per-game win-demo store. Empty until
+    # an episode actually wins something on this game; once non-empty,
+    # subsequent runs prompt-inject the recorded action sequence as a
+    # few-shot demonstration of WHAT WINS the game.
+    from cognithor.channels.program_synthesis.arc_agi3.win_demos import WinDemoStore
+
+    win_demo_root = (
+        Path("/mnt/d/Jarvis/jarvis complete v20/cognithor_bench/win_demos")
+        if Path("/mnt/d").exists()
+        else Path("cognithor_bench/win_demos")
+    )
+    win_demo_store = WinDemoStore(win_demo_root)
+    agent = PlanningLLMReasoningAgent(
+        choice_fn=choice_fn,
+        audit_trail=trail,
+        game_profile=profile,
+        strategy_name="llm_vision",
+        frame_analyzer=FrameAnalyzer(),
+        fast_path_enabled=False,
+        plan_horizon=5,
+        telemetry=telemetry,
+        win_demo_store=win_demo_store,
+    )
+    agent.__dict__["_phase_a_trail"] = trail
+    agent.__dict__["_phase_a_audit_path"] = audit_path
+    agent.__dict__["_phase_a_profile"] = profile
+    agent.__dict__["_phase_a_telemetry"] = telemetry
+    return agent, str(audit_path)
+
+
+_AGENT_FACTORIES = {
+    "random_baseline": _make_random_agent,
+    "dsl_baseline": _make_dsl_baseline,
+    "dsl_full": _make_dsl_full,
+    "llm_full": _make_llm_full,
+    "llm_planning": _make_llm_planning,
+    "llm_vision": _make_llm_vision,
+}
+
+
+def run_one(agent_label: str, game_id: str, max_steps: int, results_dir: Path) -> RunResult:
+    factory = _AGENT_FACTORIES[agent_label]
+    agent, audit_path = factory(game_id, results_dir)
+
+    print(f"  {agent_label:18s} {game_id:5s}  ", end="", flush=True)
+    t0 = time.monotonic()
+    runner = EpisodeRunner(agent=agent, game_id=game_id, max_steps=max_steps)
+    result = runner.run()
+    wall_clock = time.monotonic() - t0
+
+    # Sprint-15: sanity-check telemetry after the first episode of any
+    # llm_full run so silent-None failures (kwargs not threaded, vLLM
+    # disable_log_stats trap) surface immediately. Non-strict so a
+    # pure-DSL-fallback episode doesn't tank the whole driver run.
+    try:
+        assert_telemetry_active(agent, strict=False)
+    except Exception as exc:
+        print(f"\n    telemetry sanity-check error: {exc}")
+
+    # Export audit + persist profile if wired.
+    trail = agent.__dict__.get("_phase_a_trail") if hasattr(agent, "__dict__") else None
+    if trail is not None and audit_path is not None:
+        try:
+            trail.export_jsonl(audit_path)
+        except Exception as exc:
+            print(f"\n    audit export failed: {exc}")
+    profile = agent.__dict__.get("_phase_a_profile") if hasattr(agent, "__dict__") else None
+    if profile is not None:
+        try:
+            profile.save()
+        except Exception as exc:
+            print(f"\n    profile save failed: {exc}")
+
+    print(
+        f"levels={result.levels_completed}/{result.win_levels} "
+        f"steps={result.total_steps:3d} "
+        f"score={result.score:.3f} "
+        f"state={result.final_state:12s} "
+        f"t={wall_clock:6.1f}s"
+    )
+
+    return RunResult(
+        agent=agent_label,
+        game_id=game_id,
+        levels_completed=result.levels_completed,
+        win_levels=result.win_levels,
+        total_steps=result.total_steps,
+        final_state=result.final_state,
+        won=result.won,
+        score=result.score,
+        wall_clock_s=round(wall_clock, 2),
+        audit_path=audit_path,
+        error=result.error,
+    )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Sprint-12 Phase-A validation driver")
+    parser.add_argument(
+        "--games",
+        type=lambda s: s.split(","),
+        default=DEFAULT_GAMES,
+        help=f"Comma-separated game IDs (default: {','.join(DEFAULT_GAMES)})",
+    )
+    parser.add_argument(
+        "--agents",
+        type=lambda s: s.split(","),
+        default=DEFAULT_AGENTS,
+        help=f"Comma-separated agent labels (default: {','.join(DEFAULT_AGENTS)})",
+    )
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=80,
+        help="Per-episode action cap (matches ARC-AGI-3 MAX_ACTIONS=80)",
+    )
+    parser.add_argument(
+        "--results-dir",
+        type=Path,
+        default=None,
+        help="Override results directory (default: cognithor_bench/results/sprint12_phase_a/<ts>/)",
+    )
+    args = parser.parse_args()
+
+    timestamp = time.strftime("%Y-%m-%d_%H%M%S")
+    results_dir = args.results_dir or (
+        Path(__file__).resolve().parent.parent
+        / "cognithor_bench"
+        / "results"
+        / "sprint12_phase_a"
+        / timestamp
+    )
+    results_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Sprint-12 Phase-A validation — results: {results_dir}")
+    print(f"Games:  {args.games}")
+    print(f"Agents: {args.agents}")
+    print(f"Max steps per episode: {args.max_steps}")
+    print()
+
+    rows: list[RunResult] = []
+    for agent_label in args.agents:
+        if agent_label not in _AGENT_FACTORIES:
+            print(f"WARN: unknown agent label '{agent_label}', skipping")
+            continue
+        for game_id in args.games:
+            try:
+                rows.append(run_one(agent_label, game_id, args.max_steps, results_dir))
+            except Exception as exc:
+                print(f"  {agent_label:18s} {game_id:5s}  CRASHED: {exc}")
+                rows.append(
+                    RunResult(
+                        agent=agent_label,
+                        game_id=game_id,
+                        levels_completed=0,
+                        win_levels=0,
+                        total_steps=0,
+                        final_state="CRASH",
+                        won=False,
+                        score=0.0,
+                        wall_clock_s=0.0,
+                        audit_path=None,
+                        error=str(exc),
+                    )
+                )
+
+    out = results_dir / "results.json"
+    out.write_text(
+        json.dumps([asdict(r) for r in rows], indent=2),
+        encoding="utf-8",
+    )
+    print(f"\nWrote {len(rows)} rows → {out}")
+
+    print("\n=== Summary ===")
+    print(f"{'agent':<18} {'game':<6} {'lvls':>4} {'steps':>5} {'score':>6} {'state':<12}")
+    for r in rows:
+        print(
+            f"{r.agent:<18} {r.game_id:<6} "
+            f"{r.levels_completed:>4d} {r.total_steps:>5d} "
+            f"{r.score:>6.3f} {r.final_state:<12}"
+        )
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

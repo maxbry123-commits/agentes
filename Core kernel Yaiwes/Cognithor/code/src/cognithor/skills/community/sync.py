@@ -1,0 +1,334 @@
+"""RegistrySync: Periodische Synchronisation mit dem Community-Registry.
+
+Aufgaben:
+  - registry.json periodisch aktualisieren
+  - Recall-Checks durchfuehren (aktive Recalls sofort anwenden)
+  - Installierte Community-Skills gegen Recalls pruefen
+  - Optional: Auto-Update installierter Skills
+
+Bible reference: §6.2 (Skills), §14 (Marketplace)
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import json
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, cast
+
+from cognithor.skills.community.signing import (
+    RegistrySignatureError,
+    RegistryVerifier,
+)
+from cognithor.utils.logging import get_logger
+
+log = get_logger(__name__)
+
+# HTTP timeout (seconds)
+_HTTP_TIMEOUT_S = 30
+
+
+@dataclass
+class SyncResult:
+    """Result of a registry synchronization."""
+
+    success: bool
+    registry_skills: int = 0
+    new_recalls: list[str] = field(default_factory=list)
+    deactivated_skills: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    sync_time: float = 0.0
+
+
+class RegistrySync:
+    """Periodic synchronization with the community skill registry.
+
+    Usage::
+
+        sync = RegistrySync(
+            registry_url="https://raw.githubusercontent.com/Alex8791-cyber/skill-registry/main",
+            community_dir=Path.home() / ".cognithor" / "skills" / "community",
+            check_interval=3600,  # 1 Stunde
+        )
+        await sync.sync_once()
+        # oder:
+        await sync.start_periodic()  # Laeuft im Hintergrund
+    """
+
+    def __init__(
+        self,
+        *,
+        registry_url: str = "",
+        community_dir: Path | None = None,
+        check_interval: int = 3600,
+        marketplace_store: Any | None = None,
+        skill_registry: Any | None = None,
+        verifier: RegistryVerifier | None = None,
+    ) -> None:
+        self._registry_url = registry_url or (
+            "https://raw.githubusercontent.com/Alex8791-cyber/skill-registry/main"
+        )
+        self._community_dir = community_dir or (Path.home() / ".cognithor" / "skills" / "community")
+        self._check_interval = check_interval
+        self._marketplace_store = marketplace_store
+        self._skill_registry = skill_registry
+        # PACK-4: every payload goes through Ed25519 verification before
+        # any side effect (recall application). Tests inject a stub.
+        self._verifier = verifier or RegistryVerifier()
+
+        self._last_sync: float = 0.0
+        self._running = False
+        self._task: asyncio.Task[None] | None = None
+        self._sync_lock = asyncio.Lock()
+
+    # ====================================================================
+    # Sync
+    # ====================================================================
+
+    async def sync_once(self) -> SyncResult:
+        """Perform a single synchronization.
+
+        1. registry.json herunterladen
+        2. recalls/active.json herunterladen
+        3. Lokale Skills gegen Recalls pruefen
+        4. Recalled Skills deaktivieren
+
+        Returns:
+            SyncResult mit Details.
+        """
+        async with self._sync_lock:
+            return await self._sync_once_inner()
+
+    async def _sync_once_inner(self) -> SyncResult:
+        """Inner sync logic (lock is held by sync_once)."""
+        start = time.monotonic()
+        result = SyncResult(success=False)
+
+        # PACK-4: short-circuit cleanly when the marketplace is dormant
+        # (no Root key pinned in this build). This is the default for
+        # v0.97.x until the operator activates the marketplace.
+        if not self._verifier.is_configured():
+            log.info("registry_sync_skipped_marketplace_dormant")
+            result.success = True  # Nothing to sync, but not a failure.
+            result.sync_time = time.monotonic() - start
+            return result
+
+        try:
+            # 0. Bootstrap the Targets key by verifying root.json. This
+            # is cheap on subsequent calls — the verifier caches the key
+            # in its state file.
+            root_raw = await self._fetch_text(f"{self._registry_url}/root.json")
+            self._verifier.verify_root(root_raw.encode("utf-8"))
+
+            # 1. Download + verify registry.json.
+            registry_url = f"{self._registry_url}/registry.json"
+            registry_raw = await self._fetch_text(registry_url)
+            registry_payload = self._verifier.verify_targets_payload(
+                registry_raw.encode("utf-8"),
+                expected_type="registry",
+                channel_key="registry",
+            )
+            skills = registry_payload.body.get("skills", [])
+            result.registry_skills = len(skills)
+
+            # 2. Download + verify recalls.
+            recalls_url = f"{self._registry_url}/recalls/active.json"
+            try:
+                recalls_raw = await self._fetch_text(recalls_url)
+                recalls_payload = self._verifier.verify_targets_payload(
+                    recalls_raw.encode("utf-8"),
+                    expected_type="recalls",
+                    channel_key="recalls",
+                )
+                active_recalls = recalls_payload.body.get("recalls", [])
+            except RegistrySignatureError:
+                # Hard-fail: a recall payload that fails verification must
+                # NOT silently disappear — propagate so the whole sync is
+                # marked unsuccessful and the kill-switch stays armed.
+                raise
+            except Exception as _recalls_exc:
+                log.debug("recalls_fetch_failed", url=recalls_url, error=str(_recalls_exc))
+                active_recalls = []
+
+            # 3. Check locally installed skills
+            installed = self._get_installed_skills()
+            recalled_names = {r.get("skill_name", "") for r in active_recalls}
+
+            for skill_name in installed:
+                if skill_name in recalled_names:
+                    result.new_recalls.append(skill_name)
+
+                    # Deactivate skill locally
+                    self._deactivate_skill(skill_name)
+                    result.deactivated_skills.append(skill_name)
+
+                    # Persist in MarketplaceStore
+                    if self._marketplace_store is not None:
+                        recall_entry = next(  # type: ignore[var-annotated]
+                            (r for r in active_recalls if r.get("skill_name") == skill_name),
+                            {},
+                        )
+                        self._marketplace_store.save_remote_recall(recall_entry)
+
+            # 4. Deactivate in SkillRegistry
+            if self._skill_registry is not None:
+                for skill_name in result.deactivated_skills:
+                    self._skill_registry.disable(skill_name)
+
+            self._last_sync = time.time()
+            result.success = True
+            result.sync_time = time.monotonic() - start
+
+            log.info(
+                "registry_sync_complete",
+                skills=result.registry_skills,
+                new_recalls=len(result.new_recalls),
+                deactivated=len(result.deactivated_skills),
+                duration_ms=round(result.sync_time * 1000),
+            )
+
+        except Exception as exc:
+            result.errors.append(str(exc))
+            result.sync_time = time.monotonic() - start
+            log.warning("registry_sync_failed", error=str(exc))
+
+        return result
+
+    # ====================================================================
+    # Periodische Synchronisation
+    # ====================================================================
+
+    async def start_periodic(self) -> None:
+        """Start periodic synchronization in the background."""
+        if self._running:
+            return
+
+        self._running = True
+        self._task = asyncio.create_task(self._periodic_loop())
+        log.info(
+            "registry_sync_started",
+            interval_seconds=self._check_interval,
+        )
+
+    async def stop(self) -> None:
+        """Stop periodic synchronization."""
+        self._running = False
+        if self._task is not None:
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+            self._task = None
+        log.info("registry_sync_stopped")
+
+    async def _periodic_loop(self) -> None:
+        """Background loop for periodic syncs."""
+        while self._running:
+            try:
+                await self.sync_once()
+            except Exception as exc:
+                log.error("periodic_sync_error", error=str(exc))
+
+            await asyncio.sleep(self._check_interval)
+
+    # ====================================================================
+    # Hilfsmethoden
+    # ====================================================================
+
+    def _get_installed_skills(self) -> list[str]:
+        """Return a list of installed community skill names."""
+        if not self._community_dir.exists():
+            return []
+        return [
+            d.name
+            for d in sorted(self._community_dir.iterdir())
+            if d.is_dir() and (d / "skill.md").exists()
+        ]
+
+    def _deactivate_skill(self, skill_name: str) -> None:
+        """Mark a skill as deactivated (recall marker file).
+
+        Erstellt eine ``.recalled``-Datei im Skill-Verzeichnis.
+        The SkillRegistry does not load recalled skills.
+        """
+        skill_dir = (self._community_dir / skill_name).resolve()
+        if not skill_dir.is_relative_to(self._community_dir.resolve()):
+            log.error("path_traversal_blocked", skill_name=skill_name)
+            return
+        if skill_dir.exists():
+            recall_marker = skill_dir / ".recalled"
+            try:
+                recall_marker.write_text(
+                    json.dumps({"recalled_at": time.time()}),
+                    encoding="utf-8",
+                )
+            except OSError as exc:
+                log.error(
+                    "skill_recall_marker_write_failed",
+                    skill=skill_name,
+                    path=str(recall_marker),
+                    error=str(exc),
+                )
+                raise
+            log.warning(
+                "skill_recalled_locally",
+                skill=skill_name,
+            )
+
+    @property
+    def last_sync(self) -> float:
+        """Timestamp of the last sync (Unix timestamp)."""
+        return self._last_sync
+
+    @property
+    def is_running(self) -> bool:
+        """Whether periodic synchronization is running."""
+        return self._running
+
+    # ====================================================================
+    # HTTP
+    # ====================================================================
+
+    async def _fetch_json(self, url: str) -> dict[str, Any]:
+        """Load JSON from a URL."""
+        text = await self._fetch_text(url)
+        return cast("dict[str, Any]", json.loads(text))
+
+    async def _fetch_text(self, url: str) -> str:
+        """Load text from a URL.
+
+        Nutzt aiohttp wenn verfuegbar und funktional, sonst urllib-Fallback.
+        """
+        aiohttp_available = False
+        try:
+            import aiohttp
+
+            aiohttp_available = True
+        except ImportError:
+            pass
+
+        if aiohttp_available:
+            try:
+                async with (
+                    aiohttp.ClientSession() as session,
+                    session.get(url, timeout=aiohttp.ClientTimeout(total=_HTTP_TIMEOUT_S)) as resp,
+                ):
+                    resp.raise_for_status()
+                    return await resp.text()  # type: ignore[no-any-return, unused-ignore]
+            except Exception as aio_exc:
+                log.debug(
+                    "aiohttp_fetch_failed_falling_back_to_urllib", url=url, error=str(aio_exc)
+                )
+
+        # Fallback: urllib (synchron im Executor)
+        import urllib.request
+
+        def _sync_fetch() -> str:
+            req = urllib.request.Request(url, headers={"User-Agent": "Jarvis-RegistrySync/1.0"})
+            with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_S) as resp:
+                return cast("str", resp.read().decode("utf-8"))
+
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _sync_fetch)

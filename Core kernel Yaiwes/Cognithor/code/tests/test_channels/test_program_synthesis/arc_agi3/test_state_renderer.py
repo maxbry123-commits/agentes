@@ -1,0 +1,249 @@
+# Licensed under the Apache License, Version 2.0 (see LICENSE).
+"""Sprint-19 — state_renderer tests."""
+
+from __future__ import annotations
+
+import numpy as np
+import pytest
+
+from cognithor.channels.program_synthesis.arc_agi3.episode_memory import EpisodeMemory
+from cognithor.channels.program_synthesis.arc_agi3.state_renderer import (
+    render_cluster_summary,
+    render_delta_summary,
+    render_state_changes_in_window,
+    summarise_action_pixel_history,
+)
+from cognithor.channels.program_synthesis.integration.capability_tokens import (  # noqa: F401
+    PSECapability as _PSECapability,
+)
+
+
+def _g(rows: list[list[int]]) -> np.ndarray:
+    return np.array(rows, dtype=np.int8)
+
+
+# ---------------------------------------------------------------------------
+# render_cluster_summary
+# ---------------------------------------------------------------------------
+
+
+class TestRenderClusterSummary:
+    def test_empty_grid_returns_marker(self) -> None:
+        assert render_cluster_summary(np.zeros((0, 0), dtype=np.int8)) == "(empty grid)"
+
+    def test_only_background_returns_marker(self) -> None:
+        grid = np.zeros((5, 5), dtype=np.int8)
+        assert render_cluster_summary(grid) == "(no non-background pixels)"
+
+    def test_single_cluster_single_color(self) -> None:
+        # 3-cell L-shape of color 4 in a 3x3 grid of zeros
+        grid = _g([[4, 4, 0], [0, 4, 0], [0, 0, 0]])
+        out = render_cluster_summary(grid)
+        assert "color 4" in out
+        assert "1 cluster," in out
+        assert "3 cells" in out
+        assert "biggest 3@" in out
+
+    def test_two_disconnected_clusters_same_color(self) -> None:
+        # color 7 has two disconnected pixels
+        grid = _g([[7, 0, 7], [0, 0, 0], [0, 0, 0]])
+        out = render_cluster_summary(grid)
+        assert "color 7: 2 clusters, 2 cells" in out
+
+    def test_orders_by_total_cells_desc(self) -> None:
+        # color 4 has 4 cells, color 7 has 2 cells → color 4 first
+        grid = _g([[4, 4, 0, 7], [4, 4, 0, 7]])
+        out = render_cluster_summary(grid)
+        lines = out.splitlines()
+        assert "color 4" in lines[0]
+        assert "color 7" in lines[1]
+
+    def test_truncates_to_max_lines(self) -> None:
+        # Build a grid with 10 distinct colors
+        grid = _g([[i for i in range(1, 11)]])
+        out = render_cluster_summary(grid, max_lines=3)
+        assert len(out.splitlines()) == 3
+
+    def test_custom_background_skips_color(self) -> None:
+        # If 8 is also background, color 4 is the only thing left
+        grid = _g([[8, 8, 4], [8, 8, 4]])
+        out = render_cluster_summary(grid, background_colors=(0, 8))
+        assert "color 8" not in out
+        assert "color 4" in out
+
+
+# ---------------------------------------------------------------------------
+# render_delta_summary
+# ---------------------------------------------------------------------------
+
+
+class TestRenderDeltaSummary:
+    def test_no_change_returns_marker(self) -> None:
+        a = _g([[1, 2], [3, 4]])
+        assert render_delta_summary(a, a) == "(no change)"
+
+    def test_shape_mismatch_returns_marker(self) -> None:
+        a = _g([[1, 2]])
+        b = _g([[1, 2], [3, 4]])
+        assert render_delta_summary(a, b) == "(grids have different shapes)"
+
+    def test_added_cells_one_color(self) -> None:
+        before = _g([[0, 0], [0, 0]])
+        after = _g([[4, 4], [0, 0]])
+        out = render_delta_summary(before, after)
+        assert "color 4: +2 cells" in out
+        assert "(2 added, 0 lost)" in out
+
+    def test_lost_cells_one_color(self) -> None:
+        before = _g([[7, 7], [7, 0]])
+        after = _g([[0, 0], [0, 0]])
+        out = render_delta_summary(before, after)
+        assert "color 7: -3 cells" in out
+
+    def test_balanced_color_swap_within_one_color(self) -> None:
+        # color 4 moved one cell — same total, just different position
+        before = _g([[4, 0], [0, 0]])
+        after = _g([[0, 4], [0, 0]])
+        out = render_delta_summary(before, after)
+        assert "color 4: balanced" in out
+        assert "(1 added, 1 lost)" in out
+
+    def test_color_swap_between_two(self) -> None:
+        before = _g([[4, 4], [7, 7]])
+        after = _g([[7, 7], [4, 4]])
+        out = render_delta_summary(before, after)
+        assert "color 4" in out
+        assert "color 7" in out
+        # both balanced (each lost 2 + gained 2)
+        assert out.count("balanced") == 2
+
+    def test_background_only_change_filtered(self) -> None:
+        # change is only in background color → message says so
+        before = _g([[0, 0], [0, 0]])
+        after = _g([[0, 0], [0, 0]])
+        # Identical → no-change branch
+        assert render_delta_summary(before, after) == "(no change)"
+
+
+# ---------------------------------------------------------------------------
+# render_state_changes_in_window
+# ---------------------------------------------------------------------------
+
+
+class TestRenderStateChangesInWindow:
+    def test_empty_memory(self) -> None:
+        m = EpisodeMemory()
+        assert render_state_changes_in_window(m) == "(no actions yet)"
+
+    def test_rejects_invalid_max_steps(self) -> None:
+        with pytest.raises(ValueError, match="max_steps must be >= 1"):
+            render_state_changes_in_window(EpisodeMemory(), max_steps=0)
+
+    def test_single_step_no_pair_yet(self) -> None:
+        # Only one entry → no transitions to render
+        m = EpisodeMemory()
+        m.append(grid=_g([[1]]), action_name="ACTION1", levels_completed=0)
+        out = render_state_changes_in_window(m)
+        assert out == "(no completed transitions yet)"
+
+    def test_renders_recent_first(self) -> None:
+        m = EpisodeMemory()
+        m.append(grid=_g([[0, 0]]), action_name="ACTION1", levels_completed=0)
+        m.append(grid=_g([[4, 0]]), action_name="ACTION3", levels_completed=0)
+        m.append(grid=_g([[4, 4]]), action_name="ACTION3", levels_completed=0)
+        out = render_state_changes_in_window(m, max_steps=5)
+        lines = out.splitlines()
+        # Most recent first: step -1 then step -2. Sprint-19 Hebel M
+        # adds the absolute pixΔ count between the action name and the
+        # per-colour delta, so the LLM sees "pixΔ=N" directly.
+        assert lines[0].startswith("step -1 (ACTION3) pixΔ=1:")
+        assert lines[1].startswith("step -2 (ACTION3) pixΔ=1:")
+        # The first transition added 1 cell of color 4
+        assert "+1 cells" in lines[1]
+        # Second transition added another cell of color 4
+        assert "+1 cells" in lines[0]
+
+    def test_pix_delta_zero_for_no_change(self) -> None:
+        """Hebel M: identical grids → ``pixΔ=0`` even when delta-summary
+        text says ``(no change)``. Lets the LLM distinguish "no-op" from
+        "small change" in the trajectory at a glance.
+        """
+        m = EpisodeMemory()
+        m.append(grid=_g([[5, 5]]), action_name="ACTION1", levels_completed=0)
+        m.append(grid=_g([[5, 5]]), action_name="ACTION1", levels_completed=0)
+        out = render_state_changes_in_window(m, max_steps=5)
+        assert "pixΔ=0" in out
+        assert "(no change)" in out
+
+    def test_pix_delta_counts_all_changed_cells(self) -> None:
+        """Hebel M: pixΔ counts EVERY changed cell, including transitions
+        between non-background colours that the per-colour delta-summary
+        might collapse into balanced ``+N -N`` rows.
+        """
+        m = EpisodeMemory()
+        m.append(grid=_g([[1, 2, 3]]), action_name="ACTION1", levels_completed=0)
+        m.append(grid=_g([[4, 5, 6]]), action_name="ACTION1", levels_completed=0)
+        out = render_state_changes_in_window(m, max_steps=5)
+        # All 3 cells changed; pixΔ should be 3.
+        assert "pixΔ=3" in out
+
+    def test_caps_at_max_steps(self) -> None:
+        m = EpisodeMemory()
+        for i in range(10):
+            grid = _g([[(i % 4) + 1]])
+            m.append(grid=grid, action_name=f"ACTION{i % 4}", levels_completed=0)
+        out = render_state_changes_in_window(m, max_steps=3)
+        assert len(out.splitlines()) == 3
+
+
+class TestSummariseActionPixelHistory:
+    """Sprint-19 Hebel S — per-action pixΔ stats over the recent window."""
+
+    def test_empty_memory_returns_marker(self) -> None:
+        assert summarise_action_pixel_history(EpisodeMemory()) == "(no action history yet)"
+
+    def test_single_step_no_pair_yet(self) -> None:
+        m = EpisodeMemory()
+        m.append(grid=_g([[1]]), action_name="ACTION3", levels_completed=0)
+        assert summarise_action_pixel_history(m) == "(no action history yet)"
+
+    def test_renders_avg_max_n_per_action(self) -> None:
+        m = EpisodeMemory()
+        # ACTION3 → pixΔ=1, ACTION3 → pixΔ=1, ACTION6 → pixΔ=1
+        m.append(grid=_g([[0, 0]]), action_name="ACTION1", levels_completed=0)
+        m.append(grid=_g([[1, 0]]), action_name="ACTION3", levels_completed=0)
+        m.append(grid=_g([[1, 1]]), action_name="ACTION3", levels_completed=0)
+        m.append(grid=_g([[2, 1]]), action_name="ACTION6", levels_completed=0)
+        out = summarise_action_pixel_history(m)
+        assert "ACTION3:" in out
+        assert "ACTION6:" in out
+        assert "n=2" in out  # ACTION3 occurred twice
+
+    def test_appends_danger_suffix_above_1000(self) -> None:
+        m = EpisodeMemory()
+        small = np.zeros((64, 64), dtype=np.int8)
+        big = np.full((64, 64), 4, dtype=np.int8)  # ~4096-cell flip
+        m.append(grid=small, action_name="ACTION1", levels_completed=0)
+        m.append(grid=big, action_name="ACTION6", levels_completed=0)
+        out = summarise_action_pixel_history(m)
+        assert "DANGER: max>1000" in out
+
+    def test_appends_caution_suffix_between_500_and_1000(self) -> None:
+        m = EpisodeMemory()
+        before = np.zeros((64, 64), dtype=np.int8)
+        after = np.zeros((64, 64), dtype=np.int8)
+        # 600 cells flipped (10 rows × 60 cols)
+        after[:10, :60] = 4
+        m.append(grid=before, action_name="ACTION1", levels_completed=0)
+        m.append(grid=after, action_name="ACTION6", levels_completed=0)
+        out = summarise_action_pixel_history(m)
+        assert "CAUTION: max>500" in out
+        assert "DANGER" not in out
+
+    def test_no_suffix_when_max_below_500(self) -> None:
+        m = EpisodeMemory()
+        m.append(grid=_g([[0, 0]]), action_name="ACTION1", levels_completed=0)
+        m.append(grid=_g([[1, 0]]), action_name="ACTION3", levels_completed=0)
+        out = summarise_action_pixel_history(m)
+        assert "DANGER" not in out
+        assert "CAUTION" not in out

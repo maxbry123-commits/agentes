@@ -1,0 +1,60 @@
+# ============================================================================
+# Cognithor · Docker Ignore
+# ============================================================================
+# Keeps the build context small and avoids leaking secrets.
+# ============================================================================
+
+# Version control
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+
+# Tests & dev
+tests/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Node / Frontend build artifacts
+node_modules/
+ui/node_modules/
+apps/pwa/node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Documentation (not needed in image)
+*.md
+!README.md
+
+# Deployment configs (not needed in image)
+deploy/
+docker-compose*.yml
+Makefile
+
+# Secrets & local state
+.env
+.env.*
+!.env.example
+
+# Misc
+demo.py
+*.log

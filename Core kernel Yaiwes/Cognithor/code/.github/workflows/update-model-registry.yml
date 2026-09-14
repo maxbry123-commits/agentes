@@ -1,0 +1,29 @@
+name: Update model registry
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  update:
+    name: Refresh model lists
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install httpx pyyaml
+      - run: python src/cognithor/cli/model_registry.py --update
+        env:
+          COGNITHOR_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          COGNITHOR_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      - id: diff
+        run: git diff --quiet src/cognithor/cli/model_registry.json || echo "changed=true" >> $GITHUB_OUTPUT
+      - if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          title: 'chore: update model registry'
+          branch: auto/model-registry-update
+          commit-message: 'chore: update model registry [automated]'

@@ -1,0 +1,191 @@
+{
+  "name": "cognithor-vscode",
+  "displayName": "Cognithor — Agent OS for Developers",
+  "description": "Local-first AI Coding Intelligence powered by Cognithor AOS",
+  "version": "0.1.0",
+  "publisher": "CognithOrProject",
+  "icon": "media/icon.png",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Alex8791-cyber/cognithor"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Machine Learning",
+    "Other"
+  ],
+  "keywords": [
+    "ai",
+    "copilot",
+    "local",
+    "llm",
+    "cognithor",
+    "agent"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "cognithor.chat",
+        "title": "Cognithor: Chat öffnen"
+      },
+      {
+        "command": "cognithor.generateCode",
+        "title": "Cognithor: Code generieren"
+      },
+      {
+        "command": "cognithor.explainCode",
+        "title": "Cognithor: Code erklären"
+      },
+      {
+        "command": "cognithor.refactorCode",
+        "title": "Cognithor: Code refactoren"
+      },
+      {
+        "command": "cognithor.fixBug",
+        "title": "Cognithor: Bug fixen"
+      },
+      {
+        "command": "cognithor.generateTests",
+        "title": "Cognithor: Tests generieren"
+      },
+      {
+        "command": "cognithor.generateDocs",
+        "title": "Cognithor: Docs generieren"
+      },
+      {
+        "command": "cognithor.addToContext",
+        "title": "Cognithor: Zu Kontext hinzufügen"
+      },
+      {
+        "command": "cognithor.clearContext",
+        "title": "Cognithor: Kontext leeren"
+      },
+      {
+        "command": "cognithor.openSettings",
+        "title": "Cognithor: Einstellungen"
+      },
+      {
+        "command": "cognithor.reconnect",
+        "title": "Cognithor: Verbindung herstellen"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "submenu": "cognithor.editorSubmenu",
+          "group": "cognithor"
+        }
+      ],
+      "cognithor.editorSubmenu": [
+        {
+          "command": "cognithor.explainCode",
+          "when": "editorHasSelection"
+        },
+        {
+          "command": "cognithor.refactorCode",
+          "when": "editorHasSelection"
+        },
+        {
+          "command": "cognithor.fixBug",
+          "when": "editorHasSelection"
+        },
+        {
+          "command": "cognithor.generateTests",
+          "when": "editorHasSelection"
+        },
+        {
+          "command": "cognithor.addToContext"
+        }
+      ]
+    },
+    "submenus": [
+      {
+        "id": "cognithor.editorSubmenu",
+        "label": "Cognithor"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "cognithor",
+          "title": "Cognithor",
+          "icon": "media/icon-dark.svg"
+        }
+      ]
+    },
+    "views": {
+      "cognithor": [
+        {
+          "type": "webview",
+          "id": "cognithor.chatView",
+          "name": "Chat"
+        },
+        {
+          "id": "cognithor.statusView",
+          "name": "Status & Modell"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Cognithor",
+      "properties": {
+        "cognithor.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:8741",
+          "description": "URL der Cognithor-Instanz"
+        },
+        "cognithor.streamingEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Token-by-Token Streaming aktivieren"
+        },
+        "cognithor.contextLines": {
+          "type": "number",
+          "default": 100,
+          "description": "Anzahl Zeilen Kontext um Selektion"
+        },
+        "cognithor.codeLens": {
+          "type": "boolean",
+          "default": true,
+          "description": "Code Lens Buttons über Funktionen anzeigen"
+        },
+        "cognithor.language": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "de",
+            "en"
+          ],
+          "default": "auto",
+          "description": "Sprache für Cognithor-Antworten"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.js --production",
+    "watch": "node esbuild.js --watch",
+    "lint": "eslint src/",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.27.4",
+    "eslint": "^9.0.0",
+    "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}

@@ -1,0 +1,873 @@
+"""DeepLearner — orchestrates learning plans via StrategyPlanner and plan CRUD."""
+
+from __future__ import annotations
+
+import json
+import shutil
+from datetime import UTC
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from cognithor.evolution.horizon_scanner import HorizonScanner
+from cognithor.evolution.knowledge_builder import KnowledgeBuilder
+from cognithor.evolution.models import LearningPlan, SeedSource, SourceSpec, SubGoal
+from cognithor.evolution.quality_assessor import QualityAssessor
+from cognithor.evolution.research_agent import ResearchAgent
+from cognithor.evolution.schedule_manager import ScheduleManager
+from cognithor.evolution.strategy_planner import StrategyPlanner
+from cognithor.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+log = get_logger(__name__)
+
+
+class DeepLearner:
+    """High-level orchestrator for autonomous deep-learning plans.
+
+    Delegates plan creation to StrategyPlanner and provides CRUD
+    operations on persisted LearningPlan instances.
+    """
+
+    def __init__(
+        self,
+        llm_fn: Callable[..., Any],
+        plans_dir: str | None = None,
+        mcp_client: Any = None,
+        memory_manager: Any = None,
+        skill_registry: Any = None,
+        skill_generator: Any = None,
+        cron_engine: Any = None,
+        cost_tracker: Any = None,
+        resource_monitor: Any = None,
+        checkpoint_store: Any = None,
+        config: Any = None,
+        idle_detector: Any = None,
+        operation_mode: str = "offline",
+    ) -> None:
+        if plans_dir is None:
+            self._plans_dir = Path.home() / ".cognithor" / "evolution" / "plans"
+        else:
+            self._plans_dir = Path(plans_dir)
+        self._plans_dir.mkdir(parents=True, exist_ok=True)
+
+        self._strategy_planner = StrategyPlanner(llm_fn=llm_fn)
+        self._research_agent = (
+            ResearchAgent(
+                mcp_client=mcp_client,
+                idle_detector=idle_detector,
+            )
+            if mcp_client
+            else None
+        )
+
+        self._quality_assessor = QualityAssessor(
+            mcp_client=mcp_client,
+            llm_fn=llm_fn,
+            coverage_threshold=getattr(config, "coverage_threshold", 0.7),
+            quality_threshold=getattr(config, "quality_threshold", 0.8),
+        )
+        self._horizon_scanner = HorizonScanner(
+            llm_fn=llm_fn,
+            memory_manager=memory_manager,
+        )
+        self._schedule_manager = ScheduleManager(cron_engine=cron_engine)
+
+        # Knowledge validation — cross-reference claims, track confidence
+        self._knowledge_validator = None
+        try:
+            from cognithor.evolution.knowledge_validator import KnowledgeValidator
+
+            cognithor_home = getattr(config, "cognithor_home", None) if config else None
+            if not cognithor_home and plans_dir:
+                cognithor_home = Path(plans_dir).parent.parent
+            if cognithor_home:
+                db_path = Path(cognithor_home) / "index" / "knowledge_claims.db"
+                db_path.parent.mkdir(parents=True, exist_ok=True)
+                self._knowledge_validator = KnowledgeValidator(
+                    db_path=db_path,
+                    llm_fn=llm_fn,
+                    mcp_client=mcp_client,
+                )
+                log.info("knowledge_validator_initialized", db=str(db_path))
+        except Exception:
+            log.debug("knowledge_validator_init_failed", exc_info=True)
+
+        self._llm_fn = llm_fn
+        self._entity_llm_fn: Callable[..., Any] | None = None  # Set by gateway (qwen3:8b)
+        self._mcp_client = mcp_client
+        self._memory_manager = memory_manager
+        self._skill_registry = skill_registry
+        self._skill_generator = skill_generator
+        self._cron_engine = cron_engine
+        self._cost_tracker = cost_tracker
+        self._resource_monitor = resource_monitor
+        self._checkpoint_store = checkpoint_store
+        self._config = config
+        self._idle_detector = idle_detector
+        self._operation_mode = operation_mode
+        self._cycle_controller: Any = None  # set by gateway
+
+    # ------------------------------------------------------------------
+    # Plan CRUD
+    # ------------------------------------------------------------------
+
+    async def create_plan(
+        self,
+        goal: str,
+        seed_sources: list[SeedSource] | None = None,
+    ) -> LearningPlan:
+        """Create a new learning plan via StrategyPlanner, persist to disk."""
+        plan = await self._strategy_planner.create_plan(goal, seed_sources=seed_sources)
+        plan.status = "active"
+        plan.save(str(self._plans_dir))
+        log.info("Created plan %s for goal: %s", plan.id, goal)
+
+        # Create cron schedules immediately (don't wait for all SubGoals)
+        if plan.schedules:
+            try:
+                created = await self._schedule_manager.create_schedules(plan)
+                log.info("deep_learner_schedules_created", plan=goal[:40], jobs=created)
+            except Exception:
+                log.debug("deep_learner_schedule_creation_failed", exc_info=True)
+
+        return plan
+
+    def list_plans(self) -> list[LearningPlan]:
+        """Return all persisted learning plans."""
+        return LearningPlan.list_plans(str(self._plans_dir))
+
+    def get_plan(self, plan_id: str) -> LearningPlan | None:
+        """Load a single plan by ID, or None if not found."""
+        plan_dir = self._plans_dir / plan_id
+        if not (plan_dir / "plan.json").exists():
+            return None
+        try:
+            return LearningPlan.load(str(plan_dir))
+        except Exception:
+            log.warning("Failed to load plan %s", plan_id)
+            return None
+
+    def update_plan_status(self, plan_id: str, status: str) -> bool:
+        """Update a plan's status and re-persist."""
+        plan = self.get_plan(plan_id)
+        if plan is None:
+            return False
+        plan.status = status
+        plan.save(str(self._plans_dir))
+        log.info("Plan %s status -> %s", plan_id, status)
+        return True
+
+    def delete_plan(self, plan_id: str) -> bool:
+        """Remove plan directory entirely."""
+        plan_dir = self._plans_dir / plan_id
+        if not plan_dir.exists():
+            return False
+        shutil.rmtree(plan_dir)
+        log.info("Deleted plan %s", plan_id)
+        return True
+
+    def get_next_subgoal(self, plan_id: str) -> SubGoal | None:
+        """Return highest-priority actionable SubGoal, or None if all done.
+
+        Picks SubGoals in this priority:
+        1. 'pending' (never started)
+        2. 'researching' / 'building' (interrupted, resume)
+        3. 'failed' (retry — only if last tested > 30 min ago)
+        """
+        from datetime import datetime, timedelta
+
+        plan = self.get_plan(plan_id)
+        if plan is None:
+            return None
+
+        # Priority 1-2: pending, researching, building (immediate)
+        for status in ("pending", "researching", "building"):
+            candidates = [sg for sg in plan.sub_goals if sg.status == status]
+            if candidates:
+                return candidates[0]
+
+        # Priority 3: failed — but only after a cooldown period
+        # This prevents the infinite re-test loop
+        cooldown = timedelta(minutes=30)
+        cutoff = (datetime.now(UTC) - cooldown).isoformat()
+        for sg in plan.sub_goals:
+            if sg.status == "failed":
+                if not sg.last_tested or sg.last_tested < cutoff:
+                    return sg
+                else:
+                    log.debug(
+                        "deep_learner_skip_failed_cooldown",
+                        subgoal=sg.title[:40],
+                        last_tested=sg.last_tested,
+                    )
+        return None
+
+    def has_active_plans(self) -> bool:
+        """Return True if any plan has actionable sub_goals."""
+        for plan in self.list_plans():
+            if plan.status == "active" and self.get_next_subgoal(plan.id) is not None:
+                return True
+        return False
+
+    def is_complex_goal(self, goal: str) -> bool:
+        """Delegate complexity check to StrategyPlanner."""
+        return self._strategy_planner.is_complex_goal(goal)
+
+    # ------------------------------------------------------------------
+    # Research -> Build cycle
+    # ------------------------------------------------------------------
+
+    async def run_subgoal(self, plan_id: str, subgoal_id: str) -> bool:
+        """Execute Research->Build for a single SubGoal.
+
+        Returns True if completed, False if interrupted or failed.
+        """
+        plan = self.get_plan(plan_id)
+        if not plan:
+            log.warning("deep_learner_plan_not_found", plan_id=plan_id[:8])
+            return False
+        subgoal = next((sg for sg in plan.sub_goals if sg.id == subgoal_id), None)
+        if not subgoal:
+            log.warning("deep_learner_subgoal_not_found", subgoal_id=subgoal_id[:8])
+            return False
+        if not self._research_agent:
+            log.warning("deep_learner_no_research_agent")
+            return False
+
+        subgoal.status = "researching"
+        plan.save(str(self._plans_dir))
+        log.info("deep_learner_subgoal_start", plan=plan.goal[:40], subgoal=subgoal.title[:40])
+
+        # Create goal-scoped index for isolated per-plan storage
+        goal_index = None
+        try:
+            from cognithor.evolution.goal_index import GoalScopedIndex
+
+            index_base = self._plans_dir.parent / "indexes"
+            goal_index = GoalScopedIndex(goal_slug=plan.goal_slug, base_dir=index_base)
+        except Exception:
+            log.debug("goal_index_creation_failed", exc_info=True)
+
+        builder = KnowledgeBuilder(
+            mcp_client=self._mcp_client,
+            llm_fn=self._llm_fn,
+            goal_slug=plan.goal_slug,
+            knowledge_validator=self._knowledge_validator,
+            goal_index=goal_index,
+            entity_llm_fn=self._entity_llm_fn,
+            memory_manager=self._memory_manager,
+        )
+
+        # ── Iterative deep research loop ──────────────────────────────
+        # Research until coverage threshold met or max rounds reached.
+        # Each round: new search query → new sources → fetch → build.
+        required_coverage = getattr(self._config, "coverage_threshold", 0.8)
+        max_pages = getattr(self._config, "max_pages_per_crawl", 50)
+        max_rounds = max(10, max_pages // 3)  # Safety limit
+        fetched_urls: set[str] = set()
+        research_round = 0
+
+        while research_round < max_rounds:
+            # Check if coverage is sufficient
+            coverage = self._quality_assessor.check_coverage(subgoal)
+            if coverage >= required_coverage:
+                log.info(
+                    "deep_learner_coverage_reached",
+                    subgoal=subgoal.title[:40],
+                    round=research_round,
+                    coverage=coverage,
+                    chunks=subgoal.chunks_created,
+                )
+                break
+
+            # Idle check
+            if self._idle_detector and not self._idle_detector.is_idle:
+                log.info(
+                    "deep_learner_interrupted", subgoal=subgoal.title[:40], round=research_round
+                )
+                plan.save(str(self._plans_dir))
+                return False
+
+            # Dynamic search queries — LLM-generated if possible, fallback to templates
+            _base = subgoal.title
+            _plan_ctx = plan.goal[:60]
+            if research_round == 0 and self._llm_fn is not None:
+                # First round: ask LLM for targeted search queries
+                try:
+                    _qgen_resp = await self._llm_fn(
+                        f"Generate 5 specific web search queries to research this topic:\n"
+                        f"Goal: {_plan_ctx}\nSub-topic: {_base}\n"
+                        f"Description: {subgoal.description}\n\n"
+                        f"Reply ONLY with a JSON list of 5 search queries:\n"
+                        f'["query1", "query2", "query3", "query4", "query5"]',
+                    )
+                    import re as _qre
+
+                    _qraw = (
+                        _qgen_resp
+                        if isinstance(_qgen_resp, str)
+                        else _qgen_resp.get("message", {}).get("content", "")
+                    )
+                    _qmatch = _qre.search(r"\[.*\]", _qraw, _qre.DOTALL)
+                    if _qmatch:
+                        _llm_queries = json.loads(_qmatch.group())
+                        if isinstance(_llm_queries, list) and len(_llm_queries) >= 3:
+                            query_variants = [str(q)[:200] for q in _llm_queries[:10]]
+                            log.info("deep_learner_llm_queries", count=len(query_variants))
+                        else:
+                            raise ValueError("not enough queries")
+                    else:
+                        raise ValueError("no JSON list found")
+                except Exception:
+                    log.debug("deep_learner_llm_query_gen_failed", exc_info=True)
+                    query_variants = [
+                        f"{_base} {subgoal.description}",
+                        f"{_plan_ctx} {_base} overview",
+                        f"{_base} tutorial examples",
+                        f"{_base} comparison alternatives",
+                        f"{_base} best practices",
+                    ]
+            elif not hasattr(self, "_cached_query_variants"):
+                query_variants = [
+                    f"{_base} {subgoal.description}",
+                    f"{_plan_ctx} {_base} overview",
+                    f"{_base} tutorial examples",
+                    f"{_base} comparison alternatives",
+                    f"{_base} best practices",
+                    f"{_plan_ctx} {_base} community",
+                    f"{_base} latest 2025 2026",
+                    f"{_base} GitHub open source",
+                    f"{_base} architecture patterns",
+                    f"{_plan_ctx} FAQ",
+                ]
+            if research_round == 0:
+                self._cached_query_variants = query_variants
+            else:
+                query_variants = getattr(self, "_cached_query_variants", [f"{_base}"])
+            query = query_variants[research_round % len(query_variants)][:200]
+
+            sources = await self._discover_sources(query)
+            if not sources and research_round == 0:
+                # Fallback: plan-level sources
+                sources = [
+                    s for s in plan.sources if s.url not in fetched_urls and s.status != "error"
+                ][:5]
+
+            if not sources:
+                log.info("deep_learner_no_more_sources", round=research_round, coverage=coverage)
+                research_round += 1
+                continue
+
+            log.info(
+                "deep_learner_research_round",
+                round=research_round + 1,
+                query=query[:50],
+                sources=len(sources),
+                current_chunks=subgoal.chunks_created,
+                current_coverage=coverage,
+            )
+
+            for source in sources:
+                if self._idle_detector and not self._idle_detector.is_idle:
+                    log.info(
+                        "deep_learner_interrupted_source_loop",
+                        subgoal=subgoal.title[:40],
+                        round=research_round,
+                    )
+                    plan.save(str(self._plans_dir))
+                    return False
+
+                if source.url in fetched_urls:
+                    continue
+                fetched_urls.add(source.url)
+
+                if len(fetched_urls) > max_pages:
+                    log.info("deep_learner_max_pages_reached", pages=len(fetched_urls))
+                    break
+
+                log.info("deep_learner_fetching", source=source.url[:60])
+                fetch_results = await self._research_agent.fetch_source(source)
+                source.pages_fetched = len(fetch_results)
+
+                # Build phase
+                subgoal.status = "building"
+                for fr in fetch_results:
+                    if self._idle_detector and not self._idle_detector.is_idle:
+                        log.info(
+                            "deep_learner_interrupted_build_loop",
+                            subgoal=subgoal.title[:40],
+                            round=research_round,
+                        )
+                        plan.save(str(self._plans_dir))
+                        return False
+                    # Skip entity extraction if system is busy (GPU contention)
+                    # Vault save + memory chunking still run (no LLM needed).
+                    # Entity extraction can run later in a dedicated cycle.
+                    _skip_ee = bool(
+                        self._resource_monitor
+                        and hasattr(self._resource_monitor, "last_snapshot")
+                        and self._resource_monitor.last_snapshot
+                        and self._resource_monitor.last_snapshot.is_busy
+                    )
+                    build_result = await builder.build(
+                        fr,
+                        skip_entity_extraction=_skip_ee,
+                    )
+                    subgoal.chunks_created += build_result.chunks_created
+                    subgoal.entities_created += build_result.entities_created
+                    if build_result.vault_path:
+                        subgoal.vault_entries += 1
+                    subgoal.sources_fetched += 1
+
+            # Save progress after each round
+            research_round += 1
+            plan.save(str(self._plans_dir))
+            log.info(
+                "deep_learner_round_complete",
+                round=research_round,
+                chunks=subgoal.chunks_created,
+                entities=subgoal.entities_created,
+                vault=subgoal.vault_entries,
+                sources=subgoal.sources_fetched,
+                coverage=self._quality_assessor.check_coverage(subgoal),
+            )
+
+        # Drain entity extraction queue (deferred from busy periods)
+        if builder.entity_queue_size > 0:
+            _gpu_free = not (
+                self._resource_monitor
+                and self._resource_monitor.last_snapshot
+                and self._resource_monitor.last_snapshot.is_busy
+            )
+            if _gpu_free:
+                drained = await builder.drain_entity_queue(max_items=10)
+                if drained:
+                    subgoal.entities_created += drained
+                    log.info(
+                        "deep_learner_entity_queue_drained",
+                        drained=drained,
+                        remaining=builder.entity_queue_size,
+                    )
+
+        # Quality test — with timeout protection
+        subgoal.status = "testing"
+        import asyncio as _asyncio
+        import time as _time
+
+        log.info(
+            "deep_learner_pre_quality",
+            subgoal=subgoal.title[:40],
+            chunks=subgoal.chunks_created,
+            entities=subgoal.entities_created,
+            vault=subgoal.vault_entries,
+            sources=subgoal.sources_fetched,
+        )
+        try:
+            quality = await _asyncio.wait_for(
+                self._quality_assessor.run_quality_test(subgoal, plan.goal_slug),
+                timeout=180,  # 3 minutes max for quality test
+            )
+        except (TimeoutError, Exception) as e:
+            log.warning(
+                "deep_learner_quality_test_timeout", subgoal=subgoal.title[:40], error=str(e)[:100]
+            )
+            quality = {
+                "coverage_score": self._quality_assessor.check_coverage(subgoal),
+                "quality_score": 0.0,
+                "passed": False,
+                "questions": [],
+                "failed_questions": [],
+            }
+        subgoal.coverage_score = quality["coverage_score"]
+        subgoal.quality_score = quality["quality_score"]
+        subgoal.last_tested = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
+        subgoal.test_count += 1
+
+        if quality["passed"]:
+            subgoal.status = "passed"
+            log.info(
+                "deep_learner_subgoal_passed",
+                subgoal=subgoal.title[:40],
+                quality=quality["quality_score"],
+                test_count=subgoal.test_count,
+            )
+            # Auto-generate a query skill for this knowledge area
+            if subgoal.test_count == 1:  # Only on first pass, not on re-tests
+                await self._generate_skill_for_subgoal(subgoal, plan)
+        else:
+            subgoal.status = "failed"
+            # Bump coverage thresholds by reducing counts so next run does MORE research
+            # This forces the system to fetch additional sources before retesting
+            subgoal.vault_entries = max(0, subgoal.vault_entries - 4)
+            subgoal.chunks_created = max(0, subgoal.chunks_created - 12)
+            subgoal.entities_created = max(0, subgoal.entities_created - 4)
+            subgoal.sources_fetched = max(0, subgoal.sources_fetched - 4)
+            log.info(
+                "deep_learner_subgoal_quality_failed",
+                subgoal=subgoal.title[:40],
+                test_count=subgoal.test_count,
+                failed_count=len(quality.get("failed_questions", [])),
+            )
+
+        # CRITICAL: Save status NOW before any further processing
+        # This prevents the "stuck in testing/researching" bug
+        plan.save(str(self._plans_dir))
+
+        # Challenge weak claims — cross-reference low-confidence facts
+        if self._knowledge_validator:
+            try:
+                challenged = await self._knowledge_validator.challenge_weak_claims(
+                    goal_slug=plan.goal_slug,
+                    max_challenges=3,
+                )
+                if challenged:
+                    summary = self._knowledge_validator.get_claims_summary(plan.goal_slug)
+                    log.info(
+                        "deep_learner_claims_validated",
+                        total=summary["total_claims"],
+                        verified=summary["verified"],
+                        disputed=summary["disputed"],
+                        avg_confidence=summary["avg_confidence"],
+                    )
+            except Exception:
+                log.debug("deep_learner_claims_challenge_failed", exc_info=True)
+
+        # Close goal-scoped index and log stats
+        if goal_index:
+            try:
+                log.info("goal_index_stats", **goal_index.stats())
+            except Exception:
+                log.debug("goal_index_stats_failed", exc_info=True)
+            goal_index.close()
+
+        # Update plan totals
+        plan.total_chunks_indexed += subgoal.chunks_created
+        plan.total_entities_created += subgoal.entities_created
+        plan.total_vault_entries += subgoal.vault_entries
+
+        # Check if ALL SubGoals done → horizon scan + schedules
+        all_done = all(sg.status in ("passed", "failed") for sg in plan.sub_goals)
+        if all_done:
+            if getattr(self._config, "auto_expand", True):
+                # CycleController: check if we should skip (stagnating/mastered)
+                if self._cycle_controller and self._cycle_controller.should_skip_cycle(
+                    plan.goal_slug
+                ):
+                    log.info("deep_learner_cycle_skipped", plan=plan.goal_slug)
+                else:
+                    expansions = await self._horizon_scanner.scan(plan)
+                    if expansions:
+                        new_context = "\n".join(
+                            f"- {e['title']}: {e.get('reason', '')}" for e in expansions
+                        )
+                        plan = await self._strategy_planner.replan(plan, new_context)
+                        plan.expansions.extend(e["title"] for e in expansions)
+                        log.info("deep_learner_horizon_expanded", count=len(expansions))
+                    # CycleController: track expansions, trigger exam every 10
+                    if self._cycle_controller and expansions:
+                        exp_count = len(getattr(plan, "expansions", []))
+                        self._cycle_controller.after_expansion(plan.goal_slug, exp_count)
+                        if exp_count > 0 and exp_count % 10 == 0:
+                            try:
+                                from cognithor.evolution.cycle_controller import ExamResult
+
+                                # Run quality test on passed subgoals and average scores
+                                passed_sgs = [sg for sg in plan.sub_goals if sg.status == "passed"]
+                                if passed_sgs:
+                                    scores = []
+                                    all_gaps: list[str] = []
+                                    total_q = 0
+                                    total_p = 0
+                                    for sg in passed_sgs[-5:]:  # Test last 5 to limit LLM calls
+                                        try:
+                                            exam_data = (
+                                                await self._quality_assessor.run_quality_test(
+                                                    sg, plan.goal_slug
+                                                )
+                                            )
+                                            if isinstance(exam_data, dict):
+                                                scores.append(exam_data.get("score", 0.0))
+                                                total_q += exam_data.get("total", 0)
+                                                total_p += exam_data.get("passed", 0)
+                                                all_gaps.extend(exam_data.get("gaps", []))
+                                        except Exception:
+                                            log.debug(
+                                                "deep_learner_quality_test_failed", exc_info=True
+                                            )
+                                    avg_score = sum(scores) / len(scores) if scores else 0.0
+                                    exam = ExamResult(
+                                        score=avg_score,
+                                        questions_total=total_q,
+                                        questions_passed=total_p,
+                                        gaps=list(set(all_gaps)),
+                                        expansion_count=exp_count,
+                                    )
+                                    state = self._cycle_controller.record_exam(plan.goal_slug, exam)
+                                    if state.value == "mastered":
+                                        plan.status = "mastered"
+                            except Exception:
+                                log.debug("cycle_exam_failed", exc_info=True)
+            # Setup cron schedules
+            if plan.schedules:
+                await self._schedule_manager.create_schedules(plan)
+            # Check if plan is complete (all passed, no new pending)
+            still_pending = [sg for sg in plan.sub_goals if sg.status == "pending"]
+            if not still_pending:
+                plan.status = "completed"
+                log.info("deep_learner_plan_completed", goal=plan.goal[:40])
+
+        # Update plan-level scores
+        scored = [
+            sg for sg in plan.sub_goals if sg.coverage_score is not None and sg.coverage_score > 0
+        ]
+        if scored:
+            plan.coverage_score = sum((sg.coverage_score or 0.0) for sg in scored) / len(scored)
+            plan.quality_score = sum((sg.quality_score or 0.0) for sg in scored) / len(scored)
+
+        plan.save(str(self._plans_dir))
+        return True
+
+    async def run_quality_test(self, plan_id: str, subgoal_id: str) -> dict[str, Any]:
+        """Run quality test on a SubGoal. Updates SubGoal status based on result."""
+        plan = self.get_plan(plan_id)
+        if not plan:
+            return {"error": "Plan not found"}
+        subgoal = next((sg for sg in plan.sub_goals if sg.id == subgoal_id), None)
+        if not subgoal:
+            return {"error": "SubGoal not found"}
+
+        result = await self._quality_assessor.run_quality_test(subgoal, plan.goal_slug)
+
+        subgoal.coverage_score = result["coverage_score"]
+        subgoal.quality_score = result["quality_score"]
+        if result["passed"]:
+            subgoal.status = "passed"
+        else:
+            subgoal.status = "researching"
+        # Update plan-level scores
+        done = [
+            sg for sg in plan.sub_goals if sg.coverage_score is not None and sg.coverage_score > 0
+        ]
+        if done:
+            plan.coverage_score = sum((sg.coverage_score or 0.0) for sg in done) / len(done)
+            plan.quality_score = sum((sg.quality_score or 0.0) for sg in done) / len(done)
+        plan.save(str(self._plans_dir))
+        return result
+
+    async def run_horizon_scan(self, plan_id: str) -> list[dict[str, str]]:
+        """Discover new areas beyond the literal goal. Adds new SubGoals via replan."""
+        plan = self.get_plan(plan_id)
+        if not plan:
+            return []
+        expansions = await self._horizon_scanner.scan(plan)
+        if expansions:
+            new_context = "HorizonScanner hat folgende Luecken gefunden:\n"
+            new_context += "\n".join(f"- {e['title']}: {e.get('reason', '')}" for e in expansions)
+            plan = await self._strategy_planner.replan(plan, new_context)
+            plan.expansions.extend(e["title"] for e in expansions)
+            plan.save(str(self._plans_dir))
+            log.info("deep_learner_horizon_expanded", new_subgoals=len(expansions))
+        return expansions
+
+    async def setup_schedules(self, plan_id: str) -> int:
+        """Create cron jobs for a plan's recurring sources."""
+        plan = self.get_plan(plan_id)
+        if not plan:
+            return 0
+        return await self._schedule_manager.create_schedules(plan)
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    async def retest_stale_subgoals(self, plan_id: str, max_age_days: int = 7) -> int:
+        """Re-test passed SubGoals that haven't been tested in max_age_days.
+
+        If a re-test fails, the SubGoal goes back to "researching" for
+        more depth. Returns count of SubGoals re-tested.
+        """
+        import time as _time
+        from datetime import datetime, timedelta
+
+        plan = self.get_plan(plan_id)
+        if not plan:
+            return 0
+
+        cutoff = (datetime.now(UTC) - timedelta(days=max_age_days)).isoformat()
+        retested = 0
+
+        for sg in plan.sub_goals:
+            if sg.status != "passed":
+                continue
+            if not sg.last_tested or sg.last_tested < cutoff:
+                log.info(
+                    "deep_learner_retest",
+                    subgoal=sg.title[:40],
+                    last_tested=sg.last_tested,
+                    test_count=sg.test_count,
+                )
+                result = await self._quality_assessor.run_quality_test(sg, plan.goal_slug)
+                sg.last_tested = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
+                sg.test_count += 1
+                sg.quality_score = result["quality_score"]
+
+                if not result["passed"]:
+                    sg.status = "researching"  # Back to research!
+                    log.warning(
+                        "deep_learner_retest_failed",
+                        subgoal=sg.title[:40],
+                        quality=result["quality_score"],
+                        failed_questions=[
+                            q.question[:50] for q in result.get("failed_questions", [])
+                        ],
+                    )
+                else:
+                    log.info(
+                        "deep_learner_retest_passed",
+                        subgoal=sg.title[:40],
+                        quality=result["quality_score"],
+                    )
+                retested += 1
+
+        if retested:
+            plan.save(str(self._plans_dir))
+        return retested
+
+    async def _generate_skill_for_subgoal(self, subgoal: SubGoal, plan: LearningPlan) -> None:
+        """Auto-generate a Markdown skill that makes this knowledge queryable.
+
+        Creates a skill file that matches on the subgoal topic keywords
+        and instructs the Planner to search vault + memory for answers.
+        """
+        try:
+            if not self._mcp_client:
+                return
+
+            # Generate trigger keywords from the subgoal title
+            keywords = [w for w in subgoal.title.split() if len(w) > 3][:5]
+            slug = plan.goal_slug[:20] + "-" + subgoal.id[:8]
+            skill_name = f"evolution-{slug}"
+
+            skill_body = (
+                f"---\n"
+                f"name: {skill_name}\n"
+                f"description: Automatisch generiertes Wissen zu '{subgoal.title}'\n"
+                f"trigger_keywords: {keywords}\n"
+                f"category: research\n"
+                f"priority: 3\n"
+                f"enabled: true\n"
+                f"---\n\n"
+                f"# {subgoal.title}\n\n"
+                f"Du hast umfangreiches Wissen zu diesem Thema aufgebaut.\n"
+                f"Durchsuche dein Vault und Memory nach relevanten Informationen:\n\n"
+                f"1. Nutze `vault_search` mit Stichworten aus der Frage\n"
+                f"2. Nutze `search_memory` fuer semantische Suche\n"
+                f"3. Kombiniere die Ergebnisse zu einer fundierten Antwort\n"
+                f"4. Zitiere Quellen wenn moeglich\n\n"
+                f"Vault-Ordner: wissen/{plan.goal_slug}/\n"
+                f"Domain: {plan.goal_slug}\n"
+            )
+
+            # Save skill via MCP
+            result = await self._mcp_client.call_tool(
+                "create_skill",
+                {"name": skill_name, "content": skill_body},
+            )
+            if result and not result.is_error:
+                subgoal.skills_generated += 1
+                log.info(
+                    "deep_learner_skill_generated",
+                    skill=skill_name,
+                    subgoal=subgoal.title[:40],
+                    keywords=keywords,
+                )
+            else:
+                log.debug("deep_learner_skill_generation_failed", result=str(result)[:100])
+        except Exception:
+            log.debug("deep_learner_skill_generation_error", exc_info=True)
+
+    # ------------------------------------------------------------------
+
+    async def _discover_sources(self, topic: str) -> list[SourceSpec]:
+        """Use web_search to find topic-specific sources.
+
+        Filters out generic homepages (< 3 path segments) and
+        deduplicates against already-known plan sources.
+        """
+        if not self._mcp_client:
+            return []
+        try:
+            result = await self._mcp_client.call_tool(
+                "search_and_read",
+                {"query": topic[:150], "num_results": 5},
+            )
+            if result.is_error:
+                return []
+            import re
+            from urllib.parse import urlparse
+
+            urls = re.findall(r'https?://[^\s<>"\')\]]+', result.content)
+
+            # Filter: skip bare homepages, non-relevant language domains, and noise
+            _BLOCKED_DOMAINS = {
+                "zhihu.com",
+                "baidu.com",
+                "weibo.com",
+                "qq.com",  # Chinese
+                "naver.com",
+                "daum.net",  # Korean
+                "yandex.ru",
+                "vk.com",
+                "mail.ru",  # Russian
+                "rakuten.co.jp",
+                "yahoo.co.jp",
+                "ameblo.jp",  # Japanese
+                "timeoutbahrain.com",
+                "najiz.sa",  # Off-topic
+                "web.whatsapp.com",
+                "linkedin.com/in/",  # Not content
+                "claude.ai",
+                "chat.openai.com",  # AI chat UIs
+            }
+            filtered: list[str] = []
+            seen: set[str] = set()
+            for url in urls:
+                url = url.rstrip("/.,;:")
+                if url in seen:
+                    continue
+                seen.add(url)
+                parsed = urlparse(url)
+                host = parsed.netloc.lower()
+                path = parsed.path.strip("/")
+                # Skip blocked domains (wrong language, off-topic, not content)
+                if any(blocked in host for blocked in _BLOCKED_DOMAINS):
+                    continue
+                # Skip non-Latin TLDs that indicate wrong-language content
+                if any(host.endswith(tld) for tld in (".cn", ".jp", ".kr", ".ru", ".sa")):
+                    continue
+                # Accept URLs with actual content paths, skip bare domains
+                if path and len(path) > 3:
+                    filtered.append(url)
+                elif not filtered:
+                    # Accept homepage only if we have nothing else
+                    filtered.append(url)
+
+            log.info(
+                "deep_learner_discovered_sources",
+                topic=topic[:50],
+                urls=[u[:60] for u in filtered[:5]],
+            )
+
+            return [
+                SourceSpec(
+                    url=url,
+                    source_type="reference",
+                    title=topic[:80],
+                    fetch_strategy="full_page",
+                    update_frequency="once",
+                )
+                for url in filtered[:5]
+            ]
+        except Exception:
+            log.debug("deep_learner_discover_sources_failed", exc_info=True)
+            return []

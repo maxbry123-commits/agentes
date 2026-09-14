@@ -1,0 +1,18 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  errors:
+    # Treat all warnings as errors for strict compilation
+    unused_import: error
+    unused_local_variable: error
+    dead_code: error
+
+linter:
+  rules:
+    prefer_single_quotes: true
+    always_use_package_imports: true
+    prefer_const_constructors: true
+    prefer_const_declarations: true
+    avoid_print: true
+    # Dart 3.11 null-aware map entry syntax is buggy for this pattern
+    use_null_aware_elements: false

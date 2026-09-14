@@ -1,0 +1,186 @@
+name: Beta Release
+
+on:
+  push:
+    branches: [beta]
+
+permissions:
+  contents: write
+
+jobs:
+  # Run the same checks as CI before releasing
+  lint:
+    name: Lint (Ruff) + Format check + Version consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ruff
+        run: pip install ruff==0.12.12
+
+      - name: Ruff check (critical errors)
+        run: ruff check src/ tests/ --select=F821,F811 --no-fix
+
+      - name: Ruff format check (no drift)
+        run: ruff format --check src/ tests/
+
+      - name: 4-way version consistency
+        run: |
+          python <<'PY'
+          import re, sys
+          from pathlib import Path
+
+          def read(path, pattern):
+              text = Path(path).read_text(encoding="utf-8")
+              m = re.search(pattern, text, re.MULTILINE)
+              return m.group(1) if m else None
+
+          versions = {
+              "pyproject.toml": read("pyproject.toml", r'^version\s*=\s*["\']([\d.]+)["\']'),
+              "src/cognithor/__init__.py": read("src/cognithor/__init__.py", r'__version__\s*=\s*["\']([\d.]+)["\']'),
+              "flutter_app/pubspec.yaml": read("flutter_app/pubspec.yaml", r'^version:\s*([\d.]+)'),
+              "flutter_app/lib/providers/connection_provider.dart": read(
+                  "flutter_app/lib/providers/connection_provider.dart",
+                  r'kFrontendVersion\s*=\s*["\']([\d.]+)["\']',
+              ),
+          }
+          unique = set(v for v in versions.values() if v is not None)
+          for k, v in versions.items():
+              print(f"  {k}: {v}")
+          if len(unique) != 1:
+              print("ERROR: version drift across the 4 sources", file=sys.stderr)
+              sys.exit(1)
+          print(f"All 4 versions match: {unique.pop()}")
+          PY
+
+  test:
+    name: Test (Python 3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,memory,search,mcp,telegram,web,documents,cron,vector,postgresql,arc]"
+
+      - name: Run tests
+        run: python -m pytest tests/ -x -q --tb=short --ignore=tests/test_channels/test_voice_ws_bridge.py
+        env:
+          COGNITHOR_TEST_MODE: "1"
+
+  release:
+    name: Create Beta Release
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for changelog generation
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Extract version from pyproject.toml
+        id: version
+        run: |
+          VERSION=$(python -c "
+          import re
+          with open('pyproject.toml') as f:
+              m = re.search(r'^version\s*=\s*\"(.+?)\"', f.read(), re.M)
+              print(m.group(1) if m else '0.0.0')
+          ")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}-beta" >> "$GITHUB_OUTPUT"
+
+      - name: Check if tag already exists
+        id: tag_check
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            # Delete old tag so we can recreate
+            git push origin --delete "$TAG" 2>/dev/null || true
+            git tag -d "$TAG" 2>/dev/null || true
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate changelog from commits
+        id: changelog
+        run: |
+          # Find the last release tag (stable or beta)
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          if [ -n "$LAST_TAG" ]; then
+            RANGE="${LAST_TAG}..HEAD"
+            SINCE_TEXT="since $LAST_TAG"
+          else
+            # No previous tag — use last 50 commits
+            RANGE="HEAD~50..HEAD"
+            SINCE_TEXT="(recent commits)"
+          fi
+
+          {
+            echo "## Cognithor ${{ steps.version.outputs.tag }}"
+            echo ""
+            echo "**Beta Release** — automatically generated from the \`beta\` branch."
+            echo ""
+            echo "### Changes ${SINCE_TEXT}"
+            echo ""
+            # Group commits by conventional prefix
+            echo "#### Features"
+            git log "$RANGE" --pretty=format:"- %s (%h)" --grep="^feat" 2>/dev/null || true
+            echo ""
+            echo ""
+            echo "#### Fixes"
+            git log "$RANGE" --pretty=format:"- %s (%h)" --grep="^fix" 2>/dev/null || true
+            echo ""
+            echo ""
+            echo "#### Other"
+            git log "$RANGE" --pretty=format:"- %s (%h)" --invert-grep --grep="^feat" --grep="^fix" 2>/dev/null | head -30 || true
+            echo ""
+            echo ""
+            echo "---"
+            echo ""
+            echo "> **This is a pre-release.** It may contain bugs or incomplete features."
+            echo "> For stable releases, use the \`main\` branch."
+          } > changelog.md
+
+          cat changelog.md
+
+          # Set multiline output
+          {
+            echo "body<<CHANGELOG_EOF"
+            cat changelog.md
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build package
+        run: |
+          pip install build
+          python -m build
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "${{ steps.version.outputs.tag }}"
+          body: ${{ steps.changelog.outputs.body }}
+          prerelease: true
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+          generate_release_notes: false

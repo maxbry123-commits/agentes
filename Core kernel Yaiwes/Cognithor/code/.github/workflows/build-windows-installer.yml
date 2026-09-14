@@ -1,0 +1,94 @@
+name: Build Windows Installer
+
+# Manual-only: this workflow exists for ad-hoc rebuilds of the Windows
+# installer (e.g., after a launcher patch or Inno-Setup script change).
+# On `push: tags: ['v*']` the installer is built as part of `release.yml`,
+# which orchestrates the full release-bundle (launcher → Flutter web →
+# installer → GitHub Release upload) in one pipeline. Keeping a parallel
+# tag-trigger here caused duplicate Windows-runner cycles and a Release-
+# upload race against `release.yml`.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Windows Installer (Inno Setup)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: pip install hatchling hatch
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Build Flutter Web UI
+        run: |
+          cd flutter_app
+          flutter pub get
+          flutter build web --release
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build installer
+        run: python installer/build_installer.py
+        env:
+          ISCC_PATH: "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe"
+
+      - name: Verify bundled ffmpeg is LGPL (not GPL)
+        shell: pwsh
+        run: |
+          $ffmpeg = Get-ChildItem -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          if (-not $ffmpeg) { throw "ffmpeg.exe not found in build output" }
+          $version = & $ffmpeg.FullName -version 2>&1 | Out-String
+          if ($version -match '--enable-gpl') {
+            throw "Bundled ffmpeg is a GPL build — Cognithor is Apache-2.0. Use LGPL variant."
+          }
+          if ($version -notmatch '--enable-version3') {
+            Write-Warning "Bundled ffmpeg does not claim LGPL v3 — double-check the build source"
+          }
+          Write-Host "ffmpeg build is LGPL-compatible"
+
+      - name: Find installer EXE
+        id: find_exe
+        run: |
+          $exe = Get-ChildItem installer/dist/*.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($exe) {
+            echo "exe_path=$($exe.FullName)" >> $env:GITHUB_OUTPUT
+            echo "exe_name=$($exe.Name)" >> $env:GITHUB_OUTPUT
+            echo "found=true" >> $env:GITHUB_OUTPUT
+          } else {
+            echo "found=false" >> $env:GITHUB_OUTPUT
+          }
+        shell: pwsh
+
+      - name: Upload to Release (tag push)
+        if: steps.find_exe.outputs.found == 'true' && startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.find_exe.outputs.exe_path }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload to latest Release (manual dispatch)
+        if: steps.find_exe.outputs.found == 'true' && github.event_name == 'workflow_dispatch'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = gh release list --limit 1 --json tagName -q '.[0].tagName'
+          gh release delete-asset $tag ${{ steps.find_exe.outputs.exe_name }} --yes 2>$null
+          gh release upload $tag ${{ steps.find_exe.outputs.exe_path }} --clobber
+        shell: pwsh

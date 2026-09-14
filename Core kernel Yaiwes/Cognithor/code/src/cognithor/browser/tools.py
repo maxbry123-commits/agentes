@@ -1,0 +1,469 @@
+"""Browser MCP Tools -- Registers Browser-Use as MCP tools (v17).
+
+Provides the LLM with the following high-level tools:
+  - browser_navigate:      Load page + analyze
+  - browser_click:         Click element (CSS or description)
+  - browser_fill:          Fill form field
+  - browser_fill_form:     Fill entire form
+  - browser_screenshot:    Take screenshot
+  - browser_extract:       Extract text/tables/links
+  - browser_analyze:       Analyze page structure
+  - browser_execute_js:    Execute JavaScript
+  - browser_tab:           Tab management
+  - browser_workflow:      Execute multi-step workflow
+
+Each tool returns a structured result that the LLM can
+use for follow-up actions.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import TYPE_CHECKING, Any
+
+from cognithor.browser.agent import BrowserAgent
+from cognithor.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    from cognithor.browser.types import (
+        BrowserConfig,
+    )
+
+log = get_logger(__name__)
+
+
+def register_browser_use_tools(
+    mcp_client: Any,
+    config: BrowserConfig | None = None,
+    vision_analyzer: Any | None = None,
+) -> BrowserAgent:
+    """Registers all Browser-Use tools in the MCP client.
+
+    Args:
+        mcp_client: MCP client for tool registration.
+        config: Optional BrowserConfig.
+        vision_analyzer: Optional VisionAnalyzer for vision tools.
+
+    Returns:
+        BrowserAgent instance (must be started with await agent.start())
+    """
+    agent = BrowserAgent(config=config, vision_analyzer=vision_analyzer)
+
+    # ── browser_navigate ─────────────────────────────────────────
+
+    async def _navigate(params: dict[str, Any]) -> str:
+        url = params.get("url", "")
+        if not url:
+            return json.dumps({"error": "URL required"})
+
+        if not agent.is_running:
+            started = await agent.start()
+            if not started:
+                return json.dumps({"error": "Browser not available. Install playwright."})
+
+        state = await agent.navigate(url)
+        return json.dumps(state.to_dict(), ensure_ascii=False)
+
+    mcp_client.register_builtin_handler(
+        tool_name="browser_navigate",
+        description="Navigiert zu einer URL und analysiert die Seite. "
+        "Gibt Seitenstruktur zurück: Titel, Links, Buttons, Inputs, Formulare.",
+        input_schema={"url": {"type": "string", "description": "Die zu ladende URL"}},
+        handler=_navigate,
+    )
+
+    # ── browser_click ────────────────────────────────────────────
+
+    async def _click(params: dict[str, Any]) -> str:
+        selector = params.get("selector", "")
+        description = params.get("description", "")
+
+        if description and not selector:
+            result = await agent.find_and_click(description)
+        elif selector:
+            result = await agent.click(selector)
+        else:
+            return json.dumps({"error": "selector or description required"})
+
+        return json.dumps(result.to_dict())
+
+    mcp_client.register_builtin_handler(
+        tool_name="browser_click",
+        description="Klickt auf ein Element. Entweder per CSS-Selector oder Beschreibung.",
+        input_schema={
+            "selector": {"type": "string", "description": "CSS-Selector (optional)"},
+            "description": {
+                "type": "string",
+                "description": "Element-Beschreibung (z.B. 'Login-Button')",
+            },
+        },
+        handler=_click,
+    )
+
+    # ── browser_fill ─────────────────────────────────────────────
+
+    async def _fill(params: dict[str, Any]) -> str:
+        selector = params.get("selector", "")
+        value = params.get("value", "")
+        if not selector:
+            return json.dumps({"error": "selector required"})
+        result = await agent.fill(selector, value)
+        return json.dumps(result.to_dict())
+
+    mcp_client.register_builtin_handler(
+        tool_name="browser_fill",
+        description="Füllt ein Formularfeld aus.",
+        input_schema={
+            "selector": {"type": "string", "description": "CSS-Selector des Feldes"},
+            "value": {"type": "string", "description": "Einzugebender Wert"},
+        },
+        handler=_fill,
+    )
+
+    # ── browser_fill_form ────────────────────────────────────────
+
+    async def _fill_form(params: dict[str, Any]) -> str:
+        data = params.get("data", {})
+        submit = params.get("submit", False)
+        if not data:
+            return json.dumps({"error": "data required (field_name: value)"})
+        results = await agent.fill_form(data, submit=submit)
+        return json.dumps(
+            {
+                "filled": len(results),
+                "results": [r.to_dict() for r in results],
+            }
+        )
+
+    mcp_client.register_builtin_handler(
+        tool_name="browser_fill_form",
+        description="Füllt ein ganzes Formular mit mehreren Feldern aus.",
+        input_schema={
+            "data": {"type": "object", "description": "Mapping Feldname → Wert"},
+            "submit": {"type": "boolean", "description": "Formular absenden?"},
+        },
+        handler=_fill_form,
+    )
+
+    # ── browser_screenshot ───────────────────────────────────────
+
+    async def _screenshot(params: dict[str, Any]) -> str:
+        full = params.get("full_page", False)
+        result = await agent.screenshot(full_page=full)
+        if result.success:
+            return json.dumps(
+                {
+                    "success": True,
+                    "screenshot_b64": result.screenshot_b64[:100] + "...",
+                    "full_data_length": len(result.screenshot_b64),
+                }
+            )
+        return json.dumps(result.to_dict())
+
+    mcp_client.register_builtin_handler(
+        tool_name="browser_screenshot",
+        description="Erstellt einen Screenshot der aktuellen Seite.",
+        input_schema={
+            "full_page": {"type": "boolean", "description": "Ganze Seite oder nur Viewport?"},
+        },
+        handler=_screenshot,
+    )
+
+    # ── browser_extract ──────────────────────────────────────────
+
+    async def _extract(params: dict[str, Any]) -> str:
+        mode = params.get("mode", "text")
+        selector = params.get("selector", "body")
+
+        if mode == "text":
+            text = await agent.extract_text(selector)
+            return json.dumps({"text": text[:5000]})
+        elif mode == "tables":
+            tables = await agent.extract_tables()
+            return json.dumps({"tables": tables})
+        elif mode == "links":
+            links = await agent.extract_links()
+            return json.dumps({"links": links[:100]})
+        else:
+            return json.dumps({"error": f"Unknown mode: {mode}"})
+
+    mcp_client.register_builtin_handler(
+        tool_name="browser_extract",
+        description="Extrahiert Inhalte von der Seite: Text, Tabellen oder Links.",
+        input_schema={
+            "mode": {"type": "string", "description": "text|tables|links"},
+            "selector": {"type": "string", "description": "CSS-Selector (nur für text)"},
+        },
+        handler=_extract,
+    )
+
+    # ── browser_analyze ──────────────────────────────────────────
+
+    async def _analyze(params: dict[str, Any]) -> str:
+        state = await agent.analyze_page()
+        return json.dumps(
+            {
+                "summary": state.to_summary(max_text=2000),
+                "stats": state.to_dict(),
+            },
+            ensure_ascii=False,
+        )
+
+    mcp_client.register_builtin_handler(
+        tool_name="browser_analyze",
+        description="Analysiert die aktuelle Seite: Formulare, Buttons, Links, Inputs.",
+        input_schema={},
+        handler=_analyze,
+    )
+
+    # ── browser_execute_js ───────────────────────────────────────
+
+    _MAX_JS_LENGTH = 50_000
+    _JS_BLOCKLIST = [
+        "eval(",
+        "Function(",
+        "require(",
+        "import(",
+        "fetch(",
+        "XMLHttpRequest",
+        "child_process",
+        "fs.",
+        "process.exit",
+    ]
+
+    async def _execute_js(params: dict[str, Any]) -> str:
+        script = params.get("script", "")
+        if not script:
+            return json.dumps({"error": "script required"})
+        if len(script) > _MAX_JS_LENGTH:
+            return json.dumps({"error": f"Script too long (max {_MAX_JS_LENGTH} chars)"})
+        for blocked in _JS_BLOCKLIST:
+            if blocked in script:
+                return json.dumps({"error": f"Blocked API: '{blocked}' is not allowed"})
+        result = await agent.execute_js(script)
+        return json.dumps(result.to_dict())
+
+    mcp_client.register_builtin_handler(
+        tool_name="browser_execute_js",
+        description="Führt JavaScript auf der Seite aus.",
+        input_schema={"script": {"type": "string", "description": "JavaScript-Code"}},
+        handler=_execute_js,
+    )
+
+    # ── browser_tab ──────────────────────────────────────────────
+
+    async def _tab(params: dict[str, Any]) -> str:
+        action = params.get("action", "list")
+        if action == "new":
+            result = await agent.new_tab(params.get("url", ""))
+            return json.dumps(result.to_dict())
+        elif action == "close":
+            result = await agent.close_tab(params.get("index", -1))
+            return json.dumps(result.to_dict())
+        elif action == "switch":
+            result = agent.switch_tab(params.get("index", 0))
+            return json.dumps(result.to_dict())
+        elif action == "list":
+            return json.dumps(
+                {
+                    "tab_count": agent.page_count,
+                    "active_tab": agent._active_page_idx,
+                }
+            )
+        return json.dumps({"error": f"Unknown tab action: {action}"})
+
+    mcp_client.register_builtin_handler(
+        tool_name="browser_tab",
+        description="Tab-Management: new, close, switch, list.",
+        input_schema={
+            "action": {"type": "string", "description": "new|close|switch|list"},
+            "url": {"type": "string", "description": "URL für neuen Tab"},
+            "index": {"type": "integer", "description": "Tab-Index"},
+        },
+        handler=_tab,
+    )
+
+    # ── browser_key ──────────────────────────────────────────────
+
+    async def _key(params: dict[str, Any]) -> str:
+        key = params.get("key", "Enter")
+        result = await agent.press_key(key)
+        return json.dumps(result.to_dict())
+
+    mcp_client.register_builtin_handler(
+        tool_name="browser_key",
+        description="Drückt eine Taste (Enter, Tab, Escape, ArrowDown, etc.).",
+        input_schema={"key": {"type": "string", "description": "Taste (z.B. Enter, Tab)"}},
+        handler=_key,
+    )
+
+    # ── browser_vision_analyze ──────────────────────────────────
+
+    async def _vision_analyze(params: dict[str, Any]) -> str:
+        prompt = params.get("prompt", "")
+
+        if not agent.is_running:
+            started = await agent.start()
+            if not started:
+                return json.dumps({"error": "Browser not available."})
+
+        if agent._vision is None or not getattr(agent._vision, "is_enabled", False):
+            return json.dumps(
+                {"error": "Vision nicht aktiviert. Setze vision_model in der Config."}
+            )
+
+        result = await agent.analyze_page_with_vision(prompt)
+        return json.dumps(result, ensure_ascii=False)
+
+    mcp_client.register_builtin_handler(
+        tool_name="browser_vision_analyze",
+        description="Screenshot der Seite + KI-Vision-Analyse. "
+        "Kombiniert DOM-Analyse mit visueller Beschreibung.",
+        input_schema={
+            "prompt": {"type": "string", "description": "Optionaler Analyse-Prompt"},
+        },
+        handler=_vision_analyze,
+    )
+
+    # ── browser_vision_find ──────────────────────────────────────
+
+    async def _vision_find(params: dict[str, Any]) -> str:
+        description = params.get("description", "")
+        if not description:
+            return json.dumps({"error": "description required"})
+
+        if not agent.is_running:
+            started = await agent.start()
+            if not started:
+                return json.dumps({"error": "Browser not available."})
+
+        if agent._vision is None or not getattr(agent._vision, "is_enabled", False):
+            return json.dumps(
+                {"error": "Vision nicht aktiviert. Setze vision_model in der Config."}
+            )
+
+        result = await agent.find_and_click_with_vision(description)
+        return json.dumps(result.to_dict())
+
+    mcp_client.register_builtin_handler(
+        tool_name="browser_vision_find",
+        description="Element per Beschreibung finden (Text-Match + Vision-Fallback). "
+        "Klickt das Element wenn gefunden.",
+        input_schema={
+            "description": {
+                "type": "string",
+                "description": "Beschreibung des Elements (z.B. 'blauer Login-Button')",
+            },
+        },
+        handler=_vision_find,
+    )
+
+    # ── browser_vision_screenshot ────────────────────────────────
+
+    async def _vision_screenshot(params: dict[str, Any]) -> str:
+        full = params.get("full_page", False)
+
+        if not agent.is_running:
+            started = await agent.start()
+            if not started:
+                return json.dumps({"error": "Browser not available."})
+
+        result = await agent.screenshot(full_page=full)
+        if not result.success:
+            return json.dumps(result.to_dict())
+
+        description = ""
+        if agent._vision is not None and getattr(agent._vision, "is_enabled", False):
+            try:
+                page_content = await agent._extract_page_content()
+                vision_result = await agent._vision.analyze_screenshot(
+                    result.screenshot_b64, page_content=page_content
+                )
+                if vision_result.success:
+                    description = vision_result.description
+            except Exception:
+                pass  # Cleanup — vision description failure is non-critical
+
+        return json.dumps(
+            {
+                "success": True,
+                "description": description or "(Vision nicht verfügbar)",
+                "screenshot_b64_length": len(result.screenshot_b64),
+            },
+            ensure_ascii=False,
+        )
+
+    mcp_client.register_builtin_handler(
+        tool_name="browser_vision_screenshot",
+        description="Screenshot mit KI-Beschreibung statt rohem Base64. "
+        "Gibt eine textuelle Beschreibung des Screenshots zurück.",
+        input_schema={
+            "full_page": {"type": "boolean", "description": "Ganze Seite oder nur Viewport?"},
+        },
+        handler=_vision_screenshot,
+    )
+
+    # ── browser_solve_captcha ──────────────────────────────────────
+    async def _solve_captcha(params: dict[str, Any]) -> str:
+        if not agent.is_running:
+            return json.dumps(
+                {"error": "Browser nicht gestartet. Zuerst browser_navigate verwenden."}
+            )
+        from cognithor.browser.captcha.solver import CaptchaConfig, CaptchaSolver
+
+        cfg = CaptchaConfig(
+            enabled=True,
+            max_retries=int(params.get("max_retries", 3)),
+        )
+        solver = CaptchaSolver(vision_fn=None, config=cfg)
+        # Wire vision if available
+        if vision_analyzer and getattr(vision_analyzer, "is_enabled", False):
+
+            async def _vision_bridge(screenshot_b64: str, prompt: str) -> str:
+                r = await vision_analyzer.analyze_screenshot(screenshot_b64, prompt)
+                return r.description if hasattr(r, "description") else str(r)
+
+            solver._vision_fn = _vision_bridge
+
+        result = await solver.solve(agent.current_page)  # type: ignore[attr-defined]
+        if result.success:
+            return json.dumps(
+                {
+                    "success": True,
+                    "message": (
+                        f"CAPTCHA geloest: {result.captcha_type.value} "
+                        f"(Modell: {result.model_used}, "
+                        f"{result.attempts} Versuch(e), {result.duration_ms}ms)"
+                    ),
+                },
+                ensure_ascii=False,
+            )
+        return json.dumps(
+            {
+                "success": False,
+                "error": (
+                    f"CAPTCHA-Loesung fehlgeschlagen: {result.captcha_type.value} "
+                    f"— {result.error} ({result.attempts} Versuche)"
+                ),
+            },
+            ensure_ascii=False,
+        )
+
+    mcp_client.register_builtin_handler(
+        tool_name="browser_solve_captcha",
+        description=(
+            "Erkennt und loest ein CAPTCHA auf der aktuellen Browser-Seite via Vision-LLM."
+        ),
+        input_schema={
+            "max_retries": {
+                "type": "integer",
+                "default": 3,
+                "description": "Maximale Anzahl Loesungsversuche",
+            },
+        },
+        handler=_solve_captcha,
+    )
+
+    tool_count = 14 if vision_analyzer else 11
+    log.info("browser_use_tools_registered", tool_count=tool_count)
+    return agent

@@ -1,0 +1,140 @@
+name: Build Mobile Apps (Android + iOS)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flutter_app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.4'
+          channel: stable
+          cache: false
+
+      - name: Clean and get dependencies
+        run: |
+          flutter clean
+          flutter pub get
+
+      - name: Build APK (release)
+        run: flutter build apk --release --target-platform android-arm64
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cognithor-android-apk
+          path: flutter_app/build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: flutter_app/build/app/outputs/flutter-apk/app-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-ios:
+    name: iOS IPA
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: flutter_app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.4'
+          channel: stable
+          cache: false
+
+      - name: Get dependencies and generate code
+        run: |
+          flutter clean
+          flutter pub get
+          flutter build ios --config-only --no-codesign 2>/dev/null || true
+
+      - name: Install CocoaPods
+        run: cd ios && pod install
+
+      - name: Build iOS with xcodebuild (unsigned)
+        run: |
+          cd ios
+          xcodebuild \
+            -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination generic/platform=iOS \
+            -archivePath "$PWD/../build/ios/archive/Runner.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="-" \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            archive
+
+      - name: Create IPA
+        run: |
+          ARCHIVE="build/ios/archive/Runner.xcarchive"
+          APP="$ARCHIVE/Products/Applications/Runner.app"
+          if [ -d "$APP" ]; then
+            # Verify correct bundle (must be Cognithor, not a CocoaPod)
+            BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist" 2>/dev/null || echo "unknown")
+            BUNDLE_NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$APP/Info.plist" 2>/dev/null || echo "unknown")
+            echo "Bundle ID: $BUNDLE_ID"
+            echo "Bundle Name: $BUNDLE_NAME"
+            if [[ "$BUNDLE_NAME" != *"Cognithor"* && "$BUNDLE_NAME" != *"cognithor"* ]]; then
+              echo "::warning::Bundle name is '$BUNDLE_NAME', expected 'Cognithor'. Searching for correct app..."
+              CORRECT_APP=$(find "$ARCHIVE" -name "Runner.app" -path "*/Applications/*" -type d | head -1)
+              if [ -n "$CORRECT_APP" ] && [ -d "$CORRECT_APP" ]; then
+                APP="$CORRECT_APP"
+              fi
+            fi
+            mkdir -p Payload
+            cp -r "$APP" Payload/Runner.app
+            zip -r cognithor-ios.ipa Payload
+            echo "IPA created successfully"
+          else
+            echo "::error::No Runner.app found in archive"
+            find "$ARCHIVE" -name "*.app" -type d 2>/dev/null
+            exit 1
+          fi
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cognithor-ios-ipa
+          path: flutter_app/cognithor-ios.ipa
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: flutter_app/cognithor-ios.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

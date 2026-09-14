@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://github.com/Alex8791-cyber/cognithor#readme
+    about: Check the README for setup instructions and feature documentation.
+  - name: Discussions
+    url: https://github.com/Alex8791-cyber/cognithor/discussions
+    about: Ask questions or share ideas in GitHub Discussions.

@@ -1,0 +1,335 @@
+name: CI
+
+on:
+  push:
+    branches: [main, beta]
+  pull_request:
+    branches: [main, beta]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (Ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ruff
+        run: pip install ruff==0.12.12
+
+      - name: Ruff check (critical errors)
+        run: ruff check src/ tests/ --select=F821,F811 --no-fix
+
+      - name: Ruff check (full ruleset)
+        run: ruff check src/ tests/
+
+      - name: Ruff format check
+        run: ruff format --check src/ tests/
+
+      - name: Version consistency check
+        run: |
+          python -c "
+          import tomllib, ast, sys
+          with open('pyproject.toml', 'rb') as f:
+              toml_ver = tomllib.load(f)['project']['version']
+          tree = ast.parse(open('src/cognithor/__init__.py').read())
+          init_ver = next(
+              n.value.value for n in tree.body
+              if isinstance(n, ast.Assign)
+              and any(isinstance(t, ast.Name) and t.id == '__version__' for t in n.targets)
+          )
+          if toml_ver != init_ver:
+              print(f'::error::Version mismatch: pyproject.toml={toml_ver}, __init__.py={init_ver}')
+              sys.exit(1)
+          print(f'Version OK: {toml_ver}')
+          "
+
+  mypy:
+    name: Mypy --strict (src/cognithor/)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install all runtime extras + dev
+        run: |
+          # Mypy needs every runtime import resolved (fastapi, starlette,
+          # uvicorn, transformers …), otherwise it reports a flood of
+          # import-not-found errors that dwarf real type errors. The
+          # ``[all]`` extra pulls every optional dep that ``src/cognithor/``
+          # imports unconditionally; ``[dev]`` pulls mypy + pytest.
+          python -m pip install --upgrade pip
+          pip install -e ".[all,dev]"
+          pip install transformers || echo "::warning::transformers install failed"
+
+      - name: Mypy --strict (must stay at zero)
+        run: mypy --strict src/cognithor/
+
+  test:
+    name: Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install core + dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          # Local sub-packages (direct-refs forbidden in published [dev] extra)
+          pip install -e ./cognithor_bench
+          pip install -e ./examples/insurance-agent-pack
+
+      - name: Install optional dependency groups
+        run: |
+          echo "::group::memory"
+          pip install -e ".[memory]" || echo "::warning::memory extras failed"
+          echo "::endgroup::"
+
+          echo "::group::search"
+          pip install -e ".[search]" || echo "::warning::search extras failed"
+          echo "::endgroup::"
+
+          echo "::group::mcp"
+          pip install -e ".[mcp]" || echo "::warning::mcp extras failed"
+          echo "::endgroup::"
+
+          echo "::group::telegram"
+          pip install -e ".[telegram]" || echo "::warning::telegram extras failed"
+          echo "::endgroup::"
+
+          echo "::group::discord"
+          pip install -e ".[discord]" || echo "::warning::discord extras failed"
+          echo "::endgroup::"
+
+          echo "::group::slack"
+          pip install -e ".[slack]" || echo "::warning::slack extras failed"
+          echo "::endgroup::"
+
+          echo "::group::matrix"
+          pip install -e ".[matrix]" || echo "::warning::matrix extras failed"
+          echo "::endgroup::"
+
+          echo "::group::web"
+          pip install -e ".[web]" || echo "::warning::web extras failed"
+          echo "::endgroup::"
+
+          echo "::group::documents"
+          pip install -e ".[documents]" || echo "::warning::documents extras failed"
+          echo "::endgroup::"
+
+          echo "::group::cron"
+          pip install -e ".[cron]" || echo "::warning::cron extras failed"
+          echo "::endgroup::"
+
+          echo "::group::vector"
+          pip install -e ".[vector]" || echo "::warning::vector extras failed (faiss-cpu)"
+          echo "::endgroup::"
+
+          echo "::group::postgresql"
+          pip install -e ".[postgresql]" || echo "::warning::postgresql extras failed"
+          echo "::endgroup::"
+
+          echo "::group::irc"
+          pip install -e ".[irc]" || echo "::warning::irc extras failed"
+          echo "::endgroup::"
+
+          echo "::group::twitch"
+          pip install -e ".[twitch]" || echo "::warning::twitch extras failed"
+          echo "::endgroup::"
+
+          echo "::group::arc"
+          pip install -e ".[arc]" || echo "::warning::arc extras failed"
+          echo "::endgroup::"
+
+      - name: Show installed packages
+        run: pip list --format=columns
+
+      - name: Run tests
+        # test_voice_ws_bridge.py is excluded because it requires system audio
+        # devices (microphone/speaker) which are not available in CI runners.
+        run: python -m pytest tests/ -x -q --tb=short --ignore=tests/test_channels/test_voice_ws_bridge.py
+        env:
+          COGNITHOR_TEST_MODE: "1"
+          PYTHONIOENCODING: "utf-8"
+          PYTHONUTF8: "1"
+
+  scripts:
+    name: Scripts (verify_all + smoke_test)
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,memory,search,mcp,web,documents,cron,vector]"
+
+      - name: verify_all.py (architecture verification)
+        run: python scripts/verify_all.py
+        env:
+          PYTHONIOENCODING: "utf-8"
+          PYTHONUTF8: "1"
+
+      - name: verify_readme_claims.py (README drift detection)
+        # Non-blocking informational drift check: counts MCP tools, channels,
+        # LLM providers, and test functions, then compares against the values
+        # claimed in README.md. Drift surfaces in the build log but does NOT
+        # fail the job — README updates are usually informational.
+        # `continue-on-error: true` ensures any genuine drift gets seen
+        # without blocking unrelated PRs.
+        continue-on-error: true
+        run: python scripts/verify_readme_claims.py
+        env:
+          PYTHONIOENCODING: "utf-8"
+          PYTHONUTF8: "1"
+
+      - name: smoke_test.py (import + bootstrap checks)
+        # Skips Ollama/models; only imports, config load, directory scaffold.
+        # If the script changes shape, this step catches it before release.
+        run: |
+          python scripts/smoke_test.py --ollama-url http://127.0.0.1:59999 || true
+          # Exit 0 to allow the script to report warnings about Ollama being
+          # unreachable in CI, but the imports / bootstrap must not crash.
+          # A crash (non-zero exit caused by Python traceback, not by the
+          # expected "Ollama unreachable" warning) is what we want to catch
+          # here — the "|| true" swallows only the EXIT=2 "warnings" code.
+          python -c "
+          import subprocess, sys
+          r = subprocess.run(['python', 'scripts/smoke_test.py', '--ollama-url', 'http://127.0.0.1:59999'], capture_output=True, text=True)
+          # Accept 0 (OK), 2 (warnings). Fail on 1 (crash) or any non-0/2.
+          if r.returncode not in (0, 2):
+              print('smoke_test.py crashed:', r.returncode)
+              print('STDOUT:', r.stdout[-2000:])
+              print('STDERR:', r.stderr[-2000:])
+              sys.exit(1)
+          print('smoke_test.py exit=', r.returncode, '(0 OK, 2 warnings)')
+          "
+        env:
+          PYTHONIOENCODING: "utf-8"
+          PYTHONUTF8: "1"
+
+  coverage:
+    # Single-runner coverage job — measures the actual line coverage of the
+    # full test suite and enforces `--cov-fail-under` (current floor 60 %,
+    # target 89 %; see [tool.coverage.report] in pyproject.toml).
+    # Runs on ubuntu-py3.12 only because the Windows-matrix already covers
+    # platform-specific behaviour and adding `--cov` to all 4 matrix jobs
+    # would 4× the runner cost without proportional drift-detection value.
+    name: Coverage gate
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install core + dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,memory,search,mcp,telegram,web,documents,cron,vector,postgresql,arc]"
+          pip install -e ".[discord]" || echo "::warning::discord extras failed"
+          pip install -e ".[whatsapp]" || echo "::warning::whatsapp extras failed"
+          pip install -e ".[signal]" || echo "::warning::signal extras failed"
+          pip install -e ".[matrix]" || echo "::warning::matrix extras failed"
+          pip install -e ".[teams]" || echo "::warning::teams extras failed"
+          pip install -e ".[google_chat]" || echo "::warning::google_chat extras failed"
+          pip install -e ".[feishu]" || echo "::warning::feishu extras failed"
+          pip install -e ".[mattermost]" || echo "::warning::mattermost extras failed"
+          pip install -e ".[irc]" || echo "::warning::irc extras failed"
+          pip install -e ".[twitch]" || echo "::warning::twitch extras failed"
+          pip install -e ".[identity]" || echo "::warning::identity extras failed"
+
+      - name: Run tests with coverage
+        # Same ignores as the matrix Run-tests step. test_vllm_fake_server
+        # `test_full_chat_roundtrip` is flake-prone under coverage
+        # instrumentation (timing-sensitive httpx mock + uvicorn websocket)
+        # and is excluded here only — it still runs in the regular matrix.
+        run: |
+          python -m pytest tests/ -q --tb=short \
+            --ignore=tests/test_channels/test_voice_ws_bridge.py \
+            --deselect=tests/test_integration/test_vllm_fake_server.py::TestVLLMBackendEndToEnd::test_full_chat_roundtrip \
+            --deselect=tests/test_security/test_f011_duplicate_detection_perf.py::TestMaxEntriesLimit::test_large_input_truncated \
+            --cov=cognithor \
+            --cov-report=term \
+            --cov-report=xml:coverage.xml \
+            --cov-fail-under=60
+        env:
+          COGNITHOR_TEST_MODE: "1"
+          PYTHONIOENCODING: "utf-8"
+          PYTHONUTF8: "1"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          retention-days: 30
+
+  flutter:
+    name: Flutter (analyze + test)
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Show versions
+        working-directory: flutter_app
+        run: flutter --version
+
+      - name: Pub get
+        working-directory: flutter_app
+        run: flutter pub get
+
+      - name: Dart analyze
+        working-directory: flutter_app
+        run: dart analyze
+
+      - name: Dart format check
+        # Audit-PR7 (Flutter F9): Dart format drift had no CI gate.
+        # Mirrors the existing Python `ruff format --check` step so a
+        # mis-formatted Dart commit fails on the same kind of check
+        # rather than slipping through to release.
+        working-directory: flutter_app
+        run: dart format --output=none --set-exit-if-changed lib/ test/ integration_test/
+
+      - name: Flutter test
+        working-directory: flutter_app
+        run: flutter test --reporter=compact

@@ -1,0 +1,2889 @@
+// ignore: unused_import
+import 'package:intl/intl.dart' as intl;
+import 'app_localizations.dart';
+
+// ignore_for_file: type=lint
+
+/// The translations for German (`de`).
+class AppLocalizationsDe extends AppLocalizations {
+  AppLocalizationsDe([String locale = 'de']) : super(locale);
+
+  @override
+  String get appTitle => 'Cognithor';
+
+  @override
+  String get chat => 'Chat';
+
+  @override
+  String get settings => 'Einstellungen';
+
+  @override
+  String get identity => 'Identitaet';
+
+  @override
+  String get workflows => 'Workflows';
+
+  @override
+  String get memory => 'Gedaechtnis';
+
+  @override
+  String get monitoring => 'Monitoring';
+
+  @override
+  String get skills => 'Skills';
+
+  @override
+  String get config => 'Konfiguration';
+
+  @override
+  String get sendMessage => 'Nachricht eingeben...';
+
+  @override
+  String get send => 'Senden';
+
+  @override
+  String get cancel => 'Abbrechen';
+
+  @override
+  String get approve => 'Genehmigen';
+
+  @override
+  String get reject => 'Ablehnen';
+
+  @override
+  String get retry => 'Erneut versuchen';
+
+  @override
+  String get close => 'Schliessen';
+
+  @override
+  String get save => 'Speichern';
+
+  @override
+  String get delete => 'Loeschen';
+
+  @override
+  String get loading => 'Laden...';
+
+  @override
+  String get connecting => 'Verbinde...';
+
+  @override
+  String get approvalTitle => 'Genehmigung erforderlich';
+
+  @override
+  String approvalBody(String tool) {
+    return 'Das Tool $tool moechte ausfuehren:';
+  }
+
+  @override
+  String approvalReason(String reason) {
+    return 'Grund: $reason';
+  }
+
+  @override
+  String get statusThinking => 'Denkt nach...';
+
+  @override
+  String get statusExecuting => 'Fuehrt aus...';
+
+  @override
+  String get statusFinishing => 'Fertigstellung...';
+
+  @override
+  String get voiceMessage => 'Sprachnachricht';
+
+  @override
+  String fileUpload(String name) {
+    return 'Datei: $name';
+  }
+
+  @override
+  String get connectionError => 'Backend nicht erreichbar';
+
+  @override
+  String connectionErrorDetail(String url) {
+    return 'Pruefe ob das Cognithor-Backend unter $url laeuft';
+  }
+
+  @override
+  String get authFailed => 'Authentifizierung fehlgeschlagen';
+
+  @override
+  String get tokenExpired => 'Sitzung abgelaufen. Verbinde neu...';
+
+  @override
+  String get serverUrl => 'Server-URL';
+
+  @override
+  String get serverUrlHint => 'http://localhost:8741';
+
+  @override
+  String version(String version) {
+    return 'Version $version';
+  }
+
+  @override
+  String get errorGeneric => 'Etwas ist schiefgelaufen';
+
+  @override
+  String get errorNetwork => 'Netzwerkfehler. Pruefe deine Verbindung.';
+
+  @override
+  String get errorTimeout => 'Zeitlimit ueberschritten';
+
+  @override
+  String get errorUnauthorized => 'Nicht autorisiert. Bitte neu verbinden.';
+
+  @override
+  String get errorServerDown => 'Backend nicht erreichbar';
+
+  @override
+  String get sendingApproval => 'Sende Genehmigung...';
+
+  @override
+  String get sendingRejection => 'Sende Ablehnung...';
+
+  @override
+  String get actionApproved => 'OK — Aktion genehmigt';
+
+  @override
+  String get actionRejected => 'OK — Aktion abgelehnt';
+
+  @override
+  String errorWithDetail(String detail) {
+    return 'Fehler: $detail';
+  }
+
+  @override
+  String get noBackendConnection =>
+      'Keine Verbindung zum Backend. Bitte Verbindung pruefen.';
+
+  @override
+  String get approvalSendFailed =>
+      'Genehmigung konnte nicht gesendet werden (Verbindung verloren). Bitte erneut versuchen.';
+
+  @override
+  String get connectionLost => 'Verbindung zum Server verloren';
+
+  @override
+  String get connectionRestoring => 'Verbindung wird wiederhergestellt...';
+
+  @override
+  String get connectNow => 'Jetzt verbinden';
+
+  @override
+  String get recheck => 'Erneut pruefen';
+
+  @override
+  String get identityNotAvailable => 'Identitaetsschicht nicht verfuegbar';
+
+  @override
+  String get identityInstallHint =>
+      'Installiere mit: pip install cognithor[identity]';
+
+  @override
+  String get identityEnergy => 'Energie';
+
+  @override
+  String get identityInteractions => 'Interaktionen';
+
+  @override
+  String get identityMemories => 'Erinnerungen';
+
+  @override
+  String get identityCharacterStrength => 'Charakterstaerke';
+
+  @override
+  String get identityFrozen => 'Eingefroren';
+
+  @override
+  String get identityActive => 'Aktiv';
+
+  @override
+  String get identityDream => 'Traumzyklus';
+
+  @override
+  String get identityFreeze => 'Einfrieren';
+
+  @override
+  String get identityUnfreeze => 'Auftauen';
+
+  @override
+  String get identityReset => 'Soft Reset';
+
+  @override
+  String get identityResetConfirm =>
+      'Identitaet zuruecksetzen? Erinnerungen gehen verloren.';
+
+  @override
+  String get pipelinePlan => 'Planung';
+
+  @override
+  String get pipelineGate => 'Gatekeeper';
+
+  @override
+  String get pipelineExecute => 'Ausfuehrung';
+
+  @override
+  String get pipelineReplan => 'Neuplanung';
+
+  @override
+  String get pipelineComplete => 'Abgeschlossen';
+
+  @override
+  String get canvasTitle => 'Canvas';
+
+  @override
+  String get canvasClose => 'Canvas schliessen';
+
+  @override
+  String get models => 'Modelle';
+
+  @override
+  String get channels => 'Kanaele';
+
+  @override
+  String get security => 'Sicherheit';
+
+  @override
+  String get reload => 'Neu laden';
+
+  @override
+  String get reloading => 'Wird neu geladen...';
+
+  @override
+  String get configSaved => 'Konfiguration neu geladen';
+
+  @override
+  String get configError => 'Konfigurationsfehler';
+
+  @override
+  String get uptime => 'Betriebszeit';
+
+  @override
+  String get activeSessions => 'Aktive Sitzungen';
+
+  @override
+  String get totalRequests => 'Anfragen gesamt';
+
+  @override
+  String get events => 'Ereignisse';
+
+  @override
+  String get noEvents => 'Keine Ereignisse aufgezeichnet';
+
+  @override
+  String get severity => 'Schweregrad';
+
+  @override
+  String get refreshing => 'Auto-Aktualisierung: 10s';
+
+  @override
+  String get noData => 'Keine Daten verfuegbar';
+
+  @override
+  String get notAvailable => 'Nicht verfuegbar';
+
+  @override
+  String get dashboard => 'Dashboard';
+
+  @override
+  String get systemOverview => 'Systemuebersicht';
+
+  @override
+  String get cpuUsage => 'CPU-Auslastung';
+
+  @override
+  String get memoryUsage => 'Speicherauslastung';
+
+  @override
+  String get responseTime => 'Antwortzeit';
+
+  @override
+  String get toolExecutions => 'Tool-Ausfuehrungen';
+
+  @override
+  String get successRate => 'Erfolgsrate';
+
+  @override
+  String get recentEvents => 'Letzte Ereignisse';
+
+  @override
+  String get lastUpdated => 'Zuletzt aktualisiert';
+
+  @override
+  String get systemHealth => 'Systemzustand';
+
+  @override
+  String get performance => 'Leistung';
+
+  @override
+  String get trends => 'Trends';
+
+  @override
+  String get marketplace => 'Marktplatz';
+
+  @override
+  String get featured => 'Empfohlen';
+
+  @override
+  String get trending => 'Im Trend';
+
+  @override
+  String get categories => 'Kategorien';
+
+  @override
+  String get searchSkills => 'Faehigkeiten suchen...';
+
+  @override
+  String get installed => 'Installiert';
+
+  @override
+  String get installSkill => 'Installieren';
+
+  @override
+  String get uninstallSkill => 'Deinstallieren';
+
+  @override
+  String get installing => 'Wird installiert...';
+
+  @override
+  String get skillDetails => 'Details';
+
+  @override
+  String get reviews => 'Bewertungen';
+
+  @override
+  String get noSkills => 'Keine Faehigkeiten gefunden';
+
+  @override
+  String get browseMarketplace => 'Marktplatz durchsuchen';
+
+  @override
+  String get verified => 'Verifiziert';
+
+  @override
+  String get downloads => 'Downloads';
+
+  @override
+  String get rating => 'Bewertung';
+
+  @override
+  String get memoryTitle => 'Gedaechtnis';
+
+  @override
+  String get knowledgeGraph => 'Wissensgraph';
+
+  @override
+  String get entities => 'Entitaeten';
+
+  @override
+  String get relations => 'Beziehungen';
+
+  @override
+  String get hygiene => 'Hygiene';
+
+  @override
+  String get quarantine => 'Quarantaene';
+
+  @override
+  String get scanMemory => 'Scannen';
+
+  @override
+  String get scanning => 'Scanne...';
+
+  @override
+  String get explainability => 'Erklaerbarkeit';
+
+  @override
+  String get decisionTrails => 'Entscheidungspfade';
+
+  @override
+  String get lowTrust => 'Geringes Vertrauen';
+
+  @override
+  String get graphStats => 'Graph-Statistiken';
+
+  @override
+  String get noEntities => 'Keine Entitaeten';
+
+  @override
+  String get noTrails => 'Keine Pfade';
+
+  @override
+  String get scanComplete => 'Scan abgeschlossen';
+
+  @override
+  String get threats => 'Bedrohungen';
+
+  @override
+  String get threatRate => 'Bedrohungsrate';
+
+  @override
+  String get totalScans => 'Scans gesamt';
+
+  @override
+  String get integrity => 'Integritaet';
+
+  @override
+  String get securityTitle => 'Sicherheit';
+
+  @override
+  String get complianceTitle => 'Compliance';
+
+  @override
+  String get rolesTitle => 'Rollen';
+
+  @override
+  String get permissions => 'Berechtigungen';
+
+  @override
+  String get auditLog => 'Audit-Protokoll';
+
+  @override
+  String get redTeam => 'Red Team';
+
+  @override
+  String get scanStatus => 'Scan-Status';
+
+  @override
+  String get complianceReport => 'Compliance-Bericht';
+
+  @override
+  String get decisionsTitle => 'Entscheidungen';
+
+  @override
+  String get remediations => 'Massnahmen';
+
+  @override
+  String get openStatus => 'Offen';
+
+  @override
+  String get inProgressStatus => 'In Bearbeitung';
+
+  @override
+  String get resolvedStatus => 'Erledigt';
+
+  @override
+  String get overdueStatus => 'Ueberfaellig';
+
+  @override
+  String get approvalRate => 'Genehmigungsrate';
+
+  @override
+  String get flaggedCount => 'Markiert';
+
+  @override
+  String get transparency => 'Transparenz';
+
+  @override
+  String get euAiAct => 'EU AI Act';
+
+  @override
+  String get dsgvo => 'DSGVO';
+
+  @override
+  String get runScan => 'Scan starten';
+
+  @override
+  String get adminTitle => 'Verwaltung';
+
+  @override
+  String get agentsTitle => 'Agenten';
+
+  @override
+  String get modelsTitle => 'Modelle';
+
+  @override
+  String get systemTitle => 'System';
+
+  @override
+  String get workflowsTitle => 'Workflows';
+
+  @override
+  String get vaultTitle => 'Tresor';
+
+  @override
+  String get credentialsTitle => 'Zugangsdaten';
+
+  @override
+  String get bindingsTitle => 'Bindungen';
+
+  @override
+  String get connectorsTitle => 'Konnektoren';
+
+  @override
+  String get commandsTitle => 'Befehle';
+
+  @override
+  String get isolationTitle => 'Isolation';
+
+  @override
+  String get sandboxTitle => 'Sandbox';
+
+  @override
+  String get circlesTitle => 'Kreise';
+
+  @override
+  String get wizardsTitle => 'Assistenten';
+
+  @override
+  String get systemStatus => 'Systemstatus';
+
+  @override
+  String get shutdownServer => 'Server herunterfahren';
+
+  @override
+  String get shutdownConfirm =>
+      'Bist du sicher, dass du den Server herunterfahren willst?';
+
+  @override
+  String get startComponent => 'Starten';
+
+  @override
+  String get stopComponent => 'Stoppen';
+
+  @override
+  String get selectTemplate => 'Vorlage auswaehlen';
+
+  @override
+  String get workflowStarted => 'Workflow gestartet';
+
+  @override
+  String get noWorkflows => 'Keine Workflows';
+
+  @override
+  String get templates => 'Vorlagen';
+
+  @override
+  String get running => 'Laeuft';
+
+  @override
+  String get vaultStats => 'Tresor-Statistiken';
+
+  @override
+  String get totalEntries => 'Eintraege gesamt';
+
+  @override
+  String get agentVaults => 'Agenten-Tresore';
+
+  @override
+  String get noVaults => 'Keine Tresore';
+
+  @override
+  String get availableModels => 'Verfuegbare Modelle';
+
+  @override
+  String get modelStats => 'Modell-Statistiken';
+
+  @override
+  String get providers => 'Anbieter';
+
+  @override
+  String get capabilities => 'Faehigkeiten';
+
+  @override
+  String get plannerModel => 'Planer';
+
+  @override
+  String get executorModel => 'Ausfuehrer';
+
+  @override
+  String get coderModel => 'Programmierer';
+
+  @override
+  String get embeddingModel => 'Embedding';
+
+  @override
+  String get configured => 'Konfiguriert';
+
+  @override
+  String get modelWarnings => 'Warnungen';
+
+  @override
+  String get identityDreamCycle => 'Traumzyklus';
+
+  @override
+  String get identityGenesisAnchors => 'Genesis-Anker';
+
+  @override
+  String get identityNoAnchors => 'Keine Genesis-Anker';
+
+  @override
+  String get identityPersonality => 'Persoenlichkeit';
+
+  @override
+  String get identityCognitive => 'Kognitiver Zustand';
+
+  @override
+  String get identityEmotional => 'Emotionaler Zustand';
+
+  @override
+  String get identitySomatic => 'Somatischer Zustand';
+
+  @override
+  String get identityNarrative => 'Narrativ';
+
+  @override
+  String get identityExistential => 'Existenziell';
+
+  @override
+  String get identityPredictive => 'Praediktiv';
+
+  @override
+  String get identityEpistemic => 'Epistemisch';
+
+  @override
+  String get identityBiases => 'Aktive Verzerrungen';
+
+  @override
+  String get search => 'Suchen';
+
+  @override
+  String get filter => 'Filtern';
+
+  @override
+  String get sortBy => 'Sortieren nach';
+
+  @override
+  String get refresh => 'Aktualisieren';
+
+  @override
+  String get export => 'Exportieren';
+
+  @override
+  String get viewAll => 'Alle anzeigen';
+
+  @override
+  String get details => 'Details';
+
+  @override
+  String get back => 'Zurueck';
+
+  @override
+  String get confirm => 'Bestaetigen';
+
+  @override
+  String get actions => 'Aktionen';
+
+  @override
+  String get statusLabel => 'Status';
+
+  @override
+  String get enabled => 'Aktiviert';
+
+  @override
+  String get disabled => 'Deaktiviert';
+
+  @override
+  String get total => 'Gesamt';
+
+  @override
+  String get count => 'Anzahl';
+
+  @override
+  String get rate => 'Rate';
+
+  @override
+  String get average => 'Durchschnitt';
+
+  @override
+  String get duration => 'Dauer';
+
+  @override
+  String get timestamp => 'Zeitstempel';
+
+  @override
+  String get severityLabel => 'Schweregrad';
+
+  @override
+  String get critical => 'Kritisch';
+
+  @override
+  String get errorLabel => 'Fehler';
+
+  @override
+  String get warningLabel => 'Warnung';
+
+  @override
+  String get infoLabel => 'Info';
+
+  @override
+  String get successLabel => 'Erfolg';
+
+  @override
+  String get unknownLabel => 'Unbekannt';
+
+  @override
+  String get notConfigured => 'Nicht konfiguriert';
+
+  @override
+  String get comingSoon => 'Kommt bald';
+
+  @override
+  String get beta => 'Beta';
+
+  @override
+  String get copyToClipboard => 'In Zwischenablage kopieren';
+
+  @override
+  String get copied => 'Kopiert!';
+
+  @override
+  String get chatSettings => 'Chat-Einstellungen';
+
+  @override
+  String get clearChat => 'Chat loeschen';
+
+  @override
+  String get voiceMode => 'Sprachmodus';
+
+  @override
+  String get fileUploadAction => 'Datei hochladen';
+
+  @override
+  String get planDetails => 'Plandetails';
+
+  @override
+  String get noMessages => 'Noch keine Nachrichten';
+
+  @override
+  String get typeMessage => 'Nachricht eingeben...';
+
+  @override
+  String get settingsTitle => 'Einstellungen';
+
+  @override
+  String get language => 'Sprache';
+
+  @override
+  String get theme => 'Design';
+
+  @override
+  String get about => 'Ueber';
+
+  @override
+  String get licenses => 'Lizenzen';
+
+  @override
+  String get clearCache => 'Cache leeren';
+
+  @override
+  String get adminConfigSubtitle => 'Konfiguration verwalten';
+
+  @override
+  String get adminAgentsSubtitle => 'Agenten & Profile';
+
+  @override
+  String get adminModelsSubtitle => 'LLM-Modelle';
+
+  @override
+  String get adminSecuritySubtitle => 'Sicherheit & Compliance';
+
+  @override
+  String get adminWorkflowsSubtitle => 'Automatisierungen';
+
+  @override
+  String get adminMemorySubtitle => 'Wissensgraph';
+
+  @override
+  String get adminVaultSubtitle => 'Geheimnisse & Schluessel';
+
+  @override
+  String get adminSystemSubtitle => 'Systemstatus';
+
+  @override
+  String get dashboardRefreshing => 'Auto-Aktualisierung: 15s';
+
+  @override
+  String get backendVersion => 'Backend-Version';
+
+  @override
+  String get modelInfo => 'Modell-Info';
+
+  @override
+  String get confidence => 'Konfidenz';
+
+  @override
+  String get rolesAccess => 'Rollen & Zugriff';
+
+  @override
+  String get loadMore => 'Mehr laden';
+
+  @override
+  String get actor => 'Akteur';
+
+  @override
+  String get noAuditEntries => 'Keine Audit-Eintraege';
+
+  @override
+  String get allSeverities => 'Alle Schweregrade';
+
+  @override
+  String get allActions => 'Alle Aktionen';
+
+  @override
+  String get scanNotAvailable => 'Scan nicht verfuegbar';
+
+  @override
+  String get lastScan => 'Letzter Scan';
+
+  @override
+  String get scanResults => 'Scan-Ergebnisse';
+
+  @override
+  String get compliant => 'Konform';
+
+  @override
+  String get nonCompliant => 'Nicht konform';
+
+  @override
+  String get model => 'Modell';
+
+  @override
+  String get temperature => 'Temperatur';
+
+  @override
+  String get priority => 'Prioritaet';
+
+  @override
+  String get allowedTools => 'Erlaubte Tools';
+
+  @override
+  String get blockedTools => 'Blockierte Tools';
+
+  @override
+  String get noAgents => 'Keine Agenten konfiguriert';
+
+  @override
+  String get description => 'Beschreibung';
+
+  @override
+  String get provider => 'Anbieter';
+
+  @override
+  String get noModels => 'Keine Modelle verfuegbar';
+
+  @override
+  String get owner => 'Besitzer';
+
+  @override
+  String get llmBackend => 'LLM-Backend';
+
+  @override
+  String get components => 'Komponenten';
+
+  @override
+  String get dangerZone => 'Gefahrenzone';
+
+  @override
+  String get reloadConfig => 'Konfiguration neu laden';
+
+  @override
+  String get runtimeInfo => 'Laufzeitinfo';
+
+  @override
+  String get startWorkflow => 'Workflow starten';
+
+  @override
+  String get noCategories => 'Keine Kategorien';
+
+  @override
+  String templateCount(String count) {
+    return '$count Vorlagen';
+  }
+
+  @override
+  String get entityTypes => 'Entitaetstypen';
+
+  @override
+  String get activeTrails => 'Aktive Pfade';
+
+  @override
+  String get completedTrails => 'Abgeschlossen';
+
+  @override
+  String get lastAccessed => 'Letzter Zugriff';
+
+  @override
+  String get author => 'Autor';
+
+  @override
+  String get noQuarantine => 'Keine isolierten Eintraege';
+
+  @override
+  String get totalVaults => 'Tresore gesamt';
+
+  @override
+  String get scanNow => 'Jetzt scannen';
+
+  @override
+  String get startConversation => 'Starte eine Unterhaltung';
+
+  @override
+  String get attachFile => 'Datei anhaengen';
+
+  @override
+  String get voiceModeHint => 'Sprachmodus kommt bald';
+
+  @override
+  String get canvasLabel => 'Canvas';
+
+  @override
+  String get configGeneral => 'Allgemein';
+
+  @override
+  String get configLanguage => 'Sprache';
+
+  @override
+  String get configProviders => 'Anbieter';
+
+  @override
+  String get configModels => 'Modelle';
+
+  @override
+  String get configPlanner => 'Planer';
+
+  @override
+  String get configExecutor => 'Ausfuehrer';
+
+  @override
+  String get configMemory => 'Gedaechtnis';
+
+  @override
+  String get configChannels => 'Kanaele';
+
+  @override
+  String get configSecurity => 'Sicherheit';
+
+  @override
+  String get configWeb => 'Web';
+
+  @override
+  String get configMcp => 'MCP';
+
+  @override
+  String get configCron => 'Cron';
+
+  @override
+  String get configDatabase => 'Datenbank';
+
+  @override
+  String get configLogging => 'Protokollierung';
+
+  @override
+  String get configPrompts => 'Prompts';
+
+  @override
+  String get configAgents => 'Agenten';
+
+  @override
+  String get configBindings => 'Bindungen';
+
+  @override
+  String get configSystem => 'System';
+
+  @override
+  String get ownerName => 'Besitzername';
+
+  @override
+  String get operationMode => 'Betriebsmodus';
+
+  @override
+  String get costTracking => 'Kostenverfolgung';
+
+  @override
+  String get dailyBudget => 'Tagesbudget';
+
+  @override
+  String get monthlyBudget => 'Monatsbudget';
+
+  @override
+  String get apiKey => 'API-Schluessel';
+
+  @override
+  String get baseUrl => 'Basis-URL';
+
+  @override
+  String get maxTokens => 'Max Tokens';
+
+  @override
+  String get timeout => 'Zeitlimit';
+
+  @override
+  String get keepAlive => 'Keep Alive';
+
+  @override
+  String get contextWindow => 'Kontextfenster';
+
+  @override
+  String get vramGb => 'VRAM (GB)';
+
+  @override
+  String get topP => 'Top P';
+
+  @override
+  String get maxIterations => 'Max Iterationen';
+
+  @override
+  String get escalationAfter => 'Eskalation nach';
+
+  @override
+  String get responseBudget => 'Antwort-Token-Budget';
+
+  @override
+  String get policiesDir => 'Richtlinienverzeichnis';
+
+  @override
+  String get defaultRiskLevel => 'Standard-Risikostufe';
+
+  @override
+  String get maxBlockedRetries => 'Max blockierte Versuche';
+
+  @override
+  String get sandboxLevel => 'Sandbox-Stufe';
+
+  @override
+  String get maxMemoryMb => 'Max Speicher (MB)';
+
+  @override
+  String get maxCpuSeconds => 'Max CPU-Sekunden';
+
+  @override
+  String get allowedPaths => 'Erlaubte Pfade';
+
+  @override
+  String get networkAccess => 'Netzwerkzugriff';
+
+  @override
+  String get envVars => 'Umgebungsvariablen';
+
+  @override
+  String get defaultTimeout => 'Standard-Zeitlimit';
+
+  @override
+  String get maxOutputChars => 'Max Ausgabezeichen';
+
+  @override
+  String get maxRetries => 'Max Versuche';
+
+  @override
+  String get backoffDelay => 'Backoff-Verzoegerung';
+
+  @override
+  String get maxParallelTools => 'Max parallele Tools';
+
+  @override
+  String get chunkSize => 'Chunk-Groesse';
+
+  @override
+  String get chunkOverlap => 'Chunk-Ueberlappung';
+
+  @override
+  String get searchTopK => 'Suche Top K';
+
+  @override
+  String get searchWeights => 'Suchgewichte';
+
+  @override
+  String get vectorWeight => 'Vektor-Gewicht';
+
+  @override
+  String get bm25Weight => 'BM25-Gewicht';
+
+  @override
+  String get graphWeight => 'Graph-Gewicht';
+
+  @override
+  String get recencyHalfLife => 'Aktualitaets-Halbwertszeit';
+
+  @override
+  String get compactionThreshold => 'Kompaktierungsschwelle';
+
+  @override
+  String get compactionKeepLast => 'Kompaktierung letzte behalten';
+
+  @override
+  String get episodicRetention => 'Episodische Aufbewahrung';
+
+  @override
+  String get dynamicWeighting => 'Dynamische Gewichtung';
+
+  @override
+  String get voiceEnabled => 'Sprache aktiviert';
+
+  @override
+  String get ttsBackend => 'TTS-Backend';
+
+  @override
+  String get piperVoice => 'Piper-Stimme';
+
+  @override
+  String get piperLengthScale => 'Piper-Laengenskala';
+
+  @override
+  String get wakeWordEnabled => 'Aktivierungswort aktiviert';
+
+  @override
+  String get wakeWord => 'Aktivierungswort';
+
+  @override
+  String get wakeWordBackend => 'Aktivierungswort-Backend';
+
+  @override
+  String get talkMode => 'Sprechmodus';
+
+  @override
+  String get autoListen => 'Auto-Zuhoeren';
+
+  @override
+  String get blockedCommands => 'Blockierte Befehle';
+
+  @override
+  String get credentialPatterns => 'Zugangsmuster';
+
+  @override
+  String get maxSubAgentDepth => 'Max Sub-Agent-Tiefe';
+
+  @override
+  String get searchBackends => 'Such-Backends';
+
+  @override
+  String get domainFilters => 'Domain-Filter';
+
+  @override
+  String get blocklist => 'Sperrliste';
+
+  @override
+  String get allowlist => 'Erlaubnisliste';
+
+  @override
+  String get httpLimits => 'HTTP-Limits';
+
+  @override
+  String get maxFetchBytes => 'Max Abruf-Bytes';
+
+  @override
+  String get maxTextChars => 'Max Textzeichen';
+
+  @override
+  String get fetchTimeout => 'Abruf-Zeitlimit';
+
+  @override
+  String get searchTimeout => 'Such-Zeitlimit';
+
+  @override
+  String get maxSearchResults => 'Max Suchergebnisse';
+
+  @override
+  String get rateLimit => 'Ratenlimit';
+
+  @override
+  String get mcpServers => 'MCP-Server';
+
+  @override
+  String get a2aProtocol => 'A2A-Protokoll';
+
+  @override
+  String get remotes => 'Remotes';
+
+  @override
+  String get heartbeat => 'Heartbeat';
+
+  @override
+  String get intervalMinutes => 'Intervall (Minuten)';
+
+  @override
+  String get checklistFile => 'Checklisten-Datei';
+
+  @override
+  String get channel => 'Kanal';
+
+  @override
+  String get plugins => 'Plugins';
+
+  @override
+  String get skillsDir => 'Skills-Verzeichnis';
+
+  @override
+  String get autoUpdate => 'Auto-Update';
+
+  @override
+  String get cronJobs => 'Cron-Jobs';
+
+  @override
+  String get schedule => 'Zeitplan';
+
+  @override
+  String get command => 'Befehl';
+
+  @override
+  String get databaseBackend => 'Datenbank-Backend';
+
+  @override
+  String get encryption => 'Verschluesselung';
+
+  @override
+  String get pgHost => 'Host';
+
+  @override
+  String get pgPort => 'Port';
+
+  @override
+  String get pgDbName => 'Datenbankname';
+
+  @override
+  String get pgUser => 'Benutzer';
+
+  @override
+  String get pgPassword => 'Passwort';
+
+  @override
+  String get pgPoolMin => 'Pool Min';
+
+  @override
+  String get pgPoolMax => 'Pool Max';
+
+  @override
+  String get logLevel => 'Log-Stufe';
+
+  @override
+  String get jsonLogs => 'JSON-Logs';
+
+  @override
+  String get consoleOutput => 'Konsolenausgabe';
+
+  @override
+  String get systemPrompt => 'System-Prompt';
+
+  @override
+  String get replanPrompt => 'Replan-Prompt';
+
+  @override
+  String get escalationPrompt => 'Eskalations-Prompt';
+
+  @override
+  String get policyYaml => 'Richtlinien-YAML';
+
+  @override
+  String get heartbeatMd => 'Heartbeat-Checkliste';
+
+  @override
+  String get personalityPrompt => 'Persoenlichkeits-Prompt';
+
+  @override
+  String get promptEvolution => 'Prompt-Evolution';
+
+  @override
+  String get resetToDefault => 'Auf Standard zuruecksetzen';
+
+  @override
+  String get triggerPatterns => 'Trigger-Muster';
+
+  @override
+  String get channelFilter => 'Kanal-Filter';
+
+  @override
+  String get pattern => 'Muster';
+
+  @override
+  String get targetAgent => 'Ziel-Agent';
+
+  @override
+  String get restartBackend => 'Backend neustarten';
+
+  @override
+  String get exportConfig => 'Konfiguration exportieren';
+
+  @override
+  String get importConfig => 'Konfiguration importieren';
+
+  @override
+  String get factoryReset => 'Werkseinstellungen';
+
+  @override
+  String get factoryResetConfirm =>
+      'Alle Einstellungen auf Werkseinstellungen zuruecksetzen. Fortfahren?';
+
+  @override
+  String get configurationSaved => 'Konfiguration gespeichert';
+
+  @override
+  String get saveHadErrors => 'Speichern hatte Fehler';
+
+  @override
+  String get unsavedChanges => 'Ungespeicherte Aenderungen';
+
+  @override
+  String get discard => 'Verwerfen';
+
+  @override
+  String get saving => 'Wird gespeichert...';
+
+  @override
+  String get voiceOff => 'Aus';
+
+  @override
+  String get voiceListening => 'Hoere zu...';
+
+  @override
+  String get voiceSpeakNow => 'Jetzt sprechen';
+
+  @override
+  String get voiceProcessing => 'Verarbeite...';
+
+  @override
+  String get voiceSpeaking => 'Spricht...';
+
+  @override
+  String get observe => 'Beobachten';
+
+  @override
+  String get agentLog => 'Agent-Protokoll';
+
+  @override
+  String get kanban => 'Kanban';
+
+  @override
+  String get dag => 'DAG';
+
+  @override
+  String get plan => 'Plan';
+
+  @override
+  String get toDo => 'Zu erledigen';
+
+  @override
+  String get inProgress => 'In Bearbeitung';
+
+  @override
+  String get verifying => 'Pruefen';
+
+  @override
+  String get done => 'Erledigt';
+
+  @override
+  String get searchConfigPages => 'Konfigurationsseiten suchen...';
+
+  @override
+  String get noMatchingPages => 'Keine passenden Seiten';
+
+  @override
+  String get knowledgeGraphTitle => 'Wissensgraph';
+
+  @override
+  String get searchEntities => 'Entitaeten suchen...';
+
+  @override
+  String get allTypes => 'Alle Typen';
+
+  @override
+  String get entityDetail => 'Entitaets-Detail';
+
+  @override
+  String get attributes => 'Attribute';
+
+  @override
+  String get instances => 'Instanzen';
+
+  @override
+  String get dagRuns => 'DAG-Laeufe';
+
+  @override
+  String get noInstances => 'Keine Instanzen';
+
+  @override
+  String get noDagRuns => 'Keine DAG-Laeufe';
+
+  @override
+  String get addCredential => 'Zugangsdaten hinzufuegen';
+
+  @override
+  String get service => 'Dienst';
+
+  @override
+  String get key => 'Schluessel';
+
+  @override
+  String get value => 'Wert';
+
+  @override
+  String get noCredentials => 'Keine Zugangsdaten';
+
+  @override
+  String get deleteCredential => 'Zugangsdaten loeschen';
+
+  @override
+  String get lightMode => 'Heller Modus';
+
+  @override
+  String get darkMode => 'Dunkler Modus';
+
+  @override
+  String get globalSearch => 'Suche (Strg+K)';
+
+  @override
+  String get configPageGeneral => 'Allgemein';
+
+  @override
+  String get configPageLanguage => 'Sprache';
+
+  @override
+  String get configPageProviders => 'Anbieter';
+
+  @override
+  String get configPageModels => 'Modelle';
+
+  @override
+  String get configPagePlanner => 'Planer';
+
+  @override
+  String get configPageExecutor => 'Ausfuehrer';
+
+  @override
+  String get configPageMemory => 'Gedaechtnis';
+
+  @override
+  String get configPageChannels => 'Kanaele';
+
+  @override
+  String get configPageSecurity => 'Sicherheit';
+
+  @override
+  String get configPageWeb => 'Web';
+
+  @override
+  String get configPageMcp => 'MCP';
+
+  @override
+  String get configPageCron => 'Zeitplanung';
+
+  @override
+  String get configPageDatabase => 'Datenbank';
+
+  @override
+  String get configPageLogging => 'Protokollierung';
+
+  @override
+  String get configPagePrompts => 'Prompts';
+
+  @override
+  String get configPageAgents => 'Agenten';
+
+  @override
+  String get configPageBindings => 'Bindungen';
+
+  @override
+  String get configPageSystem => 'System';
+
+  @override
+  String get configPageTools => 'Tools';
+
+  @override
+  String get configPageAudit => 'Audit';
+
+  @override
+  String get auditChainIntegrity => 'Kettenintegrität';
+
+  @override
+  String get auditVerifyChain => 'Kette verifizieren';
+
+  @override
+  String get auditTimestamps => 'Zeitstempel';
+
+  @override
+  String get auditGdprExport => 'DSGVO-Export';
+
+  @override
+  String get auditExport => 'Audit exportieren';
+
+  @override
+  String get configTitle => 'Konfiguration';
+
+  @override
+  String get reloadFromBackend => 'Konfiguration vom Backend neu laden';
+
+  @override
+  String get saveCtrlS => 'Speichern (Strg+S)';
+
+  @override
+  String savedWithErrors(String sections) {
+    return 'Mit Fehlern gespeichert in: $sections';
+  }
+
+  @override
+  String get saveFailed => 'Speichern fehlgeschlagen';
+
+  @override
+  String get fieldOwnerName => 'Besitzername';
+
+  @override
+  String get fieldOperationMode => 'Betriebsmodus';
+
+  @override
+  String get fieldCostTracking => 'Kostenverfolgung';
+
+  @override
+  String get fieldDailyBudget => 'Tagesbudget (USD)';
+
+  @override
+  String get fieldMonthlyBudget => 'Monatsbudget (USD)';
+
+  @override
+  String get fieldLlmBackend => 'LLM-Backend';
+
+  @override
+  String get fieldPrimaryProvider => 'Primaerer LLM-Anbieter';
+
+  @override
+  String get fieldApiKey => 'API-Schluessel';
+
+  @override
+  String get fieldBaseUrl => 'Basis-URL';
+
+  @override
+  String get fieldModelName => 'Modellname';
+
+  @override
+  String get fieldContextWindow => 'Kontextfenster';
+
+  @override
+  String get fieldTemperature => 'Temperatur';
+
+  @override
+  String get fieldMaxIterations => 'Max Iterationen';
+
+  @override
+  String get fieldEnabled => 'Aktiviert';
+
+  @override
+  String get fieldPort => 'Port';
+
+  @override
+  String get fieldHost => 'Host';
+
+  @override
+  String get fieldPassword => 'Passwort';
+
+  @override
+  String get fieldUser => 'Benutzer';
+
+  @override
+  String get fieldTimeout => 'Zeitlimit';
+
+  @override
+  String get fieldLevel => 'Stufe';
+
+  @override
+  String get sectionSearchBackends => 'Such-Backends';
+
+  @override
+  String get sectionDomainFilters => 'Domain-Filter';
+
+  @override
+  String get sectionFetchLimits => 'Abruf-Limits';
+
+  @override
+  String get sectionSearchLimits => 'Such-Limits';
+
+  @override
+  String get sectionHttpLimits => 'HTTP-Anfrage-Limits';
+
+  @override
+  String get sectionVoice => 'Sprache';
+
+  @override
+  String get sectionHeartbeat => 'Heartbeat';
+
+  @override
+  String get sectionPlugins => 'Plugins';
+
+  @override
+  String get sectionCronJobs => 'Zeitgesteuerte Aufgaben';
+
+  @override
+  String get sectionPromptEvolution => 'Prompt-Evolution';
+
+  @override
+  String get addItem => 'Hinzufuegen';
+
+  @override
+  String get removeItem => 'Entfernen';
+
+  @override
+  String get translatePrompts => 'Prompts ueber Ollama uebersetzen';
+
+  @override
+  String get translating => 'Wird uebersetzt...';
+
+  @override
+  String get promptsTranslated => 'Prompts uebersetzt';
+
+  @override
+  String get copiedToClipboard => 'Konfiguration in Zwischenablage kopiert';
+
+  @override
+  String get configImported => 'Konfiguration importiert';
+
+  @override
+  String get restartInitiated => 'Neustart eingeleitet';
+
+  @override
+  String get factoryResetComplete => 'Werkseinstellungen wiederhergestellt';
+
+  @override
+  String get factoryResetConfirmMsg =>
+      'Alle Einstellungen auf Werkseinstellungen zuruecksetzen. Fortfahren?';
+
+  @override
+  String get languageEnglish => 'Englisch';
+
+  @override
+  String get languageGerman => 'Deutsch';
+
+  @override
+  String get languageChinese => 'Chinesisch';
+
+  @override
+  String get languageArabic => 'Arabisch';
+
+  @override
+  String get uiAndPromptLanguage => 'Oberflaeche und Prompt-Sprache';
+
+  @override
+  String get learningTitle => 'Lernen';
+
+  @override
+  String get knowledgeGaps => 'Wissensluecken';
+
+  @override
+  String get explorationQueue => 'Erkundungswarteschlange';
+
+  @override
+  String get filesProcessed => 'Dateien verarbeitet';
+
+  @override
+  String get entitiesCreated => 'Entitaeten erstellt';
+
+  @override
+  String get confidenceUpdates => 'Konfidenz-Updates';
+
+  @override
+  String get openGaps => 'Offene Luecken';
+
+  @override
+  String get importance => 'Wichtigkeit';
+
+  @override
+  String get curiosity => 'Neugier';
+
+  @override
+  String get explore => 'Erkunden';
+
+  @override
+  String get dismiss => 'Verwerfen';
+
+  @override
+  String get noGaps => 'Keine Wissensluecken erkannt';
+
+  @override
+  String get noTasks => 'Keine Erkundungsaufgaben';
+
+  @override
+  String get confidenceHistory => 'Konfidenz-Verlauf';
+
+  @override
+  String get feedback => 'Feedback';
+
+  @override
+  String get positive => 'Positiv';
+
+  @override
+  String get negative => 'Negativ';
+
+  @override
+  String get correction => 'Korrektur';
+
+  @override
+  String get adminLearningSubtitle => 'Aktives Lernen & Neugier';
+
+  @override
+  String get watchDirectories => 'Ueberwachte Verzeichnisse';
+
+  @override
+  String get directoryExists => 'Verzeichnis vorhanden';
+
+  @override
+  String get directoryMissing => 'Verzeichnis nicht gefunden';
+
+  @override
+  String get qaKnowledgeBase => 'Wissen';
+
+  @override
+  String get lineage => 'Herkunft';
+
+  @override
+  String get question => 'Frage';
+
+  @override
+  String get answer => 'Antwort';
+
+  @override
+  String get topic => 'Thema';
+
+  @override
+  String get addQA => 'Wissen hinzufuegen';
+
+  @override
+  String get verify => 'Verifizieren';
+
+  @override
+  String get source => 'Quelle';
+
+  @override
+  String get noQAPairs => 'Keine Wissenseintraege';
+
+  @override
+  String get noLineage => 'Keine Herkunftsdaten';
+
+  @override
+  String get entityLineage => 'Entitaets-Herkunft';
+
+  @override
+  String get recentChanges => 'Letzte Aenderungen';
+
+  @override
+  String get created => 'Erstellt';
+
+  @override
+  String get updated => 'Aktualisiert';
+
+  @override
+  String get decayed => 'Verfallen';
+
+  @override
+  String get runExploration => 'Erkundung starten';
+
+  @override
+  String get explorationComplete => 'Erkundung abgeschlossen';
+
+  @override
+  String get activityChart => 'Aktivitaet';
+
+  @override
+  String get stopped => 'Gestoppt';
+
+  @override
+  String get requestsOverTime => 'Anfragen im Zeitverlauf';
+
+  @override
+  String get teachCognithor => 'Cognithor beibringen';
+
+  @override
+  String get uploadFile => 'Datei hochladen';
+
+  @override
+  String get learnFromUrl => 'Von Website lernen';
+
+  @override
+  String get learnFromYoutube => 'Von Video lernen';
+
+  @override
+  String get dropFilesHere => 'Dateien hier ablegen oder durchsuchen';
+
+  @override
+  String get learningHistory => 'Lernverlauf';
+
+  @override
+  String chunksLearned(String count) {
+    return '$count Abschnitte gelernt';
+  }
+
+  @override
+  String get processingContent => 'Inhalt wird verarbeitet...';
+
+  @override
+  String get learnSuccess => 'Erfolgreich gelernt!';
+
+  @override
+  String get learnFailed => 'Lernen fehlgeschlagen';
+
+  @override
+  String get enterUrl => 'Website-URL eingeben...';
+
+  @override
+  String get enterYoutubeUrl => 'YouTube-URL eingeben...';
+
+  @override
+  String get adminTeachSubtitle => 'Dateien, URLs, Videos hochladen';
+
+  @override
+  String get newSkill => 'Neuer Skill';
+
+  @override
+  String get editSkill => 'Skill bearbeiten';
+
+  @override
+  String get createSkill => 'Skill erstellen';
+
+  @override
+  String get deleteSkill => 'Skill loeschen';
+
+  @override
+  String get skillName => 'Name';
+
+  @override
+  String get skillBody => 'Skill-Inhalt (Markdown)';
+
+  @override
+  String get triggerKeywords => 'Trigger-Schluesselwoerter';
+
+  @override
+  String get requiredTools => 'Benoetigte Tools';
+
+  @override
+  String get modelPreference => 'Modell-Praeferenz';
+
+  @override
+  String get skillSaved => 'Skill erfolgreich gespeichert';
+
+  @override
+  String get skillCreated => 'Skill erfolgreich erstellt';
+
+  @override
+  String get skillDeleted => 'Skill geloescht';
+
+  @override
+  String get confirmDeleteSkill =>
+      'Bist du sicher, dass du diesen Skill loeschen moechtest? Dies kann nicht rueckgaengig gemacht werden.';
+
+  @override
+  String get discardChanges => 'Aenderungen verwerfen?';
+
+  @override
+  String get discardChangesBody =>
+      'Du hast ungespeicherte Aenderungen. Verwerfen?';
+
+  @override
+  String get totalUses => 'Gesamtnutzungen';
+
+  @override
+  String get lastUsed => 'Zuletzt verwendet';
+
+  @override
+  String get commaSeparated => 'Komma-getrennt';
+
+  @override
+  String get skillBodyHint => 'Skill-Anweisungen in Markdown schreiben...';
+
+  @override
+  String get metadata => 'Metadaten';
+
+  @override
+  String get statistics => 'Statistiken';
+
+  @override
+  String get builtInSkill => 'Eingebauter Skill (nur lesen)';
+
+  @override
+  String get exportSkillMd => 'Als SKILL.md exportieren';
+
+  @override
+  String get skillExported => 'Skill in Zwischenablage exportiert';
+
+  @override
+  String get general => 'Allgemein';
+
+  @override
+  String get productivity => 'Produktivitaet';
+
+  @override
+  String get research => 'Recherche';
+
+  @override
+  String get analysis => 'Analyse';
+
+  @override
+  String get development => 'Entwicklung';
+
+  @override
+  String get automation => 'Automatisierung';
+
+  @override
+  String get newAgent => 'Neuer Agent';
+
+  @override
+  String get editAgent => 'Agent bearbeiten';
+
+  @override
+  String get deleteAgent => 'Agent loeschen';
+
+  @override
+  String get confirmDeleteAgent =>
+      'Bist du sicher, dass du diesen Agenten loeschen moechtest? Dies kann nicht rueckgaengig gemacht werden.';
+
+  @override
+  String get agentCreated => 'Agent erfolgreich erstellt';
+
+  @override
+  String get agentSaved => 'Agent erfolgreich gespeichert';
+
+  @override
+  String get agentDeleted => 'Agent geloescht';
+
+  @override
+  String get displayName => 'Anzeigename';
+
+  @override
+  String get preferredModel => 'Bevorzugtes Modell';
+
+  @override
+  String get sandboxTimeout => 'Sandbox Timeout (s)';
+
+  @override
+  String get sandboxNetwork => 'Sandbox Netzwerk';
+
+  @override
+  String get canDelegateTo => 'Kann delegieren an';
+
+  @override
+  String get cannotDeleteDefault =>
+      'Standard-Agent kann nicht geloescht werden';
+
+  @override
+  String get robotOfficePipMode => 'Robot Office ist im Bild-in-Bild-Modus';
+
+  @override
+  String get fullscreen => 'Vollbild';
+
+  @override
+  String get pipLabel => 'PiP';
+
+  @override
+  String taskCount(int count) {
+    return '$count Aufgaben';
+  }
+
+  @override
+  String get hackerMode => 'Hacker-Modus';
+
+  @override
+  String get entityVisualization => 'Entitaets-Visualisierung';
+
+  @override
+  String get manageSecrets => 'Geheimnisse verwalten';
+
+  @override
+  String get channelToggles => 'Kanal-Schalter';
+
+  @override
+  String get channelSettings => 'Kanal-Einstellungen';
+
+  @override
+  String get tapToSelect => 'Tippen zum Auswaehlen...';
+
+  @override
+  String get selectModel => 'Modell auswaehlen';
+
+  @override
+  String get searchModels => 'Modelle suchen...';
+
+  @override
+  String get remove => 'Entfernen';
+
+  @override
+  String get stopBackend => 'Backend stoppen';
+
+  @override
+  String get stopBackendDescription =>
+      'Das Cognithor-Backend stoppen. Du musst es manuell neu starten.';
+
+  @override
+  String get stopBackendConfirmBody =>
+      'Dies stoppt den Cognithor-Backend-Prozess. Du musst ihn manuell ueber die Kommandozeile neu starten.';
+
+  @override
+  String get backendStopped => 'Backend gestoppt. Bitte manuell neu starten.';
+
+  @override
+  String get downloadConfigDesc =>
+      'Aktuelle Konfiguration als JSON herunterladen';
+
+  @override
+  String get loadConfigDesc => 'Konfiguration aus JSON-Datei laden';
+
+  @override
+  String get resetAllDesc =>
+      'Alle Einstellungen auf Standard zuruecksetzen. Dies kann nicht rueckgaengig gemacht werden.';
+
+  @override
+  String get factoryResetNotImpl =>
+      'Werkseinstellungen sind noch nicht im Backend implementiert. Zum manuellen Zuruecksetzen loesche deine config.yaml und starte Cognithor neu.';
+
+  @override
+  String get ok => 'OK';
+
+  @override
+  String get wizardSubtitle => 'Dein persoenlicher KI-Assistent';
+
+  @override
+  String get chooseLlmProvider => 'Waehle deinen LLM-Anbieter';
+
+  @override
+  String get localOllama => 'Lokal (Ollama)';
+
+  @override
+  String get localOllamaDesc =>
+      'Modelle auf eigener Hardware ausfuehren. Volle Privatsphaere, keine API-Kosten. Erfordert installiertes Ollama.';
+
+  @override
+  String get cloudProviderLabel => 'Cloud-Anbieter';
+
+  @override
+  String get cloudProviderDesc =>
+      'OpenAI, Anthropic oder andere Cloud-APIs nutzen. Schnellere Einrichtung, erfordert API-Schluessel.';
+
+  @override
+  String get next => 'Weiter';
+
+  @override
+  String get ollamaConfiguration => 'Ollama-Konfiguration';
+
+  @override
+  String get cloudApiConfiguration => 'Cloud-API-Konfiguration';
+
+  @override
+  String get ollamaConfigHint => 'Gib die URL ein, unter der Ollama laeuft.';
+
+  @override
+  String get cloudConfigHint =>
+      'Waehle deinen Cloud-Anbieter und gib deinen API-Schluessel ein.';
+
+  @override
+  String get ollamaUrl => 'Ollama-URL';
+
+  @override
+  String get testConnection => 'Verbindung testen';
+
+  @override
+  String get testingConnection => 'Teste...';
+
+  @override
+  String get youreAllSet => 'Alles bereit!';
+
+  @override
+  String get ollamaReadyMsg =>
+      'Ollama ist verbunden und bereit. Cognithor nutzt deine lokalen Modelle fuer Planung und Ausfuehrung.';
+
+  @override
+  String cloudReadyMsg(String provider) {
+    return '$provider ist konfiguriert. Cognithor nutzt deine Cloud-API fuer Planung und Ausfuehrung.';
+  }
+
+  @override
+  String get changeSettingsAnytime =>
+      'Du kannst diese Einstellungen jederzeit aendern.';
+
+  @override
+  String get startUsingCognithor => 'Cognithor starten';
+
+  @override
+  String get ollamaNoModels =>
+      'Verbunden mit Ollama. Noch keine Modelle installiert — fuehre \"ollama pull qwen3:8b\" aus, um zu starten.';
+
+  @override
+  String ollamaModelsAvailable(int count) {
+    return 'Verbunden mit Ollama. $count Modell(e) verfuegbar.';
+  }
+
+  @override
+  String ollamaStatusError(int code) {
+    return 'Ollama antwortete mit Status $code. Stelle sicher, dass der Server laeuft.';
+  }
+
+  @override
+  String get enterApiKey => 'Bitte gib einen API-Schluessel ein.';
+
+  @override
+  String apiKeyTooShort(String provider) {
+    return 'Der Schluessel scheint zu kurz. Ueberpreufe deinen $provider-API-Schluessel.';
+  }
+
+  @override
+  String apiKeySaved(String provider) {
+    return '$provider-API-Schluessel gespeichert. Du kannst ihn spaeter in den Einstellungen aendern.';
+  }
+
+  @override
+  String connectionFailed(String error) {
+    return 'Verbindung fehlgeschlagen: $error';
+  }
+
+  @override
+  String get minimize => 'Minimieren';
+
+  @override
+  String get shrink => 'Verkleinern';
+
+  @override
+  String get expandLabel => 'Vergroessern';
+
+  @override
+  String get robotOffice => 'Robot Office';
+
+  @override
+  String get copy => 'Kopieren';
+
+  @override
+  String get share => 'Teilen';
+
+  @override
+  String get noLogEntries => 'Keine Protokolleintraege';
+
+  @override
+  String get noPlanData => 'Keine Plandaten';
+
+  @override
+  String get noDagData => 'Keine DAG-Daten';
+
+  @override
+  String get log => 'Protokoll';
+
+  @override
+  String get fileReadError => 'Datei konnte nicht gelesen werden';
+
+  @override
+  String uploadError(String error) {
+    return 'Fehler beim Hochladen: $error';
+  }
+
+  @override
+  String get toolSpecificTimeouts => 'Tool-spezifische Zeitlimits';
+
+  @override
+  String get required => 'Erforderlich';
+
+  @override
+  String get stopLabel => 'Stoppen';
+
+  @override
+  String get resetLabel => 'Zuruecksetzen';
+
+  @override
+  String get exportLabel => 'Exportieren';
+
+  @override
+  String get importLabel => 'Importieren';
+
+  @override
+  String get catAiEngine => 'KI-Engine';
+
+  @override
+  String get catChannels => 'Kanaele';
+
+  @override
+  String get catKnowledge => 'Wissen';
+
+  @override
+  String get catSecurity => 'Sicherheit';
+
+  @override
+  String get catSystem => 'System';
+
+  @override
+  String get saved => 'Gespeichert';
+
+  @override
+  String get chatHistory => 'Chatverlauf';
+
+  @override
+  String get newChat => 'Neuer Chat';
+
+  @override
+  String get untitledChat => 'Unbenannter Chat';
+
+  @override
+  String get deleteChat => 'Chat loeschen';
+
+  @override
+  String get confirmDeleteChat => 'Diese Unterhaltung loeschen?';
+
+  @override
+  String messagesCount(String count) {
+    return '$count Nachrichten';
+  }
+
+  @override
+  String get justNow => 'Gerade eben';
+
+  @override
+  String minutesAgo(String count) {
+    return 'Vor $count Min.';
+  }
+
+  @override
+  String hoursAgo(String count) {
+    return 'Vor $count Std.';
+  }
+
+  @override
+  String daysAgo(String count) {
+    return 'Vor $count T.';
+  }
+
+  @override
+  String get folders => 'Ordner';
+
+  @override
+  String get moveToFolder => 'In Ordner verschieben';
+
+  @override
+  String get newFolder => 'Neuer Ordner';
+
+  @override
+  String get folderName => 'Ordnername';
+
+  @override
+  String get noFolder => 'Ohne Ordner';
+
+  @override
+  String get renameChat => 'Umbenennen';
+
+  @override
+  String get editTitle => 'Titel bearbeiten';
+
+  @override
+  String sessionCount(int count) {
+    return '$count Chats';
+  }
+
+  @override
+  String get idle => 'Ruhend';
+
+  @override
+  String get thinking => 'Denkt nach...';
+
+  @override
+  String get chooseBackend => 'LLM-Backend waehlen';
+
+  @override
+  String get claudeSubscription => 'Claude-Subscription';
+
+  @override
+  String get claudeSubscriptionDesc =>
+      'Nutze dein Claude Pro/Max -- kein API-Key noetig';
+
+  @override
+  String get ollamaLocal => 'Ollama (Lokal)';
+
+  @override
+  String get ollamaLocalDesc =>
+      'Kostenlos, laeuft auf deiner GPU -- kein Internet noetig';
+
+  @override
+  String get openaiApi => 'OpenAI API';
+
+  @override
+  String get anthropicApi => 'Anthropic API';
+
+  @override
+  String get connected => 'Verbunden';
+
+  @override
+  String get notInstalled => 'Nicht installiert';
+
+  @override
+  String get noKey => 'Kein API-Key';
+
+  @override
+  String get keyConfigured => 'Key konfiguriert';
+
+  @override
+  String get recommended => 'Empfohlen';
+
+  @override
+  String get switchBackend => 'Backend wechseln';
+
+  @override
+  String get restartRequired =>
+      'Neustart erforderlich damit Änderungen wirksam werden';
+
+  @override
+  String get installClaude => 'Claude Code installieren';
+
+  @override
+  String get toolsComputerUseLabel => 'Computer-Steuerung';
+
+  @override
+  String get toolsComputerUseDesc =>
+      'Ermöglicht Computer-Steuerung (Maus, Tastatur, Screenshots)';
+
+  @override
+  String get toolsDesktopLabel => 'Desktop-Tools';
+
+  @override
+  String get toolsDesktopDesc =>
+      'Zugriff auf Zwischenablage und Desktop-Screenshots';
+
+  @override
+  String get toolsSectionDesktop => 'Desktop & Automation';
+
+  @override
+  String get toolsWarning => 'Änderungen erfordern einen Neustart';
+
+  @override
+  String get configPageSystemProfile => 'Systemprofil';
+
+  @override
+  String get systemTier => 'System-Stufe';
+
+  @override
+  String get systemRecommendedMode => 'Empfohlener Modus';
+
+  @override
+  String get systemRescan => 'Neu scannen';
+
+  @override
+  String get configPageBudget => 'Budget';
+
+  @override
+  String get configPageEvolution => 'Evolution';
+
+  @override
+  String get kanbanNewTask => 'Neuer Task';
+
+  @override
+  String get kanbanMyTasks => 'Meine Tasks';
+
+  @override
+  String get kanbanLivePipeline => 'Live Pipeline';
+
+  @override
+  String get kanbanDescription => 'Beschreibung';
+
+  @override
+  String get kanbanResult => 'Ergebnis';
+
+  @override
+  String kanbanSubtasks(int count) {
+    return 'Unteraufgaben ($count)';
+  }
+
+  @override
+  String get kanbanHistory => 'Verlauf';
+
+  @override
+  String get kanbanNoHistory => 'Noch keine Statusänderungen.';
+
+  @override
+  String get kanbanMetadata => 'Metadaten';
+
+  @override
+  String kanbanSource(String source) {
+    return 'Quelle: $source';
+  }
+
+  @override
+  String kanbanCreated(String date) {
+    return 'Erstellt: $date';
+  }
+
+  @override
+  String kanbanUpdated(String date) {
+    return 'Aktualisiert: $date';
+  }
+
+  @override
+  String kanbanCompleted(String date) {
+    return 'Abgeschlossen: $date';
+  }
+
+  @override
+  String get kanbanEditTask => 'Task bearbeiten';
+
+  @override
+  String get kanbanSave => 'Speichern';
+
+  @override
+  String get kanbanCreate => 'Erstellen';
+
+  @override
+  String get deviceSettings => 'Geräteeinstellungen';
+
+  @override
+  String get refreshSensors => 'Sensoren aktualisieren';
+
+  @override
+  String get documentsTitle => 'Dokumente & Vorlagen';
+
+  @override
+  String get connectedDevices => 'Verbundene Geräte';
+
+  @override
+  String get connectedDevicesSubtitle => 'Gekoppelte Mobilgeräte verwalten';
+
+  @override
+  String get noDevicesPaired => 'Noch keine Geräte gekoppelt';
+
+  @override
+  String get noDevicesHint => 'Koppeln Sie ein Mobilgerät per QR-Code';
+
+  @override
+  String get pairNewDevice => 'Neues Gerät koppeln';
+
+  @override
+  String get deviceName => 'Gerätename';
+
+  @override
+  String get deviceId => 'Geräte-ID';
+
+  @override
+  String get pairedAt => 'Gekoppelt';
+
+  @override
+  String get expiresAt => 'Läuft ab';
+
+  @override
+  String get revokeDevice => 'Widerrufen';
+
+  @override
+  String get revokeDeviceConfirm =>
+      'Dieses Gerät widerrufen? Es muss erneut gekoppelt werden.';
+
+  @override
+  String get deviceRevoked => 'Gerät widerrufen';
+
+  @override
+  String get pairingQrTitle => 'QR-Code scannen';
+
+  @override
+  String get pairingQrHint =>
+      'Öffne die Cognithor-App auf deinem Handy und scanne diesen Code';
+
+  @override
+  String get pairingSuccess => 'Gerät erfolgreich gekoppelt';
+
+  @override
+  String get scanQrCode => 'QR-Code scannen';
+
+  @override
+  String get scanQrHint => 'Richte deine Kamera auf den Kopplungs-QR-Code';
+
+  @override
+  String get qrScanError => 'QR-Code konnte nicht gelesen werden';
+
+  @override
+  String get networkSettings => 'Netzwerk & Konnektivität';
+
+  @override
+  String get networkSettingsSubtitle =>
+      'Netzwerk-Interfaces und API-Binding verwalten';
+
+  @override
+  String get detectedInterfaces => 'Erkannte Interfaces';
+
+  @override
+  String get noInterfacesDetected => 'Keine Netzwerk-Interfaces erkannt';
+
+  @override
+  String get enabledEndpoints => 'Aktivierte Endpunkte';
+
+  @override
+  String get autoDetect => 'Vertrauenswürdige Interfaces automatisch erkennen';
+
+  @override
+  String get autoDetectHint =>
+      'Tailscale, ZeroTier und andere VPN-Interfaces automatisch aktivieren';
+
+  @override
+  String get interfaceLoopback => 'Loopback';
+
+  @override
+  String get interfaceLan => 'LAN';
+
+  @override
+  String get interfaceTailscale => 'Tailscale';
+
+  @override
+  String get interfaceZerotier => 'ZeroTier';
+
+  @override
+  String get interfaceWireguard => 'WireGuard';
+
+  @override
+  String get interfaceCloudflare => 'Cloudflare';
+
+  @override
+  String get interfaceUnknown => 'Unbekannt';
+
+  @override
+  String get bindHost => 'Bind-Host';
+
+  @override
+  String get trusted => 'Vertrauenswürdig';
+
+  @override
+  String get untrusted => 'Nicht vertrauenswürdig';
+
+  @override
+  String get vaultActive => 'Vault aktiv';
+
+  @override
+  String get vaultActiveDesc => 'Knowledge Vault aktivieren/deaktivieren';
+
+  @override
+  String get vaultEncryption => 'Dateiverschluesselung';
+
+  @override
+  String get vaultEncryptionDesc =>
+      'Vault .md Dateien mit AES-256 verschluesseln.';
+
+  @override
+  String get vaultEncryptOn =>
+      'Maximale Sicherheit: Vault-Dateien sind verschluesselt. Datenbanken + Memory + Vault = alles geschuetzt. Obsidian kann diese Dateien nicht lesen.';
+
+  @override
+  String get vaultEncryptOff =>
+      'Obsidian-kompatibel: Vault-Dateien sind Klartext. Datenbanken und Memory-Dateien sind trotzdem verschluesselt. Fuer vollen Schutz der Vault-Dateien: BitLocker (Windows) oder LUKS (Linux) aktivieren.';
+
+  @override
+  String get vaultAlwaysEncrypted =>
+      'Immer verschluesselt (unabhaengig von diesem Toggle):';
+
+  @override
+  String get vaultAlwaysEncryptedList =>
+      '  - 33 SQLite-Datenbanken (SQLCipher / AES-256)\n  - CORE.md (Agent-Persoenlichkeit)\n  - Episodische Erinnerungen (.md)\n  - Gelernte Prozeduren (.md)\n  - Lernplaene (.json)\n  - Credentials (Fernet / PBKDF2)\n  - Schluessel: OS Keyring (nicht auf der Festplatte)';
+
+  @override
+  String get vaultAutoSave => 'Auto-Save Recherchen';
+
+  @override
+  String get vaultAutoSaveDesc =>
+      'Web-Recherchen automatisch im Vault speichern';
+
+  @override
+  String get kanbanBacklog => 'Backlog';
+
+  @override
+  String get kanbanInProgress => 'In Bearbeitung';
+
+  @override
+  String get kanbanReview => 'Überprüfung';
+
+  @override
+  String get kanbanDone => 'Erledigt';
+
+  @override
+  String get kanbanBlocked => 'Blockiert';
+
+  @override
+  String get kanbanArchive => 'Archiv';
+
+  @override
+  String get kanbanSettings => 'Kanban-Einstellungen';
+
+  @override
+  String get taskSources => 'Aufgabenquellen';
+
+  @override
+  String get fromChat => 'Aus Chat';
+
+  @override
+  String get fromChatDesc => 'Aufgaben automatisch aus Gesprächen erkennen';
+
+  @override
+  String get fromCron => 'Aus Cron-Jobs';
+
+  @override
+  String get fromCronDesc => 'Aufgaben aus geplanten Job-Ergebnissen erstellen';
+
+  @override
+  String get fromEvolution => 'Aus Evolution-Engine';
+
+  @override
+  String get fromEvolutionDesc =>
+      'Aufgaben für erkannte Verbesserungsmöglichkeiten';
+
+  @override
+  String get fromAgents => 'Von Agenten';
+
+  @override
+  String get fromAgentsDesc =>
+      'Agenten dürfen während der Ausführung Aufgaben erstellen';
+
+  @override
+  String get guards => 'Grenzen';
+
+  @override
+  String get maxAutoTasks => 'Max Auto-Aufgaben pro Sitzung';
+
+  @override
+  String get maxSubtaskDepth => 'Max Unteraufgaben-Tiefe';
+
+  @override
+  String get defaults => 'Standards';
+
+  @override
+  String get defaultPriority => 'Standard-Priorität';
+
+  @override
+  String get defaultAgent => 'Standard-Agent';
+
+  @override
+  String get autoArchiveDays => 'Automatisch archivieren nach (Tagen)';
+
+  @override
+  String get priorityLow => 'Niedrig (nur Index)';
+
+  @override
+  String get priorityNormal => 'Normal';
+
+  @override
+  String get priorityHigh => 'Hoch (Prioritaet-Lernen)';
+
+  @override
+  String get deepLearningQueued => 'Deep-Learning eingereiht';
+
+  @override
+  String get deepLearningSkipped => 'Nur indexiert';
+
+  @override
+  String get learnPriority => 'Prioritaet';
+
+  @override
+  String get deepLearningQueue => 'Deep-Learning Warteschlange';
+
+  @override
+  String get operationModeDesc =>
+      'Auto: erkennt API-Keys. Offline: nur lokales Ollama, keine Web-Tools. Online: Cloud-LLM + Web-Suche. Hybrid: Ollama + Cloud-Fallback.';
+
+  @override
+  String get copyQrPayload => 'QR-Payload kopieren';
+
+  @override
+  String get copyToken => 'Token kopieren';
+
+  @override
+  String get newLearningGoal => 'Neues Lernziel';
+
+  @override
+  String get create => 'Erstellen';
+
+  @override
+  String get evolutionEngine => 'Evolution-Engine';
+
+  @override
+  String get searchLabel => 'Suche';
+
+  @override
+  String get hideRobotOffice => 'Office ausblenden';
+
+  @override
+  String get socialListening => 'Social Listening';
+
+  @override
+  String get productName => 'Produktname';
+
+  @override
+  String get productDescription => 'Produktbeschreibung';
+
+  @override
+  String get replyTone => 'Antwort-Ton';
+
+  @override
+  String get subreddits => 'Subreddits';
+
+  @override
+  String get subredditsHint => 'Kommagetrennt, ohne r/';
+
+  @override
+  String get minIntentScore => 'Mindest-Intent-Score';
+
+  @override
+  String get scanInterval => 'Scan-Intervall (Minuten)';
+
+  @override
+  String get autoScan => 'Auto-Scan';
+
+  @override
+  String get autoPost => 'Auto-Post (Playwright)';
+
+  @override
+  String get autoPostHint => 'Erfordert einmaligen Reddit-Login im Browser';
+
+  @override
+  String get socialSetupRequired =>
+      'Gib einen Produktnamen und mindestens ein Subreddit ein, um nach Leads zu suchen.';
+
+  @override
+  String get redditLeads => 'Leads';
+
+  @override
+  String get noLeadsFound => 'Noch keine Leads gefunden';
+
+  @override
+  String get noLeadsHint =>
+      'Konfiguriere Produkt und Subreddits in den Einstellungen, dann scanne Reddit';
+
+  @override
+  String leadScore(int score) {
+    return 'Score: $score';
+  }
+
+  @override
+  String get leadNew => 'Neu';
+
+  @override
+  String get leadReviewed => 'Geprueft';
+
+  @override
+  String get leadReplied => 'Beantwortet';
+
+  @override
+  String get leadArchived => 'Archiviert';
+
+  @override
+  String get draftReply => 'Antwortentwurf';
+
+  @override
+  String get editReply => 'Antwort bearbeiten';
+
+  @override
+  String get postReply => 'Antwort posten';
+
+  @override
+  String get copyReply => 'Antwort kopieren';
+
+  @override
+  String get openOnReddit => 'Auf Reddit oeffnen';
+
+  @override
+  String get markReviewed => 'Als geprueft markieren';
+
+  @override
+  String get archiveLead => 'Archivieren';
+
+  @override
+  String get intentScore => 'Intent-Score';
+
+  @override
+  String get scoreReason => 'Begruendung';
+
+  @override
+  String get leadStats => 'Lead-Statistiken';
+
+  @override
+  String get filterAll => 'Alle';
+
+  @override
+  String get processQueue => 'Queue abarbeiten';
+
+  @override
+  String get wizardComplete => 'Queue abgeschlossen';
+
+  @override
+  String wizardSummary(int replied, int skipped, int archived) {
+    return '$replied beantwortet, $skipped uebersprungen, $archived archiviert';
+  }
+
+  @override
+  String get improve => 'Verbessern';
+
+  @override
+  String get variants => 'Varianten';
+
+  @override
+  String get useTemplate => 'Vorlage nutzen';
+
+  @override
+  String get skipLead => 'Ueberspringen';
+
+  @override
+  String get noTemplates => 'Noch keine Vorlagen gespeichert';
+
+  @override
+  String get feedbackTitle => 'Wie hat diese Antwort performt?';
+
+  @override
+  String get feedbackConverted => 'Konvertiert (User hat Produkt getestet)';
+
+  @override
+  String get feedbackConversation => 'Gespraech entstanden';
+
+  @override
+  String get feedbackIgnored => 'Ignoriert (keine Reaktion)';
+
+  @override
+  String get feedbackNegative => 'Negativ (Downvotes)';
+
+  @override
+  String get feedbackDeleted => 'Vom Moderator geloescht';
+
+  @override
+  String get engagementScore => 'Engagement';
+
+  @override
+  String get discoverSubreddits => 'Subreddits entdecken';
+
+  @override
+  String get discovering => 'Entdecke...';
+
+  @override
+  String get pendingReview => 'Freigabe';
+
+  @override
+  String get approveTask => 'Freigeben';
+
+  @override
+  String get rejectTask => 'Ablehnen';
+
+  @override
+  String get scheduled => 'Geplant';
+
+  @override
+  String get noScheduledTasks => 'Keine geplanten Aufgaben';
+
+  @override
+  String get scheduledTasksHint =>
+      'Konfiguriere Cron-Jobs unter Administration, um wiederkehrende Aufgaben zu planen.';
+
+  @override
+  String get activeJobs => 'Aktiv';
+
+  @override
+  String get pausedJobs => 'Pausiert';
+
+  @override
+  String get nextRun => 'Naechste';
+
+  @override
+  String get navTraces => 'Traces';
+
+  @override
+  String get traceStatusRunning => 'LAEUFT';
+
+  @override
+  String get traceStatusCompleted => 'FERTIG';
+
+  @override
+  String get traceStatusFailed => 'FEHLGESCHLAGEN';
+
+  @override
+  String get traceFilterAll => 'Alle';
+
+  @override
+  String get traceFilterRunning => 'Laeuft';
+
+  @override
+  String get traceFilterCompleted => 'Fertig';
+
+  @override
+  String get traceFilterFailed => 'Fehlgeschlagen';
+
+  @override
+  String get traceEmpty => 'Noch keine Traces';
+
+  @override
+  String get traceNotFound => 'Trace nicht gefunden — moeglicherweise rotiert.';
+}

@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "namespace": "cognithor-official",
+  "pack_id": "hn-lead-hunter",
+  "version": "1.0.0",
+  "display_name": "Hacker News Lead Hunter",
+  "description": "Monitor HN top, new, and best stories for posts matching your product. Scored by your local LLM.",
+  "license": "apache-2.0",
+  "min_cognithor_version": ">=0.92.0",
+  "entrypoint": "pack.py",
+  "eula_sha256": "1a9409702260fd03f209d7dc48cd6ba8a09185a299c9fb5c85c1ec326b9ee5fe",
+  "publisher": {
+    "id": "cognithor-official",
+    "display_name": "Cognithor",
+    "website": "https://cognithor.ai"
+  },
+  "revenue_share": {
+    "creator": 70,
+    "platform": 30
+  },
+  "lead_sources": ["hn"],
+  "tools": ["hn_scan"],
+  "checkout_url": null,
+  "pricing": {}
+}

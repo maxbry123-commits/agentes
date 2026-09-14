@@ -1,0 +1,303 @@
+"""PGE phase: Planner, Gate (executor), Reflector -- the PGE trinity.
+
+Attributes handled:
+  _planner, _executor, _reflector, _skill_generator
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, cast
+
+from cognithor.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    from cognithor.gateway.phases import PhaseResult
+
+log = get_logger(__name__)
+
+
+def declare_pge_attrs(config: Any) -> PhaseResult:
+    """Return default (None) values for PGE attributes."""
+    return {
+        "planner": None,
+        "executor": None,
+        "reflector": None,
+        "skill_generator": None,
+        "task_profiler": None,
+        "task_telemetry": None,
+        "error_clusterer": None,
+        "causal_analyzer": None,
+        "personality_engine": None,
+        "user_pref_store": None,
+        "identity_layer": None,
+    }
+
+
+async def init_pge(
+    config: Any,
+    llm: Any,
+    model_router: Any,
+    mcp_client: Any,
+    runtime_monitor: Any,
+    audit_logger: Any,
+    memory_manager: Any = None,
+    cost_tracker: Any = None,
+    prompt_evolution: Any = None,
+) -> PhaseResult:
+    """Initialize the PGE trinity (Planner, Executor, Reflector).
+
+    Args:
+        config: CognithorConfig instance.
+        llm: UnifiedLLMClient instance.
+        model_router: ModelRouter instance.
+        mcp_client: JarvisMCPClient instance.
+        runtime_monitor: RuntimeMonitor instance.
+        audit_logger: AuditLogger instance.
+        memory_manager: MemoryManager (optional, for new subsystems).
+
+    Returns:
+        PhaseResult with planner, executor, reflector.
+    """
+    from cognithor.core.executor import Executor
+    from cognithor.core.planner import Planner
+    from cognithor.core.reflector import Reflector
+
+    result: PhaseResult = {}
+
+    # Optional subsystems from memory_manager
+    episodic_store = None
+    weight_optimizer = None
+    causal_analyzer = None
+    task_profiler = None
+    task_telemetry = None
+    error_clusterer = None
+
+    if memory_manager is not None:
+        episodic_store = getattr(memory_manager, "episodic_store", None)
+        weight_optimizer = getattr(memory_manager, "weight_optimizer", None)
+
+    # Task Profiler (optional)
+    try:
+        from cognithor.core.profiler import TaskProfiler
+
+        task_profiler = TaskProfiler()
+    except Exception:
+        log.debug("task_profiler_init_skipped")
+
+    # Task Telemetry + Error Clusterer (optional)
+    try:
+        from cognithor.telemetry.task_telemetry import TaskTelemetryCollector
+
+        task_telemetry = TaskTelemetryCollector()
+    except Exception:
+        log.debug("task_telemetry_init_skipped")
+
+    try:
+        from cognithor.telemetry.error_clustering import ErrorClusterer
+
+        error_clusterer = ErrorClusterer()
+    except Exception:
+        log.debug("error_clusterer_init_skipped")
+
+    # Causal Analyzer (optional)
+    try:
+        from cognithor.learning.causal import CausalAnalyzer
+
+        causal_analyzer = CausalAnalyzer()
+    except Exception:
+        log.debug("causal_analyzer_init_skipped")
+
+    # RewardCalculator (optional)
+    reward_calculator = None
+    try:
+        from cognithor.learning.reward import RewardCalculator
+
+        reward_calculator = RewardCalculator()
+    except Exception:
+        log.debug("reward_calculator_init_skipped")
+
+    # SkillGenerator (Self-Learning Pipeline)
+    # NOTE: SkillGenerator creates its own internal GapDetector.
+    # We pass that SAME instance to the Executor so gaps flow into one place.
+    skill_generator = None
+    gap_detector = None
+    try:
+        from cognithor.skills.generator import SkillGenerator
+
+        skills_dir = config.cognithor_home / "skills" / "generated"
+        skills_dir.mkdir(parents=True, exist_ok=True)
+
+        # LLM wrapper: SkillGenerator expects async (prompt: str) -> str
+        async def _skill_llm_fn(prompt: str) -> str:
+            model = model_router.select_model("coding", "medium")
+            model_config = model_router.get_model_config(model)
+            response = await llm.chat(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=model_config.get("temperature", 0.3),
+            )
+            return cast("str", response.get("message", {}).get("content", ""))
+
+        # SandboxExecutor for testing generated skills
+        sandbox_executor = None
+        try:
+            from cognithor.core.sandbox import SandboxExecutor
+
+            sandbox_executor = SandboxExecutor(config)
+        except Exception:
+            log.debug("skill_sandbox_init_skipped")
+
+        skill_generator = SkillGenerator(
+            skills_dir=skills_dir,
+            sandbox_executor=sandbox_executor,
+            llm_fn=_skill_llm_fn,
+            require_approval=getattr(config.gatekeeper, "auto_approve_threshold", 0.7) < 1.0,
+            audit_logger=audit_logger,
+        )
+        # Wire skill_registry for hot-reload after generation.
+        # The registry lives on the gateway (set by agents phase) — not available
+        # here directly. The gateway wires it after init_pge() returns.
+        # See gateway.py where self._skill_generator.skill_registry is set.
+        # Use the SkillGenerator's internal GapDetector for the Executor too
+        gap_detector = skill_generator.gap_detector
+        log.info("skill_generator_initialized", skills_dir=str(skills_dir))
+    except Exception:
+        log.debug("skill_generator_init_skipped", exc_info=True)
+        # Standalone GapDetector even without SkillGenerator (for telemetry)
+        try:
+            from cognithor.skills.generator import GapDetector
+
+            gap_detector = GapDetector()
+        except Exception as exc:
+            log.debug("gap_detector_init_skipped", error=str(exc))
+
+    # PersonalityEngine (optional)
+    personality_engine = None
+    try:
+        from cognithor.core.personality import PersonalityEngine
+
+        personality_config = getattr(config, "personality", None)
+        personality_engine = PersonalityEngine(personality_config)
+        log.info("personality_engine_initialized")
+    except Exception:
+        log.debug("personality_engine_init_skipped")
+
+    # UserPreferenceStore (optional)
+    user_pref_store = None
+    try:
+        from cognithor.core.user_preferences import UserPreferenceStore
+
+        user_pref_store = UserPreferenceStore()
+        log.info("user_pref_store_initialized")
+    except Exception:
+        log.debug("user_pref_store_init_skipped")
+
+    # Identity Layer (Immortal Mind Protocol) — optional
+    # Per-agent identity: use config.agents.default_identity or fallback to "jarvis"
+    identity_layer = None
+    try:
+        identity_config = getattr(config, "identity", None)
+        if identity_config is None or getattr(identity_config, "enabled", True):
+            from cognithor.identity import IdentityLayer
+
+            _id_name = getattr(getattr(config, "agents", None), "default_identity", "jarvis")
+            _id_data_dir = config.cognithor_home / "identity" / _id_name
+            _id_llm = None
+            _id_model = ""
+            if llm is not None:
+                _id_llm = llm
+                _id_model = getattr(getattr(config, "models", None), "planner", None)  # type: ignore[assignment]
+                _id_model = getattr(_id_model, "name", "") if _id_model else ""
+
+            identity_layer = IdentityLayer(
+                identity_id=_id_name,
+                data_dir=str(_id_data_dir),
+                llm_fn=_id_llm,
+                llm_model=_id_model,
+            )
+            log.info("identity_layer_initialized", identity_id=_id_name)
+    except Exception as _id_exc:
+        log.warning("identity_layer_init_skipped", error=str(_id_exc), exc_info=True)
+
+    # Memory Bridge: inject IdentityLayer into MemoryManager for bidirectional sync
+    if (
+        identity_layer is not None
+        and memory_manager is not None
+        and hasattr(memory_manager, "set_identity_layer")
+    ):
+        try:
+            memory_manager.set_identity_layer(identity_layer)
+        except Exception:
+            log.debug("identity_layer_memory_bridge_failed", exc_info=True)
+
+    # Executor (with retry/backoff + security + profiling + telemetry + gap detection)
+    try:
+        result["executor"] = Executor(
+            config,
+            mcp_client,
+            gap_detector=gap_detector,
+            runtime_monitor=runtime_monitor,
+            audit_logger=audit_logger,
+            task_profiler=task_profiler,
+            task_telemetry=task_telemetry,
+            error_clusterer=error_clusterer,
+        )
+    except Exception:
+        log.error("executor_init_failed", exc_info=True)
+        raise
+
+    # Wire TacticalMemory into Executor (best-effort)
+    if result.get("executor") is not None and memory_manager is not None:
+        tactical = getattr(memory_manager, "tactical", None)
+        if tactical is not None:
+            try:
+                result["executor"]._tactical_memory = tactical
+                log.debug("tactical_memory_wired_to_executor")
+            except Exception:
+                log.debug("tactical_memory_wire_failed", exc_info=True)
+
+    # Planner (uses UnifiedLLMClient + optional causal suggestions + task profiler)
+    try:
+        result["planner"] = Planner(
+            config,
+            llm,
+            model_router,
+            audit_logger=audit_logger,
+            causal_analyzer=causal_analyzer,
+            task_profiler=task_profiler,
+            cost_tracker=cost_tracker,
+            personality_engine=personality_engine,
+            prompt_evolution=prompt_evolution,
+        )
+    except Exception:
+        log.error("planner_init_failed", exc_info=True)
+        raise
+
+    # Reflector (uses UnifiedLLMClient + episodic store + causal + weight optimizer + reward)
+    try:
+        result["reflector"] = Reflector(
+            config,
+            llm,
+            model_router,
+            audit_logger=audit_logger,
+            episodic_store=episodic_store,
+            causal_analyzer=causal_analyzer,
+            weight_optimizer=weight_optimizer,
+            reward_calculator=reward_calculator,
+            cost_tracker=cost_tracker,
+        )
+    except Exception:
+        log.error("reflector_init_failed", exc_info=True)
+        raise
+
+    # Store profiler + telemetry + skill generator for gateway access
+    result["task_profiler"] = task_profiler
+    result["task_telemetry"] = task_telemetry
+    result["error_clusterer"] = error_clusterer
+    result["causal_analyzer"] = causal_analyzer
+    result["skill_generator"] = skill_generator
+    result["personality_engine"] = personality_engine
+    result["user_pref_store"] = user_pref_store
+    result["identity_layer"] = identity_layer
+
+    return result

@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "namespace": "cognithor-official",
+  "pack_id": "rss-lead-hunter",
+  "version": "1.0.0",
+  "display_name": "RSS Lead Hunter",
+  "description": "Monitor RSS/Atom feeds for entries matching your product. Scored by your local LLM. No extra dependencies.",
+  "license": "apache-2.0",
+  "min_cognithor_version": ">=0.92.0",
+  "entrypoint": "pack.py",
+  "eula_sha256": "6223d3b79b37c7fce71790b71fef89e35189a69a3f8671e650ddc1d6e45f17f4",
+  "publisher": {
+    "id": "cognithor-official",
+    "display_name": "Cognithor",
+    "website": "https://cognithor.ai"
+  },
+  "revenue_share": {
+    "creator": 70,
+    "platform": 30
+  },
+  "lead_sources": ["rss"],
+  "tools": ["rss_scan"],
+  "checkout_url": null,
+  "pricing": {}
+}
