@@ -1,22 +1,216 @@
 {
-  "archive_bytes": 234833154,
-  "archive_sha256": "bb7e66346a0debdaf1f667182d56596a1230da9f70e4ea8b36a622da0d6252c5",
+  "archive_bytes": 204470751,
+  "archive_sha256": "5cee3901a18f633fb9f55f4971a6ee4511c150d92784813b3310fa16efd860bb",
   "extracted_tree": {
-    "bytes": 416696514,
-    "files": 12152,
-    "sha256": "347cd5e1ad7911b3282b2722255ec3bcb5f1cc4ef44ff94a77e15a61231b0763"
+    "bytes": 372689017,
+    "files": 10411,
+    "sha256": "749775ff9a834c2b8da7a6a959c327eec4c4b3d8a7f70fa9b2e8faba4e02972a"
   },
   "extraction_verified": true,
+  "lfs_fetch_attempted": false,
   "motor1_blob": "a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500",
-  "normalization": "dereference_upstream_symlinks; resolve_git_lfs_when_requested",
-  "recovery_reason": "SOURCE_SPECIAL_FILE_GAP",
-  "schema": "yaiwes.kernel.recovery-download-extract/v1",
+  "normalizations": [
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": ".buildkite/macos.rayci.yml",
+      "target": "macos/macos.rayci.yml"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": ".buildkite/macos/always.rules.test.txt",
+      "target": "../always.rules.test.txt"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": ".buildkite/macos/always.rules.txt",
+      "target": "../always.rules.txt"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": ".buildkite/macos/test.rules.test.txt",
+      "target": "../test.rules.test.txt"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": ".buildkite/macos/test.rules.txt",
+      "target": "../test.rules.txt"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": ".buildkite/release/_forge.rayci.yml",
+      "target": "../_forge.rayci.yml"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": ".buildkite/release/_images.rayci.yml",
+      "target": "../_images.rayci.yml"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": ".buildkite/release/_wheel-build.rayci.yml",
+      "target": "../_wheel-build.rayci.yml"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "ci/ray_ci/bisect/macos_ci.sh",
+      "target": "../macos/macos_ci.sh"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "doc/requirements-doc.lock.txt",
+      "target": "../python/deplocks/docs/docbuild_depset_py3.11.lock"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "python/ray/rllib",
+      "target": "../../rllib"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "python/requirements_compiled_py3.10.txt",
+      "target": "requirements_compiled.txt"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "python/requirements_compiled_py3.11.txt",
+      "target": "requirements_compiled.txt"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "python/requirements_compiled_py3.12.txt",
+      "target": "requirements_compiled.txt"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "python/requirements_compiled_py3.13.txt",
+      "target": "requirements_compiled.txt"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "release/air_examples/dolly_v2_lightning_fsdp_finetuning/lightning-llm-finetuning-7b.ipynb",
+      "target": "../../../doc/source/train/examples/lightning/dolly_lightning_fsdp_finetuning.ipynb"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "release/air_examples/dolly_v2_lightning_fsdp_finetuning/test_myst_doc.py",
+      "target": "../../../doc/test_myst_doc.py"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "release/air_examples/dreambooth/dreambooth",
+      "target": "../../../doc/source/templates/05_dreambooth_finetuning/dreambooth"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "release/air_examples/dreambooth/dreambooth_run.sh",
+      "target": "../../../doc/source/templates/05_dreambooth_finetuning/dreambooth_run.sh"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "release/air_examples/gptj_deepspeed_finetuning/gptj_deepspeed_fine_tuning.ipynb",
+      "target": "../../../doc/source/train/examples/deepspeed/gptj_deepspeed_fine_tuning.ipynb"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "release/air_examples/opt_deepspeed_batch_inference/test_myst_doc.py",
+      "target": "../../../doc/test_myst_doc.py"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "release/air_examples/vicuna_13b_lightning_deepspeed_finetuning/test_myst_doc.py",
+      "target": "../../../doc/test_myst_doc.py"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "release/air_examples/vicuna_13b_lightning_deepspeed_finetuning/vicuna_13b_lightning_deepspeed_finetune.ipynb",
+      "target": "../../../doc/source/train/examples/lightning/vicuna_13b_lightning_deepspeed_finetune.ipynb"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "release/nightly_tests/multimodal_inference_benchmarks/benchmark.py",
+      "target": "../dataset/benchmark.py"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "release/ray_release/byod/requirements_compiled.txt",
+      "target": "../../../python/requirements_compiled.txt"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "release/ray_release/configs/oss_config.yaml",
+      "target": "../../../ci/ray_ci/oss_config.yaml"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "release/requirements-doc.txt",
+      "target": "../doc/requirements-doc.txt"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "release/rllib_tests/example_algorithms",
+      "target": "../../rllib/examples/algorithms"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "release/train_tests/benchmark/setup_chaos.py",
+      "target": "../../nightly_tests/setup_chaos.py"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "release/train_tests/multinode_persistence/test_v1_persistence.py",
+      "target": "../../../python/ray/train/tests/test_new_persistence.py"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "release/train_tests/multinode_persistence/test_v2_persistence.py",
+      "target": "../../../python/ray/train/v2/tests/test_persistence.py"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "release/workspace_templates",
+      "target": "../doc/source/templates/"
+    }
+  ],
+  "schema": "yaiwes.kernel.catalog20.final-repair-manifest/v1",
   "slug": "Ray",
   "source_commit": "3f785c0711b94f93f97fea2a438abcd6a9738655",
   "source_repo": "ray-project/ray",
   "source_tree": {
-    "bytes": 416696514,
-    "files": 12152,
-    "sha256": "347cd5e1ad7911b3282b2722255ec3bcb5f1cc4ef44ff94a77e15a61231b0763"
-  }
+    "bytes": 372689017,
+    "files": 10411,
+    "sha256": "749775ff9a834c2b8da7a6a959c327eec4c4b3d8a7f70fa9b2e8faba4e02972a"
+  },
+  "unresolved_lfs_source_pointers": []
 }
