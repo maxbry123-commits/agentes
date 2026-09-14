@@ -1,4 +1,4 @@
-name: YAIWES CODA Bus V7 + V8 Durable
+name: YAIWES CODA Bus V7 + V8 Durable + V9 Hybrid
 
 on:
   push:
@@ -6,6 +6,7 @@ on:
       - main
       - yaiwes-coda-v7
       - yaiwes-coda-v7-research-adapter
+      - yaiwes-hive-v9-close-step3-r2
     paths:
       - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_coda_bus_v7.py'
       - '📂coda workflow persistencias/Fables enchufe universal/test_yaiwes_coda_bus_v7.py'
@@ -14,6 +15,10 @@ on:
       - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_coda_persistence_v8.py'
       - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_coda_bus_v8.py'
       - '📂coda workflow persistencias/Fables enchufe universal/test_yaiwes_coda_bus_v8.py'
+      - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_coda_hybrid_v9.py'
+      - '📂coda workflow persistencias/Fables enchufe universal/test_yaiwes_coda_hybrid_v9.py'
+      - '📂coda workflow persistencias/Fables enchufe universal/YAIWES-HANDOFF-V9.json'
+      - '📂coda workflow persistencias/Fables enchufe universal/README-GLOBAL-YAIWES-24-CODA.md'
       - '.github/workflows/yaiwes-coda-bus-v7.yml'
   pull_request:
     branches:
@@ -26,6 +31,10 @@ on:
       - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_coda_persistence_v8.py'
       - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_coda_bus_v8.py'
       - '📂coda workflow persistencias/Fables enchufe universal/test_yaiwes_coda_bus_v8.py'
+      - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_coda_hybrid_v9.py'
+      - '📂coda workflow persistencias/Fables enchufe universal/test_yaiwes_coda_hybrid_v9.py'
+      - '📂coda workflow persistencias/Fables enchufe universal/YAIWES-HANDOFF-V9.json'
+      - '📂coda workflow persistencias/Fables enchufe universal/README-GLOBAL-YAIWES-24-CODA.md'
       - '.github/workflows/yaiwes-coda-bus-v7.yml'
   workflow_dispatch:
 
@@ -45,7 +54,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Compile CODA bus, research gate and durable V8
+      - name: Compile CODA bus, research gate, durable V8 and hybrid V9
         working-directory: '📂coda workflow persistencias/Fables enchufe universal'
         run: >-
           python -m py_compile
@@ -56,10 +65,16 @@ jobs:
           yaiwes_coda_persistence_v8.py
           yaiwes_coda_bus_v8.py
           test_yaiwes_coda_bus_v8.py
-      - name: Run CODA bus, research gate and durable V8 unit tests
+          yaiwes_coda_hybrid_v9.py
+          test_yaiwes_coda_hybrid_v9.py
+      - name: Validate V9 activation handoff JSON
+        working-directory: '📂coda workflow persistencias/Fables enchufe universal'
+        run: python -m json.tool YAIWES-HANDOFF-V9.json >/dev/null
+      - name: Run CODA bus, research gate, durable V8 and hybrid V9 unit tests
         working-directory: '📂coda workflow persistencias/Fables enchufe universal'
         run: >-
           python -m unittest -v
           test_yaiwes_coda_bus_v7.py
           test_yaiwes_coda_research_gate_v71.py
           test_yaiwes_coda_bus_v8.py
+          test_yaiwes_coda_hybrid_v9.py
