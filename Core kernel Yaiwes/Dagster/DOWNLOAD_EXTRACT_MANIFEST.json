@@ -1,13 +1,12 @@
 {
   "archive_bytes": 148033718,
-  "archive_sha256": "3fd14d6229c3dfa58282c3525c75d535ee11d21c1c29b6a755c89b68231d6ca9",
+  "archive_sha256": "72b6f53e9198bbc8566c95f506f3fbecf687c263b8426c616c9c39b366ae3672",
   "extracted_tree": {
     "bytes": 318700091,
     "files": 14373,
     "sha256": "e17545ac0ffe3756fac2998ecd7ee010452d86418876daecbe7701031878c262"
   },
   "extraction_verified": true,
-  "lfs_fetch_attempted": false,
   "motor1_blob": "a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500",
   "normalizations": [
     {
@@ -23,7 +22,8 @@
       "target": "python_modules/dagster/README.md"
     }
   ],
-  "schema": "yaiwes.kernel.catalog20.final-repair-manifest/v1",
+  "publish_policy": "git_add_force_all_verified_files",
+  "schema": "yaiwes.kernel.catalog20.forceadd-manifest/v1",
   "slug": "Dagster",
   "source_commit": "249fbedf4d81541bf83b8e2727ae2fb6332a243d",
   "source_repo": "dagster-io/dagster",
@@ -32,5 +32,5 @@
     "files": 14373,
     "sha256": "e17545ac0ffe3756fac2998ecd7ee010452d86418876daecbe7701031878c262"
   },
-  "unresolved_lfs_source_pointers": []
+  "unresolved_lfs_source_pointers_preserved": []
 }
