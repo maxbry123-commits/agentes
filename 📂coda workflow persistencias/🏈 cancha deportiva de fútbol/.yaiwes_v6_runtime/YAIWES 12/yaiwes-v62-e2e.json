@@ -1,0 +1,32 @@
+{
+  "schema": "yaiwes.real.internal.workflow/v6",
+  "component": "YAIWES 12",
+  "task_id": "yaiwes-v62-e2e",
+  "status": "RELEASED",
+  "workflow_source": "pentestgpt_agent/src/pentestgpt_agent/loop.py",
+  "workflow_symbol": "PentestLoop.run",
+  "language": "python",
+  "source_decision": "RESTORE_BENIGN",
+  "source_sha256": "8039b64dc24be7edd7347ee14cf003f0ad1a195d1b4e1a98d0a3c9b67894a183",
+  "payload": {
+    "mode": "benign-research-persistence",
+    "contract": "active-source-sha-only"
+  },
+  "workflow_status": "COMPLETED",
+  "real_internal_workflow": true,
+  "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+  "evidence": {
+    "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+    "entered": true,
+    "status": "COMPLETED",
+    "executed_lines": [
+      45,
+      46,
+      47
+    ],
+    "executed_line_count": 3,
+    "safe_boundary": null
+  },
+  "checkpoint": "REAL_INTERNAL_WORKFLOW_EXECUTED",
+  "handoff": "YAIWES 13"
+}

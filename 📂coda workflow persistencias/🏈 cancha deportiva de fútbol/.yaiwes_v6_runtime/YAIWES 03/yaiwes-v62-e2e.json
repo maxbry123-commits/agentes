@@ -1,0 +1,32 @@
+{
+  "schema": "yaiwes.real.internal.workflow/v6",
+  "component": "YAIWES 03",
+  "task_id": "yaiwes-v62-e2e",
+  "status": "RELEASED",
+  "workflow_source": "src/planner-commands.ts",
+  "workflow_symbol": "normalizePlannerDecision",
+  "language": "typescript",
+  "source_decision": "RESTORE_BENIGN",
+  "source_sha256": "743e525f202c5b4478d2c3f0b12d27f43f06f287d10872f6c67c3a7443c39fa2",
+  "payload": {
+    "mode": "benign-research-persistence",
+    "contract": "active-source-sha-only"
+  },
+  "workflow_status": "COMPLETED",
+  "real_internal_workflow": true,
+  "engine": "TYPESCRIPT_NATIVE_ORIGINAL_MODULE",
+  "evidence": {
+    "engine": "TYPESCRIPT_NATIVE_ORIGINAL_MODULE",
+    "entered": true,
+    "status": "COMPLETED",
+    "command": [
+      "npx",
+      "--yes",
+      "tsx",
+      ".yaiwes_v6_workflow_probe.ts"
+    ],
+    "output": "YAIWES_TS_INTERNAL_WORKFLOW_ENTERED"
+  },
+  "checkpoint": "REAL_INTERNAL_WORKFLOW_EXECUTED",
+  "handoff": "YAIWES 04"
+}

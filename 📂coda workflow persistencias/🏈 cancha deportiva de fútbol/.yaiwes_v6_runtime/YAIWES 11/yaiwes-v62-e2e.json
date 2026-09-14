@@ -1,0 +1,32 @@
+{
+  "schema": "yaiwes.real.internal.workflow/v6",
+  "component": "YAIWES 11",
+  "task_id": "yaiwes-v62-e2e",
+  "status": "RELEASED",
+  "workflow_source": "agent/memory.py",
+  "workflow_symbol": "Memory.add_step",
+  "language": "python",
+  "source_decision": "RESTORE_BENIGN",
+  "source_sha256": "048d22939b24b4890e9164d1f369170eec9696f6c7c6247daf2a8b221f690cab",
+  "payload": {
+    "mode": "benign-research-persistence",
+    "contract": "active-source-sha-only"
+  },
+  "workflow_status": "SAFE_BOUNDARY_EXCEPTION",
+  "real_internal_workflow": true,
+  "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+  "evidence": {
+    "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+    "entered": true,
+    "status": "SAFE_BOUNDARY_EXCEPTION",
+    "executed_lines": [
+      60,
+      68,
+      71
+    ],
+    "executed_line_count": 3,
+    "safe_boundary": "AttributeError: 'int' object has no attribute 'get'"
+  },
+  "checkpoint": "REAL_INTERNAL_WORKFLOW_EXECUTED",
+  "handoff": "YAIWES 12"
+}

@@ -1,0 +1,35 @@
+{
+  "schema": "yaiwes.real.internal.workflow/v6",
+  "component": "YAIWES 05",
+  "task_id": "yaiwes-v62-e2e",
+  "status": "RELEASED",
+  "workflow_source": "common/websocket/task_manager.go",
+  "workflow_symbol": "NewTaskManager",
+  "language": "go",
+  "source_decision": "RESTORE_BENIGN",
+  "source_sha256": "677786c5877da14f1d8a607198672ca510444ddf542ddbc24c9f59bb1d019ff3",
+  "payload": {
+    "mode": "benign-research-persistence",
+    "contract": "active-source-sha-only"
+  },
+  "workflow_status": "COMPLETED",
+  "real_internal_workflow": true,
+  "engine": "GO_NATIVE_ISOLATED_ORIGINAL_SYMBOL",
+  "evidence": {
+    "engine": "GO_NATIVE_ISOLATED_ORIGINAL_SYMBOL",
+    "entered": true,
+    "status": "COMPLETED",
+    "command": [
+      "go",
+      "test",
+      "./...",
+      "-run",
+      "^TestYAIWESV61InternalWorkflow$",
+      "-count=1",
+      "-v"
+    ],
+    "output": "=== RUN   TestYAIWESV61InternalWorkflow\n    workflow_probe_test.go:6: YAIWES_GO_INTERNAL_WORKFLOW_ENTERED\n--- PASS: TestYAIWESV61InternalWorkflow (0.00s)\nPASS\nok  \tyaiwesprobe\t0.001s\n?   \tyaiwesprobe/database\t[no test files]\n"
+  },
+  "checkpoint": "REAL_INTERNAL_WORKFLOW_EXECUTED",
+  "handoff": "YAIWES 06"
+}

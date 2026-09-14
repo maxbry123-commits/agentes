@@ -1,0 +1,51 @@
+{
+  "schema": "yaiwes.real.internal.workflow/v6",
+  "component": "YAIWES 20",
+  "task_id": "yaiwes-v62-e2e",
+  "status": "RELEASED",
+  "workflow_source": "src/openwhale/agents/base.py",
+  "workflow_symbol": "BaseChallengeAgent.run_competition",
+  "language": "python",
+  "source_decision": "KEEP_UNCHANGED",
+  "source_sha256": "5c5e28cad5d8923c29148ae01d1d78085c3f165c460e4f99111a954844d5c39f",
+  "payload": {
+    "mode": "benign-research-persistence",
+    "contract": "active-source-sha-only"
+  },
+  "workflow_status": "COMPLETED",
+  "real_internal_workflow": true,
+  "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+  "evidence": {
+    "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+    "entered": true,
+    "status": "COMPLETED",
+    "executed_lines": [
+      73,
+      75,
+      76,
+      78,
+      79,
+      80,
+      82,
+      83,
+      84,
+      85,
+      86,
+      88,
+      89,
+      90,
+      102,
+      104,
+      105,
+      106,
+      108,
+      109,
+      110,
+      135
+    ],
+    "executed_line_count": 22,
+    "safe_boundary": null
+  },
+  "checkpoint": "REAL_INTERNAL_WORKFLOW_EXECUTED",
+  "handoff": "YAIWES 21"
+}

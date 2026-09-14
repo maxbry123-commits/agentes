@@ -1,0 +1,41 @@
+{
+  "schema": "yaiwes.real.internal.workflow/v6",
+  "component": "YAIWES 14",
+  "task_id": "yaiwes-v62-e2e",
+  "status": "RELEASED",
+  "workflow_source": "mcp/src/prompt_socket.py",
+  "workflow_symbol": "start",
+  "language": "python",
+  "source_decision": "RESTORE_BENIGN",
+  "source_sha256": "9c5371c18fd87f6dcc5082297f8f06da1fde67f075593dd626635e72ea38a04a",
+  "payload": {
+    "mode": "benign-research-persistence",
+    "contract": "active-source-sha-only"
+  },
+  "workflow_status": "COMPLETED",
+  "real_internal_workflow": true,
+  "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+  "evidence": {
+    "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+    "entered": true,
+    "status": "COMPLETED",
+    "executed_lines": [
+      83,
+      84,
+      85,
+      87,
+      88,
+      91,
+      92,
+      93,
+      96,
+      97,
+      99,
+      100
+    ],
+    "executed_line_count": 12,
+    "safe_boundary": null
+  },
+  "checkpoint": "REAL_INTERNAL_WORKFLOW_EXECUTED",
+  "handoff": "YAIWES 15"
+}

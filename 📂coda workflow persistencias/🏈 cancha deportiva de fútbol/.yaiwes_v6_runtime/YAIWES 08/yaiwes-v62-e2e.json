@@ -1,0 +1,36 @@
+{
+  "schema": "yaiwes.real.internal.workflow/v6",
+  "component": "YAIWES 08",
+  "task_id": "yaiwes-v62-e2e",
+  "status": "RELEASED",
+  "workflow_source": "packages/core/redcell_core/steer.py",
+  "workflow_symbol": "drain_steer",
+  "language": "python",
+  "source_decision": "KEEP_UNCHANGED",
+  "source_sha256": "1e9b772ab72385a9477e27d1ca943110bb9b399f82146915276333d391747b78",
+  "payload": {
+    "mode": "benign-research-persistence",
+    "contract": "active-source-sha-only"
+  },
+  "workflow_status": "COMPLETED",
+  "real_internal_workflow": true,
+  "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+  "evidence": {
+    "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+    "entered": true,
+    "status": "COMPLETED",
+    "executed_lines": [
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      41
+    ],
+    "executed_line_count": 7,
+    "safe_boundary": null
+  },
+  "checkpoint": "REAL_INTERNAL_WORKFLOW_EXECUTED",
+  "handoff": "YAIWES 09"
+}
