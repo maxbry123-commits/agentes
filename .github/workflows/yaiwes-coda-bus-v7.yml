@@ -8,6 +8,13 @@ on:
       - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_coda_bus_v7.py'
       - '📂coda workflow persistencias/Fables enchufe universal/test_yaiwes_coda_bus_v7.py'
       - '.github/workflows/yaiwes-coda-bus-v7.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_coda_bus_v7.py'
+      - '📂coda workflow persistencias/Fables enchufe universal/test_yaiwes_coda_bus_v7.py'
+      - '.github/workflows/yaiwes-coda-bus-v7.yml'
   workflow_dispatch:
 
 permissions:
