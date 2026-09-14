@@ -137,7 +137,7 @@ def run_chain(registry_path: str | Path, state_root: str | Path, task_id: str, p
     evidence = []
     handoff = {"task_id": task_id, "payload": dict(payload)}
     for component in components:
-        adapter_path = repo_root / Path(component["adapter"]).relative_to(repo_root.name)
+        adapter_path = repo_root / component["adapter"]
         Adapter = _load_adapter(adapter_path)
         state_file = state_root / component["component"] / f"{task_id}.json"
         adapter = Adapter(state_file)
@@ -158,8 +158,8 @@ from yaiwes_swarm_persistence_chain import run_chain
 
 class SwarmChainTests(unittest.TestCase):
     def test_end_to_end_24_links(self):
-        repo = Path(__file__).resolve().parents[2]
-        registry = repo / "🏈 cancha deportiva de fútbol" / "YAIWES-SWARM-NAVY-SEALS-REGISTRY.json"
+        coda_root = Path(__file__).resolve().parents[1]
+        registry = coda_root / "🏈 cancha deportiva de fútbol" / "YAIWES-SWARM-NAVY-SEALS-REGISTRY.json"
         with tempfile.TemporaryDirectory() as td:
             result = run_chain(registry, td, "TASK-E2E-001", {"goal": "persistence-test"})
             self.assertEqual(result["links_completed"], 24)
