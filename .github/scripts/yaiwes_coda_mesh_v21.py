@@ -4,6 +4,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 import json
+import sys
 import tempfile
 from pathlib import Path
 
@@ -55,7 +56,11 @@ def load_adapter_class(path: Path):
     if spec is None or spec.loader is None:
         raise RuntimeError(f'IMPORT_SPEC_GAP:{path}')
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    sys.modules[module_name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.modules.pop(module_name, None)
     return module.YaiwesPersistenceAdapter
 
 
