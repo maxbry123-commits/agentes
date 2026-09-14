@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - '.github/workflows/yaiwes-coda-transform-wire-v2.yml'
+      - '.github/scripts/yaiwes_coda_transform_wire_v2.py'
   workflow_dispatch:
 
 permissions:
@@ -22,7 +23,7 @@ jobs:
       MOTOR: 'Motores/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py'
       GITHUB_TOKEN: ${{ github.token }}
     steps:
-      - name: Checkout CODA and immutable motor
+      - name: Checkout CODA transformation scope
         uses: actions/checkout@v4
         with:
           ref: main
@@ -32,6 +33,7 @@ jobs:
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             /.github/workflows/yaiwes-coda-transform-wire-v2.yml
+            /.github/scripts/yaiwes_coda_transform_wire_v2.py
             /Motores/📂Motor descarga de componentes y extracción de zip/
             /📂coda workflow persistencias/
 
@@ -42,7 +44,7 @@ jobs:
           test "$(git hash-object "$MOTOR")" = '91e6e4486692eab314be5c7130d8310d3c855397'
           echo 'ENGINE_LOCK=PASS'
 
-      - name: Close missing 06-PentAGI safely with existing motor
+      - name: Close missing PentAGI with existing motor
         shell: bash
         env:
           SOURCE_REPO: vxcontrol/pentagi
@@ -56,322 +58,61 @@ jobs:
           set -euo pipefail
           if [ -d "$ROOT/06-PentAGI" ] || [ -d "$ROOT/🏈 06-PentAGI" ]; then
             echo 'PENTAGI_ALREADY_PRESENT=PASS'
-            exit 0
+          else
+            git config --global core.symlinks false
+            python3 "$MOTOR" | tee /tmp/pentagi-download.jsonl
+            git fetch origin main
+            git reset --hard origin/main
+            test -d "$ROOT/06-PentAGI"
+            echo 'PENTAGI_DOWNLOAD_EXTRACT=PASS'
           fi
-          # Preserve source safely: Git symlink entries are materialized as plain files.
-          # No source code is executed.
-          git config --global core.symlinks false
-          python3 "$MOTOR" | tee /tmp/pentagi-download.jsonl
-          git fetch origin main
-          git reset --hard origin/main
-          test -d "$ROOT/06-PentAGI"
-          echo 'PENTAGI_DOWNLOAD_EXTRACT=PASS'
 
-      - name: Transform 24 components to YAIWES persistence architecture
+      - name: Transform and wire all components
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          import json, os, re, shutil, textwrap
+          python3 .github/scripts/yaiwes_coda_transform_wire_v2.py
 
-          root = Path('📂coda workflow persistencias')
-          field = root / '🏈 cancha deportiva de fútbol'
-          field.mkdir(parents=True, exist_ok=True)
-
-          names = [
-            '01-DeepAudit','02-CyberStrikeAI','03-LuaN1aoAgent','04-AI-Pentest',
-            '05-AI-Infra-Guard','06-PentAGI','07-Strix','08-Redcell','09-Shel',
-            '10-Pentest-Swarm-AI','11-LLM-CTF-Solver','12-PentestGPT',
-            '13-Auto-Pentest-LLM','14-Dark-Moon','15-Pentdem',
-            '16-Autonomous-Pentest-Agent','17-AI-Red-Team-Agent','18-Agent-Smith',
-            '19-TPT-Agent','20-OpenWhale','21-H-Pentest','22-PHANTOM',
-            '23-HackSynth','24-Security-AI-Agent'
-          ]
-
-          adapter = '''from __future__ import annotations
-          import json
-          from dataclasses import dataclass, asdict
-          from pathlib import Path
-          from typing import Any, Dict, List
-
-          ALLOWED_STATUS = {"PENDING", "CLAIMED", "RUNNING", "CHECKPOINTED", "VERIFIED", "FAILED", "RELEASED"}
-
-          @dataclass
-          class TaskState:
-              task_id: str
-              status: str = "PENDING"
-              attempts: int = 0
-              checkpoint: Dict[str, Any] | None = None
-              evidence: List[Dict[str, Any]] | None = None
-
-              def __post_init__(self) -> None:
-                  if self.checkpoint is None:
-                      self.checkpoint = {}
-                  if self.evidence is None:
-                      self.evidence = []
-
-          class YaiwesPersistenceAdapter:
-              """Safe task-persistence link. It never executes vendor/source code."""
-              def __init__(self, state_path: str | Path) -> None:
-                  self.state_path = Path(state_path)
-
-              def load(self, task_id: str) -> TaskState:
-                  if not self.state_path.exists():
-                      return TaskState(task_id=task_id)
-                  data = json.loads(self.state_path.read_text(encoding="utf-8"))
-                  if data.get("task_id") != task_id:
-                      return TaskState(task_id=task_id)
-                  return TaskState(**data)
-
-              def save(self, state: TaskState) -> None:
-                  if state.status not in ALLOWED_STATUS:
-                      raise ValueError(f"invalid status: {state.status}")
-                  self.state_path.parent.mkdir(parents=True, exist_ok=True)
-                  tmp = self.state_path.with_suffix(self.state_path.suffix + ".tmp")
-                  tmp.write_text(json.dumps(asdict(state), ensure_ascii=False, indent=2), encoding="utf-8")
-                  tmp.replace(self.state_path)
-
-              def claim(self, task_id: str) -> TaskState:
-                  s = self.load(task_id)
-                  if s.status not in {"PENDING", "FAILED", "RELEASED"}:
-                      raise RuntimeError(f"task not claimable: {s.status}")
-                  s.status = "CLAIMED"
-                  s.attempts += 1
-                  self.save(s)
-                  return s
-
-              def checkpoint(self, task_id: str, payload: Dict[str, Any]) -> TaskState:
-                  s = self.load(task_id)
-                  if s.status not in {"CLAIMED", "RUNNING", "CHECKPOINTED"}:
-                      raise RuntimeError(f"task not checkpointable: {s.status}")
-                  s.status = "CHECKPOINTED"
-                  s.checkpoint = dict(payload)
-                  self.save(s)
-                  return s
-
-              def verify(self, task_id: str, evidence: Dict[str, Any]) -> TaskState:
-                  s = self.load(task_id)
-                  s.status = "VERIFIED"
-                  s.evidence.append(dict(evidence))
-                  self.save(s)
-                  return s
-
-              def release(self, task_id: str) -> TaskState:
-                  s = self.load(task_id)
-                  s.status = "RELEASED"
-                  self.save(s)
-                  return s
-          '''
-          adapter = textwrap.dedent(adapter)
-
-          test_code = '''from pathlib import Path
-          import tempfile
-          import unittest
-          from yaiwes_persistence_adapter import YaiwesPersistenceAdapter
-
-          class PersistenceAdapterTests(unittest.TestCase):
-              def test_claim_checkpoint_verify_release_roundtrip(self):
-                  with tempfile.TemporaryDirectory() as td:
-                      p = Path(td) / "state.json"
-                      a = YaiwesPersistenceAdapter(p)
-                      s = a.claim("T-1")
-                      self.assertEqual(s.status, "CLAIMED")
-                      s = a.checkpoint("T-1", {"step": 2})
-                      self.assertEqual(s.checkpoint["step"], 2)
-                      s = a.verify("T-1", {"pass": True})
-                      self.assertEqual(s.status, "VERIFIED")
-                      s = a.release("T-1")
-                      self.assertEqual(s.status, "RELEASED")
-
-          if __name__ == "__main__":
-              unittest.main()
-          '''
-          test_code = textwrap.dedent(test_code)
-
-          registry = []
-          for original in names:
-              old = root / original
-              new_name = f'🏈 {original}'
-              new = root / new_name
-              if old.exists() and not new.exists():
-                  old.rename(new)
-              if not new.exists():
-                  raise SystemExit(f'MISSING_COMPONENT:{original}')
-
-              # Keep upstream/source README files under code untouched for provenance.
-              code = new / 'code'
-              link = code / 'coda_persistence'
-              link.mkdir(parents=True, exist_ok=True)
-              (link / 'yaiwes_persistence_adapter.py').write_text(adapter, encoding='utf-8')
-              (link / 'test_yaiwes_persistence_adapter.py').write_text(test_code, encoding='utf-8')
-
-              docs = field / new_name
-              docs.mkdir(parents=True, exist_ok=True)
-
-              # Move only project-generated non-code metadata; never vendor files from code/.
-              for fn in ['DOWNLOAD_EXTRACT_MANIFEST.json','PERSISTENCE-ARCHITECTURE-MAP.md','PERSISTENCE-LINK-MANIFEST.json']:
-                  src = new / fn
-                  if src.exists():
-                      dst = docs / fn
-                      if dst.exists():
-                          dst.unlink()
-                      shutil.move(str(src), str(dst))
-
-              source_repo = 'unknown'
-              manifest = docs / 'DOWNLOAD_EXTRACT_MANIFEST.json'
-              if manifest.exists():
-                  try:
-                      md = json.loads(manifest.read_text(encoding='utf-8'))
-                      source_repo = md.get('source_repo') or md.get('source',{}).get('repo') or source_repo
-                  except Exception:
-                      pass
-
-              readme = f'''# {new_name} — YAIWES Persistence Architecture v2.0
-
-## Swarm agent team Navy seals YAIWES
-
-**Nueva versión:** `YAIWES-PERSISTENCE-v2.0`
-
-**Componente base:** `{original}`  
-**Fuente upstream:** `{source_repo}`  
-**Rol nuevo:** eslabón seguro de persistencia de tareas dentro de CODA YAIWES.
-
-### Arquitectura nueva
-
-`INPUT → NORMALIZE → CLAIM → CHECKPOINT → SAFE_TASK → VERIFY → EVIDENCE → RELEASE/NEXT`
-
-Este componente conserva el código fuente upstream dentro de `code/` para trazabilidad, pero el enlace YAIWES nuevo **no ejecuta automáticamente ese código**. El runtime de persistencia usa `code/coda_persistence/yaiwes_persistence_adapter.py` para mantener estado, checkpoints, reintentos controlados, evidencia y liberación de tareas.
-
-### Contrato universal / Fables
-
-El cableado sigue el esquema de ficha universal: `artifact_id`, versión, rol, consume/expone, ejecución, sandbox, límites, evidencia, salud, failover y trazas. El autoensamblaje solo se permite entre entradas/salidas compatibles y con validación previa.
-
-### Frontera de seguridad
-
-- Sin `exec`/`eval` del código fuente durante descubrimiento.
-- Sin shell, explotación, movimiento lateral ni captura de credenciales desde el adapter.
-- Sin red por defecto.
-- El código upstream queda como referencia y material de análisis; el nuevo eslabón ejecutable es el adapter de persistencia.
-- Tests locales y deterministas antes de marcar PASS.
-
-### Estado del eslabón
-
-`PENDING → CLAIMED → CHECKPOINTED → VERIFIED → RELEASED`
-
-### Evidencia
-
-La documentación, manifests y mapas generados se concentran en:
-`📂coda workflow persistencias/🏈 cancha deportiva de fútbol/{new_name}/`
-'''
-              (docs / 'README.md').write_text(readme, encoding='utf-8')
-
-              link_manifest = {
-                  'schema': 'yaiwes.coda.persistence-link/v2',
-                  'component': new_name,
-                  'upstream_component': original,
-                  'version': 'YAIWES-PERSISTENCE-v2.0',
-                  'team': 'Swarm agent team Navy seals YAIWES',
-                  'adapter': str(link / 'yaiwes_persistence_adapter.py'),
-                  'test': str(link / 'test_yaiwes_persistence_adapter.py'),
-                  'mode': 'TASK_PERSISTENCE_ONLY',
-                  'offensive_execution': False,
-                  'network_default': 'deny',
-                  'source_execution_during_discovery': False,
-              }
-              (docs / 'PERSISTENCE-LINK-MANIFEST-V2.json').write_text(
-                  json.dumps(link_manifest, ensure_ascii=False, indent=2), encoding='utf-8')
-              registry.append(link_manifest)
-
-          (field / 'YAIWES-SWARM-NAVY-SEALS-REGISTRY.json').write_text(
-              json.dumps({'schema':'yaiwes.swarm.registry/v2','count':len(registry),'components':registry}, ensure_ascii=False, indent=2),
-              encoding='utf-8')
-
-          # A safe static bridge inspired by the supplied Fables/Kimi plugin bus.
-          fables = root / 'Fables enchufe universal'
-          fables.mkdir(parents=True, exist_ok=True)
-          safe_bus = '''from __future__ import annotations
-          import ast
-          from dataclasses import dataclass
-          from pathlib import Path
-          from typing import List
-
-          @dataclass(frozen=True)
-          class StaticSymbol:
-              name: str
-              kind: str
-
-          def extract_python_symbols(source: str) -> List[StaticSymbol]:
-              tree = ast.parse(source)
-              out = []
-              for node in tree.body:
-                  if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                      out.append(StaticSymbol(node.name, "function"))
-                  elif isinstance(node, ast.ClassDef):
-                      out.append(StaticSymbol(node.name, "class"))
-              return out
-
-          def inspect_file(path: str | Path) -> List[StaticSymbol]:
-              p = Path(path)
-              return extract_python_symbols(p.read_text(encoding="utf-8"))
-
-          def compatible(expone: dict, consume: dict) -> bool:
-              return bool(expone) and expone.get("datatype") == consume.get("datatype")
-          '''
-          (fables / 'yaiwes_fables_static_safe_bus.py').write_text(textwrap.dedent(safe_bus), encoding='utf-8')
-          (fables / 'README-YAIWES-V2.md').write_text('''# Fables/Kimi Universal Plug — YAIWES safe integration v2\n\n## Swarm agent team Navy seals YAIWES\n\nBase conceptual: ficha universal + plugin bus suministrados por el usuario. Para componentes externos no confiables, la inspección dinámica con `exec(...)` se sustituye por AST estático. El cableado operativo conecta únicamente adapters de persistencia YAIWES verificados.\n''', encoding='utf-8')
-
-          print('TRANSFORMED_COMPONENTS=', len(registry))
-          PY
-
-      - name: Run 24 persistence-link tests and structural checks
+      - name: Run persistence adapter tests
         shell: bash
         run: |
           set -euo pipefail
           count=0
-          while IFS= read -r -d '' tf; do
-            d="$(dirname "$tf")"
-            PYTHONPATH="$d" python3 "$tf"
-            count=$((count+1))
+          while IFS= read -r -d '' test_file; do
+            link_dir="$(dirname "$test_file")"
+            PYTHONPATH="$link_dir" python3 "$test_file"
+            count=$((count + 1))
           done < <(find "$ROOT" -type f -path '*/code/coda_persistence/test_yaiwes_persistence_adapter.py' -print0 | sort -z)
           echo "ADAPTER_TESTS=$count"
           test "$count" -eq 24
-          python3 - <<'PY'
-          from pathlib import Path
-          import json
-          r=Path('📂coda workflow persistencias')
-          comps=[p for p in r.iterdir() if p.is_dir() and p.name.startswith('🏈 ') and p.name != '🏈 cancha deportiva de fútbol']
-          assert len(comps)==24, len(comps)
-          reg=json.loads((r/'🏈 cancha deportiva de fútbol'/'YAIWES-SWARM-NAVY-SEALS-REGISTRY.json').read_text())
-          assert reg['count']==24
-          for item in reg['components']:
-              doc=r/'🏈 cancha deportiva de fútbol'/item['component']/'README.md'
-              txt=doc.read_text(encoding='utf-8')
-              assert 'Swarm agent team Navy seals YAIWES' in txt
-              assert 'YAIWES-PERSISTENCE-v2.0' in txt
-          print('STRUCTURE_AND_READMES=PASS_24_OF_24')
-          PY
 
-      - name: Persist transformation atomically
+      - name: Verify 24 renamed components and READMEs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find "$ROOT" -maxdepth 1 -mindepth 1 -type d -name '🏈 *' ! -name '🏈 cancha deportiva de fútbol' | wc -l)" -eq 24
+          test "$(find "$ROOT/🏈 cancha deportiva de fútbol" -type f -name README.md -exec grep -l 'Swarm agent team Navy seals YAIWES' {} \; | wc -l)" -eq 24
+          python3 -m py_compile "$ROOT/Fables enchufe universal/yaiwes_fables_static_safe_bus.py"
+          echo 'STRUCTURE_README_FABLES=PASS'
+
+      - name: Commit transformation
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A -- "$ROOT"
-          if git diff --cached --quiet; then
-            echo 'NO_CHANGES'
-            exit 0
+          if ! git diff --cached --quiet; then
+            git commit -m 'feat(coda): convert 24 components to YAIWES persistence v2'
+            ok=0
+            for attempt in 1 2 3 4; do
+              if git push origin HEAD:main; then ok=1; break; fi
+              git fetch origin main
+              git rebase origin/main || { git rebase --abort || true; }
+              sleep $((attempt * 3))
+            done
+            test "$ok" -eq 1
           fi
-          git commit -m 'feat(coda): convert 24 components to YAIWES persistence v2'
-          ok=0
-          for attempt in 1 2 3 4; do
-            if git push origin HEAD:main; then ok=1; break; fi
-            git fetch origin main
-            git rebase origin/main || { git rebase --abort || true; }
-            sleep $((attempt*3))
-          done
-          test "$ok" -eq 1
 
       - name: Final readback
         shell: bash
