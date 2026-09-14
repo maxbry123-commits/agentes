@@ -1,24 +1,35 @@
 {
   "schema": "yaiwes.internal.surgical/v5",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.2",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v6.3",
   "team": "Swarm agent team Navy seals YAIWES",
   "component": "🏈 YAIWES 24",
-  "source_code_available": false,
-  "source_code_status": "SOURCE_CODE_UNAVAILABLE",
-  "files": [],
+  "source_code_available": true,
+  "source_code_origin": "LOCAL_SAFE_REPLACEMENT",
+  "upstream_original_source_available": false,
+  "workflow_status": "SAFE_INTERNAL_WORKFLOW_AVAILABLE",
+  "files": [
+    {
+      "path": "workflow.py",
+      "decision": "LOCAL_SAFE_REPLACEMENT",
+      "role": "finalize_and_attest_linear_chain",
+      "effects": "NONE"
+    }
+  ],
   "counts": {
-    "accounted": 0,
+    "accounted": 1,
     "keep_unchanged": 0,
     "restored_benign": 0,
+    "local_safe_replacement": 1,
     "blocked_offensive": 0,
     "review_fail_closed": 0,
-    "links": 0
+    "links": 1
   },
   "policy": {
     "offensive_execution": false,
     "ambiguous": "FAIL_CLOSED",
-    "originals_preserved": true,
-    "restored_benign": true,
-    "checkpoint_each_internal_link": true
+    "upstream_originals_preserved_when_available": true,
+    "checkpoint_each_internal_link": true,
+    "must_receive_yaiwes_23_output": true,
+    "must_handoff_to_universal_plug": true
   }
 }
