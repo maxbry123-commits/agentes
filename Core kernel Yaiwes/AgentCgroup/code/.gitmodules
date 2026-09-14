@@ -1,0 +1,12 @@
+[submodule "third_party/scx"]
+	path = third_party/scx
+	url = https://github.com/sched-ext/scx.git
+[submodule "third_party/bpftool"]
+	path = third_party/bpftool
+	url = https://github.com/libbpf/bpftool.git
+[submodule "paper-repo"]
+	path = paper-repo
+	url = https://github.com/yunwei37/agentcgroup-paper
+[submodule "agentsight"]
+	path = agentsight
+	url = https://github.com/eunomia-bpf/agentsight

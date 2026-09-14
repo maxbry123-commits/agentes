@@ -1,0 +1,58 @@
+{
+  "bundle_bytes": 70032045,
+  "bundle_sha256": "086c3cb351de256966368e0fad8a270cad1df8d49667bac8f6d9d68efe35e1d3",
+  "extracted_tree": {
+    "bytes": 236903155,
+    "files": 2085,
+    "sha256": "a35a1e1984e46da68663e8b621dee4340495720c01be249bccfe481fd5905f14"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "AgentCgroup.bundle.zip.part-0001",
+      "sha256": "31403303fd60ee807e11195d0129f3a885d880206aa73ec3127e781c29fbe1fc"
+    },
+    {
+      "bytes": 12582912,
+      "name": "AgentCgroup.bundle.zip.part-0002",
+      "sha256": "0cff5daa777c0643d901165ba17be6ebaabc60c5487d59df7559d3ab8ee3cada"
+    },
+    {
+      "bytes": 12582912,
+      "name": "AgentCgroup.bundle.zip.part-0003",
+      "sha256": "ec5b3ab4dabd34b92af4ecf8f4f767001cb1b1425824c22c3a412b1e5409254e"
+    },
+    {
+      "bytes": 12582912,
+      "name": "AgentCgroup.bundle.zip.part-0004",
+      "sha256": "4bd5ce8e315a7b5ce762cf8d1914691fbe921bd213a1639bf11489d8c3f96ad2"
+    },
+    {
+      "bytes": 12582912,
+      "name": "AgentCgroup.bundle.zip.part-0005",
+      "sha256": "f6696f8255b4947599e3eda16613ef6632fb0356671f5694054b555f110076db"
+    },
+    {
+      "bytes": 7117485,
+      "name": "AgentCgroup.bundle.zip.part-0006",
+      "sha256": "bed937b806af17660639039fd060ae0d0e47c57e72bdf554b58e47a646866070"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "AgentCgroup",
+  "source_bytes": 236903155,
+  "source_commit": "551ca1689b7d2d30db6b8a8613414750103cc68b",
+  "source_files": 2085,
+  "source_ref": "HEAD",
+  "source_repo": "eunomia-bpf/agentcgroup",
+  "source_tree": {
+    "bytes": 236903155,
+    "files": 2085,
+    "sha256": "a35a1e1984e46da68663e8b621dee4340495720c01be249bccfe481fd5905f14"
+  }
+}
