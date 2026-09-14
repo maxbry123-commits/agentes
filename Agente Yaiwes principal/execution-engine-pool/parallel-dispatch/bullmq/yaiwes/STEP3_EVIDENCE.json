@@ -1,0 +1,27 @@
+{
+  "schema": "yaiwes.step3-evidence/v1",
+  "node_id": 33,
+  "component": "BullMQ",
+  "status": "PASS",
+  "run_id": 34834756951,
+  "job_id": 103945934361,
+  "runtime": "node-22.22.2",
+  "plugin_id": "yaiwes.parallel_dispatch.bullmq",
+  "route": "FABLES->BullMQ->Redis->Queue->Worker",
+  "result": {
+    "status": "PASS",
+    "input": 21,
+    "output": 42
+  },
+  "evidence_levels": ["L2_build", "L3_runtime", "L4_feature"],
+  "adapter_sha256": "sha256:c62a0402f12f15a4f3130f852ca6e61cbc4214f6bb86215621639e9244034b92",
+  "source_snapshot_sha256": "0a38a940c39fc354caa19fbe093fc9b8c5572ed6a875e550dc1de12c825a5fa5",
+  "source_package_git_blob": "6c059cb46bd4b43f2462a3a5710b0408a5a4c280",
+  "prune": ["__pycache__"],
+  "move_repeated": false,
+  "ci_observation": {
+    "microtest_and_fables_wiring_passed": true,
+    "automated_publish_guard_failed_after_test": true,
+    "artifacts_published_surgically_from_exact_tested_payload": true
+  }
+}
