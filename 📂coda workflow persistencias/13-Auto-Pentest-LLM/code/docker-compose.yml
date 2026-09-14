@@ -1,0 +1,19 @@
+services:
+  agent:
+    build: .
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+      - ./memory_db:/app/memory_db
+    environment:
+      - KALI_HOST=${KALI_HOST}
+      - KALI_PORT=${KALI_PORT}
+      - KALI_USER=${KALI_USER}
+      - KALI_PASS=${KALI_PASS}
+      - LLM_BASE_URL=${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_MODEL=${LLM_MODEL}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Keep container running for exec usage or run main
+    command: [ "--target", "${TARGET_IP:-127.0.0.1}" ]
