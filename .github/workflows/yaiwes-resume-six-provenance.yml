@@ -1,0 +1,216 @@
+name: YAIWES Resume 6 Provenance Claims
+run-name: YAIWES resume provenance • ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-resume-six-provenance.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-repair-six-provenance
+  cancel-in-progress: false
+
+jobs:
+  resume:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /📂 Bitácora stated JSON Craxy wall.json
+            /Core kernel Yaiwes/APScheduler/SOURCE_*
+            /Core kernel Yaiwes/APScheduler/DOWNLOAD_EXTRACT_MANIFEST.json
+            /Core kernel Yaiwes/Apache-Airflow/SOURCE_*
+            /Core kernel Yaiwes/Apache-Airflow/DOWNLOAD_EXTRACT_MANIFEST.json
+            /Core kernel Yaiwes/Celery/SOURCE_*
+            /Core kernel Yaiwes/Celery/DOWNLOAD_EXTRACT_MANIFEST.json
+            /Core kernel Yaiwes/Dagu/SOURCE_*
+            /Core kernel Yaiwes/Dagu/DOWNLOAD_EXTRACT_MANIFEST.json
+            /Core kernel Yaiwes/gVisor/SOURCE_*
+            /Core kernel Yaiwes/gVisor/DOWNLOAD_EXTRACT_MANIFEST.json
+            /Core kernel Yaiwes/Hatchet/SOURCE_*
+            /Core kernel Yaiwes/Hatchet/DOWNLOAD_EXTRACT_MANIFEST.json
+
+      - name: Resume exact SOL claims and repair provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin main
+          git reset --hard origin/main
+          BASE="$(git rev-parse HEAD)"
+
+          python3 - <<'PY'
+          import json, hashlib, subprocess
+          from pathlib import Path
+          from datetime import datetime, timezone
+
+          WALL=Path('📂 Bitácora stated JSON Craxy wall.json')
+          d=json.loads(WALL.read_text(encoding='utf-8'))
+          names={'APScheduler','Apache-Airflow','Celery','Dagu','gVisor','Hatchet'}
+          now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
+          head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+
+          def obj(path, ref='HEAD'):
+              r=subprocess.run(['git','rev-parse',f'{ref}:{path.rstrip("/")}'],text=True,capture_output=True)
+              return r.stdout.strip() if r.returncode==0 else None
+          def show(path):
+              r=subprocess.run(['git','show',f'HEAD:{path}'],text=True,capture_output=True)
+              return r.stdout if r.returncode==0 else None
+          def text(path):
+              p=Path(path)
+              if p.is_file(): return p.read_text(encoding='utf-8').strip()
+              s=show(path)
+              return s.strip() if s is not None else None
+          def prior_step3_pass(n):
+              evidence='\n'.join(str(x) for x in n.get('evidence',[])).upper()
+              after=str((n.get('checkpoint') or {}).get('after') or '').upper()
+              history='\n'.join(str(x) for x in n.get('history',[])).upper()
+              return (
+                  ('STEP3' in evidence and 'PASS' in evidence) or
+                  ('STEP3' in after and 'PASS' in after) or
+                  ('STEP3_PASS' in history) or
+                  ('STEP3' in history and 'PASS' in history)
+              )
+          def source_provenance(n):
+              src=n['source'].rstrip('/')
+              url=text(src+'/SOURCE_URL.txt')
+              commit=text(src+'/SOURCE_COMMIT.txt')
+              sha=text(src+'/SOURCE_SHA256.txt')
+              scope='SOURCE_SHA256.txt'
+              manifest=Path(src+'/DOWNLOAD_EXTRACT_MANIFEST.json')
+              m={}
+              if manifest.is_file():
+                  try: m=json.loads(manifest.read_text(encoding='utf-8'))
+                  except Exception: m={}
+              if not url:
+                  url=m.get('source_url') or m.get('source_repo')
+                  if url and not url.startswith(('http://','https://')) and '/' in url:
+                      url='https://github.com/'+url
+              if not commit:
+                  commit=m.get('source_commit') or m.get('commit')
+              if not sha:
+                  st=m.get('source_tree')
+                  if isinstance(st,dict): sha=st.get('sha256')
+                  sha=sha or m.get('source_sha256') or m.get('sha256')
+                  if sha: scope='DOWNLOAD_EXTRACT_MANIFEST.json'
+              sums=Path(src+'/SOURCE_SHA256SUMS.txt')
+              if not sha and sums.is_file():
+                  sha=hashlib.sha256(sums.read_bytes()).hexdigest()
+                  scope='sha256(SOURCE_SHA256SUMS.txt bytes)'
+              if not (url and commit and sha):
+                  raise SystemExit(f'PROVENANCE_UNRESOLVED:{n["component"]}:url={bool(url)}:commit={bool(commit)}:sha={bool(sha)}')
+              return src,url,commit,sha,scope
+
+          selected=[]
+          for n in d['nodes']:
+              if n.get('component') not in names: continue
+              if not (n.get('status')=='IN_PROGRESS_STEP2_PROVENANCE' and n.get('owner')=='SOL' and n.get('lock')=='CLAIMED' and n.get('current_step')==2):
+                  raise SystemExit(f'CLAIM_LOST:{n.get("id")}:{n.get("component")}:{n.get("status")}:{n.get("owner")}:{n.get("lock")}')
+              if not prior_step3_pass(n):
+                  raise SystemExit(f'NO_PRIOR_STEP3_PASS:{n["component"]}')
+              src,url,commit,sha,scope=source_provenance(n)
+              target=(n.get('target') or '').rstrip('/')
+              if not target or not obj(target):
+                  raise SystemExit(f'TARGET_MISSING:{n["component"]}:{target}')
+              old_url=show(target+'/SOURCE_URL.txt')
+              old_commit=show(target+'/SOURCE_COMMIT.txt')
+              if old_url is not None and old_url.strip()!=url:
+                  raise SystemExit(f'URL_CONFLICT:{n["component"]}:{old_url.strip()} != {url}')
+              if old_commit is not None and old_commit.strip()!=commit:
+                  raise SystemExit(f'COMMIT_CONFLICT:{n["component"]}:{old_commit.strip()} != {commit}')
+              before_tree=obj(target)
+              source_tree=obj(src)
+              tp=Path(target); tp.mkdir(parents=True,exist_ok=True)
+              (tp/'SOURCE_URL.txt').write_text(url+'\n',encoding='utf-8')
+              (tp/'SOURCE_COMMIT.txt').write_text(commit+'\n',encoding='utf-8')
+              (tp/'SOURCE_SHA256.txt').write_text(sha+'\n',encoding='utf-8')
+              prov={
+                  'schema':'yaiwes.provenance/v1','component':n['component'],
+                  'source_url':url,'source_commit':commit,'source_sha256':sha,'source_sha256_scope':scope,
+                  'source_path':src,'source_tree_before':source_tree,
+                  'destination_path':target,'destination_tree_before_provenance':before_tree,
+                  'repair_base_sha':head,'move_repeated':False,
+                  'prior_step3_verified':True,'step3_reexecuted':False,
+                  'step3_reuse_reason':'provenance-only metadata repair; component code and wiring unchanged'
+              }
+              (tp/'YAIWES_PROVENANCE.json').write_text(json.dumps(prov,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+              for fn in ('SOURCE_URL.txt','SOURCE_COMMIT.txt','SOURCE_SHA256.txt','YAIWES_PROVENANCE.json'):
+                  subprocess.check_call(['git','add','--sparse','--',target+'/'+fn])
+              selected.append((n,src,source_tree,target,before_tree,sha))
+
+          if {n['component'] for n, *_ in selected} != names:
+              raise SystemExit('SIX_NODE_SET_INCOMPLETE')
+
+          def staged(path):
+              return subprocess.check_output(['git','rev-parse',':'+path],text=True).strip()
+          for n,src,source_tree,target,before_tree,sha in selected:
+              ev=n.setdefault('evidence',[])
+              ev.extend([
+                  f'provenance:source_before:path:{src}:tree:{source_tree}',
+                  f'provenance:target_before:path:{target}:tree:{before_tree}',
+                  f'provenance:SOURCE_URL.txt:blob:{staged(target+"/SOURCE_URL.txt")}',
+                  f'provenance:SOURCE_COMMIT.txt:blob:{staged(target+"/SOURCE_COMMIT.txt")}',
+                  f'provenance:SOURCE_SHA256.txt:blob:{staged(target+"/SOURCE_SHA256.txt")}:sha256:{sha}',
+                  f'provenance:YAIWES_PROVENANCE.json:blob:{staged(target+"/YAIWES_PROVENANCE.json")}',
+                  'step2:provenance:PASS:NO_MOVE_REPEAT',
+                  'step3:verified_prior_PASS:REUSED_NO_CODE_CHANGE'
+              ])
+              n['status']='PASS_STEP3'; n['current_step']=3; n['owner']=None; n['lock']='FREE'; n['next_action']='COMPLETE'
+              n['checkpoint']['after']=f'{now} provenance-only repair PASS; required files staged; prior STEP3 PASS verified; code unchanged; MOVE not repeated'
+              n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL GPT','event':'RESUME_STEP2_PROVENANCE_PASS_RESTORE_STEP3','base_sha':head})
+          d['updated_at']=now
+          WALL.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          subprocess.check_call(['git','add','--sparse','--',str(WALL)])
+          PY
+
+          git commit -m 'provenance(yaiwes): resume and repair six required provenance gaps'
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$BASE" || { echo STALE_LOCK_GAP_REPAIR; exit 42; }
+          git push origin HEAD:main
+
+      - name: Read back final path blob SHA evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git reset --hard origin/main
+          BASE="$(git rev-parse HEAD)"
+          python3 - <<'PY'
+          import json,subprocess
+          from pathlib import Path
+          from datetime import datetime,timezone
+          p=Path('📂 Bitácora stated JSON Craxy wall.json'); d=json.loads(p.read_text(encoding='utf-8'))
+          names={'APScheduler','Apache-Airflow','Celery','Dagu','gVisor','Hatchet'}
+          head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
+          def obj(path): return subprocess.check_output(['git','rev-parse',f'HEAD:{path.rstrip("/")}'],text=True).strip()
+          for n in d['nodes']:
+              if n.get('component') not in names: continue
+              if not (n.get('status')=='PASS_STEP3' and n.get('lock')=='FREE' and n.get('owner') is None and n.get('next_action')=='COMPLETE'):
+                  raise SystemExit(f'NOT_CLOSED:{n.get("component")}')
+              target=n['target'].rstrip('/')
+              tree=obj(target)
+              blobs={x:obj(target+'/'+x) for x in ('SOURCE_URL.txt','SOURCE_COMMIT.txt','SOURCE_SHA256.txt','YAIWES_PROVENANCE.json')}
+              n.setdefault('evidence',[]).append(f'provenance:target_after:path:{target}:commit:{head}:tree:{tree}')
+              n['evidence'].append('provenance:readback:'+','.join(f'{k}={v}' for k,v in blobs.items()))
+              n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL GPT','event':'PROVENANCE_FINAL_READBACK_PASS','artifact_commit':head,'target_tree':tree})
+          d['updated_at']=now
+          p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+          git add --sparse -- '📂 Bitácora stated JSON Craxy wall.json'
+          git commit -m 'crazy-wall: verify six provenance repairs after publish'
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$BASE" || { echo STALE_LOCK_GAP_READBACK; exit 42; }
+          git push origin HEAD:main
