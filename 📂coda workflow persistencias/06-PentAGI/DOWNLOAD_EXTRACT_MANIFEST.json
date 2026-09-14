@@ -1,0 +1,53 @@
+{
+  "bundle_bytes": 52698470,
+  "bundle_sha256": "9e1dab33065b488283f0caa84047b0a2b1213bb1281f8318484c034f9b90fb90",
+  "extracted_tree": {
+    "bytes": 101410167,
+    "files": 1452,
+    "sha256": "76b1ab06e5ce8d81a24fc9e61419c9e48656a029fd8cb52d2e34035a07f7216d"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "06-PentAGI.bundle.zip.part-0001",
+      "sha256": "c53236489ac92d6cd5e5109b8d59f4ab11c08cfdd1b4c08874b590cf80ea4bcd"
+    },
+    {
+      "bytes": 12582912,
+      "name": "06-PentAGI.bundle.zip.part-0002",
+      "sha256": "4dc65961e0797194b1501ac677c3ebc1eb28b96103e3a8d67505b3bf52dab217"
+    },
+    {
+      "bytes": 12582912,
+      "name": "06-PentAGI.bundle.zip.part-0003",
+      "sha256": "36bdfa0ed33433b7f3b37fbe182ca8f90f7421d58d2702ccdb52e6bb26349ac9"
+    },
+    {
+      "bytes": 12582912,
+      "name": "06-PentAGI.bundle.zip.part-0004",
+      "sha256": "92f04914cd709c38f3a99f5a9ac486f36e7f40ca9de87d66c2a7dbef807b2e48"
+    },
+    {
+      "bytes": 2366822,
+      "name": "06-PentAGI.bundle.zip.part-0005",
+      "sha256": "6fd9f622bea9d508155a76846d92bde095810fde850306dba42b5e533ea4ed63"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "06-PentAGI",
+  "source_bytes": 101410167,
+  "source_commit": "ea665308baaff015b226f308438a68d929d0f29b",
+  "source_files": 1452,
+  "source_ref": "HEAD",
+  "source_repo": "vxcontrol/pentagi",
+  "source_tree": {
+    "bytes": 101410167,
+    "files": 1452,
+    "sha256": "76b1ab06e5ce8d81a24fc9e61419c9e48656a029fd8cb52d2e34035a07f7216d"
+  }
+}

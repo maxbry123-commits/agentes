@@ -1,0 +1,566 @@
+import type { Reference, StoreObject } from '@apollo/client';
+
+import { ApolloClient, ApolloLink, HttpLink, InMemoryCache, Observable, split } from '@apollo/client';
+import { CombinedGraphQLErrors, ServerError, ServerParseError } from '@apollo/client/errors';
+import { ErrorLink } from '@apollo/client/link/error';
+import { GraphQLWsLink } from '@apollo/client/link/subscriptions';
+import { getMainDefinition } from '@apollo/client/utilities';
+import { createClient } from 'graphql-ws';
+import { LRUCache } from 'lru-cache';
+
+import type { AssistantLogFragmentFragment } from '@/graphql/types';
+
+import { Log } from '@/lib/log';
+import { baseUrl } from '@/models/api';
+
+const GRAPHQL_ENDPOINT = `${baseUrl}/graphql`;
+const ASSISTANT_LOG_TYPENAME = 'AssistantLog';
+const MAX_RETRY_DELAY_MS = 30_000;
+const STREAMING_CACHE_MAX_ENTRIES = 500;
+const STREAMING_CACHE_TTL_MS = 1000 * 60 * 5;
+const STREAMING_THROTTLE_MS = 50;
+
+type StreamingLogEntry = {
+    lastUpdate: number;
+    message: null | string;
+    result: null | string;
+    thinking: null | string;
+};
+
+type SubscriptionAction = 'add' | 'create' | 'delete' | 'update';
+
+const EMPTY_LOG_ENTRY: StreamingLogEntry = { lastUpdate: 0, message: null, result: null, thinking: null };
+
+const concatStrings = (existing: null | string | undefined, incoming: null | string | undefined): null | string => {
+    if (existing === null || existing === undefined) {
+        return incoming ?? null;
+    }
+
+    if (incoming === null || incoming === undefined) {
+        return existing;
+    }
+
+    return `${existing}${incoming}`;
+};
+
+const resolveSubscriptionAction = (name: string): SubscriptionAction => {
+    if (name.endsWith('Deleted')) {
+        return 'delete';
+    }
+
+    if (name.endsWith('Updated')) {
+        return 'update';
+    }
+
+    if (name.endsWith('Created')) {
+        return 'create';
+    }
+
+    return 'add';
+};
+
+const isSubscriptionOperation = ({ query }: ApolloLink.Operation): boolean => {
+    const definition = getMainDefinition(query);
+
+    return definition.kind === 'OperationDefinition' && definition.operation === 'subscription';
+};
+
+const createInterceptLink = (
+    transform: (result: ApolloLink.Result, operation: ApolloLink.Operation) => ApolloLink.Result,
+): ApolloLink =>
+    new ApolloLink(
+        (operation: ApolloLink.Operation, forward) =>
+            new Observable((observer) => {
+                const subscription = forward(operation).subscribe({
+                    complete: observer.complete.bind(observer),
+                    error: observer.error.bind(observer),
+                    next: (result: ApolloLink.Result) => observer.next(transform(result, operation)),
+                });
+
+                return () => subscription.unsubscribe();
+            }),
+    );
+
+const subscriptionToCacheFieldMap: Record<string, string> = {
+    agentLogAdded: 'agentLogs',
+    apiTokenCreated: 'apiTokens',
+    apiTokenDeleted: 'apiTokens',
+    apiTokenUpdated: 'apiTokens',
+    assistantCreated: 'assistants',
+    assistantDeleted: 'assistants',
+    assistantLogAdded: 'assistantLogs',
+    assistantLogUpdated: 'assistantLogs',
+    assistantUpdated: 'assistants',
+    flowCreated: 'flows',
+    flowDeleted: 'flows',
+    flowFileAdded: 'flowFiles',
+    flowFileDeleted: 'flowFiles',
+    flowFileUpdated: 'flowFiles',
+    flowTemplateCreated: 'flowTemplates',
+    flowTemplateDeleted: 'flowTemplates',
+    flowTemplateUpdated: 'flowTemplates',
+    flowUpdated: 'flows',
+    knowledgeDocumentCreated: 'knowledgeDocuments',
+    knowledgeDocumentDeleted: 'knowledgeDocuments',
+    knowledgeDocumentUpdated: 'knowledgeDocuments',
+    messageLogAdded: 'messageLogs',
+    messageLogUpdated: 'messageLogs',
+    providerCreated: 'settingsProviders',
+    providerDeleted: 'settingsProviders',
+    providerUpdated: 'settingsProviders',
+    resourceAdded: 'resources',
+    resourceDeleted: 'resources',
+    resourceUpdated: 'resources',
+    screenshotAdded: 'screenshots',
+    searchLogAdded: 'searchLogs',
+    settingsUserUpdated: 'settingsUser',
+    taskCreated: 'tasks',
+    taskUpdated: 'tasks',
+    terminalLogAdded: 'terminalLogs',
+    vectorStoreLogAdded: 'vectorStoreLogs',
+};
+
+const matchesCacheVariant = (
+    storeFieldName: string,
+    cacheField: string,
+    subscriptionVariables?: Record<string, unknown>,
+): boolean => {
+    if (!subscriptionVariables || storeFieldName === cacheField) {
+        return true;
+    }
+
+    const separatorIndex = storeFieldName.indexOf(':');
+
+    if (separatorIndex === -1) {
+        return true;
+    }
+
+    try {
+        const storedArgs = JSON.parse(storeFieldName.slice(separatorIndex + 1)) as Record<string, unknown>;
+
+        return Object.entries(storedArgs).every(([key, value]) => {
+            if (!(key in subscriptionVariables)) {
+                return true;
+            }
+
+            return String(value) === String(subscriptionVariables[key]);
+        });
+    } catch (error) {
+        Log.error('Could not parse storeFieldName for subscription cache match; updating all variants', error);
+
+        return true;
+    }
+};
+
+type CacheActionApplier = (
+    existingArray: readonly Reference[],
+    newRef: Reference,
+    itemExists: boolean,
+    filterOutById: () => readonly Reference[],
+) => readonly Reference[];
+
+const cacheActionStrategies: Record<SubscriptionAction, CacheActionApplier> = {
+    add: (existingArray, newRef, itemExists) => (itemExists ? existingArray : [...existingArray, newRef]),
+    create: (existingArray, newRef, itemExists) => (itemExists ? existingArray : [newRef, ...existingArray]),
+    delete: (existingArray, _newRef, itemExists, filterOutById) => (itemExists ? filterOutById() : existingArray),
+    update: (existingArray, newRef, itemExists) => (itemExists ? existingArray : [...existingArray, newRef]),
+};
+
+export const updateCacheForSubscription = (
+    cache: InMemoryCache,
+    subscriptionName: string,
+    cacheField: string,
+    newItem: { id: number | string },
+    subscriptionVariables?: Record<string, unknown>,
+): void => {
+    if (!newItem?.id) {
+        return;
+    }
+
+    if (subscriptionName === 'settingsUserUpdated') {
+        try {
+            cache.modify({
+                fields: {
+                    [cacheField]: () => newItem,
+                },
+            });
+        } catch (error) {
+            Log.error(`Error updating cache for ${subscriptionName}:`, {
+                cacheField,
+                error,
+                itemId: newItem.id,
+                subscriptionName,
+            });
+        }
+
+        return;
+    }
+
+    try {
+        cache.modify({
+            fields: {
+                [cacheField](existing, { readField, storeFieldName, toReference }) {
+                    const existingArray = (existing ?? []) as readonly Reference[];
+
+                    if (!matchesCacheVariant(storeFieldName, cacheField, subscriptionVariables)) {
+                        return existingArray;
+                    }
+
+                    // ID equality must be type-tolerant: REST hydration writes some
+                    // entries with `id` as a string (GraphQL `ID!` convention)
+                    const targetId = String(newItem.id);
+                    const idMatches = (ref: Reference) => String(readField('id', ref)) === targetId;
+
+                    const itemExists = existingArray.some(idMatches);
+
+                    let newRef = toReference(newItem as StoreObject, true);
+
+                    if (!newRef && !itemExists && subscriptionName === 'assistantLogUpdated') {
+                        newRef = toReference(newItem as StoreObject);
+                    }
+
+                    if (!newRef) {
+                        return existingArray;
+                    }
+
+                    const action = resolveSubscriptionAction(subscriptionName);
+
+                    return cacheActionStrategies[action](existingArray, newRef, itemExists, () =>
+                        existingArray.filter((ref) => !idMatches(ref)),
+                    );
+                },
+            },
+        });
+    } catch (error) {
+        Log.error(`Error updating cache for ${subscriptionName}:`, {
+            cacheField,
+            error,
+            itemId: newItem.id,
+        });
+    }
+};
+
+export const createStreamingLink = (): ApolloLink => {
+    const streamingLogs = new LRUCache<string, StreamingLogEntry>({
+        max: STREAMING_CACHE_MAX_ENTRIES,
+        ttl: STREAMING_CACHE_TTL_MS,
+    });
+
+    const accumulateStreamingLog = (logUpdate: AssistantLogFragmentFragment): StreamingLogEntry => {
+        const cacheKey = `${ASSISTANT_LOG_TYPENAME}:${logUpdate.id}`;
+        const cachedLog = streamingLogs.get(cacheKey) ?? EMPTY_LOG_ENTRY;
+
+        const accumulatedLog: StreamingLogEntry = {
+            lastUpdate: cachedLog.lastUpdate,
+            message: concatStrings(cachedLog.message, logUpdate.message),
+            result: concatStrings(cachedLog.result, logUpdate.result),
+            thinking: concatStrings(cachedLog.thinking, logUpdate.thinking),
+        };
+
+        streamingLogs.set(cacheKey, accumulatedLog);
+
+        return accumulatedLog;
+    };
+
+    const shouldEmitUpdate = (logId: string): boolean => {
+        const entry = streamingLogs.get(`${ASSISTANT_LOG_TYPENAME}:${logId}`);
+
+        if (!entry) {
+            return true;
+        }
+
+        const now = Date.now();
+
+        if (now - entry.lastUpdate >= STREAMING_THROTTLE_MS) {
+            entry.lastUpdate = now;
+
+            return true;
+        }
+
+        return false;
+    };
+
+    return new ApolloLink((operation, forward) => {
+        return new Observable((observer) => {
+            const subscription = forward(operation).subscribe({
+                complete: observer.complete.bind(observer),
+                error: observer.error.bind(observer),
+                next: (result) => {
+                    const logUpdate = result.data?.assistantLogUpdated as AssistantLogFragmentFragment | undefined;
+
+                    if (!logUpdate) {
+                        observer.next(result);
+
+                        return;
+                    }
+
+                    try {
+                        if (logUpdate.appendPart && logUpdate.id) {
+                            const accumulatedLog = accumulateStreamingLog(logUpdate);
+
+                            if (!shouldEmitUpdate(logUpdate.id)) {
+                                return;
+                            }
+
+                            observer.next({
+                                ...result,
+                                data: {
+                                    ...result.data,
+                                    assistantLogUpdated: {
+                                        ...logUpdate,
+                                        appendPart: false,
+                                        message: accumulatedLog.message ?? '',
+                                        result: accumulatedLog.result ?? '',
+                                        thinking: accumulatedLog.thinking,
+                                    },
+                                },
+                            });
+
+                            return;
+                        }
+
+                        if (logUpdate.id) {
+                            const cacheKey = `${ASSISTANT_LOG_TYPENAME}:${logUpdate.id}`;
+                            const cachedLog = streamingLogs.get(cacheKey);
+
+                            streamingLogs.delete(cacheKey);
+
+                            if (cachedLog) {
+                                observer.next({
+                                    ...result,
+                                    data: {
+                                        ...result.data,
+                                        assistantLogUpdated: {
+                                            ...logUpdate,
+                                            message: concatStrings(cachedLog.message, logUpdate.message) ?? '',
+                                            result: concatStrings(cachedLog.result, logUpdate.result) ?? '',
+                                            thinking: concatStrings(cachedLog.thinking, logUpdate.thinking),
+                                        },
+                                    },
+                                });
+
+                                return;
+                            }
+                        }
+                    } catch (error) {
+                        Log.error('Error processing streaming assistant log:', error);
+                    }
+
+                    observer.next(result);
+                },
+            });
+
+            return () => subscription.unsubscribe();
+        });
+    });
+};
+
+export const createSubscriptionCacheLink = (cacheInstance: InMemoryCache): ApolloLink =>
+    createInterceptLink((result, operation) => {
+        if (result.data) {
+            const variables = operation.variables as Record<string, unknown> | undefined;
+
+            try {
+                Object.entries(result.data)
+                    .map(([key, value]) => ({ cacheField: subscriptionToCacheFieldMap[key], key, value }))
+                    .filter(
+                        (entry): entry is { cacheField: string; key: string; value: { id: number | string } } =>
+                            !!entry.cacheField && !!entry.value?.id,
+                    )
+                    .forEach(({ cacheField, key, value }) => {
+                        updateCacheForSubscription(cacheInstance, key, cacheField, value, variables);
+                    });
+            } catch (error) {
+                Log.error('Error processing subscription cache update:', error);
+            }
+        }
+
+        return result;
+    });
+
+const replaceWithIncoming = {
+    merge: (_existing: unknown, incoming: unknown) => incoming,
+};
+
+export const createCache = () =>
+    new InMemoryCache({
+        typePolicies: {
+            APIToken: {
+                keyFields: ['tokenId'],
+            },
+            KnowledgeDocument: {
+                fields: {
+                    // `content` arrives empty from the list query (withContent:false,
+                    // to save bandwidth) but full from the detail query — both
+                    // normalize to this shared entity. Never let an empty incoming
+                    // blank out a body the detail already loaded.
+                    content: {
+                        merge: (existing: string | undefined, incoming: string) => incoming || existing || '',
+                    },
+                },
+            },
+            ProviderConfig: {
+                keyFields: (object) => {
+                    if (object.id === 0 || object.id === '0') {
+                        return false;
+                    }
+
+                    return ['id'];
+                },
+            },
+            Query: {
+                fields: {
+                    agentLogs: { keyArgs: ['flowId'], ...replaceWithIncoming },
+                    apiTokens: { ...replaceWithIncoming },
+                    assistantLogs: { keyArgs: ['flowId', 'assistantId'], ...replaceWithIncoming },
+                    assistants: { keyArgs: ['flowId'], ...replaceWithIncoming },
+                    flow: {
+                        read(existing, { args, toReference }) {
+                            if (!args?.flowId) {
+                                return existing;
+                            }
+
+                            return existing ?? toReference({ __typename: 'Flow', id: args.flowId });
+                        },
+                    },
+                    flowFiles: { keyArgs: ['flowId'], ...replaceWithIncoming },
+                    flows: { ...replaceWithIncoming },
+                    flowTemplates: { ...replaceWithIncoming },
+                    knowledgeDocuments: { keyArgs: ['filter', 'withContent'], ...replaceWithIncoming },
+                    messageLogs: { keyArgs: ['flowId'], ...replaceWithIncoming },
+                    providers: { ...replaceWithIncoming },
+                    resources: { keyArgs: ['path', 'recursive'], ...replaceWithIncoming },
+                    screenshots: { keyArgs: ['flowId'], ...replaceWithIncoming },
+                    searchLogs: { keyArgs: ['flowId'], ...replaceWithIncoming },
+                    settingsPrompts: { ...replaceWithIncoming },
+                    settingsProviders: { ...replaceWithIncoming },
+                    settingsUser: { ...replaceWithIncoming },
+                    tasks: { keyArgs: ['flowId'], ...replaceWithIncoming },
+                    terminalLogs: { keyArgs: ['flowId'], ...replaceWithIncoming },
+                    vectorStoreLogs: { keyArgs: ['flowId'], ...replaceWithIncoming },
+                },
+            },
+        },
+    });
+
+const createApolloClient = () => {
+    // Holds the client for the ws `connected` handler, which is defined before the
+    // client exists; `lazy: true` means the socket only opens on the first
+    // subscription, after `.current` is set below.
+    const clientRef: { current?: ApolloClient } = {};
+
+    const httpLink = new HttpLink({
+        credentials: 'include',
+        uri: `${window.location.origin}${GRAPHQL_ENDPOINT}`,
+    });
+
+    const wsLink = new GraphQLWsLink(
+        createClient({
+            lazy: true,
+            on: {
+                closed: () => Log.debug('GraphQL WebSocket closed'),
+                connected: (_socket, _payload, wasRetry) => {
+                    Log.debug('GraphQL WebSocket connected');
+
+                    // Subscriptions are delta-only — the server never replays events
+                    // published while we were disconnected — so on a reconnect refetch
+                    // active queries to reconcile the cache with the backend.
+                    if (wasRetry) {
+                        // Unlike per-query refetch(), the aggregate promise isn't wrapped
+                        // in preventUnhandledRejection — a failed reconcile (e.g. a transient
+                        // 502 during the reconnect) would otherwise surface as an
+                        // unhandledrejection.
+                        void clientRef.current?.refetchObservableQueries().catch((error: unknown) => {
+                            Log.error('Reconnect cache reconcile failed:', error);
+                        });
+
+                        // refetchObservableQueries skips cache-only queries, so the REST-hydrated
+                        // resources slot isn't reconciled above — its provider re-fetches on this.
+                        window.dispatchEvent(new Event('ws:reconnected'));
+                    }
+                },
+                connecting: () => Log.debug('GraphQL WebSocket connecting...'),
+                error: (error) => {
+                    Log.error('GraphQL WebSocket error:', error);
+
+                    // A WebSocket error event doesn't expose the handshake HTTP status, so a
+                    // 403 can't be detected here — let /info classify it via auth:refresh.
+                    window.dispatchEvent(new Event('auth:refresh'));
+                },
+                ping: () => Log.debug('GraphQL WebSocket ping'),
+                pong: () => Log.debug('GraphQL WebSocket pong'),
+            },
+            retryAttempts: Infinity,
+            retryWait: (retries) =>
+                new Promise((resolve) => {
+                    // Jitter so a mass reconnect (e.g. backend restart) doesn't thundering-herd the server.
+                    setTimeout(resolve, Math.min(1000 * 2 ** retries, MAX_RETRY_DELAY_MS) + Math.random() * 3000);
+                }),
+            shouldRetry: () => true,
+            url: `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}${GRAPHQL_ENDPOINT}`,
+        }),
+    );
+
+    const transportLink = split(isSubscriptionOperation, wsLink, httpLink);
+
+    const errorLink = new ErrorLink(({ error, operation }) => {
+        if (CombinedGraphQLErrors.is(error)) {
+            for (const { extensions, locations, message, path } of error.errors) {
+                Log.error(`[GraphQL Error] ${message}`, {
+                    locations,
+                    operation: operation.operationName,
+                    path,
+                });
+
+                const errorCode = extensions?.code as string | undefined;
+
+                if (
+                    errorCode === 'UNAUTHENTICATED' ||
+                    errorCode === 'FORBIDDEN' ||
+                    message.toLowerCase().includes('auth required') ||
+                    message.toLowerCase().includes('unauthorized') ||
+                    message.toLowerCase().includes('forbidden')
+                ) {
+                    Log.warn('GraphQL authorization error detected, refreshing auth info');
+                    window.dispatchEvent(new Event('auth:refresh'));
+                }
+            }
+        } else if (error) {
+            Log.error(`[Network Error] ${error.message}`, error);
+
+            const statusCode = ServerError.is(error) || ServerParseError.is(error) ? error.statusCode : undefined;
+
+            if (statusCode === 401 || statusCode === 403) {
+                Log.warn('Network authorization error detected, refreshing auth info');
+                window.dispatchEvent(new Event('auth:refresh'));
+            }
+        }
+    });
+
+    const cache = createCache();
+
+    const streamingLink = createStreamingLink();
+    const subscriptionCacheLink = createSubscriptionCacheLink(cache);
+
+    const link = ApolloLink.from([errorLink, subscriptionCacheLink, streamingLink, transportLink]);
+
+    const apolloClient = new ApolloClient({
+        cache,
+        defaultOptions: {
+            watchQuery: {
+                fetchPolicy: 'cache-and-network',
+                nextFetchPolicy: 'cache-first',
+                notifyOnNetworkStatusChange: true,
+            },
+        },
+        link,
+    });
+
+    clientRef.current = apolloClient;
+
+    return apolloClient;
+};
+
+export const client = createApolloClient();
+
+export default client;
