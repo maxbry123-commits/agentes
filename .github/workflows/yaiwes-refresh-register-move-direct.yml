@@ -1,0 +1,220 @@
+name: YAIWES Refresh + Register Move Direct
+run-name: YAIWES refresh/register • ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-refresh-register-move-direct.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-refresh-register-move-direct
+  cancel-in-progress: false
+
+jobs:
+  refresh-register:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json
+            /Claude readme/FICHA-ADN-TECNICA-YAIWES.md
+            /Readme arquitectura Yaiwes/FICHA-ADN-TECNICA-YAIWES.md
+            /📂 Bitácora stated JSON Craxy wall.json
+
+      - name: Refresh physical component set and register every missing STEP1 node
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            BASE="$(git rev-parse HEAD)"
+
+            python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          from datetime import datetime, timezone
+
+          WALL=Path('📂 Bitácora stated JSON Craxy wall.json')
+          FICHA=Path('Claude readme/FICHA-ADN-TECNICA-YAIWES.md')
+          FICHA2=Path('Readme arquitectura Yaiwes/FICHA-ADN-TECNICA-YAIWES.md')
+          OLDINV=Path('Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json')
+          assert WALL.is_file() and FICHA.is_file() and FICHA2.is_file()
+          assert FICHA.read_bytes()==FICHA2.read_bytes(), 'FICHA_DRIFT'
+          wall=json.loads(WALL.read_text(encoding='utf-8'))
+          old=json.loads(OLDINV.read_text(encoding='utf-8')) if OLDINV.is_file() else {'components':[]}
+          head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          ficha_blob=subprocess.check_output(['git','rev-parse','HEAD:Claude readme/FICHA-ADN-TECNICA-YAIWES.md'],text=True).strip()
+          now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
+
+          def git_obj(path):
+              r=subprocess.run(['git','rev-parse',f'HEAD:{path.rstrip("/")}'],text=True,capture_output=True)
+              return r.stdout.strip() if r.returncode==0 else None
+          def tree_dirs(treeish_path):
+              r=subprocess.run(['git','ls-tree','-d','--name-only',f'HEAD:{treeish_path}'],text=True,capture_output=True)
+              if r.returncode: return []
+              return [x.strip() for x in r.stdout.splitlines() if x.strip()]
+          def closed(n):
+              return n.get('status') in {'PASS','PASS_STEP3','VERIFIED_CLOSED','COMPLETE','CLOSED'} or n.get('next_action')=='COMPLETE'
+
+          # Candidate set = all prior inventory sources still present + fresh component-like root dirs
+          # + every first-level component inside the two explicit recovery buckets.
+          candidates={}
+          old_by_path={}
+          for c in old.get('components',[]):
+              p=(c.get('path') or '').rstrip('/')
+              if p and git_obj(p):
+                  old_by_path[p]=c
+                  candidates[p]={'name':c.get('name') or Path(p).name,'origin':'prior_inventory'}
+
+          support_root={
+            'Componentes recuperados A','Componentes recuperados B',
+            'Crack wall bitácora stated JSON','Download code Yaiwes','Download code',
+            'Metodo de trabajo','Método de trabajo','Readme de integración de componentes arquitectura Yaiwes',
+            'TASK-GAPS','agente-yaiwes','agents','code-programming-engine','control-layer','extensions',
+            'groups','memory','scripts','tools','wordflow','workflows archivados 2026-09-04'
+          }
+          root_dirs=tree_dirs('Core kernel Yaiwes')
+          for name in root_dirs:
+              if name in ('Componentes recuperados A','Componentes recuperados B'):
+                  bucket=f'Core kernel Yaiwes/{name}'
+                  for child in tree_dirs(bucket):
+                      p=f'{bucket}/{child}'
+                      candidates.setdefault(p,{'name':child,'origin':name})
+              elif name not in support_root:
+                  p=f'Core kernel Yaiwes/{name}'
+                  candidates.setdefault(p,{'name':name,'origin':'fresh_root'})
+
+          # Remove any non-tree candidates defensively.
+          fresh=[]
+          for p,meta in sorted(candidates.items(), key=lambda kv: kv[0].casefold()):
+              sha=git_obj(p)
+              if not sha: continue
+              fresh.append({'name':meta['name'],'source':p,'source_tree':sha,'origin':meta['origin']})
+
+          nodes=wall.setdefault('nodes',[])
+          max_id=max([int(n.get('id',0) or 0) for n in nodes] or [0])
+          registered=[]; reopened=[]; already=[]
+
+          # Explicit Director authorization: this user instruction overrides only node creation for this exact scope.
+          auths=wall.setdefault('director_authorizations',[])
+          auth_key='MOVE_DIRECT_TO_FINAL_ALL_CORE_COMPONENTS_2026-09-14'
+          if not any(a.get('id')==auth_key for a in auths):
+              auths.append({
+                'id':auth_key,'authorized_at':now,'actor':'Director/User',
+                'scope':'Core kernel Yaiwes/ components without closed Crazy Wall node',
+                'override':'collaboration.ai_may_create_new_work=false ONLY for registering nodes required by the explicit MOVE-DIRECT instruction',
+                'steps':['STEP1_ANALYZE_ABC_DESTINATION','STEP2_MOVE_DIRECT_WITH_PROVENANCE','STEP3_WIRE_PRUNE_IF_NEEDED_MICROTEST'],
+                'fail_closed':True
+              })
+
+          for item in fresh:
+              p=item['source']; name=item['name']; tsha=item['source_tree']
+              exact=[n for n in nodes if (n.get('source') or '').rstrip('/')==p]
+              name_matches=[n for n in nodes if n.get('component')==name]
+              matches=exact or name_matches
+              closed_nodes=[n for n in matches if closed(n)]
+              if closed_nodes:
+                  n=closed_nodes[-1]
+                  # Current instruction requires provenance even for prior closures.
+                  target=(n.get('target') or '').rstrip('/')
+                  missing=[]
+                  if target and git_obj(target):
+                      for fn in ('SOURCE_URL.txt','SOURCE_COMMIT.txt','SOURCE_SHA256.txt'):
+                          if not git_obj(f'{target}/{fn}'):
+                              missing.append(fn)
+                  if target and missing:
+                      previous=n.get('status')
+                      n['status']='GAP_STEP2_PROVENANCE'
+                      n['current_step']=2
+                      n['owner']=None; n['lock']='FREE'
+                      n['next_action']='STEP2_PROVENANCE_REPAIR_NO_MOVE_REPEAT'
+                      n.setdefault('evidence',[]).append(f'move-direct:provenance-gap:{"+".join(missing)}')
+                      n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL GPT','event':'REOPEN_PRIOR_CLOSE_FOR_REQUIRED_PROVENANCE','previous_status':previous,'source_tree':tsha})
+                      reopened.append({'id':n.get('id'),'component':name,'missing':missing})
+                  else:
+                      already.append({'id':n.get('id'),'component':name,'status':n.get('status')})
+                  continue
+
+              if matches:
+                  # Existing open node: make sure it stays fail-closed and has current source evidence.
+                  n=matches[-1]
+                  ev=n.setdefault('evidence',[])
+                  marker=f'step{n.get("current_step",1)}:source_tree:{tsha}'
+                  if marker not in ev: ev.append(marker)
+                  already.append({'id':n.get('id'),'component':name,'status':n.get('status')})
+                  continue
+
+              max_id += 1
+              node={
+                'id':max_id,'component':name,'source':p+'/',
+                'current_step':1,'status':'PENDING_STEP1','abc':None,'target':None,
+                'owner':None,'lock':'FREE',
+                'checkpoint':{
+                  'before':f'{now} fresh main={head}; source_path={p}; source_tree={tsha}; ficha_blob={ficha_blob}',
+                  'after':None
+                },
+                'evidence':[
+                  'director:MOVE_DIRECT_TO_FINAL_ALL_CORE_COMPONENTS_2026-09-14',
+                  f'step1:before:path:{p}',f'step1:before:tree:{tsha}',
+                  f'ficha:Claude readme/FICHA-ADN-TECNICA-YAIWES.md:blob:{ficha_blob}'
+                ],
+                'history':[{'at':now,'actor':'SOL','label':'SOL GPT','event':'REGISTER_DIRECTOR_AUTHORIZED_STEP1','base_sha':head}],
+                'next_action':'STEP1_ANALYZE_ABC_DESTINATION'
+              }
+              nodes.append(node)
+              registered.append({'id':max_id,'component':name,'source':p,'source_tree':tsha})
+
+          wall['updated_at']=now
+          counts=wall.setdefault('counts',{})
+          counts['move_direct_physical_components_fresh']=len(fresh)
+          counts['move_direct_registered_new_step1']=len(registered)
+          counts['move_direct_reopened_provenance_gaps']=len(reopened)
+          counts['move_direct_nodes_complete']=sum(1 for n in nodes if closed(n))
+          counts['move_direct_nodes_pending']=sum(1 for n in nodes if n.get('next_action')!='COMPLETE')
+
+          result={
+            'schema':'yaiwes.move-direct-fresh-register/v1','generated_at':now,'base_sha':head,
+            'ficha_blob':ficha_blob,'physical_component_count':len(fresh),
+            'registered_new_step1_count':len(registered),'reopened_provenance_gap_count':len(reopened),
+            'already_represented_count':len(already),'registered':registered,'reopened':reopened,
+            'fresh_components':fresh
+          }
+          Path('Claude readme/MOVE-DIRECT-FRESH-REGISTER.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          WALL.write_text(json.dumps(wall,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          print(json.dumps({k:result[k] for k in ('base_sha','physical_component_count','registered_new_step1_count','reopened_provenance_gap_count','already_represented_count')},indent=2))
+          PY
+
+            git add --sparse -- '📂 Bitácora stated JSON Craxy wall.json' 'Claude readme/MOVE-DIRECT-FRESH-REGISTER.json'
+            git commit -m 'crazy-wall: register fresh MOVE-DIRECT component queue' || true
+
+            git fetch origin main
+            if [ "$(git rev-parse origin/main)" != "$BASE" ]; then
+              echo "STALE_LOCK_GAP attempt=$attempt base=$BASE current=$(git rev-parse origin/main)"
+              git reset --hard origin/main
+              sleep $((attempt*2))
+              continue
+            fi
+            if git push origin HEAD:main; then
+              echo "REGISTER_PUSH_PASS commit=$(git rev-parse HEAD)"
+              exit 0
+            fi
+            git reset --hard origin/main
+            sleep $((attempt*2))
+          done
+          echo 'FAIL_CLOSED: could not publish fresh queue without stale-main race' >&2
+          exit 42
