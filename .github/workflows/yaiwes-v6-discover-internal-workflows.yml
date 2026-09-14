@@ -1,0 +1,140 @@
+name: YAIWES V6 discover internal workflows
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/yaiwes-v6-discover-internal-workflows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-v6-discovery
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout fresh main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+
+      - name: Discover preserved internal workflow anchors
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import ast, json, re, hashlib
+
+          ROOT=Path('📂coda workflow persistencias')
+          FIELD=ROOT/'🏈 cancha deportiva de fútbol'
+          TERMS=('workflow','orchestr','planner','planning','plan','loop','memory','state','task','queue','scheduler','pipeline','runner','manager','agent','graph','session','dispatch','controller','coordinator','reason','conversation','checkpoint','retry','recover')
+          NEG=('exploit','attack','payload','scanner','scan','fuzz','nmap','sqlmap','metasploit','shell','brute','credential','exfil','malware','phishing','privesc','recon','vulnerability')
+          EXTS={'.py','.js','.jsx','.ts','.tsx','.go','.rs','.java','.rb','.lua'}
+
+          def ordinal(name):
+              m=re.match(r'^🏈\s+(?:YAIWES\s+)?(\d{2})(?:[- ]|$)', name)
+              return int(m.group(1)) if m else 999
+
+          def py_symbols(text):
+              out=[]
+              try: tree=ast.parse(text)
+              except Exception: return out
+              for n in tree.body:
+                  if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef)):
+                      out.append({'symbol':n.name,'kind':'function','line':n.lineno})
+                  elif isinstance(n,ast.ClassDef):
+                      out.append({'symbol':n.name,'kind':'class','line':n.lineno})
+                      for c in n.body:
+                          if isinstance(c,(ast.FunctionDef,ast.AsyncFunctionDef)) and c.name not in {'__repr__','__str__','__eq__'}:
+                              out.append({'symbol':f'{n.name}.{c.name}','kind':'method','line':c.lineno})
+              return out
+
+          def generic_symbols(text, ext):
+              pats=[]
+              if ext in {'.js','.jsx','.ts','.tsx'}:
+                  pats=[('function',r'(?m)^(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)'),('class',r'(?m)^(?:export\s+)?class\s+([A-Za-z_$][\w$]*)')]
+              elif ext=='.go': pats=[('function',r'(?m)^func\s+(?:\([^)]*\)\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*\(')]
+              elif ext=='.rs': pats=[('function',r'(?m)^(?:pub\s+)?(?:async\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)')]
+              elif ext=='.java': pats=[('class',r'(?m)(?:public\s+)?class\s+([A-Za-z_][A-Za-z0-9_]*)')]
+              elif ext=='.rb': pats=[('function',r'(?m)^\s*def\s+([A-Za-z_][A-Za-z0-9_!?=]*)')]
+              elif ext=='.lua': pats=[('function',r'(?m)^\s*(?:local\s+)?function\s+([A-Za-z_][A-Za-z0-9_\.:]*)')]
+              out=[]
+              for kind,pat in pats:
+                  for m in re.finditer(pat,text):
+                      out.append({'symbol':m.group(1),'kind':kind,'line':text.count('\n',0,m.start())+1})
+              return out
+
+          comps=sorted([p for p in ROOT.iterdir() if p.is_dir() and p.name.startswith('🏈 ') and p.name!='🏈 cancha deportiva de fútbol'], key=lambda p:(ordinal(p.name),p.name))
+          assert len(comps)==24, len(comps)
+          report={'schema':'yaiwes.internal.workflow.discovery/v6','components':[]}
+          for idx,comp in enumerate(comps,1):
+              label=f'YAIWES {idx:02d}'
+              manifest_path=comp/'INTERNAL-SURGICAL-MANIFEST-V5.json'
+              manifest=json.loads(manifest_path.read_text(encoding='utf-8')) if manifest_path.exists() else {'files':[]}
+              decisions={x.get('path'):x.get('decision') for x in manifest.get('files',[])}
+              code=comp/'code'
+              candidates=[]
+              if code.exists():
+                  for p in code.rglob('*'):
+                      if not p.is_file() or p.suffix.lower() not in EXTS: continue
+                      rel=p.relative_to(code).as_posix()
+                      if any(x in p.parts for x in ('_yaiwes_upstream_quarantine','yaiwes_internal','node_modules','vendor','third_party','tests','test','examples','docs')): continue
+                      decision=decisions.get(rel,'KEEP_UNCHANGED')
+                      if decision not in {'RESTORE_BENIGN','KEEP_UNCHANGED'}: continue
+                      low=rel.lower()
+                      if any(n in low for n in NEG): continue
+                      try: text=p.read_text(encoding='utf-8')
+                      except Exception: continue
+                      syms=py_symbols(text) if p.suffix.lower()=='.py' else generic_symbols(text,p.suffix.lower())
+                      path_score=sum(4 for t in TERMS if t in low)
+                      for s in syms:
+                          sl=s['symbol'].lower()
+                          score=path_score+sum(6 for t in TERMS if t in sl)
+                          if s['kind'] in {'function','method'}: score+=2
+                          if sl in {'main','run','execute','start','process','invoke','step','next','resume'} or any(sl.endswith('.'+x) for x in ('run','execute','start','process','invoke','resume')): score+=8
+                          if any(n in sl for n in NEG): score-=40
+                          if score>0:
+                              candidates.append({'path':rel,'symbol':s['symbol'],'kind':s['kind'],'line':s['line'],'decision':decision,'score':score,'sha256':hashlib.sha256(text.encode()).hexdigest()})
+              candidates.sort(key=lambda x:(-x['score'],x['path'],x['line']))
+              report['components'].append({'component':label,'source_available':bool(manifest.get('source_code_available',bool(candidates))),'candidate_count':len(candidates),'top_candidates':candidates[:30]})
+          FIELD.mkdir(parents=True,exist_ok=True)
+          out=FIELD/'YAIWES-INTERNAL-WORKFLOW-CANDIDATES-V6.json'
+          out.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('DISCOVERED',[(x['component'],x['candidate_count']) for x in report['components']])
+          PY
+
+      - name: Validate discovery coverage
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('📂coda workflow persistencias/🏈 cancha deportiva de fútbol/YAIWES-INTERNAL-WORKFLOW-CANDIDATES-V6.json')
+          d=json.loads(p.read_text(encoding='utf-8'))
+          assert len(d['components'])==24
+          have=[x for x in d['components'][:23] if x['candidate_count']>0]
+          print('SOURCE_WORKFLOW_CANDIDATES',len(have),'/23')
+          for x in d['components']:
+              print(x['component'],x['candidate_count'],x['top_candidates'][:3])
+          PY
+
+      - name: Persist discovery report
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- '📂coda workflow persistencias/🏈 cancha deportiva de fútbol/YAIWES-INTERNAL-WORKFLOW-CANDIDATES-V6.json'
+          if git diff --cached --quiet; then
+            echo NO_CHANGES
+          else
+            git commit -m 'audit(coda): map preserved internal workflow anchors v6'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
