@@ -1,0 +1,146 @@
+# Copyright 2024 RustFS Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# MinIO on-disk interop: prove RustFS reads MinIO-written erasure-coded SSE
+# objects with byte-identical data and correct logical size.
+#
+# This is NOT a PR gate. The fixtures are real MinIO backend trees generated on
+# the fly (they are gitignored, never committed), so the job regenerates them
+# each run with Docker and then runs the `#[ignore]` reader tests in
+# rustfs/src/storage/minio_generated_read_test.rs.
+#
+# Scope: MinIO-to-RustFS SSE read interop is implemented behind the `rio-v2`
+# feature for MinIO's builtin static-KMS deployments — SSE-S3 and SSE-KMS
+# (single- and multipart) since rustfs/rustfs#6191, SSE-C detection since the
+# rustfs/backlog#1638 D2 close-out. This job is the standing evidence: it
+# regenerates real MinIO backend trees and proves byte-identical plaintext
+# reconstruction. KES/MinKMS-backed MinIO objects remain unreadable by design
+# (their envelopes are sealed by the KES service, not by a key RustFS can
+# hold), and default RustFS builds do not include the read path — it is a
+# special-purpose migration capability, not a default-build feature.
+#
+# Runner: GitHub-hosted `ubuntu-latest`. It reliably ships Docker + Python,
+# unlike the self-hosted fleet, whose pods drift in Docker/pip availability
+# (see the infra note in e2e-s3tests.yml). Nightly + manual only.
+#
+# Enablement: this workflow was long disabled in the repository's Actions
+# settings (state: disabled_manually — a state that lives in GitHub's UI and is
+# invisible in this file). The change that updated this banner also re-added
+# the .github/scheduled-validations.json entry; both only make sense together
+# with re-enabling the workflow in the Actions settings. If it is ever disabled
+# again, remove the scheduled-validations entry in the same change — a disabled
+# workflow can never satisfy the freshness check. See rustfs/backlog#1603.
+#
+name: minio-interop
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Nightly at 03:17 UTC (offset from other nightly jobs).
+    - cron: "17 3 * * *"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  minio-interop:
+    name: MinIO interop (EC + SSE read parity)
+    # Skip on forks: needs the repo's runners and is not a contributor gate.
+    if: github.repository == 'rustfs/rustfs'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      # Fixed 32-byte test KMS key baked into the fixture lab; not a secret.
+      RUSTFS_MINIO_STATIC_KMS_KEY_B64: IyqsU3kMFloCNup4BsZtf/rmfHVcTgznO2F25CkEH1g=
+      # Single definition of "the interop tests", shared by the guard step and
+      # the run step so the two cannot drift apart.
+      #
+      # These used to live in crates/ecstore/tests/minio_generated_read_test.rs
+      # and were selected with `-p rustfs-ecstore -E
+      # 'binary(minio_generated_read_test)'`. #5435 moved them into the `rustfs`
+      # crate as a `#[cfg(test)] mod`, which deleted that test binary; the
+      # selector was never updated and has selected zero interop tests ever
+      # since (cargo-nextest 0.9.140 now rejects it outright: "operator didn't
+      # match any binary names", exit 94).
+      INTEROP_PACKAGE: rustfs
+      INTEROP_FEATURES: rio-v2
+      INTEROP_FILTER: "test(minio_generated_read_test::)"
+      INTEROP_REQUIRED_TESTS: '["reads_minio_generated_sse_s3_multipart_fixture", "reads_minio_generated_sse_kms_multipart_fixture", "rejects_minio_generated_sse_s3_fixture_with_wrong_kms_key", "rejects_minio_generated_sse_s3_fixture_with_truncated_ciphertext"]'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Rust environment
+        uses: ./.github/actions/setup
+        with:
+          rust-version: stable
+          cache-shared-key: ci-minio-interop
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Generate real MinIO fixtures via Docker
+        run: bash crates/rio-v2/tests/minio_fixture_lab/capture_via_docker.sh
+
+      # `binary(...)` at least dies loudly when nothing matches, but `test(...)`
+      # is a perfectly valid filterset that matches zero tests, so the next
+      # rename or module move would leave this job selecting nothing and
+      # reporting success without executing a single interop assertion. Count
+      # the selection and require every core reader test, while allowing new
+      # reader cases to be added without changing this guard.
+      #
+      # Count only `filter-match.status == "matches"`: the top-level
+      # `test-count` in the JSON is the package total and ignores `-E` entirely.
+      - name: Assert the interop selector still matches tests
+        run: |
+          set -euo pipefail
+          selection="$(cargo nextest list --run-ignored ignored-only \
+            -p "$INTEROP_PACKAGE" --features "$INTEROP_FEATURES" \
+            -E "$INTEROP_FILTER" --message-format json \
+            | python3 -c 'import json,os,sys; d=json.load(sys.stdin); required=json.loads(os.environ["INTEROP_REQUIRED_TESTS"]); matched=[name for suite in d.get("rust-suites", {}).values() for name,test in suite.get("testcases", {}).items() if test.get("filter-match", {}).get("status") == "matches"]; missing=[test for test in required if not any(name.endswith("minio_generated_read_test::" + test) for name in matched)]; print(len(matched)); print(",".join(missing))')"
+          count="$(printf '%s\n' "$selection" | sed -n '1p')"
+          missing="$(printf '%s\n' "$selection" | sed -n '2p')"
+          echo "interop tests selected: ${count}"
+          if [ -n "${missing}" ]; then
+            echo "::error::Selector '${INTEROP_FILTER}' in package '${INTEROP_PACKAGE}' is missing required tests: ${missing}. The MinIO interop reader tests have moved or been renamed; fix the selector instead of running an incomplete matrix. Context: rustfs/backlog#1638."
+            exit 1
+          fi
+
+      - name: Run MinIO interop reader tests
+        run: |
+          cargo nextest run --run-ignored ignored-only --no-tests=fail \
+            -p "$INTEROP_PACKAGE" --features "$INTEROP_FEATURES" \
+            -E "$INTEROP_FILTER"
+
+  alert-on-failure:
+    name: Alert on scheduled failure
+    needs: [minio-interop]
+    if: always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Open or update failure-tracking issue
+        uses: ./.github/actions/schedule-failure-issue
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}

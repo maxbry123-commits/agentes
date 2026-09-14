@@ -1,0 +1,3317 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use crate::admin::auth::authorize_admin_request;
+use crate::admin::handlers::supervise_admin_mutation;
+use crate::admin::router::{AdminOperation, Operation, S3Router};
+use crate::admin::runtime_sources::{
+    current_action_credentials, current_app_context, current_object_store_handle_for_context, current_server_config_for_context,
+};
+use crate::admin::service::config::{
+    FULL_CONFIG_WORKER_SUBSYSTEMS, is_dynamic_config_subsystem, preflight_dynamic_config_reload, prepare_server_config,
+    publish_latest_runtime_config_snapshot, reload_dynamic_config_runtime_state, reload_runtime_config_snapshot,
+    signal_config_snapshot_reload, signal_config_snapshot_reload_checked, signal_dynamic_config_reload_checked,
+};
+use crate::admin::storage_api::config::storageclass::{INLINE_BLOCK_ENV, OPTIMIZE_ENV, RRS_ENV, STANDARD_ENV};
+use crate::admin::storage_api::config::{
+    AdminServerConfigSaveResult, AdminServerConfigSnapshot, RUSTFS_META_BUCKET, STORAGE_CLASS_SUB_SYS, delete_admin_config,
+    read_admin_config, read_admin_config_without_migrate, read_admin_server_config_snapshot, save_admin_config,
+    save_admin_server_config_snapshot,
+};
+use crate::admin::storage_api::contract::list::ListOperations as _;
+use crate::admin::utils::{
+    encode_compatible_admin_payload, extract_query_params, is_compat_admin_request, read_compatible_admin_body,
+};
+use crate::error::ApiError;
+use crate::server::ADMIN_PREFIX;
+use http::{HeaderMap, HeaderValue};
+use hyper::{Method, StatusCode};
+use matchit::Params;
+use rustfs_config::audit::{
+    AUDIT_MQTT_SUB_SYS, AUDIT_WEBHOOK_SUB_SYS, ENV_AUDIT_MQTT_BROKER, ENV_AUDIT_MQTT_ENABLE, ENV_AUDIT_MQTT_KEEP_ALIVE_INTERVAL,
+    ENV_AUDIT_MQTT_PASSWORD, ENV_AUDIT_MQTT_QOS, ENV_AUDIT_MQTT_QUEUE_DIR, ENV_AUDIT_MQTT_QUEUE_LIMIT,
+    ENV_AUDIT_MQTT_RECONNECT_INTERVAL, ENV_AUDIT_MQTT_TOPIC, ENV_AUDIT_MQTT_USERNAME, ENV_AUDIT_WEBHOOK_AUTH_TOKEN,
+    ENV_AUDIT_WEBHOOK_CLIENT_CERT, ENV_AUDIT_WEBHOOK_CLIENT_KEY, ENV_AUDIT_WEBHOOK_ENABLE, ENV_AUDIT_WEBHOOK_ENDPOINT,
+    ENV_AUDIT_WEBHOOK_QUEUE_DIR, ENV_AUDIT_WEBHOOK_QUEUE_LIMIT,
+};
+use rustfs_config::notify::{
+    ENV_NOTIFY_MQTT_BROKER, ENV_NOTIFY_MQTT_ENABLE, ENV_NOTIFY_MQTT_KEEP_ALIVE_INTERVAL, ENV_NOTIFY_MQTT_PASSWORD,
+    ENV_NOTIFY_MQTT_QOS, ENV_NOTIFY_MQTT_QUEUE_DIR, ENV_NOTIFY_MQTT_QUEUE_LIMIT, ENV_NOTIFY_MQTT_RECONNECT_INTERVAL,
+    ENV_NOTIFY_MQTT_TOPIC, ENV_NOTIFY_MQTT_USERNAME, ENV_NOTIFY_WEBHOOK_AUTH_TOKEN, ENV_NOTIFY_WEBHOOK_CLIENT_CERT,
+    ENV_NOTIFY_WEBHOOK_CLIENT_KEY, ENV_NOTIFY_WEBHOOK_ENABLE, ENV_NOTIFY_WEBHOOK_ENDPOINT, ENV_NOTIFY_WEBHOOK_QUEUE_DIR,
+    ENV_NOTIFY_WEBHOOK_QUEUE_LIMIT, NOTIFY_MQTT_SUB_SYS, NOTIFY_SUB_SYSTEMS, NOTIFY_WEBHOOK_SUB_SYS,
+};
+use rustfs_config::oidc::{
+    ENV_IDENTITY_OPENID_CLAIM_NAME, ENV_IDENTITY_OPENID_CLAIM_PREFIX, ENV_IDENTITY_OPENID_CLIENT_ID,
+    ENV_IDENTITY_OPENID_CLIENT_SECRET, ENV_IDENTITY_OPENID_CONFIG_URL, ENV_IDENTITY_OPENID_DISPLAY_NAME,
+    ENV_IDENTITY_OPENID_EMAIL_CLAIM, ENV_IDENTITY_OPENID_ENABLE, ENV_IDENTITY_OPENID_GROUPS_CLAIM, ENV_IDENTITY_OPENID_ISSUER,
+    ENV_IDENTITY_OPENID_REDIRECT_URI, ENV_IDENTITY_OPENID_REDIRECT_URI_DYNAMIC, ENV_IDENTITY_OPENID_ROLE_POLICY,
+    ENV_IDENTITY_OPENID_SCOPES, ENV_IDENTITY_OPENID_USERNAME_CLAIM, IDENTITY_OPENID_SUB_SYS, OIDC_CLAIM_NAME, OIDC_CLAIM_PREFIX,
+    OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_CONFIG_URL, OIDC_DISPLAY_NAME, OIDC_EMAIL_CLAIM, OIDC_GROUPS_CLAIM, OIDC_ISSUER,
+    OIDC_REDIRECT_URI, OIDC_REDIRECT_URI_DYNAMIC, OIDC_ROLE_POLICY, OIDC_SCOPES, OIDC_USERNAME_CLAIM,
+};
+use rustfs_config::server_config::{Config as ServerConfig, DEFAULT_KVS, KV, KVS};
+use rustfs_config::{
+    BASE_DSN_STRING, COMMENT_KEY, DEFAULT_DELIMITER, ENABLE_KEY, ENV_PREFIX, ENV_SCANNER_ALERT_EXCESS_FOLDERS,
+    ENV_SCANNER_ALERT_EXCESS_VERSION_SIZE, ENV_SCANNER_ALERT_EXCESS_VERSIONS, ENV_SCANNER_BITROT_CYCLE_SECS,
+    ENV_SCANNER_CACHE_SAVE_TIMEOUT_SECS, ENV_SCANNER_CYCLE, ENV_SCANNER_CYCLE_MAX_DIRECTORIES,
+    ENV_SCANNER_CYCLE_MAX_DURATION_SECS, ENV_SCANNER_CYCLE_MAX_OBJECTS, ENV_SCANNER_DELAY, ENV_SCANNER_IDLE_MODE,
+    ENV_SCANNER_MAX_CONCURRENT_DISK_SCANS, ENV_SCANNER_MAX_CONCURRENT_SET_SCANS, ENV_SCANNER_MAX_WAIT_SECS, ENV_SCANNER_SPEED,
+    ENV_SCANNER_START_DELAY_SECS, ENV_SCANNER_YIELD_EVERY_N_OBJECTS, HEAL_BITROT_CYCLE, HEAL_SUB_SYS,
+    MAX_ADMIN_REQUEST_BODY_SIZE, MQTT_BROKER, MQTT_KEEP_ALIVE_INTERVAL, MQTT_PASSWORD, MQTT_QOS, MQTT_QUEUE_DIR,
+    MQTT_QUEUE_LIMIT, MQTT_RECONNECT_INTERVAL, MQTT_TOPIC, MQTT_USERNAME, SCANNER_ALERT_EXCESS_FOLDERS,
+    SCANNER_ALERT_EXCESS_VERSION_SIZE, SCANNER_ALERT_EXCESS_VERSIONS, SCANNER_BITROT_CYCLE, SCANNER_CACHE_SAVE_TIMEOUT,
+    SCANNER_CYCLE, SCANNER_CYCLE_MAX_DIRECTORIES, SCANNER_CYCLE_MAX_DURATION, SCANNER_CYCLE_MAX_OBJECTS, SCANNER_DELAY,
+    SCANNER_IDLE_MODE, SCANNER_MAX_CONCURRENT_DISK_SCANS, SCANNER_MAX_CONCURRENT_SET_SCANS, SCANNER_MAX_WAIT, SCANNER_SPEED,
+    SCANNER_START_DELAY, SCANNER_SUB_SYS, SCANNER_YIELD_EVERY_N_OBJECTS, WEBHOOK_AUTH_TOKEN, WEBHOOK_BATCH_SIZE,
+    WEBHOOK_CLIENT_CERT, WEBHOOK_CLIENT_KEY, WEBHOOK_ENDPOINT, WEBHOOK_HTTP_TIMEOUT, WEBHOOK_MAX_RETRY, WEBHOOK_QUEUE_DIR,
+    WEBHOOK_QUEUE_LIMIT, WEBHOOK_RETRY_INTERVAL,
+};
+use rustfs_credentials::Credentials;
+use rustfs_policy::policy::action::{Action, AdminAction};
+use s3s::header::CONTENT_TYPE;
+use s3s::{Body, S3Error, S3ErrorCode, S3Request, S3Response, S3Result, s3_error};
+use serde::Serialize;
+use std::collections::BTreeSet;
+use std::env;
+use std::mem::size_of;
+use time::OffsetDateTime;
+use tracing::warn;
+use uuid::Uuid;
+
+const REDACTED_VALUE: &str = "*redacted*";
+const OCTET_STREAM_CONTENT_TYPE: &str = "application/octet-stream";
+const JSON_CONTENT_TYPE: &str = "application/json";
+const TEXT_CONTENT_TYPE: &str = "text/plain; charset=utf-8";
+const CONFIG_HISTORY_PREFIX: &str = "config/history";
+const CONFIG_HISTORY_SUFFIX: &str = ".kv";
+const CONFIG_HISTORY_SNAPSHOT_HEADER: &str = "# rustfs-config-history: full-snapshot-v1";
+const CONFIG_HISTORY_SNAPSHOT_ENVELOPE_HEADER: &str = "# rustfs-config-history: snapshot-envelope-v2";
+const CONFIG_HISTORY_ENCRYPTED_HEADER: &str = "# rustfs-config-history: encrypted-full-snapshot-v2";
+const CONFIG_APPLIED_HEADER: &str = "x-rustfs-config-applied";
+const CONFIG_APPLIED_COMPAT_HEADER: &str = "x-minio-config-applied";
+const CONFIG_APPLIED_TRUE: &str = "true";
+const DEFAULT_COMMENT_DESCRIPTION: &str = "optionally add a comment to this setting";
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ConfigEntry {
+    key: String,
+    value: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ConfigDirective {
+    sub_system: String,
+    target: String,
+    entries: Vec<ConfigEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ConfigSelector {
+    sub_system: String,
+    target: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct HelpSubSystemMetadata {
+    key: &'static str,
+    description: &'static str,
+    multiple_targets: bool,
+    keys: &'static [HelpKeyMetadata],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct HelpKeyMetadata {
+    key: &'static str,
+    type_name: &'static str,
+    description: &'static str,
+    optional: bool,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+struct ConfigHelpResponse {
+    #[serde(rename = "subSys")]
+    sub_sys: String,
+    description: String,
+    #[serde(rename = "multipleTargets")]
+    multiple_targets: bool,
+    #[serde(rename = "keysHelp")]
+    keys_help: Vec<ConfigHelpEntry>,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+struct ConfigHelpEntry {
+    key: String,
+    #[serde(rename = "type")]
+    type_name: String,
+    description: String,
+    optional: bool,
+    #[serde(rename = "multipleTargets")]
+    multiple_targets: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+struct ConfigHistoryEntry {
+    #[serde(rename = "RestoreID")]
+    restore_id: String,
+    #[serde(rename = "CreateTime", with = "time::serde::rfc3339")]
+    create_time: OffsetDateTime,
+    #[serde(rename = "Data", skip_serializing_if = "Option::is_none")]
+    data: Option<String>,
+    #[serde(rename = "DataRedacted", skip_serializing_if = "Option::is_none")]
+    data_redacted: Option<bool>,
+}
+
+impl ConfigHistoryEntry {
+    fn set_redacted_data(&mut self, persisted: &[u8]) -> S3Result<()> {
+        self.data = Some(redact_config_history_data(persisted)?);
+        self.data_redacted = Some(true);
+        Ok(())
+    }
+}
+
+const STORAGE_CLASS_HELP_KEYS: &[HelpKeyMetadata] = &[
+    HelpKeyMetadata {
+        key: "standard",
+        type_name: "string",
+        description: "set the parity count for default standard storage class",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: "rrs",
+        type_name: "string",
+        description: "set the parity count for reduced redundancy storage class",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: "optimize",
+        type_name: "string",
+        description: "optimize parity calculation for standard storage class, set 'capacity' for capacity optimized",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: "inline_block",
+        type_name: "string",
+        description: "set the shard size threshold considered for inline blocks",
+        optional: true,
+    },
+];
+
+const SCANNER_HELP_KEYS: &[HelpKeyMetadata] = &[
+    HelpKeyMetadata {
+        key: SCANNER_SPEED,
+        type_name: "fastest|fast|default|slow|slowest",
+        description: "set scanner throttling preset",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: SCANNER_DELAY,
+        type_name: "float",
+        description: "override scanner sleep multiplier derived from speed",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: SCANNER_MAX_WAIT,
+        type_name: "seconds",
+        description: "override scanner maximum sleep duration derived from speed",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: SCANNER_CYCLE,
+        type_name: "seconds",
+        description: "override scanner cycle interval in seconds",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: SCANNER_START_DELAY,
+        type_name: "seconds",
+        description: "set scanner startup delay in seconds; used as legacy cycle interval when cycle is unset",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: SCANNER_CYCLE_MAX_DURATION,
+        type_name: "seconds",
+        description: "cap one scanner cycle runtime in seconds, 0 disables the cap",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: SCANNER_CYCLE_MAX_OBJECTS,
+        type_name: "number",
+        description: "cap objects processed by one scanner cycle, 0 disables the cap",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: SCANNER_CYCLE_MAX_DIRECTORIES,
+        type_name: "number",
+        description: "cap directories entered by one scanner cycle, 0 disables the cap",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: SCANNER_BITROT_CYCLE,
+        type_name: "seconds|off",
+        description: "set periodic deep bitrot scan cycle, 0 scans deeply every cycle, off disables periodic deep scans",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: SCANNER_IDLE_MODE,
+        type_name: "on|off",
+        description: "enable scanner throttling sleeps between operations",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: SCANNER_CACHE_SAVE_TIMEOUT,
+        type_name: "seconds",
+        description: "set scanner data-usage cache save timeout in seconds",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: SCANNER_MAX_CONCURRENT_SET_SCANS,
+        type_name: "number",
+        description: "cap concurrent scanner set tasks, 0 uses topology defaults",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: SCANNER_MAX_CONCURRENT_DISK_SCANS,
+        type_name: "number",
+        description: "cap concurrent disk bucket walks per set, 0 uses disk-count defaults",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: SCANNER_YIELD_EVERY_N_OBJECTS,
+        type_name: "number",
+        description: "yield to the async runtime after this many scanned objects, 0 disables extra object-count yields",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: SCANNER_ALERT_EXCESS_VERSIONS,
+        type_name: "number",
+        description: "object version count threshold for scanner alerts",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: SCANNER_ALERT_EXCESS_VERSION_SIZE,
+        type_name: "bytes",
+        description: "retained object version size threshold for scanner alerts",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: SCANNER_ALERT_EXCESS_FOLDERS,
+        type_name: "number",
+        description: "direct subfolder count threshold for scanner alerts",
+        optional: true,
+    },
+];
+
+const HEAL_HELP_KEYS: &[HelpKeyMetadata] = &[HelpKeyMetadata {
+    key: HEAL_BITROT_CYCLE,
+    type_name: "seconds|off",
+    description: "set scanner-driven periodic deep bitrot scan cycle, 0 scans deeply every cycle, off disables periodic deep scans",
+    optional: true,
+}];
+
+const OIDC_HELP_KEYS: &[HelpKeyMetadata] = &[
+    HelpKeyMetadata {
+        key: OIDC_CONFIG_URL,
+        type_name: "url",
+        description: "openid discovery document URL e.g. \"https://accounts.google.com/.well-known/openid-configuration\"",
+        optional: false,
+    },
+    HelpKeyMetadata {
+        key: OIDC_ISSUER,
+        type_name: "url",
+        description: "expected OpenID issuer URL when it differs from config_url",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: OIDC_CLIENT_ID,
+        type_name: "string",
+        description: "unique public identifier for the client application",
+        optional: false,
+    },
+    HelpKeyMetadata {
+        key: OIDC_CLIENT_SECRET,
+        type_name: "string",
+        description: "secret for the client application identifier",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: OIDC_SCOPES,
+        type_name: "csv",
+        description: "comma-separated list of OpenID scopes for the server",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: OIDC_REDIRECT_URI,
+        type_name: "url",
+        description: "static redirect URI used when dynamic redirects are disabled",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: OIDC_REDIRECT_URI_DYNAMIC,
+        type_name: "on|off",
+        description: "enable Host header based dynamic redirect URI",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: OIDC_CLAIM_NAME,
+        type_name: "string",
+        description: "JWT canned policy claim name",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: OIDC_CLAIM_PREFIX,
+        type_name: "string",
+        description: "prefix added to claims before policy mapping",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: OIDC_ROLE_POLICY,
+        type_name: "string",
+        description: "IAM access policies mapped to this client application and identity provider",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: OIDC_DISPLAY_NAME,
+        type_name: "string",
+        description: "friendly display name for this provider",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: OIDC_GROUPS_CLAIM,
+        type_name: "string",
+        description: "claim name containing group memberships",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: OIDC_EMAIL_CLAIM,
+        type_name: "string",
+        description: "claim name containing the user email",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: OIDC_USERNAME_CLAIM,
+        type_name: "string",
+        description: "claim name containing the username",
+        optional: true,
+    },
+];
+
+const WEBHOOK_HELP_KEYS: &[HelpKeyMetadata] = &[
+    HelpKeyMetadata {
+        key: WEBHOOK_ENDPOINT,
+        type_name: "url",
+        description: "webhook server endpoint e.g. \"http://localhost:8080/rustfs/events\"",
+        optional: false,
+    },
+    HelpKeyMetadata {
+        key: WEBHOOK_AUTH_TOKEN,
+        type_name: "string",
+        description: "opaque string or JWT authorization token",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: WEBHOOK_QUEUE_DIR,
+        type_name: "path",
+        description: "staging dir for undelivered messages e.g. '/home/events'",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: WEBHOOK_QUEUE_LIMIT,
+        type_name: "number",
+        description: "maximum limit for undelivered messages",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: WEBHOOK_CLIENT_CERT,
+        type_name: "string",
+        description: "client cert for webhook mTLS authentication",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: WEBHOOK_CLIENT_KEY,
+        type_name: "string",
+        description: "client cert key for webhook mTLS authentication",
+        optional: true,
+    },
+];
+
+const AUDIT_WEBHOOK_HELP_KEYS: &[HelpKeyMetadata] = &[
+    HelpKeyMetadata {
+        key: WEBHOOK_ENDPOINT,
+        type_name: "url",
+        description: "HTTP(s) endpoint e.g. \"http://localhost:8080/rustfs/logs/audit\"",
+        optional: false,
+    },
+    HelpKeyMetadata {
+        key: WEBHOOK_AUTH_TOKEN,
+        type_name: "string",
+        description: "opaque string or JWT authorization token",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: WEBHOOK_CLIENT_CERT,
+        type_name: "string",
+        description: "mTLS certificate for webhook authentication",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: WEBHOOK_CLIENT_KEY,
+        type_name: "string",
+        description: "mTLS certificate key for webhook authentication",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: WEBHOOK_BATCH_SIZE,
+        type_name: "number",
+        description: "number of events per HTTP send to the webhook target",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: WEBHOOK_QUEUE_LIMIT,
+        type_name: "number",
+        description: "channel queue size for webhook targets",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: WEBHOOK_QUEUE_DIR,
+        type_name: "path",
+        description: "staging dir for undelivered audit messages e.g. '/home/audit-events'",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: WEBHOOK_MAX_RETRY,
+        type_name: "number",
+        description: "maximum retry count before audit events are dropped",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: WEBHOOK_RETRY_INTERVAL,
+        type_name: "duration",
+        description: "sleep between retries e.g. '10s'",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: WEBHOOK_HTTP_TIMEOUT,
+        type_name: "duration",
+        description: "maximum duration for each HTTP request",
+        optional: true,
+    },
+];
+
+const MQTT_HELP_KEYS: &[HelpKeyMetadata] = &[
+    HelpKeyMetadata {
+        key: MQTT_BROKER,
+        type_name: "uri",
+        description: "MQTT server endpoint e.g. `tcp://localhost:1883`",
+        optional: false,
+    },
+    HelpKeyMetadata {
+        key: MQTT_TOPIC,
+        type_name: "string",
+        description: "name of the MQTT topic to publish",
+        optional: false,
+    },
+    HelpKeyMetadata {
+        key: MQTT_USERNAME,
+        type_name: "string",
+        description: "MQTT username",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: MQTT_PASSWORD,
+        type_name: "string",
+        description: "MQTT password",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: MQTT_QOS,
+        type_name: "number",
+        description: "quality of service priority for MQTT delivery",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: MQTT_KEEP_ALIVE_INTERVAL,
+        type_name: "duration",
+        description: "keep-alive interval for MQTT connections in s,m,h,d",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: MQTT_RECONNECT_INTERVAL,
+        type_name: "duration",
+        description: "reconnect interval for MQTT connections in s,m,h,d",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: MQTT_QUEUE_DIR,
+        type_name: "path",
+        description: "staging dir for undelivered messages e.g. '/home/events'",
+        optional: true,
+    },
+    HelpKeyMetadata {
+        key: MQTT_QUEUE_LIMIT,
+        type_name: "number",
+        description: "maximum limit for undelivered messages",
+        optional: true,
+    },
+];
+
+const HELP_SUBSYSTEMS: &[HelpSubSystemMetadata] = &[
+    HelpSubSystemMetadata {
+        key: STORAGE_CLASS_SUB_SYS,
+        description: "define object level redundancy",
+        multiple_targets: false,
+        keys: STORAGE_CLASS_HELP_KEYS,
+    },
+    HelpSubSystemMetadata {
+        key: SCANNER_SUB_SYS,
+        description: "configure background data scanner scheduling, throttling, bitrot, and observability thresholds",
+        multiple_targets: false,
+        keys: SCANNER_HELP_KEYS,
+    },
+    HelpSubSystemMetadata {
+        key: HEAL_SUB_SYS,
+        description: "configure heal and scanner-driven bitrot behavior",
+        multiple_targets: false,
+        keys: HEAL_HELP_KEYS,
+    },
+    HelpSubSystemMetadata {
+        key: IDENTITY_OPENID_SUB_SYS,
+        description: "enable OpenID SSO support",
+        multiple_targets: true,
+        keys: OIDC_HELP_KEYS,
+    },
+    HelpSubSystemMetadata {
+        key: AUDIT_WEBHOOK_SUB_SYS,
+        description: "send audit logs to webhook endpoints",
+        multiple_targets: true,
+        keys: AUDIT_WEBHOOK_HELP_KEYS,
+    },
+    HelpSubSystemMetadata {
+        key: AUDIT_MQTT_SUB_SYS,
+        description: "send audit logs to MQTT endpoints",
+        multiple_targets: true,
+        keys: MQTT_HELP_KEYS,
+    },
+    HelpSubSystemMetadata {
+        key: NOTIFY_WEBHOOK_SUB_SYS,
+        description: "publish bucket notifications to webhook endpoints",
+        multiple_targets: true,
+        keys: WEBHOOK_HELP_KEYS,
+    },
+    HelpSubSystemMetadata {
+        key: NOTIFY_MQTT_SUB_SYS,
+        description: "publish bucket notifications to MQTT endpoints",
+        multiple_targets: true,
+        keys: MQTT_HELP_KEYS,
+    },
+];
+
+pub fn register_config_route(r: &mut S3Router<AdminOperation>) -> std::io::Result<()> {
+    r.insert(
+        Method::GET,
+        format!("{ADMIN_PREFIX}/v3/get-config-kv").as_str(),
+        AdminOperation(&GetConfigKVHandler {}),
+    )?;
+    r.insert(
+        Method::PUT,
+        format!("{ADMIN_PREFIX}/v3/set-config-kv").as_str(),
+        AdminOperation(&SetConfigKVHandler {}),
+    )?;
+    r.insert(
+        Method::DELETE,
+        format!("{ADMIN_PREFIX}/v3/del-config-kv").as_str(),
+        AdminOperation(&DelConfigKVHandler {}),
+    )?;
+    r.insert(
+        Method::GET,
+        format!("{ADMIN_PREFIX}/v3/help-config-kv").as_str(),
+        AdminOperation(&HelpConfigKVHandler {}),
+    )?;
+    r.insert(
+        Method::GET,
+        format!("{ADMIN_PREFIX}/v3/list-config-history-kv").as_str(),
+        AdminOperation(&ListConfigHistoryKVHandler {}),
+    )?;
+    r.insert(
+        Method::DELETE,
+        format!("{ADMIN_PREFIX}/v3/clear-config-history-kv").as_str(),
+        AdminOperation(&ClearConfigHistoryKVHandler {}),
+    )?;
+    r.insert(
+        Method::PUT,
+        format!("{ADMIN_PREFIX}/v3/restore-config-history-kv").as_str(),
+        AdminOperation(&RestoreConfigHistoryKVHandler {}),
+    )?;
+    r.insert(
+        Method::GET,
+        format!("{ADMIN_PREFIX}/v3/config").as_str(),
+        AdminOperation(&GetConfigHandler {}),
+    )?;
+    r.insert(
+        Method::PUT,
+        format!("{ADMIN_PREFIX}/v3/config").as_str(),
+        AdminOperation(&SetConfigHandler {}),
+    )?;
+
+    Ok(())
+}
+
+async fn validate_config_admin_request(req: &S3Request<Body>) -> S3Result<Credentials> {
+    // Pre-check keeps this endpoint's historical missing-credentials message;
+    // the shared gate reports "get cred failed".
+    if req.credentials.is_none() {
+        return Err(s3_error!(InvalidRequest, "missing credentials"));
+    }
+    authorize_admin_request(req, vec![Action::AdminAction(AdminAction::ConfigUpdateAdminAction)]).await
+}
+
+fn header_value(content_type: &str) -> S3Result<HeaderValue> {
+    HeaderValue::from_str(content_type)
+        .map_err(|err| S3Error::with_message(S3ErrorCode::InternalError, format!("invalid content type: {err}")))
+}
+
+fn response_with_content_type(status: StatusCode, body: Vec<u8>, content_type: &str) -> S3Result<S3Response<(StatusCode, Body)>> {
+    let mut headers = HeaderMap::new();
+    headers.insert(CONTENT_TYPE, header_value(content_type)?);
+    Ok(S3Response::with_headers((status, Body::from(body)), headers))
+}
+
+fn encode_config_payload(path: &str, secret_key: &str, data: Vec<u8>, plain_content_type: &str) -> S3Result<(Vec<u8>, String)> {
+    if is_compat_admin_request(path) {
+        let (encoded, _) = encode_compatible_admin_payload(path, secret_key, data)?;
+        Ok((encoded, OCTET_STREAM_CONTENT_TYPE.to_string()))
+    } else {
+        Ok((data, plain_content_type.to_string()))
+    }
+}
+
+fn success_response(config_applied: bool) -> S3Result<S3Response<(StatusCode, Body)>> {
+    if !config_applied {
+        return Ok(S3Response::new((StatusCode::OK, Body::default())));
+    }
+
+    let mut headers = HeaderMap::new();
+    headers.insert(CONFIG_APPLIED_HEADER, header_value(CONFIG_APPLIED_TRUE)?);
+    headers.insert(CONFIG_APPLIED_COMPAT_HEADER, header_value(CONFIG_APPLIED_TRUE)?);
+    Ok(S3Response::with_headers((StatusCode::OK, Body::default()), headers))
+}
+
+fn object_store() -> S3Result<std::sync::Arc<crate::admin::storage_api::runtime::ECStore>> {
+    let context = current_app_context();
+    current_object_store_handle_for_context(context.as_deref())
+        .ok_or_else(|| s3_error!(InternalError, "server storage not initialized"))
+}
+
+async fn load_server_config_from_store() -> S3Result<ServerConfig> {
+    let store = object_store()?;
+    read_admin_config_without_migrate(store)
+        .await
+        .map_err(ApiError::from)
+        .map_err(Into::into)
+}
+
+async fn load_active_server_config() -> S3Result<ServerConfig> {
+    if let Ok(config) = load_server_config_from_store().await {
+        return Ok(config);
+    }
+
+    let context = current_app_context();
+    current_server_config_for_context(context.as_deref())
+        .ok_or_else(|| s3_error!(InternalError, "server config is not initialized"))
+}
+
+async fn load_server_config_snapshot_from_store() -> S3Result<AdminServerConfigSnapshot> {
+    let store = object_store()?;
+    read_admin_server_config_snapshot(store)
+        .await
+        .map_err(ApiError::from)
+        .map_err(Into::into)
+}
+
+async fn save_server_config_to_store(
+    config: &ServerConfig,
+    snapshot: &AdminServerConfigSnapshot,
+) -> S3Result<AdminServerConfigSaveResult> {
+    let store = object_store()?;
+    save_admin_server_config_snapshot(store, config, snapshot)
+        .await
+        .map_err(ApiError::from)
+        .map_err(Into::into)
+}
+
+fn history_object_name(restore_id: &str) -> String {
+    format!("{CONFIG_HISTORY_PREFIX}/{restore_id}{CONFIG_HISTORY_SUFFIX}")
+}
+
+fn config_update_sub_system(directives: &[ConfigDirective]) -> S3Result<Option<&str>> {
+    let sub_systems = directives
+        .iter()
+        .map(|directive| directive.sub_system.as_str())
+        .collect::<BTreeSet<_>>();
+    if sub_systems.len() > 1 {
+        return Err(s3_error!(InvalidRequest, "config update must target a single subsystem"));
+    }
+    Ok(sub_systems.iter().next().copied())
+}
+
+fn validate_config_directives(directives: &[ConfigDirective]) -> S3Result<()> {
+    if DEFAULT_KVS.get().is_none() {
+        crate::admin::storage_api::config::init_admin_config_defaults();
+    }
+    let Some(defaults) = DEFAULT_KVS.get() else {
+        return Err(s3_error!(InternalError, "config defaults are not initialized"));
+    };
+
+    for directive in directives {
+        let Some(default_kvs) = defaults.get(&directive.sub_system) else {
+            return Err(s3_error!(InvalidRequest, "unsupported config subsystem '{}'", directive.sub_system));
+        };
+
+        let valid_keys = default_kvs.keys().into_iter().collect::<BTreeSet<_>>();
+        for entry in &directive.entries {
+            if !valid_keys.contains(&entry.key) {
+                return Err(s3_error!(
+                    InvalidRequest,
+                    "unsupported config key '{}' for subsystem '{}'",
+                    entry.key,
+                    directive.sub_system
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn history_restore_id_from_name(name: &str) -> Option<String> {
+    name.strip_prefix(&format!("{CONFIG_HISTORY_PREFIX}/"))?
+        .strip_suffix(CONFIG_HISTORY_SUFFIX)
+        .map(ToString::to_string)
+}
+
+fn trim_history_entries(mut entries: Vec<ConfigHistoryEntry>, count: Option<usize>) -> Vec<ConfigHistoryEntry> {
+    entries.sort_by_key(|lhs| lhs.create_time);
+
+    if let Some(count) = count
+        && entries.len() > count
+    {
+        entries.drain(0..entries.len() - count);
+    }
+
+    entries
+}
+
+async fn save_server_config_history(data: &[u8]) -> S3Result<String> {
+    let restore_id = Uuid::new_v4().to_string();
+    let store = object_store()?;
+    save_admin_config(store, &history_object_name(&restore_id), data.to_vec())
+        .await
+        .map_err(ApiError::from)
+        .map_err(S3Error::from)?;
+    Ok(restore_id)
+}
+
+/// Encode the complete persisted state that existed immediately before a
+/// configuration mutation. Set, delete, full import, and restore all write
+/// this record while holding the server-config write lock, before persisting
+/// their replacement state. The version marker deliberately makes older
+/// directive-only entries distinguishable so restore can reject them safely.
+fn encode_config_history_recovery(config: &ServerConfig) -> Vec<u8> {
+    let rendered = render_full_config(config, false);
+    let mut snapshot = Vec::with_capacity(CONFIG_HISTORY_SNAPSHOT_HEADER.len() + 1 + rendered.len());
+    snapshot.extend_from_slice(CONFIG_HISTORY_SNAPSHOT_HEADER.as_bytes());
+    snapshot.push(b'\n');
+    snapshot.extend_from_slice(&rendered);
+    snapshot
+}
+
+fn encode_config_history_snapshot(config: &ServerConfig) -> S3Result<Vec<u8>> {
+    let recovery = encode_config_history_recovery(config);
+    let mut display_config = config.clone();
+    for targets in display_config.0.values_mut() {
+        for kvs in targets.values_mut() {
+            for entry in &mut kvs.0 {
+                if (entry.hidden_if_empty || is_sensitive_key_name(&entry.key)) && !entry.value.trim().is_empty() {
+                    entry.value = REDACTED_VALUE.to_string();
+                }
+            }
+        }
+    }
+    let display = render_full_config(&display_config, false);
+    let recovery_len =
+        u64::try_from(recovery.len()).map_err(|_| s3_error!(InternalError, "config history recovery snapshot is too large"))?;
+    let mut snapshot =
+        Vec::with_capacity(CONFIG_HISTORY_SNAPSHOT_ENVELOPE_HEADER.len() + 1 + size_of::<u64>() + recovery.len() + display.len());
+    snapshot.extend_from_slice(CONFIG_HISTORY_SNAPSHOT_ENVELOPE_HEADER.as_bytes());
+    snapshot.push(b'\n');
+    snapshot.extend_from_slice(&recovery_len.to_be_bytes());
+    snapshot.extend_from_slice(&recovery);
+    snapshot.extend_from_slice(&display);
+    Ok(snapshot)
+}
+
+fn split_config_history_snapshot(data: &[u8]) -> S3Result<Option<(&[u8], &[u8])>> {
+    let Some(envelope) = data.strip_prefix(CONFIG_HISTORY_SNAPSHOT_ENVELOPE_HEADER.as_bytes()) else {
+        return Ok(None);
+    };
+    let envelope = envelope
+        .strip_prefix(b"\n")
+        .ok_or_else(|| s3_error!(InvalidRequest, "config history snapshot envelope header is malformed"))?;
+    let (recovery_len, payload) = envelope
+        .split_at_checked(size_of::<u64>())
+        .ok_or_else(|| s3_error!(InvalidRequest, "config history snapshot envelope is truncated"))?;
+    let recovery_len = u64::from_be_bytes(
+        recovery_len
+            .try_into()
+            .map_err(|_| s3_error!(InvalidRequest, "config history snapshot envelope length is malformed"))?,
+    );
+    let recovery_len = usize::try_from(recovery_len)
+        .map_err(|_| s3_error!(InvalidRequest, "config history recovery snapshot length is unsupported"))?;
+    let (recovery, display) = payload
+        .split_at_checked(recovery_len)
+        .ok_or_else(|| s3_error!(InvalidRequest, "config history snapshot envelope recovery data is truncated"))?;
+    Ok(Some((recovery, display)))
+}
+
+fn config_history_encryption_key() -> S3Result<Vec<u8>> {
+    if let Some(key) = rustfs_iam::keyring::encrypt_key() {
+        return Ok(key);
+    }
+
+    current_action_credentials()
+        .map(|credentials| credentials.secret_key.into_bytes())
+        .filter(|key| !key.is_empty())
+        .ok_or_else(|| s3_error!(InternalError, "config history encryption key is not initialized"))
+}
+
+fn config_history_decryption_keys() -> S3Result<Vec<Vec<u8>>> {
+    let mut keys = rustfs_iam::keyring::decrypt_keys();
+    if let Some(key) = current_action_credentials()
+        .map(|credentials| credentials.secret_key.into_bytes())
+        .filter(|key| !key.is_empty())
+    {
+        keys.push(key);
+    }
+    if keys.is_empty() {
+        return Err(s3_error!(InternalError, "config history decryption key is not initialized"));
+    }
+    Ok(keys)
+}
+
+fn seal_config_history_snapshot(snapshot: &[u8], key: &[u8]) -> S3Result<Vec<u8>> {
+    let ciphertext = rustfs_crypto::encrypt_stream_io(key, snapshot)
+        .map_err(|err| s3_error!(InternalError, "failed to encrypt config history snapshot: {}", err))?;
+    let mut sealed = Vec::with_capacity(CONFIG_HISTORY_ENCRYPTED_HEADER.len() + 1 + ciphertext.len());
+    sealed.extend_from_slice(CONFIG_HISTORY_ENCRYPTED_HEADER.as_bytes());
+    sealed.push(b'\n');
+    sealed.extend_from_slice(&ciphertext);
+    Ok(sealed)
+}
+
+fn open_config_history_data_with_keys(data: &[u8], keys: &[Vec<u8>]) -> S3Result<Vec<u8>> {
+    let Some(ciphertext) = data.strip_prefix(CONFIG_HISTORY_ENCRYPTED_HEADER.as_bytes()) else {
+        return Ok(data.to_vec());
+    };
+    let ciphertext = ciphertext
+        .strip_prefix(b"\n")
+        .ok_or_else(|| s3_error!(InvalidRequest, "encrypted config history header is malformed"))?;
+
+    for key in keys {
+        if let Ok(plaintext) = rustfs_crypto::decrypt_stream_io(key, ciphertext) {
+            return Ok(plaintext);
+        }
+    }
+    Err(s3_error!(InvalidRequest, "config history snapshot cannot be decrypted"))
+}
+
+fn open_config_history_data(data: &[u8]) -> S3Result<Vec<u8>> {
+    if data.starts_with(CONFIG_HISTORY_ENCRYPTED_HEADER.as_bytes()) {
+        return open_config_history_data_with_keys(data, &config_history_decryption_keys()?);
+    }
+    Ok(data.to_vec())
+}
+
+fn decode_config_history_snapshot(data: &[u8]) -> S3Result<ServerConfig> {
+    let data = open_config_history_data(data)?;
+    let recovery = split_config_history_snapshot(&data)?.map_or(data.as_slice(), |(recovery, _)| recovery);
+    let text = std::str::from_utf8(recovery).map_err(|_| s3_error!(InvalidRequest, "config history entry is not valid UTF-8"))?;
+    let Some(snapshot) = text.strip_prefix(CONFIG_HISTORY_SNAPSHOT_HEADER) else {
+        return Err(s3_error!(
+            InvalidRequest,
+            "legacy config history entry cannot be restored safely; create a new history entry before retrying"
+        ));
+    };
+    let snapshot = snapshot
+        .strip_prefix('\n')
+        .ok_or_else(|| s3_error!(InvalidRequest, "config history snapshot header is malformed"))?;
+    let directives = parse_config_directives(snapshot, false)?;
+    validate_config_directives(&directives)?;
+
+    let mut config = ServerConfig::new();
+    apply_set_directives(&mut config, &directives)?;
+    Ok(config)
+}
+
+fn validate_restore_rollback_generation(current: Option<Uuid>, committed: Option<Uuid>) -> S3Result<()> {
+    if current.is_some() && current == committed {
+        Ok(())
+    } else {
+        Err(s3_error!(
+            InvalidRequest,
+            "config restore rollback was skipped because a concurrent configuration change committed"
+        ))
+    }
+}
+
+async fn save_server_config_history_snapshot(config: &ServerConfig) -> S3Result<String> {
+    let snapshot = encode_config_history_snapshot(config)?;
+    let sealed = seal_config_history_snapshot(&snapshot, &config_history_encryption_key()?)?;
+    save_server_config_history(&sealed).await
+}
+
+async fn cleanup_config_history_snapshot(restore_id: &str) {
+    if let Err(err) = delete_server_config_history(restore_id).await {
+        warn!(
+            restore_id,
+            error = %err,
+            "Failed to remove config history snapshot"
+        );
+    }
+}
+
+async fn read_server_config_history(restore_id: &str) -> S3Result<Vec<u8>> {
+    let store = object_store()?;
+    read_admin_config(store, &history_object_name(restore_id))
+        .await
+        .map_err(ApiError::from)
+        .map_err(Into::into)
+}
+
+async fn delete_server_config_history(restore_id: &str) -> S3Result<()> {
+    let store = object_store()?;
+    delete_admin_config(store, &history_object_name(restore_id))
+        .await
+        .map_err(ApiError::from)
+        .map_err(Into::into)
+}
+
+async fn list_server_config_history(with_data: bool, count: Option<usize>) -> S3Result<Vec<ConfigHistoryEntry>> {
+    let store = object_store()?;
+    let mut continuation_token = None;
+    let mut entries = Vec::new();
+
+    loop {
+        let page = store
+            .clone()
+            .list_objects_v2(
+                RUSTFS_META_BUCKET,
+                CONFIG_HISTORY_PREFIX,
+                continuation_token.clone(),
+                None,
+                1000,
+                false,
+                None,
+                false,
+            )
+            .await
+            .map_err(ApiError::from)
+            .map_err(S3Error::from)?;
+
+        for object in page.objects {
+            if object.is_dir {
+                continue;
+            }
+
+            let Some(restore_id) = history_restore_id_from_name(&object.name) else {
+                continue;
+            };
+
+            entries.push(ConfigHistoryEntry {
+                restore_id,
+                create_time: object.mod_time.unwrap_or(OffsetDateTime::UNIX_EPOCH),
+                data: None,
+                data_redacted: None,
+            });
+        }
+
+        if !page.is_truncated {
+            break;
+        }
+
+        continuation_token = page.next_continuation_token;
+        if continuation_token.is_none() {
+            break;
+        }
+    }
+
+    let mut entries = trim_history_entries(entries, count);
+    if with_data {
+        for entry in &mut entries {
+            let persisted = read_admin_config(store.clone(), &history_object_name(&entry.restore_id))
+                .await
+                .map_err(ApiError::from)
+                .map_err(S3Error::from)?;
+            entry.set_redacted_data(&persisted)?;
+        }
+    }
+    Ok(entries)
+}
+
+fn normalize_target(target: &str) -> String {
+    if target.trim().is_empty() || target == "default" || target == DEFAULT_DELIMITER {
+        DEFAULT_DELIMITER.to_string()
+    } else {
+        target.trim().to_string()
+    }
+}
+
+fn format_scope(sub_system: &str, target: &str) -> String {
+    if target == DEFAULT_DELIMITER {
+        sub_system.to_string()
+    } else {
+        format!("{sub_system}:{target}")
+    }
+}
+
+fn escape_config_value(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn format_kv_pair(key: &str, value: &str) -> String {
+    format!(r#"{key}="{}""#, escape_config_value(value))
+}
+
+fn tokenize_config_line(line: &str) -> S3Result<Vec<String>> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+
+    for ch in line.chars() {
+        if escaped {
+            current.push(ch);
+            escaped = false;
+            continue;
+        }
+
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+
+        if let Some(active_quote) = quote {
+            if ch == active_quote {
+                quote = None;
+            } else {
+                current.push(ch);
+            }
+            continue;
+        }
+
+        match ch {
+            '"' | '\'' => quote = Some(ch),
+            c if c.is_whitespace() => {
+                if !current.is_empty() {
+                    tokens.push(std::mem::take(&mut current));
+                }
+            }
+            _ => current.push(ch),
+        }
+    }
+
+    if escaped {
+        current.push('\\');
+    }
+
+    if quote.is_some() {
+        return Err(s3_error!(InvalidRequest, "unterminated quoted config value"));
+    }
+
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+
+    Ok(tokens)
+}
+
+fn parse_directive_scope(scope: &str) -> S3Result<(String, String)> {
+    let (sub_system, target) = match scope.split_once(':') {
+        Some((sub_system, target)) => (sub_system.trim(), normalize_target(target)),
+        None => (scope.trim(), DEFAULT_DELIMITER.to_string()),
+    };
+
+    if sub_system.is_empty() {
+        return Err(s3_error!(InvalidRequest, "missing config subsystem"));
+    }
+
+    Ok((sub_system.to_string(), target))
+}
+
+fn parse_config_directives(input: &str, allow_bare_keys: bool) -> S3Result<Vec<ConfigDirective>> {
+    let mut directives = Vec::new();
+
+    for raw_line in input.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        let tokens = tokenize_config_line(line)?;
+        if tokens.is_empty() {
+            continue;
+        }
+
+        let (sub_system, target) = parse_directive_scope(&tokens[0])?;
+        let mut entries = Vec::new();
+
+        for token in tokens.iter().skip(1) {
+            if let Some((key, value)) = token.split_once('=') {
+                let key = key.trim();
+                if key.is_empty() {
+                    return Err(s3_error!(InvalidRequest, "config key cannot be empty"));
+                }
+                entries.push(ConfigEntry {
+                    key: key.to_string(),
+                    value: Some(value.to_string()),
+                });
+            } else if allow_bare_keys {
+                entries.push(ConfigEntry {
+                    key: token.trim().to_string(),
+                    value: None,
+                });
+            } else {
+                return Err(s3_error!(InvalidRequest, "config assignment must use key=value syntax"));
+            }
+        }
+
+        directives.push(ConfigDirective {
+            sub_system,
+            target,
+            entries,
+        });
+    }
+
+    Ok(directives)
+}
+
+fn parse_config_selector(input: &str) -> S3Result<ConfigSelector> {
+    let raw = input.trim();
+    if raw.is_empty() {
+        return Err(s3_error!(InvalidRequest, "missing config key selector"));
+    }
+
+    let (sub_system, target) = match raw.split_once(':') {
+        Some((sub_system, target)) => (sub_system.trim(), Some(normalize_target(target))),
+        None => (raw, None),
+    };
+
+    if sub_system.is_empty() {
+        return Err(s3_error!(InvalidRequest, "missing config subsystem"));
+    }
+
+    Ok(ConfigSelector {
+        sub_system: sub_system.to_string(),
+        target,
+    })
+}
+
+fn set_kvs_value(kvs: &mut KVS, key: &str, value: String) {
+    if let Some(existing) = kvs.0.iter_mut().find(|entry| entry.key == key) {
+        existing.value = value;
+        return;
+    }
+
+    kvs.0.push(KV {
+        key: key.to_string(),
+        value,
+        hidden_if_empty: false,
+    });
+}
+
+fn is_sensitive_key_name(key: &str) -> bool {
+    let normalized = key.trim().to_ascii_lowercase();
+    normalized.contains("secret")
+        || normalized.contains("password")
+        || normalized == "token"
+        || normalized.ends_with("_token")
+        || normalized == "client_key"
+        || normalized.ends_with("_client_key")
+        || normalized == "tls_client_key"
+        || normalized.ends_with("_tls_client_key")
+        || normalized == "private_key"
+        || normalized.ends_with("_private_key")
+        || normalized == BASE_DSN_STRING
+}
+
+fn is_sensitive_env_key_name(key: &str) -> bool {
+    if is_sensitive_key_name(key) {
+        return true;
+    }
+    let normalized = format!("_{}_", key.trim().to_ascii_lowercase());
+    normalized.contains("_token_")
+        || normalized.contains("_client_key_")
+        || normalized.contains("_tls_client_key_")
+        || normalized.contains("_private_key_")
+}
+
+fn is_sensitive_config_key(sub_system: &str, key: &str) -> bool {
+    if is_sensitive_key_name(key) {
+        return true;
+    }
+    if DEFAULT_KVS.get().is_none() {
+        crate::admin::storage_api::config::init_admin_config_defaults();
+    }
+    DEFAULT_KVS
+        .get()
+        .and_then(|defaults| defaults.get(sub_system))
+        .and_then(|kvs| kvs.0.iter().find(|entry| entry.key == key))
+        .is_some_and(|entry| entry.hidden_if_empty)
+}
+
+fn redact_config_history_line(line: &str) -> String {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    let (comment_prefix, content) = match trimmed.strip_prefix('#') {
+        Some(content) => ("# ", content.trim()),
+        None => ("", trimmed),
+    };
+    let Ok(tokens) = tokenize_config_line(content) else {
+        return format!("{comment_prefix}{REDACTED_VALUE}");
+    };
+    let Some(scope) = tokens.first() else {
+        return String::new();
+    };
+
+    if scope.contains('=') {
+        let assignments = tokens
+            .iter()
+            .map(|token| {
+                let Some((key, value)) = token.split_once('=') else {
+                    return REDACTED_VALUE.to_string();
+                };
+                let value = if is_sensitive_env_key_name(key) {
+                    REDACTED_VALUE
+                } else {
+                    value
+                };
+                format_kv_pair(key, value)
+            })
+            .collect::<Vec<_>>();
+        return format!("{comment_prefix}{}", assignments.join(" "));
+    }
+
+    let sub_system = scope.split_once(':').map_or(scope.as_str(), |(sub_system, _)| sub_system);
+    let mut redacted = Vec::with_capacity(tokens.len());
+    redacted.push(scope.clone());
+    for token in tokens.iter().skip(1) {
+        let Some((key, value)) = token.split_once('=') else {
+            redacted.push(token.clone());
+            continue;
+        };
+        let value = if is_sensitive_config_key(sub_system, key) {
+            REDACTED_VALUE
+        } else {
+            value
+        };
+        redacted.push(format_kv_pair(key, value));
+    }
+    format!("{comment_prefix}{}", redacted.join(" "))
+}
+
+fn redact_config_history_data(data: &[u8]) -> S3Result<String> {
+    let plaintext = open_config_history_data(data)?;
+    if let Some((_, display)) = split_config_history_snapshot(&plaintext)? {
+        return Ok(std::str::from_utf8(display).unwrap_or(REDACTED_VALUE).to_string());
+    }
+    let Ok(text) = std::str::from_utf8(&plaintext) else {
+        return Ok(REDACTED_VALUE.to_string());
+    };
+    let text = text
+        .strip_prefix(CONFIG_HISTORY_SNAPSHOT_HEADER)
+        .and_then(|snapshot| snapshot.strip_prefix('\n'))
+        .unwrap_or(text);
+    Ok(text.lines().map(redact_config_history_line).collect::<Vec<_>>().join("\n"))
+}
+
+fn apply_set_directives(config: &mut ServerConfig, directives: &[ConfigDirective]) -> S3Result<()> {
+    for directive in directives {
+        let targets = config.0.entry(directive.sub_system.clone()).or_default();
+        let kvs = targets.entry(directive.target.clone()).or_default();
+
+        for entry in &directive.entries {
+            let value = entry.value.clone().ok_or_else(|| {
+                s3_error!(
+                    InvalidRequest,
+                    "config key '{}' in subsystem '{}' is missing a value",
+                    entry.key,
+                    directive.sub_system
+                )
+            })?;
+            set_kvs_value(kvs, &entry.key, value);
+        }
+    }
+
+    config.set_defaults();
+    Ok(())
+}
+
+fn apply_delete_directives(config: &mut ServerConfig, directives: &[ConfigDirective]) {
+    for directive in directives {
+        let mut remove_subsystem = false;
+
+        if let Some(targets) = config.0.get_mut(&directive.sub_system) {
+            if directive.entries.is_empty() {
+                targets.remove(&directive.target);
+            } else if let Some(kvs) = targets.get_mut(&directive.target) {
+                let keys = directive
+                    .entries
+                    .iter()
+                    .map(|entry| entry.key.as_str())
+                    .collect::<BTreeSet<_>>();
+                kvs.0.retain(|entry| !keys.contains(entry.key.as_str()));
+                if kvs.0.is_empty() {
+                    targets.remove(&directive.target);
+                }
+            }
+
+            remove_subsystem = targets.is_empty();
+        }
+
+        if remove_subsystem {
+            config.0.remove(&directive.sub_system);
+        }
+    }
+
+    config.set_defaults();
+}
+
+fn render_entry_value(entry: &KV, redact_secrets: bool) -> String {
+    if redact_secrets && is_sensitive_key_name(&entry.key) && !entry.value.trim().is_empty() {
+        REDACTED_VALUE.to_string()
+    } else {
+        entry.value.clone()
+    }
+}
+
+fn should_render_config_entry(entry: &KV) -> bool {
+    if entry.hidden_if_empty && entry.value.trim().is_empty() {
+        return false;
+    }
+    if entry.key == ENABLE_KEY
+        && entry
+            .value
+            .parse::<rustfs_config::EnableState>()
+            .map(|state| state.is_enabled())
+            .unwrap_or(false)
+    {
+        return false;
+    }
+    true
+}
+
+fn sorted_kv_entries(kvs: &KVS) -> Vec<&KV> {
+    let mut entries = kvs.0.iter().filter(|entry| entry.key != COMMENT_KEY).collect::<Vec<_>>();
+    entries.sort_by(|lhs, rhs| lhs.key.cmp(&rhs.key));
+    entries
+}
+
+fn render_scope_line(sub_system: &str, target: &str, kvs: &KVS, redact_secrets: bool) -> Option<String> {
+    let entries = sorted_kv_entries(kvs)
+        .into_iter()
+        .filter(|entry| should_render_config_entry(entry))
+        .collect::<Vec<_>>();
+    if entries.is_empty() {
+        return None;
+    }
+
+    let pairs = entries
+        .into_iter()
+        .map(|entry| format_kv_pair(&entry.key, &render_entry_value(entry, redact_secrets)))
+        .collect::<Vec<_>>();
+
+    Some(format!("{} {}", format_scope(sub_system, target), pairs.join(" ")))
+}
+
+fn env_var_name_for_target(sub_system: &str, target: &str, key: &str) -> String {
+    let base = env_help_key(sub_system, key);
+    if lookup_help_subsystem(sub_system).is_some_and(|metadata| metadata.multiple_targets) && target != DEFAULT_DELIMITER {
+        format!("{base}_{}", target.to_ascii_uppercase())
+    } else {
+        base
+    }
+}
+
+fn config_target_keys(kvs: &KVS) -> Vec<&str> {
+    let mut keys = sorted_kv_entries(kvs)
+        .into_iter()
+        .map(|entry| entry.key.as_str())
+        .collect::<Vec<_>>();
+    if !keys.contains(&COMMENT_KEY) {
+        keys.push(COMMENT_KEY);
+    }
+    keys
+}
+
+fn read_non_empty_env_vars() -> Vec<(String, String)> {
+    env::vars().filter(|(_, value)| !value.is_empty()).collect()
+}
+
+fn discover_env_targets(sub_system: &str, kvs: &KVS, env_vars: &[(String, String)]) -> Vec<String> {
+    if !lookup_help_subsystem(sub_system).is_some_and(|metadata| metadata.multiple_targets) {
+        return Vec::new();
+    }
+
+    let mut targets = BTreeSet::new();
+    for key in config_target_keys(kvs) {
+        let prefix = format!("{}_", env_var_name_for_target(sub_system, DEFAULT_DELIMITER, key));
+        for (name, _) in env_vars {
+            if let Some(target) = name.strip_prefix(&prefix)
+                && !target.is_empty()
+            {
+                targets.insert(target.to_ascii_lowercase());
+            }
+        }
+    }
+
+    targets.into_iter().collect()
+}
+
+fn render_env_override_lines(
+    sub_system: &str,
+    target: &str,
+    kvs: &KVS,
+    redact_secrets: bool,
+    env_vars: &[(String, String)],
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    for key in config_target_keys(kvs) {
+        let env_name = env_var_name_for_target(sub_system, target, key);
+        let Some((_, value)) = env_vars.iter().find(|(name, _)| name == &env_name) else {
+            continue;
+        };
+        if redact_secrets && is_sensitive_key_name(key) {
+            lines.push(format!("# {env_name}={REDACTED_VALUE}"));
+            continue;
+        }
+        lines.push(format!("# {env_name}={value}"));
+    }
+
+    lines
+}
+
+fn render_selected_config(config: &ServerConfig, selector: &ConfigSelector, redact_secrets: bool) -> S3Result<Vec<u8>> {
+    let Some(targets) = config.0.get(&selector.sub_system) else {
+        return Err(s3_error!(InvalidRequest, "config subsystem '{}' not found", selector.sub_system));
+    };
+
+    let env_vars = read_non_empty_env_vars();
+    let mut lines = Vec::new();
+    let mut sorted_targets = targets.iter().collect::<Vec<_>>();
+    sorted_targets.sort_by_key(|(lhs, _)| *lhs);
+
+    if let Some(target) = selector.target.as_ref() {
+        let default_kvs = targets.get(DEFAULT_DELIMITER).cloned().unwrap_or_else(KVS::new);
+        let discovered_targets = discover_env_targets(&selector.sub_system, &default_kvs, &env_vars);
+        let kvs = if let Some(kvs) = targets.get(target) {
+            kvs
+        } else if discovered_targets.iter().any(|name| name == target) {
+            &default_kvs
+        } else {
+            return Err(s3_error!(
+                InvalidRequest,
+                "config target '{}' not found for subsystem '{}'",
+                target,
+                selector.sub_system
+            ));
+        };
+
+        let scope_start = lines.len();
+        lines.extend(render_env_override_lines(&selector.sub_system, target, kvs, redact_secrets, &env_vars));
+        if let Some(line) = render_scope_line(&selector.sub_system, target, kvs, redact_secrets) {
+            lines.push(line);
+        } else if lines.len() > scope_start {
+            lines.push(format_scope(&selector.sub_system, target));
+        }
+    } else {
+        let default_kvs = targets.get(DEFAULT_DELIMITER).cloned().unwrap_or_else(KVS::new);
+        let mut target_names = sorted_targets
+            .iter()
+            .map(|(target, _)| (*target).clone())
+            .collect::<BTreeSet<_>>();
+        for target in discover_env_targets(&selector.sub_system, &default_kvs, &env_vars) {
+            target_names.insert(target);
+        }
+
+        for target in target_names {
+            let kvs = targets.get(&target).unwrap_or(&default_kvs);
+            let scope_start = lines.len();
+            lines.extend(render_env_override_lines(&selector.sub_system, &target, kvs, redact_secrets, &env_vars));
+            if let Some(line) = render_scope_line(&selector.sub_system, &target, kvs, redact_secrets) {
+                lines.push(line);
+            } else if lines.len() > scope_start {
+                lines.push(format_scope(&selector.sub_system, &target));
+            }
+        }
+    }
+
+    Ok(lines.join("\n").into_bytes())
+}
+
+fn render_full_config(config: &ServerConfig, redact_secrets: bool) -> Vec<u8> {
+    let mut subsystems = config.0.iter().collect::<Vec<_>>();
+    subsystems.sort_by_key(|(lhs, _)| *lhs);
+
+    let mut lines = Vec::new();
+    for (sub_system, targets) in subsystems {
+        let mut sorted_targets = targets.iter().collect::<Vec<_>>();
+        sorted_targets.sort_by_key(|(lhs, _)| *lhs);
+
+        for (target, kvs) in sorted_targets {
+            if let Some(line) = render_scope_line(sub_system, target, kvs, redact_secrets) {
+                lines.push(line);
+            }
+        }
+    }
+
+    lines.join("\n").into_bytes()
+}
+
+fn lookup_help_subsystem(sub_system: &str) -> Option<&'static HelpSubSystemMetadata> {
+    HELP_SUBSYSTEMS.iter().find(|metadata| metadata.key == sub_system)
+}
+
+fn normalize_help_subsystem(sub_system: &str) -> &str {
+    sub_system
+        .split_once(':')
+        .map(|(base, _)| base.trim())
+        .unwrap_or_else(|| sub_system.trim())
+}
+
+fn env_help_key(sub_system: &str, key: &str) -> String {
+    match (sub_system, key) {
+        (STORAGE_CLASS_SUB_SYS, "standard") => STANDARD_ENV.to_string(),
+        (STORAGE_CLASS_SUB_SYS, "rrs") => RRS_ENV.to_string(),
+        (STORAGE_CLASS_SUB_SYS, "optimize") => OPTIMIZE_ENV.to_string(),
+        (STORAGE_CLASS_SUB_SYS, "inline_block") => INLINE_BLOCK_ENV.to_string(),
+        (SCANNER_SUB_SYS, SCANNER_SPEED) => ENV_SCANNER_SPEED.to_string(),
+        (SCANNER_SUB_SYS, SCANNER_DELAY) => ENV_SCANNER_DELAY.to_string(),
+        (SCANNER_SUB_SYS, SCANNER_MAX_WAIT) => ENV_SCANNER_MAX_WAIT_SECS.to_string(),
+        (SCANNER_SUB_SYS, SCANNER_CYCLE) => ENV_SCANNER_CYCLE.to_string(),
+        (SCANNER_SUB_SYS, SCANNER_START_DELAY) => ENV_SCANNER_START_DELAY_SECS.to_string(),
+        (SCANNER_SUB_SYS, SCANNER_CYCLE_MAX_DURATION) => ENV_SCANNER_CYCLE_MAX_DURATION_SECS.to_string(),
+        (SCANNER_SUB_SYS, SCANNER_CYCLE_MAX_OBJECTS) => ENV_SCANNER_CYCLE_MAX_OBJECTS.to_string(),
+        (SCANNER_SUB_SYS, SCANNER_CYCLE_MAX_DIRECTORIES) => ENV_SCANNER_CYCLE_MAX_DIRECTORIES.to_string(),
+        (SCANNER_SUB_SYS, SCANNER_BITROT_CYCLE) => ENV_SCANNER_BITROT_CYCLE_SECS.to_string(),
+        (SCANNER_SUB_SYS, SCANNER_IDLE_MODE) => ENV_SCANNER_IDLE_MODE.to_string(),
+        (SCANNER_SUB_SYS, SCANNER_CACHE_SAVE_TIMEOUT) => ENV_SCANNER_CACHE_SAVE_TIMEOUT_SECS.to_string(),
+        (SCANNER_SUB_SYS, SCANNER_MAX_CONCURRENT_SET_SCANS) => ENV_SCANNER_MAX_CONCURRENT_SET_SCANS.to_string(),
+        (SCANNER_SUB_SYS, SCANNER_MAX_CONCURRENT_DISK_SCANS) => ENV_SCANNER_MAX_CONCURRENT_DISK_SCANS.to_string(),
+        (SCANNER_SUB_SYS, SCANNER_YIELD_EVERY_N_OBJECTS) => ENV_SCANNER_YIELD_EVERY_N_OBJECTS.to_string(),
+        (SCANNER_SUB_SYS, SCANNER_ALERT_EXCESS_VERSIONS) => ENV_SCANNER_ALERT_EXCESS_VERSIONS.to_string(),
+        (SCANNER_SUB_SYS, SCANNER_ALERT_EXCESS_VERSION_SIZE) => ENV_SCANNER_ALERT_EXCESS_VERSION_SIZE.to_string(),
+        (SCANNER_SUB_SYS, SCANNER_ALERT_EXCESS_FOLDERS) => ENV_SCANNER_ALERT_EXCESS_FOLDERS.to_string(),
+        (HEAL_SUB_SYS, HEAL_BITROT_CYCLE) => ENV_SCANNER_BITROT_CYCLE_SECS.to_string(),
+        (IDENTITY_OPENID_SUB_SYS, ENABLE_KEY) => ENV_IDENTITY_OPENID_ENABLE.to_string(),
+        (IDENTITY_OPENID_SUB_SYS, OIDC_CONFIG_URL) => ENV_IDENTITY_OPENID_CONFIG_URL.to_string(),
+        (IDENTITY_OPENID_SUB_SYS, OIDC_ISSUER) => ENV_IDENTITY_OPENID_ISSUER.to_string(),
+        (IDENTITY_OPENID_SUB_SYS, OIDC_CLIENT_ID) => ENV_IDENTITY_OPENID_CLIENT_ID.to_string(),
+        (IDENTITY_OPENID_SUB_SYS, OIDC_CLIENT_SECRET) => ENV_IDENTITY_OPENID_CLIENT_SECRET.to_string(),
+        (IDENTITY_OPENID_SUB_SYS, OIDC_SCOPES) => ENV_IDENTITY_OPENID_SCOPES.to_string(),
+        (IDENTITY_OPENID_SUB_SYS, OIDC_REDIRECT_URI) => ENV_IDENTITY_OPENID_REDIRECT_URI.to_string(),
+        (IDENTITY_OPENID_SUB_SYS, OIDC_REDIRECT_URI_DYNAMIC) => ENV_IDENTITY_OPENID_REDIRECT_URI_DYNAMIC.to_string(),
+        (IDENTITY_OPENID_SUB_SYS, OIDC_CLAIM_NAME) => ENV_IDENTITY_OPENID_CLAIM_NAME.to_string(),
+        (IDENTITY_OPENID_SUB_SYS, OIDC_CLAIM_PREFIX) => ENV_IDENTITY_OPENID_CLAIM_PREFIX.to_string(),
+        (IDENTITY_OPENID_SUB_SYS, OIDC_ROLE_POLICY) => ENV_IDENTITY_OPENID_ROLE_POLICY.to_string(),
+        (IDENTITY_OPENID_SUB_SYS, OIDC_DISPLAY_NAME) => ENV_IDENTITY_OPENID_DISPLAY_NAME.to_string(),
+        (IDENTITY_OPENID_SUB_SYS, OIDC_GROUPS_CLAIM) => ENV_IDENTITY_OPENID_GROUPS_CLAIM.to_string(),
+        (IDENTITY_OPENID_SUB_SYS, OIDC_EMAIL_CLAIM) => ENV_IDENTITY_OPENID_EMAIL_CLAIM.to_string(),
+        (IDENTITY_OPENID_SUB_SYS, OIDC_USERNAME_CLAIM) => ENV_IDENTITY_OPENID_USERNAME_CLAIM.to_string(),
+        (NOTIFY_WEBHOOK_SUB_SYS, ENABLE_KEY) => ENV_NOTIFY_WEBHOOK_ENABLE.to_string(),
+        (NOTIFY_WEBHOOK_SUB_SYS, WEBHOOK_ENDPOINT) => ENV_NOTIFY_WEBHOOK_ENDPOINT.to_string(),
+        (NOTIFY_WEBHOOK_SUB_SYS, WEBHOOK_AUTH_TOKEN) => ENV_NOTIFY_WEBHOOK_AUTH_TOKEN.to_string(),
+        (NOTIFY_WEBHOOK_SUB_SYS, WEBHOOK_QUEUE_LIMIT) => ENV_NOTIFY_WEBHOOK_QUEUE_LIMIT.to_string(),
+        (NOTIFY_WEBHOOK_SUB_SYS, WEBHOOK_QUEUE_DIR) => ENV_NOTIFY_WEBHOOK_QUEUE_DIR.to_string(),
+        (NOTIFY_WEBHOOK_SUB_SYS, WEBHOOK_CLIENT_CERT) => ENV_NOTIFY_WEBHOOK_CLIENT_CERT.to_string(),
+        (NOTIFY_WEBHOOK_SUB_SYS, WEBHOOK_CLIENT_KEY) => ENV_NOTIFY_WEBHOOK_CLIENT_KEY.to_string(),
+        (NOTIFY_MQTT_SUB_SYS, ENABLE_KEY) => ENV_NOTIFY_MQTT_ENABLE.to_string(),
+        (NOTIFY_MQTT_SUB_SYS, MQTT_BROKER) => ENV_NOTIFY_MQTT_BROKER.to_string(),
+        (NOTIFY_MQTT_SUB_SYS, MQTT_TOPIC) => ENV_NOTIFY_MQTT_TOPIC.to_string(),
+        (NOTIFY_MQTT_SUB_SYS, MQTT_QOS) => ENV_NOTIFY_MQTT_QOS.to_string(),
+        (NOTIFY_MQTT_SUB_SYS, MQTT_USERNAME) => ENV_NOTIFY_MQTT_USERNAME.to_string(),
+        (NOTIFY_MQTT_SUB_SYS, MQTT_PASSWORD) => ENV_NOTIFY_MQTT_PASSWORD.to_string(),
+        (NOTIFY_MQTT_SUB_SYS, MQTT_RECONNECT_INTERVAL) => ENV_NOTIFY_MQTT_RECONNECT_INTERVAL.to_string(),
+        (NOTIFY_MQTT_SUB_SYS, MQTT_KEEP_ALIVE_INTERVAL) => ENV_NOTIFY_MQTT_KEEP_ALIVE_INTERVAL.to_string(),
+        (NOTIFY_MQTT_SUB_SYS, MQTT_QUEUE_DIR) => ENV_NOTIFY_MQTT_QUEUE_DIR.to_string(),
+        (NOTIFY_MQTT_SUB_SYS, MQTT_QUEUE_LIMIT) => ENV_NOTIFY_MQTT_QUEUE_LIMIT.to_string(),
+        (AUDIT_WEBHOOK_SUB_SYS, ENABLE_KEY) => ENV_AUDIT_WEBHOOK_ENABLE.to_string(),
+        (AUDIT_WEBHOOK_SUB_SYS, WEBHOOK_ENDPOINT) => ENV_AUDIT_WEBHOOK_ENDPOINT.to_string(),
+        (AUDIT_WEBHOOK_SUB_SYS, WEBHOOK_AUTH_TOKEN) => ENV_AUDIT_WEBHOOK_AUTH_TOKEN.to_string(),
+        (AUDIT_WEBHOOK_SUB_SYS, WEBHOOK_QUEUE_LIMIT) => ENV_AUDIT_WEBHOOK_QUEUE_LIMIT.to_string(),
+        (AUDIT_WEBHOOK_SUB_SYS, WEBHOOK_QUEUE_DIR) => ENV_AUDIT_WEBHOOK_QUEUE_DIR.to_string(),
+        (AUDIT_WEBHOOK_SUB_SYS, WEBHOOK_CLIENT_CERT) => ENV_AUDIT_WEBHOOK_CLIENT_CERT.to_string(),
+        (AUDIT_WEBHOOK_SUB_SYS, WEBHOOK_CLIENT_KEY) => ENV_AUDIT_WEBHOOK_CLIENT_KEY.to_string(),
+        (AUDIT_MQTT_SUB_SYS, ENABLE_KEY) => ENV_AUDIT_MQTT_ENABLE.to_string(),
+        (AUDIT_MQTT_SUB_SYS, MQTT_BROKER) => ENV_AUDIT_MQTT_BROKER.to_string(),
+        (AUDIT_MQTT_SUB_SYS, MQTT_TOPIC) => ENV_AUDIT_MQTT_TOPIC.to_string(),
+        (AUDIT_MQTT_SUB_SYS, MQTT_QOS) => ENV_AUDIT_MQTT_QOS.to_string(),
+        (AUDIT_MQTT_SUB_SYS, MQTT_USERNAME) => ENV_AUDIT_MQTT_USERNAME.to_string(),
+        (AUDIT_MQTT_SUB_SYS, MQTT_PASSWORD) => ENV_AUDIT_MQTT_PASSWORD.to_string(),
+        (AUDIT_MQTT_SUB_SYS, MQTT_RECONNECT_INTERVAL) => ENV_AUDIT_MQTT_RECONNECT_INTERVAL.to_string(),
+        (AUDIT_MQTT_SUB_SYS, MQTT_KEEP_ALIVE_INTERVAL) => ENV_AUDIT_MQTT_KEEP_ALIVE_INTERVAL.to_string(),
+        (AUDIT_MQTT_SUB_SYS, MQTT_QUEUE_DIR) => ENV_AUDIT_MQTT_QUEUE_DIR.to_string(),
+        (AUDIT_MQTT_SUB_SYS, MQTT_QUEUE_LIMIT) => ENV_AUDIT_MQTT_QUEUE_LIMIT.to_string(),
+        _ => format!("{ENV_PREFIX}{}_{}", sub_system.to_ascii_uppercase(), key.to_ascii_uppercase()),
+    }
+}
+
+fn default_help_postfix(sub_system: &str, key: &str) -> String {
+    if DEFAULT_KVS.get().is_none() {
+        crate::admin::storage_api::config::init_admin_config_defaults();
+    }
+
+    DEFAULT_KVS
+        .get()
+        .and_then(|defaults| defaults.get(sub_system))
+        .and_then(|kvs| kvs.lookup(key))
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| format!(" (default: '{}')", value))
+        .unwrap_or_default()
+}
+
+fn help_description(sub_system: &str, key: &str, description: &str) -> String {
+    format!("{description}{}", default_help_postfix(sub_system, key))
+}
+
+fn build_top_level_help_response() -> ConfigHelpResponse {
+    ConfigHelpResponse {
+        sub_sys: String::new(),
+        description: String::new(),
+        multiple_targets: false,
+        keys_help: HELP_SUBSYSTEMS
+            .iter()
+            .map(|metadata| ConfigHelpEntry {
+                key: metadata.key.to_string(),
+                type_name: String::new(),
+                description: metadata.description.to_string(),
+                optional: false,
+                multiple_targets: metadata.multiple_targets,
+            })
+            .collect(),
+    }
+}
+
+fn build_help_entries(
+    metadata: &HelpSubSystemMetadata,
+    key_filter: Option<&str>,
+    env_only: bool,
+) -> S3Result<Vec<ConfigHelpEntry>> {
+    let enable_entry = metadata.multiple_targets.then(|| ConfigHelpEntry {
+        key: if env_only {
+            env_help_key(metadata.key, ENABLE_KEY)
+        } else {
+            ENABLE_KEY.to_string()
+        },
+        type_name: "on|off".to_string(),
+        description: format!("enable {} target, default is 'off'", metadata.key),
+        optional: false,
+        multiple_targets: false,
+    });
+
+    let comment_entry = ConfigHelpEntry {
+        key: if env_only {
+            env_help_key(metadata.key, COMMENT_KEY)
+        } else {
+            COMMENT_KEY.to_string()
+        },
+        type_name: "sentence".to_string(),
+        description: DEFAULT_COMMENT_DESCRIPTION.to_string(),
+        optional: true,
+        multiple_targets: false,
+    };
+
+    let mut entries = if let Some(key_filter) = key_filter.filter(|value| !value.trim().is_empty()) {
+        if key_filter == COMMENT_KEY {
+            vec![comment_entry]
+        } else {
+            let entry = metadata
+                .keys
+                .iter()
+                .find(|entry| entry.key == key_filter)
+                .ok_or_else(|| s3_error!(InvalidRequest, "unknown key {} for sub-system {}", key_filter, metadata.key))?;
+            vec![ConfigHelpEntry {
+                key: if env_only {
+                    env_help_key(metadata.key, entry.key)
+                } else {
+                    entry.key.to_string()
+                },
+                type_name: entry.type_name.to_string(),
+                description: help_description(metadata.key, entry.key, entry.description),
+                optional: entry.optional,
+                multiple_targets: false,
+            }]
+        }
+    } else {
+        let mut entries = metadata
+            .keys
+            .iter()
+            .map(|entry| ConfigHelpEntry {
+                key: if env_only {
+                    env_help_key(metadata.key, entry.key)
+                } else {
+                    entry.key.to_string()
+                },
+                type_name: entry.type_name.to_string(),
+                description: help_description(metadata.key, entry.key, entry.description),
+                optional: entry.optional,
+                multiple_targets: false,
+            })
+            .collect::<Vec<_>>();
+        entries.push(comment_entry);
+        entries
+    };
+
+    if let Some(enable_entry) = enable_entry {
+        entries.insert(0, enable_entry);
+    }
+
+    Ok(entries)
+}
+
+fn build_help_response(sub_system: Option<&str>, key: Option<&str>, env_only: bool) -> S3Result<ConfigHelpResponse> {
+    let Some(sub_system) = sub_system.filter(|value| !value.trim().is_empty()) else {
+        return Ok(build_top_level_help_response());
+    };
+    let sub_system = normalize_help_subsystem(sub_system);
+
+    let metadata =
+        lookup_help_subsystem(sub_system).ok_or_else(|| s3_error!(InvalidRequest, "unknown sub-system {}", sub_system))?;
+    let entries = build_help_entries(metadata, key, env_only)?;
+
+    Ok(ConfigHelpResponse {
+        sub_sys: metadata.key.to_string(),
+        description: metadata.description.to_string(),
+        multiple_targets: metadata.multiple_targets,
+        keys_help: entries,
+    })
+}
+
+async fn reject_lost_config_transaction<T>(snapshot: AdminServerConfigSnapshot, phase: &'static str) -> S3Result<T> {
+    drop(snapshot);
+    reload_runtime_config_snapshot().await?;
+    signal_config_snapshot_reload().await;
+    Err(s3_error!(
+        InternalError,
+        "server config transaction lock was lost {phase}; runtime state was reloaded from durable config"
+    ))
+}
+
+fn config_preflight_subsystems(sub_system: Option<&str>) -> Vec<&str> {
+    if let Some(sub_system) = sub_system {
+        return is_dynamic_config_subsystem(sub_system)
+            .then_some(sub_system)
+            .into_iter()
+            .collect();
+    }
+
+    let mut sub_systems = vec![NOTIFY_WEBHOOK_SUB_SYS];
+    for sub_system in FULL_CONFIG_WORKER_SUBSYSTEMS {
+        if !NOTIFY_SUB_SYSTEMS.contains(&sub_system) {
+            sub_systems.push(sub_system);
+        }
+    }
+    sub_systems
+}
+
+async fn preflight_config_intent(sub_system: Option<&str>) -> S3Result<()> {
+    for sub_system in config_preflight_subsystems(sub_system) {
+        preflight_dynamic_config_reload(sub_system).await?;
+    }
+    Ok(())
+}
+
+fn finish_config_reconciliation(errors: Vec<String>, persisted: bool) -> S3Result<()> {
+    if errors.is_empty() {
+        Ok(())
+    } else if persisted {
+        Err(s3_error!(
+            InternalError,
+            "server config persisted but runtime convergence failed: {}",
+            errors.join("; ")
+        ))
+    } else {
+        Err(s3_error!(
+            InternalError,
+            "server config was unchanged but runtime convergence failed: {}",
+            errors.join("; ")
+        ))
+    }
+}
+
+async fn reconcile_targeted_config(sub_system: Option<String>, persisted: bool, mut errors: Vec<String>) -> S3Result<bool> {
+    let config_applied = if let Some(sub_system) = sub_system.as_deref()
+        && is_dynamic_config_subsystem(sub_system)
+    {
+        let config_applied = match reload_dynamic_config_runtime_state(sub_system).await {
+            Ok(()) => true,
+            Err(_) => {
+                warn!(config_subsystem = sub_system, reason = "apply_failed", "Local config reload failed");
+                errors.push(format!("local {sub_system}"));
+                false
+            }
+        };
+        if let Err(err) = signal_dynamic_config_reload_checked(sub_system).await {
+            warn!(config_subsystem = sub_system, error = %err, "Peer config reload failed");
+            errors.push(format!("peer {sub_system}"));
+        }
+        config_applied
+    } else {
+        if let Err(err) = signal_config_snapshot_reload_checked().await {
+            warn!(error = %err, "Peer config snapshot reload failed");
+            errors.push("peer config snapshot".to_string());
+        }
+        false
+    };
+
+    finish_config_reconciliation(errors, persisted)?;
+    Ok(config_applied)
+}
+
+async fn reconcile_full_config(persisted: bool, mut errors: Vec<String>) -> S3Result<()> {
+    if let Err(err) = reload_dynamic_config_runtime_state(NOTIFY_WEBHOOK_SUB_SYS).await {
+        warn!(error = %err, "Local notification config failed to converge from durable config");
+        errors.push("local notify".to_string());
+    }
+    if let Err(err) = signal_dynamic_config_reload_checked(STORAGE_CLASS_SUB_SYS).await {
+        warn!(error = %err, "Peer storage-class reload failed");
+        errors.push(format!("peer {STORAGE_CLASS_SUB_SYS}"));
+    }
+    if let Err(err) = signal_dynamic_config_reload_checked(NOTIFY_WEBHOOK_SUB_SYS).await {
+        warn!(error = %err, "Peer notification config reload failed");
+        errors.push("peer notify".to_string());
+    }
+    if let Err(err) = signal_config_snapshot_reload_checked().await {
+        warn!(error = %err, "Peer config snapshot reload failed");
+        errors.push("peer config snapshot".to_string());
+    }
+    finish_config_reconciliation(errors, persisted)
+}
+
+struct PersistedConfigTransaction {
+    previous_config: ServerConfig,
+    history_restore_id: Option<String>,
+    persisted: bool,
+    committed_generation: Option<Uuid>,
+}
+
+async fn persist_server_config_transaction(
+    config: ServerConfig,
+    snapshot: AdminServerConfigSnapshot,
+) -> S3Result<PersistedConfigTransaction> {
+    snapshot.ensure_lock_held().map_err(ApiError::from).map_err(S3Error::from)?;
+    let previous_config = snapshot.config.clone();
+    let history_restore_id = save_server_config_history_snapshot(&previous_config).await?;
+    if snapshot.is_lock_lost() {
+        cleanup_config_history_snapshot(&history_restore_id).await;
+        return reject_lost_config_transaction(snapshot, "before persistence").await;
+    }
+
+    let save_result = match save_server_config_to_store(&config, &snapshot).await {
+        Ok(result) => result,
+        Err(err) => {
+            cleanup_config_history_snapshot(&history_restore_id).await;
+            return Err(err);
+        }
+    };
+    let persisted = save_result.persisted();
+    let committed_generation = save_result.generation();
+    let history_restore_id = if persisted {
+        Some(history_restore_id)
+    } else {
+        cleanup_config_history_snapshot(&history_restore_id).await;
+        None
+    };
+    drop(snapshot);
+    Ok(PersistedConfigTransaction {
+        previous_config,
+        history_restore_id,
+        persisted,
+        committed_generation,
+    })
+}
+
+async fn reconcile_committed_config(sub_system: Option<String>, persisted: bool) -> S3Result<bool> {
+    let mut errors = Vec::new();
+    let publication_result = match sub_system.as_deref() {
+        Some(sub_system) => publish_latest_runtime_config_snapshot(sub_system).await,
+        None => reload_runtime_config_snapshot().await,
+    };
+    if let Err(err) = publication_result {
+        warn!(error = %err, "Failed to publish the latest durable server config");
+        errors.push("local config snapshot".to_string());
+    }
+
+    if sub_system.is_none() {
+        reconcile_full_config(persisted, errors).await?;
+        return Ok(false);
+    }
+
+    reconcile_targeted_config(sub_system, persisted, errors).await
+}
+
+async fn commit_server_config_transaction(
+    config: ServerConfig,
+    snapshot: AdminServerConfigSnapshot,
+    sub_system: Option<String>,
+) -> S3Result<bool> {
+    let transaction = persist_server_config_transaction(config, snapshot).await?;
+    let result = reconcile_committed_config(sub_system, transaction.persisted).await;
+    match (result, transaction.history_restore_id.as_deref()) {
+        (Err(err), Some(restore_id)) => Err(s3_error!(InternalError, "{}; recovery snapshot restoreId={}", err, restore_id)),
+        (result, _) => result,
+    }
+}
+
+pub struct GetConfigKVHandler {}
+
+#[async_trait::async_trait]
+impl Operation for GetConfigKVHandler {
+    async fn call(&self, req: S3Request<Body>, _params: Params<'_, '_>) -> S3Result<S3Response<(StatusCode, Body)>> {
+        let cred = validate_config_admin_request(&req).await?;
+        let queries = extract_query_params(&req.uri);
+        let selector = parse_config_selector(
+            queries
+                .get("key")
+                .ok_or_else(|| s3_error!(InvalidRequest, "missing config key selector"))?,
+        )?;
+        let config = load_active_server_config().await?;
+        let payload = render_selected_config(&config, &selector, true)?;
+        let (body, content_type) = encode_config_payload(req.uri.path(), &cred.secret_key, payload, TEXT_CONTENT_TYPE)?;
+        response_with_content_type(StatusCode::OK, body, &content_type)
+    }
+}
+
+pub struct SetConfigKVHandler {}
+
+#[async_trait::async_trait]
+impl Operation for SetConfigKVHandler {
+    async fn call(&self, req: S3Request<Body>, _params: Params<'_, '_>) -> S3Result<S3Response<(StatusCode, Body)>> {
+        let cred = validate_config_admin_request(&req).await?;
+        let body = read_compatible_admin_body(req.input, MAX_ADMIN_REQUEST_BODY_SIZE, req.uri.path(), &cred.secret_key).await?;
+        let directives = parse_config_directives(std::str::from_utf8(&body).map_err(ApiError::other)?, false)?;
+        if directives.is_empty() {
+            return Err(s3_error!(InvalidRequest, "config update body is empty"));
+        }
+        validate_config_directives(&directives)?;
+
+        let sub_system = config_update_sub_system(&directives)?.map(str::to_owned);
+        let config_applied = supervise_admin_mutation("config mutation", async move {
+            preflight_config_intent(sub_system.as_deref()).await?;
+            let snapshot = load_server_config_snapshot_from_store().await?;
+            let mut config = snapshot.config.clone();
+            apply_set_directives(&mut config, &directives)?;
+            prepare_server_config(&config, sub_system.as_deref()).await?;
+            commit_server_config_transaction(config, snapshot, sub_system).await
+        })
+        .await?;
+
+        success_response(config_applied)
+    }
+}
+
+pub struct DelConfigKVHandler {}
+
+#[async_trait::async_trait]
+impl Operation for DelConfigKVHandler {
+    async fn call(&self, req: S3Request<Body>, _params: Params<'_, '_>) -> S3Result<S3Response<(StatusCode, Body)>> {
+        let cred = validate_config_admin_request(&req).await?;
+        let body = read_compatible_admin_body(req.input, MAX_ADMIN_REQUEST_BODY_SIZE, req.uri.path(), &cred.secret_key).await?;
+        let directives = parse_config_directives(std::str::from_utf8(&body).map_err(ApiError::other)?, true)?;
+        if directives.is_empty() {
+            return Err(s3_error!(InvalidRequest, "config delete body is empty"));
+        }
+        validate_config_directives(&directives)?;
+
+        let sub_system = config_update_sub_system(&directives)?.map(str::to_owned);
+        let config_applied = supervise_admin_mutation("config mutation", async move {
+            preflight_config_intent(sub_system.as_deref()).await?;
+            let snapshot = load_server_config_snapshot_from_store().await?;
+            let mut config = snapshot.config.clone();
+            apply_delete_directives(&mut config, &directives);
+            prepare_server_config(&config, sub_system.as_deref()).await?;
+            commit_server_config_transaction(config, snapshot, sub_system).await
+        })
+        .await?;
+
+        success_response(config_applied)
+    }
+}
+
+pub struct HelpConfigKVHandler {}
+
+#[async_trait::async_trait]
+impl Operation for HelpConfigKVHandler {
+    async fn call(&self, req: S3Request<Body>, _params: Params<'_, '_>) -> S3Result<S3Response<(StatusCode, Body)>> {
+        validate_config_admin_request(&req).await?;
+        let queries = extract_query_params(&req.uri);
+        let response = build_help_response(
+            queries.get("subSys").map(String::as_str),
+            queries.get("key").map(String::as_str),
+            queries.contains_key("env"),
+        )?;
+        let body = serde_json::to_vec(&response).map_err(ApiError::other)?;
+        response_with_content_type(StatusCode::OK, body, JSON_CONTENT_TYPE)
+    }
+}
+
+pub struct ListConfigHistoryKVHandler {}
+
+#[async_trait::async_trait]
+impl Operation for ListConfigHistoryKVHandler {
+    async fn call(&self, req: S3Request<Body>, _params: Params<'_, '_>) -> S3Result<S3Response<(StatusCode, Body)>> {
+        let cred = validate_config_admin_request(&req).await?;
+        let queries = extract_query_params(&req.uri);
+        let count = queries
+            .get("count")
+            .ok_or_else(|| s3_error!(InvalidRequest, "missing count query parameter"))?
+            .parse::<usize>()
+            .map_err(ApiError::other)
+            .map_err(S3Error::from)?;
+        let entries = list_server_config_history(true, Some(count)).await?;
+        let payload = serde_json::to_vec(&entries).map_err(ApiError::other).map_err(S3Error::from)?;
+        let (body, content_type) = encode_config_payload(req.uri.path(), &cred.secret_key, payload, JSON_CONTENT_TYPE)?;
+        response_with_content_type(StatusCode::OK, body, &content_type)
+    }
+}
+
+pub struct ClearConfigHistoryKVHandler {}
+
+#[async_trait::async_trait]
+impl Operation for ClearConfigHistoryKVHandler {
+    async fn call(&self, req: S3Request<Body>, _params: Params<'_, '_>) -> S3Result<S3Response<(StatusCode, Body)>> {
+        validate_config_admin_request(&req).await?;
+        let queries = extract_query_params(&req.uri);
+        let restore_id = queries
+            .get("restoreId")
+            .ok_or_else(|| s3_error!(InvalidRequest, "missing restoreId query parameter"))?;
+
+        if restore_id == "all" {
+            for entry in list_server_config_history(false, None).await? {
+                delete_server_config_history(&entry.restore_id).await?;
+            }
+        } else {
+            delete_server_config_history(restore_id).await?;
+        }
+
+        success_response(false)
+    }
+}
+
+pub struct RestoreConfigHistoryKVHandler {}
+
+#[async_trait::async_trait]
+impl Operation for RestoreConfigHistoryKVHandler {
+    async fn call(&self, req: S3Request<Body>, _params: Params<'_, '_>) -> S3Result<S3Response<(StatusCode, Body)>> {
+        validate_config_admin_request(&req).await?;
+        let queries = extract_query_params(&req.uri);
+        let restore_id = queries
+            .get("restoreId")
+            .ok_or_else(|| s3_error!(InvalidRequest, "missing restoreId query parameter"))?;
+        let history = read_server_config_history(restore_id).await?;
+        let config = decode_config_history_snapshot(&history)?;
+        supervise_admin_mutation("config mutation", async move {
+            preflight_config_intent(None).await?;
+            let snapshot = load_server_config_snapshot_from_store().await?;
+            prepare_server_config(&config, None).await?;
+            let transaction = persist_server_config_transaction(config, snapshot).await?;
+            let Err(restore_error) = reconcile_committed_config(None, transaction.persisted).await else {
+                return Ok(());
+            };
+
+            if !transaction.persisted {
+                return Err(restore_error);
+            }
+
+            let previous_config = transaction.previous_config;
+            let recovery_restore_id = transaction.history_restore_id;
+            let committed_generation = transaction.committed_generation;
+            let recovery_reference = recovery_restore_id.as_deref().unwrap_or("not-created");
+            let rollback_snapshot = match load_server_config_snapshot_from_store().await {
+                Ok(snapshot) => snapshot,
+                Err(rollback_error) => {
+                    return Err(s3_error!(
+                        InternalError,
+                        "config restore failed: {}; automatic rollback failed: {}; recovery snapshot restoreId={}",
+                        restore_error,
+                        rollback_error,
+                        recovery_reference
+                    ));
+                }
+            };
+            if let Err(rollback_error) =
+                validate_restore_rollback_generation(rollback_snapshot.generation(), committed_generation)
+            {
+                return Err(s3_error!(
+                    InternalError,
+                    "config restore failed: {}; automatic rollback failed: {}; recovery snapshot restoreId={}",
+                    restore_error,
+                    rollback_error,
+                    recovery_reference
+                ));
+            }
+
+            if let Err(rollback_error) = prepare_server_config(&previous_config, None).await {
+                return Err(s3_error!(
+                    InternalError,
+                    "config restore failed: {}; automatic rollback failed: {}; recovery snapshot restoreId={}",
+                    restore_error,
+                    rollback_error,
+                    recovery_reference
+                ));
+            }
+            if let Err(rollback_error) = rollback_snapshot
+                .ensure_lock_held()
+                .map_err(ApiError::from)
+                .map_err(S3Error::from)
+            {
+                return Err(s3_error!(
+                    InternalError,
+                    "config restore failed: {}; automatic rollback failed: {}; recovery snapshot restoreId={}",
+                    restore_error,
+                    rollback_error,
+                    recovery_reference
+                ));
+            }
+            let rollback_persisted = match save_server_config_to_store(&previous_config, &rollback_snapshot).await {
+                Ok(result) => result.persisted(),
+                Err(rollback_error) => {
+                    return Err(s3_error!(
+                        InternalError,
+                        "config restore failed: {}; automatic rollback failed: {}; recovery snapshot restoreId={}",
+                        restore_error,
+                        rollback_error,
+                        recovery_reference
+                    ));
+                }
+            };
+            drop(rollback_snapshot);
+
+            if let Err(rollback_error) = reconcile_committed_config(None, rollback_persisted).await {
+                return Err(s3_error!(
+                    InternalError,
+                    "config restore failed: {}; automatic rollback convergence failed: {}; recovery snapshot restoreId={}",
+                    restore_error,
+                    rollback_error,
+                    recovery_reference
+                ));
+            }
+            if rollback_persisted && let Some(recovery_restore_id) = recovery_restore_id.as_deref() {
+                cleanup_config_history_snapshot(recovery_restore_id).await;
+            }
+            Err(s3_error!(InternalError, "config restore failed and was rolled back: {}", restore_error))
+        })
+        .await?;
+
+        success_response(false)
+    }
+}
+
+pub struct GetConfigHandler {}
+
+#[async_trait::async_trait]
+impl Operation for GetConfigHandler {
+    async fn call(&self, req: S3Request<Body>, _params: Params<'_, '_>) -> S3Result<S3Response<(StatusCode, Body)>> {
+        let cred = validate_config_admin_request(&req).await?;
+        let config = load_active_server_config().await?;
+        let payload = render_full_config(&config, false);
+        let (body, content_type) = encode_config_payload(req.uri.path(), &cred.secret_key, payload, TEXT_CONTENT_TYPE)?;
+        response_with_content_type(StatusCode::OK, body, &content_type)
+    }
+}
+
+pub struct SetConfigHandler {}
+
+#[async_trait::async_trait]
+impl Operation for SetConfigHandler {
+    async fn call(&self, req: S3Request<Body>, _params: Params<'_, '_>) -> S3Result<S3Response<(StatusCode, Body)>> {
+        let cred = validate_config_admin_request(&req).await?;
+        let body = read_compatible_admin_body(req.input, MAX_ADMIN_REQUEST_BODY_SIZE, req.uri.path(), &cred.secret_key).await?;
+        let directives = parse_config_directives(std::str::from_utf8(&body).map_err(ApiError::other)?, false)?;
+        if directives.is_empty() {
+            return Err(s3_error!(InvalidRequest, "full config body is empty"));
+        }
+        validate_config_directives(&directives)?;
+
+        supervise_admin_mutation("config mutation", async move {
+            preflight_config_intent(None).await?;
+            let snapshot = load_server_config_snapshot_from_store().await?;
+            let mut config = ServerConfig::new();
+            apply_set_directives(&mut config, &directives)?;
+            prepare_server_config(&config, None).await?;
+            commit_server_config_transaction(config, snapshot, None).await?;
+            Ok(())
+        })
+        .await?;
+
+        success_response(false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use http::Uri;
+    use serial_test::serial;
+    use temp_env::with_vars;
+
+    /// The config-admin gate historically reports "missing credentials" (not the
+    /// shared gate's "get cred failed"); the pre-check in
+    /// `validate_config_admin_request` must keep that message byte-identical.
+    #[tokio::test]
+    async fn config_admin_request_without_credentials_keeps_historical_message() {
+        let req = S3Request {
+            input: Body::from(String::new()),
+            method: Method::GET,
+            uri: Uri::from_static("/rustfs/admin/v3/config"),
+            headers: HeaderMap::new(),
+            extensions: http::Extensions::new(),
+            credentials: None,
+            region: None,
+            service: None,
+            trailing_headers: None,
+        };
+
+        let err = validate_config_admin_request(&req)
+            .await
+            .expect_err("a request without credentials must be rejected");
+        assert_eq!(err.code(), &S3ErrorCode::InvalidRequest);
+        assert_eq!(err.message(), Some("missing credentials"));
+    }
+
+    #[test]
+    fn config_preflight_covers_each_runtime_worker_family() {
+        assert_eq!(config_preflight_subsystems(Some(SCANNER_SUB_SYS)), [SCANNER_SUB_SYS]);
+        assert_eq!(config_preflight_subsystems(Some(HEAL_SUB_SYS)), [HEAL_SUB_SYS]);
+        assert!(config_preflight_subsystems(Some("identity_openid")).is_empty());
+        assert_eq!(
+            config_preflight_subsystems(None),
+            [
+                NOTIFY_WEBHOOK_SUB_SYS,
+                rustfs_config::audit::AUDIT_WEBHOOK_SUB_SYS,
+                SCANNER_SUB_SYS
+            ]
+        );
+    }
+
+    #[test]
+    fn reconciliation_error_reports_whether_config_was_persisted() {
+        let persisted = finish_config_reconciliation(vec!["local config snapshot".to_string()], true)
+            .expect_err("committed config convergence failure must be reported");
+        let unchanged = finish_config_reconciliation(vec!["local config snapshot".to_string()], false)
+            .expect_err("unchanged config convergence failure must be reported");
+
+        assert_eq!(
+            persisted.message(),
+            Some("server config persisted but runtime convergence failed: local config snapshot")
+        );
+        assert_eq!(
+            unchanged.message(),
+            Some("server config was unchanged but runtime convergence failed: local config snapshot")
+        );
+    }
+
+    #[test]
+    fn tokenize_config_line_handles_quotes_and_escapes() {
+        let tokens = tokenize_config_line(r#"identity_openid client_id="console app" client_secret="s3cr\"et" enable=on"#)
+            .expect("tokenize");
+
+        assert_eq!(
+            tokens,
+            vec![
+                "identity_openid".to_string(),
+                "client_id=console app".to_string(),
+                r#"client_secret=s3cr"et"#.to_string(),
+                "enable=on".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_selector_supports_all_targets_and_default_target() {
+        let all_targets = parse_config_selector("notify_webhook").expect("parse selector");
+        assert_eq!(
+            all_targets,
+            ConfigSelector {
+                sub_system: "notify_webhook".to_string(),
+                target: None,
+            }
+        );
+
+        let default_target = parse_config_selector("notify_webhook:").expect("parse selector");
+        assert_eq!(
+            default_target,
+            ConfigSelector {
+                sub_system: "notify_webhook".to_string(),
+                target: Some(DEFAULT_DELIMITER.to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn validate_config_directives_rejects_unknown_subsystem_and_key() {
+        let unsupported_subsystem =
+            parse_config_directives(r#"not_real key="value""#, false).expect("parse unsupported subsystem directive");
+        let err = validate_config_directives(&unsupported_subsystem).expect_err("unknown subsystem should fail");
+        assert_eq!(err.code(), &S3ErrorCode::InvalidRequest);
+
+        let unsupported_key =
+            parse_config_directives(r#"identity_openid not_real="value""#, false).expect("parse unsupported key directive");
+        let err = validate_config_directives(&unsupported_key).expect_err("unknown key should fail");
+        assert_eq!(err.code(), &S3ErrorCode::InvalidRequest);
+    }
+
+    #[test]
+    fn validate_config_directives_accepts_notify_kafka_sasl_keys() {
+        let directives = parse_config_directives(
+            r#"notify_kafka sasl_enable="on" sasl_mechanism="SCRAM-SHA-512" sasl_username="user" sasl_password="secret""#,
+            false,
+        )
+        .expect("parse notify kafka sasl directives");
+
+        validate_config_directives(&directives).expect("notify kafka SASL keys should be accepted");
+    }
+
+    #[test]
+    fn validate_config_directives_accepts_audit_kafka_sasl_keys() {
+        let directives = parse_config_directives(
+            r#"audit_kafka sasl_enable="on" sasl_mechanism="SCRAM-SHA-512" sasl_username="user" sasl_password="secret""#,
+            false,
+        )
+        .expect("parse audit kafka sasl directives");
+
+        validate_config_directives(&directives).expect("audit kafka SASL keys should be accepted");
+    }
+
+    #[test]
+    fn set_get_and_delete_config_kv_round_trip() {
+        let mut config = ServerConfig::new();
+        let directives = parse_config_directives(
+            r#"identity_openid config_url="https://issuer.example" client_id="console" client_secret="secret-value""#,
+            false,
+        )
+        .expect("parse directives");
+        apply_set_directives(&mut config, &directives).expect("apply directives");
+
+        let rendered = String::from_utf8(
+            render_selected_config(
+                &config,
+                &ConfigSelector {
+                    sub_system: "identity_openid".to_string(),
+                    target: Some(DEFAULT_DELIMITER.to_string()),
+                },
+                true,
+            )
+            .expect("render config"),
+        )
+        .expect("utf8");
+        assert!(rendered.contains(r#"client_id="console""#));
+        assert!(rendered.contains(r#"client_secret="*redacted*""#));
+
+        let delete_directives = parse_config_directives("identity_openid client_secret", true).expect("parse delete directives");
+        apply_delete_directives(&mut config, &delete_directives);
+
+        let rendered_after_delete = String::from_utf8(
+            render_selected_config(
+                &config,
+                &ConfigSelector {
+                    sub_system: "identity_openid".to_string(),
+                    target: Some(DEFAULT_DELIMITER.to_string()),
+                },
+                false,
+            )
+            .expect("render config"),
+        )
+        .expect("utf8");
+        assert!(!rendered_after_delete.contains("client_secret="));
+    }
+
+    #[test]
+    fn config_rendering_redacts_database_dsn() {
+        let entry = KV {
+            key: BASE_DSN_STRING.to_string(),
+            value: "postgres://user:password@db.example/database".to_string(),
+            hidden_if_empty: true,
+        };
+
+        assert_eq!(render_entry_value(&entry, true), REDACTED_VALUE);
+    }
+
+    #[test]
+    fn full_config_export_can_be_reapplied() {
+        crate::admin::storage_api::config::init_admin_config_defaults();
+        let mut original = ServerConfig::new();
+        apply_set_directives(
+            &mut original,
+            &parse_config_directives(
+                r#"storage_class standard="EC:2" rrs="EC:1"
+identity_openid config_url="https://issuer.example" client_id="console""#,
+                false,
+            )
+            .expect("parse directives"),
+        )
+        .expect("apply original directives");
+
+        let exported = String::from_utf8(render_full_config(&original, false)).expect("utf8 export");
+        let mut restored = ServerConfig::new();
+        apply_set_directives(&mut restored, &parse_config_directives(&exported, false).expect("parse exported config"))
+            .expect("apply restored directives");
+
+        assert_eq!(render_full_config(&original, false), render_full_config(&restored, false));
+    }
+
+    #[test]
+    fn build_help_response_reports_known_keys() {
+        let response = build_help_response(Some("identity_openid"), Some("client_secret"), false).expect("help response");
+
+        assert_eq!(response.sub_sys, "identity_openid");
+        assert_eq!(response.description, "enable OpenID SSO support");
+        assert!(response.multiple_targets);
+        assert_eq!(response.keys_help.len(), 2);
+        assert_eq!(response.keys_help[0].key, "enable");
+        assert_eq!(response.keys_help[1].key, "client_secret");
+        assert_eq!(response.keys_help[1].type_name, "string");
+    }
+
+    #[test]
+    fn build_help_response_supports_env_only_keys() {
+        let response = build_help_response(Some("notify_webhook"), Some("endpoint"), true).expect("env help response");
+
+        assert_eq!(response.sub_sys, "notify_webhook");
+        assert_eq!(response.keys_help.len(), 2);
+        assert_eq!(response.keys_help[0].key, "RUSTFS_NOTIFY_WEBHOOK_ENABLE");
+        assert_eq!(response.keys_help[0].description, "enable notify_webhook target, default is 'off'");
+        assert_eq!(response.keys_help[1].key, "RUSTFS_NOTIFY_WEBHOOK_ENDPOINT");
+    }
+
+    #[test]
+    fn build_help_response_appends_default_value_postfix() {
+        crate::admin::storage_api::config::init_admin_config_defaults();
+        let response = build_help_response(Some("identity_openid"), Some("scopes"), false).expect("help response");
+
+        assert_eq!(response.keys_help.len(), 2);
+        assert_eq!(response.keys_help[1].type_name, "csv");
+        assert!(
+            response.keys_help[1]
+                .description
+                .contains("(default: 'openid,profile,email')")
+        );
+    }
+
+    #[test]
+    fn build_help_response_exposes_comment_key() {
+        let response = build_help_response(Some("notify_webhook"), Some("comment"), false).expect("comment help response");
+
+        assert_eq!(response.keys_help.len(), 2);
+        assert_eq!(response.keys_help[0].key, "enable");
+        assert_eq!(response.keys_help[1].key, "comment");
+        assert_eq!(response.keys_help[1].type_name, "sentence");
+        assert_eq!(response.keys_help[1].description, DEFAULT_COMMENT_DESCRIPTION);
+    }
+
+    #[test]
+    fn build_help_response_uses_target_specific_descriptions() {
+        let response = build_help_response(Some("notify_webhook"), Some("endpoint"), false).expect("webhook help response");
+
+        assert_eq!(response.keys_help.len(), 2);
+        assert_eq!(
+            response.keys_help[1].description,
+            "webhook server endpoint e.g. \"http://localhost:8080/rustfs/events\""
+        );
+    }
+
+    #[test]
+    fn build_help_response_ignores_target_suffix_in_subsystem_query() {
+        let response =
+            build_help_response(Some("notify_webhook:primary"), Some("endpoint"), false).expect("targeted help response");
+
+        assert_eq!(response.sub_sys, "notify_webhook");
+        assert_eq!(response.keys_help.len(), 2);
+        assert_eq!(response.keys_help[1].key, "endpoint");
+    }
+
+    #[test]
+    fn build_help_response_reports_scanner_keys() {
+        let response = build_help_response(Some("scanner"), Some("speed"), false).expect("scanner help response");
+
+        assert_eq!(response.sub_sys, "scanner");
+        assert!(!response.multiple_targets);
+        assert_eq!(response.keys_help.len(), 1);
+        assert_eq!(response.keys_help[0].key, "speed");
+        assert_eq!(response.keys_help[0].type_name, "fastest|fast|default|slow|slowest");
+    }
+
+    #[test]
+    fn build_help_response_reports_scanner_start_delay_legacy_cycle_behavior() {
+        let response = build_help_response(Some("scanner"), Some("start_delay"), false).expect("scanner help response");
+
+        assert_eq!(response.sub_sys, "scanner");
+        assert_eq!(response.keys_help.len(), 1);
+        assert_eq!(response.keys_help[0].key, "start_delay");
+        assert!(response.keys_help[0].description.contains("cycle"));
+    }
+
+    #[test]
+    fn validate_config_directives_accepts_scanner_pacing_keys() {
+        let input = format!("{SCANNER_SUB_SYS} {SCANNER_DELAY}=\"3.5\" {SCANNER_MAX_WAIT}=\"7\"");
+        let directives = parse_config_directives(&input, false).expect("parse scanner pacing directive");
+
+        validate_config_directives(&directives).expect("scanner pacing keys should be supported");
+    }
+
+    #[test]
+    fn scanner_cycle_config_set_and_get_round_trip() {
+        let mut config = ServerConfig::new();
+        let directives = parse_config_directives("scanner cycle=61", false).expect("parse scanner cycle directive");
+        validate_config_directives(&directives).expect("scanner cycle should be supported");
+        apply_set_directives(&mut config, &directives).expect("apply scanner cycle directive");
+
+        assert_eq!(
+            config
+                .get_value(SCANNER_SUB_SYS, DEFAULT_DELIMITER)
+                .expect("scanner KVS should exist")
+                .lookup(SCANNER_CYCLE)
+                .as_deref(),
+            Some("61")
+        );
+        let rendered = String::from_utf8(
+            render_selected_config(
+                &config,
+                &ConfigSelector {
+                    sub_system: SCANNER_SUB_SYS.to_string(),
+                    target: Some(DEFAULT_DELIMITER.to_string()),
+                },
+                true,
+            )
+            .expect("render scanner cycle config"),
+        )
+        .expect("scanner config should be UTF-8");
+        assert!(rendered.contains("cycle=\"61\""));
+    }
+
+    #[test]
+    fn build_help_response_reports_scanner_delay() {
+        let response = build_help_response(Some(SCANNER_SUB_SYS), Some(SCANNER_DELAY), false).expect("scanner help response");
+
+        assert_eq!(response.sub_sys, SCANNER_SUB_SYS);
+        assert_eq!(response.keys_help.len(), 1);
+        assert_eq!(response.keys_help[0].key, SCANNER_DELAY);
+        assert_eq!(response.keys_help[0].type_name, "float");
+        assert!(response.keys_help[0].description.contains("multiplier"));
+    }
+
+    #[test]
+    fn validate_config_directives_accepts_heal_bitrot_cycle() {
+        let input = format!("{HEAL_SUB_SYS} {HEAL_BITROT_CYCLE}=\"off\"");
+        let directives = parse_config_directives(&input, false).expect("parse heal directive");
+
+        validate_config_directives(&directives).expect("heal bitrot_cycle should be a supported config key");
+    }
+
+    #[test]
+    fn build_help_response_reports_heal_bitrot_cycle() {
+        let response = build_help_response(Some(HEAL_SUB_SYS), Some(HEAL_BITROT_CYCLE), false).expect("heal help response");
+
+        assert_eq!(response.sub_sys, HEAL_SUB_SYS);
+        assert!(!response.multiple_targets);
+        assert_eq!(response.keys_help.len(), 1);
+        assert_eq!(response.keys_help[0].key, HEAL_BITROT_CYCLE);
+        assert!(response.keys_help[0].description.contains("scanner"));
+    }
+
+    #[test]
+    fn build_top_level_help_response_uses_empty_type_names() {
+        let response = build_help_response(None, None, false).expect("top level help response");
+
+        assert!(!response.keys_help.is_empty());
+        assert!(response.keys_help.iter().all(|entry| entry.type_name.is_empty()));
+    }
+
+    #[test]
+    fn render_selected_config_includes_env_override_lines() {
+        crate::admin::storage_api::config::init_admin_config_defaults();
+        temp_env::with_vars(
+            [
+                ("RUSTFS_NOTIFY_WEBHOOK_ENDPOINT_PRIMARY", Some("http://env.example")),
+                ("RUSTFS_NOTIFY_WEBHOOK_AUTH_TOKEN_PRIMARY", Some("secret-token")),
+            ],
+            || {
+                let mut config = ServerConfig::new();
+                apply_set_directives(
+                    &mut config,
+                    &parse_config_directives(r#"notify_webhook:primary endpoint="http://file.example""#, false)
+                        .expect("parse directives"),
+                )
+                .expect("apply directives");
+
+                let rendered = String::from_utf8(
+                    render_selected_config(
+                        &config,
+                        &ConfigSelector {
+                            sub_system: "notify_webhook".to_string(),
+                            target: None,
+                        },
+                        true,
+                    )
+                    .expect("render config"),
+                )
+                .expect("utf8");
+
+                assert!(rendered.contains("# RUSTFS_NOTIFY_WEBHOOK_ENDPOINT_PRIMARY=http://env.example"));
+                assert!(!rendered.contains("RUSTFS_NOTIFY_WEBHOOK_AUTH_TOKEN_PRIMARY"));
+            },
+        );
+    }
+
+    #[test]
+    fn render_selected_config_lists_env_only_targets() {
+        crate::admin::storage_api::config::init_admin_config_defaults();
+        temp_env::with_vars([("RUSTFS_NOTIFY_WEBHOOK_ENDPOINT_PRIMARY", Some("http://env.example"))], || {
+            let config = ServerConfig::new();
+            let rendered = String::from_utf8(
+                render_selected_config(
+                    &config,
+                    &ConfigSelector {
+                        sub_system: "notify_webhook".to_string(),
+                        target: None,
+                    },
+                    true,
+                )
+                .expect("render config"),
+            )
+            .expect("utf8");
+
+            assert!(rendered.contains("# RUSTFS_NOTIFY_WEBHOOK_ENDPOINT_PRIMARY=http://env.example"));
+            assert!(rendered.contains("notify_webhook:primary"));
+        });
+    }
+
+    #[test]
+    fn render_selected_config_supports_specific_env_only_target_queries() {
+        crate::admin::storage_api::config::init_admin_config_defaults();
+        temp_env::with_vars([("RUSTFS_NOTIFY_WEBHOOK_ENDPOINT_PRIMARY", Some("http://env.example"))], || {
+            let config = ServerConfig::new();
+            let rendered = String::from_utf8(
+                render_selected_config(
+                    &config,
+                    &ConfigSelector {
+                        sub_system: "notify_webhook".to_string(),
+                        target: Some("primary".to_string()),
+                    },
+                    true,
+                )
+                .expect("render config"),
+            )
+            .expect("utf8");
+
+            assert!(rendered.contains("# RUSTFS_NOTIFY_WEBHOOK_ENDPOINT_PRIMARY=http://env.example"));
+            assert!(rendered.contains("notify_webhook:primary"));
+        });
+    }
+
+    #[test]
+    fn render_selected_config_orders_default_before_named_targets() {
+        crate::admin::storage_api::config::init_admin_config_defaults();
+        temp_env::with_vars([("RUSTFS_NOTIFY_WEBHOOK_ENDPOINT_ALPHA", Some("http://alpha.example"))], || {
+            let mut config = ServerConfig::new();
+            apply_set_directives(
+                &mut config,
+                &parse_config_directives(
+                    r#"notify_webhook endpoint="http://default.example"
+notify_webhook:beta endpoint="http://beta.example""#,
+                    false,
+                )
+                .expect("parse directives"),
+            )
+            .expect("apply directives");
+
+            let rendered = String::from_utf8(
+                render_selected_config(
+                    &config,
+                    &ConfigSelector {
+                        sub_system: "notify_webhook".to_string(),
+                        target: None,
+                    },
+                    true,
+                )
+                .expect("render config"),
+            )
+            .expect("utf8");
+
+            let default_index = rendered.find("notify_webhook ").expect("default target");
+            let alpha_index = rendered.find("notify_webhook:alpha").expect("alpha target");
+            let beta_index = rendered.find("notify_webhook:beta").expect("beta target");
+            assert!(default_index < alpha_index);
+            assert!(alpha_index < beta_index);
+        });
+    }
+
+    #[test]
+    fn render_scope_line_omits_enable_on_and_hidden_empty_values() {
+        let kvs = KVS(vec![
+            KV {
+                key: ENABLE_KEY.to_string(),
+                value: "on".to_string(),
+                hidden_if_empty: false,
+            },
+            KV {
+                key: WEBHOOK_ENDPOINT.to_string(),
+                value: "http://file.example".to_string(),
+                hidden_if_empty: false,
+            },
+            KV {
+                key: WEBHOOK_AUTH_TOKEN.to_string(),
+                value: String::new(),
+                hidden_if_empty: true,
+            },
+        ]);
+
+        let rendered = render_scope_line("notify_webhook", "primary", &kvs, true).expect("render scope");
+        assert!(rendered.contains(r#"endpoint="http://file.example""#));
+        assert!(!rendered.contains("enable="));
+        assert!(!rendered.contains("auth_token="));
+    }
+
+    #[test]
+    fn history_object_name_round_trips_restore_id() {
+        let name = history_object_name("restore-123");
+        assert_eq!(name, "config/history/restore-123.kv");
+        assert_eq!(history_restore_id_from_name(&name).as_deref(), Some("restore-123"));
+        assert!(history_restore_id_from_name("config/history/restore-123.txt").is_none());
+    }
+
+    #[test]
+    fn history_snapshot_round_trip_preserves_unrelated_subsystems_targets_and_secrets() {
+        crate::admin::storage_api::config::init_admin_config_defaults();
+        let mut original = ServerConfig::new();
+        apply_set_directives(
+            &mut original,
+            &parse_config_directives(
+                r#"storage_class standard="EC:4" rrs="EC:2"
+identity_openid client_id="client" client_secret="unrelated-secret"
+notify_webhook:primary endpoint="https://hooks.example" auth_token="target-secret""#,
+                false,
+            )
+            .expect("parse fixture"),
+        )
+        .expect("apply fixture");
+
+        let encoded = encode_config_history_snapshot(&original).expect("encode snapshot");
+        let restored = decode_config_history_snapshot(&encoded).expect("decode snapshot");
+
+        assert_eq!(render_full_config(&restored, false), render_full_config(&original, false));
+        let rendered = String::from_utf8(render_full_config(&restored, false)).expect("utf8");
+        assert!(rendered.contains(r#"client_secret="unrelated-secret""#));
+        assert!(rendered.contains(r#"notify_webhook:primary"#));
+        assert!(rendered.contains(r#"auth_token="target-secret""#));
+    }
+
+    #[test]
+    fn sealed_history_snapshot_hides_secrets_and_rejects_wrong_key() {
+        crate::admin::storage_api::config::init_admin_config_defaults();
+        let mut config = ServerConfig::new();
+        apply_set_directives(
+            &mut config,
+            &parse_config_directives(r#"identity_openid client_id="client" client_secret="snapshot-canary-secret""#, false)
+                .expect("parse fixture"),
+        )
+        .expect("apply fixture");
+        let snapshot = encode_config_history_snapshot(&config).expect("encode snapshot");
+
+        let sealed = seal_config_history_snapshot(&snapshot, b"history-test-key").expect("seal snapshot");
+
+        assert!(sealed.starts_with(CONFIG_HISTORY_ENCRYPTED_HEADER.as_bytes()));
+        assert!(
+            !sealed
+                .windows(b"snapshot-canary-secret".len())
+                .any(|window| window == b"snapshot-canary-secret")
+        );
+        let wrong_key_error =
+            open_config_history_data_with_keys(&sealed, &[b"wrong-key".to_vec()]).expect_err("wrong key must fail closed");
+        assert!(!wrong_key_error.to_string().contains("snapshot-canary-secret"));
+        let opened = open_config_history_data_with_keys(&sealed, &[b"history-test-key".to_vec()]).expect("open snapshot");
+        assert_eq!(opened, snapshot);
+    }
+
+    #[test]
+    #[serial]
+    fn history_snapshot_key_rotation_uses_current_and_old_iam_master_keys() {
+        crate::admin::storage_api::config::init_admin_config_defaults();
+        let mut config = ServerConfig::new();
+        apply_set_directives(
+            &mut config,
+            &parse_config_directives(r#"storage_class standard="EC:2""#, false).expect("parse fixture"),
+        )
+        .expect("apply fixture");
+        let snapshot = encode_config_history_snapshot(&config).expect("encode snapshot");
+        let sealed = with_vars(
+            [
+                (rustfs_iam::keyring::ENV_IAM_MASTER_KEY, Some("history-master-old")),
+                (rustfs_iam::keyring::ENV_IAM_MASTER_KEY_OLD_KEYS, None::<&str>),
+            ],
+            || {
+                let key = config_history_encryption_key().expect("current history encryption key");
+                seal_config_history_snapshot(&snapshot, &key).expect("seal with current key")
+            },
+        );
+
+        with_vars(
+            [
+                (rustfs_iam::keyring::ENV_IAM_MASTER_KEY, Some("history-master-new")),
+                (
+                    rustfs_iam::keyring::ENV_IAM_MASTER_KEY_OLD_KEYS,
+                    Some("history-master-unused,history-master-old"),
+                ),
+            ],
+            || {
+                let restored = decode_config_history_snapshot(&sealed).expect("restore with old-key fallback");
+                assert_eq!(render_full_config(&restored, false), render_full_config(&config, false));
+            },
+        );
+    }
+
+    #[test]
+    fn history_snapshot_listing_redacts_known_and_fallback_secrets() {
+        crate::admin::storage_api::config::init_admin_config_defaults();
+        let mut config = ServerConfig::new();
+        apply_set_directives(
+            &mut config,
+            &parse_config_directives(
+                r#"identity_openid:primary client_id="client" client_secret="snapshot-client-canary"
+notify_webhook:primary endpoint="https://hooks.example" auth_token="snapshot-token-canary"
+notify_webhook:secondary endpoint="https://secondary.example" client_key="snapshot-key-canary""#,
+                false,
+            )
+            .expect("parse fixture"),
+        )
+        .expect("apply fixture");
+
+        let snapshot = encode_config_history_snapshot(&config).expect("encode snapshot");
+        let listed = redact_config_history_data(&snapshot).expect("redact snapshot");
+
+        assert!(listed.contains(r#"client_id="client""#));
+        assert!(listed.contains(r#"endpoint="https://hooks.example""#));
+        assert!(listed.contains(r#"client_secret="*redacted*""#));
+        assert!(listed.contains(r#"auth_token="*redacted*""#));
+        assert!(listed.contains(r#"client_key="*redacted*""#));
+        assert!(!listed.contains("snapshot-client-canary"));
+        assert!(!listed.contains("snapshot-token-canary"));
+        assert!(!listed.contains("snapshot-key-canary"));
+    }
+
+    #[test]
+    fn history_snapshot_listing_preserves_creation_time_hidden_metadata() {
+        crate::admin::storage_api::config::init_admin_config_defaults();
+        let mut config = ServerConfig::new();
+        let targets = config.0.entry(IDENTITY_OPENID_SUB_SYS.to_string()).or_default();
+        targets.insert(
+            DEFAULT_DELIMITER.to_string(),
+            KVS(vec![KV {
+                key: OIDC_CLIENT_ID.to_string(),
+                value: "metadata-hidden-canary".to_string(),
+                hidden_if_empty: true,
+            }]),
+        );
+
+        let snapshot = encode_config_history_snapshot(&config).expect("encode snapshot");
+        let listed = redact_config_history_data(&snapshot).expect("redact snapshot");
+        let restored = decode_config_history_snapshot(&snapshot).expect("decode snapshot");
+
+        assert!(listed.contains(r#"client_id="*redacted*""#));
+        assert!(!listed.contains("metadata-hidden-canary"));
+        assert!(
+            String::from_utf8(render_full_config(&restored, false))
+                .expect("utf8 restored config")
+                .contains(r#"client_id="metadata-hidden-canary""#)
+        );
+    }
+
+    #[test]
+    fn plaintext_v1_history_snapshot_remains_restorable_and_lists_redacted() {
+        crate::admin::storage_api::config::init_admin_config_defaults();
+        let mut config = ServerConfig::new();
+        apply_set_directives(
+            &mut config,
+            &parse_config_directives(r#"identity_openid client_id="legacy-client" client_secret="plaintext-v1-canary""#, false)
+                .expect("parse fixture"),
+        )
+        .expect("apply fixture");
+        let snapshot = encode_config_history_recovery(&config);
+
+        let listed = redact_config_history_data(&snapshot).expect("redact v1 snapshot");
+        let restored = decode_config_history_snapshot(&snapshot).expect("restore v1 snapshot");
+
+        assert!(listed.contains(r#"client_secret="*redacted*""#));
+        assert!(!listed.contains("plaintext-v1-canary"));
+        assert!(
+            String::from_utf8(render_full_config(&restored, false))
+                .expect("utf8 restored config")
+                .contains(r#"client_secret="plaintext-v1-canary""#)
+        );
+    }
+
+    #[test]
+    fn legacy_history_listing_redacts_quotes_env_lines_and_multiple_targets() {
+        let history = br#"identity_openid:primary client_id="visible-client" client_secret="quoted canary secret"
+notify_webhook:primary endpoint="https://hooks.example" auth_token="target-canary-token"
+notify_webhook:secondary endpoint="https://secondary.example" password="fallback-canary-password"
+# RUSTFS_NOTIFY_WEBHOOK_AUTH_TOKEN_PRIMARY="env-canary-token"
+RUSTFS_IDENTITY_OPENID_CLIENT_SECRET="env-canary-secret""#;
+
+        let listed = redact_config_history_data(history).expect("redact legacy history");
+
+        assert!(listed.contains(r#"client_id="visible-client""#));
+        assert!(listed.contains(r#"endpoint="https://hooks.example""#));
+        assert!(listed.contains(r#"client_secret="*redacted*""#));
+        assert!(listed.contains(r#"auth_token="*redacted*""#));
+        assert!(listed.contains(r#"password="*redacted*""#));
+        assert!(listed.contains(r#"# RUSTFS_NOTIFY_WEBHOOK_AUTH_TOKEN_PRIMARY="*redacted*""#));
+        assert!(listed.contains(r#"RUSTFS_IDENTITY_OPENID_CLIENT_SECRET="*redacted*""#));
+        for canary in [
+            "quoted canary secret",
+            "target-canary-token",
+            "fallback-canary-password",
+            "env-canary-token",
+            "env-canary-secret",
+        ] {
+            assert!(!listed.contains(canary));
+        }
+    }
+
+    #[test]
+    fn corrupt_legacy_history_listing_fails_closed_without_echoing_bytes() {
+        let malformed = redact_config_history_data(b"identity_openid client_secret=\"unterminated-canary")
+            .expect("malformed history is replaced");
+        let binary =
+            redact_config_history_data(&[0xff, 0xfe, b's', b'e', b'c', b'r', b'e', b't']).expect("binary history is replaced");
+
+        assert_eq!(malformed, REDACTED_VALUE);
+        assert_eq!(binary, REDACTED_VALUE);
+        assert!(!malformed.contains("unterminated-canary"));
+        assert!(!binary.contains("secret"));
+    }
+
+    #[test]
+    fn malformed_history_snapshot_envelope_fails_closed() {
+        let mut truncated_length = format!("{CONFIG_HISTORY_SNAPSHOT_ENVELOPE_HEADER}\n").into_bytes();
+        truncated_length.extend_from_slice(b"canary");
+        let mut truncated_recovery = format!("{CONFIG_HISTORY_SNAPSHOT_ENVELOPE_HEADER}\n").into_bytes();
+        truncated_recovery.extend_from_slice(&u64::MAX.to_be_bytes());
+        truncated_recovery.extend_from_slice(b"envelope-canary");
+
+        for malformed in [truncated_length, truncated_recovery] {
+            let error = redact_config_history_data(&malformed).expect_err("malformed envelope must fail closed");
+            assert_eq!(error.code(), &S3ErrorCode::InvalidRequest);
+            assert!(!error.to_string().contains("canary"));
+        }
+    }
+
+    #[test]
+    fn history_response_marks_data_as_redacted_without_serializing_canary() {
+        let mut entry = ConfigHistoryEntry {
+            restore_id: "restore-id".to_string(),
+            create_time: OffsetDateTime::UNIX_EPOCH,
+            data: None,
+            data_redacted: None,
+        };
+        entry
+            .set_redacted_data(b"identity_openid client_secret=\"history-response-canary\"")
+            .expect("redact response data");
+
+        let payload = serde_json::to_string(&entry).expect("serialize history entry");
+
+        assert!(payload.contains(r#""DataRedacted":true"#));
+        assert!(payload.contains("*redacted*"));
+        assert!(!payload.contains("history-response-canary"));
+    }
+
+    #[test]
+    fn minio_compatible_history_response_encrypts_only_redacted_data() {
+        let mut entry = ConfigHistoryEntry {
+            restore_id: "restore-id".to_string(),
+            create_time: OffsetDateTime::UNIX_EPOCH,
+            data: None,
+            data_redacted: None,
+        };
+        entry
+            .set_redacted_data(b"identity_openid client_secret=\"compat-history-canary\"")
+            .expect("redact response data");
+        let payload = serde_json::to_vec(&[entry]).expect("serialize history response");
+
+        let (encoded, content_type) =
+            encode_config_payload("/minio/admin/v3/list-config-history-kv", "compat-test-key", payload, JSON_CONTENT_TYPE)
+                .expect("encode compatible response");
+        let decoded = rustfs_crypto::decrypt_stream_io(b"compat-test-key", &encoded).expect("decrypt compatible response");
+        let decoded = String::from_utf8(decoded).expect("utf8 response");
+
+        assert_eq!(content_type, OCTET_STREAM_CONTENT_TYPE);
+        assert!(decoded.contains(r#""DataRedacted":true"#));
+        assert!(decoded.contains("*redacted*"));
+        assert!(!decoded.contains("compat-history-canary"));
+    }
+
+    #[test]
+    fn history_snapshot_supports_complete_default_config() {
+        crate::admin::storage_api::config::init_admin_config_defaults();
+        let original = ServerConfig::new();
+
+        let encoded = encode_config_history_snapshot(&original).expect("encode snapshot");
+        let restored = decode_config_history_snapshot(&encoded).expect("decode default snapshot");
+
+        assert_eq!(render_full_config(&restored, false), render_full_config(&original, false));
+    }
+
+    #[test]
+    fn pre_change_snapshot_restores_single_key_and_deleted_target() {
+        crate::admin::storage_api::config::init_admin_config_defaults();
+        let mut before = ServerConfig::new();
+        apply_set_directives(
+            &mut before,
+            &parse_config_directives(
+                r#"identity_openid client_id="before-client" client_secret="preserved-secret"
+notify_webhook:secondary endpoint="https://secondary.example" auth_token="secondary-secret""#,
+                false,
+            )
+            .expect("parse before fixture"),
+        )
+        .expect("apply before fixture");
+        let snapshot = encode_config_history_snapshot(&before).expect("encode snapshot");
+
+        let mut after = before.clone();
+        apply_set_directives(
+            &mut after,
+            &parse_config_directives(r#"identity_openid client_id="after-client""#, false).expect("parse set"),
+        )
+        .expect("apply set");
+        apply_delete_directives(
+            &mut after,
+            &parse_config_directives("notify_webhook:secondary", true).expect("parse target delete"),
+        );
+
+        let restored = decode_config_history_snapshot(&snapshot).expect("restore pre-change snapshot");
+        assert_eq!(render_full_config(&restored, false), render_full_config(&before, false));
+        assert_ne!(render_full_config(&restored, false), render_full_config(&after, false));
+    }
+
+    #[test]
+    fn restore_rollback_generation_accepts_committed_write_identity() {
+        let committed = Uuid::from_u128(1);
+        validate_restore_rollback_generation(Some(committed), Some(committed)).expect("matching committed generation");
+    }
+
+    #[test]
+    fn restore_rollback_generation_rejects_aba_with_matching_config_content() {
+        let error = validate_restore_rollback_generation(Some(Uuid::from_u128(2)), Some(Uuid::from_u128(1)))
+            .expect_err("a later generation must fence automatic rollback even when config content matches");
+        assert_eq!(error.code(), &S3ErrorCode::InvalidRequest);
+        assert!(error.to_string().contains("concurrent configuration change"));
+    }
+
+    #[test]
+    fn restore_rollback_generation_rejects_missing_write_identity() {
+        for (current, committed) in [
+            (None, Some(Uuid::from_u128(1))),
+            (Some(Uuid::from_u128(1)), None),
+            (None, None),
+        ] {
+            let error = validate_restore_rollback_generation(current, committed)
+                .expect_err("missing generation metadata must fence automatic rollback");
+            assert_eq!(error.code(), &S3ErrorCode::InvalidRequest);
+        }
+    }
+
+    #[test]
+    fn legacy_directive_history_is_rejected_without_being_applied_as_a_snapshot() {
+        let error = decode_config_history_snapshot(b"identity_openid client_id=\"legacy\"")
+            .expect_err("legacy directive history must fail closed");
+
+        assert_eq!(error.code(), &S3ErrorCode::InvalidRequest);
+        assert!(error.to_string().contains("legacy config history entry"));
+    }
+
+    #[test]
+    fn malformed_versioned_history_is_rejected() {
+        let error = decode_config_history_snapshot(b"# rustfs-config-history: full-snapshot-v1\nnot_real key=\"value\"")
+            .expect_err("malformed snapshot must fail closed");
+
+        assert_eq!(error.code(), &S3ErrorCode::InvalidRequest);
+    }
+
+    #[test]
+    fn trim_history_entries_keeps_most_recent_count_in_time_order() {
+        let entries = vec![
+            ConfigHistoryEntry {
+                restore_id: "oldest".to_string(),
+                create_time: OffsetDateTime::from_unix_timestamp(1).expect("timestamp"),
+                data: None,
+                data_redacted: None,
+            },
+            ConfigHistoryEntry {
+                restore_id: "middle".to_string(),
+                create_time: OffsetDateTime::from_unix_timestamp(2).expect("timestamp"),
+                data: None,
+                data_redacted: None,
+            },
+            ConfigHistoryEntry {
+                restore_id: "newest".to_string(),
+                create_time: OffsetDateTime::from_unix_timestamp(3).expect("timestamp"),
+                data: None,
+                data_redacted: None,
+            },
+        ];
+
+        let trimmed = trim_history_entries(entries, Some(2));
+        assert_eq!(trimmed.len(), 2);
+        assert_eq!(trimmed[0].restore_id, "middle");
+        assert_eq!(trimmed[1].restore_id, "newest");
+    }
+
+    #[test]
+    fn apply_set_directives_merge_into_existing_config() {
+        let mut config = ServerConfig::new();
+        apply_set_directives(
+            &mut config,
+            &parse_config_directives(
+                r#"storage_class standard="EC:2"
+identity_openid client_id="existing-client""#,
+                false,
+            )
+            .expect("parse initial directives"),
+        )
+        .expect("apply initial directives");
+
+        let history_directives = parse_config_directives(
+            r#"identity_openid config_url="https://issuer.example" client_secret="restored-secret""#,
+            false,
+        )
+        .expect("parse history directives");
+        apply_set_directives(&mut config, &history_directives).expect("apply history directives");
+
+        let mut webhook = ServerConfig::new();
+        apply_set_directives(
+            &mut webhook,
+            &parse_config_directives(r#"notify_webhook client_key="s3cr3t-key""#, false).expect("parse client key directives"),
+        )
+        .expect("apply client key directives");
+        let webhook_rendered = String::from_utf8(
+            render_selected_config(
+                &webhook,
+                &ConfigSelector {
+                    sub_system: "notify_webhook".to_string(),
+                    target: Some(DEFAULT_DELIMITER.to_string()),
+                },
+                true,
+            )
+            .expect("render webhook config"),
+        )
+        .expect("utf8");
+        assert!(webhook_rendered.contains(r#"client_key="*redacted*""#));
+
+        let missing_value_directives = vec![ConfigDirective {
+            sub_system: "identity_openid".to_string(),
+            target: DEFAULT_DELIMITER.to_string(),
+            entries: vec![ConfigEntry {
+                key: "client_secret".to_string(),
+                value: None,
+            }],
+        }];
+        let err =
+            apply_set_directives(&mut ServerConfig::new(), &missing_value_directives).expect_err("missing value should fail");
+        assert_eq!(err.code(), &S3ErrorCode::InvalidRequest);
+
+        let storage_class = String::from_utf8(
+            render_selected_config(
+                &config,
+                &ConfigSelector {
+                    sub_system: "storage_class".to_string(),
+                    target: Some(DEFAULT_DELIMITER.to_string()),
+                },
+                false,
+            )
+            .expect("render storage class"),
+        )
+        .expect("utf8");
+        assert!(storage_class.contains(r#"standard="EC:2""#));
+
+        let oidc = String::from_utf8(
+            render_selected_config(
+                &config,
+                &ConfigSelector {
+                    sub_system: "identity_openid".to_string(),
+                    target: Some(DEFAULT_DELIMITER.to_string()),
+                },
+                false,
+            )
+            .expect("render oidc"),
+        )
+        .expect("utf8");
+        assert!(oidc.contains(r#"client_id="existing-client""#));
+        assert!(oidc.contains(r#"config_url="https://issuer.example""#));
+        assert!(oidc.contains(r#"client_secret="restored-secret""#));
+    }
+
+    #[test]
+    fn storage_class_get_target_none_matches_full_export() {
+        crate::admin::storage_api::config::init_admin_config_defaults();
+        let mut config = ServerConfig::new();
+        apply_set_directives(
+            &mut config,
+            &parse_config_directives(r#"storage_class standard="EC:4" rrs="EC:2""#, false).expect("parse"),
+        )
+        .expect("apply");
+
+        // Simulate "mc admin config export" (render_full_config)
+        let full_output = String::from_utf8(render_full_config(&config, false)).expect("utf8");
+
+        // Simulate "mc admin config get storage_class" (target=None, redact=true)
+        let selected_output = String::from_utf8(
+            render_selected_config(
+                &config,
+                &ConfigSelector {
+                    sub_system: "storage_class".to_string(),
+                    target: None,
+                },
+                true,
+            )
+            .expect("render"),
+        )
+        .expect("utf8");
+
+        assert!(full_output.contains("EC:4"), "full export should contain EC:4, got:\n{}", full_output);
+        assert!(
+            selected_output.contains("EC:4"),
+            "selected get should contain EC:4, got:\n{}",
+            selected_output
+        );
+        assert!(
+            selected_output.contains("EC:2"),
+            "selected get should contain EC:2, got:\n{}",
+            selected_output
+        );
+
+        let full_sc_line = full_output.lines().find(|l| l.starts_with("storage_class")).unwrap();
+        let selected_sc_line = selected_output.lines().find(|l| l.starts_with("storage_class")).unwrap();
+        assert_eq!(full_sc_line, selected_sc_line);
+    }
+}

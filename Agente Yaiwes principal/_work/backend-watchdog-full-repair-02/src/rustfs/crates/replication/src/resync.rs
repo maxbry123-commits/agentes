@@ -1,0 +1,1203 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use std::collections::HashMap;
+use std::fmt;
+use std::io::{Cursor, Read, Write};
+
+use byteorder::{BigEndian, ByteOrder, LittleEndian};
+use rmp::Marker;
+use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
+
+pub const RESYNC_META_FORMAT: u16 = 1;
+pub const RESYNC_META_VERSION: u16 = 1;
+
+// A resync snapshot contains small fixed-shape records for configured targets. These
+// limits leave room for thousands of targets while bounding corrupt MessagePack work.
+const RESYNC_FILE_HEADER_LEN: usize = 4;
+pub const RESYNC_FILE_MAX_BYTES: usize = 16 * 1024 * 1024;
+const RESYNC_MSGP_MAX_BYTES: usize = RESYNC_FILE_MAX_BYTES - RESYNC_FILE_HEADER_LEN;
+const RESYNC_MSGP_MAX_ELEMENT_BYTES: usize = 1024 * 1024;
+const RESYNC_MSGP_MAX_COLLECTION_ITEMS: usize = 4096;
+const RESYNC_MSGP_MAX_VALUES: usize = 131_072;
+const RESYNC_MSGP_MAX_DEPTH: usize = 32;
+const MSGP_TIME_EXT_TYPE: i8 = 5;
+const MSGP_TIME_LEN: u8 = 12;
+pub const WIRE_ZERO_TIME_UNIX: i64 = -62_135_596_800;
+const RESYNC_ERROR_DETAIL_MAX_CHARS: usize = 512;
+const RESYNC_ERROR_REDACTED: &str = "[redacted sensitive resync error detail]";
+const RESYNC_ERROR_TRUNCATED_SUFFIX: &str = "... (truncated)";
+const RESYNC_ERROR_SENSITIVE_MARKERS: &[&str] = &[
+    "authorization",
+    "bearer",
+    "credential",
+    "secret",
+    "token",
+    "signature",
+    "password",
+];
+
+pub type Result<T> = std::result::Result<T, ResyncStateError>;
+
+/// Error type for the persisted resync/MRF state files (backlog#1845 step 7:
+/// renamed from the crate-generic `Error`, with `Io` kept typed instead of
+/// collapsing into a string so callers can still classify the io failure).
+#[derive(Debug)]
+pub enum ResyncStateError {
+    CorruptedFormat,
+    Io(std::io::Error),
+    Other(String),
+}
+
+impl ResyncStateError {
+    fn other(err: impl Into<String>) -> Self {
+        Self::Other(err.into())
+    }
+}
+
+impl fmt::Display for ResyncStateError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::CorruptedFormat => write!(f, "corrupted format"),
+            Self::Io(err) => write!(f, "{err}"),
+            Self::Other(err) => write!(f, "{err}"),
+        }
+    }
+}
+
+impl std::error::Error for ResyncStateError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Io(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl From<std::io::Error> for ResyncStateError {
+    fn from(err: std::io::Error) -> Self {
+        Self::Io(err)
+    }
+}
+
+impl From<std::string::FromUtf8Error> for ResyncStateError {
+    fn from(err: std::string::FromUtf8Error) -> Self {
+        Self::other(err.to_string())
+    }
+}
+
+impl From<rmp::encode::ValueWriteError> for ResyncStateError {
+    fn from(err: rmp::encode::ValueWriteError) -> Self {
+        Self::other(err.to_string())
+    }
+}
+
+impl From<rmp::decode::ValueReadError> for ResyncStateError {
+    fn from(err: rmp::decode::ValueReadError) -> Self {
+        Self::other(err.to_string())
+    }
+}
+
+impl From<rmp::decode::NumValueReadError> for ResyncStateError {
+    fn from(err: rmp::decode::NumValueReadError) -> Self {
+        Self::other(err.to_string())
+    }
+}
+
+impl From<rmp_serde::decode::Error> for ResyncStateError {
+    fn from(err: rmp_serde::decode::Error) -> Self {
+        Self::other(err.to_string())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ResyncStatusType {
+    #[default]
+    NoResync,
+    ResyncPending,
+    ResyncCanceled,
+    ResyncStarted,
+    ResyncCompleted,
+    ResyncFailed,
+}
+
+impl ResyncStatusType {
+    pub fn is_valid(&self) -> bool {
+        *self != ResyncStatusType::NoResync
+    }
+}
+
+pub fn should_auto_resume_resync(status: ResyncStatusType) -> bool {
+    matches!(status, ResyncStatusType::ResyncPending | ResyncStatusType::ResyncStarted)
+}
+
+impl fmt::Display for ResyncStatusType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            ResyncStatusType::ResyncStarted => "Ongoing",
+            ResyncStatusType::ResyncCompleted => "Completed",
+            ResyncStatusType::ResyncFailed => "Failed",
+            ResyncStatusType::ResyncPending => "Pending",
+            ResyncStatusType::ResyncCanceled => "Canceled",
+            ResyncStatusType::NoResync => "",
+        };
+        write!(f, "{s}")
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ResyncOpts {
+    pub bucket: String,
+    pub arn: String,
+    pub resync_id: String,
+    pub resync_before: Option<OffsetDateTime>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct TargetReplicationResyncStatus {
+    pub start_time: Option<OffsetDateTime>,
+    pub last_update: Option<OffsetDateTime>,
+    pub resync_id: String,
+    pub resync_before_date: Option<OffsetDateTime>,
+    pub resync_status: ResyncStatusType,
+    pub failed_size: i64,
+    pub failed_count: i64,
+    pub replicated_size: i64,
+    pub replicated_count: i64,
+    pub bucket: String,
+    pub object: String,
+    pub error: Option<String>,
+}
+
+impl TargetReplicationResyncStatus {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn marshal_wire_msg(&self, wr: &mut Vec<u8>) -> Result<()> {
+        rmp::encode::write_map_len(wr, 12)?;
+        rmp::encode::write_str(wr, "st")?;
+        write_msgp_time(wr, wire_time_or_default(self.start_time))?;
+        rmp::encode::write_str(wr, "lst")?;
+        write_msgp_time(wr, wire_time_or_default(self.last_update))?;
+        rmp::encode::write_str(wr, "id")?;
+        rmp::encode::write_str(wr, &self.resync_id)?;
+        rmp::encode::write_str(wr, "rdt")?;
+        write_msgp_time(wr, wire_time_or_default(self.resync_before_date))?;
+        rmp::encode::write_str(wr, "rst")?;
+        rmp::encode::write_i32(wr, resync_status_to_i32(self.resync_status))?;
+        rmp::encode::write_str(wr, "fs")?;
+        rmp::encode::write_i64(wr, self.failed_size)?;
+        rmp::encode::write_str(wr, "frc")?;
+        rmp::encode::write_i64(wr, self.failed_count)?;
+        rmp::encode::write_str(wr, "rs")?;
+        rmp::encode::write_i64(wr, self.replicated_size)?;
+        rmp::encode::write_str(wr, "rrc")?;
+        rmp::encode::write_i64(wr, self.replicated_count)?;
+        rmp::encode::write_str(wr, "bkt")?;
+        rmp::encode::write_str(wr, &self.bucket)?;
+        rmp::encode::write_str(wr, "obj")?;
+        rmp::encode::write_str(wr, &self.object)?;
+        rmp::encode::write_str(wr, "err")?;
+        let error = self.error.as_deref().and_then(sanitize_resync_error_detail);
+        rmp::encode::write_str(wr, error.as_deref().unwrap_or_default())?;
+        Ok(())
+    }
+
+    fn unmarshal_wire_msg<R: Read>(rd: &mut R) -> Result<Self> {
+        let mut out = Self::new();
+        let mut fields = rmp::decode::read_map_len(rd)?;
+
+        while fields > 0 {
+            fields -= 1;
+            let key = read_msgp_str(rd)?;
+            match key.as_str() {
+                "st" => out.start_time = normalize_wire_time(read_msgp_time_or_nil(rd)?),
+                "lst" => out.last_update = normalize_wire_time(read_msgp_time_or_nil(rd)?),
+                "id" => out.resync_id = read_msgp_str(rd)?,
+                "rdt" => out.resync_before_date = normalize_wire_time(read_msgp_time_or_nil(rd)?),
+                "rst" => {
+                    let v: i32 = rmp::decode::read_int(rd)?;
+                    out.resync_status = resync_status_from_i32(v)?;
+                }
+                "fs" => out.failed_size = rmp::decode::read_int(rd)?,
+                "frc" => out.failed_count = rmp::decode::read_int(rd)?,
+                "rs" => out.replicated_size = rmp::decode::read_int(rd)?,
+                "rrc" => out.replicated_count = rmp::decode::read_int(rd)?,
+                "bkt" => out.bucket = read_msgp_str(rd)?,
+                "obj" => out.object = read_msgp_str(rd)?,
+                "err" => {
+                    let error = read_msgp_str(rd)?;
+                    out.error = sanitize_resync_error_detail(&error);
+                }
+                _ => skip_msgp_value(rd)?,
+            }
+        }
+        Ok(out)
+    }
+}
+
+pub fn sanitize_resync_error_detail(detail: &str) -> Option<String> {
+    let mut normalized = String::new();
+    let mut char_count = 0usize;
+    let mut truncated = false;
+    'words: for word in detail.split_whitespace() {
+        if !normalized.is_empty() {
+            if char_count == RESYNC_ERROR_DETAIL_MAX_CHARS {
+                truncated = true;
+                break;
+            }
+            normalized.push(' ');
+            char_count += 1;
+        }
+        for ch in word.chars() {
+            if char_count == RESYNC_ERROR_DETAIL_MAX_CHARS {
+                truncated = true;
+                break 'words;
+            }
+            normalized.push(ch);
+            char_count += 1;
+        }
+    }
+    if normalized.is_empty() {
+        return None;
+    }
+
+    let lower = normalized.to_ascii_lowercase();
+    let is_service_code = normalized.len() <= 128
+        && normalized
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'));
+    if !is_service_code
+        && (RESYNC_ERROR_SENSITIVE_MARKERS.iter().any(|marker| lower.contains(marker))
+            || (lower.contains("://") && lower.contains('@')))
+    {
+        return Some(RESYNC_ERROR_REDACTED.to_string());
+    }
+
+    if !truncated {
+        return Some(normalized);
+    }
+
+    let keep = RESYNC_ERROR_DETAIL_MAX_CHARS.saturating_sub(RESYNC_ERROR_TRUNCATED_SUFFIX.chars().count());
+    let mut summary: String = normalized.chars().take(keep).collect();
+    summary.push_str(RESYNC_ERROR_TRUNCATED_SUFFIX);
+    Some(summary)
+}
+
+pub fn resync_state_accepts_update(state: &TargetReplicationResyncStatus, opts: &ResyncOpts) -> bool {
+    state.resync_id.is_empty() || state.resync_id == opts.resync_id
+}
+
+pub fn should_count_head_proxy_failure(is_not_found: bool, code: Option<&str>, raw_status: Option<u16>) -> bool {
+    if is_not_found || matches!(code, Some("MethodNotAllowed" | "405")) {
+        return false;
+    }
+    if matches!(raw_status, Some(404 | 405)) {
+        return false;
+    }
+    !is_version_id_mismatch(code, raw_status)
+}
+
+// AWS returns 400 for root callers and 403 for IAM users when a UUID version ID
+// is rejected. The 403 case is safe: a real auth failure also returns 403 on the
+// versionId-less fallback, propagating as a hard error instead of silently skipping.
+pub fn is_version_id_mismatch(code: Option<&str>, raw_status: Option<u16>) -> bool {
+    match code {
+        Some(c) if !c.is_empty() => c == "InvalidArgument",
+        _ => matches!(raw_status, Some(400 | 403)),
+    }
+}
+
+pub fn resync_status_duration(
+    status: ResyncStatusType,
+    start_time: Option<OffsetDateTime>,
+    now: OffsetDateTime,
+) -> Option<std::time::Duration> {
+    if !matches!(
+        status,
+        ResyncStatusType::ResyncCompleted | ResyncStatusType::ResyncFailed | ResyncStatusType::ResyncCanceled
+    ) {
+        return None;
+    }
+
+    let millis = (now - start_time?).whole_milliseconds();
+    if millis < 0 {
+        return None;
+    }
+
+    let millis = if millis > i128::from(u64::MAX) {
+        u64::MAX
+    } else {
+        u64::try_from(millis).ok()?
+    };
+    Some(std::time::Duration::from_millis(millis))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct BucketReplicationResyncStatus {
+    pub version: u16,
+    pub targets_map: HashMap<String, TargetReplicationResyncStatus>,
+    pub id: i32,
+    pub last_update: Option<OffsetDateTime>,
+}
+
+impl BucketReplicationResyncStatus {
+    pub fn new() -> Self {
+        Self {
+            version: RESYNC_META_VERSION,
+            ..Default::default()
+        }
+    }
+
+    pub fn clone_tgt_stats(&self) -> HashMap<String, TargetReplicationResyncStatus> {
+        self.targets_map.clone()
+    }
+
+    pub fn marshal_msg(&self) -> Result<Vec<u8>> {
+        let mut wr = Vec::new();
+        rmp::encode::write_map_len(&mut wr, 4)?;
+        rmp::encode::write_str(&mut wr, "v")?;
+        rmp::encode::write_i32(&mut wr, i32::from(self.version))?;
+        rmp::encode::write_str(&mut wr, "brs")?;
+        let target_count = u32::try_from(self.targets_map.len()).map_err(|_| ResyncStateError::CorruptedFormat)?;
+        rmp::encode::write_map_len(&mut wr, target_count)?;
+        for (arn, status) in &self.targets_map {
+            rmp::encode::write_str(&mut wr, arn)?;
+            status.marshal_wire_msg(&mut wr)?;
+        }
+        rmp::encode::write_str(&mut wr, "id")?;
+        rmp::encode::write_i32(&mut wr, self.id)?;
+        rmp::encode::write_str(&mut wr, "lu")?;
+        write_msgp_time(&mut wr, wire_time_or_default(self.last_update))?;
+        validate_msgp_payload(&wr)?;
+        Ok(wr)
+    }
+
+    pub fn unmarshal_msg(data: &[u8]) -> Result<Self> {
+        validate_msgp_payload(data)?;
+        let mut rd = Cursor::new(data);
+        let mut out = Self::new();
+        let mut fields = rmp::decode::read_map_len(&mut rd)?;
+
+        while fields > 0 {
+            fields -= 1;
+            let key = read_msgp_str(&mut rd)?;
+            match key.as_str() {
+                "v" => {
+                    let v: i32 = rmp::decode::read_int(&mut rd)?;
+                    out.version = u16::try_from(v).map_err(|_| ResyncStateError::other("invalid resync version"))?;
+                }
+                "brs" => {
+                    let map_len = rmp::decode::read_map_len(&mut rd)?;
+                    let target_count = usize::try_from(map_len).map_err(|_| ResyncStateError::CorruptedFormat)?;
+                    let mut targets = HashMap::with_capacity(target_count);
+                    for _ in 0..map_len {
+                        let arn = read_msgp_str(&mut rd)?;
+                        let status = TargetReplicationResyncStatus::unmarshal_wire_msg(&mut rd)?;
+                        targets.insert(arn, status);
+                    }
+                    out.targets_map = targets;
+                }
+                "id" => {
+                    out.id = rmp::decode::read_int::<i32, _>(&mut rd)?;
+                }
+                "lu" => {
+                    out.last_update = normalize_wire_time(read_msgp_time_or_nil(&mut rd)?);
+                }
+                _ => skip_msgp_value(&mut rd)?,
+            }
+        }
+        Ok(out)
+    }
+
+    pub fn unmarshal_legacy_msg(data: &[u8]) -> Result<Self> {
+        validate_msgp_payload(data)?;
+        let mut status: Self = rmp_serde::from_slice(data)?;
+        for target in status.targets_map.values_mut() {
+            target.error = target.error.as_deref().and_then(sanitize_resync_error_detail);
+        }
+        Ok(status)
+    }
+}
+
+pub fn encode_resync_file(status: &BucketReplicationResyncStatus) -> Result<Vec<u8>> {
+    let payload = status.marshal_msg()?;
+    let mut data = Vec::with_capacity(RESYNC_FILE_HEADER_LEN + payload.len());
+    let mut major = [0u8; 2];
+    LittleEndian::write_u16(&mut major, RESYNC_META_FORMAT);
+    data.extend_from_slice(&major);
+    let mut minor = [0u8; 2];
+    LittleEndian::write_u16(&mut minor, RESYNC_META_VERSION);
+    data.extend_from_slice(&minor);
+    data.extend_from_slice(&payload);
+    Ok(data)
+}
+
+pub fn decode_resync_file(data: &[u8]) -> Result<BucketReplicationResyncStatus> {
+    if data.len() <= RESYNC_FILE_HEADER_LEN || data.len() > RESYNC_FILE_MAX_BYTES {
+        return Err(ResyncStateError::CorruptedFormat);
+    }
+
+    let mut major = [0u8; 2];
+    major.copy_from_slice(&data[0..2]);
+    if LittleEndian::read_u16(&major) != RESYNC_META_FORMAT {
+        return Err(ResyncStateError::CorruptedFormat);
+    }
+
+    let mut minor = [0u8; 2];
+    minor.copy_from_slice(&data[2..4]);
+    if LittleEndian::read_u16(&minor) != RESYNC_META_VERSION {
+        return Err(ResyncStateError::CorruptedFormat);
+    }
+
+    let status = match BucketReplicationResyncStatus::unmarshal_msg(&data[4..]) {
+        Ok(v) => v,
+        Err(_) => BucketReplicationResyncStatus::unmarshal_legacy_msg(&data[4..])?,
+    };
+    if status.version != RESYNC_META_VERSION {
+        return Err(ResyncStateError::CorruptedFormat);
+    }
+    Ok(status)
+}
+
+fn wire_time_or_default(value: Option<OffsetDateTime>) -> OffsetDateTime {
+    value.unwrap_or_else(wire_zero_time)
+}
+
+fn normalize_wire_time(value: Option<OffsetDateTime>) -> Option<OffsetDateTime> {
+    match value {
+        Some(v) if v == wire_zero_time() || v == OffsetDateTime::UNIX_EPOCH => None,
+        other => other,
+    }
+}
+
+fn wire_zero_time() -> OffsetDateTime {
+    OffsetDateTime::from_unix_timestamp(WIRE_ZERO_TIME_UNIX).unwrap_or(OffsetDateTime::UNIX_EPOCH)
+}
+
+fn validate_msgp_payload(data: &[u8]) -> Result<()> {
+    if data.len() > RESYNC_MSGP_MAX_BYTES {
+        return Err(ResyncStateError::CorruptedFormat);
+    }
+
+    let mut rd = Cursor::new(data);
+    let mut values = 0usize;
+    validate_msgp_value(&mut rd, 0, &mut values)?;
+    if usize::try_from(rd.position()).ok() != Some(data.len()) {
+        return Err(ResyncStateError::CorruptedFormat);
+    }
+    Ok(())
+}
+
+fn validate_msgp_value<R: Read>(rd: &mut R, depth: usize, values: &mut usize) -> Result<()> {
+    if depth > RESYNC_MSGP_MAX_DEPTH {
+        return Err(ResyncStateError::CorruptedFormat);
+    }
+    *values = values.checked_add(1).ok_or(ResyncStateError::CorruptedFormat)?;
+    if *values > RESYNC_MSGP_MAX_VALUES {
+        return Err(ResyncStateError::CorruptedFormat);
+    }
+
+    let marker = rmp::decode::read_marker(rd).map_err(|e| ResyncStateError::other(format!("{e:?}")))?;
+    let skip_len = match marker {
+        Marker::Null | Marker::False | Marker::True | Marker::FixPos(_) | Marker::FixNeg(_) => 0,
+        Marker::U8 | Marker::I8 => 1,
+        Marker::U16 | Marker::I16 => 2,
+        Marker::U32 | Marker::I32 | Marker::F32 => 4,
+        Marker::U64 | Marker::I64 | Marker::F64 => 8,
+        Marker::FixStr(len) => usize::from(len),
+        Marker::Str8 | Marker::Bin8 => read_skip_len(rd, 1)?,
+        Marker::Str16 | Marker::Bin16 => read_skip_len(rd, 2)?,
+        Marker::Str32 | Marker::Bin32 => read_skip_len(rd, 4)?,
+        Marker::FixArray(len) => {
+            validate_msgp_collection(rd, usize::from(len), depth, values, false)?;
+            return Ok(());
+        }
+        Marker::Array16 => {
+            let len = read_skip_len(rd, 2)?;
+            validate_msgp_collection(rd, len, depth, values, false)?;
+            return Ok(());
+        }
+        Marker::Array32 => {
+            let len = read_skip_len(rd, 4)?;
+            validate_msgp_collection(rd, len, depth, values, false)?;
+            return Ok(());
+        }
+        Marker::FixMap(len) => {
+            validate_msgp_collection(rd, usize::from(len), depth, values, true)?;
+            return Ok(());
+        }
+        Marker::Map16 => {
+            let len = read_skip_len(rd, 2)?;
+            validate_msgp_collection(rd, len, depth, values, true)?;
+            return Ok(());
+        }
+        Marker::Map32 => {
+            let len = read_skip_len(rd, 4)?;
+            validate_msgp_collection(rd, len, depth, values, true)?;
+            return Ok(());
+        }
+        Marker::FixExt1 => 2,
+        Marker::FixExt2 => 3,
+        Marker::FixExt4 => 5,
+        Marker::FixExt8 => 9,
+        Marker::FixExt16 => 17,
+        Marker::Ext8 => {
+            let len = validate_msgp_element_len(read_skip_len(rd, 1)?)?;
+            skip_exact(rd, 1)?;
+            return skip_exact(rd, len);
+        }
+        Marker::Ext16 => {
+            let len = validate_msgp_element_len(read_skip_len(rd, 2)?)?;
+            skip_exact(rd, 1)?;
+            return skip_exact(rd, len);
+        }
+        Marker::Ext32 => {
+            let len = validate_msgp_element_len(read_skip_len(rd, 4)?)?;
+            skip_exact(rd, 1)?;
+            return skip_exact(rd, len);
+        }
+        Marker::Reserved => return Err(ResyncStateError::CorruptedFormat),
+    };
+    let skip_len = validate_msgp_element_len(skip_len)?;
+    skip_exact(rd, skip_len)
+}
+
+fn validate_msgp_collection<R: Read>(rd: &mut R, len: usize, depth: usize, values: &mut usize, is_map: bool) -> Result<()> {
+    if len > RESYNC_MSGP_MAX_COLLECTION_ITEMS {
+        return Err(ResyncStateError::CorruptedFormat);
+    }
+    let values_per_item = if is_map { 2 } else { 1 };
+    let child_count = len.checked_mul(values_per_item).ok_or(ResyncStateError::CorruptedFormat)?;
+    for _ in 0..child_count {
+        validate_msgp_value(rd, depth + 1, values)?;
+    }
+    Ok(())
+}
+
+fn validate_msgp_element_len(len: usize) -> Result<usize> {
+    if len > RESYNC_MSGP_MAX_ELEMENT_BYTES {
+        return Err(ResyncStateError::CorruptedFormat);
+    }
+    Ok(len)
+}
+
+fn read_msgp_str<R: Read>(rd: &mut R) -> Result<String> {
+    let len = rmp::decode::read_str_len(rd)? as usize;
+    let mut buf = vec![0u8; len];
+    rd.read_exact(&mut buf)?;
+    Ok(String::from_utf8(buf)?)
+}
+
+fn read_msgp_time_or_nil<R: Read>(rd: &mut R) -> Result<Option<OffsetDateTime>> {
+    let marker = rmp::decode::read_marker(rd).map_err(|e| ResyncStateError::other(format!("{e:?}")))?;
+    match marker {
+        Marker::Null => Ok(None),
+        Marker::Ext8 => Ok(Some(read_msgp_ext8_time(rd)?)),
+        other => Err(ResyncStateError::other(format!("expected time ext or nil, got marker: {other:?}"))),
+    }
+}
+
+fn read_msgp_ext8_time<R: Read>(rd: &mut R) -> Result<OffsetDateTime> {
+    let mut len_buf = [0u8; 1];
+    rd.read_exact(&mut len_buf)?;
+    let len = len_buf[0] as usize;
+    if len != MSGP_TIME_LEN as usize {
+        return Err(ResyncStateError::other(format!("invalid msgp time len: {len}")));
+    }
+    let mut type_buf = [0u8; 1];
+    rd.read_exact(&mut type_buf)?;
+    if type_buf[0] != MSGP_TIME_EXT_TYPE as u8 {
+        return Err(ResyncStateError::other(format!("invalid msgp time type: {}", type_buf[0])));
+    }
+    let mut buf = [0u8; 12];
+    rd.read_exact(&mut buf)?;
+    let sec = BigEndian::read_i64(&buf[0..8]);
+    let nsec = BigEndian::read_u32(&buf[8..12]);
+    OffsetDateTime::from_unix_timestamp(sec)
+        .map_err(|_| ResyncStateError::other("invalid timestamp"))?
+        .replace_nanosecond(nsec)
+        .map_err(|_| ResyncStateError::other("invalid nanosecond"))
+}
+
+fn write_msgp_time<W: Write>(wr: &mut W, time: OffsetDateTime) -> Result<()> {
+    wr.write_all(&[0xc7, MSGP_TIME_LEN, MSGP_TIME_EXT_TYPE as u8])?;
+    let mut buf = [0u8; 12];
+    BigEndian::write_i64(&mut buf[0..8], time.unix_timestamp());
+    BigEndian::write_u32(&mut buf[8..12], time.nanosecond());
+    wr.write_all(&buf)?;
+    Ok(())
+}
+
+fn skip_msgp_value<R: Read>(rd: &mut R) -> Result<()> {
+    let mut values = 0usize;
+    validate_msgp_value(rd, 0, &mut values)
+}
+
+fn skip_exact<R: Read>(rd: &mut R, mut len: usize) -> Result<()> {
+    let mut buf = [0u8; 1024];
+    while len > 0 {
+        let take = len.min(buf.len());
+        rd.read_exact(&mut buf[..take])?;
+        len -= take;
+    }
+    Ok(())
+}
+
+fn read_skip_len<R: Read>(rd: &mut R, bytes: usize) -> Result<usize> {
+    match bytes {
+        1 => {
+            let mut buf = [0u8; 1];
+            rd.read_exact(&mut buf)?;
+            Ok(usize::from(buf[0]))
+        }
+        2 => {
+            let mut buf = [0u8; 2];
+            rd.read_exact(&mut buf)?;
+            Ok(usize::from(u16::from_be_bytes(buf)))
+        }
+        4 => {
+            let mut buf = [0u8; 4];
+            rd.read_exact(&mut buf)?;
+            usize::try_from(u32::from_be_bytes(buf)).map_err(|_| ResyncStateError::CorruptedFormat)
+        }
+        _ => Err(ResyncStateError::other("invalid MessagePack length width")),
+    }
+}
+
+fn resync_status_to_i32(status: ResyncStatusType) -> i32 {
+    match status {
+        ResyncStatusType::NoResync => 0,
+        ResyncStatusType::ResyncPending => 1,
+        ResyncStatusType::ResyncCanceled => 2,
+        ResyncStatusType::ResyncStarted => 3,
+        ResyncStatusType::ResyncCompleted => 4,
+        ResyncStatusType::ResyncFailed => 5,
+    }
+}
+
+fn resync_status_from_i32(code: i32) -> Result<ResyncStatusType> {
+    match code {
+        0 => Ok(ResyncStatusType::NoResync),
+        1 => Ok(ResyncStatusType::ResyncPending),
+        2 => Ok(ResyncStatusType::ResyncCanceled),
+        3 => Ok(ResyncStatusType::ResyncStarted),
+        4 => Ok(ResyncStatusType::ResyncCompleted),
+        5 => Ok(ResyncStatusType::ResyncFailed),
+        _ => Err(ResyncStateError::other(format!("invalid resync status code: {code}"))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn wrap_resync_payload(payload: &[u8]) -> Vec<u8> {
+        let mut data = Vec::with_capacity(RESYNC_FILE_HEADER_LEN + payload.len());
+        data.extend_from_slice(&RESYNC_META_FORMAT.to_le_bytes());
+        data.extend_from_slice(&RESYNC_META_VERSION.to_le_bytes());
+        data.extend_from_slice(payload);
+        data
+    }
+
+    fn resync_file_with_unknown_value(value: &[u8]) -> Vec<u8> {
+        let mut payload = Vec::with_capacity(32 + value.len());
+        rmp::encode::write_map_len(&mut payload, 2).expect("test payload map length should encode");
+        rmp::encode::write_str(&mut payload, "v").expect("test version key should encode");
+        rmp::encode::write_i32(&mut payload, i32::from(RESYNC_META_VERSION)).expect("test version value should encode");
+        rmp::encode::write_str(&mut payload, "future").expect("test unknown key should encode");
+        payload.extend_from_slice(value);
+        wrap_resync_payload(&payload)
+    }
+
+    fn msgp_str32(len: usize) -> Vec<u8> {
+        let wire_len = u32::try_from(len).expect("test string length should fit u32");
+        let mut value = Vec::with_capacity(5 + len);
+        value.push(0xdb);
+        value.extend_from_slice(&wire_len.to_be_bytes());
+        value.resize(5 + len, b'x');
+        value
+    }
+
+    #[test]
+    fn resync_status_display_matches_admin_contract() {
+        assert_eq!(ResyncStatusType::ResyncStarted.to_string(), "Ongoing");
+        assert_eq!(ResyncStatusType::ResyncCompleted.to_string(), "Completed");
+        assert_eq!(ResyncStatusType::NoResync.to_string(), "");
+    }
+
+    #[test]
+    fn auto_resume_resync_only_for_inflight_states() {
+        assert!(should_auto_resume_resync(ResyncStatusType::ResyncPending));
+        assert!(should_auto_resume_resync(ResyncStatusType::ResyncStarted));
+        assert!(!should_auto_resume_resync(ResyncStatusType::NoResync));
+        assert!(!should_auto_resume_resync(ResyncStatusType::ResyncCanceled));
+        assert!(!should_auto_resume_resync(ResyncStatusType::ResyncCompleted));
+        assert!(!should_auto_resume_resync(ResyncStatusType::ResyncFailed));
+    }
+
+    #[test]
+    fn test_resync_status_duration_only_tracks_terminal_status() {
+        let start = match OffsetDateTime::from_unix_timestamp(1_700_000_000) {
+            Ok(start) => start,
+            Err(err) => panic!("valid test timestamp: {err}"),
+        };
+        let end = start + time::Duration::seconds(2);
+
+        assert_eq!(
+            resync_status_duration(ResyncStatusType::ResyncCompleted, Some(start), end),
+            Some(std::time::Duration::from_millis(2000))
+        );
+        assert_eq!(resync_status_duration(ResyncStatusType::ResyncStarted, Some(start), end), None);
+        assert_eq!(resync_status_duration(ResyncStatusType::ResyncFailed, None, end), None);
+    }
+
+    #[test]
+    fn resync_state_accepts_update_only_for_matching_run() {
+        let current = TargetReplicationResyncStatus {
+            resync_id: "run-new".to_string(),
+            ..Default::default()
+        };
+        let matching = ResyncOpts {
+            bucket: "bucket".to_string(),
+            arn: "arn:replication::dest".to_string(),
+            resync_id: "run-new".to_string(),
+            resync_before: None,
+        };
+        let stale = ResyncOpts {
+            bucket: "bucket".to_string(),
+            arn: "arn:replication::dest".to_string(),
+            resync_id: "run-old".to_string(),
+            resync_before: None,
+        };
+
+        assert!(resync_state_accepts_update(&TargetReplicationResyncStatus::default(), &matching));
+        assert!(resync_state_accepts_update(&current, &matching));
+        assert!(!resync_state_accepts_update(&current, &stale));
+        assert!(!resync_state_accepts_update(
+            &current,
+            &ResyncOpts {
+                resync_id: String::new(),
+                ..matching
+            }
+        ));
+    }
+
+    #[test]
+    fn head_proxy_failure_ignores_expected_target_responses() {
+        assert!(!should_count_head_proxy_failure(true, Some("NoSuchKey"), Some(404)));
+        assert!(!should_count_head_proxy_failure(false, Some("MethodNotAllowed"), Some(405)));
+        assert!(!should_count_head_proxy_failure(false, Some("405"), Some(405)));
+        assert!(!should_count_head_proxy_failure(false, Some("InvalidArgument"), Some(400)));
+        assert!(!should_count_head_proxy_failure(false, None, Some(400)));
+        assert!(!should_count_head_proxy_failure(false, None, Some(403)));
+    }
+
+    #[test]
+    fn head_proxy_failure_counts_unexpected_errors() {
+        assert!(should_count_head_proxy_failure(false, Some("AccessDenied"), Some(403)));
+        assert!(should_count_head_proxy_failure(false, None, Some(500)));
+    }
+
+    #[test]
+    fn version_id_mismatch_detects_aws_rejections() {
+        assert!(is_version_id_mismatch(Some("InvalidArgument"), Some(400)));
+        assert!(is_version_id_mismatch(None, Some(400)));
+        assert!(is_version_id_mismatch(Some(""), Some(400)));
+        assert!(is_version_id_mismatch(None, Some(403)));
+        assert!(is_version_id_mismatch(Some(""), Some(403)));
+        assert!(!is_version_id_mismatch(Some("AccessDenied"), Some(403)));
+        assert!(!is_version_id_mismatch(Some("NoSuchKey"), Some(404)));
+        assert!(!is_version_id_mismatch(Some("MalformedXML"), Some(400)));
+        assert!(!is_version_id_mismatch(Some("EntityTooLarge"), Some(400)));
+        assert!(!is_version_id_mismatch(None, Some(500)));
+        assert!(!is_version_id_mismatch(None, Some(404)));
+    }
+
+    #[test]
+    fn resync_file_round_trips_status() {
+        let mut status = BucketReplicationResyncStatus::new();
+        status.targets_map.insert(
+            "arn:replication:a".to_string(),
+            TargetReplicationResyncStatus {
+                resync_id: "rid-1".to_string(),
+                resync_status: ResyncStatusType::ResyncStarted,
+                bucket: "bucket-a".to_string(),
+                object: "object-a".to_string(),
+                replicated_count: 7,
+                error: Some("durable failure".to_string()),
+                ..Default::default()
+            },
+        );
+
+        let data = encode_resync_file(&status).expect("resync status should encode");
+        let got = decode_resync_file(&data).expect("resync status should decode");
+
+        assert_eq!(got.version, RESYNC_META_VERSION);
+        assert_eq!(got.targets_map["arn:replication:a"].resync_id, "rid-1");
+        assert_eq!(got.targets_map["arn:replication:a"].resync_status, ResyncStatusType::ResyncStarted);
+        assert_eq!(got.targets_map["arn:replication:a"].replicated_count, 7);
+        assert_eq!(got.targets_map["arn:replication:a"].error.as_deref(), Some("durable failure"));
+    }
+
+    #[test]
+    fn resync_file_rejects_trailing_messagepack_value() {
+        let status = BucketReplicationResyncStatus::new();
+        let mut data = encode_resync_file(&status).expect("resync status should encode");
+        data.push(0xc0);
+
+        assert!(matches!(decode_resync_file(&data), Err(ResyncStateError::CorruptedFormat)));
+    }
+
+    #[test]
+    fn resync_file_rejects_reserved_messagepack_marker() {
+        let data = resync_file_with_unknown_value(&[0xc1]);
+
+        assert!(matches!(decode_resync_file(&data), Err(ResyncStateError::CorruptedFormat)));
+    }
+
+    #[test]
+    fn resync_file_rejects_oversized_messagepack_element() {
+        let accepted = decode_resync_file(&resync_file_with_unknown_value(&msgp_str32(RESYNC_MSGP_MAX_ELEMENT_BYTES)))
+            .expect("element ending at the byte limit should decode");
+        assert_eq!(accepted.version, RESYNC_META_VERSION);
+
+        let value = msgp_str32(RESYNC_MSGP_MAX_ELEMENT_BYTES + 1);
+        let data = resync_file_with_unknown_value(&value);
+
+        assert!(matches!(decode_resync_file(&data), Err(ResyncStateError::CorruptedFormat)));
+    }
+
+    #[test]
+    fn resync_file_rejects_oversized_messagepack_collection() {
+        let accepted_wire_len = u32::try_from(RESYNC_MSGP_MAX_COLLECTION_ITEMS).expect("test collection length should fit u32");
+        let mut accepted = Vec::with_capacity(5 + RESYNC_MSGP_MAX_COLLECTION_ITEMS);
+        accepted.push(0xdd);
+        accepted.extend_from_slice(&accepted_wire_len.to_be_bytes());
+        accepted.resize(5 + RESYNC_MSGP_MAX_COLLECTION_ITEMS, 0xc0);
+        let mut accepted_map = Vec::with_capacity(5 + RESYNC_MSGP_MAX_COLLECTION_ITEMS * 2);
+        accepted_map.push(0xdf);
+        accepted_map.extend_from_slice(&accepted_wire_len.to_be_bytes());
+        accepted_map.resize(5 + RESYNC_MSGP_MAX_COLLECTION_ITEMS * 2, 0xc0);
+        for value in [accepted, accepted_map] {
+            let accepted = decode_resync_file(&resync_file_with_unknown_value(&value))
+                .expect("collection ending at the item limit should decode");
+            assert_eq!(accepted.version, RESYNC_META_VERSION);
+        }
+
+        let collection_len = RESYNC_MSGP_MAX_COLLECTION_ITEMS + 1;
+        let wire_len = u32::try_from(collection_len).expect("test collection length should fit u32");
+        let mut array = Vec::with_capacity(5 + collection_len);
+        array.push(0xdd);
+        array.extend_from_slice(&wire_len.to_be_bytes());
+        array.resize(5 + collection_len, 0xc0);
+        let mut map = Vec::with_capacity(5 + collection_len * 2);
+        map.push(0xdf);
+        map.extend_from_slice(&wire_len.to_be_bytes());
+        map.resize(5 + collection_len * 2, 0xc0);
+
+        for value in [array, map] {
+            let data = resync_file_with_unknown_value(&value);
+            assert!(matches!(decode_resync_file(&data), Err(ResyncStateError::CorruptedFormat)));
+        }
+    }
+
+    #[test]
+    fn resync_file_rejects_oversized_messagepack_extension() {
+        let extension = |len: usize| {
+            let wire_len = u32::try_from(len).expect("test extension length should fit u32");
+            let mut extension = Vec::with_capacity(6 + len);
+            extension.push(0xc9);
+            extension.extend_from_slice(&wire_len.to_be_bytes());
+            extension.push(u8::try_from(MSGP_TIME_EXT_TYPE).expect("test extension type should fit u8"));
+            extension.resize(6 + len, 0xaa);
+            extension
+        };
+
+        let accepted = decode_resync_file(&resync_file_with_unknown_value(&extension(RESYNC_MSGP_MAX_ELEMENT_BYTES)))
+            .expect("extension ending at the byte limit should decode");
+        assert_eq!(accepted.version, RESYNC_META_VERSION);
+
+        let data = resync_file_with_unknown_value(&extension(RESYNC_MSGP_MAX_ELEMENT_BYTES + 1));
+
+        assert!(matches!(decode_resync_file(&data), Err(ResyncStateError::CorruptedFormat)));
+    }
+
+    #[test]
+    fn resync_file_enforces_messagepack_depth_limit() {
+        let mut accepted = vec![0x91; RESYNC_MSGP_MAX_DEPTH - 1];
+        accepted.push(0xc0);
+        let accepted = decode_resync_file(&resync_file_with_unknown_value(&accepted))
+            .expect("payload ending at the depth limit should decode");
+        assert_eq!(accepted.version, RESYNC_META_VERSION);
+
+        let mut rejected = vec![0x91; RESYNC_MSGP_MAX_DEPTH];
+        rejected.push(0xc0);
+        let data = resync_file_with_unknown_value(&rejected);
+        assert!(matches!(decode_resync_file(&data), Err(ResyncStateError::CorruptedFormat)));
+    }
+
+    #[test]
+    fn resync_file_rejects_excessive_messagepack_values() {
+        const ENVELOPE_VALUES: usize = 4;
+        const INNER_ARRAYS: usize = 32;
+
+        let nested_arrays = |leaf_count: usize| {
+            let base_len = leaf_count / INNER_ARRAYS;
+            let longer_arrays = leaf_count % INNER_ARRAYS;
+            assert!(base_len + usize::from(longer_arrays > 0) <= RESYNC_MSGP_MAX_COLLECTION_ITEMS);
+
+            let mut value = Vec::new();
+            rmp::encode::write_array_len(
+                &mut value,
+                u32::try_from(INNER_ARRAYS).expect("test outer array length should fit u32"),
+            )
+            .expect("test outer array should encode");
+            for index in 0..INNER_ARRAYS {
+                let inner_len = base_len + usize::from(index < longer_arrays);
+                rmp::encode::write_array_len(
+                    &mut value,
+                    u32::try_from(inner_len).expect("test inner array length should fit u32"),
+                )
+                .expect("test inner array should encode");
+                value.resize(value.len() + inner_len, 0xc0);
+            }
+            value
+        };
+
+        let accepted_leaf_count = RESYNC_MSGP_MAX_VALUES - ENVELOPE_VALUES - 1 - INNER_ARRAYS;
+        let accepted = decode_resync_file(&resync_file_with_unknown_value(&nested_arrays(accepted_leaf_count)))
+            .expect("payload ending at the value limit should decode");
+        assert_eq!(accepted.version, RESYNC_META_VERSION);
+
+        let data = resync_file_with_unknown_value(&nested_arrays(accepted_leaf_count + 1));
+
+        assert!(matches!(decode_resync_file(&data), Err(ResyncStateError::CorruptedFormat)));
+    }
+
+    #[test]
+    fn resync_file_rejects_payload_over_file_limit() {
+        const FULL_CHUNKS: usize = 15;
+
+        let field_count = u32::try_from(FULL_CHUNKS + 2).expect("test field count should fit u32");
+        let chunk = msgp_str32(RESYNC_MSGP_MAX_ELEMENT_BYTES);
+        let mut payload = Vec::with_capacity(RESYNC_MSGP_MAX_BYTES);
+        rmp::encode::write_map_len(&mut payload, field_count).expect("test payload map should encode");
+        rmp::encode::write_str(&mut payload, "v").expect("test version key should encode");
+        rmp::encode::write_i32(&mut payload, i32::from(RESYNC_META_VERSION)).expect("test version value should encode");
+        for _ in 0..FULL_CHUNKS {
+            rmp::encode::write_str(&mut payload, "future").expect("test unknown key should encode");
+            payload.extend_from_slice(&chunk);
+        }
+        rmp::encode::write_str(&mut payload, "future").expect("test final unknown key should encode");
+        let remaining = RESYNC_MSGP_MAX_BYTES
+            .checked_sub(payload.len() + 5)
+            .expect("test payload should leave room for the final string");
+        assert!(remaining <= RESYNC_MSGP_MAX_ELEMENT_BYTES);
+        payload.extend_from_slice(&msgp_str32(remaining));
+
+        let mut data = wrap_resync_payload(&payload);
+        assert_eq!(data.len(), RESYNC_FILE_MAX_BYTES);
+        let accepted = decode_resync_file(&data).expect("payload ending at the file limit should decode");
+        assert_eq!(accepted.version, RESYNC_META_VERSION);
+
+        data.push(0xc0);
+        assert_eq!(data.len(), RESYNC_FILE_MAX_BYTES + 1);
+        assert!(matches!(decode_resync_file(&data), Err(ResyncStateError::CorruptedFormat)));
+    }
+
+    #[test]
+    fn resync_file_encoder_rejects_payload_over_file_limit() {
+        let mut status = BucketReplicationResyncStatus::new();
+        status.targets_map.insert(
+            "arn:replication:0".to_string(),
+            TargetReplicationResyncStatus {
+                object: "x".repeat(RESYNC_MSGP_MAX_ELEMENT_BYTES),
+                ..Default::default()
+            },
+        );
+        assert!(encode_resync_file(&status).is_ok(), "a single maximum-sized element should encode");
+
+        let target_count = RESYNC_FILE_MAX_BYTES / RESYNC_MSGP_MAX_ELEMENT_BYTES + 1;
+        for index in 1..target_count {
+            status.targets_map.insert(
+                format!("arn:replication:{index}"),
+                TargetReplicationResyncStatus {
+                    object: "x".repeat(RESYNC_MSGP_MAX_ELEMENT_BYTES),
+                    ..Default::default()
+                },
+            );
+        }
+
+        assert!(matches!(encode_resync_file(&status), Err(ResyncStateError::CorruptedFormat)));
+    }
+
+    #[test]
+    fn resync_file_encoder_rejects_oversized_messagepack_element() {
+        let mut status = BucketReplicationResyncStatus::new();
+        status.targets_map.insert(
+            "arn:replication:oversized-element".to_string(),
+            TargetReplicationResyncStatus {
+                object: "x".repeat(RESYNC_MSGP_MAX_ELEMENT_BYTES + 1),
+                ..Default::default()
+            },
+        );
+
+        assert!(matches!(encode_resync_file(&status), Err(ResyncStateError::CorruptedFormat)));
+    }
+
+    #[test]
+    fn resync_error_detail_is_bounded_and_unicode_safe() {
+        let detail = format!("{}尾", "x".repeat(RESYNC_ERROR_DETAIL_MAX_CHARS + 32));
+
+        let sanitized = sanitize_resync_error_detail(&detail).expect("non-empty detail should remain");
+
+        assert_eq!(sanitized.chars().count(), RESYNC_ERROR_DETAIL_MAX_CHARS);
+        assert!(sanitized.ends_with(RESYNC_ERROR_TRUNCATED_SUFFIX));
+        assert!(!sanitized.contains('尾'));
+    }
+
+    #[test]
+    fn resync_error_detail_redacts_credentials_and_headers() {
+        for detail in [
+            "Authorization: Bearer status-secret",
+            "request failed with secret_key=status-secret",
+            "x-amz-security-token=status-secret",
+            "https://user:status-secret@example.test",
+        ] {
+            assert_eq!(
+                sanitize_resync_error_detail(detail).as_deref(),
+                Some(RESYNC_ERROR_REDACTED),
+                "sensitive detail should be replaced: {detail}"
+            );
+        }
+        assert_eq!(sanitize_resync_error_detail("ExpiredToken").as_deref(), Some("ExpiredToken"));
+    }
+
+    #[test]
+    fn resync_file_sanitizes_legacy_error_on_decode() {
+        let mut status = BucketReplicationResyncStatus::new();
+        status.targets_map.insert(
+            "arn:replication:a".to_string(),
+            TargetReplicationResyncStatus {
+                resync_id: "rid-legacy".to_string(),
+                resync_status: ResyncStatusType::ResyncFailed,
+                error: Some("Authorization: Bearer persisted-secret".to_string()),
+                ..Default::default()
+            },
+        );
+        let legacy_payload = rmp_serde::to_vec(&status).expect("legacy status should encode");
+        let direct =
+            BucketReplicationResyncStatus::unmarshal_legacy_msg(&legacy_payload).expect("legacy status should decode directly");
+        let mut data = Vec::new();
+        data.extend_from_slice(&RESYNC_META_FORMAT.to_le_bytes());
+        data.extend_from_slice(&RESYNC_META_VERSION.to_le_bytes());
+        data.extend_from_slice(&legacy_payload);
+
+        let decoded = decode_resync_file(&data).expect("legacy status should decode");
+
+        assert_eq!(direct.targets_map["arn:replication:a"].error.as_deref(), Some(RESYNC_ERROR_REDACTED));
+        assert_eq!(decoded.targets_map["arn:replication:a"].error.as_deref(), Some(RESYNC_ERROR_REDACTED));
+    }
+
+    #[test]
+    fn legacy_resync_payload_rejects_oversized_messagepack_element() {
+        let mut status = BucketReplicationResyncStatus::new();
+        status.targets_map.insert(
+            "arn:replication:legacy-oversized".to_string(),
+            TargetReplicationResyncStatus {
+                object: "x".repeat(RESYNC_MSGP_MAX_ELEMENT_BYTES + 1),
+                ..Default::default()
+            },
+        );
+        let payload = rmp_serde::to_vec(&status).expect("legacy test status should encode");
+
+        assert!(matches!(
+            BucketReplicationResyncStatus::unmarshal_legacy_msg(&payload),
+            Err(ResyncStateError::CorruptedFormat)
+        ));
+    }
+
+    #[test]
+    fn resync_file_retains_error_for_restartable_and_failed_states() {
+        let mut status = BucketReplicationResyncStatus::new();
+        for (arn, resync_status) in [
+            ("arn:replication:pending", ResyncStatusType::ResyncPending),
+            ("arn:replication:ongoing", ResyncStatusType::ResyncStarted),
+            ("arn:replication:failed", ResyncStatusType::ResyncFailed),
+        ] {
+            status.targets_map.insert(
+                arn.to_string(),
+                TargetReplicationResyncStatus {
+                    resync_id: format!("{arn}-run"),
+                    resync_status,
+                    failed_count: 1,
+                    error: Some("AccessDenied".to_string()),
+                    ..Default::default()
+                },
+            );
+        }
+
+        let data = encode_resync_file(&status).expect("resync status should encode");
+        let decoded = decode_resync_file(&data).expect("resync status should decode after restart");
+
+        for arn in ["arn:replication:pending", "arn:replication:ongoing", "arn:replication:failed"] {
+            assert_eq!(decoded.targets_map[arn].error.as_deref(), Some("AccessDenied"));
+        }
+        assert!(should_auto_resume_resync(decoded.targets_map["arn:replication:pending"].resync_status));
+        assert!(should_auto_resume_resync(decoded.targets_map["arn:replication:ongoing"].resync_status));
+        assert!(!should_auto_resume_resync(decoded.targets_map["arn:replication:failed"].resync_status));
+    }
+
+    #[test]
+    fn skip_msgp_value_consumes_ext_type_and_payload() {
+        let mut ext16 = Cursor::new(vec![0xc8, 0, 2, MSGP_TIME_EXT_TYPE as u8, 0xaa, 0xbb, 0x01]);
+        skip_msgp_value(&mut ext16).expect("ext16 should skip");
+        assert!(matches!(rmp::decode::read_marker(&mut ext16), Ok(Marker::FixPos(1))));
+
+        let mut ext32 = Cursor::new(vec![0xc9, 0, 0, 0, 2, MSGP_TIME_EXT_TYPE as u8, 0xaa, 0xbb, 0x01]);
+        skip_msgp_value(&mut ext32).expect("ext32 should skip");
+        assert!(matches!(rmp::decode::read_marker(&mut ext32), Ok(Marker::FixPos(1))));
+    }
+
+    #[test]
+    fn skip_msgp_value_consumes_fixext_type_and_payload() {
+        for (marker, payload_len) in [(0xd4, 1), (0xd5, 2), (0xd6, 4), (0xd7, 8), (0xd8, 16)] {
+            let mut data = vec![marker, MSGP_TIME_EXT_TYPE as u8];
+            data.resize(data.len() + payload_len, 0xaa);
+            data.push(0x01);
+
+            let mut cursor = Cursor::new(data);
+            skip_msgp_value(&mut cursor).expect("fixext should skip");
+            assert!(matches!(rmp::decode::read_marker(&mut cursor), Ok(Marker::FixPos(1))));
+        }
+    }
+
+    #[test]
+    fn io_errors_stay_typed_in_resync_state_error() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "state file locked");
+        let err: ResyncStateError = io_err.into();
+        match &err {
+            ResyncStateError::Io(inner) => {
+                assert_eq!(inner.kind(), std::io::ErrorKind::PermissionDenied);
+                assert_eq!(inner.to_string(), "state file locked");
+            }
+            other => panic!("io::Error must stay typed, got {other:?}"),
+        }
+        assert_eq!(err.to_string(), "state file locked");
+        assert!(std::error::Error::source(&err).is_some(), "Io must expose its source");
+    }
+}

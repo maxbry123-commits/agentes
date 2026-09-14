@@ -1,0 +1,131 @@
+from collections.abc import Iterable
+from typing import TYPE_CHECKING, Any, TypeVar
+
+from redun._version import __version__
+from redun.context import get_context
+from redun.executors.base import register_executor
+from redun.file import Dir, File, ShardedS3Dataset
+from redun.handle import Handle
+from redun.namespace import get_current_namespace, namespace
+from redun.scheduler import (
+    Scheduler,
+    apply_tags,
+    catch,
+    cond,
+    get_current_scheduler,
+    merge_handles,
+    set_current_scheduler,
+    throw,
+)
+from redun.scripting import script
+from redun.task import PartialTask, Task, get_task_registry, task
+
+version = __version__
+
+
+if TYPE_CHECKING:
+    from redun.executors.alias import AliasExecutor
+    from redun.executors.aws_batch import AWSBatchExecutor
+    from redun.executors.aws_glue import AWSGlueExecutor
+    from redun.executors.docker import DockerExecutor
+
+    try:
+        from redun.executors.k8s import K8SExecutor
+    except (ImportError, ModuleNotFoundError):
+        # Skip k8s executor if kubernetes is not installed.
+        pass
+    try:
+        from redun.executors.gcp_batch import GCPBatchExecutor
+    except (ImportError, ModuleNotFoundError):
+        # Skip gcp_batch executor if google-cloud-batch is not installed.
+        pass
+    from redun.executors.local import LocalExecutor
+else:
+    AliasExecutor = register_executor("alias", "redun.executors.alias.AliasExecutor")
+    AWSBatchExecutor = register_executor("aws_batch", "redun.executors.aws_batch.AWSBatchExecutor")
+    AWSGlueExecutor = register_executor("aws_glue", "redun.executors.aws_glue.AWSGlueExecutor")
+    DockerExecutor = register_executor("docker", "redun.executors.docker.DockerExecutor")
+    K8SExecutor = register_executor("k8s", "redun.executors.k8s.K8SExecutor")
+    GCPBatchExecutor = register_executor("gcp_batch", "redun.executors.gcp_batch.GCPBatchExecutor")
+    LocalExecutor = register_executor("local", "redun.executors.local.LocalExecutor")
+
+
+Result = TypeVar("Result")
+
+# Cached Schedulers.
+_config2scheduler: dict[str | None, Scheduler] = {}
+
+
+def run(
+    expr: Result,
+    config_dir: str | None = None,
+    exec_argv: list[str] | None = None,
+    dryrun: bool = False,
+    cache: bool = True,
+    tags: Iterable[tuple[str, Any]] = (),
+    context: dict = {},
+    execution_id: str | None = None,
+) -> Result:
+    """
+    Evaluate an expression using the default redun Scheduler as defined by redun.ini.
+
+    Parameters
+    ----------
+    expr : Result
+        An expression to evaluate with the redun Scheduler.
+    config_dir : str | None
+        A redun configuration directory to use to define the Scheduler. Defaults to ``.redun``.
+    exec_argv : list[str] | None
+        Optional argv to record for this execution.
+    dryrun : bool
+        If True, perform a dry run without executing tasks.
+    cache : bool
+        If True (default), use caching for task results.
+    tags : Iterable[tuple[str, Any]]
+        Tags to apply to the execution.
+    context : dict
+        Context variables to pass to the execution.
+    execution_id : str | None
+        Optional execution ID. If not given, one is generated.
+    """
+    from redun.cli import setup_scheduler
+
+    # Try to use a cached Scheduler for this config_dir.
+    scheduler = _config2scheduler.get(config_dir)
+    if not scheduler:
+        scheduler = _config2scheduler[config_dir] = setup_scheduler(config_dir=config_dir)
+    return scheduler.run(
+        expr,
+        exec_argv=exec_argv,
+        dryrun=dryrun,
+        cache=cache,
+        tags=tags,
+        context=context,
+        execution_id=execution_id,
+    )
+
+
+__all__ = [
+    "Dir",
+    "File",
+    "Handle",
+    "PartialTask",
+    "Scheduler",
+    "ShardedS3Dataset",
+    "Task",
+    "apply_tags",
+    "catch",
+    "cond",
+    "get_current_namespace",
+    "get_current_scheduler",
+    "get_task_registry",
+    "merge_handles",
+    "namespace",
+    "run",
+    "script",
+    "set_current_scheduler",
+    "task",
+    "throw",
+    "version",
+    "__version__",
+]

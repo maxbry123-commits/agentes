@@ -1,0 +1,93 @@
+use iii_sdk::III;
+use serde_json::{json, Value};
+use std::sync::Arc;
+
+use crate::auth::check_auth;
+use crate::config::EngineConfig;
+use crate::runtime::SandboxRuntime;
+use crate::state::{scopes, StateKV};
+use crate::types::{Sandbox, SandboxEvent};
+
+pub fn register(iii: &Arc<III>, rt: &Arc<dyn SandboxRuntime>, kv: &StateKV, config: &EngineConfig) {
+    {
+        let kv = kv.clone(); let rt = rt.clone(); let cfg = config.clone();
+        iii.register_function_with_description("stream::logs", "Stream container logs via SSE", move |input: Value| {
+            let kv = kv.clone(); let rt = rt.clone(); let cfg = cfg.clone();
+            async move {
+                if let Some(auth_err) = check_auth(&input, &cfg) {
+                    return Ok(auth_err);
+                }
+                let id = input.get("path_params")
+                    .and_then(|p| p.get("id"))
+                    .and_then(|v| v.as_str())
+                    .or_else(|| input.get("id").and_then(|v| v.as_str()))
+                    .ok_or_else(|| iii_sdk::IIIError::Handler("id is required".into()))?;
+
+                let sandbox: Sandbox = kv.get(scopes::SANDBOXES, id).await
+                    .ok_or_else(|| iii_sdk::IIIError::Handler(format!("Sandbox not found: {id}")))?;
+                if sandbox.status != "running" {
+                    return Err(iii_sdk::IIIError::Handler(format!("Sandbox is not running: {}", sandbox.status)));
+                }
+
+                let query = input.get("query_params").unwrap_or(&Value::Null);
+                let tail = query.get("tail").and_then(|v| v.as_str()).unwrap_or("100");
+
+                let cn = format!("iii-sbx-{id}");
+                let logs = rt.sandbox_logs(&cn, false, tail).await
+                    .map_err(iii_sdk::IIIError::Handler)?;
+                Ok(json!({ "logs": logs }))
+            }
+        });
+    }
+
+    {
+        let kv = kv.clone(); let rt = rt.clone(); let cfg = config.clone();
+        iii.register_function_with_description("stream::metrics", "Stream resource metrics via SSE", move |input: Value| {
+            let kv = kv.clone(); let rt = rt.clone(); let cfg = cfg.clone();
+            async move {
+                if let Some(auth_err) = check_auth(&input, &cfg) {
+                    return Ok(auth_err);
+                }
+                let id = input.get("path_params")
+                    .and_then(|p| p.get("id"))
+                    .and_then(|v| v.as_str())
+                    .or_else(|| input.get("id").and_then(|v| v.as_str()))
+                    .ok_or_else(|| iii_sdk::IIIError::Handler("id is required".into()))?;
+
+                let sandbox: Sandbox = kv.get(scopes::SANDBOXES, id).await
+                    .ok_or_else(|| iii_sdk::IIIError::Handler(format!("Sandbox not found: {id}")))?;
+                if sandbox.status != "running" {
+                    return Err(iii_sdk::IIIError::Handler(format!("Sandbox is not running: {}", sandbox.status)));
+                }
+
+                let cn = format!("iii-sbx-{id}");
+                let stats = rt.sandbox_stats(&cn, id).await
+                    .map_err(iii_sdk::IIIError::Handler)?;
+                serde_json::to_value(&stats).map_err(|e| iii_sdk::IIIError::Serde(e.to_string()))
+            }
+        });
+    }
+
+    // stream::events (returns recent events)
+    {
+        let kv = kv.clone(); let cfg = config.clone();
+        iii.register_function_with_description("stream::events", "Stream events via SSE", move |input: Value| {
+            let kv = kv.clone(); let cfg = cfg.clone();
+            async move {
+                if let Some(auth_err) = check_auth(&input, &cfg) {
+                    return Ok(auth_err);
+                }
+                let query = input.get("query_params").unwrap_or(&Value::Null);
+                let topic = query.get("topic").and_then(|v| v.as_str());
+
+                let mut events: Vec<SandboxEvent> = kv.list(scopes::EVENTS).await;
+                if let Some(t) = topic {
+                    events.retain(|e| e.topic == t);
+                }
+                events.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+                events.truncate(100);
+                Ok(json!({ "events": events }))
+            }
+        });
+    }
+}

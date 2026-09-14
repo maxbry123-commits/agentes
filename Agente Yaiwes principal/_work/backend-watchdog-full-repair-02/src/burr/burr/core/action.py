@@ -1,0 +1,2021 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+import abc
+import ast
+import builtins
+import copy
+import inspect
+import sys
+import textwrap
+import types
+import typing
+from collections.abc import AsyncIterator
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncGenerator,
+    Callable,
+    Coroutine,
+    Dict,
+    Generator,
+    Generic,
+    Iterator,
+    List,
+    Optional,
+    Protocol,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+)
+
+if sys.version_info <= (3, 11):
+    Self = Any
+else:
+    from typing import Self
+
+from burr.core.state import State
+
+
+def _validate_declared_reads(fn: Callable, declared_reads: list[str]) -> None:
+    if not declared_reads:
+        return
+
+    try:
+        source = inspect.getsource(fn)
+    except OSError:
+        return  # skip if source unavailable
+
+    # detect actual state parameter name
+    sig = inspect.signature(fn)
+    state_param_name = None
+
+    for name, param in sig.parameters.items():
+        if param.annotation is State:
+            state_param_name = name
+            break
+
+    if state_param_name is None:
+        return
+
+    tree = ast.parse(textwrap.dedent(source))
+
+    declared = set(declared_reads)
+    violations = []
+
+    class Visitor(ast.NodeVisitor):
+        def visit_Subscript(self, node):
+            if (
+                isinstance(node.value, ast.Name)
+                and node.value.id == state_param_name
+                and isinstance(node.slice, ast.Constant)
+                and isinstance(node.slice.value, str)
+            ):
+                key = node.slice.value
+                if key not in declared:
+                    violations.append(key)
+            self.generic_visit(node)
+
+    Visitor().visit(tree)
+
+    if violations:
+        raise ValueError(
+            f"Action reads undeclared state keys: {violations}. "
+            f"Declared reads: {declared_reads}"
+        )
+
+
+from functools import wraps
+
+from burr.core.typing import ActionSchema
+
+
+def type_eraser(func: Callable[..., Any]) -> Callable[..., Any]:
+    """Decorator for ``run``, ``stream_run``, and ``run_and_update`` overrides
+    that declare explicit parameters instead of ``**run_kwargs``.
+
+    Applying this decorator prevents mypy ``[override]`` errors caused by
+    narrowing the base-class signature (which uses ``**run_kwargs``).
+
+    Example usage::
+
+        from burr.core import Action, State, type_eraser
+
+        class Counter(Action):
+            @property
+            def reads(self) -> list[str]:
+                return ["counter"]
+
+            @type_eraser
+            def run(self, state: State, increment_by: int) -> dict:
+                return {"counter": state["counter"] + increment_by}
+
+            @property
+            def writes(self) -> list[str]:
+                return ["counter"]
+
+            def update(self, result: dict, state: State) -> State:
+                return state.update(**result)
+
+            @property
+            def inputs(self) -> list[str]:
+                return ["increment_by"]
+    """
+
+    if inspect.iscoroutinefunction(func):
+
+        @wraps(func)
+        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+            return await func(*args, **kwargs)
+
+        return async_wrapper
+
+    if inspect.isasyncgenfunction(func):
+
+        @wraps(func)
+        async def async_gen_wrapper(*args: Any, **kwargs: Any) -> Any:
+            async for item in func(*args, **kwargs):
+                yield item
+
+        return async_gen_wrapper
+
+    if inspect.isgeneratorfunction(func):
+
+        @wraps(func)
+        def gen_wrapper(*args: Any, **kwargs: Any) -> Any:
+            yield from func(*args, **kwargs)
+
+        return gen_wrapper
+
+    @wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
+# This is here to make accessing the pydantic actions easier
+# we just attach them to action so you can call `@action.pyddantic...`
+# The IDE will like it better and thus be able to auto-complete/type-check
+# TODO - come up with a better way to attach integrations to core objects
+imported_pydantic = False
+if TYPE_CHECKING:
+    try:
+        from pydantic import BaseModel
+    except ImportError:
+        pass
+
+
+class Function(abc.ABC):
+    """Interface to represent the 'computing' part of an action"""
+
+    @property
+    @abc.abstractmethod
+    def reads(self) -> list[str]:
+        """Returns the keys from the state that this function reads
+
+        :return: A list of keys
+        """
+        pass
+
+    @abc.abstractmethod
+    def run(self, state: State, **run_kwargs) -> dict:
+        """Runs the function on the given state and returns the result.
+        The result is just a key/value dictionary.
+
+        :param state: State to run the function on
+        :param run_kwargs: Additional arguments to the function passed at runtime.
+        :return: Result of the function
+        """
+        pass
+
+    @property
+    def inputs(self) -> Union[list[str], tuple[list[str], list[str]]]:
+        """Represents inputs that are used for this to run.
+        These correspond to the ``**run_kwargs`` in `run` above.
+
+        Note that this has two possible return values:
+        1. A list of strings -- these are the keys that are required to run the function
+        2. A tuple of two lists of strings -- the first list is the required keys, the second is the optional keys
+
+        :return: Either a list of strings (required inputs) or a tuple of two lists of strings (required and optional inputs)
+        """
+        return []
+
+    @property
+    def optional_and_required_inputs(self) -> tuple[set[str], set[str]]:
+        """Returns a tuple of two sets of strings -- the first set is the required keys, the second is the optional keys.
+        This is internal and not meant to override.
+
+        :return: Tuple of required keys and optional keys
+        """
+        inputs = self.inputs
+        if isinstance(inputs, tuple):
+            return set(inputs[0]), set(inputs[1])
+        return set(inputs), set()
+
+    def validate_inputs(self, inputs: Optional[Dict[str, Any]]) -> None:
+        """Validates the inputs to the function. This is a convenience method
+        to allow for validation of inputs before running the function.
+
+        :param inputs: Inputs to validate
+        :raises ValueError: If the inputs are invalid
+        """
+        if inputs is None:
+            inputs = {}
+        required_inputs, optional_inputs = self.optional_and_required_inputs
+        given_inputs = set(inputs.keys())
+        missing_inputs = required_inputs - given_inputs
+        additional_inputs = given_inputs - required_inputs - optional_inputs
+        if missing_inputs or additional_inputs:
+            parts = [f"Inputs to function {self} are invalid."]
+            if missing_inputs:
+                parts.append(f"Missing the following inputs: {', '.join(missing_inputs)}.")
+            if additional_inputs:
+                parts.append(f"Additional inputs: {', '.join(additional_inputs)}.")
+            raise ValueError(" ".join(parts))
+
+    def is_async(self) -> bool:
+        """Convenience method to check if the function is async or not.
+        This can be used by the application to run it.
+
+        :return: True if the function is async, False otherwise
+        """
+        return inspect.iscoroutinefunction(self.run)
+
+
+class Reducer(abc.ABC):
+    """Interface to represent the 'updating' part of an action"""
+
+    @property
+    @abc.abstractmethod
+    def writes(self) -> list[str]:
+        """Returns the keys from the state that this reducer writes.
+
+        :return: A list of keys
+        """
+        pass
+
+    @abc.abstractmethod
+    def update(self, result: dict, state: State) -> State:
+        """Performs a state update given a result and the current state.
+        Returns a new, modified :py:class:`State <burr.core.state.State>`
+        (recall state is immutable -- simply changing the state in place will not work).
+
+        In the context of Burr, this is only applied in the two-step actions, where
+        the :py:meth:`run <burr.core.action.Function.run>` and update() functions are separate. The
+        function-based APIs for Burr use the SingleStepAction class, which performs them both at once.
+        This is not (yet) exposed as an interface for users to extend.
+
+        :param result: Result of a function executing on the state
+        :param state: State to update
+        :return: A new, modified state.
+        """
+        pass
+
+
+class DefaultSchema(ActionSchema):
+    def state_input_type(self) -> type[State]:
+        raise NotImplementedError
+
+    def state_output_type(self) -> type[State]:
+        raise NotImplementedError
+
+    def intermediate_result_type(self) -> type[dict]:
+        return dict
+
+
+DEFAULT_SCHEMA = DefaultSchema()
+
+
+class Action(Function, Reducer, abc.ABC):
+    def __init__(self):
+        """Represents an action in a state machine. This is the base class from which
+        actions extend. Note that this class needs to have a name set after the fact.
+        """
+        self._name = None
+
+    def with_name(self, name: str) -> Self:
+        """Returns a copy of the given action with the given name. Why do we need this?
+        We instantiate actions without names, and then set them later. This is a way to
+        make the API cleaner/consolidate it, and the ApplicationBuilder will end up handling it
+        for you, in the with_actions(...) method, which is the only way to use actions.
+
+        Note they can also take in names in the constructor for testing, but otherwise this is
+        not something users will ever have to think about.
+
+        :param name: Name to set
+        :return: A new action with the given name
+        """
+        if self._name is not None:
+            raise ValueError(
+                f"Name of {self} already set to {self._name} -- cannot set name to {name}"
+            )
+        # TODO -- ensure that we're not mutating anything later on
+        # If we are, we may want to copy more intelligently
+        new_action = copy.copy(self)
+        new_action._name = name
+        return new_action
+
+    @property
+    def name(self) -> str:
+        """Gives the name of this action. This should be unique
+        across your application."""
+        return self._name
+
+    @property
+    def single_step(self) -> bool:
+        return False
+
+    @property
+    def streaming(self) -> bool:
+        return False
+
+    @property
+    def schema(self) -> ActionSchema:
+        return DEFAULT_SCHEMA
+
+    def get_source(self) -> str:
+        """Returns the source code of the action. This will default to
+        the source code of the class in which the action is implemented,
+        but can be overwritten." Override if you want debugging/tracking
+        to display a different source"""
+        try:
+            return inspect.getsource(self.__class__)
+        except Exception:
+            return "No source available"
+
+    def input_schema(self) -> Any:
+        """Returns the input schema for the action.
+        The input schema is a type that can be used to validate the input to the action"""
+        return None
+
+    def __repr__(self):
+        read_repr = ", ".join(self.reads) if self.reads else "{}"
+        write_repr = ", ".join(self.writes) if self.writes else "{}"
+        return f"{self.name}: {read_repr} -> {write_repr}"
+
+    @property
+    def tags(self) -> list[str]:
+        """Returns the tags associated with this action.
+        Tags are effectively action aliases -- names that apply towards multiple actions.
+
+        :return: List of string tags
+        """
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Safe expression evaluator used by Condition.safe_expr.
+#
+# These are intentionally module-private. The validator walks the AST and
+# rejects any node that isn't on the allowlist; the interpreter then walks
+# the (validated) tree and produces a value. eval()/compile() are never
+# called on the parsed tree -- that is the entire point.
+# ---------------------------------------------------------------------------
+
+# Builtins we are willing to expose inside safe_expr. Everything here returns
+# a value (no side effects), takes only basic Python data, and cannot be used
+# to reach the import system or the interpreter internals.
+_SAFE_EXPR_BUILTINS: typing.Dict[str, Callable] = {
+    "len": len,
+    "abs": abs,
+    "min": min,
+    "max": max,
+    "sum": sum,
+    "all": all,
+    "any": any,
+    "str": str,
+    "int": int,
+    "float": float,
+    "bool": bool,
+}
+
+# AST BinOp / UnaryOp / BoolOp / Compare operator classes we accept.
+_SAFE_BINOPS = (
+    ast.Add,
+    ast.Sub,
+    ast.Mult,
+    ast.Div,
+    ast.FloorDiv,
+    ast.Mod,
+    ast.Pow,
+)
+_SAFE_UNARYOPS = (ast.Not, ast.USub, ast.UAdd)
+_SAFE_BOOLOPS = (ast.And, ast.Or)
+_SAFE_CMPOPS = (
+    ast.Eq,
+    ast.NotEq,
+    ast.Lt,
+    ast.LtE,
+    ast.Gt,
+    ast.GtE,
+    ast.In,
+    ast.NotIn,
+    ast.Is,
+    ast.IsNot,
+)
+
+
+class _SafeExprValidator(ast.NodeVisitor):
+    """Walks an AST and raises ``ValueError`` on any node not on the allowlist.
+
+    Run once at ``safe_expr()`` call time -- the resulting Condition is only
+    built if validation passes, so rejected expressions never reach runtime.
+    """
+
+    def _reject(self, node: ast.AST, why: str) -> None:
+        raise ValueError(
+            f"safe_expr: disallowed construct in expression: {why} "
+            f"(at line {getattr(node, 'lineno', '?')}, col {getattr(node, 'col_offset', '?')})"
+        )
+
+    # The Expression wrapper produced by ast.parse(mode="eval").
+    def visit_Expression(self, node: ast.Expression) -> None:
+        self.visit(node.body)
+
+    def visit_Constant(self, node: ast.Constant) -> None:
+        if isinstance(node.value, (int, float, str, bool)) or node.value is None:
+            return
+        self._reject(node, f"constant of type {type(node.value).__name__}")
+
+    def visit_Name(self, node: ast.Name) -> None:
+        # Reading is fine; assignment (Store/Del) is unreachable from mode="eval"
+        # but be explicit.
+        if not isinstance(node.ctx, ast.Load):
+            self._reject(node, "assignment / deletion")
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        if node.attr.startswith("__"):
+            self._reject(node, f"dunder attribute access '{node.attr}'")
+        self.visit(node.value)
+
+    def visit_Subscript(self, node: ast.Subscript) -> None:
+        self.visit(node.value)
+        self.visit(node.slice)
+
+    def visit_Slice(self, node: ast.Slice) -> None:
+        for child in (node.lower, node.upper, node.step):
+            if child is not None:
+                self.visit(child)
+
+    # Python <3.9 wraps subscript indices in ast.Index; keep a permissive visitor.
+    def visit_Index(self, node) -> None:  # pragma: no cover - legacy py
+        self.visit(node.value)
+
+    def visit_Compare(self, node: ast.Compare) -> None:
+        for op in node.ops:
+            if not isinstance(op, _SAFE_CMPOPS):
+                self._reject(node, f"comparison operator {type(op).__name__}")
+        self.visit(node.left)
+        for cmp in node.comparators:
+            self.visit(cmp)
+
+    def visit_BoolOp(self, node: ast.BoolOp) -> None:
+        if not isinstance(node.op, _SAFE_BOOLOPS):
+            self._reject(node, f"boolean operator {type(node.op).__name__}")
+        for v in node.values:
+            self.visit(v)
+
+    def visit_UnaryOp(self, node: ast.UnaryOp) -> None:
+        if not isinstance(node.op, _SAFE_UNARYOPS):
+            self._reject(node, f"unary operator {type(node.op).__name__}")
+        self.visit(node.operand)
+
+    def visit_BinOp(self, node: ast.BinOp) -> None:
+        if not isinstance(node.op, _SAFE_BINOPS):
+            self._reject(node, f"binary operator {type(node.op).__name__}")
+        self.visit(node.left)
+        self.visit(node.right)
+
+    def visit_Tuple(self, node: ast.Tuple) -> None:
+        for elt in node.elts:
+            self.visit(elt)
+
+    def visit_List(self, node: ast.List) -> None:
+        for elt in node.elts:
+            self.visit(elt)
+
+    def visit_Set(self, node: ast.Set) -> None:
+        for elt in node.elts:
+            self.visit(elt)
+
+    def visit_Dict(self, node: ast.Dict) -> None:
+        for k in node.keys:
+            if k is not None:
+                self.visit(k)
+        for v in node.values:
+            self.visit(v)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        # Only direct calls to allowlisted builtins by bare Name.
+        if not isinstance(node.func, ast.Name):
+            self._reject(node, "indirect call (only bare builtin names allowed)")
+        if node.func.id not in _SAFE_EXPR_BUILTINS:
+            self._reject(node, f"call to disallowed function '{node.func.id}'")
+        if any(isinstance(a, ast.Starred) for a in node.args):
+            self._reject(node, "starred argument")
+        if node.keywords:
+            self._reject(node, "keyword arguments to builtin call")
+        for a in node.args:
+            self.visit(a)
+
+    # Catch-all: anything we didn't explicitly allow is rejected. This is the
+    # important rule -- additions to the grammar require explicit opt-in.
+    def generic_visit(self, node: ast.AST) -> None:
+        self._reject(node, f"node type {type(node).__name__}")
+
+
+class _SafeExprInterpreter:
+    """Direct AST interpreter for the safe_expr grammar.
+
+    Only handles nodes already approved by :class:`_SafeExprValidator`. We
+    raise ``ValueError`` defensively if an unknown node sneaks in -- but in
+    practice the validator should have caught it first.
+    """
+
+    def __init__(self, names: typing.Mapping[str, typing.Any]):
+        self._names = names
+
+    def eval(self, node: ast.AST) -> typing.Any:  # noqa: A003 - matches ast naming
+        if isinstance(node, ast.Expression):
+            return self.eval(node.body)
+        method = getattr(self, f"_eval_{type(node).__name__}", None)
+        if method is None:
+            raise ValueError(
+                f"safe_expr: interpreter encountered unsupported node {type(node).__name__}"
+            )
+        return method(node)
+
+    def _eval_Constant(self, node: ast.Constant):
+        return node.value
+
+    def _eval_Name(self, node: ast.Name):
+        # Builtins on the allowlist resolve to the builtin; otherwise look up state.
+        if node.id in _SAFE_EXPR_BUILTINS:
+            return _SAFE_EXPR_BUILTINS[node.id]
+        if node.id in self._names:
+            return self._names[node.id]
+        raise NameError(f"safe_expr: name '{node.id}' is not defined")
+
+    def _eval_Attribute(self, node: ast.Attribute):
+        # Validator already rejected dunder access.
+        return getattr(self.eval(node.value), node.attr)
+
+    def _eval_Subscript(self, node: ast.Subscript):
+        value = self.eval(node.value)
+        slice_node = node.slice
+        # py<3.9 wraps in ast.Index
+        if hasattr(ast, "Index") and isinstance(slice_node, ast.Index):  # pragma: no cover
+            slice_node = slice_node.value  # type: ignore[attr-defined]
+        if isinstance(slice_node, ast.Slice):
+            lower = self.eval(slice_node.lower) if slice_node.lower is not None else None
+            upper = self.eval(slice_node.upper) if slice_node.upper is not None else None
+            step = self.eval(slice_node.step) if slice_node.step is not None else None
+            return value[slice(lower, upper, step)]
+        return value[self.eval(slice_node)]
+
+    def _eval_Compare(self, node: ast.Compare):
+        left = self.eval(node.left)
+        for op, right_node in zip(node.ops, node.comparators):
+            right = self.eval(right_node)
+            if isinstance(op, ast.Eq):
+                ok = left == right
+            elif isinstance(op, ast.NotEq):
+                ok = left != right
+            elif isinstance(op, ast.Lt):
+                ok = left < right
+            elif isinstance(op, ast.LtE):
+                ok = left <= right
+            elif isinstance(op, ast.Gt):
+                ok = left > right
+            elif isinstance(op, ast.GtE):
+                ok = left >= right
+            elif isinstance(op, ast.In):
+                ok = left in right
+            elif isinstance(op, ast.NotIn):
+                ok = left not in right
+            elif isinstance(op, ast.Is):
+                ok = left is right
+            elif isinstance(op, ast.IsNot):
+                ok = left is not right
+            else:  # pragma: no cover - validator catches this
+                raise ValueError(f"safe_expr: unsupported comparator {type(op).__name__}")
+            if not ok:
+                return False
+            left = right
+        return True
+
+    def _eval_BoolOp(self, node: ast.BoolOp):
+        if isinstance(node.op, ast.And):
+            result = True
+            for v in node.values:
+                result = self.eval(v)
+                if not result:
+                    return result
+            return result
+        # Or
+        result = False
+        for v in node.values:
+            result = self.eval(v)
+            if result:
+                return result
+        return result
+
+    def _eval_UnaryOp(self, node: ast.UnaryOp):
+        operand = self.eval(node.operand)
+        if isinstance(node.op, ast.Not):
+            return not operand
+        if isinstance(node.op, ast.USub):
+            return -operand
+        if isinstance(node.op, ast.UAdd):
+            return +operand
+        raise ValueError(  # pragma: no cover
+            f"safe_expr: unsupported unary op {type(node.op).__name__}"
+        )
+
+    def _eval_BinOp(self, node: ast.BinOp):
+        left = self.eval(node.left)
+        right = self.eval(node.right)
+        op = node.op
+        if isinstance(op, ast.Add):
+            return left + right
+        if isinstance(op, ast.Sub):
+            return left - right
+        if isinstance(op, ast.Mult):
+            return left * right
+        if isinstance(op, ast.Div):
+            return left / right
+        if isinstance(op, ast.FloorDiv):
+            return left // right
+        if isinstance(op, ast.Mod):
+            return left % right
+        if isinstance(op, ast.Pow):
+            return left**right
+        raise ValueError(  # pragma: no cover
+            f"safe_expr: unsupported binary op {type(op).__name__}"
+        )
+
+    def _eval_Tuple(self, node: ast.Tuple):
+        return tuple(self.eval(e) for e in node.elts)
+
+    def _eval_List(self, node: ast.List):
+        return [self.eval(e) for e in node.elts]
+
+    def _eval_Set(self, node: ast.Set):
+        return {self.eval(e) for e in node.elts}
+
+    def _eval_Dict(self, node: ast.Dict):
+        return {
+            (self.eval(k) if k is not None else None): self.eval(v)
+            for k, v in zip(node.keys, node.values)
+        }
+
+    def _eval_Call(self, node: ast.Call):
+        # Validator guarantees node.func is a Name in _SAFE_EXPR_BUILTINS,
+        # no keywords, no starred args.
+        func = _SAFE_EXPR_BUILTINS[node.func.id]  # type: ignore[attr-defined]
+        args = [self.eval(a) for a in node.args]
+        return func(*args)
+
+
+class Condition(Function):
+    KEY = "PROCEED"
+
+    def __init__(
+        self,
+        keys: List[str],
+        resolver: Callable[[State], bool],
+        name: str = None,
+        optional_keys: List[str] = None,
+    ):
+        """Base condition class. Chooses keys to read from the state and a resolver function.
+        If you want a condition that defaults to true, use Condition.default or just default.
+
+        Note that you can use a few fundamental operators to build more complex conditions:
+
+         - ``~`` operator allows you to automatically invert the condition.
+         - ``|`` operator allows you to OR two conditions together.
+         - ``&`` operator allows you to AND two conditions together.
+
+        :param keys: Keys to read from the state
+        :param resolver:  Function to resolve the condition to True or False
+        :param name: Name of the condition
+        """
+        self._resolver = resolver
+        self._keys = keys
+        self._optional_keys = optional_keys if optional_keys is not None else []
+        self._name = name
+
+    @staticmethod
+    def expr(expr: str) -> "Condition":
+        """Returns a condition that evaluates the given expression against state.
+
+        Do not accept expressions generated from user-inputted text, this has the potential to be unsafe.
+        Internally this uses :func:`eval`, so the expression can execute arbitrary Python and should only
+        be used with developer-authored strings. If you need to accept expressions from less-trusted
+        sources (dashboards, YAML, user input), use :meth:`Condition.safe_expr` which restricts
+        evaluation to a small allowlisted AST grammar interpreted directly (no :func:`eval`).
+
+        You can also refer to this as ``from burr.core import expr`` in the API.
+
+        .. warning::
+            ``Condition.expr`` runs the supplied string under a full Python ``eval``.
+            Passing user-supplied or otherwise attacker-controllable strings to this
+            function is equivalent to arbitrary code execution inside the application
+            process. For example, an attacker who controls the expression string can
+            execute ``__import__("os").system("...")`` or
+            ``__import__("subprocess").check_output([...])`` and reach anything the
+            host process can reach.
+
+            The ``globals=None`` argument to ``eval`` below is **not** a sandbox:
+            CPython auto-injects ``__builtins__`` when globals is empty or ``None``,
+            which is in fact relied upon here so that expressions like ``len(x)`` work.
+            No part of this function attempts to sandbox the evaluation.
+
+            If you need to accept untrusted expressions, do not use ``expr``. Track
+            ``apache/burr#817`` for the opt-in safe-AST evaluator intended for that
+            use case.
+
+        :param expr: Expression to evaluate. Must be a developer-authored Python
+            expression over state variables and standard operators/builtins.
+        :return: A condition that evaluates the given expression
+        """
+        tree = ast.parse(expr, mode="eval")
+        all_builtins = builtins.__dict__
+
+        # Visitor class to collect variable names
+        class NameVisitor(ast.NodeVisitor):
+            def __init__(self):
+                self.names = set()
+
+            def visit_Name(self, node):
+                if node.id not in all_builtins:
+                    self.names.add(node.id)
+
+        # Visit the nodes and collect variable names
+        visitor = NameVisitor()
+        visitor.visit(tree)
+        keys = list(visitor.names)
+
+        # Compile the expression into a callable function
+        def condition_func(state: State) -> bool:
+            __globals = state.get_all()  # we can get all because externally we will subset
+            # NOTE: globals=None is *not* a sandbox -- CPython injects __builtins__
+            # automatically. See the docstring above. Builtins (e.g. ``len``) are
+            # intentionally available to developer-authored expressions.
+            return eval(compile(tree, "<string>", "eval"), None, __globals)
+
+        return Condition(keys, condition_func, name=expr)
+
+    @staticmethod
+    def safe_expr(expr: str) -> "Condition":
+        """Returns a condition that evaluates ``expr`` under a restricted, allowlisted AST grammar.
+
+        This is the opt-in safe sibling of :meth:`Condition.expr`. Whereas ``expr()`` uses
+        :func:`eval` and therefore accepts the full Python expression grammar (and is unsafe
+        for untrusted input), ``safe_expr()`` parses the expression, validates every node
+        against an allowlist at call time, and then *interprets* the validated tree directly.
+        :func:`eval` is never invoked on the parsed tree.
+
+        Use ``safe_expr`` when the expression string comes from a less-trusted source --
+        for example a dashboard rule editor, a YAML-driven graph definition, or any user
+        input. Use ``expr`` when the expression is authored by a developer and checked in.
+
+        The allowed grammar is intentionally small:
+
+        - Constants: ``int``, ``float``, ``str``, ``bool``, ``None``.
+        - ``Name`` lookups, resolved against the state via :meth:`State.get_all`.
+        - ``Attribute`` access on names / other attributes. Any attribute whose name
+          starts with ``__`` (dunder) is rejected -- this closes the standard
+          ``().__class__.__bases__[0].__subclasses__()`` sandbox-escape pattern.
+        - ``Subscript`` (``state["foo"]``, ``items[0]``, slices).
+        - ``Compare``: ``==``, ``!=``, ``<``, ``>``, ``<=``, ``>=``, ``in``, ``not in``,
+          ``is``, ``is not``.
+        - ``BoolOp``: ``and``, ``or``.
+        - ``UnaryOp``: ``not``, unary ``-``, unary ``+``.
+        - ``BinOp`` arithmetic: ``+``, ``-``, ``*``, ``/``, ``//``, ``%``, ``**``.
+        - Literal containers: tuple, list, set, dict.
+        - ``Call`` only to a tight allowlist of safe builtins by name:
+          ``len``, ``abs``, ``min``, ``max``, ``sum``, ``all``, ``any``, ``str``,
+          ``int``, ``float``, ``bool``. All other calls are rejected.
+
+        Everything else is rejected at ``safe_expr()`` call time (not at run time),
+        including: lambdas, conditional expressions (``a if b else c``),
+        comprehensions and generator expressions, the walrus operator,
+        ``await``, ``yield``, imports, and any ``Call`` not on the builtin allowlist.
+
+        :param expr: Expression to evaluate
+        :return: A condition that evaluates the given expression
+        :raises ValueError: if the expression contains any disallowed construct
+            (raised at call time -- the condition is rejected before it ever runs).
+        :raises SyntaxError: if the expression is not syntactically valid Python.
+        """
+        # Parse first. This raises SyntaxError for malformed input, which is fine.
+        tree = ast.parse(expr, mode="eval")
+        # Validate the whole tree against the allowlist *now*, at call time. If any
+        # disallowed node exists we raise here, before constructing the Condition.
+        _SafeExprValidator().visit(tree)
+
+        # Collect Name references for keys, mirroring expr().
+        all_builtins = builtins.__dict__
+
+        class _NameCollector(ast.NodeVisitor):
+            def __init__(self):
+                self.names = set()
+
+            def visit_Name(self, node):
+                if node.id not in all_builtins:
+                    self.names.add(node.id)
+
+        collector = _NameCollector()
+        collector.visit(tree)
+        keys = list(collector.names)
+
+        def condition_func(state: State) -> bool:
+            # Interpret the validated tree directly. We deliberately do NOT call
+            # eval()/compile() on the tree -- the whole safety argument rests on
+            # this. The interpreter only implements the allowlisted node types.
+            return bool(_SafeExprInterpreter(state.get_all()).eval(tree))
+
+        return Condition(keys, condition_func, name=expr)
+
+    @staticmethod
+    def lmda(resolver: Callable[[State], bool], state_keys: List[str]) -> "Condition":
+        """Returns a condition that evaluates the given function of State.
+        Note that this is just a simple wrapper over the Condition object.
+
+        This does not (yet) support optional (default) arguments.
+
+        :param fn:
+        :param state_keys:
+        :return:
+        """
+        return Condition(state_keys, resolver, name=f"lmda_{resolver.__name__}_")
+
+    # TODO -- decide what to do with this when we have optional keys
+    # @staticmethod
+    # def exists(*keys: str) -> "Condition":
+    #     """Returns a condition that checks if the given key exists in the state.
+    #
+    #     :param key: Key to check for existence
+    #     :return: A condition that checks if the given key exists in the state
+    #     """
+    #     return Condition(
+    #         list(keys),
+    #         lambda state: all(item in state for item in keys),
+    #         name=f"exists_{'_and_'.join(sorted(keys))}"
+    #     )
+
+    def _validate(self, state: State):
+        missing_keys = set(self._keys) - set(state.keys())
+        if missing_keys:
+            raise ValueError(
+                f"Missing keys in state required by condition: {self} {', '.join(missing_keys)}"
+            )
+
+    def run(self, state: State, **run_kwargs) -> dict:
+        self._validate(state)
+        return {Condition.KEY: self._resolver(state)}
+
+    @property
+    def reads(self) -> list[str]:
+        return self._keys
+
+    _OPERATORS = {
+        "eq": ("==", lambda a, b: a == b),
+        "ne": ("!=", lambda a, b: a != b),
+        "lt": ("<", lambda a, b: a < b),
+        "lte": ("<=", lambda a, b: a <= b),
+        "gt": (">", lambda a, b: a > b),
+        "gte": (">=", lambda a, b: a >= b),
+        "in": ("in", lambda a, b: a in b),
+        "notin": ("not in", lambda a, b: a not in b),
+        "contains": ("contains", lambda a, b: b in a),
+        "is": ("is", lambda a, b: a is b),
+        "isnot": ("is not", lambda a, b: a is not b),
+    }
+
+    @classmethod
+    def _parse_kwarg(cls, kwarg_key: str, value):
+        """Parse a kwarg key into (state_key, operator_symbol, comparison_func, explicit).
+
+        Supports Django-style lookups: ``key__gte=10`` parses as key >= 10.
+        Plain ``key=value`` defaults to equality (implicit).
+
+        Returns a tuple of (state_key, symbol, func, explicit) where explicit
+        indicates whether an operator suffix was present.
+        """
+        for suffix, (symbol, func) in cls._OPERATORS.items():
+            dunder = f"__{suffix}"
+            if kwarg_key.endswith(dunder):
+                state_key = kwarg_key[: -len(dunder)]
+                if not state_key:
+                    raise ValueError(
+                        f"Invalid when() key: '{kwarg_key}' — " f"no state key before '__{suffix}'"
+                    )
+                return state_key, symbol, func, True
+        return kwarg_key, "=", lambda a, b: a == b, False
+
+    @classmethod
+    def when(cls, **kwargs):
+        """Returns a condition that checks state values using optional operators.
+
+        You can also refer to this as ``from burr.core import when`` in the API.
+
+        Basic equality (unchanged from original)::
+
+            when(foo="bar")            # state["foo"] == "bar"
+            when(foo="bar", baz="qux") # state["foo"] == "bar" AND state["baz"] == "qux"
+
+        Comparison operators via ``__`` suffix::
+
+            when(age__gt=18)           # state["age"] > 18
+            when(age__gte=18)          # state["age"] >= 18
+            when(age__lt=18)           # state["age"] < 18
+            when(age__lte=18)          # state["age"] <= 18
+            when(age__ne=0)            # state["age"] != 0
+            when(age__eq=18)           # state["age"] == 18  (explicit)
+
+        Membership operators::
+
+            when(status__in=["a", "b"])     # state["status"] in ["a", "b"]
+            when(status__notin=["x", "y"])  # state["status"] not in ["x", "y"]
+            when(tags__contains="python")   # "python" in state["tags"]
+
+        Identity operators::
+
+            when(value__is=None)            # state["value"] is None
+            when(value__isnot=None)         # state["value"] is not None
+
+        Multiple conditions are ANDed together::
+
+            when(age__gte=18, status="active")  # age >= 18 AND status == "active"
+
+        :param kwargs: Keyword arguments with optional ``__operator`` suffixes
+        :return: A condition that checks all specified constraints (AND)
+        """
+        parsed = []
+        for kwarg_key, value in kwargs.items():
+            state_key, symbol, func, explicit = cls._parse_kwarg(kwarg_key, value)
+            parsed.append((state_key, symbol, func, value, explicit))
+
+        state_keys = list(dict.fromkeys(p[0] for p in parsed))
+
+        def condition_func(state: State) -> bool:
+            for state_key, _symbol, func, value, _explicit in parsed:
+                if not func(state.get(state_key), value):
+                    return False
+            return True
+
+        name_parts = []
+        for state_key, symbol, _func, value, explicit in sorted(parsed, key=lambda p: p[0]):
+            if not explicit:
+                # Backward-compatible format: key=value (no repr, no spaces)
+                name_parts.append(f"{state_key}={value}")
+            elif symbol.isalnum() or " " in symbol:
+                # Word operators like "in", "not in", "contains"
+                name_parts.append(f"{state_key} {symbol} {value!r}")
+            else:
+                # Symbol operators like >=, !=, etc.
+                name_parts.append(f"{state_key}{symbol}{value!r}")
+        name = ", ".join(name_parts)
+        return Condition(state_keys, condition_func, name=name)
+
+    def __repr__(self):
+        return f"condition: {self._name}"
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def __or__(self, other: "Condition") -> "Condition":
+        """Combines two conditions with an OR operator. This will return a new condition
+        that is the OR of the two conditions.
+
+        To check if either foo is bar or baz is qux:
+
+        .. code-block:: python
+
+            condition = Condition.when(foo="bar") | Condition.when(baz="qux")
+
+        :param other: Other condition to OR with
+        :return: A new condition that is the OR of the two conditions
+        """
+        if not isinstance(other, Condition):
+            raise ValueError(f"Cannot OR a Condition with {other}")
+        return Condition(
+            self._keys + other._keys,
+            lambda state: self._resolver(state) or other.resolver(state),
+            name=f"{self._name} | {other._name}",
+        )
+
+    def __and__(self, other: "Condition") -> "Condition":
+        """Combines two conditions with an AND operator. This will return a new condition
+        that is the AND of the two conditions.
+
+        To check if both foo is bar and baz is qux:
+
+        .. code-block:: python
+
+            condition = Condition.when(foo="bar") & Condition.when(baz="qux")
+            # equivalent to
+            condition = Condition.when(foo="bar", baz="qux")
+
+        :param other: Other condition to AND with
+        :return:  A new condition that is the AND of the two conditions
+        """
+        if not isinstance(other, Condition):
+            raise ValueError(f"Cannot AND a Condition with {other}")
+        return Condition(
+            self._keys + other._keys,
+            lambda state: self._resolver(state) and other.resolver(state),
+            name=f"{self._name} & {other._name}",
+        )
+
+    @property
+    def resolver(self) -> Callable[[State], bool]:
+        return self._resolver
+
+    def __invert__(self):
+        return Condition(self._keys, lambda state: not self._resolver(state), name=f"~{self._name}")
+
+
+Condition.default = Condition([], lambda _: True, name="default")
+
+default = Condition.default
+when = Condition.when
+expr = Condition.expr
+safe_expr = Condition.safe_expr
+lmda = Condition.lmda
+# exists = Condition.exists
+
+
+class Result(Action):
+    def __init__(self, *fields: str):
+        """Represents a result action. This is purely a convenience class to
+        pull data from state and give it out to the result. It does nothing to
+        the state itself.
+
+        :param fields: Fields to pull from the state and put into results
+        """
+        super(Result, self).__init__()
+        self._fields = fields
+
+    def run(self, state: State) -> dict:
+        return {key: value for key, value in state.get_all().items() if key in self._fields}
+
+    def update(self, result: dict, state: State) -> State:
+        return state  # does not modify state in any way
+
+    @property
+    def reads(self) -> list[str]:
+        return list(self._fields)
+
+    @property
+    def writes(self) -> list[str]:
+        return []
+
+
+class Input(Action):
+    def __init__(self, *fields: str):
+        """Represents an input action -- this reads something from an input
+        then writes that directly to state. This is a convenience class for when you don't
+        need to process the input and just want to put it in state for later use.
+
+        :param fields: Fields to pull from the inputs and put into state
+        """
+        super(Input, self).__init__()
+        self._fields = fields
+
+    @property
+    def reads(self) -> list[str]:
+        return []  # nothing from state
+
+    def run(self, state: State, **run_kwargs) -> dict:
+        return {key: run_kwargs[key] for key in self._fields}
+
+    @property
+    def writes(self) -> list[str]:
+        return list(self._fields)
+
+    @property
+    def inputs(self) -> list[str]:
+        return list(self._fields)
+
+    def update(self, result: dict, state: State) -> State:
+        return state.update(**result)
+
+
+class SingleStepAction(Action, abc.ABC):
+    """Internal representation of a "single-step" action. While most actions will have
+    a run and an update, this is a convenience class for actions that return them both at the same time.
+    Note this is not user-facing, as the internal API is meant to change. This is largely special-cased
+    for the function-based action, which users will not be extending.
+
+    Currently this keeps a cache of the state created, which is not ideal. This is a temporary
+    measure to make the API work, and will be removed in the future.
+    """
+
+    def __init__(self):
+        super(SingleStepAction, self).__init__()
+        self._state_created = None
+
+    @property
+    def single_step(self) -> bool:
+        return True
+
+    @abc.abstractmethod
+    def run_and_update(self, state: State, **run_kwargs) -> tuple[dict, State]:
+        """Performs a run/update at the same time.
+
+        :param state: State to run the action on
+        :param run_kwargs: Additional arguments to the function passed at runtime.
+        :return: Result of the action and the new state
+        """
+        pass
+
+    def run(self, state: State) -> dict:
+        """This should never really get called.
+        That said, this is an action so we have this in for now.
+        TODO -- rethink the hierarchy. This is not user-facing, so its OK to change,
+        and there's a bug we want to fix that requires this.
+
+        :param state:
+        :return:
+        """
+        raise ValueError(
+            "SingleStepAction.run should never be called independently -- use run_and_update instead."
+        )
+
+    def update(self, result: dict, state: State) -> State:
+        """Same with the above"""
+        raise ValueError(
+            "SingleStepAction.update should never be called independently -- use run_and_update instead."
+        )
+
+    def is_async(self) -> bool:
+        """Convenience method to check if the function is async or not.
+        We'll want to clean up the class hierarchy, but this is all internal.
+        See note on ``run`` and ``update`` above
+
+        :return: True if the function is async, False otherwise
+        """
+        return inspect.iscoroutinefunction(self.run_and_update)
+
+
+# the following exist to share implementation between FunctionBasedStreamingAction and FunctionBasedAction
+# TODO -- think through the class hierarchy to simplify, for now this is OK
+def derive_inputs_from_fn(bound_params: dict, fn: Callable) -> tuple[list[str], list[str]]:
+    """Derives inputs from the function, given the bound parameters. This assumes that the function
+    has inputs named `state`, as well as any number of other kwarg-boundable parameters.
+
+    :param bound_params: Parameters that are already bound to the function
+    :param fn: Function to derive inputs from
+    :return: Required and optional inputs
+    """
+    sig = inspect.signature(fn)
+    required_inputs, optional_inputs = [], []
+    for param_name, param in sig.parameters.items():
+        if param_name != "state" and param_name not in bound_params:
+            if param.default is inspect.Parameter.empty:
+                # has no default means its required
+                required_inputs.append(param_name)
+            else:
+                # has a default means its optional
+                optional_inputs.append(param_name)
+    return required_inputs, optional_inputs
+
+
+FunctionBasedActionType = Union["FunctionBasedAction", "FunctionBasedStreamingAction"]
+
+
+class FunctionBasedAction(SingleStepAction):
+    ACTION_FUNCTION = "action_function"
+
+    def __init__(
+        self,
+        fn: Callable,
+        reads: List[str],
+        writes: List[str],
+        bound_params: Optional[dict] = None,
+        input_spec: Optional[tuple[list[str], list[str]]] = None,
+        originating_fn: Optional[Callable] = None,
+        schema: ActionSchema = DEFAULT_SCHEMA,
+        tags: Optional[List[str]] = None,
+    ):
+        """Instantiates a function-based action with the given function, reads, and writes.
+        The function must take in a state and return a tuple of (result, new_state).
+
+        :param fn: Function to run
+        :param reads: Keys that the function reads from the state
+        :param writes: Keys that the function writes to the state
+        :param bound_params: Prior bound parameters
+        :param input_spec: Specification for inputs. Will derive from function if not provided.
+        """
+        super(FunctionBasedAction, self).__init__()
+        self._originating_fn = originating_fn if originating_fn is not None else fn
+        self._fn = fn
+        self._reads = reads
+        self._writes = writes
+        _validate_declared_reads(self._originating_fn, self._reads)
+
+        self._bound_params = bound_params if bound_params is not None else {}
+        self._inputs = (
+            derive_inputs_from_fn(self._bound_params, self._fn)
+            if input_spec is None
+            else (
+                [item for item in input_spec[0] if item not in self._bound_params],
+                [item for item in input_spec[1] if item not in self._bound_params],
+            )
+        )
+        self._schema = schema
+        self._tags = tags if tags is not None else []
+
+    @property
+    def fn(self) -> Callable:
+        return self._fn
+
+    @property
+    def reads(self) -> list[str]:
+        return self._reads
+
+    @property
+    def writes(self) -> list[str]:
+        return self._writes
+
+    @property
+    def inputs(self) -> tuple[list[str], list[str]]:
+        return self._inputs
+
+    @property
+    def schema(self) -> ActionSchema:
+        return self._schema
+
+    @property
+    def tags(self) -> list[str]:
+        return self._tags
+
+    def with_params(self, **kwargs: Any) -> "FunctionBasedAction":
+        """Binds parameters to the function.
+        Note that there is no reason to call this by the user. This *could*
+        be done at the class level, but given that API allows for constructor parameters
+        (which do the same thing in a cleaner way), it is best to keep it here for now.
+
+        :param kwargs:
+        :return:
+        """
+        return FunctionBasedAction(
+            self._fn,
+            self._reads,
+            self._writes,
+            {**self._bound_params, **kwargs},
+            input_spec=self._inputs,
+            originating_fn=self._originating_fn,
+            schema=self._schema,
+            tags=self._tags,
+        )
+
+    def run_and_update(self, state: State, **run_kwargs) -> tuple[dict, State]:
+        return self._fn(state, **self._bound_params, **run_kwargs)
+
+    def is_async(self) -> bool:
+        return inspect.iscoroutinefunction(self._fn)
+
+    def get_source(self) -> str:
+        """Return the source of the code for this action."""
+        return inspect.getsource(self._originating_fn)
+
+
+StateType = TypeVar("StateType")
+
+StreamType = Tuple[dict, Optional[State[StateType]]]
+
+GeneratorReturnType = Generator[StreamType, None, None]
+AsyncGeneratorReturnType = AsyncGenerator[StreamType, None]
+
+StreamingFn = Callable[..., GeneratorReturnType]
+StreamingFnAsync = Callable[..., AsyncGeneratorReturnType]
+
+
+class StreamingAction(Action, abc.ABC):
+    """Base class for Streaming action. These are "multi-step", meaning that
+    they run in multiple passes (run -> update)"""
+
+    @abc.abstractmethod
+    def stream_run(self, state: State[StateType], **run_kwargs) -> Generator[dict, None, None]:
+        """Streaming action ``stream_run`` is different than standard action run. It:
+        1. streams in an intermediate result (the dict output)
+        2. yields the final result at the end
+
+        Note that the user, in this case, is responsible for joining the result.
+
+        For instance, you could have:
+
+        .. code-block:: python
+
+            def stream_run(state: State) -> Generator[dict, None, dict]:
+                buffer = [] # you might want to be more efficient than simple strcat
+                for token in query(state['prompt']):
+                    yield {'response' : token}
+                    buffer.append(token)
+                yield {'response' : "".join(buffer)}
+
+        This would utilize a simple string buffer (implemented by a list) to store the results
+        and then join them at the end. We return the final result.
+
+        :param state: State to run the action on
+        :param run_kwargs: parameters passed to the run function -- these are specified by `inputs`
+        :return: A generator that streams in a result and returns the final result
+        """
+        pass
+
+    def run(self, state: State[StateType], **run_kwargs) -> dict:
+        """Runs the streaming action through to completion."""
+        gen = self.stream_run(state, **run_kwargs)
+        last_result = None
+        for item in gen:
+            last_result = item
+        return last_result
+
+    @property
+    def streaming(self) -> bool:
+        return True
+
+
+class AsyncStreamingAction(Action, abc.ABC):
+    """Asynchronous version of the streaming action. This is a base class for streaming actions.
+    Currently this is separate from the synchronous version, but we may want to merge them in the future.
+    Note this is the "multi-step" variant, in which run/update are separate."""
+
+    @abc.abstractmethod
+    async def stream_run(self, state, **run_kwargs) -> AsyncGenerator[dict, None]:
+        """Asynchronous streaming action ``stream_run`` is different than the standard action run. It:
+        1. streams in an intermediate result (the dict output)
+        2. yields the final result at the end
+
+        Note that the user, in this case, is responsible for joining the result.
+
+        For instance, you could have:
+
+        .. code-block:: python
+
+            async def stream_run(state: State) -> Generator[dict, None, dict]:
+                buffer = [] # you might want to be more efficient than simple strcat
+                async for token in query(state['prompt']): # asynchronous generator
+                    yield {'response' : token}
+                    buffer.append(token)
+                yield {'response' : "".join(buffer)}
+
+        This would utilize a simple string buffer (implemented by a list) to store the results
+        and then join them at the end. We return the final result.
+
+        :param state: State to run the action on
+        :param run_kwargs: parameters passed to the run function -- these are specified by `inputs`
+        :return: A generator that streams in a result and returns the final result
+        """
+        pass
+
+    async def run(self, state: State[StateType], **run_kwargs) -> dict:
+        """Runs the streaming action through to completion.
+        Returns the final result. This is used if we want a streaming action
+        as an intermediate.
+
+        :param state: State to run the action on
+        :param run_kwargs: Additional arguments to the function passed at runtime.
+        :return: Final result
+        """
+        gen = self.stream_run(state, **run_kwargs)
+        result = None
+        async for item in gen:
+            result = item
+        return result
+
+    @property
+    def streaming(self) -> bool:
+        return True
+
+    def is_async(self) -> bool:
+        return True
+
+
+StreamResultType = TypeVar("StreamResultType")
+
+
+class StreamingResultContainer(Generic[StateType, StreamResultType], Iterator[StreamResultType]):
+    """Container for a streaming result. This allows you to:
+
+    1. Iterate over the result as it comes in
+    2. Get the final result/state at the end
+
+    If you're familiar with generators/iterators in python, this is effectively an
+    iterator that caches the final result after calling it. This is meant to be used
+    exclusively with the streaming action calls in `Application`. Note that you will
+    never instantiate this class directly, but you will use it in the API when it is returned
+    by :py:meth:`stream_result <burr.core.application.Application.stream_result>`.
+    For reference, here's how you would use it:
+
+    .. code-block:: python
+
+        action_we_just_ran, streaming_result_container = application.stream_result(...)
+        print(f"getting streaming results for action={action_we_just_ran.name}")
+
+        for result_component in streaming_result_container:
+            print(result_component['response']) # this assumes you have a response key in your result
+
+        final_result, final_state = streaming_result_container.get()
+    """
+
+    @staticmethod
+    def pass_through(
+        results: StreamResultType, final_state: State[StateType]
+    ) -> "StreamingResultContainer[StreamResultType, StateType]":
+        """Instantiates a streaming result container that just passes through the given results
+        This is to be used internally -- it allows us to wrap non-streaming action results in a streaming
+        result container."""
+
+        def empty_generator() -> (
+            Generator[Tuple[StreamResultType, Optional[State[StateType]]], None, None]
+        ):
+            yield results, final_state
+
+        return StreamingResultContainer(
+            empty_generator(),
+            final_state,
+            lambda result, state: (result, state),
+            lambda result, state, exc: None,
+        )
+
+    def __init__(
+        self,
+        streaming_result_generator: GeneratorReturnType,
+        initial_state: State[StateType],
+        process_result: Callable[[dict, State], tuple[dict, State]],
+        callback: Callable[[Optional[dict], State, Optional[Exception]], None],
+    ):
+        """Initializes a streaming result container. User will never call directly.
+
+        :param streaming_result_generator: Generator of streaming results. Note that this
+            will always yield result, Optional[State] -- regardless of the API used to create it.
+        :param initial_state:  The initial state
+        :param process_result:  Function to process the result -- this gets called after the generator is exhausted,
+            prior to returning the final result
+        :param callback: Callback to call at the very end. This will only get called *once*, and will be called during the finally block of the generator
+        """
+        self.streaming_result_generator = streaming_result_generator
+        self._action = action
+        self._callback = callback
+        self._process_result = process_result
+        self._initial_state = initial_state
+        self._result = None
+        self._callback_realized = False
+
+    def __next__(self) -> StreamResultType:
+        if self._result is not None:
+            # we're done, and we've run through it
+            raise StopIteration
+        result, state = self.streaming_result_generator.__next__()
+        if state is not None:  # we're done -- we've hit the last one
+            self._result = self._process_result(result, state)
+            raise StopIteration
+        return result
+
+    def __iter__(self) -> Iterator[StreamResultType]:
+        def gen_fn():
+            try:
+                while True:
+                    out = self.__next__()
+                    yield out
+            except StopIteration:
+                return
+            finally:
+                if self._result is None:
+                    self._result = None, self._initial_state
+                if not self._callback_realized:
+                    exc = sys.exc_info()[1]
+                    self._callback_realized = True
+                    self._callback(*self._result, exc)
+
+        # We really don't need an internal generator function but this was done to keep it the same
+        # as the async version
+        return gen_fn()
+
+    def get(self) -> Tuple[StreamResultType, State[StateType]]:
+        # exhaust the generator
+        for _ in self:
+            pass
+
+        return self._result
+
+
+class AsyncStreamingResultContainer(
+    Generic[StateType, StreamResultType],
+    AsyncIterator[StreamResultType],
+):
+    """Container for an async streaming result. This allows you to:
+    1. Iterate over the result as it comes in
+    2. Await the final result/state at the end
+
+    If you're familiar with generators/iterators in python, this is effectively an
+    iterator that caches the final result after calling it. This is meant to be used
+    exclusively with the streaming action calls in `Application`. Note that you will
+    never instantiate this class directly, but you will use it in the API when it is returned
+    by :py:meth:`astream_result <burr.core.application.Application.stream_result>`.
+    For reference, here's how you would use it:
+
+    .. code-block:: python
+
+        action_we_just_ran, streaming_result_container = await application.stream_result(...)
+        print(f"getting streaming results for action={action_we_just_ran.name}")
+
+        async for result_component in streaming_result_container:
+            print(result_component['response']) # this assumes you have a response key in your result
+
+        final_result, final_state = await streaming_result_container.get()
+    """
+
+    def __init__(
+        self,
+        streaming_result_generator: AsyncGeneratorReturnType,
+        initial_state: State[StateType],
+        process_result: Callable[
+            [StreamResultType, State[StateType]], tuple[StreamResultType, State[StateType]]
+        ],
+        callback: Callable[
+            [Optional[StreamResultType], State[StateType], Optional[Exception]],
+            typing.Coroutine[None, None, None],
+        ],
+    ):
+        """Initializes an async streaming result container. User will never call directly.
+
+        :param streaming_result_generator: Generator of streaming results. Note that this
+            will always yield result, Optional[State] -- regardless of the API used to create it.
+        :param initial_state:  The initial state
+        :param process_result:  Function to process the result -- this gets called after the generator is exhausted,
+            prior to returning the final result
+        :param callback: Callback to call at the very end. This will only get called *once*, and will be called during the finally block of the generator
+        """
+        self.streaming_result_generator = streaming_result_generator
+        self._initial_state = initial_state
+        self._process_result = process_result
+        self._callback = callback
+        self._result = None
+        self._callback_realized = False
+
+    async def __anext__(self) -> StreamResultType:
+        """Moves to the next state in the streaming result"""
+        if self._result is not None:
+            # we're done, and we've run through it
+            raise StopAsyncIteration
+        result, state = await self.streaming_result_generator.__anext__()
+        if state is not None:  # we're done -- we've hit the last one
+            self._result = self._process_result(result, state)
+            raise StopAsyncIteration
+        return result
+
+    def __aiter__(self) -> AsyncIterator[StreamResultType]:
+        """Gives the iterator. Just calls anext, assigning the result in the finally block.
+        Note this may not be perfect due to the complexity of callbacks for async generators,
+        but it works in most cases."""
+
+        async def gen_fn():
+            try:
+                while True:
+                    yield await self.__anext__()
+            except StopAsyncIteration:
+                return
+            finally:
+                if self._result is None:
+                    self._result = None, self._initial_state
+                if not self._callback_realized:
+                    exc = sys.exc_info()[1]
+                    self._callback_realized = True
+                    await self._callback(*self._result, exc)
+
+        # return it as `__aiter__` cannot be async/have awaits :/
+        return gen_fn()
+
+    async def get(self) -> tuple[Optional[StreamResultType], State[StateType]]:
+        # exhaust the generator
+        async for _ in self:
+            pass
+
+        return self._result
+
+    @staticmethod
+    def pass_through(
+        results: StreamResultType, final_state: State[StateType]
+    ) -> "AsyncStreamingResultContainer[StateType]":
+        """Creates a streaming result container that just passes through the given results.
+        This is not a public facing API."""
+
+        async def just_results() -> AsyncGeneratorReturnType:
+            yield results, final_state
+
+        async def empty_callback(
+            result: Optional[StreamResultType], state: State, exc: Optional[Exception]
+        ):
+            pass
+
+        return AsyncStreamingResultContainer[StateType, StreamResultType](
+            just_results(), final_state, lambda result, state: (result, state), empty_callback
+        )
+
+
+class SingleStepStreamingAction(SingleStepAction, abc.ABC):
+    """Class to represent a "single-step" streaming action. This is meant to
+    work with the functional API. Note this is not user-facing -- the user will
+    only interact with this by using the ``@streaming_action`` decorator.
+    """
+
+    @abc.abstractmethod
+    def stream_run_and_update(
+        self, state: State, **run_kwargs
+    ) -> Union[GeneratorReturnType, AsyncGeneratorReturnType]:
+        """Streaming version of the run and update function. This
+        return type is a generator that streams in a result, has no "send"
+        value, and returns the final result (new result + state).
+        """
+        pass
+
+    def _run_and_update(self, state: State, **run_kwargs) -> tuple[dict, State]:
+        gen = self.stream_run_and_update(state, **run_kwargs)
+        result = None
+        new_state = state
+        for result, new_state in gen:
+            pass
+        # TODO -- validate that it has a single length output
+        return result, new_state
+
+    async def _arun_and_update(self, state: State, **run_kwargs) -> tuple[dict, State]:
+        gen = self.stream_run_and_update(state, **run_kwargs)
+        last_result = None
+        new_state = state
+        async for last_result, new_state in gen:
+            pass
+        return last_result, new_state
+
+    def run_and_update(
+        self, state: State, **run_kwargs
+    ) -> Union[tuple[dict, State], Coroutine[Any, Any, tuple[dict, State]]]:
+        """Runs the action and returns the final result. This allows us to run this as a
+        single step action. This is helpful for when the streaming result needs to be
+        run as an intermediate."""
+        if self.is_async():
+            return self._arun_and_update(state, **run_kwargs)
+        return self._run_and_update(state, **run_kwargs)
+
+    @property
+    def streaming(self) -> bool:
+        return True
+
+    def is_async(self) -> bool:
+        return inspect.isasyncgenfunction(self.stream_run_and_update)
+
+
+class FunctionBasedStreamingAction(SingleStepStreamingAction):
+    _fn: Union[StreamingFn, StreamingFnAsync]
+
+    def __init__(
+        self,
+        fn: Union[
+            StreamingFn,
+            StreamingFnAsync,
+        ],
+        reads: List[str],
+        writes: List[str],
+        bound_params: Optional[dict] = None,
+        input_spec: Optional[tuple[list[str], list[str]]] = None,
+        originating_fn: Optional[Callable] = None,
+        schema: ActionSchema = DEFAULT_SCHEMA,
+        tags: Optional[List[str]] = None,
+    ):
+        """Instantiates a function-based streaming action with the given function, reads, and writes.
+        The function must take in a state (and inputs) and return a generator of (result, new_state).
+
+        :param fn: Function to use
+        :param reads:
+        :param writes:
+        """
+        super(FunctionBasedStreamingAction, self).__init__()
+        self._originating_fn = originating_fn if originating_fn is not None else fn
+        self._fn = fn
+        self._reads = reads
+        self._writes = writes
+        _validate_declared_reads(self._originating_fn, self._reads)
+
+        self._bound_params = bound_params if bound_params is not None else {}
+        self._inputs = (
+            derive_inputs_from_fn(self._bound_params, self._fn)
+            if input_spec is None
+            else (
+                [item for item in input_spec[0] if item not in self._bound_params],
+                [item for item in input_spec[1] if item not in self._bound_params],
+            )
+        )
+
+        self._schema = schema
+        self._tags = tags if tags is not None else []
+
+    async def _a_stream_run_and_update(
+        self, state: State, **run_kwargs
+    ) -> AsyncGeneratorReturnType:
+        async for result in self._fn(state, **self._bound_params, **run_kwargs):
+            yield result
+
+    def _stream_run_and_update(self, state: State, **run_kwargs) -> GeneratorReturnType:
+        yield from self._fn(state, **self._bound_params, **run_kwargs)
+
+    def stream_run_and_update(
+        self, state: State, **run_kwargs
+    ) -> Union[AsyncGeneratorReturnType, GeneratorReturnType]:
+        if self.is_async():
+            return self._a_stream_run_and_update(state, **run_kwargs)
+        return self._stream_run_and_update(state, **run_kwargs)
+
+    @property
+    def reads(self) -> list[str]:
+        return self._reads
+
+    @property
+    def writes(self) -> list[str]:
+        return self._writes
+
+    @property
+    def streaming(self) -> bool:
+        return True
+
+    @property
+    def tags(self) -> list[str]:
+        return self._tags
+
+    def with_params(self, **kwargs: Any) -> "FunctionBasedStreamingAction":
+        """Binds parameters to the function. This is not user-facing -- this is
+        meant to be used internally by the API.
+
+        :param kwargs:
+        :return:
+        """
+        return FunctionBasedStreamingAction(
+            self._fn,
+            self._reads,
+            self._writes,
+            {**self._bound_params, **kwargs},
+            input_spec=self._inputs,
+            originating_fn=self._originating_fn,
+            schema=self._schema,
+            tags=self._tags,
+        )
+
+    @property
+    def inputs(self) -> tuple[list[str], list[str]]:
+        return self._inputs
+
+    @property
+    def fn(self) -> Union[StreamingFn, StreamingFnAsync]:
+        return self._fn
+
+    @property
+    def schema(self) -> ActionSchema:
+        return self._schema
+
+    def is_async(self) -> bool:
+        return inspect.isasyncgenfunction(self._fn)
+
+    def get_source(self) -> str:
+        """Return the source of the code for this action"""
+        return inspect.getsource(self._originating_fn)
+
+
+C = TypeVar("C", bound=Callable)  # placeholder for any Callable
+
+
+class FunctionRepresentingAction(Protocol[C]):
+    action_function: FunctionBasedActionType
+    __call__: C
+
+    def bind(self, **kwargs: Any) -> Self:
+        ...
+
+
+def copy_func(f: types.FunctionType) -> types.FunctionType:
+    """Copies a function. This is used internally to bind parameters to a function
+    so we don't accidentally overwrite them.
+
+    :param f: Function to copy
+    :return: The copied function
+    """
+    fn = types.FunctionType(f.__code__, f.__globals__, f.__name__, f.__defaults__, f.__closure__)
+    fn.__dict__.update(f.__dict__)
+    return fn
+
+
+def bind(self: FunctionRepresentingAction, **kwargs: Any) -> FunctionRepresentingAction:
+    """Binds an action to the given parameters. This is functionally equivalent to
+    functools.partial, but is more explicit and is meant to be used in the API. This only works with
+    the :py:meth:`@action <burr.core.action.action>`  functional API and not with the class-based API.
+
+    .. code-block:: python
+
+        @action(["x"], ["y"])
+        def my_action(state: State, z: int) -> tuple[dict, State]:
+            return {"y": state.get("x") + z}, state
+
+        my_action.bind(z=2)
+
+    :param self: The decorated function
+    :param kwargs: The keyword arguments to bind
+    :return: The decorated function with the given parameters bound
+    """
+    self = copy_func(self)  # we have to bind to a copy of the function, otherwise it will override
+    self.action_function = self.action_function.with_params(**kwargs)
+    return self
+
+
+class action:
+    @staticmethod
+    def pydantic(
+        reads: List[str],
+        writes: List[str],
+        state_input_type: Optional[Type["BaseModel"]] = None,
+        state_output_type: Optional[Type["BaseModel"]] = None,
+        tags: Optional[List[str]] = None,
+    ) -> Callable:
+        """Action that specifies inputs/outputs using pydantic models.
+        This should make it easier to develop with guardrails.
+
+        :param reads: keys that this model reads. Note that this will be a subset of the pydantic model with which this is decorated.
+            We will be validating that the keys are present in the model.
+        :param writes: keys that this model writes. Note that this will be a subset of the pydantic model with which this is decorated.
+            We will be validating that the keys are present in the model.
+        :param state_input_type: The pydantic model type that is used to represent the input state.
+            If this is None it will attempt to derive from the signature.
+        :param state_output_type: The pydantic model type that is used to represent the output state.
+            If this is None it will attempt to derive from the signature.
+        :param tags: Optional list of tags to associate with this action
+        :return:
+        """
+        try:
+            from burr.integrations.pydantic import pydantic_action
+        except ImportError:
+            raise ImportError(
+                "Please install pydantic to use the pydantic decorator. pip install apache-burr[pydantic]"
+            )
+
+        return pydantic_action(
+            reads=reads,
+            writes=writes,
+            state_input_type=state_input_type,
+            state_output_type=state_output_type,
+            tags=tags,
+        )
+
+    def __init__(self, reads: List[str], writes: List[str], tags: Optional[List[str]] = None):
+        """Decorator to create a function-based action. This is user-facing.
+        Note that, in the future, with typed state, we may not need this for
+        all cases.
+
+        If parameters are not bound, they will be interpreted as inputs and must
+        be passed in at runtime. If they have default values, they will be recorded
+        as optional inputs. These can (optionally) be provided at runtime.
+
+        :param reads: Items to read from the state
+        :param writes: Items to write to the state
+        :return: The decorator to assign the function as an action
+        """
+        self.reads = reads
+        self.writes = writes
+        self.tags = tags
+
+    def __call__(self, fn) -> FunctionRepresentingAction:
+        setattr(
+            fn,
+            FunctionBasedAction.ACTION_FUNCTION,
+            FunctionBasedAction(fn, self.reads, self.writes, tags=self.tags),
+        )
+        setattr(fn, "bind", types.MethodType(bind, fn))
+        return fn
+
+
+class streaming_action:
+    @staticmethod
+    def pydantic(
+        reads: List[str],
+        writes: List[str],
+        state_input_type: Type["BaseModel"],
+        state_output_type: Type["BaseModel"],
+        stream_type: Union[Type["BaseModel"], Type[dict]],
+        tags: Optional[List[str]] = None,
+    ) -> Callable:
+        """Creates a streaming action that uses pydantic models.
+
+        :param reads: The fields this consumes from the state.
+        :param writes: The fields this writes to the state.
+        :param stream_type: The pydantic model or dictionary type that is used to represent the partial results.
+            Use a dict if you want this untyped.
+        :param state_input_type: The pydantic model type that is used to represent the input state.
+        :param state_output_type: The pydantic model type that is used to represent the output state.
+        :param tags: Optional list of tags to associate with this action
+        :return: The same function, decorated function.
+        """
+        try:
+            from burr.integrations.pydantic import pydantic_streaming_action
+        except ImportError:
+            raise ImportError(
+                "Please install pydantic to use the pydantic decorator. pip install 'apache-burr[pydantic]'"
+            )
+
+        return pydantic_streaming_action(
+            reads=reads,
+            writes=writes,
+            state_input_type=state_input_type,
+            state_output_type=state_output_type,
+            stream_type=stream_type,
+            tags=tags,
+        )
+
+    def __init__(self, reads: List[str], writes: List[str], tags: Optional[List[str]] = None):
+        """Decorator to create a streaming function-based action. This is user-facing.
+
+        If parameters are not bound, they will be interpreted as inputs and must be passed in at runtime.
+
+        See the following example for how to use this decorator -- this reads ``prompt`` from the state and writes
+        ``response`` back out, yielding all intermediate chunks.
+
+        Note that this *must* return a final value with a state update. If it does not, we will not know how to update the state, and
+        we will error out. Intermediate yields can be plain dicts (without a state update).
+
+        .. code-block:: python
+
+            @streaming_action(reads=["prompt"], writes=['response'])
+            def streaming_response(state: State) -> Generator[dict, None, tuple[dict, State]]:
+                response = client.chat.completions.create(
+                    model='gpt-3.5-turbo',
+                    messages=[{
+                        'role': 'user',
+                        'content': state["prompt"]
+                        }],
+                    temperature=0,
+                )
+                buffer = []
+                for chunk in response:
+                    delta = chunk.choices[0].delta.content
+                    buffer.append(delta)
+                    # yield partial results
+                    yield {'response': delta}
+                full_response = ''.join(buffer)
+                # return the final result
+                return {'response': full_response}, state.update(response=full_response)
+
+        :param reads: The fields this consumes from the state.
+        :param writes: The fields this writes to the state.
+        :param tags: Optional list of tags to associate with this action
+        """
+        self.reads = reads
+        self.writes = writes
+        self.tags = tags
+
+    def __call__(self, fn: Callable) -> FunctionRepresentingAction:
+        fn = copy_func(fn)
+        setattr(
+            fn,
+            FunctionBasedAction.ACTION_FUNCTION,
+            FunctionBasedStreamingAction(fn, self.reads, self.writes, tags=self.tags),
+        )
+        setattr(fn, "bind", types.MethodType(bind, fn))
+        return fn
+
+
+ActionT = TypeVar("ActionT", bound=Action)
+
+
+def create_action(action_: Union[Callable, ActionT], name: str) -> ActionT:
+    """Factory function to create an action. This is meant to be called by
+    the ApplicationBuilder, and not by the user. The internal API may change.
+
+    :param action_: Object to create an action from
+    :param name: The name to assign the action
+    :return: An action with the given name
+    """
+    if hasattr(action_, FunctionBasedAction.ACTION_FUNCTION):
+        action_ = getattr(action_, FunctionBasedAction.ACTION_FUNCTION)
+    elif not isinstance(action_, Action):
+        raise ValueError(
+            f"Object {action_} is not a valid action. Have you decorated it with @action or @streaming_action?"
+        )
+    return action_.with_name(name)

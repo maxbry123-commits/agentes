@@ -1,0 +1,115 @@
+version: 2
+
+project_name: hatchet
+
+before:
+  hooks:
+    - bash ../../hack/build/embedded-ui.sh
+
+builds:
+  - id: hatchet
+    main: ./main.go
+    binary: hatchet
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    goamd64:
+      - v1
+    # Skip unsupported combinations
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X github.com/hatchet-dev/hatchet/cmd/hatchet-cli/cli.Version={{.Version}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: hatchet
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - LICENSE*
+      - README*
+      - CHANGELOG*
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  disable: true
+
+# Cross-platform signing and notarization with quill (works on any OS, including Linux)
+# This will sign and notarize all macOS binaries
+notarize:
+  macos:
+    - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
+      ids:
+        - hatchet
+      # Signing configuration (cross-platform with quill)
+      sign:
+        certificate: "{{.Env.MACOS_SIGN_P12}}"
+        password: "{{.Env.MACOS_SIGN_PASSWORD}}"
+      # Notarization configuration
+      notarize:
+        issuer_id: "{{.Env.MACOS_NOTARY_ISSUER_ID}}"
+        key_id: "{{.Env.MACOS_NOTARY_KEY_ID}}"
+        key: "{{.Env.MACOS_NOTARY_KEY}}"
+        wait: true
+        timeout: 20m
+
+# Release configuration
+release:
+  github:
+    owner: hatchet-dev
+    name: hatchet
+  draft: false
+  prerelease: auto
+  mode: replace
+  footer: |
+    ---
+
+    🪓 New to Hatchet? See [Get started quickly](https://github.com/hatchet-dev/hatchet#get-started-quickly)
+    or the [full documentation](https://docs.hatchet.run).
+  name_template: "{{.ProjectName}} {{.Version}}"
+  disable: false
+
+# Homebrew tap
+homebrew_casks:
+  - name: hatchet
+    ids:
+      - hatchet
+    binaries:
+      - hatchet
+    repository:
+      owner: hatchet-dev
+      name: homebrew-hatchet
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: https://hatchet.run
+    description: "Command-line interface for Hatchet workflow orchestration"
+    license: MIT
+
+# Generate Software Bill of Materials
+sboms:
+  - artifacts: archive

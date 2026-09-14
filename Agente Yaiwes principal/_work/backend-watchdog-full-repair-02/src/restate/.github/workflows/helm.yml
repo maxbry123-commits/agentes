@@ -1,0 +1,50 @@
+name: Release helm chart
+
+on:
+  workflow_call:
+    inputs:
+      # comes from cargo-dist workflow call
+      plan:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "ref to build eg v0.8.0"
+        required: false
+        type: string
+      version:
+        description: "push helm chart with this version, eg 0.8.0"
+        required: true
+        type: string
+
+env:
+  PLAN: ${{ inputs.plan }}
+
+jobs:
+  release-helm-chart:
+    runs-on: warp-ubuntu-latest-x64-2x
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - name: Write release version
+        if: ${{ inputs.plan }}
+        id: version
+        run: |
+          VERSION="$(echo "$PLAN" | jq -r '[.releases[] | select(.app_name == "restate-server")][0].app_version')"
+          echo Version: ${VERSION}
+          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
+      - name: Check helm versions
+        run: |
+          grep -qF 'version: "${{ inputs.version || steps.version.outputs.VERSION }}"' charts/restate-helm/Chart.yaml
+      - name: Push helm chart
+        uses: appany/helm-oci-chart-releaser@v0.4.2
+        with:
+          name: restate-helm
+          repository: restatedev
+          tag: ${{ inputs.version || steps.version.outputs.VERSION }}
+          registry: ghcr.io
+          registry_username: ${{ github.actor }}
+          registry_password: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,128 @@
+# Copyright 2024 RustFS Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: "Setup Rust Environment"
+description: "Setup Rust development environment with caching for RustFS"
+
+inputs:
+  rust-version:
+    description: "Rust version to install"
+    required: false
+    default: "stable"
+  cache-shared-key:
+    description: "Shared cache key for Rust dependencies"
+    required: false
+    default: "rustfs-deps"
+  cache-save-if:
+    description: >-
+      Whether to save the cache. The fail-safe default is 'false': a caller that
+      wants to populate a cache must opt in explicitly, so a forgotten input
+      costs a cold cache (minutes) rather than silently consuming the
+      repository-wide 10GB Actions cache quota and evicting other lanes.
+    required: false
+    default: "false"
+  install-cross-tools:
+    description: "Install cross-compilation tools"
+    required: false
+    default: "false"
+  target:
+    description: "Target architecture to add"
+    required: false
+    default: ""
+  install-build-packaging-tools:
+    description: >-
+      Install musl-tools/zip/unzip, needed for musl linking and release
+      packaging. Off for CI test lanes, which use none of them.
+    required: false
+    default: "true"
+  install-test-tools:
+    description: >-
+      Install cargo-nextest and the rustfmt/clippy components. Off for release
+      and audit lanes, which run no tests and no lints.
+    required: false
+    default: "true"
+
+runs:
+  using: "composite"
+  steps:
+    # protobuf-compiler is deliberately absent: the setup-protoc step below
+    # installs 35.1 into the tool cache and prepends it to PATH, so the apt
+    # build (older, and never version-matched) was shadowed on every run and
+    # simply never used.
+    - name: Install system dependencies (Ubuntu)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          pkg-config \
+          libssl-dev \
+          ripgrep
+
+    # musl-gcc is needed by the native musl release leg, and zip/unzip by the
+    # release packaging steps. No CI test lane touches any of them.
+    - name: Install packaging and cross-linking dependencies (Ubuntu)
+      if: runner.os == 'Linux' && inputs.install-build-packaging-tools == 'true'
+      shell: bash
+      run: sudo apt-get install -y musl-tools zip unzip
+
+    - name: Install protoc
+      uses: rustfs/setup-protoc@a3705324d8f9bf5b6c3573fb6cf8ae421db55dd6 # v3.0.1
+      with:
+        version: "35.1"
+        repo-token: ${{ github.token }}
+
+    - name: Install flatc
+      uses: Nugine/setup-flatc@698800de72a96bfb22cf60431dc21a2ff9a7e07b # v1
+      with:
+        version: "25.12.19"
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      with:
+        toolchain: ${{ inputs.rust-version }}
+        targets: ${{ inputs.target }}
+        components: ${{ inputs.install-test-tools == 'true' && 'rustfmt, clippy' || '' }}
+
+    - name: Install Zig
+      if: inputs.install-cross-tools == 'true'
+      uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+
+    - name: Install cargo-zigbuild
+      if: inputs.install-cross-tools == 'true'
+      uses: taiki-e/install-action@a21ae4029b089b9ddc45704028756f51ab8abe48 # cargo-zigbuild
+
+    - name: Install cargo-nextest
+      if: inputs.install-test-tools == 'true'
+      uses: taiki-e/install-action@96c7780c1d8a2b8723e12031def873a434d39d8d # nextest
+
+    - name: Setup Rust cache
+      uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      with:
+        # false is rust-cache's own default. With true, cleanup.ts returns
+        # *before* pruning ~/.cargo/registry/src, and config.ts archives the
+        # whole registry — so every cache carried the unpacked source tree of
+        # every dependency, not just "a few extra crates".
+        #
+        # No coverage is lost: getPackages runs `cargo metadata --all-features`,
+        # a strict superset of any single lane's feature closure, and -sys crates
+        # are explicitly exempted from pruning (their src timestamps would
+        # otherwise trigger rebuilds). Anything pruned is re-unpacked from the
+        # .crate files still in registry/cache, whose mtimes crates.io
+        # normalises, so cargo fingerprints stay valid.
+        cache-all-crates: false
+        cache-on-failure: true
+        shared-key: ${{ inputs.cache-shared-key }}
+        save-if: ${{ inputs.cache-save-if }}

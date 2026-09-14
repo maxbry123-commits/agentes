@@ -1,0 +1,10 @@
+apache-hamilton
+numpy
+openai
+pandas
+pandera
+plotly
+requests
+scikit-learn
+tenacity
+torch

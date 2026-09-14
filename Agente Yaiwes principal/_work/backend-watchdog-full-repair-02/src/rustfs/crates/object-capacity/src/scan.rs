@@ -1,0 +1,1906 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use super::capacity_manager::{
+    CapacityUpdate, DiskCapacityUpdate, HybridCapacityManager, get_enable_dynamic_timeout, get_follow_symlinks,
+    get_max_files_threshold, get_max_timeout, get_min_timeout, get_sample_rate, get_stat_timeout,
+};
+use super::types::{CapacityDiskRef, CapacityScanResult, CapacityScanSummary};
+use crate::capacity_scope::CapacityScopeDisk;
+use futures::{StreamExt, stream};
+use rustfs_io_metrics::capacity_metrics::{
+    record_capacity_dynamic_timeout, record_capacity_scan_disk, record_capacity_scan_mode, record_capacity_scan_sampling,
+    record_capacity_timeout_fallback,
+};
+use std::collections::HashSet;
+use std::ffi::OsStr;
+use std::path::{Component, Path};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
+use tracing::{debug, info, warn};
+use walkdir::WalkDir;
+
+const MAX_CAPACITY_SCAN_CONCURRENCY: usize = 4;
+const CAPACITY_PROGRESS_CHECK_STRIDE: usize = 512;
+const CAPACITY_SCAN_ERROR_WARN_CAP: usize = 10;
+const LOG_COMPONENT_CAPACITY: &str = "capacity";
+const LOG_SUBSYSTEM_SCAN: &str = "scan";
+const LOG_SUBSYSTEM_SAMPLING: &str = "sampling";
+const EVENT_CAPACITY_SCAN_DISK_COMPLETED: &str = "capacity_scan_disk_completed";
+const EVENT_CAPACITY_SCAN_DISK_FAILED: &str = "capacity_scan_disk_failed";
+const EVENT_CAPACITY_SCAN_SUMMARY: &str = "capacity_scan_summary";
+const EVENT_CAPACITY_SCAN_DYNAMIC_TIMEOUT: &str = "capacity_scan_dynamic_timeout";
+const EVENT_CAPACITY_SCAN_TIMEOUT: &str = "capacity_scan_timeout";
+const EVENT_CAPACITY_SCAN_SAMPLING_CLAMPED: &str = "capacity_scan_sampling_clamped";
+const EVENT_CAPACITY_SCAN_TRAVERSAL_FAILED: &str = "capacity_scan_traversal_failed";
+const EVENT_CAPACITY_SCAN_METADATA_FAILED: &str = "capacity_scan_metadata_failed";
+const EVENT_CAPACITY_SCAN_SAMPLING_APPLIED: &str = "capacity_scan_sampling_applied";
+const EVENT_CAPACITY_SCAN_EXACT_COMPLETED: &str = "capacity_scan_exact_completed";
+const EVENT_CAPACITY_SCAN_HARD_TIMEOUT: &str = "capacity_scan_hard_timeout";
+const RUSTFS_META_BUCKET: &str = ".rustfs.sys";
+const RUSTFS_META_TMP_DIR: &str = "tmp";
+const RUSTFS_META_TMP_TRASH_DIR: &str = ".trash";
+
+#[derive(Debug)]
+struct DiskScanOutcome {
+    disk_label: String,
+    drive_path: String,
+    duration: Duration,
+    result: Result<CapacityScanResult, std::io::Error>,
+}
+
+#[derive(Debug, Clone)]
+struct DiskCapacityScanResult {
+    disk: CapacityScopeDisk,
+    scan: CapacityScanResult,
+}
+
+#[derive(Debug, Clone)]
+struct CapacityScanReport {
+    summary: CapacityScanResult,
+    per_disk: Vec<DiskCapacityScanResult>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ScheduledCapacityRefresh {
+    Idle,
+    Scan {
+        disks: Vec<CapacityDiskRef>,
+        dirty_subset: bool,
+    },
+}
+
+impl CapacityScanReport {
+    fn into_capacity_update(self, expected_disk_count: usize, replaces_disk_cache: bool) -> CapacityUpdate {
+        let mut update = if self.summary.is_estimated {
+            CapacityUpdate::estimated(self.summary.used_bytes, self.summary.file_count)
+        } else {
+            CapacityUpdate::exact(self.summary.used_bytes, self.summary.file_count)
+        };
+
+        if !self.summary.had_partial_errors && self.per_disk.len() == expected_disk_count {
+            update.per_disk = self
+                .per_disk
+                .into_iter()
+                .map(|entry| DiskCapacityUpdate {
+                    disk: entry.disk,
+                    used_bytes: entry.scan.used_bytes,
+                    file_count: entry.scan.file_count,
+                    is_estimated: entry.scan.is_estimated,
+                })
+                .collect();
+            // Skipped metadata or timeout fallback estimates can update an
+            // existing complete cache, but must not establish a new baseline.
+            if self.summary.timed_out {
+                // A timeout estimate is still the best bounded refresh for a
+                // disk too large to enumerate. Acknowledge dirty marks that
+                // predate this attempt so an idle disk does not loop forever;
+                // update_capacity preserves marks recorded during the scan.
+                update.clear_dirty_disks = update.per_disk.iter().map(|entry| entry.disk.clone()).collect();
+            } else if !self.summary.metadata_incomplete {
+                update.expected_disk_count = Some(expected_disk_count);
+                update.replaces_disk_cache = replaces_disk_cache;
+                update.clear_dirty_disks = update.per_disk.iter().map(|entry| entry.disk.clone()).collect();
+            }
+        } else if self.summary.had_partial_errors {
+            // Partial failure: mark the reading degraded and surface only the
+            // disks whose own scan fully succeeded, so the manager can merge
+            // them over a complete disk cache while failed disks keep their
+            // last-known values. A disk with intra-disk errors under-counts,
+            // so its stale cache entry is closer to the truth than its scan.
+            // The cache is never replaced from a degraded refresh.
+            update.degraded = true;
+            update.per_disk = self
+                .per_disk
+                .into_iter()
+                .filter(|entry| !entry.scan.had_partial_errors)
+                .map(|entry| DiskCapacityUpdate {
+                    disk: entry.disk,
+                    used_bytes: entry.scan.used_bytes,
+                    file_count: entry.scan.file_count,
+                    is_estimated: entry.scan.is_estimated,
+                })
+                .collect();
+            update.clear_dirty_disks = update.per_disk.iter().map(|entry| entry.disk.clone()).collect();
+        }
+
+        update.timed_out = self.summary.timed_out;
+
+        update
+    }
+}
+
+fn disk_metric_label(disk: &CapacityDiskRef) -> String {
+    let mount_name = Path::new(&disk.drive_path)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or(disk.drive_path.as_str());
+    format!("{}:{mount_name}", disk.endpoint)
+}
+
+/// Extrapolate the total overflow bytes from a sample as
+/// `sampled_bytes * overflow_count / sampled_count`.
+///
+/// The multiplication is performed in `u128` so the intermediate product cannot
+/// saturate `u64` on very large disks. Doing `saturating_mul` in `u64` first and
+/// then dividing (the previous approach) pins the numerator at `u64::MAX` once the
+/// product overflows, which makes the estimate shrink as `sampled_count` grows —
+/// i.e. the reported capacity monotonically *under*-counts as the disk gets
+/// bigger. The final result is clamped to `u64::MAX`. See backlog#1012.
+fn estimate_overflow_bytes(overflow_sampled_bytes: u64, overflow_count: u64, sampled_count: u64) -> u64 {
+    let denom = (sampled_count.max(1)) as u128;
+    let scaled = (overflow_sampled_bytes as u128 * overflow_count as u128) / denom;
+    scaled.min(u64::MAX as u128) as u64
+}
+
+fn overflow_entry_is_sampled(overflow_index: usize, sample_rate: usize) -> bool {
+    overflow_index.is_multiple_of(sample_rate)
+}
+
+fn disk_scope_key(disk: &CapacityDiskRef) -> CapacityScopeDisk {
+    CapacityScopeDisk {
+        endpoint: disk.endpoint.clone(),
+        drive_path: disk.drive_path.clone(),
+    }
+}
+
+fn normal_component_eq(component: Option<Component<'_>>, expected: &str) -> bool {
+    matches!(component, Some(Component::Normal(value)) if value == OsStr::new(expected))
+}
+
+fn is_tmp_trash_metadata_not_found(scan_root: &Path, entry_path: &Path, error_kind: Option<std::io::ErrorKind>) -> bool {
+    if error_kind != Some(std::io::ErrorKind::NotFound) {
+        return false;
+    }
+
+    let Ok(relative_path) = entry_path.strip_prefix(scan_root) else {
+        return false;
+    };
+
+    let mut components = relative_path.components();
+    normal_component_eq(components.next(), RUSTFS_META_BUCKET)
+        && normal_component_eq(components.next(), RUSTFS_META_TMP_DIR)
+        && normal_component_eq(components.next(), RUSTFS_META_TMP_TRASH_DIR)
+        && matches!(components.next(), Some(Component::Normal(_)))
+        && components.all(|component| matches!(component, Component::Normal(_)))
+}
+
+async fn scan_disk_used_capacity(disk: CapacityDiskRef) -> DiskScanOutcome {
+    let disk_label = disk_metric_label(&disk);
+    let drive_path = disk.drive_path.clone();
+    let start = Instant::now();
+    let result = get_dir_size_async(Path::new(&drive_path)).await;
+
+    DiskScanOutcome {
+        disk_label,
+        drive_path,
+        duration: start.elapsed(),
+        result,
+    }
+}
+
+async fn calculate_data_dir_used_capacity_report(
+    disks: &[CapacityDiskRef],
+) -> Result<CapacityScanReport, Box<dyn std::error::Error + Send + Sync>> {
+    let start = Instant::now();
+    let mut total_used = 0u64;
+    let mut total_files = 0usize;
+    let mut total_sampled = 0usize;
+    let mut has_failure = false;
+    let mut has_success = false;
+    let mut is_estimated = false;
+    let mut timed_out = false;
+    let mut metadata_incomplete = false;
+    #[cfg(test)]
+    let mut total_metadata_reads = 0usize;
+    let mut per_disk = Vec::with_capacity(disks.len());
+
+    let concurrency_limit = disks.len().clamp(1, MAX_CAPACITY_SCAN_CONCURRENCY);
+    let mut scans = stream::iter(disks.iter().cloned().map(scan_disk_used_capacity)).buffer_unordered(concurrency_limit);
+
+    while let Some(outcome) = scans.next().await {
+        match outcome.result {
+            Ok(scan) => {
+                record_capacity_scan_disk(
+                    outcome.disk_label.as_str(),
+                    outcome.duration,
+                    scan.file_count,
+                    scan.sampled_count,
+                    scan.is_estimated,
+                    scan.had_partial_errors,
+                );
+                debug!(
+                    event = EVENT_CAPACITY_SCAN_DISK_COMPLETED,
+                    component = LOG_COMPONENT_CAPACITY,
+                    subsystem = LOG_SUBSYSTEM_SCAN,
+                    result = "ok",
+                    disk_label = %outcome.disk_label,
+                    drive_path = %outcome.drive_path,
+                    used_bytes = scan.used_bytes,
+                    file_count = scan.file_count,
+                    sampled_count = scan.sampled_count,
+                    estimated = scan.is_estimated,
+                    partial_errors = scan.had_partial_errors,
+                    duration_ms = outcome.duration.as_millis() as u64,
+                    "capacity scan disk completed"
+                );
+                total_used += scan.used_bytes;
+                total_files += scan.file_count;
+                total_sampled += scan.sampled_count;
+                is_estimated |= scan.is_estimated;
+                timed_out |= scan.timed_out;
+                metadata_incomplete |= scan.metadata_incomplete;
+                #[cfg(test)]
+                {
+                    total_metadata_reads += scan.metadata_reads;
+                }
+                has_failure |= scan.had_partial_errors;
+                has_success = true;
+                if let Some(disk) = disks
+                    .iter()
+                    .find(|disk| disk.drive_path == outcome.drive_path && disk_metric_label(disk) == outcome.disk_label)
+                {
+                    per_disk.push(DiskCapacityScanResult {
+                        disk: disk_scope_key(disk),
+                        scan,
+                    });
+                }
+            }
+            Err(e) => {
+                record_capacity_scan_disk(outcome.disk_label.as_str(), outcome.duration, 0, 0, false, true);
+                warn!(
+                    event = EVENT_CAPACITY_SCAN_DISK_FAILED,
+                    component = LOG_COMPONENT_CAPACITY,
+                    subsystem = LOG_SUBSYSTEM_SCAN,
+                    result = "error",
+                    disk_label = %outcome.disk_label,
+                    drive_path = %outcome.drive_path,
+                    duration_ms = outcome.duration.as_millis() as u64,
+                    error = ?e,
+                    "capacity scan disk failed"
+                );
+                has_failure = true;
+            }
+        }
+    }
+
+    if !has_success {
+        return Err("All directories failed to calculate size".into());
+    }
+
+    if has_failure {
+        warn!(
+            event = EVENT_CAPACITY_SCAN_SUMMARY,
+            component = LOG_COMPONENT_CAPACITY,
+            subsystem = LOG_SUBSYSTEM_SCAN,
+            result = "partial",
+            disk_count = disks.len(),
+            used_bytes = total_used,
+            file_count = total_files,
+            sampled_count = total_sampled,
+            estimated = is_estimated,
+            duration_ms = start.elapsed().as_millis() as u64,
+            "capacity scan completed with partial failures"
+        );
+    }
+
+    let mut summary = CapacityScanResult {
+        used_bytes: total_used,
+        file_count: total_files,
+        sampled_count: total_sampled,
+        is_estimated,
+        scan_duration: start.elapsed(),
+        had_partial_errors: false,
+        timed_out,
+        metadata_incomplete,
+        #[cfg(test)]
+        metadata_reads: total_metadata_reads,
+    };
+
+    if has_failure {
+        summary = summary.with_partial_errors();
+    }
+
+    Ok(CapacityScanReport { summary, per_disk })
+}
+
+/// Calculate actual used capacity of all data directories.
+pub(crate) async fn calculate_data_dir_used_capacity(
+    disks: &[CapacityDiskRef],
+) -> Result<CapacityScanResult, Box<dyn std::error::Error + Send + Sync>> {
+    Ok(calculate_data_dir_used_capacity_report(disks).await?.summary)
+}
+
+pub(crate) async fn select_scheduled_capacity_refresh(
+    capacity_manager: &HybridCapacityManager,
+    disks: &[CapacityDiskRef],
+) -> ScheduledCapacityRefresh {
+    // The write side marks every disk of an EC set dirty, including remote
+    // peers, but only local disks are ever scanned and cleared — drop ghost
+    // entries so the dirty gauge reflects local pending work (backlog#1020).
+    let local_set: HashSet<CapacityScopeDisk> = disks.iter().map(disk_scope_key).collect();
+    capacity_manager.retain_dirty_disks_within(&local_set).await;
+
+    let dirty_disks = capacity_manager.get_dirty_disks().await;
+    if dirty_disks.is_empty() {
+        return if disks.is_empty() || capacity_manager.get_capacity().await.is_some() {
+            ScheduledCapacityRefresh::Idle
+        } else {
+            ScheduledCapacityRefresh::Scan {
+                disks: disks.to_vec(),
+                dirty_subset: false,
+            }
+        };
+    }
+
+    if !capacity_manager.can_refresh_dirty_subset().await {
+        return ScheduledCapacityRefresh::Scan {
+            disks: disks.to_vec(),
+            dirty_subset: false,
+        };
+    }
+
+    let dirty_set: HashSet<CapacityScopeDisk> = dirty_disks.into_iter().collect();
+    let selected: Vec<_> = disks
+        .iter()
+        .filter(|disk| dirty_set.contains(&disk_scope_key(disk)))
+        .cloned()
+        .collect();
+
+    if selected.is_empty() || selected.len() >= disks.len() {
+        ScheduledCapacityRefresh::Scan {
+            disks: disks.to_vec(),
+            dirty_subset: false,
+        }
+    } else {
+        ScheduledCapacityRefresh::Scan {
+            disks: selected,
+            dirty_subset: true,
+        }
+    }
+}
+
+pub async fn select_capacity_refresh_disks(
+    capacity_manager: &HybridCapacityManager,
+    disks: &[CapacityDiskRef],
+) -> (Vec<CapacityDiskRef>, bool) {
+    match select_scheduled_capacity_refresh(capacity_manager, disks).await {
+        // Preserve the public selector's historical contract. The background
+        // scheduler consumes the richer internal plan and can remain idle.
+        ScheduledCapacityRefresh::Idle => (disks.to_vec(), false),
+        ScheduledCapacityRefresh::Scan { disks, dirty_subset } => (disks, dirty_subset),
+    }
+}
+
+#[hotpath::measure]
+pub async fn refresh_capacity_with_scope(disks: Vec<CapacityDiskRef>, dirty_subset: bool) -> Result<CapacityUpdate, String> {
+    let scan_started_at = Instant::now();
+    let report = calculate_data_dir_used_capacity_report(&disks)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if dirty_subset && report.summary.had_partial_errors {
+        return Err("dirty subset refresh had partial errors".to_string());
+    }
+
+    let mut update = report.into_capacity_update(disks.len(), !dirty_subset);
+    update.scan_started_at = Some(scan_started_at);
+    Ok(update)
+}
+
+/// Scan the provided local disk roots and return a summarized used-capacity result.
+///
+/// This is primarily intended for benchmarks and operational tooling that need to exercise
+/// the same scan path as admin capacity queries without going through the full admin stack.
+pub async fn scan_used_capacity_disks(
+    disks: &[CapacityDiskRef],
+) -> Result<CapacityScanSummary, Box<dyn std::error::Error + Send + Sync>> {
+    Ok(calculate_data_dir_used_capacity(disks).await?.into())
+}
+
+/// Monitor for directory traversal progress with a cooperative timeout.
+///
+/// The old in-loop stall detector was structurally unreachable: cooperative
+/// checks only run when the walker yields entries, so a walker that stops
+/// yielding can never be observed from here. Genuine wedges are handled by
+/// the hard outer wall-clock budget instead (backlog#1016 S09, backlog#1017).
+struct ProgressMonitor {
+    start_time: Instant,
+    timeout: Duration,
+    min_timeout: Duration,
+    max_timeout: Duration,
+    enable_dynamic_timeout: bool,
+    used_dynamic_timeout: bool,
+}
+
+impl ProgressMonitor {
+    fn new(base_timeout: Duration, min_timeout: Duration, max_timeout: Duration, enable_dynamic: bool) -> Self {
+        Self {
+            start_time: Instant::now(),
+            timeout: base_timeout,
+            min_timeout,
+            max_timeout,
+            enable_dynamic_timeout: enable_dynamic,
+            used_dynamic_timeout: false,
+        }
+    }
+
+    fn calculate_dynamic_timeout(&mut self, file_count: usize, avg_file_size: u64) -> Duration {
+        if !self.enable_dynamic_timeout {
+            return self.timeout;
+        }
+
+        self.used_dynamic_timeout = true;
+
+        let file_factor = (file_count as f64).sqrt() * 0.01;
+        let size_factor = if avg_file_size > 0 {
+            (avg_file_size as f64).log(10.0) * 0.05
+        } else {
+            0.0
+        };
+
+        let multiplier = 1.0 + file_factor + size_factor;
+        let adjusted_timeout = self.timeout.mul_f64(multiplier.min(5.0));
+        let clamped_timeout = adjusted_timeout.max(self.min_timeout).min(self.max_timeout);
+
+        debug!(
+            event = EVENT_CAPACITY_SCAN_DYNAMIC_TIMEOUT,
+            component = LOG_COMPONENT_CAPACITY,
+            subsystem = LOG_SUBSYSTEM_SCAN,
+            state = "calculated",
+            file_count,
+            avg_file_size,
+            multiplier,
+            base_timeout_secs = self.timeout.as_secs(),
+            adjusted_timeout_secs = adjusted_timeout.as_secs(),
+            clamped_timeout_secs = clamped_timeout.as_secs(),
+            "capacity scan dynamic timeout calculated"
+        );
+
+        clamped_timeout
+    }
+
+    fn update_and_check_timeout(&mut self, files_processed: usize, avg_file_size: u64) -> Result<(), std::io::Error> {
+        let elapsed = self.start_time.elapsed();
+        let dynamic_timeout = if self.enable_dynamic_timeout {
+            self.calculate_dynamic_timeout(files_processed, avg_file_size)
+        } else {
+            self.timeout
+        };
+
+        if elapsed >= dynamic_timeout {
+            warn!(
+                event = EVENT_CAPACITY_SCAN_TIMEOUT,
+                component = LOG_COMPONENT_CAPACITY,
+                subsystem = LOG_SUBSYSTEM_SCAN,
+                result = "timeout",
+                file_count = files_processed,
+                elapsed_ms = elapsed.as_millis() as u64,
+                timeout_ms = dynamic_timeout.as_millis() as u64,
+                dynamic_timeout_enabled = self.enable_dynamic_timeout,
+                "capacity scan timed out"
+            );
+
+            if self.enable_dynamic_timeout {
+                record_capacity_dynamic_timeout(dynamic_timeout);
+            }
+
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!("Timeout after {} files", files_processed),
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// True once at least half of the current (possibly dynamic) time budget
+    /// has elapsed — the signal to stop growing the exact prefix and start
+    /// sampling, so that when the timeout fires a usable sample exists even on
+    /// disks too slow to enumerate the full exact prefix (backlog#1013 S03).
+    fn half_budget_elapsed(&mut self, file_count: usize, avg_file_size: u64) -> bool {
+        let budget = if self.enable_dynamic_timeout {
+            self.calculate_dynamic_timeout(file_count, avg_file_size)
+        } else {
+            self.timeout
+        };
+        self.start_time.elapsed() >= budget / 2
+    }
+}
+
+/// Scan configuration resolved from the environment, separated so the blocking
+/// scanner can be exercised with explicit limits in tests.
+#[derive(Debug, Clone)]
+struct ScanLimits {
+    max_files_threshold: usize,
+    base_timeout: Duration,
+    min_timeout: Duration,
+    max_timeout: Duration,
+    sample_rate: usize,
+    enable_dynamic_timeout: bool,
+    follow_symlinks: bool,
+}
+
+impl ScanLimits {
+    fn from_env() -> Self {
+        let sample_rate = get_sample_rate();
+        let effective_sample_rate = if sample_rate == 0 {
+            warn!(
+                event = EVENT_CAPACITY_SCAN_SAMPLING_CLAMPED,
+                component = LOG_COMPONENT_CAPACITY,
+                subsystem = LOG_SUBSYSTEM_SAMPLING,
+                result = "clamped",
+                configured_sample_rate = 0,
+                effective_sample_rate = 1,
+                reason = "zero_sample_rate",
+                "capacity scan sampling configuration clamped"
+            );
+            1
+        } else {
+            sample_rate
+        };
+
+        Self {
+            max_files_threshold: get_max_files_threshold(),
+            base_timeout: get_stat_timeout(),
+            min_timeout: get_min_timeout(),
+            max_timeout: get_max_timeout(),
+            sample_rate: effective_sample_rate,
+            enable_dynamic_timeout: get_enable_dynamic_timeout(),
+            follow_symlinks: get_follow_symlinks(),
+        }
+    }
+}
+
+/// Filesystem-level used bytes for `path`, only when `path` is a dedicated
+/// mount point. On a shared filesystem (several logical disks per filesystem,
+/// common in dev deployments) statvfs counts unrelated data and would badly
+/// overcount, so `None` is returned and callers keep scan-based estimates.
+fn mount_point_used_bytes(path: &Path) -> Option<u64> {
+    let parent = path.parent()?;
+    let dedicated = !rustfs_utils::os::same_disk(path.to_str()?, parent.to_str()?).ok()?;
+    if !dedicated {
+        return None;
+    }
+    rustfs_utils::os::get_info(path).ok().map(|info| info.used)
+}
+
+/// Pick the timeout-fallback value from the two independent estimators.
+///
+/// The seen-files extrapolation guarantees at least the observed data; the
+/// filesystem-level usage covers the walker's unseen tail. When both exist the
+/// max wins (both are lower..upper bounds of the same truth from opposite
+/// sides). With only filesystem usage, the exact prefix is still a hard floor.
+/// `None` means no trustworthy estimator exists.
+fn combine_timeout_estimates(seen_estimate: Option<u64>, disk_used: Option<u64>, exact_prefix_bytes: u64) -> Option<u64> {
+    match (seen_estimate, disk_used) {
+        (Some(seen), Some(disk)) => Some(seen.max(disk)),
+        (Some(seen), None) => Some(seen),
+        (None, Some(disk)) => Some(disk.max(exact_prefix_bytes)),
+        (None, None) => None,
+    }
+}
+
+/// Build the best available estimate when a scan times out or stalls, instead
+/// of discarding the accumulated work with a hard error (backlog#1013 S03+S10).
+///
+/// The seen-files extrapolation only covers files the walker reached; the
+/// filesystem-level usage covers the whole disk but is only trustworthy on a
+/// dedicated mount. Taking the max compensates for the walker's unseen tail
+/// without regressing shared-filesystem deployments. Returns `None` when
+/// neither source is available (no sample and no dedicated mount) — the caller
+/// then propagates the original error, as before.
+#[allow(clippy::too_many_arguments)]
+fn timeout_fallback_estimate(
+    path: &Path,
+    reason: &'static str,
+    exact_prefix_bytes: u64,
+    overflow_sampled_bytes: u64,
+    file_count: usize,
+    sampled_count: usize,
+    effective_threshold: usize,
+    had_partial_errors: bool,
+    start_time: Instant,
+) -> Option<CapacityScanResult> {
+    let seen_estimate = (sampled_count > 0).then(|| {
+        let overflow_count = file_count.saturating_sub(effective_threshold);
+        let estimated_overflow = estimate_overflow_bytes(overflow_sampled_bytes, overflow_count as u64, sampled_count as u64);
+        exact_prefix_bytes.saturating_add(estimated_overflow)
+    });
+    let disk_used = mount_point_used_bytes(path);
+    let used_bytes = combine_timeout_estimates(seen_estimate, disk_used, exact_prefix_bytes)?;
+
+    info!(
+        event = EVENT_CAPACITY_SCAN_SAMPLING_APPLIED,
+        component = LOG_COMPONENT_CAPACITY,
+        subsystem = LOG_SUBSYSTEM_SAMPLING,
+        result = "fallback_estimate",
+        reason,
+        file_count,
+        exact_prefix_bytes,
+        sampled_count,
+        seen_estimate_bytes = seen_estimate,
+        disk_used_bytes = disk_used,
+        estimated_total_bytes = used_bytes,
+        "capacity scan sampling applied"
+    );
+    record_capacity_timeout_fallback();
+    record_capacity_scan_sampling(sampled_count, true);
+    record_capacity_scan_mode("timeout_fallback");
+
+    Some(CapacityScanResult {
+        used_bytes,
+        file_count,
+        sampled_count,
+        is_estimated: true,
+        scan_duration: start_time.elapsed(),
+        had_partial_errors,
+        timed_out: true,
+        metadata_incomplete: false,
+        #[cfg(test)]
+        metadata_reads: 0,
+    })
+}
+
+/// Hard wall-clock ceiling for one disk scan, enforced from async context.
+///
+/// The in-scan `ProgressMonitor` checks are cooperative — they only run
+/// between walker entries, so a stat/readdir blocked on a dying disk or hung
+/// NFS mount never returns control to them. Twice the cooperative budget
+/// leaves room for a slow-but-alive walker to reach its own timeout fallback
+/// first; only a truly wedged scan trips the outer ceiling.
+fn outer_scan_budget(limits: &ScanLimits) -> Duration {
+    limits.max_timeout.saturating_mul(2).max(Duration::from_secs(5))
+}
+
+struct ScanCancellationGuard(Arc<AtomicBool>);
+
+impl ScanCancellationGuard {
+    fn cancel(&self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+}
+
+impl Drop for ScanCancellationGuard {
+    fn drop(&mut self) {
+        self.cancel();
+    }
+}
+
+async fn get_dir_size_async(path: &Path) -> Result<CapacityScanResult, std::io::Error> {
+    let path = path.to_path_buf();
+    let limits = ScanLimits::from_env();
+    let budget = outer_scan_budget(&limits);
+
+    // The blocking thread cannot be killed; on ceiling expiry the caller (and
+    // with it the refresh singleflight) is released with an error while
+    // `cancelled` asks the walker to exit at its next entry, bounding the
+    // thread leak to the single wedged syscall (backlog#1017 S02).
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let scan_cancelled = cancelled.clone();
+    let scan = tokio::task::spawn_blocking(move || scan_dir_blocking(&path, &limits, &scan_cancelled));
+    let cancel_on_drop = ScanCancellationGuard(cancelled);
+
+    match tokio::time::timeout(budget, scan).await {
+        Ok(join_result) => join_result.map_err(std::io::Error::other)?,
+        Err(_) => {
+            cancel_on_drop.cancel();
+            warn!(
+                event = EVENT_CAPACITY_SCAN_HARD_TIMEOUT,
+                component = LOG_COMPONENT_CAPACITY,
+                subsystem = LOG_SUBSYSTEM_SCAN,
+                result = "hard_timeout",
+                budget_ms = budget.as_millis() as u64,
+                "capacity scan exceeded hard wall-clock budget; blocking walker asked to stop"
+            );
+            Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!("capacity scan exceeded hard wall-clock budget of {budget:?}"),
+            ))
+        }
+    }
+}
+
+fn scan_dir_blocking(path: &Path, limits: &ScanLimits, cancelled: &AtomicBool) -> Result<CapacityScanResult, std::io::Error> {
+    let ScanLimits {
+        max_files_threshold,
+        base_timeout,
+        min_timeout,
+        max_timeout,
+        sample_rate: effective_sample_rate,
+        enable_dynamic_timeout,
+        follow_symlinks,
+    } = *limits;
+    {
+        if !path.exists() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Directory not found: {:?}", path),
+            ));
+        }
+
+        // Resolve the scan root before walking. A drive_path that is itself a
+        // symlink (container/k8s indirection) combined with
+        // follow_root_links(false) used to yield a single skipped symlink
+        // entry and commit an exact 0-byte result into the per-disk baseline
+        // with no error and no log (backlog#1015 S05). Resolution failures are
+        // surfaced instead of silently counting zero.
+        let resolved_root = std::fs::canonicalize(path)
+            .map_err(|err| std::io::Error::new(err.kind(), format!("failed to resolve scan root {path:?}: {err}")))?;
+        let path = resolved_root.as_path();
+
+        let start_time = Instant::now();
+        let mut exact_prefix_bytes = 0u64;
+        let mut overflow_sampled_bytes = 0u64;
+        let mut file_count = 0usize;
+        let mut sampled_count = 0usize;
+        let mut metadata_incomplete = false;
+        #[cfg(test)]
+        let mut metadata_reads = 0usize;
+        let mut had_partial_errors = false;
+        let mut entries_visited = 0usize;
+        let mut last_progress_check_entries = 0usize;
+        let mut error_warn_count = 0usize;
+        // Lowered from the configured threshold when half the time budget
+        // elapses before the exact prefix fills (early sampling entry).
+        let mut effective_threshold = max_files_threshold;
+
+        let mut progress_monitor = ProgressMonitor::new(base_timeout, min_timeout, max_timeout, enable_dynamic_timeout);
+
+        // With follow_links(true), symlink targets are counted and walkdir's
+        // own ancestor-loop detection breaks cycles (diamond-shaped links may
+        // still be counted once per path). With the default (false), symlink
+        // targets are not counted. The old SymlinkTracker layered on top of
+        // this never influenced traversal, reported tree depth as chain depth
+        // and always tracked 0 bytes, so it was removed along with the no-op
+        // RUSTFS_CAPACITY_MAX_SYMLINK_DEPTH knob (backlog#1018 S12). The root
+        // itself is pre-resolved above (backlog#1015).
+        let walker = WalkDir::new(path).follow_links(follow_symlinks).into_iter();
+
+        for entry_result in walker {
+            if cancelled.load(Ordering::Relaxed) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    format!("capacity scan cancelled after hard budget expiry ({file_count} files seen)"),
+                ));
+            }
+
+            // Progress is measured in visited entries, not counted files:
+            // directory-only stretches and error-dense trees previously never
+            // advanced file_count and so never reached a timeout check,
+            // holding the blocking thread for unbounded time (backlog#1016 S13).
+            entries_visited += 1;
+            let should_check_progress = entries_visited == 1
+                || entries_visited.saturating_sub(last_progress_check_entries) >= CAPACITY_PROGRESS_CHECK_STRIDE;
+            if should_check_progress {
+                let exact_count = file_count.min(effective_threshold);
+                let avg_size = if exact_count > 0 {
+                    exact_prefix_bytes / exact_count as u64
+                } else {
+                    0
+                };
+
+                if let Err(e) = progress_monitor.update_and_check_timeout(file_count, avg_size) {
+                    if let Some(result) = timeout_fallback_estimate(
+                        path,
+                        "timeout",
+                        exact_prefix_bytes,
+                        overflow_sampled_bytes,
+                        file_count,
+                        sampled_count,
+                        effective_threshold,
+                        had_partial_errors,
+                        start_time,
+                    ) {
+                        return Ok(result);
+                    }
+                    return Err(e);
+                }
+
+                // Half the time budget is gone and the exact prefix hasn't
+                // filled: freeze the threshold at the current position so the
+                // remaining budget collects overflow samples. Without this, a
+                // disk too slow to enumerate the full prefix within the budget
+                // reaches the timeout with sampled_count == 0 and used to lose
+                // the whole scan (backlog#1013 S03).
+                if effective_threshold == max_files_threshold
+                    && file_count < effective_threshold
+                    && progress_monitor.half_budget_elapsed(file_count, avg_size)
+                {
+                    effective_threshold = file_count.max(1);
+                    info!(
+                        event = EVENT_CAPACITY_SCAN_SAMPLING_APPLIED,
+                        component = LOG_COMPONENT_CAPACITY,
+                        subsystem = LOG_SUBSYSTEM_SAMPLING,
+                        result = "early_sampling",
+                        reason = "time_budget",
+                        file_count,
+                        exact_prefix_bytes,
+                        frozen_threshold = effective_threshold,
+                        configured_threshold = max_files_threshold,
+                        "capacity scan sampling applied"
+                    );
+                    record_capacity_scan_mode("early_sampling");
+                }
+
+                last_progress_check_entries = entries_visited;
+            }
+
+            let entry = match entry_result {
+                Ok(entry) => entry,
+                Err(err) => {
+                    had_partial_errors = true;
+                    error_warn_count += 1;
+                    if error_warn_count <= CAPACITY_SCAN_ERROR_WARN_CAP {
+                        warn!(
+                            event = EVENT_CAPACITY_SCAN_TRAVERSAL_FAILED,
+                            component = LOG_COMPONENT_CAPACITY,
+                            subsystem = LOG_SUBSYSTEM_SCAN,
+                            result = "partial",
+                            root_path = ?path,
+                            file_count,
+                            error = %err,
+                            "capacity scan traversal failed"
+                        );
+                    } else if error_warn_count == CAPACITY_SCAN_ERROR_WARN_CAP + 1 {
+                        warn!(
+                            event = EVENT_CAPACITY_SCAN_TRAVERSAL_FAILED,
+                            component = LOG_COMPONENT_CAPACITY,
+                            subsystem = LOG_SUBSYSTEM_SCAN,
+                            result = "suppressed",
+                            root_path = ?path,
+                            warn_cap = CAPACITY_SCAN_ERROR_WARN_CAP,
+                            "further capacity scan errors suppressed for this scan"
+                        );
+                    }
+                    continue;
+                }
+            };
+
+            let file_type = entry.file_type();
+            if file_type.is_dir() {
+                continue;
+            }
+
+            if file_type.is_symlink() || !file_type.is_file() {
+                continue;
+            }
+
+            let exact_entry = file_count < effective_threshold;
+            if !exact_entry {
+                file_count += 1;
+                let overflow_index = file_count - effective_threshold;
+                if !overflow_entry_is_sampled(overflow_index, effective_sample_rate) {
+                    metadata_incomplete = true;
+                    continue;
+                }
+            }
+
+            #[cfg(test)]
+            {
+                metadata_reads += 1;
+            }
+            let metadata = match entry.metadata() {
+                Ok(meta) => meta,
+                Err(err) => {
+                    if is_tmp_trash_metadata_not_found(path, entry.path(), err.io_error().map(|err| err.kind())) {
+                        debug!(
+                            event = EVENT_CAPACITY_SCAN_METADATA_FAILED,
+                            component = LOG_COMPONENT_CAPACITY,
+                            subsystem = LOG_SUBSYSTEM_SCAN,
+                            result = "ignored",
+                            reason = "tmp_trash_not_found",
+                            entry_path = ?entry.path(),
+                            file_count,
+                            "capacity scan ignored tmp trash metadata race"
+                        );
+                        continue;
+                    }
+
+                    had_partial_errors = true;
+                    error_warn_count += 1;
+                    if error_warn_count <= CAPACITY_SCAN_ERROR_WARN_CAP {
+                        warn!(
+                            event = EVENT_CAPACITY_SCAN_METADATA_FAILED,
+                            component = LOG_COMPONENT_CAPACITY,
+                            subsystem = LOG_SUBSYSTEM_SCAN,
+                            result = "partial",
+                            entry_path = ?entry.path(),
+                            file_count,
+                            error = %err,
+                            "capacity scan metadata failed"
+                        );
+                    } else if error_warn_count == CAPACITY_SCAN_ERROR_WARN_CAP + 1 {
+                        warn!(
+                            event = EVENT_CAPACITY_SCAN_METADATA_FAILED,
+                            component = LOG_COMPONENT_CAPACITY,
+                            subsystem = LOG_SUBSYSTEM_SCAN,
+                            result = "suppressed",
+                            warn_cap = CAPACITY_SCAN_ERROR_WARN_CAP,
+                            "further capacity scan errors suppressed for this scan"
+                        );
+                    }
+                    continue;
+                }
+            };
+
+            if exact_entry {
+                file_count += 1;
+                exact_prefix_bytes += metadata.len();
+            } else {
+                overflow_sampled_bytes += metadata.len();
+                sampled_count += 1;
+
+                if file_count.is_multiple_of(100_000) {
+                    debug!(
+                        event = EVENT_CAPACITY_SCAN_SAMPLING_APPLIED,
+                        component = LOG_COMPONENT_CAPACITY,
+                        subsystem = LOG_SUBSYSTEM_SAMPLING,
+                        state = "progress",
+                        file_count,
+                        exact_prefix_bytes,
+                        sampled_count,
+                        sampled_overflow_bytes = overflow_sampled_bytes,
+                        "capacity scan sampling progress"
+                    );
+                }
+            }
+        }
+
+        if entries_visited > last_progress_check_entries {
+            let exact_count = file_count.min(effective_threshold);
+            let avg_size = if exact_count > 0 {
+                exact_prefix_bytes / exact_count as u64
+            } else {
+                0
+            };
+
+            if let Err(e) = progress_monitor.update_and_check_timeout(file_count, avg_size) {
+                if let Some(result) = timeout_fallback_estimate(
+                    path,
+                    "final_timeout",
+                    exact_prefix_bytes,
+                    overflow_sampled_bytes,
+                    file_count,
+                    sampled_count,
+                    effective_threshold,
+                    had_partial_errors,
+                    start_time,
+                ) {
+                    return Ok(result);
+                }
+                return Err(e);
+            }
+        }
+
+        if file_count > effective_threshold && sampled_count > 0 {
+            let overflow_count = file_count - effective_threshold;
+            let estimated_overflow = estimate_overflow_bytes(overflow_sampled_bytes, overflow_count as u64, sampled_count as u64);
+            let estimated_size = exact_prefix_bytes.saturating_add(estimated_overflow);
+            info!(
+                event = EVENT_CAPACITY_SCAN_SAMPLING_APPLIED,
+                component = LOG_COMPONENT_CAPACITY,
+                subsystem = LOG_SUBSYSTEM_SAMPLING,
+                result = "estimated",
+                reason = "overflow_sampling",
+                file_count,
+                threshold = effective_threshold,
+                exact_prefix_bytes,
+                overflow_count,
+                sampled_count,
+                estimated_overflow_bytes = estimated_overflow,
+                estimated_total_bytes = estimated_size,
+                "capacity scan sampling applied"
+            );
+            record_capacity_scan_sampling(sampled_count, true);
+            record_capacity_scan_mode("estimated");
+            Ok(CapacityScanResult {
+                used_bytes: estimated_size,
+                file_count,
+                sampled_count,
+                is_estimated: true,
+                scan_duration: start_time.elapsed(),
+                had_partial_errors,
+                timed_out: false,
+                metadata_incomplete,
+                #[cfg(test)]
+                metadata_reads,
+            })
+        } else if file_count > effective_threshold {
+            let overflow_count = file_count - effective_threshold;
+            let exact_prefix_count = file_count.min(effective_threshold) as u64;
+            let avg_prefix_size = exact_prefix_bytes.checked_div(exact_prefix_count).unwrap_or(0);
+            let estimated_overflow = avg_prefix_size.saturating_mul(overflow_count as u64);
+            let estimated_size = exact_prefix_bytes.saturating_add(estimated_overflow);
+            info!(
+                event = EVENT_CAPACITY_SCAN_SAMPLING_APPLIED,
+                component = LOG_COMPONENT_CAPACITY,
+                subsystem = LOG_SUBSYSTEM_SAMPLING,
+                result = "estimated",
+                reason = "prefix_average",
+                file_count,
+                threshold = effective_threshold,
+                exact_prefix_bytes,
+                overflow_count,
+                sampled_count = 0,
+                avg_prefix_size,
+                estimated_overflow_bytes = estimated_overflow,
+                estimated_total_bytes = estimated_size,
+                "capacity scan sampling applied"
+            );
+            record_capacity_scan_sampling(0, true);
+            record_capacity_scan_mode("estimated");
+            Ok(CapacityScanResult {
+                used_bytes: estimated_size,
+                file_count,
+                sampled_count: 0,
+                is_estimated: true,
+                scan_duration: start_time.elapsed(),
+                had_partial_errors,
+                timed_out: false,
+                metadata_incomplete,
+                #[cfg(test)]
+                metadata_reads,
+            })
+        } else {
+            record_capacity_scan_sampling(0, false);
+            debug!(
+                event = EVENT_CAPACITY_SCAN_EXACT_COMPLETED,
+                component = LOG_COMPONENT_CAPACITY,
+                subsystem = LOG_SUBSYSTEM_SCAN,
+                result = "exact",
+                file_count,
+                used_bytes = exact_prefix_bytes,
+                duration_ms = start_time.elapsed().as_millis() as u64,
+                "capacity scan exact completed"
+            );
+            record_capacity_scan_mode("exact");
+            Ok(CapacityScanResult {
+                used_bytes: exact_prefix_bytes,
+                file_count,
+                sampled_count,
+                is_estimated: false,
+                scan_duration: start_time.elapsed(),
+                had_partial_errors,
+                timed_out: false,
+                metadata_incomplete,
+                #[cfg(test)]
+                metadata_reads,
+            })
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::capacity_manager::{DataSource, HybridStrategyConfig, create_isolated_manager};
+    use crate::capacity_scope::{CapacityScope, CapacityScopeDisk};
+    #[cfg(unix)]
+    use rustfs_config::ENV_CAPACITY_FOLLOW_SYMLINKS;
+    use rustfs_config::{ENV_CAPACITY_MAX_FILES_THRESHOLD, ENV_CAPACITY_SAMPLE_RATE};
+
+    /// Reference implementation using unbounded `u128` arithmetic, clamped to
+    /// `u64::MAX`, used as the source of truth for the sampling extrapolation.
+    fn reference_estimate(overflow_sampled_bytes: u64, overflow_count: u64, sampled_count: u64) -> u64 {
+        let denom = (sampled_count.max(1)) as u128;
+        ((overflow_sampled_bytes as u128 * overflow_count as u128) / denom).min(u64::MAX as u128) as u64
+    }
+
+    #[test]
+    fn test_estimate_overflow_bytes_small_values_unchanged() {
+        // Typical, non-overflowing inputs: result must match the plain
+        // `bytes * count / sampled` computation exactly.
+        let overflow_sampled_bytes = 5_000_000u64;
+        let overflow_count = 1_000_000u64;
+        let sampled_count = 5_000u64;
+        let expected = overflow_sampled_bytes * overflow_count / sampled_count;
+        assert_eq!(estimate_overflow_bytes(overflow_sampled_bytes, overflow_count, sampled_count), expected);
+        assert_eq!(
+            estimate_overflow_bytes(overflow_sampled_bytes, overflow_count, sampled_count),
+            reference_estimate(overflow_sampled_bytes, overflow_count, sampled_count)
+        );
+    }
+
+    #[test]
+    fn test_estimate_overflow_bytes_realistic_large_disk() {
+        // backlog#1012 scenario: ~60M files, ~1.75 MiB average (~105 TB). The old
+        // `saturating_mul` path saturates to u64::MAX before dividing and reports
+        // roughly half the true value; the u128 path stays correct.
+        let overflow_sampled_bytes = 549_000_000_000u64; // ~5.49e11
+        let overflow_count = 59_800_000u64;
+        let sampled_count = 299_000u64;
+
+        // Old behaviour: product overflows u64, saturates, then divides.
+        let saturated = overflow_sampled_bytes.saturating_mul(overflow_count) / sampled_count;
+        assert!(
+            overflow_sampled_bytes.checked_mul(overflow_count).is_none(),
+            "test inputs must overflow u64 to exercise the regression"
+        );
+
+        let expected = reference_estimate(overflow_sampled_bytes, overflow_count, sampled_count);
+        let actual = estimate_overflow_bytes(overflow_sampled_bytes, overflow_count, sampled_count);
+        assert_eq!(actual, expected);
+        // The fixed estimate must be substantially larger than the saturated garbage.
+        assert!(actual > saturated * 3 / 2, "fixed estimate {actual} should dwarf saturated {saturated}");
+    }
+
+    #[test]
+    fn test_estimate_overflow_bytes_not_monotonically_shrinking() {
+        // The core defect: with saturation, a *larger* disk (bigger sampled_count
+        // and proportionally bigger bytes/count) reports a *smaller* total. Verify
+        // the fix scales monotonically instead of collapsing.
+        // Disk A and disk B have identical average file size; B is 10x bigger, so
+        // B's estimate must be ~10x A's, never smaller.
+        let a = estimate_overflow_bytes(2_000_000_000, 6_000_000, 30_000);
+        let b = estimate_overflow_bytes(20_000_000_000, 60_000_000, 300_000);
+        assert!(b > a, "larger disk estimate {b} must exceed smaller disk {a}");
+        assert_eq!(b, reference_estimate(20_000_000_000, 60_000_000, 300_000));
+    }
+
+    #[test]
+    fn test_estimate_overflow_bytes_extreme_values_clamp() {
+        // Both factors near the u64 ceiling: u128 product is astronomically larger
+        // than u64::MAX, so the result must clamp to u64::MAX without panicking.
+        let huge = u64::MAX - 1;
+        assert_eq!(estimate_overflow_bytes(huge, huge, 1), u64::MAX);
+        assert_eq!(estimate_overflow_bytes(huge, huge, 1), reference_estimate(huge, huge, 1));
+    }
+
+    #[test]
+    fn test_estimate_overflow_bytes_zero_sampled_count_guarded() {
+        // `sampled_count == 0` must not divide by zero; `.max(1)` guards it.
+        assert_eq!(estimate_overflow_bytes(100, 10, 0), 1_000);
+        assert_eq!(estimate_overflow_bytes(0, 10, 0), 0);
+    }
+
+    #[test]
+    fn test_overflow_sampling_avoids_unsampled_metadata_reads() {
+        let threshold = 200_000usize;
+        let file_count = 1_000_000usize;
+        let sample_rate = 200usize;
+        let metadata_reads = threshold
+            + (1..=file_count - threshold)
+                .filter(|index| overflow_entry_is_sampled(*index, sample_rate))
+                .count();
+
+        assert_eq!(metadata_reads, 204_000);
+        assert!(metadata_reads < file_count / 4);
+    }
+
+    #[test]
+    fn test_sample_before_metadata_preserves_uniform_file_estimate() {
+        use std::fs::File;
+        use std::io::Write;
+
+        let temp_dir = tempfile::TempDir::new().expect("capacity scan tempdir should be created");
+        for index in 0..11 {
+            let mut file =
+                File::create(temp_dir.path().join(format!("f{index}"))).expect("capacity scan fixture file should be created");
+            file.write_all(b"12345")
+                .expect("capacity scan fixture bytes should be written");
+        }
+        let limits = ScanLimits {
+            max_files_threshold: 2,
+            base_timeout: Duration::from_secs(600),
+            min_timeout: Duration::from_secs(1),
+            max_timeout: Duration::from_secs(600),
+            sample_rate: 3,
+            enable_dynamic_timeout: false,
+            follow_symlinks: false,
+        };
+
+        let result =
+            scan_dir_blocking(temp_dir.path(), &limits, &AtomicBool::new(false)).expect("sampled capacity scan should succeed");
+        assert_eq!(result.file_count, 11);
+        assert_eq!(result.sampled_count, 3);
+        assert_eq!(result.metadata_reads, 5);
+        assert_eq!(result.used_bytes, 55);
+        assert!(result.is_estimated);
+        assert!(result.metadata_incomplete);
+        assert!(!result.timed_out);
+    }
+
+    #[test]
+    fn test_timeout_fallback_is_marked_for_scheduler_backoff() {
+        let temp_dir = tempfile::TempDir::new().expect("capacity scan tempdir should be created");
+        let result = timeout_fallback_estimate(temp_dir.path(), "timeout", 10, 5, 2, 1, 1, false, Instant::now())
+            .expect("sampled timeout should produce a fallback estimate");
+
+        assert!(result.timed_out);
+        assert!(result.is_estimated);
+    }
+
+    #[tokio::test]
+    async fn test_get_dir_size_async_empty_directory() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let size = get_dir_size_async(temp_dir.path()).await.unwrap();
+        assert_eq!(size.used_bytes, 0);
+        assert_eq!(size.file_count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_dir_size_async_single_file() {
+        use std::fs::File;
+        use std::io::Write;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all(b"Hello, World!").unwrap();
+        drop(file);
+
+        let size = get_dir_size_async(temp_dir.path()).await.unwrap();
+        assert_eq!(size.used_bytes, 13);
+        assert_eq!(size.file_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_dir_size_async_multiple_files() {
+        use std::fs::File;
+        use std::io::Write;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+
+        for i in 0..10 {
+            let file_path = temp_dir.path().join(format!("file_{}.txt", i));
+            let mut file = File::create(&file_path).unwrap();
+            file.write_all(b"test").unwrap();
+        }
+
+        let size = get_dir_size_async(temp_dir.path()).await.unwrap();
+        assert_eq!(size.used_bytes, 40);
+        assert_eq!(size.file_count, 10);
+    }
+
+    #[tokio::test]
+    async fn test_get_dir_size_async_nested_directories() {
+        use std::fs::File;
+        use std::io::Write;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let subdir = temp_dir.path().join("subdir");
+        std::fs::create_dir(&subdir).unwrap();
+
+        let file1 = temp_dir.path().join("file1.txt");
+        let mut f1 = File::create(&file1).unwrap();
+        f1.write_all(b"content1").unwrap();
+        drop(f1);
+
+        let file2 = subdir.join("file2.txt");
+        let mut f2 = File::create(&file2).unwrap();
+        f2.write_all(b"content2").unwrap();
+        drop(f2);
+
+        let size = get_dir_size_async(temp_dir.path()).await.unwrap();
+        assert_eq!(size.used_bytes, 16);
+        assert_eq!(size.file_count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_dir_size_async_nonexistent_directory() {
+        let result = get_dir_size_async(Path::new("/nonexistent/path")).await;
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_tmp_trash_metadata_not_found_predicate_accepts_trash_not_found() {
+        let scan_root = Path::new("/disk");
+        let entry_path = scan_root
+            .join(RUSTFS_META_BUCKET)
+            .join(RUSTFS_META_TMP_DIR)
+            .join(RUSTFS_META_TMP_TRASH_DIR)
+            .join("cleanup-id")
+            .join("part.1");
+
+        assert!(is_tmp_trash_metadata_not_found(
+            scan_root,
+            &entry_path,
+            Some(std::io::ErrorKind::NotFound)
+        ));
+    }
+
+    #[test]
+    fn test_tmp_trash_metadata_not_found_predicate_rejects_non_trash_cases() {
+        let scan_root = Path::new("/disk");
+        let ordinary_object = scan_root.join("bucket").join("object").join("part.1");
+        let tmp_non_trash = scan_root
+            .join(RUSTFS_META_BUCKET)
+            .join(RUSTFS_META_TMP_DIR)
+            .join("upload-id")
+            .join("part.1");
+        let outside_scan_root = Path::new("/outside")
+            .join(RUSTFS_META_BUCKET)
+            .join(RUSTFS_META_TMP_DIR)
+            .join(RUSTFS_META_TMP_TRASH_DIR)
+            .join("cleanup-id")
+            .join("part.1");
+        let trash_permission_denied = scan_root
+            .join(RUSTFS_META_BUCKET)
+            .join(RUSTFS_META_TMP_DIR)
+            .join(RUSTFS_META_TMP_TRASH_DIR)
+            .join("cleanup-id")
+            .join("part.1");
+
+        assert!(!is_tmp_trash_metadata_not_found(
+            scan_root,
+            &ordinary_object,
+            Some(std::io::ErrorKind::NotFound)
+        ));
+        assert!(!is_tmp_trash_metadata_not_found(
+            scan_root,
+            &tmp_non_trash,
+            Some(std::io::ErrorKind::NotFound)
+        ));
+        assert!(!is_tmp_trash_metadata_not_found(
+            scan_root,
+            &outside_scan_root,
+            Some(std::io::ErrorKind::NotFound)
+        ));
+        assert!(!is_tmp_trash_metadata_not_found(
+            scan_root,
+            &trash_permission_denied,
+            Some(std::io::ErrorKind::PermissionDenied)
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_calculate_data_dir_used_capacity_returns_partial_success() {
+        use std::fs::File;
+        use std::io::Write;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all(b"Hello, World!").unwrap();
+        drop(file);
+
+        let disks = vec![
+            CapacityDiskRef {
+                endpoint: "disk-1".to_string(),
+                drive_path: temp_dir.path().to_string_lossy().into_owned(),
+            },
+            CapacityDiskRef {
+                endpoint: "disk-2".to_string(),
+                drive_path: "/nonexistent/path".to_string(),
+            },
+        ];
+
+        let result = calculate_data_dir_used_capacity(&disks).await.unwrap();
+        assert_eq!(result.used_bytes, 13);
+        assert_eq!(result.file_count, 1);
+        assert!(result.had_partial_errors);
+    }
+
+    #[test]
+    fn test_combine_timeout_estimates_covers_all_sources() {
+        // Both estimators available: max wins in either order.
+        assert_eq!(combine_timeout_estimates(Some(100), Some(300), 40), Some(300));
+        assert_eq!(combine_timeout_estimates(Some(500), Some(300), 40), Some(500));
+        // Seen-files extrapolation alone (shared filesystem, statvfs untrusted).
+        assert_eq!(combine_timeout_estimates(Some(100), None, 40), Some(100));
+        // Filesystem usage alone: the exact prefix is still a hard floor.
+        assert_eq!(combine_timeout_estimates(None, Some(300), 40), Some(300));
+        assert_eq!(combine_timeout_estimates(None, Some(30), 40), Some(40));
+        // No estimator: caller must propagate the original error.
+        assert_eq!(combine_timeout_estimates(None, None, 40), None);
+    }
+
+    #[test]
+    fn test_mount_point_used_bytes_rejects_shared_filesystem_path() {
+        // A tempdir lives on the same filesystem as its parent, so statvfs
+        // must not be trusted as a per-disk proxy there.
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        assert_eq!(mount_point_used_bytes(temp_dir.path()), None);
+    }
+
+    #[test]
+    fn test_half_budget_elapsed_boundary() {
+        let budget = Duration::from_secs(60);
+        let mut monitor = ProgressMonitor::new(budget, Duration::from_secs(1), budget, false);
+        assert!(!monitor.half_budget_elapsed(10, 1024));
+
+        // Backdate the start beyond half the budget: sampling must engage.
+        monitor.start_time = Instant::now() - Duration::from_secs(31);
+        assert!(monitor.half_budget_elapsed(10, 1024));
+    }
+
+    fn tight_limits(base_timeout: Duration) -> ScanLimits {
+        ScanLimits {
+            max_files_threshold: 100_000,
+            base_timeout,
+            min_timeout: Duration::from_millis(0),
+            max_timeout: base_timeout,
+            sample_rate: 1,
+            enable_dynamic_timeout: false,
+            follow_symlinks: false,
+        }
+    }
+
+    #[test]
+    fn test_scan_dir_blocking_zero_budget_without_estimators_still_errors() {
+        use std::fs::File;
+        use std::io::Write;
+
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        for i in 0..3 {
+            let mut file = File::create(temp_dir.path().join(format!("f{i}"))).unwrap();
+            file.write_all(b"x").unwrap();
+        }
+
+        // Zero budget times out at the first progress check with no samples;
+        // a tempdir is not a dedicated mount, so no estimator exists and the
+        // original timeout error must still surface (last-resort behavior).
+        let result = scan_dir_blocking(temp_dir.path(), &tight_limits(Duration::ZERO), &AtomicBool::new(false));
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::TimedOut);
+    }
+
+    #[test]
+    fn test_scan_dir_blocking_times_out_on_directory_only_tree() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        for i in 0..5 {
+            std::fs::create_dir(temp_dir.path().join(format!("d{i}"))).unwrap();
+        }
+
+        // A tree with no regular files never advances file_count; progress
+        // checks are entry-driven now, so the zero budget must still trip a
+        // timeout instead of silently completing as exact 0 bytes.
+        let result = scan_dir_blocking(temp_dir.path(), &tight_limits(Duration::ZERO), &AtomicBool::new(false));
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::TimedOut);
+    }
+
+    #[test]
+    fn test_scan_dir_blocking_stops_when_cancelled() {
+        use std::fs::File;
+        use std::io::Write;
+
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let mut file = File::create(temp_dir.path().join("f0")).unwrap();
+        file.write_all(b"x").unwrap();
+
+        // A pre-cancelled scan must exit at the first walker entry instead of
+        // completing, so a wedged-then-released walker doesn't keep scanning
+        // long after the outer budget already failed the refresh.
+        let result = scan_dir_blocking(temp_dir.path(), &tight_limits(Duration::from_secs(600)), &AtomicBool::new(true));
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::TimedOut);
+    }
+
+    #[test]
+    fn test_outer_scan_budget_bounds() {
+        // Twice the cooperative ceiling, and never below the 5s floor even for
+        // degenerate max_timeout values.
+        assert_eq!(outer_scan_budget(&tight_limits(Duration::from_secs(15))), Duration::from_secs(30));
+        assert_eq!(outer_scan_budget(&tight_limits(Duration::ZERO)), Duration::from_secs(5));
+    }
+
+    #[test]
+    fn test_scan_cancellation_guard_sets_flag_on_drop() {
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let guard = ScanCancellationGuard(cancelled.clone());
+
+        drop(guard);
+
+        assert!(cancelled.load(Ordering::Relaxed));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_scan_dir_blocking_resolves_symlink_root() {
+        use std::fs::File;
+        use std::io::Write;
+
+        let target_dir = tempfile::TempDir::new().unwrap();
+        for i in 0..3 {
+            let mut file = File::create(target_dir.path().join(format!("f{i}"))).unwrap();
+            file.write_all(b"data").unwrap();
+        }
+
+        // drive_path is a symlink to the real data directory; with symlink
+        // following disabled this used to return exact 0 bytes / 0 files.
+        let link_parent = tempfile::TempDir::new().unwrap();
+        let link = link_parent.path().join("rustfs0");
+        std::os::unix::fs::symlink(target_dir.path(), &link).unwrap();
+
+        let result = scan_dir_blocking(&link, &tight_limits(Duration::from_secs(600)), &AtomicBool::new(false)).unwrap();
+        assert_eq!(result.used_bytes, 12);
+        assert_eq!(result.file_count, 3);
+        assert!(!result.is_estimated);
+    }
+
+    #[test]
+    fn test_scan_dir_blocking_generous_budget_still_exact() {
+        use std::fs::File;
+        use std::io::Write;
+
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        for i in 0..5 {
+            let mut file = File::create(temp_dir.path().join(format!("f{i}"))).unwrap();
+            file.write_all(b"hello").unwrap();
+        }
+
+        let result =
+            scan_dir_blocking(temp_dir.path(), &tight_limits(Duration::from_secs(600)), &AtomicBool::new(false)).unwrap();
+        assert_eq!(result.used_bytes, 25);
+        assert_eq!(result.file_count, 5);
+        assert!(!result.is_estimated);
+        assert!(!result.had_partial_errors);
+    }
+
+    #[tokio::test]
+    async fn test_partial_scan_report_produces_degraded_update() {
+        use std::fs::File;
+        use std::io::Write;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let mut file = File::create(temp_dir.path().join("test.txt")).unwrap();
+        file.write_all(b"Hello, World!").unwrap();
+        drop(file);
+
+        let good_disk = CapacityDiskRef {
+            endpoint: "disk-1".to_string(),
+            drive_path: temp_dir.path().to_string_lossy().into_owned(),
+        };
+        let disks = vec![
+            good_disk.clone(),
+            CapacityDiskRef {
+                endpoint: "disk-2".to_string(),
+                drive_path: "/nonexistent/path".to_string(),
+            },
+        ];
+
+        let report = calculate_data_dir_used_capacity_report(&disks).await.unwrap();
+        let update = report.into_capacity_update(disks.len(), true);
+
+        // A partial full refresh is degraded and must never replace the disk
+        // cache; only the surviving disk is surfaced for cache merging.
+        assert!(update.degraded);
+        assert!(!update.replaces_disk_cache);
+        assert_eq!(update.expected_disk_count, None);
+        assert_eq!(update.per_disk.len(), 1);
+        assert_eq!(update.per_disk[0].disk, disk_scope_key(&good_disk));
+        assert_eq!(update.clear_dirty_disks, vec![disk_scope_key(&good_disk)]);
+    }
+
+    #[test]
+    fn test_into_capacity_update_partial_failure_filters_intra_disk_errors() {
+        let clean = DiskCapacityScanResult {
+            disk: CapacityScopeDisk {
+                endpoint: "node-a".to_string(),
+                drive_path: "/tmp/disk-a".to_string(),
+            },
+            scan: CapacityScanResult {
+                used_bytes: 100,
+                file_count: 1,
+                ..Default::default()
+            },
+        };
+        let partial = DiskCapacityScanResult {
+            disk: CapacityScopeDisk {
+                endpoint: "node-b".to_string(),
+                drive_path: "/tmp/disk-b".to_string(),
+            },
+            scan: CapacityScanResult {
+                used_bytes: 40,
+                file_count: 1,
+                had_partial_errors: true,
+                ..Default::default()
+            },
+        };
+        let report = CapacityScanReport {
+            summary: CapacityScanResult {
+                used_bytes: 140,
+                file_count: 2,
+                had_partial_errors: true,
+                ..Default::default()
+            },
+            per_disk: vec![clean.clone(), partial],
+        };
+
+        let update = report.into_capacity_update(3, true);
+
+        // A disk whose own scan had intra-disk errors under-counts, so it must
+        // not overwrite its last-known cached value.
+        assert!(update.degraded);
+        assert_eq!(update.per_disk.len(), 1);
+        assert_eq!(update.per_disk[0].disk, clean.disk);
+        assert_eq!(update.per_disk[0].used_bytes, 100);
+        assert!(!update.replaces_disk_cache);
+    }
+
+    #[test]
+    fn test_into_capacity_update_incomplete_results_do_not_replace_disk_cache() {
+        for (scan, clears_dirty) in [
+            (
+                CapacityScanResult {
+                    used_bytes: 100,
+                    file_count: 10,
+                    is_estimated: true,
+                    metadata_incomplete: true,
+                    ..Default::default()
+                },
+                false,
+            ),
+            (
+                CapacityScanResult {
+                    used_bytes: 100,
+                    file_count: 10,
+                    is_estimated: true,
+                    timed_out: true,
+                    ..Default::default()
+                },
+                true,
+            ),
+        ] {
+            let disk = CapacityScopeDisk {
+                endpoint: "node-a".to_string(),
+                drive_path: "/tmp/disk-a".to_string(),
+            };
+            let report = CapacityScanReport {
+                summary: scan,
+                per_disk: vec![DiskCapacityScanResult {
+                    disk: disk.clone(),
+                    scan,
+                }],
+            };
+
+            let update = report.into_capacity_update(1, true);
+
+            assert!(!update.degraded);
+            assert_eq!(update.per_disk.len(), 1);
+            assert_eq!(update.per_disk[0].disk, disk);
+            assert_eq!(update.expected_disk_count, None);
+            assert!(!update.replaces_disk_cache);
+            if clears_dirty {
+                assert_eq!(update.clear_dirty_disks, vec![disk]);
+            } else {
+                assert!(update.clear_dirty_disks.is_empty());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_metadata_incomplete_aggregate_does_not_replace_disk_cache() {
+        use std::fs::File;
+        use std::io::Write;
+
+        let temp_dir = tempfile::TempDir::new().expect("capacity scan tempdir should be created");
+        for index in 0..11 {
+            let mut file =
+                File::create(temp_dir.path().join(format!("f{index}"))).expect("capacity scan fixture file should be created");
+            file.write_all(b"12345")
+                .expect("capacity scan fixture bytes should be written");
+        }
+
+        let disks = vec![CapacityDiskRef {
+            endpoint: "node-a".to_string(),
+            drive_path: temp_dir.path().display().to_string(),
+        }];
+
+        let report = temp_env::async_with_vars(
+            [
+                (ENV_CAPACITY_MAX_FILES_THRESHOLD, Some("2")),
+                (ENV_CAPACITY_SAMPLE_RATE, Some("3")),
+            ],
+            calculate_data_dir_used_capacity_report(&disks),
+        )
+        .await
+        .expect("sampled capacity report should succeed");
+
+        assert!(report.summary.metadata_incomplete);
+        assert_eq!(report.per_disk.len(), 1);
+        assert!(report.per_disk[0].scan.metadata_incomplete);
+
+        let update = report.into_capacity_update(1, true);
+        assert_eq!(update.per_disk.len(), 1);
+        assert_eq!(update.expected_disk_count, None);
+        assert!(!update.replaces_disk_cache);
+        assert!(update.clear_dirty_disks.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_select_capacity_refresh_disks_returns_full_when_disk_cache_incomplete() {
+        let manager = create_isolated_manager(HybridStrategyConfig::default());
+        manager
+            .mark_dirty_scope(&CapacityScope {
+                disks: vec![CapacityScopeDisk {
+                    endpoint: "disk-1".to_string(),
+                    drive_path: "/tmp/disk-1".to_string(),
+                }],
+            })
+            .await;
+
+        let disks = vec![
+            CapacityDiskRef {
+                endpoint: "disk-1".to_string(),
+                drive_path: "/tmp/disk-1".to_string(),
+            },
+            CapacityDiskRef {
+                endpoint: "disk-2".to_string(),
+                drive_path: "/tmp/disk-2".to_string(),
+            },
+        ];
+
+        let (selected, dirty_subset) = select_capacity_refresh_disks(manager.as_ref(), &disks).await;
+        assert!(!dirty_subset);
+        assert_eq!(selected.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_scheduled_capacity_refresh_returns_idle_with_cached_incomplete_baseline() {
+        let manager = create_isolated_manager(HybridStrategyConfig::default());
+        manager
+            .update_capacity(CapacityUpdate::estimated(100, 10), DataSource::Scheduled)
+            .await;
+
+        let disks = vec![CapacityDiskRef {
+            endpoint: "disk-1".to_string(),
+            drive_path: "/tmp/disk-1".to_string(),
+        }];
+
+        assert_eq!(
+            select_scheduled_capacity_refresh(manager.as_ref(), &disks).await,
+            ScheduledCapacityRefresh::Idle
+        );
+
+        let (selected, dirty_subset) = select_capacity_refresh_disks(manager.as_ref(), &disks).await;
+        assert_eq!(selected, disks);
+        assert!(!dirty_subset);
+        assert!(!manager.can_refresh_dirty_subset().await);
+    }
+
+    #[tokio::test]
+    async fn test_select_capacity_refresh_disks_returns_dirty_subset_when_cache_complete() {
+        let manager = create_isolated_manager(HybridStrategyConfig::default());
+        manager
+            .update_capacity(
+                CapacityUpdate {
+                    total_used: 300,
+                    file_count: 3,
+                    is_estimated: false,
+                    degraded: false,
+                    timed_out: false,
+                    per_disk: vec![
+                        DiskCapacityUpdate {
+                            disk: CapacityScopeDisk {
+                                endpoint: "disk-1".to_string(),
+                                drive_path: "/tmp/disk-1".to_string(),
+                            },
+                            used_bytes: 100,
+                            file_count: 1,
+                            is_estimated: false,
+                        },
+                        DiskCapacityUpdate {
+                            disk: CapacityScopeDisk {
+                                endpoint: "disk-2".to_string(),
+                                drive_path: "/tmp/disk-2".to_string(),
+                            },
+                            used_bytes: 200,
+                            file_count: 2,
+                            is_estimated: false,
+                        },
+                    ],
+                    expected_disk_count: Some(2),
+                    replaces_disk_cache: true,
+                    clear_dirty_disks: Vec::new(),
+                    scan_started_at: None,
+                },
+                DataSource::RealTime,
+            )
+            .await;
+        manager
+            .mark_dirty_scope(&CapacityScope {
+                disks: vec![CapacityScopeDisk {
+                    endpoint: "disk-2".to_string(),
+                    drive_path: "/tmp/disk-2".to_string(),
+                }],
+            })
+            .await;
+
+        let disks = vec![
+            CapacityDiskRef {
+                endpoint: "disk-1".to_string(),
+                drive_path: "/tmp/disk-1".to_string(),
+            },
+            CapacityDiskRef {
+                endpoint: "disk-2".to_string(),
+                drive_path: "/tmp/disk-2".to_string(),
+            },
+        ];
+
+        let (selected, dirty_subset) = select_capacity_refresh_disks(manager.as_ref(), &disks).await;
+        assert!(dirty_subset);
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].endpoint, "disk-2");
+        assert_eq!(selected[0].drive_path, "/tmp/disk-2");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_get_dir_size_async_ignores_symlink_targets_when_follow_disabled() {
+        use std::fs::File;
+        use std::io::Write;
+        use std::os::unix::fs::symlink;
+        use tempfile::TempDir;
+
+        let scan_dir = TempDir::new().unwrap();
+        let target_dir = TempDir::new().unwrap();
+        let target_path = target_dir.path().join("external.txt");
+        let mut file = File::create(&target_path).unwrap();
+        file.write_all(b"external-bytes").unwrap();
+        symlink(&target_path, scan_dir.path().join("external-link")).unwrap();
+
+        let size = temp_env::async_with_vars([(ENV_CAPACITY_FOLLOW_SYMLINKS, Some("false"))], async {
+            get_dir_size_async(scan_dir.path()).await
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(size.used_bytes, 0);
+        assert_eq!(size.file_count, 0);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_get_dir_size_async_counts_symlink_targets_when_follow_enabled() {
+        use std::fs::File;
+        use std::io::Write;
+        use std::os::unix::fs::symlink;
+        use tempfile::TempDir;
+
+        let scan_dir = TempDir::new().unwrap();
+        let target_dir = TempDir::new().unwrap();
+        let target_path = target_dir.path().join("external.txt");
+        let mut file = File::create(&target_path).unwrap();
+        file.write_all(b"external-bytes").unwrap();
+        symlink(&target_path, scan_dir.path().join("external-link")).unwrap();
+
+        let size = temp_env::async_with_vars([(ENV_CAPACITY_FOLLOW_SYMLINKS, Some("true"))], async {
+            get_dir_size_async(scan_dir.path()).await
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(size.used_bytes, "external-bytes".len() as u64);
+        assert_eq!(size.file_count, 1);
+    }
+}

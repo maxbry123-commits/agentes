@@ -1,0 +1,77 @@
+# Copyright 2024 RustFS Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Update Nix Flake
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 5 * * 0' # Weekly on Sunday 05:00 UTC (staggered after the midnight ci/build crons)
+
+# GITHUB_TOKEN only needs to read the repository here: the branch push and the
+# pull request are both created by update-flake-lock using the
+# FLAKE_UPDATE_TOKEN PAT below, not by this token. Leaving write on it hands a
+# repo-write credential to an unattended weekly job that does not use it.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  update-flake:
+    name: Update flake.lock
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        # persist-credentials-exempt: update-flake-lock pushes the branch and opens
+        # the PR. It passes FLAKE_UPDATE_TOKEN to create-pull-request itself rather
+        # than reusing .git/config, but that is unverified — exempt until a
+        # workflow_dispatch run confirms it (rustfs/backlog#1602).
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@629b284231c2a82554b724e357e47fc6020833c8 # v3
+
+      - name: Cache Nix
+        uses: DeterminateSystems/flakehub-cache-action@1f9a51a2959d3e26c7838c6f3bf9f48acae525ea # v3.20.0
+
+      - name: Check Nix flake inputs
+        uses: DeterminateSystems/flake-checker-action@3164002371bc90729c68af0e24d5aacf20d7c9f6 # v12
+
+      - name: Update flake.lock
+        id: update
+        uses: DeterminateSystems/update-flake-lock@fd9359ac79d0e912f1b4b947a48470b3e2799b56 # main
+        with:
+          git-author-name: houseme
+          git-author-email: housemecn@gmail.com
+          git-committer-name: houseme
+          git-committer-email: housemecn@gmail.com
+          pr-title: "chore(deps): update flake.lock"
+          pr-labels: |
+            dependencies
+            nix
+            automated
+          commit-msg: "chore(deps): update flake.lock"
+          pr-reviewers: overtrue, majinghe
+          token: ${{ secrets.FLAKE_UPDATE_TOKEN }}
+
+      - name: Log PR details
+        if: steps.update.outputs.pull-request-number
+        run: |
+          echo "Pull Request created: ${{ steps.update.outputs.pull-request-number }}"

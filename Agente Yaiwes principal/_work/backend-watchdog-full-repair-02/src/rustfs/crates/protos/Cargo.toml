@@ -1,0 +1,89 @@
+# Copyright 2024 RustFS Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+[package]
+name = "rustfs-protos"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+homepage.workspace = true
+description = "Protocol definitions for RustFS, providing gRPC and FlatBuffers interfaces for communication between components."
+keywords = ["protocols", "gRPC", "FlatBuffers", "rustfs", "Minio"]
+categories = ["web-programming", "development-tools", "data-structures", "asynchronous"]
+documentation = "https://docs.rs/rustfs-protos/latest/rustfs_protos/"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "gproto"
+path = "src/main.rs"
+
+[features]
+default = []
+hotpath = [
+    "hotpath/hotpath",
+    "hotpath/tokio",
+    "rustfs-common/hotpath",
+    "rustfs-config/hotpath",
+    "rustfs-io-metrics/hotpath",
+    "rustfs-tls-runtime/hotpath",
+    "rustfs-utils/hotpath",
+]
+hotpath-alloc = [
+    "hotpath",
+    "hotpath/hotpath-alloc",
+    "rustfs-common/hotpath-alloc",
+    "rustfs-config/hotpath-alloc",
+    "rustfs-io-metrics/hotpath-alloc",
+    "rustfs-tls-runtime/hotpath-alloc",
+    "rustfs-utils/hotpath-alloc",
+]
+hotpath-cpu = [
+    "hotpath",
+    "hotpath/hotpath-cpu",
+    "rustfs-common/hotpath-cpu",
+    "rustfs-config/hotpath-cpu",
+    "rustfs-io-metrics/hotpath-cpu",
+    "rustfs-tls-runtime/hotpath-cpu",
+    "rustfs-utils/hotpath-cpu",
+]
+
+[dependencies]
+hotpath.workspace = true
+rustfs-common.workspace = true
+rustfs-heal-contracts.workspace = true
+rustfs-io-metrics.workspace = true
+rustfs-config.workspace = true
+rustfs-tls-runtime.workspace = true
+rustfs-utils.workspace = true
+flatbuffers = { workspace = true }
+prost = { workspace = true }
+tonic = { workspace = true, features = ["transport", "tls-native-roots", "tls-aws-lc", "gzip", "deflate"] }
+tonic-prost = { workspace = true }
+tonic-prost-build = { workspace = true }
+tokio = { workspace = true, features = ["sync", "fs", "rt-multi-thread"] }
+tracing = { workspace = true }
+serde = { workspace = true }
+rmp-serde = { workspace = true }
+uuid = { workspace = true }
+
+[lib]
+doctest = false
+
+[dev-dependencies]
+serde_json = { workspace = true }
+temp-env = { workspace = true }

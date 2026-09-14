@@ -1,0 +1,7 @@
+apache-hamilton[visualization]
+langchain
+langchain-core
+pyspark
+# optionally install Ray, or Dask, or both
+# apache-hamilton[ray]
+# apache-hamilton[dask]

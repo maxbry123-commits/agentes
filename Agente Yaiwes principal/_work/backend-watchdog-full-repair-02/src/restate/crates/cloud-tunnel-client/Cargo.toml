@@ -1,0 +1,31 @@
+[package]
+name = "restate-cloud-tunnel-client"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+default = []
+
+[dependencies]
+restate-workspace-hack = { workspace = true }
+
+anyhow = { workspace = true }
+bs58 = { workspace = true }
+bytes = { workspace = true }
+http = { workspace = true }
+http-body-util = { workspace = true }
+hyper = { workspace = true, features = ["server", "http2"]}
+hyper-util = { workspace = true, features = ["tokio"] }
+jsonwebtoken = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["time"] }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

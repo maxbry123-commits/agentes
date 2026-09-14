@@ -1,0 +1,153 @@
+import { RegionSelect } from '@/components/forms/region-select';
+import { Button } from '@/components/v1/ui/button';
+import { Input } from '@/components/v1/ui/input';
+import { Label } from '@/components/v1/ui/label';
+import { Spinner } from '@/components/v1/ui/loading';
+import { OrganizationAvailableShard } from '@/lib/api/generated/control-plane/data-contracts';
+import { shardDeploymentKey } from '@/lib/shard-deployment-key';
+import { ArrowRightIcon } from '@radix-ui/react-icons';
+import { useCallback, useMemo, useState } from 'react';
+
+type NewOrganizationInputFormProps = {
+  defaultOrganizationName?: string;
+  defaultTenantName?: string;
+  defaultRegion?: string;
+  isSaving: boolean;
+  onSubmit: (values: {
+    organizationName: string;
+    tenantName: string;
+    region?: string;
+  }) => void;
+  showRegionSelect?: boolean;
+  availableShards?: OrganizationAvailableShard[];
+  isShardsLoading?: boolean;
+  submitLabel?: string;
+};
+
+export function NewOrganizationInputForm({
+  defaultOrganizationName = '',
+  defaultTenantName = '',
+  defaultRegion,
+  onSubmit,
+  isSaving,
+  showRegionSelect = false,
+  availableShards = [],
+  isShardsLoading = false,
+  submitLabel = 'Get started',
+}: NewOrganizationInputFormProps) {
+  const [organizationName, setOrganizationName] = useState(
+    defaultOrganizationName,
+  );
+  const [tenantName, setTenantName] = useState(defaultTenantName);
+  const [selectedDeploymentRegion, setSelectedDeploymentRegion] = useState<
+    string | undefined
+  >(defaultRegion);
+
+  const shardKeys = useMemo(
+    () => availableShards.map(shardDeploymentKey),
+    [availableShards],
+  );
+
+  const deploymentRegion =
+    selectedDeploymentRegion && shardKeys.includes(selectedDeploymentRegion)
+      ? selectedDeploymentRegion
+      : shardKeys[0];
+
+  const handleSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      onSubmit({
+        organizationName,
+        tenantName,
+        ...(showRegionSelect && deploymentRegion
+          ? { region: deploymentRegion }
+          : {}),
+      });
+    },
+    [
+      organizationName,
+      tenantName,
+      onSubmit,
+      showRegionSelect,
+      deploymentRegion,
+    ],
+  );
+
+  const cannotSubmitRegion =
+    showRegionSelect &&
+    (isShardsLoading ||
+      availableShards.length === 0 ||
+      (availableShards.length > 0 && !deploymentRegion));
+
+  return (
+    <form onSubmit={handleSubmit} className="grid gap-6 max-w-lg w-full">
+      <div className="grid gap-2">
+        <Label htmlFor="organization-name">Organization Name</Label>
+        <p className="text-sm text-muted-foreground">
+          Your company or team name. Used for billing and grouping your tenants
+          together.
+        </p>
+        <Input
+          id="organization-name"
+          placeholder="Acme Inc."
+          type="text"
+          autoCapitalize="none"
+          autoCorrect="off"
+          autoFocus={true}
+          spellCheck={false}
+          value={organizationName}
+          onChange={(e) => setOrganizationName(e.target.value)}
+          disabled={isSaving}
+          required
+        />
+      </div>
+
+      {showRegionSelect && (isShardsLoading || availableShards.length > 0) && (
+        <RegionSelect
+          shards={availableShards}
+          value={deploymentRegion}
+          onValueChange={setSelectedDeploymentRegion}
+          isLoading={isShardsLoading}
+        />
+      )}
+
+      <div className="grid gap-2">
+        <Label htmlFor="tenant-name">First Tenant Name</Label>
+        <p className="text-sm text-muted-foreground">
+          A tenant is an isolated environment for your tasks, workflows,
+          workers, and events.
+        </p>
+        <Input
+          id="tenant-name"
+          placeholder="development"
+          type="text"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          value={tenantName}
+          onChange={(e) => setTenantName(e.target.value)}
+          disabled={isSaving}
+          required
+        />
+      </div>
+
+      <Button
+        type="submit"
+        className="w-full"
+        disabled={isSaving || cannotSubmitRegion}
+      >
+        {isSaving ? (
+          <>
+            <Spinner />
+            Getting started...
+          </>
+        ) : (
+          <>
+            {submitLabel}
+            <ArrowRightIcon className="ml-2 size-4" />
+          </>
+        )}
+      </Button>
+    </form>
+  );
+}

@@ -1,0 +1,16 @@
+apache-hamilton
+apache-hamilton[visualization]
+# comment out the vector DB packages you don't need
+click
+cohere
+datasets
+fastembed
+lancedb
+marqo
+numpy
+openai
+pandas
+pinecone-client
+qdrant-client
+sentence-transformers
+weaviate-client

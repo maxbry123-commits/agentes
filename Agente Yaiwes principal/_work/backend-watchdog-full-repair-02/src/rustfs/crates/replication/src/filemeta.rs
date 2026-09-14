@@ -1,0 +1,1378 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use crate::http::internal_key_rustfs;
+use bytes::Bytes;
+use core::fmt;
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+use std::any::Any;
+use std::collections::HashMap;
+use std::sync::LazyLock;
+use std::time::Duration;
+use time::OffsetDateTime;
+use uuid::Uuid;
+
+pub const REPLICATION_RESET: &str = "replication-reset";
+pub const REPLICATION_STATUS: &str = "replication-status";
+
+/// The S3 wire spelling of the unversioned ("null") version id. Owned here as
+/// part of the replication wire contracts; `rustfs-filemeta` keeps its own
+/// copy of the same literal (the crates are intentionally independent).
+pub const NULL_VERSION_ID: &str = "null";
+
+// ReplicateQueued - replication being queued trail
+pub const REPLICATE_QUEUED: &str = "replicate:queue";
+
+// ReplicateExisting - audit trail for existing objects replication
+pub const REPLICATE_EXISTING: &str = "replicate:existing";
+// ReplicateExistingDelete - audit trail for delete replication triggered for existing delete markers
+pub const REPLICATE_EXISTING_DELETE: &str = "replicate:existing:delete";
+
+// ReplicateMRF - audit trail for replication from Most Recent Failures (MRF) queue
+pub const REPLICATE_MRF: &str = "replicate:mrf";
+// ReplicateIncoming - audit trail of inline replication
+pub const REPLICATE_INCOMING: &str = "replicate:incoming";
+// ReplicateIncomingDelete - audit trail of inline replication of deletes.
+pub const REPLICATE_INCOMING_DELETE: &str = "replicate:incoming:delete";
+
+// ReplicateHeal - audit trail for healing of failed/pending replications
+pub const REPLICATE_HEAL: &str = "replicate:heal";
+// ReplicateHealDelete - audit trail of healing of failed/pending delete replications.
+pub const REPLICATE_HEAL_DELETE: &str = "replicate:heal:delete";
+
+/// StatusType of Replication for x-amz-replication-status header
+///
+/// NOTE: `rustfs-filemeta` owns a sibling copy of this enum (plus
+/// `VersionPurgeStatusType` and `ReplicationState`) bound to the xl.meta disk
+/// format, while this copy is bound to the MRF/resync persistence format.
+/// When adding or renaming a variant here, reconcile the sibling and the
+/// conversion layer — the reconciliation tests in
+/// `crates/ecstore/src/bucket/replication/replication_filemeta_boundary.rs`
+/// fail to compile until both sides agree.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default, Hash)]
+pub enum ReplicationStatusType {
+    /// Pending - replication is pending.
+    Pending,
+    /// Completed - replication completed ok.
+    Completed,
+    /// CompletedLegacy was called "COMPLETE" incorrectly.
+    CompletedLegacy,
+    /// Failed - replication failed.
+    Failed,
+    /// Replica - this is a replica.
+    Replica,
+    #[default]
+    Empty,
+}
+
+impl ReplicationStatusType {
+    /// Returns string representation of status
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ReplicationStatusType::Pending => "PENDING",
+            ReplicationStatusType::Completed => "COMPLETED",
+            ReplicationStatusType::CompletedLegacy => "COMPLETE",
+            ReplicationStatusType::Failed => "FAILED",
+            ReplicationStatusType::Replica => "REPLICA",
+            ReplicationStatusType::Empty => "",
+        }
+    }
+    pub fn is_empty(&self) -> bool {
+        matches!(self, ReplicationStatusType::Empty)
+    }
+}
+
+impl fmt::Display for ReplicationStatusType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl From<&str> for ReplicationStatusType {
+    fn from(s: &str) -> Self {
+        match s {
+            "PENDING" => ReplicationStatusType::Pending,
+            "COMPLETED" => ReplicationStatusType::Completed,
+            "COMPLETE" => ReplicationStatusType::CompletedLegacy,
+            "FAILED" => ReplicationStatusType::Failed,
+            "REPLICA" => ReplicationStatusType::Replica,
+            _ => ReplicationStatusType::Empty,
+        }
+    }
+}
+
+impl From<VersionPurgeStatusType> for ReplicationStatusType {
+    fn from(status: VersionPurgeStatusType) -> Self {
+        match status {
+            VersionPurgeStatusType::Pending => ReplicationStatusType::Pending,
+            VersionPurgeStatusType::Complete => ReplicationStatusType::Completed,
+            VersionPurgeStatusType::Failed => ReplicationStatusType::Failed,
+            VersionPurgeStatusType::Empty => ReplicationStatusType::Empty,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum VersionPurgeStatusType {
+    Pending,
+    Complete,
+    Failed,
+    #[default]
+    Empty,
+}
+
+impl VersionPurgeStatusType {
+    /// Returns string representation of version purge status
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            VersionPurgeStatusType::Pending => "PENDING",
+            VersionPurgeStatusType::Complete => "COMPLETE",
+            VersionPurgeStatusType::Failed => "FAILED",
+            VersionPurgeStatusType::Empty => "",
+        }
+    }
+
+    /// Returns true if the version is pending purge.
+    pub fn is_pending(&self) -> bool {
+        matches!(self, VersionPurgeStatusType::Pending | VersionPurgeStatusType::Failed)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        matches!(self, VersionPurgeStatusType::Empty)
+    }
+}
+
+impl fmt::Display for VersionPurgeStatusType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl From<&str> for VersionPurgeStatusType {
+    fn from(s: &str) -> Self {
+        match s {
+            "PENDING" => VersionPurgeStatusType::Pending,
+            "COMPLETE" => VersionPurgeStatusType::Complete,
+            "FAILED" => VersionPurgeStatusType::Failed,
+            _ => VersionPurgeStatusType::Empty,
+        }
+    }
+}
+
+/// Type - replication type enum
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ReplicationType {
+    #[default]
+    Unset,
+    Object,
+    Delete,
+    Metadata,
+    Heal,
+    ExistingObject,
+    Resync,
+    All,
+}
+
+impl ReplicationType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ReplicationType::Unset => "",
+            ReplicationType::Object => "OBJECT",
+            ReplicationType::Delete => "DELETE",
+            ReplicationType::Metadata => "METADATA",
+            ReplicationType::Heal => "HEAL",
+            ReplicationType::ExistingObject => "EXISTING_OBJECT",
+            ReplicationType::Resync => "RESYNC",
+            ReplicationType::All => "ALL",
+        }
+    }
+
+    pub fn is_valid(&self) -> bool {
+        matches!(
+            self,
+            ReplicationType::Object
+                | ReplicationType::Delete
+                | ReplicationType::Metadata
+                | ReplicationType::Heal
+                | ReplicationType::ExistingObject
+                | ReplicationType::Resync
+                | ReplicationType::All
+        )
+    }
+
+    pub fn is_data_replication(&self) -> bool {
+        matches!(self, ReplicationType::Object | ReplicationType::Delete | ReplicationType::Heal)
+    }
+}
+
+impl fmt::Display for ReplicationType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl From<&str> for ReplicationType {
+    fn from(s: &str) -> Self {
+        match s {
+            "UNSET" => ReplicationType::Unset,
+            "OBJECT" => ReplicationType::Object,
+            "DELETE" => ReplicationType::Delete,
+            "METADATA" => ReplicationType::Metadata,
+            "HEAL" => ReplicationType::Heal,
+            "EXISTING_OBJECT" => ReplicationType::ExistingObject,
+            "RESYNC" => ReplicationType::Resync,
+            "ALL" => ReplicationType::All,
+            _ => ReplicationType::Unset,
+        }
+    }
+}
+
+/// ReplicationState represents internal replication state
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct ReplicationState {
+    pub replica_timestamp: Option<OffsetDateTime>,
+    pub replica_status: ReplicationStatusType,
+    pub delete_marker: bool,
+    pub replication_timestamp: Option<OffsetDateTime>,
+    pub replication_status_internal: Option<String>,
+    pub version_purge_status_internal: Option<String>,
+    pub replicate_decision_str: String,
+    pub targets: HashMap<String, ReplicationStatusType>,
+    pub purge_targets: HashMap<String, VersionPurgeStatusType>,
+    pub reset_statuses_map: HashMap<String, String>,
+    /// Skipped by serde: this state has a positional wire form, so the map
+    /// travels in the object's internal metadata and is re-derived on read.
+    /// Kept in step with the filemeta crate's copy of the same state.
+    #[serde(skip)]
+    pub target_delete_marker_version_ids: HashMap<String, String>,
+    #[serde(skip)]
+    pub target_delete_marker_version_ids_corrupt: bool,
+}
+
+impl ReplicationState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Returns true if replication state is identical for version purge statuses and replication statuses
+    pub fn equal(&self, other: &ReplicationState) -> bool {
+        self.replica_status == other.replica_status
+            && self.replication_status_internal == other.replication_status_internal
+            && self.version_purge_status_internal == other.version_purge_status_internal
+    }
+
+    /// Returns overall replication status for the object version being replicated
+    pub fn composite_replication_status(&self) -> ReplicationStatusType {
+        if let Some(replication_status_internal) = &self.replication_status_internal {
+            match ReplicationStatusType::from(replication_status_internal.as_str()) {
+                ReplicationStatusType::Pending
+                | ReplicationStatusType::Completed
+                | ReplicationStatusType::Failed
+                | ReplicationStatusType::Replica => {
+                    return ReplicationStatusType::from(replication_status_internal.as_str());
+                }
+                _ => {
+                    let repl_status = get_composite_replication_status(&self.targets);
+
+                    if self.replica_timestamp.is_none() {
+                        return repl_status;
+                    }
+
+                    if repl_status == ReplicationStatusType::Completed
+                        && let (Some(replica_timestamp), Some(replication_timestamp)) =
+                            (self.replica_timestamp, self.replication_timestamp)
+                        && replica_timestamp > replication_timestamp
+                    {
+                        return self.replica_status.clone();
+                    }
+
+                    return repl_status;
+                }
+            }
+        } else if !self.replica_status.is_empty() {
+            return self.replica_status.clone();
+        }
+
+        ReplicationStatusType::default()
+    }
+
+    /// Returns overall replication purge status for the permanent delete being replicated
+    pub fn composite_version_purge_status(&self) -> VersionPurgeStatusType {
+        match VersionPurgeStatusType::from(self.version_purge_status_internal.clone().unwrap_or_default().as_str()) {
+            VersionPurgeStatusType::Pending | VersionPurgeStatusType::Complete | VersionPurgeStatusType::Failed => {
+                VersionPurgeStatusType::from(self.version_purge_status_internal.clone().unwrap_or_default().as_str())
+            }
+            _ => get_composite_version_purge_status(&self.purge_targets),
+        }
+    }
+
+    /// Returns replicatedInfos struct initialized with the previous state of replication
+    pub fn target_state(&self, arn: &str) -> ReplicatedTargetInfo {
+        let resync_timestamp = self
+            .reset_statuses_map
+            .get(&target_reset_header(arn))
+            .or_else(|| self.reset_statuses_map.get(arn))
+            .cloned()
+            .unwrap_or_default();
+
+        ReplicatedTargetInfo {
+            arn: arn.to_string(),
+            prev_replication_status: self.targets.get(arn).cloned().unwrap_or_default(),
+            version_purge_status: self.purge_targets.get(arn).cloned().unwrap_or_default(),
+            target_delete_marker_version_id: self.target_delete_marker_version_ids.get(arn).cloned(),
+            resync_timestamp,
+            ..Default::default()
+        }
+    }
+}
+
+pub fn get_composite_replication_status(targets: &HashMap<String, ReplicationStatusType>) -> ReplicationStatusType {
+    if targets.is_empty() {
+        return ReplicationStatusType::Empty;
+    }
+
+    let mut completed = 0;
+    for status in targets.values() {
+        match status {
+            ReplicationStatusType::Failed => return ReplicationStatusType::Failed,
+            ReplicationStatusType::Completed => completed += 1,
+            _ => {}
+        }
+    }
+
+    if completed == targets.len() {
+        ReplicationStatusType::Completed
+    } else {
+        ReplicationStatusType::Pending
+    }
+}
+
+pub fn get_composite_version_purge_status(targets: &HashMap<String, VersionPurgeStatusType>) -> VersionPurgeStatusType {
+    if targets.is_empty() {
+        return VersionPurgeStatusType::default();
+    }
+
+    let mut completed = 0;
+    for status in targets.values() {
+        match status {
+            VersionPurgeStatusType::Failed => return VersionPurgeStatusType::Failed,
+            VersionPurgeStatusType::Complete => completed += 1,
+            _ => {}
+        }
+    }
+
+    if completed == targets.len() {
+        VersionPurgeStatusType::Complete
+    } else {
+        VersionPurgeStatusType::Pending
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ReplicationAction {
+    /// Replicate all data
+    All,
+    /// Replicate only metadata
+    Metadata,
+    /// Do not replicate
+    #[default]
+    None,
+}
+
+impl ReplicationAction {
+    /// Returns string representation of replication action
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ReplicationAction::All => "all",
+            ReplicationAction::Metadata => "metadata",
+            ReplicationAction::None => "none",
+        }
+    }
+}
+
+impl fmt::Display for ReplicationAction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl From<&str> for ReplicationAction {
+    fn from(s: &str) -> Self {
+        match s {
+            "all" => ReplicationAction::All,
+            "metadata" => ReplicationAction::Metadata,
+            "none" => ReplicationAction::None,
+            _ => ReplicationAction::None,
+        }
+    }
+}
+
+/// ReplicatedTargetInfo struct represents replication info on a target
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ReplicatedTargetInfo {
+    pub arn: String,
+    pub size: i64,
+    pub duration: Duration,
+    pub replication_action: ReplicationAction,
+    pub op_type: ReplicationType,
+    pub replication_status: ReplicationStatusType,
+    pub prev_replication_status: ReplicationStatusType,
+    pub version_purge_status: VersionPurgeStatusType,
+    pub resync_timestamp: String,
+    pub replication_resynced: bool,
+    pub endpoint: String,
+    pub secure: bool,
+    pub error: Option<String>,
+    /// Version the target assigned to the delete marker it just created.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_delete_marker_version_id: Option<String>,
+    /// Version the target assigned to this object version when it differs
+    /// from the source id (a target that mints its own ids). Persisted as the
+    /// per-target ledger every later version-addressed mutation resolves
+    /// through; `None` on targets that adopt the source id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_version_id: Option<String>,
+}
+
+impl ReplicatedTargetInfo {
+    /// Returns true for a target if arn is empty
+    pub fn is_empty(&self) -> bool {
+        self.arn.is_empty()
+    }
+}
+
+/// ReplicatedInfos struct contains replication information for multiple targets
+#[derive(Debug, Clone)]
+pub struct ReplicatedInfos {
+    pub replication_timestamp: Option<OffsetDateTime>,
+    pub targets: Vec<ReplicatedTargetInfo>,
+}
+
+impl ReplicatedInfos {
+    /// Returns the total size of completed replications
+    pub fn completed_size(&self) -> i64 {
+        let mut sz = 0i64;
+        for target in &self.targets {
+            if target.is_empty() {
+                continue;
+            }
+            if target.replication_status == ReplicationStatusType::Completed
+                && target.prev_replication_status != ReplicationStatusType::Completed
+            {
+                sz += target.size;
+            }
+        }
+        sz
+    }
+
+    /// Returns true if replication was attempted on any of the targets for the object version queued
+    pub fn replication_resynced(&self) -> bool {
+        for target in &self.targets {
+            if target.is_empty() || !target.replication_resynced {
+                continue;
+            }
+            return true;
+        }
+        false
+    }
+
+    /// Returns internal representation of replication status for all targets
+    pub fn replication_status_internal(&self) -> Option<String> {
+        let mut result = String::new();
+        for target in &self.targets {
+            if target.is_empty() {
+                continue;
+            }
+            result.push_str(&format!("{}={};", target.arn, target.replication_status));
+        }
+        if result.is_empty() { None } else { Some(result) }
+    }
+
+    /// Returns overall replication status across all targets
+    pub fn replication_status(&self) -> ReplicationStatusType {
+        if self.targets.is_empty() {
+            return ReplicationStatusType::Empty;
+        }
+
+        let mut completed = 0;
+        for target in &self.targets {
+            match target.replication_status {
+                ReplicationStatusType::Failed => return ReplicationStatusType::Failed,
+                ReplicationStatusType::Completed => completed += 1,
+                _ => {}
+            }
+        }
+
+        if completed == self.targets.len() {
+            ReplicationStatusType::Completed
+        } else {
+            ReplicationStatusType::Pending
+        }
+    }
+
+    /// Returns overall version purge status across all targets
+    pub fn version_purge_status(&self) -> VersionPurgeStatusType {
+        if self.targets.is_empty() {
+            return VersionPurgeStatusType::Empty;
+        }
+
+        let mut completed = 0;
+        for target in &self.targets {
+            match target.version_purge_status {
+                VersionPurgeStatusType::Failed => return VersionPurgeStatusType::Failed,
+                VersionPurgeStatusType::Complete => completed += 1,
+                _ => {}
+            }
+        }
+
+        if completed == self.targets.len() {
+            VersionPurgeStatusType::Complete
+        } else {
+            VersionPurgeStatusType::Pending
+        }
+    }
+
+    /// Returns internal representation of version purge status for all targets
+    pub fn version_purge_status_internal(&self) -> Option<String> {
+        let mut result = String::new();
+        for target in &self.targets {
+            if target.is_empty() || target.version_purge_status.is_empty() {
+                continue;
+            }
+            result.push_str(&format!("{}={};", target.arn, target.version_purge_status));
+        }
+        if result.is_empty() { None } else { Some(result) }
+    }
+
+    /// Returns replication action based on target that actually performed replication
+    pub fn action(&self) -> ReplicationAction {
+        for target in &self.targets {
+            if target.is_empty() {
+                continue;
+            }
+            // rely on replication action from target that actually performed replication now.
+            if target.prev_replication_status != ReplicationStatusType::Completed {
+                return target.replication_action;
+            }
+        }
+        ReplicationAction::None
+    }
+}
+
+/// Distinguishes the kind of operation stored in [`MrfReplicateEntry`].
+///
+/// Old serialized files lack the `op` key; `default` maps to `Object`, which preserves
+/// the pre-existing replay behaviour for entries written before this field existed.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MrfOpKind {
+    #[default]
+    #[serde(rename = "object")]
+    Object,
+    #[serde(rename = "metadata")]
+    Metadata,
+    #[serde(rename = "heal")]
+    Heal,
+    #[serde(rename = "existingObject")]
+    ExistingObject,
+    #[serde(rename = "delete")]
+    Delete,
+}
+
+impl MrfOpKind {
+    pub fn replication_type(self) -> ReplicationType {
+        match self {
+            Self::Object => ReplicationType::Object,
+            Self::Metadata => ReplicationType::Metadata,
+            Self::Heal => ReplicationType::Heal,
+            Self::ExistingObject => ReplicationType::ExistingObject,
+            Self::Delete => ReplicationType::Delete,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub struct MrfReplicateEntry {
+    #[serde(rename = "bucket")]
+    pub bucket: String,
+
+    #[serde(rename = "object")]
+    pub object: String,
+
+    // Persisted so recovery after restart can replay the exact version.
+    // Old serialized files lack this key; `default` fills in None safely.
+    #[serde(rename = "versionID", skip_serializing_if = "Option::is_none", default)]
+    pub version_id: Option<Uuid>,
+
+    #[serde(rename = "retryCount")]
+    pub retry_count: i32,
+
+    #[serde(rename = "size", default)]
+    pub size: i64,
+
+    // Operation kind. Old files lack this key; default=Object preserves existing behaviour.
+    #[serde(rename = "op", default)]
+    pub op: MrfOpKind,
+
+    // For delete entries: whether the source operation was a force-delete. Old files lack
+    // this key; default=false preserves the pre-existing replay contract.
+    #[serde(rename = "forceDelete", default)]
+    pub force_delete: bool,
+
+    // For delete entries: the delete-marker version id (distinct from version_id, which is
+    // the version being purged). Old files lack this; default=None is correct.
+    #[serde(rename = "deleteMarkerVersionID", skip_serializing_if = "Option::is_none", default)]
+    pub delete_marker_version_id: Option<Uuid>,
+
+    // For delete entries: whether this is a delete-marker vs a versioned-object delete.
+    // Old files lack this; default=false is correct.
+    #[serde(rename = "deleteMarker", default)]
+    pub delete_marker: bool,
+
+    // For delete entries: the original delete-marker mtime, persisted as Unix nanoseconds so
+    // replay stamps replicas with the source timestamp instead of the replay time. Old files
+    // lack this key; default=None means "unknown", and replay falls back to the current time
+    // to preserve pre-existing behaviour (backlog#867).
+    #[serde(rename = "deleteMarkerMtime", skip_serializing_if = "Option::is_none", default)]
+    pub delete_marker_mtime: Option<i64>,
+
+    // For delete-marker purge intents: the exact version id each target assigned to the
+    // replicated marker, keyed by target ARN. A generic S3 target mints its own version ids
+    // and answers a DELETE of an unknown id with 204, so a replay that fell back to the source
+    // marker id would be acknowledged while the real marker stayed behind (backlog#2290).
+    // Old files lack this key; default=empty means "unknown" and replay keeps the source-id
+    // fallback it always had.
+    #[serde(rename = "targetDeleteMarkerVersionIDs", skip_serializing_if = "HashMap::is_empty", default)]
+    pub target_delete_marker_version_ids: HashMap<String, String>,
+
+    // Companion to the map above: the source metadata disagreed about the recorded ids when
+    // the intent was journaled, so the live path refused to guess and reported the target as
+    // failed. Replay must keep refusing instead of falling back to the source id. Old files
+    // lack this key; default=false.
+    #[serde(
+        rename = "targetDeleteMarkerVersionIDsCorrupt",
+        skip_serializing_if = "std::ops::Not::not",
+        default
+    )]
+    pub target_delete_marker_version_ids_corrupt: bool,
+
+    #[serde(rename = "targetARNs", skip_serializing_if = "Vec::is_empty", default)]
+    pub target_arns: Vec<String>,
+
+    // Force-delete entries use the target ARN list above as their immutable target set.
+    // The id distinguishes a durable intent from legacy MRF delete entries.
+    #[serde(rename = "forceDeleteID", skip_serializing_if = "Option::is_none", default)]
+    pub force_delete_id: Option<Uuid>,
+    #[serde(rename = "forceDeleteGeneration", skip_serializing_if = "Option::is_none", default)]
+    pub force_delete_generation: Option<i64>,
+
+    // Replay is allowed only after the source-side recursive delete has committed.
+    #[serde(rename = "forceDeleteLocalCommit", default)]
+    pub force_delete_local_commit: bool,
+}
+
+fn retry_count_to_mrf(retry_count: u32) -> i32 {
+    i32::try_from(retry_count).unwrap_or(i32::MAX)
+}
+
+pub trait ReplicationWorkerOperation: Any + Send + Sync {
+    fn to_mrf_entry(&self) -> MrfReplicateEntry;
+    fn as_any(&self) -> &dyn Any;
+    fn get_bucket(&self) -> &str;
+    fn get_object(&self) -> &str;
+    fn get_size(&self) -> i64;
+    fn is_delete_marker(&self) -> bool;
+    fn get_op_type(&self) -> ReplicationType;
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ReplicateTargetDecision {
+    pub replicate: bool,
+    pub synchronous: bool,
+    pub arn: String,
+    pub id: String,
+}
+
+impl ReplicateTargetDecision {
+    pub fn new(arn: String, replicate: bool, sync: bool) -> Self {
+        Self {
+            replicate,
+            synchronous: sync,
+            arn,
+            id: String::new(),
+        }
+    }
+}
+
+impl fmt::Display for ReplicateTargetDecision {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{};{};{};{}", self.replicate, self.synchronous, self.arn, self.id)
+    }
+}
+
+/// ReplicateDecision represents replication decision for each target
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReplicateDecision {
+    pub targets_map: HashMap<String, ReplicateTargetDecision>,
+}
+
+impl ReplicateDecision {
+    pub fn new() -> Self {
+        Self {
+            targets_map: HashMap::new(),
+        }
+    }
+
+    /// Returns true if at least one target qualifies for replication
+    pub fn replicate_any(&self) -> bool {
+        self.targets_map.values().any(|t| t.replicate)
+    }
+
+    /// Returns true if at least one target qualifies for synchronous replication
+    pub fn is_synchronous(&self) -> bool {
+        self.targets_map.values().any(|t| t.synchronous)
+    }
+
+    /// Split admitted targets by their configured delivery mode.
+    ///
+    /// Non-replicating entries are intentionally omitted from both decisions.
+    /// Callers must not promote an async target merely because another target is
+    /// synchronous, and unsupported operation paths can keep both partitions
+    /// empty or explicitly async.
+    pub fn partition_by_sync(&self) -> (Self, Self) {
+        let mut synchronous = Self::new();
+        let mut asynchronous = Self::new();
+
+        for target in self.targets_map.values().filter(|target| target.replicate) {
+            if target.synchronous {
+                synchronous.set(target.clone());
+            } else {
+                asynchronous.set(target.clone());
+            }
+        }
+
+        (synchronous, asynchronous)
+    }
+
+    /// Updates ReplicateDecision with target's replication decision
+    pub fn set(&mut self, target: ReplicateTargetDecision) {
+        self.targets_map.insert(target.arn.clone(), target);
+    }
+
+    /// Returns a stringified representation of internal replication status with all targets marked as `PENDING`
+    pub fn pending_status(&self) -> Option<String> {
+        let mut result = String::new();
+        for target in self.targets_map.values() {
+            if target.replicate {
+                result.push_str(&format!("{}={};", target.arn, ReplicationStatusType::Pending.as_str()));
+            }
+        }
+        if result.is_empty() { None } else { Some(result) }
+    }
+
+    pub fn replicate_target_arns(&self) -> Vec<String> {
+        let mut arns = self
+            .targets_map
+            .values()
+            .filter(|target| target.replicate && !target.arn.is_empty())
+            .map(|target| target.arn.clone())
+            .collect::<Vec<_>>();
+        arns.sort();
+        arns.dedup();
+        arns
+    }
+}
+
+impl fmt::Display for ReplicateDecision {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut result = String::new();
+        for (key, value) in &self.targets_map {
+            result.push_str(&format!("{key}={value},"));
+        }
+        write!(f, "{}", result.trim_end_matches(','))
+    }
+}
+
+impl Default for ReplicateDecision {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// parse k-v pairs of target ARN to stringified ReplicateTargetDecision delimited by ',' into a
+// ReplicateDecision struct
+pub fn parse_replicate_decision(_bucket: &str, s: &str) -> std::io::Result<ReplicateDecision> {
+    let mut decision = ReplicateDecision::new();
+
+    if s.is_empty() {
+        return Ok(decision);
+    }
+
+    for p in s.split(',') {
+        if p.is_empty() {
+            continue;
+        }
+
+        let slc = p.split('=').collect::<Vec<&str>>();
+        if slc.len() != 2 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("invalid replicate decision format: {s}"),
+            ));
+        }
+
+        let tgt_str = slc[1].trim_matches('"');
+        let tgt = tgt_str.split(';').collect::<Vec<&str>>();
+        if tgt.len() != 4 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("invalid replicate decision format: {s}"),
+            ));
+        }
+
+        let tgt = ReplicateTargetDecision {
+            replicate: tgt[0] == "true",
+            synchronous: tgt[1] == "true",
+            arn: tgt[2].to_string(),
+            id: tgt[3].to_string(),
+        };
+        decision.targets_map.insert(slc[0].to_string(), tgt);
+    }
+
+    Ok(decision)
+
+    // r = ReplicateDecision{
+    // 	targetsMap: make(map[string]replicateTargetDecision),
+    // }
+    // if len(s) == 0 {
+    // 	return
+    // }
+    // for _, p := range strings.Split(s, ",") {
+    // 	if p == "" {
+    // 		continue
+    // 	}
+    // 	slc := strings.Split(p, "=")
+    // 	if len(slc) != 2 {
+    // 		return r, errInvalidReplicateDecisionFormat
+    // 	}
+    // 	tgtStr := strings.TrimSuffix(strings.TrimPrefix(slc[1], `"`), `"`)
+    // 	tgt := strings.Split(tgtStr, ";")
+    // 	if len(tgt) != 4 {
+    // 		return r, errInvalidReplicateDecisionFormat
+    // 	}
+    // 	r.targetsMap[slc[0]] = replicateTargetDecision{Replicate: tgt[0] == "true", Synchronous: tgt[1] == "true", Arn: tgt[2], ID: tgt[3]}
+    // }
+}
+
+/// Source snapshot used to fence replication terminal-status publication.
+///
+/// Timestamp and mutation id remain opaque because supported RustFS/MinIO
+/// writers may use different textual representations. `invalid` preserves the
+/// distinction between truly absent legacy metadata and corrupt/conflicting
+/// compatibility aliases.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReplicationGenerationSnapshot {
+    pub timestamp: Option<String>,
+    pub mutation_id: Option<String>,
+    pub payload_fingerprint: Option<[u8; 32]>,
+    pub invalid: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ReplicateObjectInfo {
+    pub name: String,
+    pub size: i64,
+    pub actual_size: i64,
+    pub bucket: String,
+    pub version_id: Option<Uuid>,
+    pub etag: Option<String>,
+    pub mod_time: Option<OffsetDateTime>,
+    pub replication_status: ReplicationStatusType,
+    pub replication_status_internal: Option<String>,
+    pub delete_marker: bool,
+    pub version_purge_status_internal: Option<String>,
+    pub version_purge_status: VersionPurgeStatusType,
+    pub replication_state: Option<ReplicationState>,
+    pub op_type: ReplicationType,
+    pub event_type: String,
+    pub dsc: ReplicateDecision,
+    pub existing_obj_resync: ResyncDecision,
+    pub target_statuses: HashMap<String, ReplicationStatusType>,
+    pub target_purge_statuses: HashMap<String, VersionPurgeStatusType>,
+    pub replication_timestamp: Option<OffsetDateTime>,
+    /// Exact persisted source snapshot used to fence terminal status
+    /// write-back after remote I/O.
+    #[serde(default)]
+    pub replication_generation: ReplicationGenerationSnapshot,
+    pub ssec: bool,
+    pub user_tags: String,
+    pub checksum: Option<Bytes>,
+    pub retry_count: u32,
+}
+
+impl ReplicationWorkerOperation for ReplicateObjectInfo {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn to_mrf_entry(&self) -> MrfReplicateEntry {
+        MrfReplicateEntry {
+            bucket: self.bucket.clone(),
+            object: self.name.clone(),
+            version_id: self.version_id,
+            retry_count: retry_count_to_mrf(self.retry_count),
+            size: self.size,
+            op: match self.op_type {
+                ReplicationType::Metadata => MrfOpKind::Metadata,
+                ReplicationType::Heal => MrfOpKind::Heal,
+                ReplicationType::ExistingObject => MrfOpKind::ExistingObject,
+                _ => MrfOpKind::Object,
+            },
+            force_delete: false,
+            delete_marker_version_id: None,
+            delete_marker: false,
+            delete_marker_mtime: None,
+            target_arns: self.admitted_target_arns(),
+            ..Default::default()
+        }
+    }
+
+    fn get_bucket(&self) -> &str {
+        &self.bucket
+    }
+
+    fn get_object(&self) -> &str {
+        &self.name
+    }
+
+    fn get_size(&self) -> i64 {
+        self.size
+    }
+
+    fn is_delete_marker(&self) -> bool {
+        self.delete_marker
+    }
+
+    fn get_op_type(&self) -> ReplicationType {
+        self.op_type
+    }
+}
+
+static REPL_STATUS_REGEX: LazyLock<Regex> = LazyLock::new(|| match Regex::new(r"([^=].*?)=([^,].*?);") {
+    Ok(regex) => regex,
+    Err(err) => panic!("replication status regex must compile: {err}"),
+});
+
+impl ReplicateObjectInfo {
+    /// Returns the target set captured when this queued operation was admitted.
+    /// Resync decisions are more specific than the general heal decision and must
+    /// win for ExistingObject work.
+    pub fn admitted_target_arns(&self) -> Vec<String> {
+        if self.op_type == ReplicationType::ExistingObject && !self.existing_obj_resync.is_empty() {
+            let mut arns = self
+                .existing_obj_resync
+                .targets
+                .iter()
+                .filter(|(_, decision)| decision.replicate)
+                .map(|(arn, _)| arn.clone())
+                .collect::<Vec<_>>();
+            arns.sort();
+            arns.dedup();
+            return arns;
+        }
+        self.dsc.replicate_target_arns()
+    }
+
+    /// Returns replication status of a target
+    pub fn target_replication_status(&self, arn: &str) -> ReplicationStatusType {
+        let binding = self.replication_status_internal.clone().unwrap_or_default();
+        let captures = REPL_STATUS_REGEX.captures_iter(&binding);
+        for cap in captures {
+            if cap.len() == 3 && &cap[1] == arn {
+                return ReplicationStatusType::from(&cap[2]);
+            }
+        }
+        ReplicationStatusType::default()
+    }
+
+    /// Returns the relevant info needed by MRF
+    pub fn to_mrf_entry(&self) -> MrfReplicateEntry {
+        MrfReplicateEntry {
+            bucket: self.bucket.clone(),
+            object: self.name.clone(),
+            version_id: self.version_id,
+            retry_count: retry_count_to_mrf(self.retry_count),
+            size: self.size,
+            op: match self.op_type {
+                ReplicationType::Metadata => MrfOpKind::Metadata,
+                ReplicationType::Heal => MrfOpKind::Heal,
+                ReplicationType::ExistingObject => MrfOpKind::ExistingObject,
+                _ => MrfOpKind::Object,
+            },
+            force_delete: false,
+            delete_marker_version_id: None,
+            delete_marker: false,
+            delete_marker_mtime: None,
+            target_arns: self.admitted_target_arns(),
+            ..Default::default()
+        }
+    }
+}
+
+pub fn replicate_decision_for_admitted_targets(target_arns: &[String]) -> ReplicateDecision {
+    let mut decision = ReplicateDecision::new();
+    for arn in target_arns {
+        if !arn.is_empty() {
+            decision.set(ReplicateTargetDecision::new(arn.clone(), true, false));
+        }
+    }
+    decision
+}
+
+// constructs a replication status map from string representation
+pub fn replication_statuses_map(s: &str) -> HashMap<String, ReplicationStatusType> {
+    let mut targets = HashMap::new();
+    let rep_stat_matches = REPL_STATUS_REGEX.captures_iter(s).map(|c| c.extract());
+    for (_, [arn, status]) in rep_stat_matches {
+        if arn.is_empty() {
+            continue;
+        }
+        let status = ReplicationStatusType::from(status);
+        targets.insert(arn.to_string(), status);
+    }
+    targets
+}
+
+// constructs a version purge status map from string representation
+pub fn version_purge_statuses_map(s: &str) -> HashMap<String, VersionPurgeStatusType> {
+    let mut targets = HashMap::new();
+    let purge_status_matches = REPL_STATUS_REGEX.captures_iter(s).map(|c| c.extract());
+    for (_, [arn, status]) in purge_status_matches {
+        if arn.is_empty() {
+            continue;
+        }
+        let status = VersionPurgeStatusType::from(status);
+        targets.insert(arn.to_string(), status);
+    }
+    targets
+}
+
+fn replication_statuses_string(targets: &HashMap<String, ReplicationStatusType>) -> Option<String> {
+    let mut result = String::new();
+    for (arn, status) in targets {
+        if arn.is_empty() || status.is_empty() {
+            continue;
+        }
+        result.push_str(&format!("{arn}={status};"));
+    }
+    if result.is_empty() { None } else { Some(result) }
+}
+
+fn version_purge_statuses_string(targets: &HashMap<String, VersionPurgeStatusType>) -> Option<String> {
+    let mut result = String::new();
+    for (arn, status) in targets {
+        if arn.is_empty() || status.is_empty() {
+            continue;
+        }
+        result.push_str(&format!("{arn}={status};"));
+    }
+    if result.is_empty() { None } else { Some(result) }
+}
+
+/// Kept in step with the bounds used by the filemeta crate's copy.
+const MAX_REPLICATION_TARGET_VERSION_ENTRIES: usize = 1_000;
+const MAX_REPLICATION_TARGET_ARN_LEN: usize = 1_024;
+const MAX_REPLICATION_TARGET_VERSION_ID_LEN: usize = 1_024;
+
+pub fn get_replication_state(rinfos: &ReplicatedInfos, prev_state: &ReplicationState, _vid: Option<String>) -> ReplicationState {
+    let reset_status_map: Vec<(String, String)> = rinfos
+        .targets
+        .iter()
+        .filter(|v| !v.resync_timestamp.is_empty())
+        .map(|t| (target_reset_header(t.arn.as_str()), t.resync_timestamp.clone()))
+        .collect();
+
+    let mut targets = prev_state.targets.clone();
+    for (arn, status) in replication_statuses_map(&rinfos.replication_status_internal().unwrap_or_default()) {
+        targets.insert(arn, status);
+    }
+
+    let mut purge_targets = prev_state.purge_targets.clone();
+    for (arn, status) in version_purge_statuses_map(&rinfos.version_purge_status_internal().unwrap_or_default()) {
+        purge_targets.insert(arn, status);
+    }
+
+    let repl_statuses = replication_statuses_string(&targets);
+    let vpurge_statuses = version_purge_statuses_string(&purge_targets);
+
+    let mut reset_statuses_map = prev_state.reset_statuses_map.clone();
+    for (key, value) in reset_status_map {
+        reset_statuses_map.insert(key, value);
+    }
+
+    // Carry forward the recorded per-target delete-marker versions, dropping
+    // anything outside the bounds, then fold in what this round's targets
+    // reported. A map already past the cap is discarded rather than trusted.
+    let mut target_delete_marker_version_ids = prev_state.target_delete_marker_version_ids.clone();
+    target_delete_marker_version_ids.retain(|arn, version_id| {
+        !arn.is_empty()
+            && arn.len() <= MAX_REPLICATION_TARGET_ARN_LEN
+            && !version_id.is_empty()
+            && version_id.len() <= MAX_REPLICATION_TARGET_VERSION_ID_LEN
+    });
+    if target_delete_marker_version_ids.len() > MAX_REPLICATION_TARGET_VERSION_ENTRIES {
+        target_delete_marker_version_ids.clear();
+    }
+    for target in &rinfos.targets {
+        let Some(version_id) = target.target_delete_marker_version_id.as_ref() else {
+            continue;
+        };
+        if (!target_delete_marker_version_ids.contains_key(&target.arn)
+            && target_delete_marker_version_ids.len() >= MAX_REPLICATION_TARGET_VERSION_ENTRIES)
+            || target.arn.is_empty()
+            || target.arn.len() > MAX_REPLICATION_TARGET_ARN_LEN
+            || version_id.is_empty()
+            || version_id.len() > MAX_REPLICATION_TARGET_VERSION_ID_LEN
+        {
+            continue;
+        }
+        target_delete_marker_version_ids.insert(target.arn.clone(), version_id.clone());
+    }
+
+    ReplicationState {
+        replicate_decision_str: prev_state.replicate_decision_str.clone(),
+        reset_statuses_map,
+        replica_timestamp: prev_state.replica_timestamp,
+        replica_status: prev_state.replica_status.clone(),
+        targets,
+        replication_status_internal: repl_statuses,
+        replication_timestamp: rinfos.replication_timestamp,
+        purge_targets,
+        version_purge_status_internal: vpurge_statuses,
+        target_delete_marker_version_ids,
+        target_delete_marker_version_ids_corrupt: prev_state.target_delete_marker_version_ids_corrupt,
+
+        ..Default::default()
+    }
+}
+
+pub fn target_reset_header(arn: &str) -> String {
+    internal_key_rustfs(&format!("{REPLICATION_RESET}-{arn}"))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ResyncTargetDecision {
+    pub replicate: bool,
+    pub reset_id: String,
+    pub reset_before_date: Option<OffsetDateTime>,
+}
+
+/// ResyncDecision is a struct representing a map with target's individual resync decisions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResyncDecision {
+    pub targets: HashMap<String, ResyncTargetDecision>,
+}
+
+impl ResyncDecision {
+    pub fn new() -> Self {
+        Self { targets: HashMap::new() }
+    }
+
+    /// Returns true if no targets with resync decision present
+    pub fn is_empty(&self) -> bool {
+        self.targets.is_empty()
+    }
+
+    pub fn must_resync(&self) -> bool {
+        self.targets.values().any(|v| v.replicate)
+    }
+
+    pub fn must_resync_target(&self, tgt_arn: &str) -> bool {
+        self.targets.get(tgt_arn).map(|v| v.replicate).unwrap_or(false)
+    }
+}
+
+impl Default for ResyncDecision {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn replicate_decision_returns_sorted_unique_replicating_target_arns() {
+        let mut decision = ReplicateDecision::new();
+        decision.set(ReplicateTargetDecision {
+            arn: "arn:target-b".to_string(),
+            replicate: true,
+            ..Default::default()
+        });
+        decision.set(ReplicateTargetDecision {
+            arn: "arn:target-a".to_string(),
+            replicate: true,
+            ..Default::default()
+        });
+        decision.set(ReplicateTargetDecision {
+            arn: "arn:target-c".to_string(),
+            replicate: false,
+            ..Default::default()
+        });
+        decision.set(ReplicateTargetDecision {
+            arn: String::new(),
+            replicate: true,
+            ..Default::default()
+        });
+
+        assert_eq!(
+            decision.replicate_target_arns(),
+            vec!["arn:target-a".to_string(), "arn:target-b".to_string()]
+        );
+    }
+
+    #[test]
+    fn replicate_object_info_mrf_entry_carries_replicating_targets() {
+        let mut decision = ReplicateDecision::new();
+        decision.set(ReplicateTargetDecision {
+            arn: "arn:target-a".to_string(),
+            replicate: true,
+            ..Default::default()
+        });
+        decision.set(ReplicateTargetDecision {
+            arn: "arn:target-b".to_string(),
+            replicate: false,
+            ..Default::default()
+        });
+        let info = ReplicateObjectInfo {
+            bucket: "bucket".to_string(),
+            name: "object".to_string(),
+            size: 42,
+            dsc: decision,
+            ..Default::default()
+        };
+
+        let entry = info.to_mrf_entry();
+
+        assert_eq!(entry.target_arns, vec!["arn:target-a".to_string()]);
+    }
+
+    #[test]
+    fn partition_by_sync_keeps_mixed_targets_independent() {
+        let mut decision = ReplicateDecision::new();
+        decision.set(ReplicateTargetDecision::new("arn:sync".to_string(), true, true));
+        decision.set(ReplicateTargetDecision::new("arn:async".to_string(), true, false));
+        decision.set(ReplicateTargetDecision::new("arn:disabled".to_string(), false, true));
+
+        let (synchronous, asynchronous) = decision.partition_by_sync();
+
+        assert_eq!(synchronous.replicate_target_arns(), vec!["arn:sync".to_string()]);
+        assert_eq!(asynchronous.replicate_target_arns(), vec!["arn:async".to_string()]);
+        assert!(synchronous.is_synchronous());
+        assert!(!asynchronous.is_synchronous());
+    }
+
+    #[test]
+    fn partition_by_sync_does_not_promote_async_targets() {
+        let mut decision = ReplicateDecision::new();
+        decision.set(ReplicateTargetDecision::new("arn:async".to_string(), true, false));
+
+        let (synchronous, asynchronous) = decision.partition_by_sync();
+
+        assert!(!synchronous.replicate_any());
+        assert_eq!(asynchronous.replicate_target_arns(), vec!["arn:async".to_string()]);
+    }
+
+    #[test]
+    fn metadata_replication_mrf_entry_preserves_operation_kind() {
+        let info = ReplicateObjectInfo {
+            bucket: "bucket".to_string(),
+            name: "object".to_string(),
+            op_type: ReplicationType::Metadata,
+            ..Default::default()
+        };
+
+        assert_eq!(info.to_mrf_entry().op, MrfOpKind::Metadata);
+    }
+
+    #[test]
+    fn admission_snapshot_prefers_resync_targets_for_existing_objects() {
+        let mut decision = ReplicateDecision::new();
+        decision.set(ReplicateTargetDecision::new("arn:live".to_string(), true, false));
+        let mut resync = ResyncDecision::new();
+        resync.targets.insert(
+            "arn:admitted".to_string(),
+            ResyncTargetDecision {
+                replicate: true,
+                reset_id: "reset-1".to_string(),
+                ..Default::default()
+            },
+        );
+        let info = ReplicateObjectInfo {
+            op_type: ReplicationType::ExistingObject,
+            dsc: decision,
+            existing_obj_resync: resync,
+            ..Default::default()
+        };
+
+        assert_eq!(info.admitted_target_arns(), vec!["arn:admitted".to_string()]);
+        assert_eq!(info.to_mrf_entry().op, MrfOpKind::ExistingObject);
+    }
+
+    #[test]
+    fn mrf_operation_kind_round_trips_heal_and_existing_object_intent() {
+        assert_eq!(MrfOpKind::Heal.replication_type(), ReplicationType::Heal);
+        assert_eq!(MrfOpKind::ExistingObject.replication_type(), ReplicationType::ExistingObject);
+    }
+
+    #[test]
+    fn target_state_reads_resync_timestamp_from_target_reset_header_key() {
+        let arn = "arn:rustfs:replication:us-east-1:target:bucket";
+        let timestamp = "2026-06-30T00:00:00Z;reset-1".to_string();
+        let mut state = ReplicationState::default();
+        state.reset_statuses_map.insert(target_reset_header(arn), timestamp.clone());
+
+        let target_state = state.target_state(arn);
+
+        assert_eq!(target_state.resync_timestamp, timestamp);
+    }
+
+    #[test]
+    fn get_replication_state_preserves_untouched_target_statuses() {
+        let target_a = "arn:target:a".to_string();
+        let target_b = "arn:target:b".to_string();
+        let mut prev_state = ReplicationState::default();
+        prev_state.targets.insert(target_a.clone(), ReplicationStatusType::Failed);
+        prev_state.targets.insert(target_b.clone(), ReplicationStatusType::Completed);
+
+        let rinfos = ReplicatedInfos {
+            replication_timestamp: None,
+            targets: vec![ReplicatedTargetInfo {
+                arn: target_a.clone(),
+                replication_status: ReplicationStatusType::Completed,
+                ..Default::default()
+            }],
+        };
+
+        let state = get_replication_state(&rinfos, &prev_state, None);
+
+        assert_eq!(state.targets.get(&target_a), Some(&ReplicationStatusType::Completed));
+        assert_eq!(state.targets.get(&target_b), Some(&ReplicationStatusType::Completed));
+        assert_eq!(
+            replication_statuses_map(&state.replication_status_internal.unwrap_or_default()).get(&target_b),
+            Some(&ReplicationStatusType::Completed)
+        );
+    }
+}

@@ -1,0 +1,892 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#[cfg(feature = "rio-v2")]
+pub use rustfs_rio_v2::*;
+
+#[cfg(not(feature = "rio-v2"))]
+pub use rustfs_rio::*;
+
+use bytes::Bytes;
+use rustfs_utils::CompressionAlgorithm;
+use std::str::FromStr;
+use tokio::io::AsyncRead;
+
+#[cfg(feature = "rio-v2")]
+const MINIO_S2_COMPRESSION_SCHEME: &str = "klauspost/compress/s2";
+// The S2 padding multiple rio-v2 pads compressed streams to before
+// encryption. Only the padding test asserts it today, so the lib target sees
+// it as unused (backlog#1823).
+#[cfg(feature = "rio-v2")]
+#[allow(dead_code, reason = "on-disk contract asserted by the rio-v2 padding test (backlog#1823)")]
+const ENCRYPTED_S2_PADDING_MULTIPLE: usize = 256;
+
+/// Which rio implementation this build compiled in. Only the feature-seam
+/// guard test in lib.rs reads it, so the lib target sees it as unused
+/// (backlog#1823).
+#[allow(
+    dead_code,
+    reason = "asserted by the rio backend feature-seam test in lib.rs (backlog#1823)"
+)]
+pub const fn backend_name() -> &'static str {
+    #[cfg(feature = "rio-v2")]
+    {
+        "rio-v2"
+    }
+
+    #[cfg(not(feature = "rio-v2"))]
+    {
+        "legacy-rio"
+    }
+}
+
+pub fn compression_metadata_value(algorithm: CompressionAlgorithm) -> String {
+    #[cfg(feature = "rio-v2")]
+    {
+        let _ = algorithm;
+        MINIO_S2_COMPRESSION_SCHEME.to_string()
+    }
+
+    #[cfg(not(feature = "rio-v2"))]
+    {
+        algorithm.to_string()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadCompressionBackend {
+    Legacy,
+    V2,
+}
+
+pub fn compression_scheme_to_read_plan(scheme: &str) -> std::io::Result<(CompressionAlgorithm, ReadCompressionBackend)> {
+    #[cfg(feature = "rio-v2")]
+    if scheme.eq_ignore_ascii_case(MINIO_S2_COMPRESSION_SCHEME) {
+        return Ok((CompressionAlgorithm::default(), ReadCompressionBackend::V2));
+    }
+
+    Ok((CompressionAlgorithm::from_str(scheme)?, ReadCompressionBackend::Legacy))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadEncryptionBackend {
+    Legacy,
+    // Never constructed today — every read still selects Legacy — but the
+    // decrypt paths below carry live match arms for it. This is the rio-v2
+    // read seam (backlog#1638 / #1835), not dead code: deleting the variant
+    // would delete those arms with it.
+    #[allow(dead_code, reason = "rio-v2 read seam; match arms below are live (backlog#1823)")]
+    V2,
+}
+
+pub fn compression_index_storage_bytes(index: &Index) -> Bytes {
+    #[cfg(feature = "rio-v2")]
+    {
+        minio_index_storage_bytes(index)
+    }
+
+    #[cfg(not(feature = "rio-v2"))]
+    {
+        index.clone().into_vec()
+    }
+}
+
+pub fn decode_compression_index_bytes(bytes: &Bytes) -> Option<Index> {
+    #[cfg(feature = "rio-v2")]
+    {
+        if let Some(decoded) = decode_minio_index_bytes(bytes) {
+            return Some(decoded);
+        }
+    }
+
+    let mut decoded = Index::new();
+    if decoded.load(bytes.as_ref()).is_ok() {
+        return Some(decoded);
+    }
+
+    #[cfg(feature = "rio-v2")]
+    {
+        let restored = restore_legacy_index_headers(bytes.as_ref());
+        let mut decoded = Index::new();
+        if decoded.load(&restored).is_ok() {
+            return Some(decoded);
+        }
+    }
+
+    None
+}
+
+pub fn compression_reader<R>(reader: R, algorithm: CompressionAlgorithm, encrypted: bool) -> CompressReader<R>
+where
+    R: AsyncRead + Unpin + Send + Sync,
+{
+    #[cfg(feature = "rio-v2")]
+    {
+        if encrypted {
+            return CompressReader::with_encrypted_padding(reader, algorithm);
+        }
+    }
+
+    #[cfg(not(feature = "rio-v2"))]
+    let _ = encrypted;
+
+    CompressReader::new(reader, algorithm)
+}
+
+pub fn decompression_reader<R>(
+    reader: R,
+    algorithm: CompressionAlgorithm,
+    backend: ReadCompressionBackend,
+) -> Box<dyn AsyncRead + Unpin + Send + Sync>
+where
+    R: AsyncRead + Unpin + Send + Sync + 'static,
+{
+    #[cfg(feature = "rio-v2")]
+    {
+        match backend {
+            ReadCompressionBackend::Legacy => Box::new(rustfs_rio::DecompressReader::new(reader, algorithm)),
+            ReadCompressionBackend::V2 => Box::new(rustfs_rio_v2::DecompressReader::new(reader, algorithm)),
+        }
+    }
+
+    #[cfg(not(feature = "rio-v2"))]
+    {
+        let _ = backend;
+        Box::new(rustfs_rio::DecompressReader::new(reader, algorithm))
+    }
+}
+
+pub fn decrypt_reader<R>(
+    reader: R,
+    key: [u8; 32],
+    base_nonce: [u8; 12],
+    backend: ReadEncryptionBackend,
+    sequence_number: u32,
+) -> Box<dyn AsyncRead + Unpin + Send + Sync>
+where
+    R: AsyncRead + Unpin + Send + Sync + 'static,
+{
+    #[cfg(feature = "rio-v2")]
+    {
+        match backend {
+            // The legacy family includes v2 fixed-frame objects, whose plans
+            // seek by frame; honor the starting index here too so a rio-v2
+            // build can range-read objects a default-build node wrote.
+            ReadEncryptionBackend::Legacy if sequence_number > 0 => {
+                Box::new(rustfs_rio::DecryptReader::new_at_block(reader, key, base_nonce, sequence_number as usize))
+            }
+            ReadEncryptionBackend::Legacy => Box::new(rustfs_rio::DecryptReader::new(reader, key, base_nonce)),
+            ReadEncryptionBackend::V2 => {
+                Box::new(rustfs_rio_v2::DecryptReader::new_with_sequence(reader, key, base_nonce, sequence_number))
+            }
+        }
+    }
+
+    #[cfg(not(feature = "rio-v2"))]
+    {
+        let _ = backend;
+        if sequence_number > 0 {
+            // Single-part v2 frame seek: the plan positioned the storage read
+            // at frame `sequence_number`; nonce and AAD bind absolute indices.
+            Box::new(rustfs_rio::DecryptReader::new_at_block(reader, key, base_nonce, sequence_number as usize))
+        } else {
+            Box::new(rustfs_rio::DecryptReader::new(reader, key, base_nonce))
+        }
+    }
+}
+
+pub fn decrypt_reader_with_object_key<R>(
+    reader: R,
+    object_key: [u8; 32],
+    sequence_number: u32,
+) -> Box<dyn AsyncRead + Unpin + Send + Sync>
+where
+    R: AsyncRead + Unpin + Send + Sync + 'static,
+{
+    #[cfg(feature = "rio-v2")]
+    {
+        Box::new(rustfs_rio_v2::DecryptReader::new_with_object_key_and_sequence(
+            reader,
+            object_key,
+            sequence_number,
+        ))
+    }
+
+    #[cfg(not(feature = "rio-v2"))]
+    {
+        let _ = sequence_number;
+        Box::new(rustfs_rio::DecryptReader::new(reader, object_key, [0u8; 12]))
+    }
+}
+
+pub fn decrypt_multipart_reader<R>(
+    reader: R,
+    key: [u8; 32],
+    base_nonce: [u8; 12],
+    multipart_parts: Vec<usize>,
+    backend: ReadEncryptionBackend,
+    sequence_number: u32,
+) -> Box<dyn AsyncRead + Unpin + Send + Sync>
+where
+    R: AsyncRead + Unpin + Send + Sync + 'static,
+{
+    #[cfg(feature = "rio-v2")]
+    {
+        match backend {
+            ReadEncryptionBackend::Legacy => {
+                Box::new(rustfs_rio::DecryptReader::new_multipart(reader, key, base_nonce, multipart_parts))
+            }
+            ReadEncryptionBackend::V2 => Box::new(rustfs_rio_v2::DecryptReader::new_multipart_with_sequence(
+                reader,
+                key,
+                base_nonce,
+                multipart_parts,
+                sequence_number,
+            )),
+        }
+    }
+
+    #[cfg(not(feature = "rio-v2"))]
+    {
+        let _ = (backend, sequence_number);
+        Box::new(rustfs_rio::DecryptReader::new_multipart(reader, key, base_nonce, multipart_parts))
+    }
+}
+
+pub fn decrypt_multipart_reader_with_object_key<R>(
+    reader: R,
+    object_key: [u8; 32],
+    multipart_parts: Vec<usize>,
+    sequence_number: u32,
+) -> Box<dyn AsyncRead + Unpin + Send + Sync>
+where
+    R: AsyncRead + Unpin + Send + Sync + 'static,
+{
+    #[cfg(feature = "rio-v2")]
+    {
+        Box::new(rustfs_rio_v2::DecryptReader::new_multipart_with_object_key_and_sequence(
+            reader,
+            object_key,
+            multipart_parts,
+            sequence_number,
+        ))
+    }
+
+    #[cfg(not(feature = "rio-v2"))]
+    {
+        let _ = sequence_number;
+        Box::new(rustfs_rio::DecryptReader::new_multipart(reader, object_key, [0u8; 12], multipart_parts))
+    }
+}
+
+#[cfg(feature = "rio-v2")]
+fn restore_legacy_index_headers(bytes: &[u8]) -> Vec<u8> {
+    if bytes.is_empty() {
+        return Vec::new();
+    }
+
+    const S2_INDEX_HEADER: &[u8] = b"s2idx\x00";
+    const S2_INDEX_TRAILER: &[u8] = b"\x00xdi2s";
+    let mut restored = Vec::with_capacity(4 + S2_INDEX_HEADER.len() + bytes.len() + 4 + S2_INDEX_TRAILER.len());
+    restored.extend_from_slice(&[0x99, 0x2A, 0x4D, 0x18]);
+    restored.extend_from_slice(S2_INDEX_HEADER);
+    restored.extend_from_slice(bytes);
+
+    let total_size = (restored.len() + 4 + S2_INDEX_TRAILER.len()) as u32;
+    restored.extend_from_slice(&total_size.to_le_bytes());
+    restored.extend_from_slice(S2_INDEX_TRAILER);
+
+    let chunk_len = restored.len() - 4;
+    restored[1] = chunk_len as u8;
+    restored[2] = (chunk_len >> 8) as u8;
+    restored[3] = (chunk_len >> 16) as u8;
+    restored
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct WriteEncryption {
+    key_bytes: [u8; 32],
+    mode: WriteEncryptionMode,
+}
+
+/// Write-side switch for the authenticated, fixed-frame legacy v2 layout.
+///
+/// Off by default for rolling-upgrade safety: nodes without v2 read support
+/// cannot decrypt v2 frames, and encrypted ciphertext travels verbatim through
+/// transition, decommission and SSE-C replication passthrough. Turn on only
+/// after every node (and every RustFS warm/replication target that receives
+/// raw ciphertext) runs a release with v2 read support. Reading v2 objects
+/// needs no switch — the decrypt reader dispatches on the frame type byte.
+#[cfg(not(feature = "rio-v2"))]
+pub(crate) const ENV_RUSTFS_ENCRYPTION_FRAME_V2: &str = "RUSTFS_ENCRYPTION_FRAME_V2";
+#[cfg(not(feature = "rio-v2"))]
+pub(crate) const DEFAULT_RUSTFS_ENCRYPTION_FRAME_V2: bool = false;
+
+#[cfg(not(feature = "rio-v2"))]
+pub(crate) fn encryption_frame_v2_enabled() -> bool {
+    #[cfg(test)]
+    {
+        rustfs_utils::get_env_bool(ENV_RUSTFS_ENCRYPTION_FRAME_V2, DEFAULT_RUSTFS_ENCRYPTION_FRAME_V2)
+    }
+    #[cfg(not(test))]
+    {
+        static CACHED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *CACHED.get_or_init(|| rustfs_utils::get_env_bool(ENV_RUSTFS_ENCRYPTION_FRAME_V2, DEFAULT_RUSTFS_ENCRYPTION_FRAME_V2))
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum WriteEncryptionMode {
+    SinglepartObjectKey,
+    Singlepart {
+        base_nonce: [u8; 12],
+    },
+    MultipartLegacy {
+        base_nonce: [u8; 12],
+        multipart_part_number: usize,
+    },
+    MultipartObjectKey {
+        multipart_part_number: u32,
+    },
+}
+
+impl WriteEncryption {
+    pub const fn singlepart_object_key(object_key: [u8; 32]) -> Self {
+        Self {
+            key_bytes: object_key,
+            mode: WriteEncryptionMode::SinglepartObjectKey,
+        }
+    }
+
+    pub const fn singlepart(key_bytes: [u8; 32], base_nonce: [u8; 12]) -> Self {
+        Self {
+            key_bytes,
+            mode: WriteEncryptionMode::Singlepart { base_nonce },
+        }
+    }
+
+    pub const fn multipart(key_bytes: [u8; 32], base_nonce: [u8; 12], multipart_part_number: usize) -> Self {
+        Self {
+            key_bytes,
+            mode: WriteEncryptionMode::MultipartLegacy {
+                base_nonce,
+                multipart_part_number,
+            },
+        }
+    }
+
+    pub const fn multipart_object_key(object_key: [u8; 32], multipart_part_number: u32) -> Self {
+        Self {
+            key_bytes: object_key,
+            mode: WriteEncryptionMode::MultipartObjectKey { multipart_part_number },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct WritePlan {
+    compression: Option<CompressionAlgorithm>,
+    encryption: Option<WriteEncryption>,
+}
+
+impl WritePlan {
+    pub const fn new() -> Self {
+        Self {
+            compression: None,
+            encryption: None,
+        }
+    }
+
+    pub const fn with_compression(mut self, algorithm: CompressionAlgorithm) -> Self {
+        self.compression = Some(algorithm);
+        self
+    }
+
+    pub const fn with_encryption(mut self, encryption: WriteEncryption) -> Self {
+        self.encryption = Some(encryption);
+        self
+    }
+
+    pub const fn is_passthrough(&self) -> bool {
+        self.compression.is_none() && self.encryption.is_none()
+    }
+
+    pub fn apply(self, mut reader: HashReader, actual_size: i64) -> std::io::Result<HashReader> {
+        // Transformations create new HashReaders around the plaintext reader. Keep
+        // the request checksum metadata on the final reader for multipart/single
+        // PUT persistence, but leave verification to the plaintext reader.
+        let checksum = reader.content_hash().clone();
+        let trailer = reader.get_trailer().cloned();
+
+        let encrypted = self.encryption.is_some();
+        if let Some(algorithm) = self.compression {
+            reader = HashReader::from_reader(
+                compression_reader(reader, algorithm, encrypted),
+                HashReader::SIZE_PRESERVE_LAYER,
+                actual_size,
+                None,
+                None,
+                false,
+            )?;
+        }
+
+        if let Some(encryption) = self.encryption {
+            reader = match encryption.mode {
+                WriteEncryptionMode::SinglepartObjectKey => HashReader::from_reader(
+                    #[cfg(feature = "rio-v2")]
+                    EncryptReader::new_with_object_key(reader, encryption.key_bytes),
+                    #[cfg(not(feature = "rio-v2"))]
+                    EncryptReader::new(reader, encryption.key_bytes, [0u8; 12]),
+                    HashReader::SIZE_PRESERVE_LAYER,
+                    actual_size,
+                    None,
+                    None,
+                    false,
+                )?,
+                WriteEncryptionMode::Singlepart { base_nonce } => {
+                    #[cfg(not(feature = "rio-v2"))]
+                    let encrypt_reader = if encryption_frame_v2_enabled() {
+                        EncryptReader::new_v2(reader, encryption.key_bytes, base_nonce)
+                    } else {
+                        EncryptReader::new(reader, encryption.key_bytes, base_nonce)
+                    };
+                    #[cfg(feature = "rio-v2")]
+                    let encrypt_reader = EncryptReader::new(reader, encryption.key_bytes, base_nonce);
+                    HashReader::from_reader(encrypt_reader, HashReader::SIZE_PRESERVE_LAYER, actual_size, None, None, false)?
+                }
+                WriteEncryptionMode::MultipartLegacy {
+                    base_nonce,
+                    multipart_part_number,
+                } => {
+                    #[cfg(not(feature = "rio-v2"))]
+                    let encrypt_reader = if encryption_frame_v2_enabled() {
+                        EncryptReader::new_multipart_v2(reader, encryption.key_bytes, base_nonce, multipart_part_number)
+                    } else {
+                        EncryptReader::new_multipart(reader, encryption.key_bytes, base_nonce, multipart_part_number)
+                    };
+                    #[cfg(feature = "rio-v2")]
+                    let encrypt_reader =
+                        EncryptReader::new_multipart(reader, encryption.key_bytes, base_nonce, multipart_part_number);
+                    HashReader::from_reader(encrypt_reader, HashReader::SIZE_PRESERVE_LAYER, actual_size, None, None, false)?
+                }
+                WriteEncryptionMode::MultipartObjectKey { multipart_part_number } => HashReader::from_reader(
+                    #[cfg(feature = "rio-v2")]
+                    EncryptReader::new_multipart_with_object_key(reader, encryption.key_bytes, multipart_part_number),
+                    #[cfg(not(feature = "rio-v2"))]
+                    EncryptReader::new_multipart(reader, encryption.key_bytes, [0u8; 12], multipart_part_number as usize),
+                    HashReader::SIZE_PRESERVE_LAYER,
+                    actual_size,
+                    None,
+                    None,
+                    false,
+                )?,
+            };
+        }
+
+        // `ignore_value` deliberately avoids a second hasher over compressed or
+        // encrypted bytes. The inner reader still validates the plaintext request
+        // checksum while this outer reader exposes the request checksum context.
+        reader.add_non_trailing_checksum(checksum, true)?;
+        reader.set_trailer(trailer);
+
+        Ok(reader)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use http::{HeaderMap, HeaderValue};
+    use rustfs_rio::{Checksum, ChecksumType};
+    use rustfs_utils::CompressionAlgorithm;
+    use std::io::Cursor;
+    use tokio::io::AsyncReadExt;
+
+    async fn assert_non_trailing_checksum_survives(plan: WritePlan) {
+        let plaintext = b"checksum-context-through-write-plan".repeat(256);
+        let actual_size = plaintext.len() as i64;
+        let checksum = Checksum::new_from_data(ChecksumType::CRC32, &plaintext).expect("create CRC32 checksum");
+        let mut reader = HashReader::from_stream(Cursor::new(plaintext), actual_size, actual_size, None, None, false)
+            .expect("create hash reader");
+        reader
+            .add_non_trailing_checksum(Some(checksum.clone()), false)
+            .expect("attach plaintext checksum");
+
+        let mut transformed = plan.apply(reader, actual_size).expect("apply write plan");
+        assert_eq!(transformed.content_crc_type(), Some(ChecksumType::CRC32));
+
+        let mut transformed_bytes = Vec::new();
+        transformed
+            .read_to_end(&mut transformed_bytes)
+            .await
+            .expect("stream transformed data without rehashing ciphertext");
+
+        assert!(!transformed_bytes.is_empty());
+        assert_eq!(transformed.content_crc().get("CRC32"), Some(&checksum.encoded));
+    }
+
+    #[tokio::test]
+    async fn write_plan_preserves_non_trailing_checksum_context_across_transforms() {
+        assert_non_trailing_checksum_survives(WritePlan::new().with_compression(CompressionAlgorithm::default())).await;
+        assert_non_trailing_checksum_survives(
+            WritePlan::new().with_encryption(WriteEncryption::singlepart([0x5Au8; 32], [0xA5u8; 12])),
+        )
+        .await;
+        assert_non_trailing_checksum_survives(
+            WritePlan::new()
+                .with_compression(CompressionAlgorithm::default())
+                .with_encryption(WriteEncryption::singlepart([0x5Au8; 32], [0xA5u8; 12])),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn write_plan_preserves_trailing_checksum_type_across_transforms() {
+        let plaintext = b"trailing-checksum-context".to_vec();
+        let actual_size = plaintext.len() as i64;
+        let mut reader = HashReader::from_stream(Cursor::new(plaintext), actual_size, actual_size, None, None, false)
+            .expect("create hash reader");
+        let mut headers = HeaderMap::new();
+        headers.insert("x-amz-trailer", HeaderValue::from_static("x-amz-checksum-crc32"));
+        reader
+            .add_checksum_from_s3s(&headers, None, false)
+            .expect("attach trailing checksum metadata");
+
+        let transformed = WritePlan::new()
+            .with_encryption(WriteEncryption::singlepart([0x5Au8; 32], [0xA5u8; 12]))
+            .apply(reader, actual_size)
+            .expect("apply encryption plan");
+
+        assert_eq!(
+            transformed.content_crc_type(),
+            Some(ChecksumType(ChecksumType::CRC32.0 | ChecksumType::TRAILING.0))
+        );
+    }
+
+    #[cfg(feature = "rio-v2")]
+    fn s2_chunk_types(stream: &[u8]) -> Vec<u8> {
+        let mut chunk_types = Vec::new();
+        let mut offset = 0usize;
+        while offset + 4 <= stream.len() {
+            let chunk_type = stream[offset];
+            let chunk_len =
+                (stream[offset + 1] as usize) | ((stream[offset + 2] as usize) << 8) | ((stream[offset + 3] as usize) << 16);
+            chunk_types.push(chunk_type);
+            offset += 4 + chunk_len;
+        }
+        chunk_types
+    }
+
+    #[tokio::test]
+    async fn write_plan_passthrough_keeps_plaintext() {
+        let plaintext = b"write-plan-plain".to_vec();
+        let reader = HashReader::from_stream(
+            Cursor::new(plaintext.clone()),
+            plaintext.len() as i64,
+            plaintext.len() as i64,
+            None,
+            None,
+            false,
+        )
+        .expect("create hash reader");
+
+        let mut reader = WritePlan::new()
+            .apply(reader, plaintext.len() as i64)
+            .expect("apply passthrough plan");
+
+        let mut actual = Vec::new();
+        reader.read_to_end(&mut actual).await.expect("read passthrough stream");
+
+        assert_eq!(actual, plaintext);
+    }
+
+    #[tokio::test]
+    async fn write_plan_compress_then_encrypt_multipart_roundtrip() {
+        let plaintext = b"abcdefghijklmnopqrstuvwxyz".repeat(128);
+        let actual_size = plaintext.len() as i64;
+        let key_bytes = [0x5Au8; 32];
+        let base_nonce = [0xA5u8; 12];
+        let part_number = 7;
+
+        let reader = HashReader::from_stream(Cursor::new(plaintext.clone()), actual_size, actual_size, None, None, false)
+            .expect("create hash reader");
+
+        let mut transformed = WritePlan::new()
+            .with_compression(CompressionAlgorithm::default())
+            .with_encryption(WriteEncryption::multipart(key_bytes, base_nonce, part_number))
+            .apply(reader, actual_size)
+            .expect("apply transform plan");
+
+        let mut ciphertext = Vec::new();
+        transformed
+            .read_to_end(&mut ciphertext)
+            .await
+            .expect("read transformed ciphertext");
+
+        let decrypt_reader = DecryptReader::new_multipart(Cursor::new(ciphertext), key_bytes, base_nonce, vec![part_number]);
+        let mut decompressed = DecompressReader::new(Box::new(decrypt_reader), CompressionAlgorithm::default());
+
+        let mut actual = Vec::new();
+        decompressed
+            .read_to_end(&mut actual)
+            .await
+            .expect("decrypt and decompress transformed stream");
+
+        assert_eq!(actual, plaintext);
+    }
+
+    #[cfg(feature = "rio-v2")]
+    #[tokio::test]
+    async fn write_plan_supports_singlepart_object_key_encryption_roundtrip() {
+        let plaintext = b"singlepart-object-key".repeat(512);
+        let actual_size = plaintext.len() as i64;
+        let object_key = [0x7Cu8; 32];
+
+        let reader = HashReader::from_stream(Cursor::new(plaintext.clone()), actual_size, actual_size, None, None, false)
+            .expect("create hash reader");
+
+        let mut transformed = WritePlan::new()
+            .with_encryption(WriteEncryption::singlepart_object_key(object_key))
+            .apply(reader, actual_size)
+            .expect("apply singlepart object-key plan");
+
+        let mut encrypted = Vec::new();
+        transformed
+            .read_to_end(&mut encrypted)
+            .await
+            .expect("read encrypted object-key stream");
+
+        let mut decrypted = DecryptReader::new_with_object_key(Cursor::new(encrypted), object_key);
+        let mut actual = Vec::new();
+        decrypted.read_to_end(&mut actual).await.expect("decrypt object-key stream");
+
+        assert_eq!(actual, plaintext);
+    }
+
+    #[cfg(feature = "rio-v2")]
+    #[tokio::test]
+    async fn write_plan_supports_multipart_object_key_encryption_roundtrip() {
+        let plaintext = b"multipart-object-key-".repeat(4096);
+        let actual_size = plaintext.len() as i64;
+        let object_key = [0x2Du8; 32];
+        let part_number = 3u32;
+
+        let reader = HashReader::from_stream(Cursor::new(plaintext.clone()), actual_size, actual_size, None, None, false)
+            .expect("create hash reader");
+
+        let mut transformed = WritePlan::new()
+            .with_encryption(WriteEncryption::multipart_object_key(object_key, part_number))
+            .apply(reader, actual_size)
+            .expect("apply multipart object-key encryption");
+
+        let mut ciphertext = Vec::new();
+        transformed
+            .read_to_end(&mut ciphertext)
+            .await
+            .expect("read multipart object-key ciphertext");
+
+        let mut actual = Vec::new();
+        DecryptReader::new_multipart_with_object_key(Cursor::new(ciphertext), object_key, vec![part_number as usize])
+            .read_to_end(&mut actual)
+            .await
+            .expect("decrypt multipart object-key ciphertext");
+
+        assert_eq!(actual, plaintext);
+    }
+
+    #[cfg(feature = "rio-v2")]
+    #[tokio::test]
+    async fn write_plan_rio_v2_compression_emits_s2_stream_and_seekable_index() {
+        let plaintext = b"rustfs-rio-v2-s2-".repeat(600_000);
+        let actual_size = plaintext.len() as i64;
+        let reader = HashReader::from_stream(Cursor::new(plaintext.clone()), actual_size, actual_size, None, None, false)
+            .expect("create hash reader");
+
+        let mut transformed = WritePlan::new()
+            .with_compression(CompressionAlgorithm::default())
+            .apply(reader, actual_size)
+            .expect("apply compression plan");
+
+        let mut compressed = Vec::new();
+        transformed
+            .read_to_end(&mut compressed)
+            .await
+            .expect("read compressed stream");
+
+        assert!(
+            compressed.starts_with(b"\xff\x06\x00\x00S2sTwO"),
+            "rio_v2 compressed stream must start with the S2 stream identifier"
+        );
+
+        let index = transformed
+            .try_get_index()
+            .cloned()
+            .expect("rio_v2 compressed stream should expose a compression index");
+        let (compressed_offset, uncompressed_offset) = index.find(2 * 1024 * 1024).expect("seek into compression index");
+
+        assert!(compressed_offset > 0, "expected a non-zero compressed offset for the second block");
+        assert!(uncompressed_offset > 0, "expected a non-zero uncompressed offset for the second block");
+
+        let mut decompressed = DecompressReader::new(Cursor::new(compressed), CompressionAlgorithm::default());
+        let mut actual = Vec::new();
+        decompressed.read_to_end(&mut actual).await.expect("decompress rio_v2 stream");
+
+        assert_eq!(actual, plaintext);
+    }
+
+    #[cfg(feature = "rio-v2")]
+    #[tokio::test]
+    async fn write_plan_rio_v2_small_compression_skips_index_below_minio_threshold() {
+        let plaintext = b"rustfs-rio-v2-s2-".repeat(32_768);
+        let actual_size = plaintext.len() as i64;
+        let reader = HashReader::from_stream(Cursor::new(plaintext.clone()), actual_size, actual_size, None, None, false)
+            .expect("create hash reader");
+
+        let mut transformed = WritePlan::new()
+            .with_compression(CompressionAlgorithm::default())
+            .apply(reader, actual_size)
+            .expect("apply compression plan");
+
+        let mut compressed = Vec::new();
+        transformed
+            .read_to_end(&mut compressed)
+            .await
+            .expect("read compressed stream");
+
+        assert!(
+            transformed.try_get_index().is_none(),
+            "rio_v2 should match MinIO and skip compression indexes for small objects"
+        );
+
+        let mut decompressed = DecompressReader::new(Cursor::new(compressed), CompressionAlgorithm::default());
+        let mut actual = Vec::new();
+        decompressed.read_to_end(&mut actual).await.expect("decompress rio_v2 stream");
+
+        assert_eq!(actual, plaintext);
+    }
+
+    #[cfg(feature = "rio-v2")]
+    #[tokio::test]
+    async fn rio_v2_singlepart_encrypt_decrypt_roundtrip_preserves_small_compressed_stream() {
+        let plaintext = b"abcdefghijklmnopqrstuvwxyz".to_vec();
+        let key_bytes = [0x33u8; 32];
+        let base_nonce = [0x55u8; 12];
+
+        let mut compressed = Vec::new();
+        CompressReader::new(Cursor::new(plaintext.clone()), CompressionAlgorithm::default())
+            .read_to_end(&mut compressed)
+            .await
+            .expect("compress plaintext");
+
+        let mut encrypted = Vec::new();
+        EncryptReader::new(Cursor::new(compressed), key_bytes, base_nonce)
+            .read_to_end(&mut encrypted)
+            .await
+            .expect("encrypt compressed stream");
+
+        let decrypt_reader = DecryptReader::new(Cursor::new(encrypted), key_bytes, base_nonce);
+        let mut decompressed = DecompressReader::new(Box::new(decrypt_reader), CompressionAlgorithm::default());
+        let mut actual = Vec::new();
+        decompressed
+            .read_to_end(&mut actual)
+            .await
+            .expect("decrypt and decompress small stream");
+
+        assert_eq!(actual, plaintext);
+    }
+
+    #[cfg(feature = "rio-v2")]
+    #[tokio::test]
+    async fn rio_v2_compress_then_encrypt_adds_s2_padding_frames() {
+        let plaintext = b"padding-check-".repeat(4097);
+        let actual_size = plaintext.len() as i64;
+        let key_bytes = [0x1Bu8; 32];
+        let base_nonce = [0xC4u8; 12];
+
+        let reader = HashReader::from_stream(Cursor::new(plaintext.clone()), actual_size, actual_size, None, None, false)
+            .expect("create hash reader");
+
+        let mut transformed = WritePlan::new()
+            .with_compression(CompressionAlgorithm::default())
+            .with_encryption(WriteEncryption::singlepart(key_bytes, base_nonce))
+            .apply(reader, actual_size)
+            .expect("apply transform plan");
+
+        let mut ciphertext = Vec::new();
+        transformed
+            .read_to_end(&mut ciphertext)
+            .await
+            .expect("read transformed ciphertext");
+
+        let mut decrypted_compressed = Vec::new();
+        DecryptReader::new(Cursor::new(ciphertext), key_bytes, base_nonce)
+            .read_to_end(&mut decrypted_compressed)
+            .await
+            .expect("decrypt compressed stream");
+
+        assert_eq!(decrypted_compressed.len() % ENCRYPTED_S2_PADDING_MULTIPLE, 0);
+
+        let chunk_types = s2_chunk_types(&decrypted_compressed);
+        assert!(
+            chunk_types.contains(&0xfe),
+            "rio_v2 compressed+encrypted streams must include S2 padding frames before encryption"
+        );
+
+        let mut actual = Vec::new();
+        DecompressReader::new(Cursor::new(decrypted_compressed), CompressionAlgorithm::default())
+            .read_to_end(&mut actual)
+            .await
+            .expect("decompress padded stream");
+
+        assert_eq!(actual, plaintext);
+    }
+
+    #[cfg(feature = "rio-v2")]
+    #[tokio::test]
+    async fn rio_v2_decompress_reader_returns_bytes_on_first_read() {
+        let plaintext = b"abcdefghijklmnopqrstuvwxyz".to_vec();
+
+        let mut compressed = Vec::new();
+        CompressReader::new(Cursor::new(plaintext.clone()), CompressionAlgorithm::default())
+            .read_to_end(&mut compressed)
+            .await
+            .expect("compress plaintext");
+
+        let mut decompressor = DecompressReader::new(Cursor::new(compressed), CompressionAlgorithm::default());
+        let mut buf = [0u8; 64];
+        let n = decompressor.read(&mut buf).await.expect("read first decompressed chunk");
+
+        assert!(n > 0);
+        assert_eq!(&buf[..n], plaintext.as_slice());
+    }
+
+    #[cfg(feature = "rio-v2")]
+    #[tokio::test]
+    async fn rio_v2_decompress_reader_returns_bytes_on_first_large_read() {
+        let plaintext = b"abcdefghijklmnopqrstuvwxyz".to_vec();
+
+        let mut compressed = Vec::new();
+        CompressReader::new(Cursor::new(plaintext.clone()), CompressionAlgorithm::default())
+            .read_to_end(&mut compressed)
+            .await
+            .expect("compress plaintext");
+
+        let mut decompressor = DecompressReader::new(Cursor::new(compressed), CompressionAlgorithm::default());
+        let mut buf = [0u8; 8192];
+        let n = decompressor.read(&mut buf).await.expect("read first decompressed chunk");
+
+        assert!(n > 0);
+        assert_eq!(&buf[..n], plaintext.as_slice());
+    }
+}

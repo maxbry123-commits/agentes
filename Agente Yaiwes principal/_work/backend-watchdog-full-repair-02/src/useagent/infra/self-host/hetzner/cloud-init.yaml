@@ -1,0 +1,89 @@
+#cloud-config
+# Provisions a fresh Ubuntu 24.04 host with everything the useAgent core stack
+# needs: bun, node, docker, postgres, caddy, plus a throwaway 'useagent' database.
+# App bring-up (source + services) is a separate step - see deploy-app.sh.
+package_update: true
+packages:
+  - git
+  - curl
+  - ca-certificates
+  - gnupg
+  - unzip
+  - build-essential
+  - postgresql
+  - postgresql-contrib
+  - postgresql-16-pgvector # the schema uses CREATE EXTENSION vector (Ubuntu 24.04 = pg16)
+  - docker.io
+  - docker-compose-v2
+
+write_files:
+  - path: /opt/useagent-provision/provision.sh
+    permissions: "0700"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+
+      # Swap gives the Next.js build headroom on an 8 GB box.
+      if ! swapon --show | grep -q /swapfile; then
+        fallocate -l 4G /swapfile
+        chmod 600 /swapfile
+        mkswap /swapfile
+        swapon /swapfile
+        echo '/swapfile none swap sw 0 0' >> /etc/fstab
+      fi
+
+      # Node 24 (matches the app's pinned major).
+      curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+      apt-get install -y nodejs
+
+      # Bun -> /usr/local/bin/bun (the app runtime). Pinned: bun >= 1.4 rejects the
+      # repo's file:../packages/* deps ("unsafe folder path").
+      curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash -s "bun-v1.3.14"
+
+      # Caddy from the official repo (TLS reverse proxy).
+      curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+        | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+      curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+        > /etc/apt/sources.list.d/caddy-stable.list
+      apt-get update
+      apt-get install -y caddy
+
+      systemctl enable --now docker postgresql
+
+      # Throwaway database, isolated from every other useAgent backend.
+      sudo -u postgres psql -tAc "select 1 from pg_roles where rolname='useagent'" | grep -qx 1 ||
+        sudo -u postgres createuser --login --no-createdb --no-createrole --no-superuser useagent
+      sudo -u postgres psql -tAc "select 1 from pg_roles where rolname='useagent_gateway'" | grep -qx 1 ||
+        sudo -u postgres createuser --login --no-createdb --no-createrole --no-superuser useagent_gateway
+
+      # Passwords belong in a protected transient SQL payload, never in psql's
+      # process argv or xtrace/cloud-init output.
+      password_sql=/run/useagent-provision-passwords.sql
+      install -o postgres -g postgres -m 0600 /dev/null "$password_sql"
+      trap 'rm -f "$password_sql"' EXIT
+      cat > "$password_sql" <<'SQL'
+      ALTER ROLE useagent PASSWORD '${postgres_password}';
+      ALTER ROLE useagent_gateway PASSWORD '${gateway_postgres_password}';
+      SQL
+      sudo -u postgres psql -v ON_ERROR_STOP=1 -f "$password_sql"
+      rm -f "$password_sql"
+      trap - EXIT
+
+      sudo -u postgres psql -tAc "select 1 from pg_database where datname='useagent'" | grep -qx 1 ||
+        sudo -u postgres createdb --owner=useagent useagent
+      sudo -u postgres psql -v ON_ERROR_STOP=1 -d useagent -c "GRANT CONNECT ON DATABASE useagent TO useagent_gateway; GRANT USAGE ON SCHEMA public TO useagent_gateway; REVOKE CREATE ON SCHEMA public FROM useagent_gateway;"
+      # pgvector's 'vector' extension is not "trusted", so a non-superuser role
+      # cannot CREATE EXTENSION. Pre-create it as superuser; the app's migration
+      # then no-ops on "IF NOT EXISTS".
+      sudo -u postgres psql -v ON_ERROR_STOP=1 -d useagent -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+      # App service account + install root.
+      id useagent >/dev/null 2>&1 || useradd --system --create-home --home-dir /opt/useagent --shell /bin/bash useagent
+      install -d -o useagent -g useagent /opt/useagent
+
+      touch /opt/useagent-provision/READY
+      rm -f /opt/useagent-provision/provision.sh
+
+runcmd:
+  - bash /opt/useagent-provision/provision.sh

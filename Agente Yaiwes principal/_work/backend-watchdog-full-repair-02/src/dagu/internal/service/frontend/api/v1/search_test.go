@@ -1,0 +1,239 @@
+// Copyright (C) 2026 Yota Hamada
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package api_test
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"testing"
+
+	apigen "github.com/dagucloud/dagu/v2/api/v1"
+	"github.com/dagucloud/dagu/v2/internal/cmn/config"
+	"github.com/dagucloud/dagu/v2/internal/persis"
+	filedag "github.com/dagucloud/dagu/v2/internal/persis/file/dag"
+	"github.com/dagucloud/dagu/v2/internal/runtime"
+	apiv1 "github.com/dagucloud/dagu/v2/internal/service/frontend/api/v1"
+	"github.com/dagucloud/dagu/v2/internal/testutil"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+type searchTestSetup struct {
+	api           *apiv1.API
+	dagRepository *persis.DAGRepository
+}
+
+func newSearchAPI(dagRepository *persis.DAGRepository, extraOptions ...apiv1.APIOption) *apiv1.API {
+	cfg := &config.Config{}
+
+	options := append([]apiv1.APIOption{}, extraOptions...)
+
+	return apiv1.New(
+		dagRepository,
+		nil,
+		nil,
+		nil,
+		runtime.Manager{},
+		cfg,
+		nil,
+		nil,
+		prometheus.NewRegistry(),
+		nil,
+		options...,
+	)
+}
+
+func newSearchTestSetup(t *testing.T) *searchTestSetup {
+	t.Helper()
+
+	dagRepository := testutil.NewFileDAGRepository(t.TempDir(), filedag.WithSkipExamples(true))
+
+	return &searchTestSetup{
+		api:           newSearchAPI(dagRepository),
+		dagRepository: dagRepository,
+	}
+}
+
+func mustCreateDAG(t *testing.T, setup *searchTestSetup, name, spec string) {
+	t.Helper()
+	err := setup.dagRepository.Create(context.Background(), name, []byte(spec))
+	require.NoError(t, err)
+}
+
+func TestSearchDAGFeed(t *testing.T) {
+	t.Parallel()
+
+	setup := newSearchTestSetup(t)
+
+	mustCreateDAG(t, setup, "a-match", `name: a-match
+steps:
+  - run: echo "Needle."
+  - run: echo "needle."
+  - run: echo "needle."`)
+	mustCreateDAG(t, setup, "b-match", `name: b-match
+steps:
+  - run: echo "needle."`)
+	mustCreateDAG(t, setup, "c-skip", `name: c-skip
+steps:
+  - run: echo "needleX"`)
+
+	limit := apigen.SearchLimit(1)
+	resp, err := setup.api.SearchDAGFeed(adminCtx(), apigen.SearchDAGFeedRequestObject{
+		Params: apigen.SearchDAGFeedParams{
+			Q:     " needle. ",
+			Limit: &limit,
+		},
+	})
+	require.NoError(t, err)
+
+	searchResp := resp.(apigen.SearchDAGFeed200JSONResponse)
+	require.Len(t, searchResp.Results, 1)
+	assert.Equal(t, "a-match", searchResp.Results[0].FileName)
+	assert.True(t, searchResp.Results[0].HasMoreMatches)
+	assert.NotNil(t, searchResp.Results[0].NextMatchesCursor)
+	assert.Len(t, searchResp.Results[0].Matches, 1)
+	assert.True(t, searchResp.HasMore)
+	require.NotNil(t, searchResp.NextCursor)
+
+	secondResp, err := setup.api.SearchDAGFeed(adminCtx(), apigen.SearchDAGFeedRequestObject{
+		Params: apigen.SearchDAGFeedParams{
+			Q:      "needle.",
+			Limit:  &limit,
+			Cursor: searchResp.NextCursor,
+		},
+	})
+	require.NoError(t, err)
+
+	secondPage := secondResp.(apigen.SearchDAGFeed200JSONResponse)
+	require.Len(t, secondPage.Results, 1)
+	assert.Equal(t, "b-match", secondPage.Results[0].FileName)
+	assert.False(t, secondPage.HasMore)
+	assert.Nil(t, secondPage.NextCursor)
+}
+
+func TestSearchDagMatches(t *testing.T) {
+	t.Parallel()
+
+	setup := newSearchTestSetup(t)
+	mustCreateDAG(t, setup, "match-heavy", `name: match-heavy
+steps:
+  - run: echo "needle."
+  - run: echo "needle."
+  - run: echo "needle."
+  - run: echo "needle."`)
+
+	limit := apigen.SearchMatchLimit(3)
+	resp, err := setup.api.SearchDagMatches(adminCtx(), apigen.SearchDagMatchesRequestObject{
+		FileName: "match-heavy",
+		Params: apigen.SearchDagMatchesParams{
+			Q:     "needle.",
+			Limit: &limit,
+		},
+	})
+	require.NoError(t, err)
+
+	matchResp := resp.(apigen.SearchDagMatches200JSONResponse)
+	assert.Len(t, matchResp.Matches, 3)
+	assert.True(t, matchResp.HasMore)
+	require.NotNil(t, matchResp.NextCursor)
+
+	secondResp, err := setup.api.SearchDagMatches(adminCtx(), apigen.SearchDagMatchesRequestObject{
+		FileName: "match-heavy",
+		Params: apigen.SearchDagMatchesParams{
+			Q:      "needle.",
+			Limit:  &limit,
+			Cursor: matchResp.NextCursor,
+		},
+	})
+	require.NoError(t, err)
+
+	secondPage := secondResp.(apigen.SearchDagMatches200JSONResponse)
+	assert.Len(t, secondPage.Matches, 1)
+	assert.False(t, secondPage.HasMore)
+}
+
+func TestSearchDagMatchesUsesWorkspaceFromFeedCursor(t *testing.T) {
+	t.Parallel()
+
+	setup := newSearchTestSetup(t)
+	mustCreateDAG(t, setup, "ops-heavy", `name: ops-heavy
+labels:
+  - workspace=ops
+steps:
+  - run: echo "needle."
+  - run: echo "needle."
+  - run: echo "needle."`)
+
+	workspace := apigen.Workspace("ops")
+	feedResp, err := setup.api.SearchDAGFeed(adminCtx(), apigen.SearchDAGFeedRequestObject{
+		Params: apigen.SearchDAGFeedParams{
+			Q:         "needle.",
+			Workspace: &workspace,
+		},
+	})
+	require.NoError(t, err)
+
+	feedPage := feedResp.(apigen.SearchDAGFeed200JSONResponse)
+	require.Len(t, feedPage.Results, 1)
+	require.NotNil(t, feedPage.Results[0].NextMatchesCursor)
+
+	limit := apigen.SearchMatchLimit(2)
+	matchesResp, err := setup.api.SearchDagMatches(adminCtx(), apigen.SearchDagMatchesRequestObject{
+		FileName: "ops-heavy",
+		Params: apigen.SearchDagMatchesParams{
+			Q:         "needle.",
+			Limit:     &limit,
+			Cursor:    feedPage.Results[0].NextMatchesCursor,
+			Workspace: &workspace,
+		},
+	})
+	require.NoError(t, err)
+
+	matchesPage := matchesResp.(apigen.SearchDagMatches200JSONResponse)
+	assert.Len(t, matchesPage.Matches, 2)
+	assert.False(t, matchesPage.HasMore)
+}
+
+func TestSearchInvalidCursor(t *testing.T) {
+	t.Parallel()
+
+	setup := newSearchTestSetup(t)
+	mustCreateDAG(t, setup, "match-heavy", `name: match-heavy
+steps:
+  - run: echo "needle."`)
+
+	cursor := apigen.SearchCursor("bad-cursor")
+	resp, err := setup.api.SearchDAGFeed(adminCtx(), apigen.SearchDAGFeedRequestObject{
+		Params: apigen.SearchDAGFeedParams{
+			Q:      "needle.",
+			Cursor: &cursor,
+		},
+	})
+	require.Nil(t, resp)
+	require.Error(t, err)
+
+	apiErr, ok := err.(*apiv1.Error)
+	require.True(t, ok)
+	assert.Equal(t, 400, apiErr.HTTPStatus)
+}
+
+func TestSearchDAGFeedReturnsErrorWhenSearchRootIsBroken(t *testing.T) {
+	t.Parallel()
+
+	basePath := filepath.Join(t.TempDir(), "not-a-directory")
+	require.NoError(t, os.WriteFile(basePath, []byte("x"), 0600))
+
+	api := newSearchAPI(testutil.NewFileDAGRepository(basePath, filedag.WithSkipExamples(true)))
+	resp, err := api.SearchDAGFeed(adminCtx(), apigen.SearchDAGFeedRequestObject{
+		Params: apigen.SearchDAGFeedParams{Q: "needle"},
+	})
+	require.Nil(t, resp)
+	require.Error(t, err)
+
+	apiErr, ok := err.(*apiv1.Error)
+	require.True(t, ok)
+	assert.Equal(t, 500, apiErr.HTTPStatus)
+}

@@ -1,0 +1,138 @@
+import { describe, expect, test } from "bun:test";
+import { resolveEnabledEngine } from "@/components/chat/engine-picker";
+import {
+  CHAT_MODELS,
+  CODEX_MODELS,
+  FREE_MODELS,
+  isFreeModel,
+  MODELS,
+  modelLabel,
+  modelOptionsForEngine,
+  partitionModelOptions,
+  selectableModelsForEngine,
+  supportsPreSessionModelSelection,
+} from "@/components/chat/types";
+
+describe("engine model catalog", () => {
+  test("reconciles a stale selection to the first engine the server actually enables", () => {
+    expect(resolveEnabledEngine("opencode", ["chat"])).toBe("chat");
+    expect(resolveEnabledEngine("chat", ["chat", "opencode"])).toBe("chat");
+    expect(resolveEnabledEngine("opencode", [])).toBeNull();
+  });
+
+  test("Codex picker uses backend-policy model ids, not OpenRouter ids", () => {
+    expect(CODEX_MODELS.map((m) => m.value)).toEqual([
+      "gpt-5.6-luna",
+      "gpt-5.6-terra",
+      "gpt-5.6-sol",
+    ]);
+    expect(selectableModelsForEngine("codex").map((m) => m.value)).toEqual([
+      "gpt-5.6-luna",
+      "gpt-5.6-terra",
+      "gpt-5.6-sol",
+    ]);
+    expect(selectableModelsForEngine("codex").some((m) => m.value.startsWith("openai/"))).toBe(
+      false,
+    );
+  });
+
+  test("OpenCode picker keeps provider-qualified model ids", () => {
+    expect(selectableModelsForEngine("opencode")).toEqual([...MODELS, ...FREE_MODELS]);
+    expect(selectableModelsForEngine("opencode")[0]?.value).toBe("openai/gpt-5.6-luna");
+    expect(selectableModelsForEngine("opencode").map((m) => m.value)).toContain(
+      "openai/gpt-5.6-luna",
+    );
+    expect(selectableModelsForEngine("opencode").map((m) => m.value)).not.toContain(
+      "openai/gpt-5.6-sol-pro",
+    );
+    expect(selectableModelsForEngine("opencode").map((m) => m.value)).toContain(
+      "deepseek/deepseek-v4-flash",
+    );
+    expect(
+      selectableModelsForEngine("opencode").find(
+        (model) => model.value === "deepseek/deepseek-v4-flash",
+      )?.label,
+    ).toBe("DeepSeek V4 Flash · Wafer Fast");
+    expect(selectableModelsForEngine("opencode").map((m) => m.value)).toContain(
+      "google/gemini-3.7-flash",
+    );
+  });
+
+  test("Free lane is OpenCode-only and grouped after the paid catalog", () => {
+    expect(FREE_MODELS.length).toBeGreaterThan(0);
+    for (const model of FREE_MODELS) {
+      expect(isFreeModel(model.value)).toBe(true);
+    }
+    expect(MODELS.some((model) => isFreeModel(model.value))).toBe(false);
+    const opencode = selectableModelsForEngine("opencode").map((m) => m.value);
+    expect(opencode).not.toContain("nvidia/nemotron-3-ultra-550b-a55b:free");
+    // Appended after the paid catalog so the default (first entry) stays paid.
+    expect(opencode.slice(MODELS.length)).toEqual(FREE_MODELS.map((m) => m.value));
+    for (const engine of ["pi", "codex", "chat"] as const) {
+      expect(selectableModelsForEngine(engine).some((m) => isFreeModel(m.value))).toBe(false);
+    }
+    expect(modelLabel("minimax/minimax-m3:free", "opencode")).toBe("MiniMax M3");
+  });
+
+  test("Free section membership is manifest-driven via the id suffix, not the seed list", () => {
+    // A backend manifest can advertise a free model the frontend has never
+    // heard of: it must land in the Free partition with its id as the label.
+    const options = modelOptionsForEngine("opencode", [
+      "openai/gpt-5.6-luna",
+      "newvendor/brand-new-model:free",
+    ]);
+    const { paid, free } = partitionModelOptions(options);
+    expect(paid.map((m) => m.value)).toEqual(["openai/gpt-5.6-luna"]);
+    expect(free.map((m) => m.value)).toEqual(["newvendor/brand-new-model:free"]);
+    expect(free[0]?.label).toBe("newvendor/brand-new-model:free");
+    // And a manifest that rotates a seed model OUT drops it from the picker.
+    const rotated = modelOptionsForEngine("opencode", ["openai/gpt-5.6-luna"]);
+    expect(partitionModelOptions(rotated).free).toEqual([]);
+  });
+
+  test("direct Chat picker exposes only the backend OpenRouter catalog", () => {
+    expect(selectableModelsForEngine("chat")).toEqual(CHAT_MODELS);
+    expect(CHAT_MODELS.map((model) => model.value)).toEqual([
+      "anthropic/claude-sonnet-5",
+      "anthropic/claude-opus-4.8",
+      "anthropic/claude-haiku-4.5",
+      "z-ai/glm-5.2",
+    ]);
+    expect(supportsPreSessionModelSelection("chat")).toBe(true);
+  });
+
+  test("Claude uses its backend-policy model ids while generic ACP stays fixed", () => {
+    expect(selectableModelsForEngine("claude").map((model) => model.value)).toEqual([
+      "claude-opus-5",
+      "claude-sonnet-5",
+      "claude-fable-5",
+      "claude-haiku-4-5",
+    ]);
+    expect(selectableModelsForEngine("acp")).toEqual([]);
+  });
+
+  test("keeps model selection available while supported sessions are booting", () => {
+    expect(supportsPreSessionModelSelection("codex")).toBe(true);
+    expect(supportsPreSessionModelSelection("opencode")).toBe(true);
+    expect(supportsPreSessionModelSelection("claude")).toBe(true);
+  });
+
+  test("labels resolve against the engine-specific catalog", () => {
+    expect(modelLabel("gpt-5.6-terra", "codex")).toBe("GPT-5.6 Terra");
+    expect(modelLabel("openai/gpt-5.6-terra", "opencode")).toBe("GPT-5.6 Terra");
+    expect(modelLabel("gpt-5.6-terra", "opencode")).toBe("gpt-5.6-terra");
+  });
+
+  test("backend-configured catalogs filter and preserve exact submitted ids", () => {
+    expect(modelOptionsForEngine("codex", ["gpt-5.6-luna", "gpt-5.4"])).toEqual([
+      { value: "gpt-5.6-luna", label: "GPT-5.6 Luna · Fast", tint: "text-sky-500" },
+      { value: "gpt-5.4", label: "gpt-5.4", tint: "text-text-secondary" },
+    ]);
+    expect(modelOptionsForEngine("opencode", ["openai/gpt-5.6-sol"])[0]?.value).toBe(
+      "openai/gpt-5.6-sol",
+    );
+    expect(modelOptionsForEngine("claude", ["claude-opus-5"])).toEqual([
+      { value: "claude-opus-5", label: "Opus 5", tint: "text-orange-500" },
+    ]);
+  });
+});

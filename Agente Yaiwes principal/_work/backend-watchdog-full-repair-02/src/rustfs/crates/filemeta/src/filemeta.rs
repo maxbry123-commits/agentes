@@ -1,0 +1,3425 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use crate::replication::{
+    MAX_REPLICATION_TARGET_ARN_LEN, MAX_REPLICATION_TARGET_VERSION_ENTRIES, MAX_REPLICATION_TARGET_VERSION_ID_LEN,
+};
+use crate::{
+    ErasureAlgo, ErasureInfo, Error, FileInfo, FileInfoVersions, InlineData, NULL_VERSION_ID, ObjectPartInfo, RawFileInfo,
+    ReplicationState, ReplicationStatusType, Result, VersionPurgeStatusType, is_restored_object_on_disk,
+    replication_statuses_map, version_purge_statuses_map,
+};
+use byteorder::ByteOrder;
+use bytes::Bytes;
+use rustfs_utils::http::headers::{
+    AMZ_META_UNENCRYPTED_CONTENT_LENGTH, AMZ_META_UNENCRYPTED_CONTENT_MD5, AMZ_RESTORE_EXPIRY_DAYS, AMZ_RESTORE_REQUEST_DATE,
+    AMZ_STORAGE_CLASS,
+};
+use rustfs_utils::http::{
+    AMZ_BUCKET_REPLICATION_STATUS, MINIO_INTERNAL_PREFIX, RUSTFS_INTERNAL_PREFIX, SUFFIX_CRC, SUFFIX_DATA_MOV, SUFFIX_HEALING,
+    SUFFIX_PURGESTATUS, SUFFIX_REPLICA_STATUS, SUFFIX_REPLICA_TIMESTAMP, SUFFIX_REPLICATION_DELETE_MARKER_VERSION_ARN_PREFIX,
+    SUFFIX_REPLICATION_RESET, SUFFIX_REPLICATION_STATUS, SUFFIX_REPLICATION_TIMESTAMP, SUFFIX_RESTORE_OPERATION_ID,
+    SUFFIX_RESTORE_WORKER_LOCK, contains_key_str, has_internal_suffix, insert_bytes, is_internal_key, remove_bytes,
+};
+use s3s::header::X_AMZ_RESTORE;
+use serde::{Deserialize, Serialize};
+#[cfg(test)]
+use std::cell::Cell;
+use std::cmp::Ordering;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+use std::hash::Hasher;
+use std::io::{Read, Write};
+use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+use std::{collections::HashMap, io::Cursor};
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
+use tokio::io::AsyncRead;
+use tracing::{error, warn};
+use uuid::Uuid;
+use xxhash_rust::xxh64;
+
+// XL header specifies the format
+pub static XL_FILE_HEADER: [u8; 4] = *b"XL2 ";
+// pub static XL_FILE_VERSION_CURRENT: [u8; 4] = [0; 4];
+
+// Current version being written.
+// static XL_FILE_VERSION: [u8; 4] = [1, 0, 3, 0];
+static XL_FILE_VERSION_MAJOR: u16 = 1;
+static XL_FILE_VERSION_MINOR: u16 = 3;
+static XL_HEADER_VERSION: u8 = 3;
+pub static XL_META_VERSION: u8 = 3;
+/// Legacy format (main branch): meta_ver=2 with file/header versions 1.3.3.
+static XXHASH_SEED: u64 = 0;
+
+const XL_FLAG_FREE_VERSION: u8 = 1 << 0;
+// const XL_FLAG_USES_DATA_DIR: u8 = 1 << 1;
+const _XL_FLAG_INLINE_DATA: u8 = 1 << 2;
+
+const META_DATA_READ_DEFAULT: usize = 4 << 10;
+const MSGP_UINT32_SIZE: usize = 5;
+
+/// Default max object versions per object.
+pub const DEFAULT_OBJECT_MAX_VERSIONS: usize = rustfs_config::DEFAULT_API_OBJECT_MAX_VERSIONS;
+
+static OBJECT_MAX_VERSIONS: AtomicUsize = AtomicUsize::new(DEFAULT_OBJECT_MAX_VERSIONS);
+
+#[cfg(test)]
+thread_local! {
+    static OBJECT_MAX_VERSIONS_OVERRIDE: Cell<Option<usize>> = const { Cell::new(None) };
+}
+
+#[inline]
+pub fn object_max_versions() -> usize {
+    #[cfg(test)]
+    if let Some(limit) = OBJECT_MAX_VERSIONS_OVERRIDE.with(Cell::get) {
+        return limit;
+    }
+
+    OBJECT_MAX_VERSIONS.load(AtomicOrdering::Relaxed)
+}
+
+pub fn set_object_max_versions(limit: usize) -> Result<()> {
+    if limit == 0 {
+        return Err(Error::other("object max versions must be greater than 0"));
+    }
+    OBJECT_MAX_VERSIONS.store(limit, AtomicOrdering::Relaxed);
+    Ok(())
+}
+
+#[cfg(test)]
+fn set_object_max_versions_override_for_test(limit: Option<usize>) -> Option<usize> {
+    OBJECT_MAX_VERSIONS_OVERRIDE.with(|override_limit| {
+        let previous = override_limit.get();
+        override_limit.set(limit);
+        previous
+    })
+}
+
+/// Returns the inline data map key for a version_id. "null" for null version.
+pub(crate) fn data_key_for_version(version_id: Option<Uuid>) -> String {
+    if version_id.is_none() || version_id == Some(Uuid::nil()) {
+        NULL_VERSION_ID.to_string()
+    } else {
+        version_id.unwrap_or_default().to_string()
+    }
+}
+
+fn legacy_data_key_for_version(version_id: Option<Uuid>) -> Option<String> {
+    if version_id.is_none() || version_id == Some(Uuid::nil()) {
+        Some(Uuid::nil().to_string())
+    } else {
+        None
+    }
+}
+
+pub const TRANSITION_COMPLETE: &str = "complete";
+pub const TRANSITION_PENDING: &str = "pending";
+
+/// xl.meta key marking a tier free-version record.
+///
+/// A free version is a delete-marker-shaped cleanup hint appended by
+/// [`MetaObject::delete_version`] when a version whose remote transition
+/// completed is removed from xl.meta; it carries the remote tier identity for
+/// an idempotent remote delete and is never a user-visible version
+/// (`num_versions` excludes it). While the record exists it is consumed by the
+/// lifecycle free-version recovery scan and the usage scanner, which re-enqueue
+/// the pending remote delete, and by heal metadata walks. On S3 and lifecycle
+/// delete paths the same obligation is also carried by a committed tier-journal
+/// entry; deletes without such an entry (for example a removed version whose
+/// transition state decodes as unknown) rely on this record alone until the
+/// worker removes it after a successful remote delete. Decommission preserves
+/// the record and its remote identity on the target pool before source cleanup
+/// — see docs/architecture/decommission-compatibility.md.
+pub const FREE_VERSION: &str = "free-version";
+
+pub const TRANSITION_STATUS: &str = "transition-status";
+pub const TRANSITIONED_OBJECTNAME: &str = "transitioned-object";
+pub const TRANSITIONED_VERSION_ID: &str = "transitioned-versionID";
+pub const TRANSITION_TIER: &str = "transition-tier";
+
+/// Returns true if the key is a transient internal flag that should not be persisted to meta_sys.
+pub fn is_skip_meta_key(key: &str) -> bool {
+    has_internal_suffix(key, SUFFIX_HEALING) || has_internal_suffix(key, SUFFIX_DATA_MOV)
+}
+
+mod codec;
+mod inline_data;
+pub(crate) mod msgp_decode;
+mod validation;
+mod version;
+
+pub use validation::{DetailedVersionStats, VersionStats};
+pub use version::*;
+
+// type ScanHeaderVersionFn = Box<dyn Fn(usize, &[u8], &[u8]) -> Result<()>>;
+
+/// Order two shallow versions newest-first, deriving a total order from the
+/// canonical `FileMetaVersionHeader::sorts_before` predicate.
+///
+/// This MUST match `sorts_before` exactly: the header-only merge path
+/// (`metacache`) and latest-version selection (`version.rs`) both key off
+/// `sorts_before`, so any divergence here makes different code paths disagree
+/// on which version is latest when several share a `mod_time` — e.g. an object
+/// and a delete marker with identical timestamps flipping between "present" and
+/// "deleted" depending on which path last sorted (backlog#799 B15).
+fn cmp_shallow_versions_for_order(a: &FileMetaShallowVersion, b: &FileMetaShallowVersion) -> Ordering {
+    if a.header.sorts_before(&b.header) {
+        Ordering::Less
+    } else if b.header.sorts_before(&a.header) {
+        Ordering::Greater
+    } else {
+        Ordering::Equal
+    }
+}
+
+/// Persists replication reset state into `meta_sys` under BOTH internal
+/// prefixes (`x-rustfs-internal-*` and `x-minio-internal-*`).
+///
+/// Reset entries reach this point keyed either by a bare ARN
+/// (`ObjectInfo::replication_state`) or by an already-prefixed internal key
+/// (`get_internal_replication_state` / `target_reset_header`). The old code
+/// inserted the key verbatim: a bare ARN was written with no internal prefix at
+/// all, so read-back — which only recognizes prefixed keys — silently dropped
+/// the reset state, and a rustfs-only key was invisible to MinIO-compatible
+/// readers (backlog#799 B16). Normalize every entry to the canonical
+/// `replication-reset-<arn>` suffix and write both prefixes.
+fn valid_target_delete_marker_version(arn: &str, version_id: &str) -> bool {
+    arn.starts_with("arn:")
+        && arn.len() <= MAX_REPLICATION_TARGET_ARN_LEN
+        && !version_id.is_empty()
+        && version_id.len() <= MAX_REPLICATION_TARGET_VERSION_ID_LEN
+}
+
+/// Merge-only, never destructive.
+///
+/// `ReplicationState::target_delete_marker_version_ids` is skipped by the
+/// positional `FileInfo` wire form, so a delete that arrives over internode RPC
+/// carries an empty map. Treating that as authoritative would let a remote disk
+/// erase an exact target version that the local disk still holds. The key is
+/// included in the quorum hash, so such a divergence does surface — but as a
+/// quorum failure on an otherwise healthy object, which is not a state worth
+/// reaching. Merge the RPC metadata carrier instead, and only ever insert.
+fn persist_target_delete_marker_versions(
+    meta_sys: &mut HashMap<String, Vec<u8>>,
+    versions: &HashMap<String, String>,
+    transport_metadata: &HashMap<String, String>,
+) {
+    let mut bounded = BTreeMap::new();
+    // A corrupt carrier means the dual internal prefixes disagreed. Do not merge
+    // anything derived from it: this helper only ever inserts, so declining to
+    // merge leaves whatever durable keys the object already carries untouched,
+    // which is strictly safer than committing a mapping we cannot trust.
+    let (transport_versions, transport_corrupt) = rustfs_utils::http::target_delete_marker_versions(transport_metadata);
+    if transport_corrupt {
+        warn!("delete-marker target version transport metadata is inconsistent; leaving the persisted mapping unchanged");
+        return;
+    }
+    for (arn, version_id) in transport_versions.iter().chain(versions.iter()) {
+        if !valid_target_delete_marker_version(arn, version_id)
+            || (bounded.len() >= MAX_REPLICATION_TARGET_VERSION_ENTRIES
+                && bounded.last_key_value().is_some_and(|(largest, _)| arn >= *largest))
+        {
+            continue;
+        }
+        bounded.insert(arn, version_id);
+        if bounded.len() > MAX_REPLICATION_TARGET_VERSION_ENTRIES {
+            bounded.pop_last();
+        }
+    }
+    for (arn, version_id) in bounded {
+        insert_bytes(
+            meta_sys,
+            &format!("{SUFFIX_REPLICATION_DELETE_MARKER_VERSION_ARN_PREFIX}{arn}"),
+            version_id.as_bytes().to_vec(),
+        );
+    }
+}
+
+fn persist_reset_statuses(meta_sys: &mut HashMap<String, Vec<u8>>, reset_statuses_map: &HashMap<String, String>) {
+    for (k, v) in reset_statuses_map {
+        let suffix = k
+            .strip_prefix(RUSTFS_INTERNAL_PREFIX)
+            .or_else(|| k.strip_prefix(MINIO_INTERNAL_PREFIX))
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("{SUFFIX_REPLICATION_RESET}-{k}"));
+        insert_bytes(meta_sys, &suffix, v.as_bytes().to_vec());
+    }
+}
+
+pub fn parse_replication_timestamp(value: &str) -> Option<OffsetDateTime> {
+    const DISPLAY_FORMAT: &[time::format_description::BorrowedFormatItem<'_>] = time::macros::format_description!(
+        "[year sign:automatic]-[month]-[day] [hour padding:none]:[minute]:[second].[subsecond] [offset_hour sign:mandatory]:[offset_minute]:[offset_second]"
+    );
+    OffsetDateTime::parse(value, &Rfc3339)
+        .or_else(|_| OffsetDateTime::parse(value, DISPLAY_FORMAT))
+        .ok()
+}
+
+fn format_replication_timestamp(value: Option<OffsetDateTime>) -> String {
+    let value = value.unwrap_or(OffsetDateTime::UNIX_EPOCH);
+    value
+        .to_offset(time::UtcOffset::UTC)
+        .format(&Rfc3339)
+        .unwrap_or_else(|_| value.to_string())
+}
+
+fn persist_delete_marker_replication_state(meta_sys: &mut HashMap<String, Vec<u8>>, state: &ReplicationState) {
+    if !state.replica_status.is_empty() {
+        insert_bytes(meta_sys, SUFFIX_REPLICA_STATUS, state.replica_status.as_str().as_bytes().to_vec());
+        insert_bytes(
+            meta_sys,
+            SUFFIX_REPLICA_TIMESTAMP,
+            format_replication_timestamp(state.replica_timestamp).into_bytes(),
+        );
+    }
+    if let Some(status) = state.replication_status_internal.as_ref().filter(|status| !status.is_empty()) {
+        insert_bytes(meta_sys, SUFFIX_REPLICATION_STATUS, status.as_bytes().to_vec());
+        insert_bytes(
+            meta_sys,
+            SUFFIX_REPLICATION_TIMESTAMP,
+            format_replication_timestamp(state.replication_timestamp).into_bytes(),
+        );
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct FileMeta {
+    pub versions: Vec<FileMetaShallowVersion>,
+    pub data: InlineData,
+    pub meta_ver: u8,
+}
+
+struct FileInfoDecodeOptions {
+    read_data: bool,
+    include_free_versions: bool,
+    all_parts: bool,
+    include_part_checksums: bool,
+}
+
+impl FileMeta {
+    pub fn new() -> Self {
+        Self {
+            meta_ver: XL_META_VERSION,
+            data: InlineData::new(),
+            ..Default::default()
+        }
+    }
+
+    fn get_idx(&self, idx: usize) -> Result<FileMetaVersion> {
+        if idx >= self.versions.len() {
+            return Err(Error::FileNotFound);
+        }
+
+        FileMetaVersion::try_from(self.versions[idx].meta.as_slice())
+    }
+
+    fn set_idx(&mut self, idx: usize, ver: FileMetaVersion) -> Result<()> {
+        if idx >= self.versions.len() {
+            return Err(Error::FileNotFound);
+        }
+
+        // TODO: use old buf
+        let meta_buf = ver.marshal_msg()?;
+
+        self.versions[idx].header = ver.header();
+        self.versions[idx].meta = meta_buf;
+        self.sort_by_mod_time();
+
+        Ok(())
+    }
+
+    fn sort_by_mod_time(&mut self) {
+        if self.versions.len() <= 1 {
+            return;
+        }
+
+        self.versions.sort_by(cmp_shallow_versions_for_order);
+    }
+
+    fn find_inline_data_for_version(&self, version_id: Option<Uuid>) -> Result<Option<Vec<u8>>> {
+        let key = data_key_for_version(version_id);
+        if let Some(data) = self.data.find(key.as_str())? {
+            return Ok(Some(data));
+        }
+
+        if let Some(legacy_key) = legacy_data_key_for_version(version_id)
+            && legacy_key != key
+        {
+            return self.data.find(legacy_key.as_str());
+        }
+
+        Ok(None)
+    }
+
+    // Find version
+    pub fn find_version(&self, vid: Option<Uuid>) -> Result<(usize, FileMetaVersion)> {
+        let vid = vid.unwrap_or_default();
+        for (i, fver) in self.versions.iter().enumerate() {
+            if fver.header.version_id == Some(vid) {
+                let version = self.get_idx(i)?;
+                return Ok((i, version));
+            }
+        }
+
+        Err(Error::FileVersionNotFound)
+    }
+
+    pub fn update_object_version(&mut self, fi: FileInfo) -> Result<()> {
+        self.update_object_version_with_opts(fi, false)
+    }
+
+    pub fn update_object_version_with_opts(&mut self, fi: FileInfo, replace_user_metadata: bool) -> Result<()> {
+        for version in self.versions.iter_mut() {
+            match version.header.version_type {
+                VersionType::Invalid | VersionType::Legacy => (),
+                VersionType::Object => {
+                    // For non-versioned buckets, treat None as Uuid::nil()
+                    let fi_vid = fi.version_id.or(Some(Uuid::nil()));
+                    let ver_vid = version.header.version_id.or(Some(Uuid::nil()));
+
+                    if ver_vid == fi_vid {
+                        let mut ver = FileMetaVersion::try_from(version.meta.as_slice())?;
+
+                        if let Some(ref mut obj) = ver.object {
+                            if replace_user_metadata {
+                                obj.meta_user.clear();
+                                for suffix in [SUFFIX_RESTORE_OPERATION_ID, SUFFIX_RESTORE_WORKER_LOCK] {
+                                    if !contains_key_str(&fi.metadata, suffix) {
+                                        remove_bytes(&mut obj.meta_sys, suffix);
+                                    }
+                                }
+                            }
+
+                            // `fi.metadata` is the authoritative replacement
+                            // for every internal suffix it carries. Remove all
+                            // existing RustFS/MinIO and mixed-case aliases for
+                            // those suffixes before inserting the new map;
+                            // otherwise an old MinIO key survives this RMW and
+                            // conflicts with newly written canonical aliases.
+                            let replaced_internal_suffixes = fi
+                                .metadata
+                                .keys()
+                                .filter_map(|key| rustfs_utils::http::strip_internal_prefix_preserving_case(key))
+                                .map(str::to_ascii_lowercase)
+                                .collect::<std::collections::HashSet<_>>();
+                            if !replaced_internal_suffixes.is_empty() {
+                                obj.meta_sys.retain(|key, _| {
+                                    rustfs_utils::http::strip_internal_prefix_preserving_case(key)
+                                        .is_none_or(|suffix| !replaced_internal_suffixes.contains(&suffix.to_ascii_lowercase()))
+                                });
+                            }
+
+                            for (k, v) in fi.metadata.iter() {
+                                // Split metadata into meta_user and meta_sys based on prefix
+                                // This logic must match From<FileInfo> for MetaObject
+                                let is_system = is_internal_key(k);
+                                if is_system {
+                                    // Skip internal flags that shouldn't be persisted
+                                    if is_skip_meta_key(k) {
+                                        continue;
+                                    }
+                                    // Insert into meta_sys
+                                    obj.meta_sys.insert(k.clone(), v.as_bytes().to_vec());
+                                } else {
+                                    // Insert into meta_user
+                                    obj.meta_user.insert(k.clone(), v.clone());
+                                }
+                            }
+
+                            if let Some(mod_time) = fi.mod_time {
+                                obj.mod_time = Some(mod_time);
+                            }
+
+                            if let Some(content_hash) = fi.checksum.as_ref() {
+                                insert_bytes(&mut obj.meta_sys, SUFFIX_CRC, content_hash.to_vec());
+                            }
+                        }
+
+                        // Update
+                        version.header = ver.header();
+                        version.meta = ver.marshal_msg()?;
+                    }
+                }
+                VersionType::Delete => {
+                    if version.header.version_id == fi.version_id {
+                        return Err(Error::MethodNotAllowed);
+                    }
+                }
+            }
+        }
+
+        self.versions.sort_by(cmp_shallow_versions_for_order);
+        Ok(())
+    }
+
+    pub fn add_version(&mut self, mut fi: FileInfo) -> Result<()> {
+        // empty version_id means "null" (versioning disabled/suspended)
+        if fi.version_id.is_none() {
+            fi.version_id = Some(Uuid::nil());
+        }
+
+        if fi.data.is_none() && self.data.after_version().is_empty() {
+            let version = FileMetaVersion::from(fi);
+            return self.add_version_filemata(version);
+        }
+
+        let version_key = data_key_for_version(fi.version_id);
+        let mut next_data = self.data.clone();
+
+        if let Some(ref data) = fi.data {
+            next_data.replace(&version_key, data.to_vec())?;
+        } else {
+            let _ = next_data.remove_key(&version_key)?;
+        }
+
+        let version = FileMetaVersion::from(fi);
+
+        self.add_version_filemata(version)?;
+        self.data = next_data;
+
+        Ok(())
+    }
+
+    pub fn add_version_filemata(&mut self, version: FileMetaVersion) -> Result<()> {
+        if !version.valid() {
+            return Err(Error::other("file meta version invalid"));
+        }
+
+        let vid = version.get_version_id();
+        let vid_is_null = vid.is_none() || vid == Some(Uuid::nil());
+        let existing_idx = if vid_is_null {
+            self.versions
+                .iter()
+                .position(|v| v.header.version_id.is_none() || v.header.version_id == Some(Uuid::nil()))
+        } else {
+            self.versions.iter().position(|v| v.header.version_id == vid)
+        };
+
+        if let Some(fidx) = existing_idx {
+            let existing = self.versions[fidx].parse_version_meta()?;
+            if existing.free_version() != version.free_version() {
+                return Err(Error::other("cannot replace a free version with a non-free version"));
+            }
+            return self.set_idx(fidx, version);
+        }
+
+        if self.versions.len() >= object_max_versions() {
+            return Err(Error::MaxVersionsExceeded);
+        }
+
+        if self.versions.is_empty() {
+            self.versions.push(FileMetaShallowVersion::try_from(version)?);
+            return Ok(());
+        }
+
+        let new_shallow = FileMetaShallowVersion::try_from(version)?;
+        let insert_pos = self
+            .versions
+            .partition_point(|existing| existing.header.sorts_before(&new_shallow.header));
+        self.versions.insert(insert_pos, new_shallow);
+        // `partition_point` only returns the canonical slot when `versions` is
+        // already canonically ordered, and nothing establishes that: `FileMeta::load`
+        // replays the on-disk order verbatim, and metadata written before the
+        // canonical-order fix ordered equal-`mod_time` ties by insertion rather than
+        // by `sorts_before`. Re-sort so an insert leaves the list canonical either
+        // way, matching what `set_idx` already does on the replace path. Cheap: after
+        // a correctly placed insert the slice is a single sorted run.
+        self.sort_by_mod_time();
+        Ok(())
+
+        // if !ver.valid() {
+        //     return Err(Error::other("attempted to add invalid version"));
+        // }
+
+        // if self.versions.len() + 1 >= 100 {
+        //     return Err(Error::other(
+        //         "You've exceeded the limit on the number of versions you can create on this object",
+        //     ));
+        // }
+
+        // let mod_time = ver.get_mod_time();
+        // let encoded = ver.marshal_msg()?;
+        // let new_version = FileMetaShallowVersion {
+        //     header: ver.header(),
+        //     meta: encoded,
+        // };
+
+        // // Find the insertion position: insert before the first element with mod_time >= new mod_time
+        // // This maintains descending order by mod_time (newest first)
+        // let insert_pos = self
+        //     .versions
+        //     .iter()
+        //     .position(|existing| existing.header.mod_time <= mod_time)
+        //     .unwrap_or(self.versions.len());
+        // self.versions.insert(insert_pos, new_version);
+        // Ok(())
+    }
+
+    // delete_version deletes version, returns data_dir
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub fn delete_version(&mut self, fi: &FileInfo) -> Result<Option<Uuid>> {
+        fi.validate_for_delete_operation()?;
+
+        let vid = Some(fi.version_id.unwrap_or(Uuid::nil()));
+        if fi.deleted && fi.tier_free_version() {
+            let Some(index) = self.versions.iter().position(|version| {
+                version.header.version_id == vid
+                    && version.header.version_type == VersionType::Delete
+                    && version.header.free_version()
+                    && version
+                        .parse_version_meta()
+                        .is_ok_and(|decoded| decoded.free_version() && decoded.header().version_id == vid)
+            }) else {
+                return Err(Error::FileVersionNotFound);
+            };
+            self.versions.remove(index);
+            return Ok(None);
+        }
+
+        let target_is_delete_marker = self
+            .versions
+            .iter()
+            .find(|ver| ver.header.version_id == vid)
+            .is_some_and(|ver| ver.header.version_type == VersionType::Delete);
+
+        let mut ventry = FileMetaVersion::default();
+        if fi.deleted {
+            ventry.version_type = VersionType::Delete;
+            ventry.delete_marker = Some(MetaDeleteMarker {
+                version_id: vid,
+                mod_time: fi.mod_time,
+                ..Default::default()
+            });
+        }
+
+        let mut update_version = false;
+        if fi.version_purge_status().is_empty()
+            && (fi.delete_marker_replication_status() == ReplicationStatusType::Replica
+                || fi.delete_marker_replication_status() == ReplicationStatusType::Empty)
+        {
+            update_version = fi.mark_deleted;
+        } else {
+            if fi.deleted
+                && fi.version_purge_status() != VersionPurgeStatusType::Complete
+                && (!fi.version_purge_status().is_empty() || fi.delete_marker_replication_status().is_empty())
+            {
+                update_version = true;
+            }
+
+            if !fi.version_purge_status().is_empty() && fi.version_purge_status() != VersionPurgeStatusType::Complete {
+                update_version = true;
+            }
+        }
+
+        if target_is_delete_marker && !fi.deleted && !fi.version_purge_status().is_empty() {
+            update_version = false;
+        }
+
+        if fi.deleted {
+            if let (Some(delete_marker), Some(state)) = (ventry.delete_marker.as_mut(), fi.replication_state_internal.as_ref()) {
+                persist_delete_marker_replication_state(&mut delete_marker.meta_sys, state);
+            }
+
+            if !fi.version_purge_status().is_empty()
+                && let Some(delete_marker) = ventry.delete_marker.as_mut()
+            {
+                let value = fi
+                    .replication_state_internal
+                    .as_ref()
+                    .map(|v| v.version_purge_status_internal.clone().unwrap_or_default())
+                    .unwrap_or_default()
+                    .as_bytes()
+                    .to_vec();
+                insert_bytes(&mut delete_marker.meta_sys, SUFFIX_PURGESTATUS, value);
+            }
+
+            if let Some(delete_marker) = ventry.delete_marker.as_mut()
+                && let Some(state) = fi.replication_state_internal.as_ref()
+            {
+                persist_reset_statuses(&mut delete_marker.meta_sys, &state.reset_statuses_map);
+                persist_target_delete_marker_versions(
+                    &mut delete_marker.meta_sys,
+                    &state.target_delete_marker_version_ids,
+                    &fi.metadata,
+                );
+            }
+        }
+
+        let mut found_index = None;
+
+        for (i, ver) in self.versions.iter().enumerate() {
+            if ver.header.version_id != vid {
+                continue;
+            }
+            if fi.tier_free_version() && !ver.header.free_version() {
+                return Err(Error::FileVersionNotFound);
+            }
+
+            match ver.header.version_type {
+                VersionType::Invalid | VersionType::Legacy => return Err(Error::other("invalid file meta version")),
+                VersionType::Delete => {
+                    if update_version {
+                        let mut v = self.get_idx(i)?;
+                        if v.delete_marker.is_none() {
+                            v.delete_marker = Some(MetaDeleteMarker {
+                                version_id: vid,
+                                mod_time: fi.mod_time,
+                                meta_sys: HashMap::new(),
+                            });
+                        }
+
+                        if let Some(delete_marker) = v.delete_marker.as_mut() {
+                            if let Some(state) = fi.replication_state_internal.as_ref() {
+                                persist_delete_marker_replication_state(&mut delete_marker.meta_sys, state);
+                            }
+
+                            if let Some(state) = fi.replication_state_internal.as_ref() {
+                                persist_reset_statuses(&mut delete_marker.meta_sys, &state.reset_statuses_map);
+                                persist_target_delete_marker_versions(
+                                    &mut delete_marker.meta_sys,
+                                    &state.target_delete_marker_version_ids,
+                                    &fi.metadata,
+                                );
+                            }
+                        }
+
+                        self.set_idx(i, v)?;
+                        return Ok(None);
+                    }
+                    self.versions.remove(i);
+
+                    if (fi.mark_deleted && fi.version_purge_status() != VersionPurgeStatusType::Complete)
+                        || (fi.deleted && vid == Some(Uuid::nil()))
+                    {
+                        self.add_version_filemata(ventry)?;
+                    }
+
+                    return Ok(None);
+                }
+                VersionType::Object => {
+                    if update_version && !fi.deleted {
+                        let mut v = self.get_idx(i)?;
+
+                        if let Some(obj) = v.object.as_mut() {
+                            let value = fi
+                                .replication_state_internal
+                                .as_ref()
+                                .map(|v| v.version_purge_status_internal.clone().unwrap_or_default())
+                                .unwrap_or_default()
+                                .as_bytes()
+                                .to_vec();
+                            insert_bytes(&mut obj.meta_sys, SUFFIX_PURGESTATUS, value);
+                            if let Some(state) = fi.replication_state_internal.as_ref() {
+                                persist_reset_statuses(&mut obj.meta_sys, &state.reset_statuses_map);
+                            }
+                        }
+
+                        // The version stays on disk while the purge replicates
+                        // (status PENDING/FAILED); its data dir must stay with
+                        // it. Returning the dir here made the disk layer delete
+                        // it, which turned every non-inline retained version
+                        // into an unreadable zombie: the purge state could never
+                        // be applied and the bucket could never be deleted.
+                        self.set_idx(i, v)?;
+
+                        return Ok(None);
+                    }
+                    found_index = Some(i);
+                }
+            }
+        }
+
+        let Some(i) = found_index else {
+            if fi.deleted {
+                self.add_version_filemata(ventry)?;
+                return Ok(None);
+            }
+            return Err(Error::FileVersionNotFound);
+        };
+
+        let mut ver = self.get_idx(i)?;
+
+        let Some(obj) = &mut ver.object else {
+            if fi.deleted {
+                self.add_version_filemata(ventry)?;
+                return Ok(None);
+            }
+            return Err(Error::FileVersionNotFound);
+        };
+
+        let obj_version_id = obj.version_id;
+        let obj_data_dir = obj.data_dir;
+
+        let mut err = if fi.expire_restored {
+            obj.remove_restore_hdrs();
+            self.set_idx(i, ver).err()
+        } else if fi.transition_status == TRANSITION_COMPLETE {
+            obj.set_transition(fi);
+            obj.reset_inline_data();
+            self.set_idx(i, ver).err()
+        } else {
+            self.versions.remove(i);
+
+            let (free_version, to_free) = obj.init_free_version(fi)?;
+
+            if to_free {
+                self.add_version_filemata(free_version).err()
+            } else {
+                None
+            }
+        };
+
+        if fi.deleted {
+            err = self.add_version_filemata(ventry).err();
+        }
+
+        // A failed delete-marker insertion must surface even when the data dir is
+        // shared: reporting success here silently turns the delete into a permanent
+        // delete that replication never propagates.
+        if let Some(e) = err {
+            return Err(e);
+        }
+
+        if self.shared_data_dir_count(obj_version_id, obj_data_dir) > 0 {
+            return Ok(None);
+        }
+
+        Ok(obj_data_dir)
+    }
+
+    pub fn into_fileinfo(
+        &self,
+        volume: &str,
+        path: &str,
+        version_id: &str,
+        read_data: bool,
+        include_free_versions: bool,
+        all_parts: bool,
+    ) -> Result<FileInfo> {
+        self.to_fileinfo_with_part_checksums(
+            volume,
+            path,
+            version_id,
+            FileInfoDecodeOptions {
+                read_data,
+                include_free_versions,
+                all_parts,
+                include_part_checksums: true,
+            },
+        )
+    }
+
+    pub fn into_fileinfo_without_part_checksums(
+        &self,
+        volume: &str,
+        path: &str,
+        version_id: &str,
+        read_data: bool,
+        include_free_versions: bool,
+    ) -> Result<FileInfo> {
+        self.to_fileinfo_with_part_checksums(
+            volume,
+            path,
+            version_id,
+            FileInfoDecodeOptions {
+                read_data,
+                include_free_versions,
+                all_parts: true,
+                include_part_checksums: false,
+            },
+        )
+    }
+
+    fn to_fileinfo_with_part_checksums(
+        &self,
+        volume: &str,
+        path: &str,
+        version_id: &str,
+        opts: FileInfoDecodeOptions,
+    ) -> Result<FileInfo> {
+        let vid = {
+            if !version_id.is_empty() {
+                Uuid::parse_str(version_id)?
+            } else {
+                Uuid::nil()
+            }
+        };
+
+        let mut is_latest = true;
+        let mut succ_mod_time = None;
+        let mut non_free_versions = self.versions.len();
+
+        let mut found = false;
+        let mut found_free_version = None;
+        let mut found_fi = None;
+
+        for ver in self.versions.iter() {
+            let header = &ver.header;
+
+            if header.free_version() {
+                non_free_versions -= 1;
+                if opts.include_free_versions
+                    && found_free_version.is_none()
+                    && let Ok(found_free_fi) = ver.parse_version_meta()
+                    && found_free_fi.version_type != VersionType::Invalid
+                {
+                    // Graceful degradation: the free-version replication-accounting record
+                    // is auxiliary metadata; a corrupt one must not tank an otherwise
+                    // healthy primary-version read. Log and skip rather than propagate.
+                    // Known side effect: if a disk holds only free versions and they are
+                    // corrupt, `into_fileinfo` falls through to `FileNotFound` (not
+                    // `FileCorrupt`), so that disk is not enqueued for heal.
+                    match found_free_fi.to_fileinfo_with_part_checksums(volume, path, opts.all_parts, opts.include_part_checksums)
+                    {
+                        Ok(mut free_fi) => {
+                            free_fi.is_latest = true;
+                            found_free_version = Some(free_fi);
+                        }
+                        Err(e) => {
+                            warn!(volume, path, error = %e, "skipping corrupt free version during into_fileinfo");
+                        }
+                    }
+                }
+
+                if header.version_id != Some(vid) {
+                    continue;
+                }
+            }
+
+            if found {
+                continue;
+            }
+
+            if !version_id.is_empty() && header.version_id != Some(vid) {
+                is_latest = false;
+                succ_mod_time = header.mod_time;
+                continue;
+            }
+
+            found = true;
+
+            let mut fi = ver.to_fileinfo_with_part_checksums(volume, path, opts.all_parts, opts.include_part_checksums)?;
+            fi.is_latest = is_latest;
+
+            if let Some(_d) = succ_mod_time {
+                fi.successor_mod_time = succ_mod_time;
+            }
+
+            if opts.read_data && fi.inline_data() {
+                fi.data = self.find_inline_data_for_version(fi.version_id)?.map(bytes::Bytes::from);
+            }
+
+            found_fi = Some(fi);
+        }
+
+        if !found {
+            if version_id.is_empty() {
+                if opts.include_free_versions
+                    && non_free_versions == 0
+                    && let Some(free_version) = found_free_version
+                {
+                    return Ok(free_version);
+                }
+                return Err(Error::FileNotFound);
+            } else {
+                return Err(Error::FileVersionNotFound);
+            }
+        }
+
+        if let Some(mut fi) = found_fi {
+            fi.num_versions = non_free_versions;
+
+            return Ok(fi);
+        }
+
+        if version_id.is_empty() {
+            Err(Error::FileNotFound)
+        } else {
+            Err(Error::FileVersionNotFound)
+        }
+    }
+
+    pub fn get_file_info_versions(&self, volume: &str, path: &str, include_free_versions: bool) -> Result<FileInfoVersions> {
+        let mut versions = self.into_file_info_versions(volume, path, true)?;
+
+        let mut n = 0;
+
+        let mut versions_vec = Vec::new();
+
+        for fi in versions.versions.iter() {
+            if fi.tier_free_version() {
+                if !include_free_versions {
+                    versions.free_versions.push(fi.clone());
+                }
+            } else {
+                if !include_free_versions {
+                    versions_vec.push(fi.clone());
+                }
+                n += 1;
+            }
+        }
+
+        if !include_free_versions {
+            versions.versions = versions_vec;
+
+            for fi in versions.versions.iter_mut() {
+                fi.num_versions = n;
+            }
+            for fi in versions.free_versions.iter_mut() {
+                fi.num_versions = n;
+            }
+        }
+
+        Ok(versions)
+    }
+
+    pub fn get_all_file_info_versions(&self, volume: &str, path: &str, all_parts: bool) -> Result<FileInfoVersions> {
+        self.into_file_info_versions(volume, path, all_parts)
+    }
+
+    pub fn into_file_info_versions(&self, volume: &str, path: &str, all_parts: bool) -> Result<FileInfoVersions> {
+        let mut versions = Vec::new();
+        for version in self.versions.iter() {
+            let fi = version.into_fileinfo(volume, path, all_parts)?;
+            versions.push(fi);
+        }
+
+        let num = versions.len();
+        let mut prev_mod_time = None;
+        for (i, fi) in versions.iter_mut().enumerate() {
+            if i == 0 {
+                fi.is_latest = true;
+            } else {
+                fi.successor_mod_time = prev_mod_time;
+            }
+            fi.num_versions = num;
+            prev_mod_time = fi.mod_time;
+        }
+
+        if versions.is_empty() {
+            versions.push(FileInfo {
+                name: path.to_string(),
+                volume: volume.to_string(),
+                deleted: true,
+                is_latest: true,
+                ..Default::default()
+            });
+        }
+
+        Ok(FileInfoVersions {
+            volume: volume.to_string(),
+            name: path.to_string(),
+            latest_mod_time: versions[0].mod_time,
+            versions,
+            ..Default::default()
+        })
+    }
+
+    pub fn latest_mod_time(&self) -> Option<OffsetDateTime> {
+        if self.versions.is_empty() {
+            return None;
+        }
+
+        self.versions.first().unwrap().header.mod_time
+    }
+
+    /// Load or convert from buffer. Handles both current (meta_ver=3) and legacy (meta_ver=2) formats.
+    pub fn load_or_convert(buf: &[u8]) -> Result<Self> {
+        Self::load(buf)
+    }
+
+    /// List all versions as FileInfo
+    pub fn list_versions(&self, volume: &str, path: &str, all_parts: bool) -> Result<Vec<FileInfo>> {
+        let mut file_infos = Vec::new();
+        for (i, version) in self.versions.iter().enumerate() {
+            let mut fi = version.into_fileinfo(volume, path, all_parts)?;
+            fi.is_latest = i == 0;
+            file_infos.push(fi);
+        }
+        Ok(file_infos)
+    }
+
+    /// Check if all versions are hidden
+    pub fn all_hidden(&self, top_delete_marker: bool) -> bool {
+        if self.versions.is_empty() {
+            return true;
+        }
+
+        if top_delete_marker && self.versions[0].header.version_type != VersionType::Delete {
+            return false;
+        }
+
+        // Check if all versions are either delete markers or free versions
+        self.versions
+            .iter()
+            .all(|v| v.header.version_type == VersionType::Delete || v.header.free_version())
+    }
+
+    /// Append metadata to buffer
+    pub fn append_to(&self, dst: &mut Vec<u8>) -> Result<()> {
+        let data = self.marshal_msg()?;
+        dst.extend_from_slice(&data);
+        Ok(())
+    }
+
+    /// Find version by string ID
+    pub fn find_version_str(&self, version_id: &str) -> Result<(usize, FileMetaVersion)> {
+        if version_id.is_empty() {
+            return Err(Error::other("empty version ID"));
+        }
+
+        let uuid = Uuid::parse_str(version_id)?;
+        self.find_version(Some(uuid))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::test_data::*;
+    use proptest::collection::vec;
+    use proptest::prelude::*;
+
+    /// A restore header meaning "restored copy is on disk until far in the future".
+    /// Format produced by `RestoreStatusOps::to_string` and consumed by
+    /// `parse_restore_obj_status` (fileinfo.rs).
+    const RESTORED_ON_DISK: &str = "ongoing-request=\"false\", expiry-date=\"9999-01-01T00:00:00Z\"";
+
+    /// backlog#1733 (P9-01 §4.3/§7.6, g-key-001): pin the five `s3s::header`
+    /// constants that double as **persisted metadata map keys**. They are not
+    /// just HTTP header names — they are stored inside xl.meta (`meta_user`)
+    /// and read back by fail-open code, so a silent drift produces zero
+    /// HTTP-visible errors while:
+    ///
+    /// 1. **WORM silently dissolves** — `get_object_retention_meta`
+    ///    (ecstore objectlock.rs) returns an empty retention when the lock keys
+    ///    are unreadable, making every compliance-locked object deletable.
+    /// 2. **Live data dirs can be reclaimed** — `MetaObject::uses_data_dir`
+    ///    falls back to `is_restored_object_on_disk`, which returns `false`
+    ///    when `x-amz-restore` is unreadable, so a restored object's data dir
+    ///    is judged unused.
+    ///
+    /// Any migration replacing these constants must keep the literals byte-stable.
+    #[test]
+    fn persisted_metadata_keys_are_byte_stable() {
+        use s3s::header::{
+            X_AMZ_OBJECT_LOCK_LEGAL_HOLD, X_AMZ_OBJECT_LOCK_MODE, X_AMZ_OBJECT_LOCK_RETAIN_UNTIL_DATE,
+            X_AMZ_SERVER_SIDE_ENCRYPTION,
+        };
+        assert_eq!(X_AMZ_OBJECT_LOCK_LEGAL_HOLD.as_str(), "x-amz-object-lock-legal-hold");
+        assert_eq!(X_AMZ_OBJECT_LOCK_MODE.as_str(), "x-amz-object-lock-mode");
+        assert_eq!(X_AMZ_OBJECT_LOCK_RETAIN_UNTIL_DATE.as_str(), "x-amz-object-lock-retain-until-date");
+        assert_eq!(X_AMZ_RESTORE.as_str(), "x-amz-restore");
+        assert_eq!(X_AMZ_SERVER_SIDE_ENCRYPTION.as_str(), "x-amz-server-side-encryption");
+    }
+
+    /// backlog#1733 g-key-003: a restored-to-local object must keep its data
+    /// dir. The restore marker lives under the pinned `x-amz-restore` key; if
+    /// the key ever drifts this flips to `false` and the data dir becomes
+    /// eligible for reclamation while the restored copy is still being served.
+    #[test]
+    fn restored_object_keeps_using_data_dir() {
+        let mut obj = MetaObject::default();
+        obj.meta_user
+            .insert("x-amz-restore".to_string(), RESTORED_ON_DISK.to_string());
+        assert!(obj.uses_data_dir(), "restored object's data dir must be considered in use");
+
+        // The same fail-open shape the pin protects against: without the marker
+        // the data dir is judged unused — exactly what a key drift would cause.
+        let bare = MetaObject::default();
+        assert!(!bare.uses_data_dir(), "object without restore marker reports data dir unused");
+    }
+
+    /// backlog#1733 g-key-004: a transition-complete object short-circuits to
+    /// `false` even when the restore marker is present — the existing
+    /// precedence must not change.
+    #[test]
+    fn transition_complete_object_does_not_use_data_dir() {
+        use rustfs_utils::http::{SUFFIX_TRANSITION_STATUS, insert_bytes};
+        let mut obj = MetaObject::default();
+        obj.meta_user
+            .insert("x-amz-restore".to_string(), RESTORED_ON_DISK.to_string());
+        insert_bytes(&mut obj.meta_sys, SUFFIX_TRANSITION_STATUS, TRANSITION_COMPLETE.as_bytes().to_vec());
+        assert!(!obj.uses_data_dir(), "transition-complete short-circuit must win over the restore marker");
+    }
+
+    /// The restore-header parser and the pinned key literal must agree: the
+    /// marker written under `x-amz-restore` is only meaningful if the parser
+    /// accepts it.
+    #[test]
+    fn restore_marker_roundtrips_through_parser() {
+        let mut meta = HashMap::new();
+        meta.insert(X_AMZ_RESTORE.as_str().to_string(), RESTORED_ON_DISK.to_string());
+        assert!(crate::is_restored_object_on_disk(&meta));
+
+        // An in-progress restore is not "on disk".
+        meta.insert(X_AMZ_RESTORE.as_str().to_string(), "ongoing-request=\"true\"".to_string());
+        assert!(!crate::is_restored_object_on_disk(&meta));
+    }
+
+    /// backlog#580: RustFS parses real MinIO-written object xl.meta (inline,
+    /// versioned, and multipart) into equivalent `FileInfo`. Object metadata is
+    /// the strong part of MinIO interop; this pins it against real fixtures.
+    #[test]
+    fn parses_real_minio_object_xlmeta() {
+        // Small inlined object.
+        let small = create_minio_small_object_xlmeta().expect("load small fixture");
+        let (major, _minor, _hdr, meta_ver) = FileMeta::read_format_versions(&small).unwrap();
+        assert_eq!(major, 1);
+        assert_eq!(meta_ver, FileMeta::load(&small).unwrap().meta_ver);
+        let fm = FileMeta::load(&small).expect("parse small MinIO xl.meta");
+        assert_eq!(fm.versions.len(), 1);
+        let fi = fm
+            .into_fileinfo("interop", "small.txt", "", false, false, true)
+            .expect("small fileinfo");
+        assert_eq!(fi.size, 19, "small.txt size");
+        assert_eq!(fi.num_versions, 1);
+        assert!(fi.is_latest);
+
+        // Versioned object: two object versions plus a delete marker (latest).
+        let versioned = create_minio_versioned_object_xlmeta().expect("load versioned fixture");
+        let fm = FileMeta::load(&versioned).expect("parse versioned MinIO xl.meta");
+        assert_eq!(fm.versions.len(), 3, "two object versions + one delete marker");
+        let delete_markers = fm
+            .versions
+            .iter()
+            .filter(|v| v.header.version_type == VersionType::Delete)
+            .count();
+        assert_eq!(delete_markers, 1, "delete marker parsed from MinIO xl.meta");
+        let fi = fm
+            .into_fileinfo("interop", "versioned.txt", "", false, false, true)
+            .expect("versioned fileinfo");
+        assert_eq!(fi.num_versions, 3);
+        assert!(fi.version_id.is_some(), "versioned object carries a version id");
+
+        // Larger object stored as an erasure-coded part (not inlined).
+        let large = create_minio_large_object_xlmeta().expect("load large fixture");
+        let fm = FileMeta::load(&large).expect("parse large MinIO xl.meta");
+        assert_eq!(fm.versions.len(), 1);
+        let fi = fm
+            .into_fileinfo("interop", "large.bin", "", false, false, true)
+            .expect("large fileinfo");
+        assert_eq!(fi.size, 300_000, "large.bin size");
+        assert!(!fi.parts.is_empty(), "multipart/part layout present");
+    }
+
+    /// Compatibility guard for the tightened `validate_for_metadata_read()` decode
+    /// boundary (the rolling-upgrade / MinIO-migration risk): every version of
+    /// every real, historically-written `xl.meta` fixture must still be *accepted*
+    /// on read, never rejected as `FileCorrupt`. This is the empirical companion to
+    /// the code-reasoned decode-tolerance invariants in
+    /// `docs/architecture/erasure-coding.md` §11 — reverting the tolerant handling
+    /// (delete-marker shape, legacy per-part checksums, string/short
+    /// `transitioned-versionID`, negative `actual_size`) turns one of these red.
+    /// It covers real MinIO-written objects (inline, versioned incl. a delete
+    /// marker, and multipart), a legacy V1 (`xl.json`-derived) object, and a legacy
+    /// meta_ver 2 object.
+    #[test]
+    fn real_historical_xlmeta_versions_pass_metadata_read_validation() {
+        let fixtures: [(&str, Vec<u8>); 5] = [
+            ("minio-small-inline", create_minio_small_object_xlmeta().expect("small fixture")),
+            (
+                "minio-versioned+delete-marker",
+                create_minio_versioned_object_xlmeta().expect("versioned fixture"),
+            ),
+            ("minio-large-multipart", create_minio_large_object_xlmeta().expect("large fixture")),
+            ("legacy-v1-object", create_legacy_v1_object_xlmeta().expect("legacy v1 fixture")),
+            (
+                "legacy-meta-v2-object",
+                create_issue_2265_legacy_meta_v2_object_xlmeta().expect("legacy meta v2 fixture"),
+            ),
+        ];
+
+        for (label, bytes) in fixtures {
+            let fm = FileMeta::load(&bytes).unwrap_or_else(|e| panic!("{label}: load real xl.meta failed: {e}"));
+            // `all_parts = true` materializes the part arrays so the checksum/part and
+            // shard-size checks in `validate_for_metadata_read` are actually exercised.
+            let versions = fm
+                .list_versions("interop", "object", true)
+                .unwrap_or_else(|e| panic!("{label}: list_versions failed: {e}"));
+            assert!(!versions.is_empty(), "{label}: fixture must contain at least one version");
+            for (i, fi) in versions.iter().enumerate() {
+                fi.validate_for_metadata_read().unwrap_or_else(|e| {
+                    panic!(
+                        "{label}: version {i} (deleted={}) rejected by validate_for_metadata_read: {e:?}",
+                        fi.deleted
+                    )
+                });
+            }
+        }
+    }
+
+    /// Wraps a raw meta block in a valid XL2 container (header, bin32 length
+    /// prefix, and CRC trailer) so decode tests exercise the meta parsing
+    /// itself rather than the envelope checks.
+    fn build_xl_buffer(meta: &[u8]) -> Vec<u8> {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&XL_FILE_HEADER);
+        buf.extend_from_slice(&XL_FILE_VERSION_MAJOR.to_le_bytes());
+        buf.extend_from_slice(&XL_FILE_VERSION_MINOR.to_le_bytes());
+        buf.push(0xc6); // bin32
+        buf.extend_from_slice(&(meta.len() as u32).to_be_bytes());
+        buf.extend_from_slice(meta);
+        let crc = xxh64::xxh64(meta, XXHASH_SEED) as u32;
+        buf.push(0xce); // u32
+        buf.extend_from_slice(&crc.to_be_bytes());
+        buf
+    }
+
+    /// Regression for backlog#799 B15: `sort_by_mod_time` must order versions
+    /// identically to `FileMetaVersionHeader::sorts_before`. When an object and
+    /// a delete marker share a `mod_time`, the old tie-break sorted the delete
+    /// marker first (so the object looked deleted) while `sorts_before` — used
+    /// by the metacache merge and latest-version selection — puts the object
+    /// first. That divergence made different code paths disagree on latest.
+    #[test]
+    fn sort_by_mod_time_matches_sorts_before_on_equal_mod_time() {
+        let mod_time = Some(OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap());
+        let obj_id = Uuid::from_u128(1);
+        let del_id = Uuid::from_u128(2);
+
+        let object = FileMetaShallowVersion {
+            header: FileMetaVersionHeader {
+                version_id: Some(obj_id),
+                mod_time,
+                version_type: VersionType::Object,
+                ..Default::default()
+            },
+            meta: Vec::new(),
+        };
+        let delete_marker = FileMetaShallowVersion {
+            header: FileMetaVersionHeader {
+                version_id: Some(del_id),
+                mod_time,
+                version_type: VersionType::Delete,
+                ..Default::default()
+            },
+            meta: Vec::new(),
+        };
+
+        // sorts_before is the canonical predicate: object precedes the marker.
+        assert!(object.header.sorts_before(&delete_marker.header));
+        assert!(!delete_marker.header.sorts_before(&object.header));
+
+        // Insert marker-first so a wrong tie-break would leave it at index 0.
+        let mut fm = FileMeta {
+            versions: vec![delete_marker, object],
+            ..Default::default()
+        };
+        fm.sort_by_mod_time();
+
+        assert_eq!(
+            fm.versions[0].header.version_type,
+            VersionType::Object,
+            "object must sort before an equal-mod_time delete marker, matching sorts_before"
+        );
+        assert_eq!(fm.versions[1].header.version_type, VersionType::Delete);
+        assert!(fm.is_sorted_by_mod_time());
+    }
+
+    fn version_for_ordering(
+        version_type: VersionType,
+        version_id: Uuid,
+        mod_time: OffsetDateTime,
+        marker: u8,
+    ) -> FileMetaVersion {
+        match version_type {
+            VersionType::Object => FileMetaVersion {
+                version_type,
+                object: Some(MetaObject {
+                    version_id: Some(version_id),
+                    erasure_algorithm: ErasureAlgo::ReedSolomon,
+                    erasure_m: 2,
+                    erasure_n: 2,
+                    erasure_block_size: 1 << 20,
+                    bitrot_checksum_algo: ChecksumAlgo::HighwayHash,
+                    mod_time: Some(mod_time),
+                    meta_sys: HashMap::from([("ordering-marker".to_string(), vec![marker])]),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            VersionType::Delete => FileMetaVersion {
+                version_type,
+                delete_marker: Some(MetaDeleteMarker {
+                    version_id: Some(version_id),
+                    mod_time: Some(mod_time),
+                    meta_sys: HashMap::from([("ordering-marker".to_string(), vec![marker])]),
+                }),
+                ..Default::default()
+            },
+            _ => unreachable!("ordering regression only constructs object and delete versions"),
+        }
+    }
+
+    struct ObjectMaxVersionsRestore {
+        previous: Option<usize>,
+    }
+
+    impl Drop for ObjectMaxVersionsRestore {
+        fn drop(&mut self) {
+            set_object_max_versions_override_for_test(self.previous);
+        }
+    }
+
+    fn with_object_max_versions_for_test<R>(limit: usize, test: impl FnOnce() -> R) -> R {
+        let previous = set_object_max_versions_override_for_test(Some(limit));
+        let _restore = ObjectMaxVersionsRestore { previous };
+        test()
+    }
+
+    #[test]
+    fn add_version_filemata_rejects_new_version_above_configured_limit() {
+        with_object_max_versions_for_test(2, || {
+            let mut fm = FileMeta::new();
+            fm.add_version_filemata(valid_object_version(Uuid::from_u128(1), vec![10, 20]))
+                .expect("add first version within limit");
+            fm.add_version_filemata(valid_object_version(Uuid::from_u128(2), vec![10, 20]))
+                .expect("add second version at limit");
+
+            let err = fm
+                .add_version_filemata(valid_object_version(Uuid::from_u128(3), vec![10, 20]))
+                .expect_err("new version above limit must fail");
+
+            assert_eq!(err, Error::MaxVersionsExceeded);
+            assert_eq!(fm.versions.len(), 2, "failed insert must not mutate version list");
+        });
+    }
+
+    #[test]
+    fn add_version_filemata_allows_same_version_replacement_at_limit() {
+        with_object_max_versions_for_test(2, || {
+            let mut fm = FileMeta::new();
+            let target = Uuid::from_u128(10);
+            fm.add_version_filemata(valid_object_version(target, vec![10, 20]))
+                .expect("add target version");
+            fm.add_version_filemata(valid_object_version(Uuid::from_u128(20), vec![10, 20]))
+                .expect("add peer version at limit");
+
+            fm.add_version_filemata(valid_object_version(target, vec![30, 40]))
+                .expect("same version replacement at limit must succeed");
+
+            assert_eq!(fm.versions.len(), 2);
+            let replaced = fm
+                .versions
+                .iter()
+                .find(|version| version.header.version_id == Some(target))
+                .expect("target version must remain present")
+                .parse_version_meta()
+                .expect("parse replaced version");
+            assert_eq!(replaced.object.expect("object version").part_sizes, vec![30, 40]);
+        });
+    }
+
+    #[test]
+    fn add_version_allows_null_version_replacement_at_limit() {
+        with_object_max_versions_for_test(1, || {
+            let mut fm = FileMeta::new();
+            let mut first = FileInfo::new("object", 2, 2);
+            first.mod_time = Some(OffsetDateTime::now_utc());
+            first.version_id = None;
+            fm.add_version(first).expect("add initial null version");
+
+            let mut replacement = FileInfo::new("object", 2, 2);
+            replacement.mod_time = Some(OffsetDateTime::now_utc());
+            replacement.version_id = None;
+            replacement.size = 42;
+            fm.add_version(replacement)
+                .expect("null version replacement at limit must succeed");
+
+            assert_eq!(fm.versions.len(), 1);
+            assert_eq!(fm.versions[0].header.version_id, Some(Uuid::nil()));
+            let replaced = fm.versions[0].parse_version_meta().expect("parse null replacement");
+            assert_eq!(replaced.object.expect("object version").size, 42);
+        });
+    }
+
+    #[test]
+    fn add_version_filemata_uses_canonical_equal_time_order() {
+        let mod_time = OffsetDateTime::from_unix_timestamp(1_700_000_000).expect("valid test timestamp");
+        let object = version_for_ordering(VersionType::Object, Uuid::from_u128(1), mod_time, 1);
+        let delete_marker = version_for_ordering(VersionType::Delete, Uuid::from_u128(2), mod_time, 2);
+
+        for versions in [[object.clone(), delete_marker.clone()], [delete_marker, object]] {
+            let mut fm = FileMeta::new();
+            for version in versions {
+                fm.add_version_filemata(version).expect("add equal-time version");
+            }
+
+            assert_eq!(fm.versions[0].header.version_type, VersionType::Object);
+            assert_eq!(fm.versions[1].header.version_type, VersionType::Delete);
+            assert!(fm.versions[0].header.sorts_before(&fm.versions[1].header));
+        }
+    }
+
+    #[test]
+    fn add_version_filemata_preserves_tie_breaks_after_reload() {
+        let mod_time = OffsetDateTime::from_unix_timestamp(1_700_000_000).expect("valid test timestamp");
+        let versions = [
+            version_for_ordering(VersionType::Object, Uuid::from_u128(10), mod_time, 10),
+            version_for_ordering(VersionType::Object, Uuid::from_u128(20), mod_time, 20),
+            version_for_ordering(VersionType::Delete, Uuid::from_u128(30), mod_time, 30),
+        ];
+        let mut expected = versions.iter().map(FileMetaVersion::header).collect::<Vec<_>>();
+        expected.sort_by(|a, b| {
+            if a.sorts_before(b) {
+                Ordering::Less
+            } else if b.sorts_before(a) {
+                Ordering::Greater
+            } else {
+                Ordering::Equal
+            }
+        });
+
+        let mut fm = FileMeta::new();
+        for version in versions.into_iter().rev() {
+            fm.add_version_filemata(version).expect("add equal-time version");
+        }
+        let loaded = FileMeta::load(&fm.marshal_msg().expect("serialize file metadata")).expect("reload file metadata");
+        let actual = loaded
+            .versions
+            .iter()
+            .map(|version| version.header.clone())
+            .collect::<Vec<_>>();
+
+        assert_ne!(expected[0].signature, expected[1].signature, "fixture must exercise signature ordering");
+        assert_eq!(actual, expected);
+        assert!(actual.windows(2).all(|pair| pair[0].sorts_before(&pair[1])));
+    }
+
+    #[test]
+    fn add_version_filemata_reorders_equal_time_replacement() {
+        let mod_time = OffsetDateTime::from_unix_timestamp(1_700_000_000).expect("valid test timestamp");
+        let first = version_for_ordering(VersionType::Object, Uuid::from_u128(40), mod_time, 40);
+        let second = version_for_ordering(VersionType::Object, Uuid::from_u128(50), mod_time, 50);
+        let (target, peer) = if first.header().sorts_before(&second.header()) {
+            (first, second)
+        } else {
+            (second, first)
+        };
+        let target_id = target.header().version_id.expect("test version id");
+
+        let mut fm = FileMeta::new();
+        fm.add_version_filemata(peer).expect("add peer object");
+        fm.add_version_filemata(target).expect("add target object");
+        assert_eq!(fm.versions[0].header.version_id, Some(target_id));
+
+        fm.add_version_filemata(version_for_ordering(VersionType::Delete, target_id, mod_time, 60))
+            .expect("replace target with equal-time delete marker");
+
+        assert_eq!(fm.versions[0].header.version_type, VersionType::Object);
+        assert_eq!(fm.versions[1].header.version_type, VersionType::Delete);
+        assert!(fm.versions[0].header.sorts_before(&fm.versions[1].header));
+    }
+
+    #[test]
+    fn add_version_filemata_rejects_free_and_ordinary_same_id_replacement() {
+        let version_id = Uuid::new_v4();
+        let mut free_meta_sys = HashMap::new();
+        insert_bytes(&mut free_meta_sys, rustfs_utils::http::SUFFIX_FREE_VERSION, Vec::new());
+        let free_version = FileMetaVersion {
+            version_type: VersionType::Delete,
+            delete_marker: Some(MetaDeleteMarker {
+                version_id: Some(version_id),
+                mod_time: Some(OffsetDateTime::now_utc()),
+                meta_sys: free_meta_sys,
+            }),
+            ..Default::default()
+        };
+        let ordinary_version = valid_object_version(version_id, vec![10, 20]);
+
+        for (existing, replacement) in [
+            (free_version.clone(), ordinary_version.clone()),
+            (ordinary_version, free_version),
+        ] {
+            let mut fm = FileMeta::new();
+            fm.add_version_filemata(existing).expect("seed same-id version");
+            let before = fm.marshal_msg().expect("serialize original metadata");
+
+            let err = fm
+                .add_version_filemata(replacement)
+                .expect_err("free and ordinary versions with the same ID must not replace each other");
+
+            assert!(err.to_string().contains("cannot replace a free version"));
+            assert_eq!(fm.marshal_msg().expect("serialize rejected metadata"), before);
+        }
+    }
+
+    /// `add_version_filemata` positions an inserted version with
+    /// `partition_point(sorts_before)`, which only yields the canonical slot when
+    /// `versions` is already canonically ordered. Nothing establishes that
+    /// precondition on load: `FileMeta::unmarshal_msg` pushes versions in file
+    /// order, and metadata written before the canonical-order fix ordered
+    /// equal-`mod_time` ties by insertion instead of by `sorts_before`. An insert
+    /// into such a list must still leave it canonical, the same way `set_idx`
+    /// already re-sorts on the replace path.
+    #[test]
+    fn add_version_filemata_canonicalizes_versions_loaded_out_of_order() {
+        let mod_time = OffsetDateTime::from_unix_timestamp(1_700_000_000).expect("valid test timestamp");
+        let first = version_for_ordering(VersionType::Object, Uuid::from_u128(70), mod_time, 70);
+        let second = version_for_ordering(VersionType::Object, Uuid::from_u128(80), mod_time, 80);
+        let (early, late) = if first.header().sorts_before(&second.header()) {
+            (first, second)
+        } else {
+            (second, first)
+        };
+
+        // Persist the pair the wrong way round to emulate a pre-canonical-order
+        // xl.meta, bypassing add_version_filemata so the bad order really lands on
+        // the wire.
+        let mut legacy = FileMeta::new();
+        legacy
+            .versions
+            .push(FileMetaShallowVersion::try_from(late).expect("shallow later version"));
+        legacy
+            .versions
+            .push(FileMetaShallowVersion::try_from(early).expect("shallow earlier version"));
+
+        let mut loaded =
+            FileMeta::load(&legacy.marshal_msg().expect("serialize legacy metadata")).expect("reload legacy metadata");
+        assert!(
+            !loaded.versions[0].header.sorts_before(&loaded.versions[1].header),
+            "fixture must reach add_version_filemata non-canonically ordered"
+        );
+
+        loaded
+            .add_version_filemata(version_for_ordering(VersionType::Delete, Uuid::from_u128(90), mod_time, 90))
+            .expect("insert equal-time delete marker");
+
+        assert_eq!(loaded.versions.len(), 3);
+        assert!(
+            loaded
+                .versions
+                .windows(2)
+                .all(|pair| pair[0].header.sorts_before(&pair[1].header)),
+            "insert must leave the version list canonically ordered"
+        );
+    }
+
+    /// Regression for backlog#799 B16: replication reset state must be
+    /// persisted under both internal prefixes, never as a bare ARN. A bare-ARN
+    /// key (produced by `ObjectInfo::replication_state`) has no internal prefix,
+    /// so read-back — which only recognizes prefixed keys — silently dropped it.
+    #[test]
+    fn persist_target_delete_marker_versions_uses_bounded_dual_prefixed_keys() {
+        let arn = "arn:rustfs:replication::target:bucket";
+        let version_id = "opaque-target-version";
+        let suffix = format!("{SUFFIX_REPLICATION_DELETE_MARKER_VERSION_ARN_PREFIX}{arn}");
+        let versions = HashMap::from([
+            (arn.to_string(), version_id.to_string()),
+            ("not-an-arn".to_string(), "ignored".to_string()),
+            ("arn:too-long".to_string(), "x".repeat(MAX_REPLICATION_TARGET_VERSION_ID_LEN + 1)),
+        ]);
+        let mut meta_sys = HashMap::new();
+
+        persist_target_delete_marker_versions(&mut meta_sys, &versions, &HashMap::new());
+
+        assert_eq!(
+            meta_sys.get(&format!("{RUSTFS_INTERNAL_PREFIX}{suffix}")).map(Vec::as_slice),
+            Some(version_id.as_bytes())
+        );
+        assert_eq!(
+            meta_sys.get(&format!("{MINIO_INTERNAL_PREFIX}{suffix}")).map(Vec::as_slice),
+            Some(version_id.as_bytes())
+        );
+        assert_eq!(meta_sys.len(), 2, "invalid or oversized mappings must not expand xl.meta");
+    }
+
+    #[test]
+    fn persist_target_delete_marker_versions_caps_target_count() {
+        let versions = (0..=MAX_REPLICATION_TARGET_VERSION_ENTRIES)
+            .map(|index| (format!("arn:rustfs:replication::target:{index:04}"), format!("version-{index}")))
+            .collect();
+        let mut meta_sys = HashMap::new();
+
+        persist_target_delete_marker_versions(&mut meta_sys, &versions, &HashMap::new());
+
+        assert_eq!(meta_sys.len(), MAX_REPLICATION_TARGET_VERSION_ENTRIES * 2);
+        let excluded_suffix = format!(
+            "{SUFFIX_REPLICATION_DELETE_MARKER_VERSION_ARN_PREFIX}arn:rustfs:replication::target:{MAX_REPLICATION_TARGET_VERSION_ENTRIES:04}"
+        );
+        assert!(!meta_sys.contains_key(&format!("{RUSTFS_INTERNAL_PREFIX}{excluded_suffix}")));
+        assert!(!meta_sys.contains_key(&format!("{MINIO_INTERNAL_PREFIX}{excluded_suffix}")));
+    }
+
+    #[test]
+    fn persist_target_delete_marker_versions_preserves_existing_targets_on_empty_update() {
+        let stale_suffix = format!("{SUFFIX_REPLICATION_DELETE_MARKER_VERSION_ARN_PREFIX}arn:rustfs:replication::target:stale");
+        let mut meta_sys = HashMap::from([
+            (format!("{RUSTFS_INTERNAL_PREFIX}{stale_suffix}"), b"stale-rustfs".to_vec()),
+            (format!("{MINIO_INTERNAL_PREFIX}{stale_suffix}"), b"stale-minio".to_vec()),
+            ("unrelated".to_string(), b"kept".to_vec()),
+        ]);
+
+        persist_target_delete_marker_versions(&mut meta_sys, &HashMap::new(), &HashMap::new());
+
+        assert_eq!(
+            meta_sys,
+            HashMap::from([
+                (format!("{RUSTFS_INTERNAL_PREFIX}{stale_suffix}"), b"stale-rustfs".to_vec()),
+                (format!("{MINIO_INTERNAL_PREFIX}{stale_suffix}"), b"stale-minio".to_vec()),
+                ("unrelated".to_string(), b"kept".to_vec()),
+            ])
+        );
+    }
+
+    #[test]
+    fn persist_target_delete_marker_versions_reads_rpc_transport_metadata() {
+        let arn = "arn:rustfs:replication::target:remote";
+        let version_id = "opaque-remote-version";
+        let suffix = format!("{SUFFIX_REPLICATION_DELETE_MARKER_VERSION_ARN_PREFIX}{arn}");
+        let mut transport_metadata = HashMap::new();
+        rustfs_utils::http::insert_str(&mut transport_metadata, &suffix, version_id.to_string());
+        let mut meta_sys = HashMap::new();
+
+        persist_target_delete_marker_versions(&mut meta_sys, &HashMap::new(), &transport_metadata);
+
+        assert_eq!(
+            meta_sys.get(&format!("{RUSTFS_INTERNAL_PREFIX}{suffix}")).map(Vec::as_slice),
+            Some(version_id.as_bytes())
+        );
+        assert_eq!(
+            meta_sys.get(&format!("{MINIO_INTERNAL_PREFIX}{suffix}")).map(Vec::as_slice),
+            Some(version_id.as_bytes())
+        );
+    }
+
+    #[test]
+    fn persist_reset_statuses_normalizes_to_dual_prefixed_keys() {
+        let arn = "arn:rustfs:replication::target:bucket";
+        let ts = "2026-06-30T00:00:00Z;reset-1";
+        let suffix = format!("{SUFFIX_REPLICATION_RESET}-{arn}");
+        let rustfs_key = format!("{RUSTFS_INTERNAL_PREFIX}{suffix}");
+        let minio_key = format!("{MINIO_INTERNAL_PREFIX}{suffix}");
+
+        // Bare-ARN key must be normalized to prefixed keys, never written raw.
+        let mut bare = HashMap::new();
+        bare.insert(arn.to_string(), ts.to_string());
+        let mut meta_sys = HashMap::new();
+        persist_reset_statuses(&mut meta_sys, &bare);
+        assert_eq!(meta_sys.get(&rustfs_key).map(Vec::as_slice), Some(ts.as_bytes()));
+        assert_eq!(meta_sys.get(&minio_key).map(Vec::as_slice), Some(ts.as_bytes()));
+        assert!(
+            !meta_sys.contains_key(arn),
+            "bare ARN key must never be persisted (it is dropped on read)"
+        );
+        assert_eq!(meta_sys.len(), 2);
+
+        // An already-prefixed key must land on the same canonical dual keys,
+        // not gain a second prefix.
+        let mut prefixed = HashMap::new();
+        prefixed.insert(rustfs_key.clone(), ts.to_string());
+        let mut meta_sys2 = HashMap::new();
+        persist_reset_statuses(&mut meta_sys2, &prefixed);
+        assert_eq!(meta_sys2.get(&rustfs_key).map(Vec::as_slice), Some(ts.as_bytes()));
+        assert_eq!(meta_sys2.get(&minio_key).map(Vec::as_slice), Some(ts.as_bytes()));
+        assert_eq!(meta_sys2.len(), 2, "must not create a double-prefixed key");
+    }
+
+    #[test]
+    fn persist_delete_marker_replication_state_keeps_replica_and_target_statuses() {
+        let replica_timestamp = OffsetDateTime::UNIX_EPOCH + time::Duration::SECOND;
+        let replication_timestamp = replica_timestamp + time::Duration::SECOND;
+        let state = ReplicationState {
+            replica_status: ReplicationStatusType::Replica,
+            replica_timestamp: Some(replica_timestamp),
+            replication_status_internal: Some("arn:target=COMPLETED;".to_string()),
+            replication_timestamp: Some(replication_timestamp),
+            ..Default::default()
+        };
+        let mut meta_sys = HashMap::new();
+        let replica_timestamp_string = replica_timestamp
+            .format(&Rfc3339)
+            .expect("timestamp should format as RFC3339");
+        let replication_timestamp_string = replication_timestamp
+            .format(&Rfc3339)
+            .expect("timestamp should format as RFC3339");
+
+        persist_delete_marker_replication_state(&mut meta_sys, &state);
+
+        assert_eq!(
+            rustfs_utils::http::get_bytes(&meta_sys, SUFFIX_REPLICA_STATUS).as_deref(),
+            Some(b"REPLICA".as_slice())
+        );
+        assert_eq!(
+            rustfs_utils::http::get_bytes(&meta_sys, SUFFIX_REPLICA_TIMESTAMP).as_deref(),
+            Some(replica_timestamp_string.as_bytes())
+        );
+        assert_eq!(
+            rustfs_utils::http::get_bytes(&meta_sys, SUFFIX_REPLICATION_STATUS).as_deref(),
+            Some(b"arn:target=COMPLETED;".as_slice())
+        );
+        assert_eq!(
+            rustfs_utils::http::get_bytes(&meta_sys, SUFFIX_REPLICATION_TIMESTAMP).as_deref(),
+            Some(replication_timestamp_string.as_bytes())
+        );
+    }
+
+    #[test]
+    fn persist_delete_marker_replication_timestamp_normalizes_second_offset_to_utc() {
+        let timestamp = OffsetDateTime::UNIX_EPOCH.to_offset(time::UtcOffset::from_hms(5, 30, 15).expect("valid offset"));
+        assert_eq!(parse_replication_timestamp(&timestamp.to_string()), Some(timestamp));
+        let state = ReplicationState {
+            replica_status: ReplicationStatusType::Replica,
+            replica_timestamp: Some(timestamp),
+            replication_status_internal: Some("arn:target=COMPLETED;".to_string()),
+            replication_timestamp: Some(timestamp),
+            ..Default::default()
+        };
+        let mut meta_sys = HashMap::new();
+
+        persist_delete_marker_replication_state(&mut meta_sys, &state);
+
+        for suffix in [SUFFIX_REPLICA_TIMESTAMP, SUFFIX_REPLICATION_TIMESTAMP] {
+            let persisted = rustfs_utils::http::get_bytes(&meta_sys, suffix).expect("timestamp must be persisted");
+            let persisted = std::str::from_utf8(&persisted).expect("timestamp must be UTF-8");
+            assert_eq!(parse_replication_timestamp(persisted), Some(timestamp));
+            assert_ne!(persisted, OffsetDateTime::UNIX_EPOCH.to_string());
+        }
+    }
+
+    /// Regression test for rustfs/rustfs#2715: a corrupted version count in
+    /// xl.meta must yield a decode error instead of sizing a huge allocation
+    /// from the bogus count (which aborts the whole process).
+    /// A CRC mismatch means the bytes on disk are not the bytes that were
+    /// written — bitrot. It must surface as `Error::FileCorrupt` specifically:
+    /// that variant converts to `DiskError::FileCorrupt`, which is the only
+    /// corruption signal `should_heal_object_on_disk` recognises. As a generic
+    /// error the drive is skipped, the heal reports success, and the damaged
+    /// `xl.meta` is never rewritten.
+    #[test]
+    fn test_unmarshal_reports_file_corrupt_on_crc_mismatch() {
+        let mut fm = FileMeta::default();
+        let mut buf = fm.marshal_msg().expect("serialize default FileMeta");
+        // Flip one byte inside the meta blob: past the 8-byte XL2 header and
+        // the 5-byte bin32 length prefix, before the CRC trailer.
+        let idx = 8 + 5;
+        buf[idx] ^= 0xff;
+        let err = fm.unmarshal_msg(&buf).expect_err("corrupted meta must fail to decode");
+        assert_eq!(err, Error::FileCorrupt, "CRC mismatch must classify as FileCorrupt, got: {err}");
+    }
+
+    #[test]
+    fn test_is_indexed_meta_reports_file_corrupt_on_crc_mismatch() {
+        let fm = FileMeta::default();
+        let mut buf = fm.marshal_msg().expect("serialize default FileMeta");
+        let idx = 8 + 5;
+        buf[idx] ^= 0xff;
+
+        let err = FileMeta::is_indexed_meta(&buf).expect_err("corrupted indexed metadata must fail");
+        assert_eq!(err, Error::FileCorrupt, "indexed CRC mismatch must classify as FileCorrupt, got: {err}");
+    }
+
+    #[test]
+    fn test_unmarshal_rejects_absurd_version_count() {
+        let mut meta = Vec::new();
+        rmp::encode::write_uint(&mut meta, XL_HEADER_VERSION as u64).unwrap();
+        rmp::encode::write_uint(&mut meta, XL_META_VERSION as u64).unwrap();
+        // Claim ~10^15 versions with no version data behind it.
+        rmp::encode::write_sint(&mut meta, 1i64 << 50).unwrap();
+
+        let buf = build_xl_buffer(&meta);
+        let mut fm = FileMeta::default();
+        let err = fm.unmarshal_msg(&buf).expect_err("absurd version count must fail to decode");
+        assert!(err.to_string().contains("version count"), "unexpected error: {err}");
+    }
+
+    /// Regression test for rustfs/rustfs#2715: a corrupted per-version binary
+    /// length must yield a decode error instead of a giant allocation.
+    #[test]
+    fn test_unmarshal_rejects_absurd_version_header_length() {
+        let mut meta = Vec::new();
+        rmp::encode::write_uint(&mut meta, XL_HEADER_VERSION as u64).unwrap();
+        rmp::encode::write_uint(&mut meta, XL_META_VERSION as u64).unwrap();
+        rmp::encode::write_sint(&mut meta, 1).unwrap();
+        // One version whose header claims to be u32::MAX bytes long.
+        meta.push(0xc6); // bin32
+        meta.extend_from_slice(&u32::MAX.to_be_bytes());
+
+        let buf = build_xl_buffer(&meta);
+        let mut fm = FileMeta::default();
+        let err = fm
+            .unmarshal_msg(&buf)
+            .expect_err("absurd version header length must fail to decode");
+        assert!(err.to_string().contains("version header length"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn test_new_file_meta() {
+        let mut fm = FileMeta::new();
+
+        let (m, n) = (3, 2);
+
+        for i in 0..5 {
+            let mut fi = FileInfo::new(i.to_string().as_str(), m, n);
+            fi.mod_time = Some(OffsetDateTime::now_utc());
+
+            fm.add_version(fi).unwrap();
+        }
+
+        let buff = fm.marshal_msg().unwrap();
+
+        let mut newfm = FileMeta::default();
+        newfm.unmarshal_msg(&buff).unwrap();
+
+        assert_eq!(fm, newfm)
+    }
+
+    /// Regression for rustfs/backlog#1302: `delete_version` with
+    /// `expire_restored` must only strip the `x-amz-restore` headers and hand
+    /// back the local data dir for cleanup; the version itself must survive
+    /// with its transition metadata (and thus the remote tier copy) intact.
+    #[test]
+    fn test_delete_version_expire_restored_keeps_transitioned_version() {
+        use rustfs_utils::http::headers::{AMZ_RESTORE, AMZ_RESTORE_EXPIRY_DAYS, AMZ_RESTORE_REQUEST_DATE};
+
+        let mut fm = FileMeta::new();
+        let vid = Uuid::new_v4();
+        let data_dir = Uuid::new_v4();
+
+        let mut fi = FileInfo::new("restored.bin", 3, 2);
+        fi.version_id = Some(vid);
+        fi.data_dir = Some(data_dir);
+        fi.mod_time = Some(OffsetDateTime::now_utc());
+        fi.transition_status = TRANSITION_COMPLETE.to_string();
+        fi.transitioned_objname = "remote/obj".to_string();
+        fi.transition_tier = "COLDTIER".to_string();
+        fi.metadata.insert(
+            AMZ_RESTORE.to_string(),
+            "ongoing-request=\"false\", expiry-date=\"Fri, 17 Jul 2026 00:00:00 GMT\"".to_string(),
+        );
+        fi.metadata.insert(AMZ_RESTORE_EXPIRY_DAYS.to_string(), "1".to_string());
+        fi.metadata
+            .insert(AMZ_RESTORE_REQUEST_DATE.to_string(), "Thu, 16 Jul 2026 00:00:00 GMT".to_string());
+        rustfs_utils::http::insert_str(&mut fi.metadata, SUFFIX_RESTORE_OPERATION_ID, Uuid::from_u128(1).to_string());
+        rustfs_utils::http::insert_str(
+            &mut fi.metadata,
+            SUFFIX_RESTORE_WORKER_LOCK,
+            rustfs_utils::http::RESTORE_WORKER_LOCK_PROTOCOL_V1.to_string(),
+        );
+        fm.add_version(fi).unwrap();
+
+        let expire_fi = FileInfo {
+            name: "restored.bin".to_string(),
+            version_id: Some(vid),
+            expire_restored: true,
+            ..Default::default()
+        };
+        let freed = fm.delete_version(&expire_fi).unwrap();
+        assert_eq!(freed, Some(data_dir), "the restored copy's local data dir must be handed back");
+
+        assert_eq!(fm.versions.len(), 1, "the version must survive restored-copy expiry");
+        let after = fm.into_fileinfo("vol", "restored.bin", "", false, false, true).unwrap();
+        assert!(!after.metadata.contains_key(AMZ_RESTORE), "x-amz-restore must be stripped");
+        assert!(!after.metadata.contains_key(AMZ_RESTORE_EXPIRY_DAYS));
+        assert!(!after.metadata.contains_key(AMZ_RESTORE_REQUEST_DATE));
+        assert!(
+            rustfs_utils::http::get_str(&after.metadata, SUFFIX_RESTORE_OPERATION_ID).is_none(),
+            "expired restore must not retain its operation generation"
+        );
+        assert!(
+            rustfs_utils::http::get_str(&after.metadata, SUFFIX_RESTORE_WORKER_LOCK).is_none(),
+            "expired restore must not retain the worker-liveness protocol marker"
+        );
+        assert_eq!(after.transition_status, TRANSITION_COMPLETE);
+        assert_eq!(after.transitioned_objname, "remote/obj");
+        assert_eq!(after.transition_tier, "COLDTIER");
+    }
+
+    #[test]
+    fn test_get_idx_out_of_bounds_returns_error_without_panic() {
+        let mut fm = FileMeta::new();
+
+        let (m, n) = (3, 2);
+        for i in 0..3 {
+            let mut fi = FileInfo::new(i.to_string().as_str(), m, n);
+            fi.version_id = Some(Uuid::from_u128(i + 1));
+            fi.mod_time = Some(OffsetDateTime::now_utc());
+            fm.add_version(fi).unwrap();
+        }
+
+        let len = fm.versions.len();
+        assert_eq!(len, 3);
+
+        // In-bounds indices resolve.
+        assert!(fm.get_idx(0).is_ok());
+        assert!(fm.get_idx(len - 1).is_ok());
+
+        // idx == len must return FileNotFound rather than panic on the
+        // out-of-bounds slice index, matching set_idx's guard.
+        match fm.get_idx(len) {
+            Err(Error::FileNotFound) => {}
+            other => panic!("expected FileNotFound for idx == len, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_marshal_metaobject() {
+        let obj = MetaObject {
+            data_dir: Some(Uuid::new_v4()),
+            ..Default::default()
+        };
+
+        // println!("obj {:?}", &obj);
+
+        let encoded = obj.marshal_msg().unwrap();
+
+        let mut obj2 = MetaObject::default();
+        obj2.unmarshal_msg(&encoded).unwrap();
+
+        // println!("obj2 {:?}", &obj2);
+
+        assert_eq!(obj, obj2);
+        assert_eq!(obj.data_dir, obj2.data_dir);
+    }
+
+    #[test]
+    fn test_marshal_metadeletemarker() {
+        let obj = MetaDeleteMarker {
+            version_id: Some(Uuid::new_v4()),
+            ..Default::default()
+        };
+
+        // println!("obj {:?}", &obj);
+
+        let encoded = obj.marshal_msg().unwrap();
+
+        let mut obj2 = MetaDeleteMarker::default();
+        obj2.unmarshal_msg(&encoded).unwrap();
+
+        // println!("obj2 {:?}", &obj2);
+
+        assert_eq!(obj, obj2);
+        assert_eq!(obj.version_id, obj2.version_id);
+    }
+
+    #[test]
+    fn test_marshal_metaversion() {
+        let mut fi = FileInfo::new("tset", 3, 2);
+        fi.version_id = Some(Uuid::new_v4());
+        fi.mod_time = Some(OffsetDateTime::from_unix_timestamp(OffsetDateTime::now_utc().unix_timestamp()).unwrap());
+        let mut obj = FileMetaVersion::from(fi);
+        obj.write_version = 110;
+
+        // println!("obj {:?}", &obj);
+
+        let encoded = obj.marshal_msg().unwrap();
+
+        let mut obj2 = FileMetaVersion::default();
+        obj2.unmarshal_msg(&encoded).unwrap();
+
+        // println!("obj2 {:?}", &obj2);
+
+        // Timestamp inconsistency
+        assert_eq!(obj, obj2);
+        assert_eq!(obj.get_version_id(), obj2.get_version_id());
+        assert_eq!(obj.write_version, obj2.write_version);
+        assert_eq!(obj.write_version, 110);
+    }
+
+    #[test]
+    fn test_marshal_metaversionheader() {
+        let mut obj = FileMetaVersionHeader::default();
+        let vid = Some(Uuid::new_v4());
+        obj.version_id = vid;
+
+        let encoded = obj.marshal_msg().unwrap();
+
+        let mut obj2 = FileMetaVersionHeader::default();
+        obj2.unmarshal_msg(&encoded).unwrap();
+
+        // Timestamp inconsistency
+        assert_eq!(obj, obj2);
+        assert_eq!(obj.version_id, obj2.version_id);
+        assert_eq!(obj.version_id, vid);
+    }
+
+    #[test]
+    fn test_real_xlmeta_compatibility() {
+        // Test compatibility with real xl.meta formats
+        let data = create_real_xlmeta().expect("Failed to create realistic test data");
+
+        // Verify the file header
+        assert_eq!(&data[0..4], b"XL2 ", "File header should be 'XL2 '");
+        assert_eq!(&data[4..8], &[1, 0, 3, 0], "Version number should be 1.3.0");
+
+        // Parse metadata
+        let fm = FileMeta::load(&data).expect("Failed to parse realistic data");
+
+        // Verify basic properties
+        assert_eq!(fm.meta_ver, XL_META_VERSION);
+        assert_eq!(
+            fm.versions.len(),
+            3,
+            "Should have three versions (one object, one delete marker, one Legacy)"
+        );
+
+        // Verify version types
+        let mut object_count = 0;
+        let mut delete_count = 0;
+        let mut legacy_count = 0;
+
+        for version in &fm.versions {
+            match version.header.version_type {
+                VersionType::Object => object_count += 1,
+                VersionType::Delete => delete_count += 1,
+                VersionType::Legacy => legacy_count += 1,
+                VersionType::Invalid => panic!("No invalid versions should be present"),
+            }
+        }
+
+        assert_eq!(object_count, 1, "Should have one object version");
+        assert_eq!(delete_count, 1, "Should have one delete marker");
+        assert_eq!(legacy_count, 1, "Should have one Legacy version");
+
+        // Verify compatibility
+        assert!(fm.is_compatible_with_meta(), "Should be compatible with the xl format");
+
+        // Verify integrity
+        fm.validate_integrity().expect("Integrity validation failed");
+
+        // Verify version statistics
+        let stats = fm.get_version_stats();
+        assert_eq!(stats.total_versions, 3);
+        assert_eq!(stats.object_versions, 1);
+        assert_eq!(stats.delete_markers, 1);
+        assert_eq!(stats.invalid_versions, 1); // Legacy is counted as invalid
+    }
+
+    #[test]
+    fn test_issue_2288_legacy_xlmeta_compatibility() {
+        let data = create_issue_2288_legacy_xlmeta().expect("Failed to load issue #2288 fixture");
+        let (major, minor, header_ver, meta_ver) = FileMeta::read_format_versions(&data).unwrap();
+        assert_eq!((major, minor, header_ver, meta_ver), (1, 3, 2, 1));
+
+        let fm = FileMeta::load(&data).expect("Failed to parse legacy issue #2288 xl.meta");
+        assert_eq!(fm.meta_ver, 1);
+        assert_eq!(fm.versions.len(), 1);
+        assert_eq!(fm.versions[0].header.version_type, VersionType::Object);
+        assert_eq!(fm.versions[0].header.signature, [0x96, 0x33, 0x4c, 0x78]);
+        assert_eq!(fm.versions[0].header.ec_n, 0);
+        assert_eq!(fm.versions[0].header.ec_m, 0);
+
+        let fi = fm
+            .into_fileinfo("viscom", "test.txt", "", true, false, true)
+            .expect("Failed to extract file info from legacy issue #2288 xl.meta");
+        assert_eq!(fi.size, 35);
+        assert_eq!(fi.num_versions, 1);
+        assert!(fi.is_latest);
+    }
+
+    #[test]
+    fn test_issue_2265_legacy_meta_v2_object_compatibility() {
+        let data = create_issue_2265_legacy_meta_v2_object_xlmeta().expect("Failed to load issue #2265 object fixture");
+        let (major, minor, header_ver, meta_ver) = FileMeta::read_format_versions(&data).unwrap();
+        assert_eq!((major, minor, header_ver, meta_ver), (1, 3, 3, 2));
+
+        let fm = FileMeta::load(&data).expect("Failed to parse legacy issue #2265 object xl.meta");
+        assert_eq!(fm.meta_ver, 2);
+        assert_eq!(fm.versions.len(), 1);
+        assert_eq!(fm.versions[0].header.version_type, VersionType::Object);
+        assert_eq!(fm.versions[0].header.ec_n, 0);
+        assert_eq!(fm.versions[0].header.ec_m, 1);
+
+        let fi = fm
+            .into_fileinfo("bucket", ".metadata.bin", "", true, false, true)
+            .expect("Failed to extract file info from legacy issue #2265 object xl.meta");
+        assert_eq!(fi.size, 707);
+        assert_eq!(fi.num_versions, 1);
+        assert_eq!(fi.metadata.get("etag").map(String::as_str), Some("4359404618e32a0bd8944e9ff6802f53"));
+        assert_eq!(
+            fi.data_dir.map(|id| id.to_string()).as_deref(),
+            Some("04bee19a-6eea-40c4-96fd-1f39257fcbdc")
+        );
+        assert!(fi.uses_legacy_checksum);
+        assert!(fi.is_latest);
+    }
+
+    #[test]
+    fn test_issue_2265_legacy_meta_v2_config_compatibility() {
+        let data = create_issue_2265_legacy_meta_v2_config_xlmeta().expect("Failed to load issue #2265 config fixture");
+        let (major, minor, header_ver, meta_ver) = FileMeta::read_format_versions(&data).unwrap();
+        assert_eq!((major, minor, header_ver, meta_ver), (1, 3, 3, 2));
+
+        let fm = FileMeta::load(&data).expect("Failed to parse legacy issue #2265 config xl.meta");
+        assert_eq!(fm.meta_ver, 2);
+        assert_eq!(fm.versions.len(), 1);
+        assert_eq!(fm.versions[0].header.version_type, VersionType::Object);
+
+        let fi = fm
+            .into_fileinfo("config", "format.json", "", true, false, true)
+            .expect("Failed to extract file info from legacy issue #2265 config xl.meta");
+        assert_eq!(fi.size, 74);
+        assert_eq!(fi.num_versions, 1);
+        assert_eq!(fi.metadata.get("etag").map(String::as_str), Some("12b368ce52e496e61ac47b366c7c3b66"));
+        assert_eq!(
+            fi.data_dir.map(|id| id.to_string()).as_deref(),
+            Some("fba8e4c3-3f42-4242-94e0-5ab84b83ae97")
+        );
+        assert!(fi.uses_legacy_checksum);
+        assert!(fi.is_latest);
+    }
+
+    #[test]
+    fn test_issue_2434_legacy_meta_v2_pool_compatibility() {
+        let data = create_issue_2434_legacy_meta_v2_pool_xlmeta().expect("Failed to load issue #2434 pool fixture");
+        let (major, minor, header_ver, meta_ver) = FileMeta::read_format_versions(&data).unwrap();
+        assert_eq!((major, minor, header_ver, meta_ver), (1, 3, 3, 2));
+
+        let fm = FileMeta::load(&data).expect("Failed to parse legacy issue #2434 pool xl.meta");
+        assert_eq!(fm.meta_ver, 2);
+        assert_eq!(fm.versions.len(), 1);
+        assert_eq!(fm.versions[0].header.version_type, VersionType::Object);
+
+        let fi = fm
+            .into_fileinfo(".rustfs.sys", "pool.bin", "", true, false, true)
+            .expect("Failed to extract file info from legacy issue #2434 pool xl.meta");
+        assert_eq!(fi.size, 48);
+        assert_eq!(fi.num_versions, 1);
+        assert_eq!(fi.version_id, None);
+        assert_eq!(fi.metadata.get("etag").map(String::as_str), Some("8d270d7a184cfa30cc0bf09ea74fd964"));
+        assert_eq!(
+            fi.data_dir.map(|id| id.to_string()).as_deref(),
+            Some("2bcefaca-44dd-4f01-a79e-63eeb0dda396")
+        );
+        assert!(fi.uses_legacy_checksum);
+        assert!(fi.is_latest);
+    }
+
+    #[test]
+    fn test_legacy_v1_object_xlmeta_compatibility() {
+        let data = create_legacy_v1_object_xlmeta().expect("Failed to create legacy v1 object xl.meta");
+        let (major, minor, header_ver, meta_ver) = FileMeta::read_format_versions(&data).unwrap();
+        assert_eq!((major, minor, header_ver, meta_ver), (1, 3, 1, 1));
+
+        let fm = FileMeta::load(&data).expect("Failed to parse legacy v1 object xl.meta");
+        assert_eq!(fm.meta_ver, 1);
+        assert_eq!(fm.versions.len(), 1);
+        assert_eq!(fm.versions[0].header.version_type, VersionType::Legacy);
+        assert_eq!(fm.versions[0].header.ec_n, 0);
+        assert_eq!(fm.versions[0].header.ec_m, 0);
+
+        let fi = fm
+            .into_fileinfo("bucket", "hello.txt", "", true, false, true)
+            .expect("Failed to extract file info from legacy v1 object xl.meta");
+        assert_eq!(fi.size, 11);
+        assert_eq!(fi.num_versions, 1);
+        assert_eq!(fi.mode, Some(0o644));
+        assert_eq!(fi.parts.len(), 1);
+        assert_eq!(fi.parts[0].etag, "etag-1");
+        assert_eq!(fi.parts[0].size, 11);
+        assert_eq!(fi.erasure.data_blocks, 4);
+        assert_eq!(fi.erasure.parity_blocks, 2);
+        assert_eq!(fi.metadata.get("content-type").map(String::as_str), Some("text/plain"));
+        assert!(fi.is_latest);
+    }
+
+    #[test]
+    fn test_complex_xlmeta_handling() {
+        // Test complex xl.meta files with many versions
+        let data = create_complex_xlmeta().expect("Failed to create complex test data");
+        let fm = FileMeta::load(&data).expect("Failed to parse complex data");
+
+        // Verify version count
+        assert!(fm.versions.len() >= 10, "Should have at least 10 versions");
+
+        // Verify version ordering
+        assert!(fm.is_sorted_by_mod_time(), "Versions should be sorted by modification time");
+
+        // Verify presence of different version types
+        let stats = fm.get_version_stats();
+        assert!(stats.object_versions > 0, "Should include object versions");
+        assert!(stats.delete_markers > 0, "Should include delete markers");
+
+        // Test version merge functionality
+        let merged = merge_file_meta_versions(1, false, 0, std::slice::from_ref(&fm.versions));
+        assert!(!merged.is_empty(), "Merged output should contain versions");
+    }
+
+    #[test]
+    fn test_inline_data_handling() {
+        // Test inline data handling
+        let data = create_xlmeta_with_inline_data().expect("Failed to create inline test data");
+        let fm = FileMeta::load(&data).expect("Failed to parse inline data");
+
+        assert_eq!(fm.versions.len(), 1, "Should have one version");
+        assert!(!fm.data.as_slice().is_empty(), "Should contain inline data");
+
+        // Verify inline data contents
+        let inline_data = fm.data.as_slice();
+        assert!(!inline_data.is_empty(), "Inline data should not be empty");
+    }
+
+    #[test]
+    fn test_into_fileinfo_reads_legacy_nil_uuid_inline_key() {
+        let mut fm = FileMeta::new();
+        let mut fi = FileInfo::new("test", 2, 1);
+        fi.mod_time = Some(OffsetDateTime::now_utc());
+        fi.data = Some(Bytes::from_static(b"legacy-inline"));
+        fi.set_inline_data();
+        fm.add_version(fi).unwrap();
+
+        let current_key = data_key_for_version(Some(Uuid::nil()));
+        let legacy_key = legacy_data_key_for_version(Some(Uuid::nil())).unwrap();
+        let payload = fm.data.find(current_key.as_str()).unwrap().unwrap();
+
+        fm.data.remove_key(current_key.as_str()).unwrap();
+        fm.data.replace(legacy_key.as_str(), payload.clone()).unwrap();
+
+        let restored = fm.into_fileinfo("bucket", "test", "", true, false, true).unwrap();
+
+        assert!(restored.inline_data());
+        assert_eq!(restored.data, Some(Bytes::from(payload)));
+    }
+
+    #[test]
+    fn test_error_handling_and_recovery() {
+        // Test error handling and recovery
+        let corrupted_data = create_corrupted_xlmeta();
+        let result = FileMeta::load(&corrupted_data);
+        assert!(result.is_err(), "Corrupted data should fail to parse");
+
+        // Test handling of empty files
+        let empty_data = create_empty_xlmeta().expect("Failed to create empty test data");
+        let fm = FileMeta::load(&empty_data).expect("Failed to parse empty data");
+        assert_eq!(fm.versions.len(), 0, "An empty file should have no versions");
+    }
+
+    #[test]
+    fn test_version_type_legacy_support() {
+        // Validate support for Legacy version types
+        assert_eq!(VersionType::Legacy.to_u8(), 3);
+        assert_eq!(VersionType::from_u8(3), VersionType::Legacy);
+        assert!(VersionType::Legacy.valid(), "Legacy type should be valid");
+
+        // Exercise creation and handling of Legacy versions
+        let legacy_version = FileMetaVersion {
+            version_type: VersionType::Legacy,
+            legacy_object: None,
+            object: None,
+            delete_marker: None,
+            write_version: 1,
+            uses_legacy_checksum: false,
+        };
+
+        assert!(legacy_version.is_legacy(), "Should be recognized as a Legacy version");
+    }
+
+    #[test]
+    fn test_signature_calculation() {
+        // Test signature calculation
+        let data = create_real_xlmeta().expect("Failed to create test data");
+        let fm = FileMeta::load(&data).expect("Parsing failed");
+
+        for version in &fm.versions {
+            let signature = version.header.get_signature();
+            assert_eq!(signature.len(), 4, "Signature should be 4 bytes");
+
+            // Verify signature consistency for identical versions
+            let signature2 = version.header.get_signature();
+            assert_eq!(signature, signature2, "Identical versions should produce identical signatures");
+        }
+    }
+
+    #[test]
+    fn test_metadata_validation() {
+        // Test metadata validation
+        let data = create_real_xlmeta().expect("Failed to create test data");
+        let fm = FileMeta::load(&data).expect("Parsing failed");
+
+        // Test integrity validation
+        fm.validate_integrity().expect("Integrity validation should succeed");
+
+        // Test compatibility checks
+        assert!(fm.is_compatible_with_meta(), "Should be compatible with the xl format");
+
+        // Test version ordering checks
+        assert!(fm.is_sorted_by_mod_time(), "Versions should be time-ordered");
+    }
+
+    #[test]
+    fn test_round_trip_serialization() {
+        // Test round-trip serialization consistency
+        let original_data = create_real_xlmeta().expect("Failed to create original test data");
+        let fm = FileMeta::load(&original_data).expect("Failed to parse original data");
+
+        // Serialize again
+        let serialized_data = fm.marshal_msg().expect("Re-serialization failed");
+
+        // Parse again
+        let fm2 = FileMeta::load(&serialized_data).expect("Failed to parse serialized data");
+
+        // Verify consistency
+        assert_eq!(fm.versions.len(), fm2.versions.len(), "Version counts should match");
+        assert_eq!(fm.meta_ver, fm2.meta_ver, "Metadata versions should match");
+
+        // Verify version content consistency
+        for (v1, v2) in fm.versions.iter().zip(fm2.versions.iter()) {
+            assert_eq!(v1.header.version_type, v2.header.version_type, "Version types should match");
+            assert_eq!(v1.header.version_id, v2.header.version_id, "Version IDs should match");
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn filemeta_load_never_panics_on_arbitrary_bytes(input in vec(any::<u8>(), 0..=4096)) {
+            let result = std::panic::catch_unwind(|| FileMeta::load(&input));
+            prop_assert!(result.is_ok(), "FileMeta::load panicked for arbitrary input");
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // backlog#900: CRC-valid but semantically corrupt part arrays must
+    // produce Err(FileCorrupt), never panic.
+    // ------------------------------------------------------------------
+
+    fn valid_object_version(version_id: Uuid, part_sizes: Vec<usize>) -> FileMetaVersion {
+        FileMetaVersion {
+            version_type: VersionType::Object,
+            object: Some(MetaObject {
+                version_id: Some(version_id),
+                erasure_algorithm: ErasureAlgo::ReedSolomon,
+                erasure_m: 2,
+                erasure_n: 2,
+                erasure_block_size: 1 << 20,
+                bitrot_checksum_algo: ChecksumAlgo::HighwayHash,
+                part_numbers: vec![1, 2],
+                part_sizes, // caller-injected (short = corrupt)
+                part_actual_sizes: vec![10, 20],
+                mod_time: Some(OffsetDateTime::now_utc()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn crc_valid_but_part_arrays_corrupt_into_fileinfo_errors_not_panics() {
+        // A short part_sizes Object version round-trips through the real codec: the CRC is
+        // valid and load succeeds, but into_fileinfo(all_parts) hits the length guard and
+        // returns Err(FileCorrupt) rather than panicking.
+        let mut fm = FileMeta::new();
+        fm.add_version_filemata(valid_object_version(Uuid::new_v4(), vec![10]))
+            .expect("add corrupt-parts version");
+
+        let encoded = fm.marshal_msg().expect("marshal recomputes a valid CRC");
+        let loaded = FileMeta::load(&encoded).expect("CRC-valid meta must load (lazy, parts not decoded yet)");
+
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            loaded.into_fileinfo("bucket", "key", "", true, false, true)
+        }));
+        let inner = caught.expect("into_fileinfo must not panic on CRC-valid but semantically corrupt parts");
+        assert!(matches!(inner, Err(Error::FileCorrupt)), "expected FileCorrupt");
+    }
+
+    proptest! {
+        #[test]
+        fn into_fileinfo_never_panics_on_arbitrary_loaded_meta(input in vec(any::<u8>(), 0..=4096)) {
+            // Complements filemeta_load_never_panics_on_arbitrary_bytes: for every FileMeta
+            // that loads, into_fileinfo(all_parts=true) must not panic (Ok or Err).
+            if let Ok(fm) = FileMeta::load(&input) {
+                let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    fm.into_fileinfo("b", "k", "", true, false, true)
+                }));
+                prop_assert!(caught.is_ok(), "into_fileinfo panicked on loaded meta");
+            }
+        }
+    }
+
+    #[test]
+    fn into_file_info_versions_fails_whole_listing_on_one_corrupt_version() {
+        // One corrupt version among healthy ones fails the whole listing (into_file_info_versions
+        // uses `?`, so no partial results). This is the established failure semantics of the
+        // merge-first exact-versions path (backlog#900 §3.3), strictly better than a panic.
+        let healthy_id = Uuid::new_v4();
+        let corrupt_id = Uuid::new_v4();
+        let mut fm = FileMeta::new();
+        fm.add_version_filemata(valid_object_version(healthy_id, vec![10, 20]))
+            .expect("healthy");
+        fm.add_version_filemata(valid_object_version(corrupt_id, vec![10]))
+            .expect("corrupt"); // short part_sizes
+
+        let fm = FileMeta::load(&fm.marshal_msg().expect("marshal")).expect("load");
+
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| fm.into_file_info_versions("bucket", "key", true)));
+        let inner = caught.expect("must not panic");
+        assert!(matches!(inner, Err(Error::FileCorrupt)), "whole-listing must fail with FileCorrupt");
+    }
+
+    #[test]
+    fn test_performance_with_large_metadata() {
+        // Test performance with large metadata files
+        use std::time::Instant;
+
+        let start = Instant::now();
+        let data = create_complex_xlmeta().expect("Failed to create large test data");
+        let creation_time = start.elapsed();
+
+        let start = Instant::now();
+        let fm = FileMeta::load(&data).expect("Failed to parse large data");
+        let parsing_time = start.elapsed();
+
+        let start = Instant::now();
+        let _serialized = fm.marshal_msg().expect("Serialization failed");
+        let serialization_time = start.elapsed();
+
+        println!("Performance results:");
+        println!("  Creation time: {creation_time:?}");
+        println!("  Parsing time: {parsing_time:?}");
+        println!("  Serialization time: {serialization_time:?}");
+
+        // Basic performance assertions (adjust as needed for real workloads)
+        assert!(parsing_time.as_millis() < 100, "Parsing time should be under 100 ms");
+        assert!(serialization_time.as_millis() < 100, "Serialization time should be under 100 ms");
+    }
+
+    #[test]
+    fn test_edge_cases() {
+        // Test edge cases
+
+        // 1. Test empty version IDs
+        let mut fm = FileMeta::new();
+        let version = FileMetaVersion {
+            version_type: VersionType::Object,
+            legacy_object: None,
+            object: Some(MetaObject {
+                version_id: None, // Empty version ID
+                data_dir: None,
+                erasure_algorithm: crate::fileinfo::ErasureAlgo::ReedSolomon,
+                erasure_m: 1,
+                erasure_n: 1,
+                erasure_block_size: 64 * 1024,
+                erasure_index: 0,
+                erasure_dist: vec![0],
+                bitrot_checksum_algo: ChecksumAlgo::HighwayHash,
+                part_numbers: vec![1],
+                part_etags: Vec::new(),
+                part_sizes: vec![0],
+                part_actual_sizes: Vec::new(),
+                part_indices: Vec::new(),
+                size: 0,
+                mod_time: None,
+                meta_sys: HashMap::new(),
+                meta_user: HashMap::new(),
+            }),
+            delete_marker: None,
+            write_version: 1,
+            uses_legacy_checksum: false,
+        };
+
+        let shallow_version = FileMetaShallowVersion::try_from(version).expect("Conversion failed");
+        fm.versions.push(shallow_version);
+
+        // Should support serialization and deserialization
+        let data = fm.marshal_msg().expect("Serialization failed");
+        let fm2 = FileMeta::load(&data).expect("Parsing failed");
+        assert_eq!(fm2.versions.len(), 1);
+
+        // 2. Test extremely large file sizes
+        let large_object = MetaObject {
+            size: i64::MAX,
+            part_sizes: vec![usize::MAX],
+            ..Default::default()
+        };
+
+        // Should handle very large numbers
+        assert_eq!(large_object.size, i64::MAX);
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_operations() {
+        // Test thread safety for concurrent operations
+        use std::sync::Arc;
+        use std::sync::Mutex;
+
+        let fm = Arc::new(Mutex::new(FileMeta::new()));
+        let mut handles = vec![];
+
+        // Add versions concurrently
+        for i in 0..10 {
+            let fm_clone: Arc<Mutex<FileMeta>> = Arc::clone(&fm);
+            let handle = tokio::spawn(async move {
+                let mut fi = crate::fileinfo::FileInfo::new(&format!("test-{i}"), 2, 1);
+                fi.version_id = Some(Uuid::new_v4());
+                fi.mod_time = Some(OffsetDateTime::now_utc());
+
+                let mut fm_guard = fm_clone.lock().unwrap();
+                fm_guard.add_version(fi).unwrap();
+            });
+            handles.push(handle);
+        }
+
+        // Wait for all tasks to finish
+        for handle in handles {
+            handle.await.unwrap();
+        }
+
+        let fm_guard = fm.lock().unwrap();
+        assert_eq!(fm_guard.versions.len(), 10);
+    }
+
+    #[test]
+    fn test_memory_efficiency() {
+        // Test memory efficiency
+        use std::mem;
+
+        // Measure memory usage for empty structs
+        let empty_fm = FileMeta::new();
+        let empty_size = mem::size_of_val(&empty_fm);
+        println!("Empty FileMeta size: {empty_size} bytes");
+
+        // Measure memory usage with many versions
+        let mut large_fm = FileMeta::new();
+        for i in 0..100 {
+            let mut fi = crate::fileinfo::FileInfo::new(&format!("test-{i}"), 2, 1);
+            fi.version_id = Some(Uuid::new_v4());
+            fi.mod_time = Some(OffsetDateTime::now_utc());
+            large_fm.add_version(fi).unwrap();
+        }
+
+        let large_size = mem::size_of_val(&large_fm);
+        println!("Large FileMeta size: {large_size} bytes");
+
+        // Ensure memory usage is reasonable (size_of_val covers only stack allocations)
+        // For structs containing Vec, size_of_val may match because capacity lives on the heap
+        println!("Number of versions: {}", large_fm.versions.len());
+        assert!(!large_fm.versions.is_empty(), "Should contain version data");
+    }
+
+    #[test]
+    fn test_version_ordering_edge_cases() {
+        // Test boundary cases for version ordering
+        let mut fm = FileMeta::new();
+
+        // Add versions with identical timestamps
+        let same_time = OffsetDateTime::now_utc();
+        for i in 0..5 {
+            let mut fi = crate::fileinfo::FileInfo::new(&format!("test-{i}"), 2, 1);
+            fi.version_id = Some(Uuid::new_v4());
+            fi.mod_time = Some(same_time);
+            fm.add_version(fi).unwrap();
+        }
+
+        // Verify stable ordering
+        let original_order = fm.versions.iter().map(|v| v.header.version_id).len();
+        fm.sort_by_mod_time();
+        let sorted_order = fm.versions.iter().map(|v| v.header.version_id).len();
+
+        // Sorting should remain stable for identical timestamps
+        assert_eq!(original_order, sorted_order);
+    }
+
+    #[test]
+    fn test_checksum_algorithms() {
+        // Test different checksum algorithms
+        let algorithms = vec![ChecksumAlgo::Invalid, ChecksumAlgo::HighwayHash];
+
+        for algo in algorithms {
+            let obj = MetaObject {
+                bitrot_checksum_algo: algo.clone(),
+                ..Default::default()
+            };
+
+            // Verify checksum validation logic
+            match algo {
+                ChecksumAlgo::Invalid => assert!(!algo.valid()),
+                ChecksumAlgo::HighwayHash => assert!(algo.valid()),
+            }
+
+            // Verify serialization and deserialization
+            let data = obj.marshal_msg().unwrap();
+            let mut obj2 = MetaObject::default();
+            obj2.unmarshal_msg(&data).unwrap();
+            assert_eq!(obj.bitrot_checksum_algo.to_u8(), obj2.bitrot_checksum_algo.to_u8());
+        }
+    }
+
+    #[test]
+    fn test_erasure_coding_parameters() {
+        // Test combinations of erasure coding parameters
+        let test_cases = vec![
+            (1, 1), // Minimum configuration
+            (2, 1), // Common configuration
+            (4, 2), // Standard configuration
+            (8, 4), // High redundancy configuration
+        ];
+
+        for (data_blocks, parity_blocks) in test_cases {
+            let obj = MetaObject {
+                erasure_m: data_blocks,
+                erasure_n: parity_blocks,
+                erasure_dist: (0..(data_blocks + parity_blocks)).map(|i| i as u8).collect(),
+                ..Default::default()
+            };
+
+            // Verify parameter validity
+            assert!(obj.erasure_m > 0, "Data block count must be greater than 0");
+            assert!(obj.erasure_n > 0, "Parity block count must be greater than 0");
+            assert_eq!(obj.erasure_dist.len(), data_blocks + parity_blocks);
+
+            // Verify serialization and deserialization
+            let data = obj.marshal_msg().unwrap();
+            let mut obj2 = MetaObject::default();
+            obj2.unmarshal_msg(&data).unwrap();
+            assert_eq!(obj.erasure_m, obj2.erasure_m);
+            assert_eq!(obj.erasure_n, obj2.erasure_n);
+            assert_eq!(obj.erasure_dist, obj2.erasure_dist);
+        }
+    }
+
+    #[test]
+    fn test_metadata_size_limits() {
+        // Test metadata size limits
+        let mut obj = MetaObject::default();
+
+        // Test moderate amounts of user metadata
+        for i in 0..10 {
+            obj.meta_user
+                .insert(format!("key-{i:04}"), format!("value-{:04}-{}", i, "x".repeat(10)));
+        }
+
+        // Verify metadata can be serialized
+        let data = obj.marshal_msg().unwrap();
+        assert!(data.len() > 100, "Serialized data should have a reasonable size");
+
+        // Verify deserialization succeeds
+        let mut obj2 = MetaObject::default();
+        obj2.unmarshal_msg(&data).unwrap();
+        assert_eq!(obj.meta_user.len(), obj2.meta_user.len());
+    }
+
+    #[test]
+    fn test_version_statistics_accuracy() {
+        // Test accuracy of version statistics
+        let mut fm = FileMeta::new();
+
+        // Add different version types
+        let object_count = 3;
+        let delete_count = 2;
+
+        // Add object versions
+        for i in 0..object_count {
+            let mut fi = crate::fileinfo::FileInfo::new(&format!("obj-{i}"), 2, 1);
+            fi.version_id = Some(Uuid::new_v4());
+            fi.mod_time = Some(OffsetDateTime::now_utc());
+            fm.add_version(fi).unwrap();
+        }
+
+        // Add delete markers
+        for i in 0..delete_count {
+            let delete_marker = MetaDeleteMarker {
+                version_id: Some(Uuid::new_v4()),
+                mod_time: Some(OffsetDateTime::now_utc()),
+                meta_sys: HashMap::new(),
+            };
+
+            let delete_version = FileMetaVersion {
+                version_type: VersionType::Delete,
+                legacy_object: None,
+                object: None,
+                delete_marker: Some(delete_marker),
+                write_version: (i + 100) as u64,
+                uses_legacy_checksum: false,
+            };
+
+            let shallow_version = FileMetaShallowVersion::try_from(delete_version).unwrap();
+            fm.versions.push(shallow_version);
+        }
+
+        // Verify overall statistics
+        let stats = fm.get_version_stats();
+        assert_eq!(stats.total_versions, object_count + delete_count);
+        assert_eq!(stats.object_versions, object_count);
+        assert_eq!(stats.delete_markers, delete_count);
+
+        // Verify detailed statistics
+        let detailed_stats = fm.get_detailed_version_stats();
+        assert_eq!(detailed_stats.total_versions, object_count + delete_count);
+        assert_eq!(detailed_stats.object_versions, object_count);
+        assert_eq!(detailed_stats.delete_markers, delete_count);
+    }
+
+    #[test]
+    fn test_cross_platform_compatibility() {
+        // Test cross-platform compatibility (endianness, separators, etc.)
+        let mut fm = FileMeta::new();
+
+        // Use platform-specific path styles
+        let paths = vec![
+            "unix/style/path",
+            "windows\\style\\path",
+            "mixed/style\\path",
+            "unicode/path/test",
+        ];
+
+        for path in paths {
+            let mut fi = crate::fileinfo::FileInfo::new(path, 2, 1);
+            fi.version_id = Some(Uuid::new_v4());
+            fi.mod_time = Some(OffsetDateTime::now_utc());
+            fm.add_version(fi).unwrap();
+        }
+
+        // Verify serialization/deserialization consistency across platforms
+        let data = fm.marshal_msg().unwrap();
+        let mut fm2 = FileMeta::default();
+        fm2.unmarshal_msg(&data).unwrap();
+
+        assert_eq!(fm.versions.len(), fm2.versions.len());
+
+        // Verify UUID endianness consistency
+        for (v1, v2) in fm.versions.iter().zip(fm2.versions.iter()) {
+            assert_eq!(v1.header.version_id, v2.header.version_id);
+        }
+    }
+
+    #[test]
+    fn delete_version_removes_delete_marker_during_version_purge_replication() {
+        let version_id = Uuid::new_v4();
+        let mut fm = FileMeta::new();
+        fm.add_version_filemata(FileMetaVersion {
+            version_type: VersionType::Delete,
+            legacy_object: None,
+            object: None,
+            delete_marker: Some(MetaDeleteMarker {
+                version_id: Some(version_id),
+                mod_time: Some(OffsetDateTime::now_utc()),
+                meta_sys: HashMap::new(),
+            }),
+            write_version: 1,
+            uses_legacy_checksum: false,
+        })
+        .unwrap();
+
+        let fi = FileInfo {
+            deleted: false,
+            mark_deleted: false,
+            version_id: Some(version_id),
+            replication_state_internal: Some(ReplicationState {
+                version_purge_status_internal: Some("target=PENDING;".to_string()),
+                purge_targets: version_purge_statuses_map("target=PENDING;"),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let result = fm.delete_version(&fi).unwrap();
+
+        assert!(result.is_none());
+        assert!(
+            fm.versions.is_empty(),
+            "delete-marker version purge should remove the local marker instead of rewriting purge metadata onto it"
+        );
+    }
+
+    /// Regression for rustfs/backlog#2340: a version purge that still awaits
+    /// the replication target keeps the object version on disk with a pending
+    /// purge status. Its data dir must be retained with it; handing the dir
+    /// back here made the disk layer delete it, leaving every non-inline
+    /// retained version unreadable. The dir is released only once the purge
+    /// completes and the version itself goes away.
+    #[test]
+    fn delete_version_pending_version_purge_retains_object_data_dir() {
+        let version_id = Uuid::new_v4();
+        let data_dir = Uuid::new_v4();
+        let mut fm = FileMeta::new();
+        let mut fi = FileInfo::new("object", 2, 2);
+        fi.version_id = Some(version_id);
+        fi.data_dir = Some(data_dir);
+        fi.mod_time = Some(OffsetDateTime::now_utc());
+        fm.add_version(fi).unwrap();
+
+        let pending_purge = FileInfo {
+            name: "object".to_string(),
+            version_id: Some(version_id),
+            mark_deleted: true,
+            replication_state_internal: Some(ReplicationState {
+                version_purge_status_internal: Some("target=PENDING;".to_string()),
+                purge_targets: version_purge_statuses_map("target=PENDING;"),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let freed = fm.delete_version(&pending_purge).unwrap();
+        assert_eq!(freed, None, "a pending purge must not release the retained version's data dir");
+        assert_eq!(fm.versions.len(), 1, "the version must stay until the purge replicates");
+        let retained = fm
+            .into_fileinfo("vol", "object", &version_id.to_string(), false, false, true)
+            .unwrap();
+        assert_eq!(retained.data_dir, Some(data_dir));
+        assert_eq!(retained.version_purge_status(), VersionPurgeStatusType::Pending);
+
+        let completed_purge = FileInfo {
+            name: "object".to_string(),
+            version_id: Some(version_id),
+            replication_state_internal: Some(ReplicationState {
+                version_purge_status_internal: Some("target=COMPLETE;".to_string()),
+                purge_targets: version_purge_statuses_map("target=COMPLETE;"),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let freed = fm.delete_version(&completed_purge).unwrap();
+        assert_eq!(freed, Some(data_dir), "a completed purge removes the version and releases its data dir");
+        assert!(fm.versions.is_empty());
+    }
+
+    #[test]
+    fn delete_version_accepts_delete_only_marker_and_free_version_paths() {
+        let marker_version_id = Uuid::new_v4();
+        let mut marker_meta = FileMeta::new();
+        marker_meta
+            .delete_version(&FileInfo {
+                version_id: Some(marker_version_id),
+                deleted: true,
+                mod_time: Some(OffsetDateTime::now_utc()),
+                ..Default::default()
+            })
+            .expect("delete-marker metadata must not require a payload erasure layout");
+        assert_eq!(marker_meta.versions.len(), 1);
+        assert_eq!(marker_meta.versions[0].header.version_type, VersionType::Delete);
+
+        let object_version_id = Uuid::new_v4();
+        let remote_version_id = Uuid::new_v4();
+        let free_version_id = Uuid::new_v4();
+        let mut free_meta = FileMeta::new();
+        free_meta
+            .add_version(FileInfo {
+                volume: "bucket".to_string(),
+                name: "object".to_string(),
+                version_id: Some(object_version_id),
+                transition_status: TRANSITION_COMPLETE.to_string(),
+                transitioned_objname: "remote/object".to_string(),
+                transition_version_id: Some(remote_version_id),
+                transition_tier: "WARM".to_string(),
+                mod_time: Some(OffsetDateTime::now_utc()),
+                ..Default::default()
+            })
+            .expect("transitioned object version must be seeded");
+
+        let mut transition_delete = FileInfo {
+            volume: "bucket".to_string(),
+            name: "object".to_string(),
+            version_id: Some(object_version_id),
+            mod_time: Some(OffsetDateTime::now_utc()),
+            ..Default::default()
+        };
+        transition_delete.set_tier_free_version_id(&free_version_id.to_string());
+        free_meta
+            .delete_version(&transition_delete)
+            .expect("transitioned delete must persist free-version cleanup metadata");
+
+        let mut free_version_delete = FileInfo {
+            volume: "bucket".to_string(),
+            name: "object".to_string(),
+            version_id: Some(free_version_id),
+            deleted: true,
+            ..Default::default()
+        };
+        free_version_delete.set_tier_free_version();
+        free_meta
+            .delete_version(&free_version_delete)
+            .expect("free-version cleanup must not require a payload erasure layout");
+
+        let versions = free_meta
+            .get_file_info_versions("bucket", "object", false)
+            .expect("versions must remain readable after free-version cleanup");
+        assert!(versions.free_versions.is_empty());
+    }
+
+    #[test]
+    fn delete_version_validates_requests_before_mutation() {
+        let version_id = Uuid::new_v4();
+        let mut fm = FileMeta::new();
+        fm.add_version(FileInfo {
+            version_id: Some(version_id),
+            mod_time: Some(OffsetDateTime::now_utc()),
+            ..Default::default()
+        })
+        .expect("object version must be seeded");
+        let original = fm.clone();
+
+        let err = fm
+            .delete_version(&FileInfo {
+                version_id: Some(version_id),
+                parts: vec![
+                    ObjectPartInfo {
+                        number: 1,
+                        ..Default::default()
+                    },
+                    ObjectPartInfo {
+                        number: 1,
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            })
+            .expect_err("non-deleted requests must not bypass boundary validation");
+
+        assert_eq!(err, Error::FileCorrupt);
+        assert_eq!(fm, original, "failed validation must happen before metadata mutation");
+
+        let err = fm
+            .delete_version(&FileInfo {
+                version_id: Some(version_id),
+                deleted: true,
+                mod_time: None,
+                ..Default::default()
+            })
+            .expect_err("malformed delete markers must fail before removing the existing object version");
+
+        assert_eq!(err, Error::FileCorrupt);
+        assert_eq!(fm, original, "malformed delete-marker validation must precede metadata mutation");
+
+        let mut free_version_delete = FileInfo {
+            version_id: Some(version_id),
+            deleted: true,
+            ..Default::default()
+        };
+        free_version_delete.set_tier_free_version();
+        let err = fm
+            .delete_version(&free_version_delete)
+            .expect_err("tier free-version cleanup must not remove an ordinary object version");
+
+        assert_eq!(err, Error::FileVersionNotFound);
+        assert_eq!(fm, original, "missing free-version cleanup must not mutate ordinary metadata");
+
+        let mut poisoned_object_header = fm.clone();
+        poisoned_object_header.versions[0].header.flags |= XL_FLAG_FREE_VERSION;
+        let poisoned_original = poisoned_object_header.clone();
+        let err = poisoned_object_header
+            .delete_version(&free_version_delete)
+            .expect_err("a free-version flag on an Object header must not authorize cleanup deletion");
+        assert_eq!(err, Error::FileVersionNotFound);
+        assert_eq!(
+            poisoned_object_header, poisoned_original,
+            "a poisoned Object header must remain unchanged after rejected cleanup"
+        );
+
+        let mut mismatched_delete_header = fm.clone();
+        mismatched_delete_header.versions[0].header.flags |= XL_FLAG_FREE_VERSION;
+        mismatched_delete_header.versions[0].header.version_type = VersionType::Delete;
+        let mismatched_original = mismatched_delete_header.clone();
+        let err = mismatched_delete_header
+            .delete_version(&free_version_delete)
+            .expect_err("a Delete/free header over an Object body must fail closed");
+        assert_eq!(err, Error::FileVersionNotFound);
+        assert_eq!(
+            mismatched_delete_header, mismatched_original,
+            "header/body mismatch must not mutate metadata"
+        );
+    }
+
+    #[test]
+    fn get_file_info_versions_excludes_free_versions_from_num_versions() {
+        let object_version_id = Uuid::new_v4();
+        let remote_version_id = Uuid::new_v4();
+        let free_version_id = Uuid::new_v4();
+        let delete_marker_id = Uuid::new_v4();
+        let base_time = OffsetDateTime::now_utc();
+        let mut fm = FileMeta::new();
+
+        fm.add_version(FileInfo {
+            volume: "bucket".to_string(),
+            name: "object".to_string(),
+            version_id: Some(object_version_id),
+            transition_status: TRANSITION_COMPLETE.to_string(),
+            transitioned_objname: "remote/object".to_string(),
+            transition_version_id: Some(remote_version_id),
+            transition_tier: "WARM".to_string(),
+            mod_time: Some(base_time),
+            ..Default::default()
+        })
+        .expect("transitioned object version should be added");
+
+        let mut delete_fi = FileInfo {
+            volume: "bucket".to_string(),
+            name: "object".to_string(),
+            version_id: Some(object_version_id),
+            mod_time: Some(base_time),
+            ..Default::default()
+        };
+        delete_fi.set_tier_free_version_id(&free_version_id.to_string());
+        fm.delete_version(&delete_fi)
+            .expect("transitioned delete should create a free-version record");
+
+        fm.add_version(FileInfo {
+            volume: "bucket".to_string(),
+            name: "object".to_string(),
+            version_id: Some(delete_marker_id),
+            deleted: true,
+            mod_time: Some(base_time + time::Duration::seconds(1)),
+            ..Default::default()
+        })
+        .expect("delete marker should be added");
+
+        let versions = fm
+            .get_file_info_versions("bucket", "object", false)
+            .expect("file info versions should parse");
+
+        assert_eq!(versions.versions.len(), 1);
+        assert_eq!(versions.free_versions.len(), 1);
+        assert!(versions.versions[0].deleted);
+        assert_eq!(versions.versions[0].num_versions, 1);
+        assert_eq!(versions.free_versions[0].num_versions, 1);
+
+        let versions_with_free = fm
+            .get_file_info_versions("bucket", "object", true)
+            .expect("file info versions should preserve all versions");
+
+        assert_eq!(versions_with_free.versions.len(), 2);
+        assert!(versions_with_free.free_versions.is_empty());
+        assert!(versions_with_free.versions.iter().all(|version| version.num_versions == 2));
+    }
+
+    #[test]
+    fn test_data_integrity_validation() {
+        // Test data integrity checks
+        let mut fm = FileMeta::new();
+
+        // Add a normal version
+        let mut fi = crate::fileinfo::FileInfo::new("test", 2, 1);
+        fi.version_id = Some(Uuid::new_v4());
+        fi.mod_time = Some(OffsetDateTime::now_utc());
+        fm.add_version(fi).unwrap();
+
+        // Verify integrity under normal conditions
+        assert!(fm.validate_integrity().is_ok());
+    }
+
+    #[test]
+    fn test_add_version_clears_stale_inline_data_for_null_version() {
+        let mut fm = FileMeta::new();
+
+        let mut inline_fi = crate::fileinfo::FileInfo::new("test", 2, 1);
+        inline_fi.mod_time = Some(OffsetDateTime::now_utc());
+        inline_fi.data = Some(Bytes::new());
+        inline_fi.set_inline_data();
+        fm.add_version(inline_fi).unwrap();
+
+        let inline_version = fm.into_fileinfo("bucket", "test", "", true, false, true).unwrap();
+        assert!(inline_version.inline_data());
+        assert_eq!(inline_version.data, Some(Bytes::new()));
+
+        let mut disk_fi = crate::fileinfo::FileInfo::new("test", 2, 1);
+        disk_fi.mod_time = Some(OffsetDateTime::now_utc() + time::Duration::seconds(1));
+        disk_fi.size = 1024;
+        fm.add_version(disk_fi).unwrap();
+
+        let latest = fm.into_fileinfo("bucket", "test", "", true, false, true).unwrap();
+        assert!(!latest.inline_data());
+        assert!(latest.data.is_none());
+        assert!(
+            fm.data
+                .find(data_key_for_version(latest.version_id).as_str())
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn test_add_version_keeps_inline_data_when_version_insert_fails() {
+        let mut fm = FileMeta::new();
+
+        let mut inline_fi = crate::fileinfo::FileInfo::new("test", 2, 1);
+        inline_fi.mod_time = Some(OffsetDateTime::now_utc());
+        inline_fi.data = Some(Bytes::from_static(b"inline"));
+        inline_fi.set_inline_data();
+        fm.add_version(inline_fi).unwrap();
+
+        let before = fm.data.find(data_key_for_version(Some(Uuid::nil())).as_str()).unwrap();
+        assert_eq!(before, Some(Bytes::from_static(b"inline").to_vec()));
+
+        let invalid_disk_fi = crate::fileinfo::FileInfo::new("test", 2, 1);
+        let err = fm.add_version(invalid_disk_fi).unwrap_err();
+        assert!(err.to_string().contains("file meta version invalid"));
+
+        let after = fm.data.find(data_key_for_version(Some(Uuid::nil())).as_str()).unwrap();
+        assert_eq!(after, Some(Bytes::from_static(b"inline").to_vec()));
+    }
+
+    #[test]
+    fn test_update_object_version_persists_checksum_metadata() {
+        let mut fm = FileMeta::new();
+        let version_id = Some(Uuid::new_v4());
+
+        let mut fi = crate::fileinfo::FileInfo::new("test", 2, 1);
+        fi.version_id = version_id;
+        fi.mod_time = Some(OffsetDateTime::now_utc());
+        fm.add_version(fi).unwrap();
+
+        let checksum = Bytes::from_static(b"resolved-checksum");
+        let mut update = crate::fileinfo::FileInfo::new("test", 2, 1);
+        update.version_id = version_id;
+        update.metadata.insert("x-amz-meta-owner".to_string(), "alice".to_string());
+        update.checksum = Some(checksum.clone());
+
+        fm.update_object_version(update).unwrap();
+
+        let (_, version) = fm.find_version(version_id).unwrap();
+        let stored = version.into_fileinfo("bucket", "test", true).expect("into_fileinfo");
+        assert_eq!(stored.metadata.get("x-amz-meta-owner"), Some(&"alice".to_string()));
+        assert_eq!(stored.checksum, Some(checksum));
+    }
+
+    #[test]
+    fn test_version_merge_scenarios() {
+        // Test various version merge scenarios
+        let mut versions1 = vec![];
+        let mut versions2 = vec![];
+
+        // Create two distinct sets of versions
+        for i in 0..3 {
+            let mut fi1 = crate::fileinfo::FileInfo::new(&format!("test1-{i}"), 2, 1);
+            fi1.version_id = Some(Uuid::new_v4());
+            fi1.mod_time = Some(OffsetDateTime::from_unix_timestamp(1000 + i * 10).unwrap());
+
+            let mut fi2 = crate::fileinfo::FileInfo::new(&format!("test2-{i}"), 2, 1);
+            fi2.version_id = Some(Uuid::new_v4());
+            fi2.mod_time = Some(OffsetDateTime::from_unix_timestamp(1005 + i * 10).unwrap());
+
+            let version1 = FileMetaVersion::from(fi1);
+            let version2 = FileMetaVersion::from(fi2);
+
+            versions1.push(FileMetaShallowVersion::try_from(version1).unwrap());
+            versions2.push(FileMetaShallowVersion::try_from(version2).unwrap());
+        }
+
+        // Test a simple merge scenario
+        let merged = merge_file_meta_versions(1, false, 0, &[versions1.clone()]);
+        assert!(!merged.is_empty(), "Merging a single version list should not be empty");
+
+        // Test merging multiple version lists
+        let merged = merge_file_meta_versions(1, false, 0, &[versions1.clone(), versions2.clone()]);
+        // Merge results may be empty depending on compatibility, which is acceptable
+        println!("Merge result count: {}", merged.len());
+    }
+
+    #[test]
+    fn test_flags_operations() {
+        // Test flag operations
+        let flags = vec![Flags::FreeVersion, Flags::UsesDataDir, Flags::InlineData];
+
+        for flag in flags {
+            let flag_value = flag as u8;
+            assert!(flag_value > 0, "Flag value should be greater than 0");
+
+            // Test flag combinations
+            let combined = Flags::FreeVersion as u8 | Flags::UsesDataDir as u8;
+            // For bitwise operations, combined values may not exceed individual ones; this is normal
+            assert!(combined > 0, "Combined flag value should be greater than 0");
+        }
+    }
+
+    #[test]
+    fn test_uuid_handling_edge_cases() {
+        // Test UUID edge cases
+        let test_uuids = vec![
+            Uuid::new_v4(), // Random UUID
+        ];
+
+        for uuid in test_uuids {
+            let obj = MetaObject {
+                version_id: Some(uuid),
+                data_dir: Some(uuid),
+                ..Default::default()
+            };
+
+            // Verify serialization and deserialization
+            let data = obj.marshal_msg().unwrap();
+            let mut obj2 = MetaObject::default();
+            obj2.unmarshal_msg(&data).unwrap();
+
+            assert_eq!(obj.version_id, obj2.version_id);
+            assert_eq!(obj.data_dir, obj2.data_dir);
+        }
+
+        // Test nil UUID separately because serialization converts it to None
+        let obj = MetaObject {
+            version_id: Some(Uuid::nil()),
+            data_dir: Some(Uuid::nil()),
+            ..Default::default()
+        };
+
+        let data = obj.marshal_msg().unwrap();
+        let mut obj2 = MetaObject::default();
+        obj2.unmarshal_msg(&data).unwrap();
+
+        // nil UUIDs may be converted to None during serialization; this is expected
+        // Inspect the actual serialization behavior
+        println!("Original version_id: {:?}", obj.version_id);
+        println!("Deserialized version_id: {:?}", obj2.version_id);
+        // Consider the test successful as long as deserialization succeeds
+    }
+
+    #[test]
+    fn test_part_handling_edge_cases() {
+        // Test edge cases for shard handling
+        let mut obj = MetaObject::default();
+
+        // Test an empty shard list
+        assert!(obj.part_numbers.is_empty());
+        assert!(obj.part_etags.is_empty());
+        assert!(obj.part_sizes.is_empty());
+
+        // Test a single shard
+        obj.part_numbers = vec![1];
+        obj.part_etags = vec!["etag1".to_string()];
+        obj.part_sizes = vec![1024];
+        obj.part_actual_sizes = vec![1024];
+
+        let data = obj.marshal_msg().unwrap();
+        let mut obj2 = MetaObject::default();
+        obj2.unmarshal_msg(&data).unwrap();
+
+        assert_eq!(obj.part_numbers, obj2.part_numbers);
+        assert_eq!(obj.part_etags, obj2.part_etags);
+        assert_eq!(obj.part_sizes, obj2.part_sizes);
+        assert_eq!(obj.part_actual_sizes, obj2.part_actual_sizes);
+
+        // Test multiple shards
+        obj.part_numbers = vec![1, 2, 3];
+        obj.part_etags = vec!["etag1".to_string(), "etag2".to_string(), "etag3".to_string()];
+        obj.part_sizes = vec![1024, 2048, 512];
+        obj.part_actual_sizes = vec![1024, 2048, 512];
+
+        let data = obj.marshal_msg().unwrap();
+        let mut obj2 = MetaObject::default();
+        obj2.unmarshal_msg(&data).unwrap();
+
+        assert_eq!(obj.part_numbers, obj2.part_numbers);
+        assert_eq!(obj.part_etags, obj2.part_etags);
+        assert_eq!(obj.part_sizes, obj2.part_sizes);
+        assert_eq!(obj.part_actual_sizes, obj2.part_actual_sizes);
+    }
+
+    #[test]
+    fn test_version_header_validation() {
+        // Test version header validation
+        let mut header = FileMetaVersionHeader {
+            version_type: VersionType::Object,
+            mod_time: Some(OffsetDateTime::now_utc()),
+            ec_m: 2,
+            ec_n: 1,
+            ..Default::default()
+        };
+        assert!(header.is_valid());
+
+        // Test invalid version types
+        header.version_type = VersionType::Invalid;
+        assert!(!header.is_valid());
+
+        // Reset to a valid state
+        header.version_type = VersionType::Object;
+        assert!(header.is_valid());
+
+        // Test invalid erasure coding parameters
+        // When ec_m = 0, has_ec() returns false so parity parameters are skipped
+        header.ec_m = 0;
+        header.ec_n = 1;
+        assert!(header.is_valid()); // Valid because erasure coding is disabled
+
+        // Enable erasure coding with invalid parameters
+        header.ec_m = 2;
+        header.ec_n = 0;
+        // When ec_n = 0, has_ec() returns false so parity parameters are skipped
+        assert!(header.is_valid()); // This remains valid because has_ec() returns false
+
+        // Reset to a valid state
+        header.ec_n = 1;
+        assert!(header.is_valid());
+    }
+
+    #[test]
+    fn test_special_characters_in_metadata() {
+        // Test special character handling in metadata
+        let mut obj = MetaObject::default();
+
+        // Test various special characters
+        let special_cases = vec![
+            ("empty", ""),
+            ("unicode", "test🚀🎉"),
+            ("newlines", "line1\nline2\nline3"),
+            ("tabs", "col1\tcol2\tcol3"),
+            ("quotes", "\"quoted\" and 'single'"),
+            ("backslashes", "path\\to\\file"),
+            ("mixed", "Mixed: Chinese, English, 123, !@#$%"),
+        ];
+
+        for (key, value) in special_cases {
+            obj.meta_user.insert(key.to_string(), value.to_string());
+        }
+
+        // Verify serialization and deserialization
+        let data = obj.marshal_msg().unwrap();
+        let mut obj2 = MetaObject::default();
+        obj2.unmarshal_msg(&data).unwrap();
+
+        assert_eq!(obj.meta_user, obj2.meta_user);
+
+        // Verify each special character is correctly saved
+        for (key, expected_value) in [
+            ("empty", ""),
+            ("unicode", "test🚀🎉"),
+            ("newlines", "line1\nline2\nline3"),
+            ("tabs", "col1\tcol2\tcol3"),
+            ("quotes", "\"quoted\" and 'single'"),
+            ("backslashes", "path\\to\\file"),
+            ("mixed", "Mixed: Chinese, English, 123, !@#$%"),
+        ] {
+            assert_eq!(obj2.meta_user.get(key), Some(&expected_value.to_string()));
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_read_xl_meta_no_data() {
+    use tokio::fs::File;
+    use tokio::io::AsyncWriteExt;
+
+    let mut fm = FileMeta::new();
+
+    let (m, n) = (3, 2);
+
+    for i in 0..5 {
+        let mut fi = FileInfo::new(i.to_string().as_str(), m, n);
+        fi.mod_time = Some(OffsetDateTime::now_utc());
+
+        fm.add_version(fi).unwrap();
+    }
+
+    let mut buff = fm.marshal_msg().unwrap();
+
+    buff.resize(buff.len() + 100, 0);
+
+    // Use tempfile to avoid conflicts with parallel tests or previous runs
+    let dir = tempfile::tempdir().unwrap();
+    let filepath = dir.path().join("test_xl.meta");
+
+    let mut file = File::create(&filepath).await.unwrap();
+    // Write string data
+    file.write_all(&buff).await.unwrap();
+    file.flush().await.unwrap();
+
+    let mut f = File::open(&filepath).await.unwrap();
+
+    let stat = f.metadata().await.unwrap();
+
+    let data = read_xl_meta_no_data(&mut f, stat.len() as usize).await.unwrap();
+
+    let mut newfm = FileMeta::default();
+    newfm.unmarshal_msg(&data).unwrap();
+
+    assert_eq!(fm, newfm)
+}

@@ -1,0 +1,388 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Cloud provider detection and metadata fetching.
+
+use async_trait::async_trait;
+use rustfs_utils::get_env_opt_str;
+use std::str::FromStr;
+use std::time::Duration;
+use tracing::{debug, info, warn};
+
+use crate::AppError;
+
+/// Supported cloud providers.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum CloudProvider {
+    /// Amazon Web Services
+    Aws,
+    /// Microsoft Azure
+    Azure,
+    /// Google Cloud Platform
+    Gcp,
+    /// DigitalOcean
+    DigitalOcean,
+    /// Cloudflare
+    Cloudflare,
+    /// Unknown or custom provider.
+    Unknown(String),
+}
+
+impl FromStr for CloudProvider {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
+            "aws" | "amazon" => Self::Aws,
+            "azure" | "microsoft" => Self::Azure,
+            "gcp" | "google" => Self::Gcp,
+            "digitalocean" | "do" => Self::DigitalOcean,
+            "cloudflare" | "cf" => Self::Cloudflare,
+            _ => Self::Unknown(s.to_string()),
+        })
+    }
+}
+
+impl CloudProvider {
+    /// Detects the cloud provider based on environment variables.
+    pub fn detect_from_env() -> Option<Self> {
+        let has_env = |key| get_env_opt_str(key).is_some();
+
+        // Check for AWS environment variables.
+        if has_env("RUSTFS_AWS_EXECUTION_ENV") || has_env("RUSTFS_AWS_REGION") || has_env("RUSTFS_EC2_INSTANCE_ID") {
+            return Some(Self::Aws);
+        }
+
+        // Check for Azure environment variables.
+        if has_env("RUSTFS_WEBSITE_SITE_NAME")
+            || has_env("RUSTFS_WEBSITE_INSTANCE_ID")
+            || has_env("RUSTFS_APPSETTING_WEBSITE_SITE_NAME")
+        {
+            return Some(Self::Azure);
+        }
+
+        // Check for GCP environment variables.
+        if has_env("RUSTFS_GCP_PROJECT") || has_env("RUSTFS_GOOGLE_CLOUD_PROJECT") || has_env("RUSTFS_GAE_INSTANCE") {
+            return Some(Self::Gcp);
+        }
+
+        // Check for DigitalOcean environment variables.
+        if has_env("RUSTFS_DIGITALOCEAN_REGION") {
+            return Some(Self::DigitalOcean);
+        }
+
+        // Check for Cloudflare environment variables.
+        if has_env("RUSTFS_CF_PAGES") || has_env("RUSTFS_CF_WORKERS") {
+            return Some(Self::Cloudflare);
+        }
+
+        None
+    }
+
+    /// Returns the canonical name of the cloud provider.
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Aws => "aws",
+            Self::Azure => "azure",
+            Self::Gcp => "gcp",
+            Self::DigitalOcean => "digitalocean",
+            Self::Cloudflare => "cloudflare",
+            Self::Unknown(name) => name,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use temp_env::{with_var, with_vars_unset};
+
+    #[test]
+    fn test_detect_from_env_prefers_known_provider_markers() {
+        with_var("RUSTFS_AWS_REGION", Some("us-east-1"), || {
+            assert_eq!(CloudProvider::detect_from_env(), Some(CloudProvider::Aws));
+        });
+    }
+
+    #[test]
+    fn test_detect_from_env_returns_none_without_markers() {
+        with_vars_unset(
+            vec![
+                "RUSTFS_AWS_EXECUTION_ENV",
+                "RUSTFS_AWS_REGION",
+                "RUSTFS_EC2_INSTANCE_ID",
+                "RUSTFS_WEBSITE_SITE_NAME",
+                "RUSTFS_WEBSITE_INSTANCE_ID",
+                "RUSTFS_APPSETTING_WEBSITE_SITE_NAME",
+                "RUSTFS_GCP_PROJECT",
+                "RUSTFS_GOOGLE_CLOUD_PROJECT",
+                "RUSTFS_GAE_INSTANCE",
+                "RUSTFS_DIGITALOCEAN_REGION",
+                "RUSTFS_CF_PAGES",
+                "RUSTFS_CF_WORKERS",
+            ],
+            || {
+                assert_eq!(CloudProvider::detect_from_env(), None);
+            },
+        );
+    }
+}
+
+/// Trait for fetching metadata from a specific cloud provider.
+#[async_trait]
+pub trait CloudMetadataFetcher: Send + Sync {
+    /// Returns the name of the provider.
+    fn provider_name(&self) -> &str;
+
+    /// Fetches the network CIDR ranges for the current instance.
+    async fn fetch_network_cidrs(&self) -> Result<Vec<ipnetwork::IpNetwork>, AppError>;
+
+    /// Fetches the public IP ranges for the cloud provider.
+    async fn fetch_public_ip_ranges(&self) -> Result<Vec<ipnetwork::IpNetwork>, AppError>;
+
+    /// Fetches all IP ranges that should be considered trusted proxies.
+    async fn fetch_trusted_proxy_ranges(&self) -> Result<Vec<ipnetwork::IpNetwork>, AppError> {
+        let mut ranges = Vec::new();
+
+        match self.fetch_network_cidrs().await {
+            Ok(cidrs) => ranges.extend(cidrs),
+            Err(e) => warn!(
+                event = "trusted_proxies.cloud_fetch",
+                component = "trusted_proxies",
+                subsystem = "cloud_detector",
+                provider = self.provider_name(),
+                dataset = "network_cidrs",
+                result = "degraded",
+                error = %e,
+                "trusted proxy cloud metadata fetch degraded"
+            ),
+        }
+
+        match self.fetch_public_ip_ranges().await {
+            Ok(public_ranges) => ranges.extend(public_ranges),
+            Err(e) => warn!(
+                event = "trusted_proxies.cloud_fetch",
+                component = "trusted_proxies",
+                subsystem = "cloud_detector",
+                provider = self.provider_name(),
+                dataset = "public_ip_ranges",
+                result = "degraded",
+                error = %e,
+                "trusted proxy cloud metadata fetch degraded"
+            ),
+        }
+
+        Ok(ranges)
+    }
+}
+
+/// Detector for identifying the current cloud environment and fetching relevant metadata.
+#[derive(Debug, Clone)]
+pub struct CloudDetector {
+    /// Whether cloud detection is enabled.
+    enabled: bool,
+    /// Timeout for metadata requests.
+    timeout: Duration,
+    /// Optionally force a specific provider.
+    forced_provider: Option<CloudProvider>,
+}
+
+impl CloudDetector {
+    /// Creates a new `CloudDetector`.
+    pub fn new(enabled: bool, timeout: Duration, forced_provider: Option<String>) -> Self {
+        let forced_provider = forced_provider.and_then(|s| CloudProvider::from_str(&s).ok());
+
+        Self {
+            enabled,
+            timeout,
+            forced_provider,
+        }
+    }
+
+    /// Identifies the current cloud provider.
+    pub fn detect_provider(&self) -> Option<CloudProvider> {
+        if !self.enabled {
+            return None;
+        }
+
+        if let Some(provider) = self.forced_provider.as_ref() {
+            return Some(provider.clone());
+        }
+
+        CloudProvider::detect_from_env()
+    }
+
+    /// Fetches trusted IP ranges for the detected cloud provider.
+    pub async fn fetch_trusted_ranges(&self) -> Result<Vec<ipnetwork::IpNetwork>, AppError> {
+        if !self.enabled {
+            debug!(
+                event = "trusted_proxies.cloud_detect",
+                component = "trusted_proxies",
+                subsystem = "cloud_detector",
+                state = "disabled",
+                "trusted proxy cloud detection skipped"
+            );
+            return Ok(Vec::new());
+        }
+
+        let provider = self.detect_provider();
+
+        match provider {
+            Some(CloudProvider::Aws) => {
+                info!(
+                    event = "trusted_proxies.cloud_detect",
+                    component = "trusted_proxies",
+                    subsystem = "cloud_detector",
+                    provider = "aws",
+                    result = "detected",
+                    timeout_ms = self.timeout.as_millis(),
+                    "trusted proxy cloud provider detected"
+                );
+                let fetcher = crate::AwsMetadataFetcher::new(self.timeout);
+                fetcher.fetch_trusted_proxy_ranges().await
+            }
+            Some(CloudProvider::Azure) => {
+                info!(
+                    event = "trusted_proxies.cloud_detect",
+                    component = "trusted_proxies",
+                    subsystem = "cloud_detector",
+                    provider = "azure",
+                    result = "detected",
+                    timeout_ms = self.timeout.as_millis(),
+                    "trusted proxy cloud provider detected"
+                );
+                let fetcher = crate::AzureMetadataFetcher::new(self.timeout);
+                fetcher.fetch_trusted_proxy_ranges().await
+            }
+            Some(CloudProvider::Gcp) => {
+                info!(
+                    event = "trusted_proxies.cloud_detect",
+                    component = "trusted_proxies",
+                    subsystem = "cloud_detector",
+                    provider = "gcp",
+                    result = "detected",
+                    timeout_ms = self.timeout.as_millis(),
+                    "trusted proxy cloud provider detected"
+                );
+                let fetcher = crate::GcpMetadataFetcher::new(self.timeout);
+                fetcher.fetch_trusted_proxy_ranges().await
+            }
+            Some(CloudProvider::Cloudflare) => {
+                info!(
+                    event = "trusted_proxies.cloud_detect",
+                    component = "trusted_proxies",
+                    subsystem = "cloud_detector",
+                    provider = "cloudflare",
+                    result = "detected",
+                    "trusted proxy cloud provider detected"
+                );
+                let ranges = crate::CloudflareIpRanges::fetch().await?;
+                Ok(ranges)
+            }
+            Some(CloudProvider::DigitalOcean) => {
+                info!(
+                    event = "trusted_proxies.cloud_detect",
+                    component = "trusted_proxies",
+                    subsystem = "cloud_detector",
+                    provider = "digitalocean",
+                    result = "detected",
+                    "trusted proxy cloud provider detected"
+                );
+                let ranges = crate::DigitalOceanIpRanges::fetch().await?;
+                Ok(ranges)
+            }
+            Some(CloudProvider::Unknown(name)) => {
+                warn!(
+                    event = "trusted_proxies.cloud_detect",
+                    component = "trusted_proxies",
+                    subsystem = "cloud_detector",
+                    provider = %name,
+                    result = "unknown",
+                    "trusted proxy cloud provider unresolved"
+                );
+                Ok(Vec::new())
+            }
+            None => {
+                debug!(
+                    event = "trusted_proxies.cloud_detect",
+                    component = "trusted_proxies",
+                    subsystem = "cloud_detector",
+                    result = "none",
+                    "trusted proxy cloud provider not detected"
+                );
+                Ok(Vec::new())
+            }
+        }
+    }
+
+    /// Attempts to fetch metadata from all supported providers sequentially.
+    pub async fn try_all_providers(&self) -> Result<Vec<ipnetwork::IpNetwork>, AppError> {
+        if !self.enabled {
+            return Ok(Vec::new());
+        }
+
+        let providers: Vec<Box<dyn CloudMetadataFetcher>> = vec![
+            Box::new(crate::AwsMetadataFetcher::new(self.timeout)),
+            Box::new(crate::AzureMetadataFetcher::new(self.timeout)),
+            Box::new(crate::GcpMetadataFetcher::new(self.timeout)),
+        ];
+
+        for provider in providers {
+            let provider_name = provider.provider_name();
+            debug!(
+                event = "trusted_proxies.cloud_detect",
+                component = "trusted_proxies",
+                subsystem = "cloud_detector",
+                provider = provider_name,
+                result = "attempt",
+                "trusted proxy cloud provider fetch attempted"
+            );
+
+            match provider.fetch_trusted_proxy_ranges().await {
+                Ok(ranges) => {
+                    if !ranges.is_empty() {
+                        info!(
+                            event = "trusted_proxies.cloud_detect",
+                            component = "trusted_proxies",
+                            subsystem = "cloud_detector",
+                            provider = provider_name,
+                            result = "loaded",
+                            range_count = ranges.len(),
+                            "trusted proxy cloud provider ranges loaded"
+                        );
+                        return Ok(ranges);
+                    }
+                }
+                Err(e) => {
+                    debug!(
+                        event = "trusted_proxies.cloud_detect",
+                        component = "trusted_proxies",
+                        subsystem = "cloud_detector",
+                        provider = provider_name,
+                        result = "failed",
+                        error = %e,
+                        "trusted proxy cloud provider fetch failed"
+                    );
+                }
+            }
+        }
+
+        Ok(Vec::new())
+    }
+}
+
+/// Returns a default `CloudDetector` with detection disabled.
+pub fn default_cloud_detector() -> CloudDetector {
+    CloudDetector::new(false, Duration::from_secs(5), None)
+}

@@ -1,0 +1,214 @@
+package authn
+
+import (
+	"crypto/subtle"
+	"fmt"
+	"net/http"
+
+	"github.com/google/uuid"
+	"github.com/gorilla/sessions"
+	"github.com/labstack/echo/v4"
+
+	"github.com/hatchet-dev/hatchet/pkg/auth/cookie"
+	"github.com/hatchet-dev/hatchet/pkg/random"
+	"github.com/hatchet-dev/hatchet/pkg/repository/sqlcv1"
+)
+
+type SessionHelpers struct {
+	ss *cookie.UserSessionStore
+}
+
+func NewSessionHelpers(ss *cookie.UserSessionStore) *SessionHelpers {
+	return &SessionHelpers{
+		ss: ss,
+	}
+}
+
+func (s *SessionHelpers) SaveAuthenticated(c echo.Context, user *sqlcv1.User) error {
+	session, err := s.ss.Get(c.Request(), s.ss.GetName())
+
+	if err != nil {
+		return err
+	}
+
+	session.Values["authenticated"] = true
+	session.Values["user_id"] = user.ID.String()
+
+	return session.Save(c.Request(), c.Response())
+}
+
+func (s *SessionHelpers) SaveUnauthenticated(c echo.Context) error {
+	session, err := s.ss.Get(c.Request(), s.ss.GetName())
+
+	if err != nil {
+		clearCookie := s.ss.ClearingCookie(s.ss.GetName())
+		http.SetCookie(c.Response(), &clearCookie)
+		return nil
+	}
+
+	// unset all values
+	session.Values = make(map[interface{}]interface{})
+	session.Values["authenticated"] = false
+
+	// we set the maxage of the session so that the session gets deleted. This avoids cases
+	// where the same cookie can get re-authed to a different user, which would be problematic
+	// if the session values weren't properly cleared on logout.
+	session.Options.MaxAge = -1
+
+	return session.Save(c.Request(), c.Response())
+}
+
+func (s *SessionHelpers) SaveKV(
+	c echo.Context,
+	k, v string,
+) error {
+	session, err := s.ss.Get(c.Request(), s.ss.GetName())
+
+	if err != nil {
+		return err
+	}
+
+	session.Values[k] = v
+
+	return session.Save(c.Request(), c.Response())
+}
+
+func (s *SessionHelpers) GetKey(
+	c echo.Context,
+	k string,
+) (string, error) {
+	session, err := s.ss.Get(c.Request(), s.ss.GetName())
+
+	if err != nil {
+		return "", err
+	}
+
+	v, ok := session.Values[k]
+
+	if !ok {
+		return "", fmt.Errorf("key not found")
+	}
+
+	vStr, ok := v.(string)
+
+	if !ok {
+		return "", fmt.Errorf("could not cast value to string")
+	}
+
+	return vStr, nil
+}
+
+func (s *SessionHelpers) GetKeyUuid(
+	c echo.Context,
+	k string,
+) (*uuid.UUID, error) {
+	vStr, err := s.GetKey(c, k)
+
+	if err != nil {
+		return nil, err
+	}
+
+	vUuid, err := uuid.Parse(vStr)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &vUuid, nil
+}
+
+func (s *SessionHelpers) RemoveKey(
+	c echo.Context,
+	k string,
+) error {
+	session, err := s.ss.Get(c.Request(), s.ss.GetName())
+
+	if err != nil {
+		return err
+	}
+
+	delete(session.Values, k)
+
+	return session.Save(c.Request(), c.Response())
+}
+
+func (s *SessionHelpers) SaveOAuthState(
+	c echo.Context,
+	integration string,
+) (string, error) {
+	state, err := random.Generate(32)
+
+	if err != nil {
+		return "", err
+	}
+
+	session, err := s.ss.Get(c.Request(), s.ss.GetName())
+
+	if err != nil {
+		return "", err
+	}
+
+	stateKey := fmt.Sprintf("oauth_state_%s", integration)
+
+	// need state parameter to validate when redirected
+	session.Values[stateKey] = state
+
+	// need a parameter to indicate that this was triggered through the oauth flow
+	session.Values["oauth_triggered"] = true
+
+	if err := session.Save(c.Request(), c.Response()); err != nil {
+		return "", err
+	}
+
+	return state, nil
+}
+
+func (s *SessionHelpers) ValidateOAuthState(
+	c echo.Context,
+	integration string,
+) (isValidated bool, isOAuthTriggered bool, err error) {
+	stateKey := fmt.Sprintf("oauth_state_%s", integration)
+	provided := c.Request().URL.Query().Get("state")
+	if provided == "" {
+		return false, false, fmt.Errorf("missing state parameter")
+	}
+
+	session, err := s.ss.Get(c.Request(), s.ss.GetName())
+
+	if err != nil {
+		return false, false, err
+	}
+
+	stored, ok := session.Values[stateKey].(string)
+	if !ok || stored == "" {
+		return false, false, fmt.Errorf("state parameter not found in session")
+	}
+
+	if subtle.ConstantTimeCompare([]byte(provided), []byte(stored)) != 1 {
+		return false, false, fmt.Errorf("state parameters do not match")
+	}
+
+	if isOAuthTriggeredVal, exists := session.Values["oauth_triggered"]; exists {
+		var ok bool
+
+		isOAuthTriggered, ok = isOAuthTriggeredVal.(bool)
+
+		isOAuthTriggered = ok && isOAuthTriggered
+	}
+
+	// invalidate the single-use state by removing the keys entirely
+	delete(session.Values, stateKey)
+	delete(session.Values, "oauth_triggered")
+
+	if err := session.Save(c.Request(), c.Response()); err != nil {
+		return false, false, fmt.Errorf("could not clear session")
+	}
+
+	return true, isOAuthTriggered, nil
+}
+
+func (s *SessionHelpers) SaveNewSession(c echo.Context, session *sessions.Session) error {
+	session.Values["authenticated"] = false
+
+	return session.Save(c.Request(), c.Response())
+}

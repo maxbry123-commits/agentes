@@ -1,0 +1,3656 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use crate::error::{Error, Result, is_err_config_not_found};
+use crate::is_iam_first_cluster_node_local;
+use crate::sys::{get_claims_from_token_with_secret, get_claims_from_token_with_secret_allow_missing_exp};
+use crate::{
+    cache::{Cache, CacheEntity, LockedCache},
+    error::{Error as IamError, is_err_no_such_group, is_err_no_such_policy, is_err_no_such_user},
+    store::{GroupInfo, MappedPolicy, Store, UserType, object::IAM_CONFIG_PREFIX},
+    sys::{
+        MAX_SVCSESSION_POLICY_SIZE, SESSION_POLICY_NAME, SESSION_POLICY_NAME_EXTRACTED, SITE_REPLICATOR_CLAIM,
+        SITE_REPLICATOR_SERVICE_ACCOUNT, STATUS_DISABLED, STATUS_ENABLED, UpdateServiceAccountOpts,
+    },
+};
+use futures::future::join_all;
+use rustfs_credentials::{Credentials, EMBEDDED_POLICY_TYPE, INHERITED_POLICY_TYPE};
+use rustfs_madmin::{AccountStatus, AddOrUpdateUserReq, GroupDesc};
+use rustfs_policy::{
+    arn::ARN,
+    auth::{self, UserIdentity, is_secret_key_valid, jwt_sign},
+    format::Format,
+    policy::{Policy, PolicyDoc, default::DEFAULT_POLICIES, iam_policy_claim_name_sa},
+};
+use rustfs_utils::{get_env_opt_str, path::path_join_buf};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::sync::atomic::{AtomicU8, AtomicU64};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicI64, Ordering},
+    },
+    time::Duration,
+};
+use time::OffsetDateTime;
+use tokio::{
+    select,
+    sync::{
+        mpsc,
+        mpsc::{Receiver, Sender},
+    },
+};
+use tracing::warn;
+use tracing::{debug, error};
+
+const IAM_FORMAT_FILE: &str = "format.json";
+const IAM_FORMAT_VERSION_1: i32 = 1;
+#[cfg(not(test))]
+const INITIAL_LOAD_RETRY_DELAY: Duration = Duration::from_secs(1);
+#[cfg(test)]
+const INITIAL_LOAD_RETRY_DELAY: Duration = Duration::from_millis(1);
+#[cfg(not(test))]
+const TEMP_USER_PERSISTENCE_VERIFY_RETRY_DELAY: Duration = Duration::from_millis(200);
+#[cfg(test)]
+const TEMP_USER_PERSISTENCE_VERIFY_RETRY_DELAY: Duration = Duration::from_millis(1);
+const TEMP_USER_PERSISTENCE_VERIFY_MAX_RETRIES: usize = 5;
+
+#[derive(Serialize, Deserialize)]
+struct IAMFormat {
+    version: i32,
+}
+
+impl IAMFormat {
+    fn new_version_1() -> Self {
+        IAMFormat {
+            version: IAM_FORMAT_VERSION_1,
+        }
+    }
+}
+
+fn get_iam_format_file_path() -> String {
+    path_join_buf(&[&IAM_CONFIG_PREFIX, IAM_FORMAT_FILE])
+}
+
+#[repr(u8)]
+#[derive(Debug, PartialEq)]
+pub enum IamState {
+    Uninitialized = 0,
+    Loading = 1,
+    Ready = 2,
+    Error = 3,
+}
+
+pub struct IamCache<T> {
+    pub cache: Cache,
+    pub api: T,
+    pub state: Arc<AtomicU8>,
+    pub loading: Arc<AtomicBool>,
+    pub roles: HashMap<ARN, Vec<String>>,
+    pub send_chan: Sender<i64>,
+    pub last_timestamp: AtomicI64,
+    pub sync_failures: AtomicU64,
+    pub sync_successes: AtomicU64,
+    pub last_sync_duration_millis: AtomicU64,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct IamSyncMetricsSnapshot {
+    pub last_sync_duration_millis: u64,
+    pub since_last_sync_millis: u64,
+    pub sync_failures: u64,
+    pub sync_successes: u64,
+}
+
+impl<T> IamCache<T>
+where
+    T: Store,
+{
+    async fn verify_temp_user_persistence(&self, access_key: &str) -> Result<()> {
+        for attempt in 0..=TEMP_USER_PERSISTENCE_VERIFY_MAX_RETRIES {
+            match self.api.load_user_identity(access_key, UserType::Sts).await {
+                Ok(_) => return Ok(()),
+                Err(err)
+                    if attempt < TEMP_USER_PERSISTENCE_VERIFY_MAX_RETRIES
+                        && (is_err_no_such_user(&err) || is_err_config_not_found(&err)) =>
+                {
+                    warn!(
+                        access_key,
+                        attempt = attempt + 1,
+                        max_retries = TEMP_USER_PERSISTENCE_VERIFY_MAX_RETRIES,
+                        error = ?err,
+                        "temporary IAM user not yet visible after save; retrying persistence verification"
+                    );
+                    tokio::time::sleep(TEMP_USER_PERSISTENCE_VERIFY_RETRY_DELAY).await;
+                }
+                Err(err) => return Err(err),
+            }
+        }
+
+        unreachable!("temp-user persistence verification loop should return on success or terminal error")
+    }
+
+    /// Create a new IAM system instance
+    /// # Arguments
+    /// * `api` - The storage backend implementing the Store trait
+    ///
+    /// # Returns
+    /// An Arc-wrapped instance of IamSystem
+    pub(crate) async fn new(api: T) -> Result<Arc<Self>> {
+        let (sender, receiver) = mpsc::channel::<i64>(100);
+
+        let sys = Arc::new(Self {
+            api,
+            cache: Cache::default(),
+            state: Arc::new(AtomicU8::new(IamState::Uninitialized as u8)),
+            loading: Arc::new(AtomicBool::new(false)),
+            send_chan: sender,
+            roles: HashMap::new(),
+            last_timestamp: AtomicI64::new(0),
+            sync_failures: AtomicU64::new(0),
+            sync_successes: AtomicU64::new(0),
+            last_sync_duration_millis: AtomicU64::new(0),
+        });
+
+        sys.clone().init(receiver).await?;
+        Ok(sys)
+    }
+
+    /// Initialize the IAM system
+    async fn init(self: Arc<Self>, receiver: Receiver<i64>) -> Result<()> {
+        self.state.store(IamState::Loading as u8, Ordering::SeqCst);
+        // Ensure the IAM format file is persisted first
+        self.clone().save_iam_formatter().await?;
+
+        // Critical: Load all existing users/policies into memory cache
+        const MAX_RETRIES: usize = 3;
+        let mut load_error = None;
+        for attempt in 0..MAX_RETRIES {
+            if let Err(e) = self.clone().load().await {
+                if attempt == MAX_RETRIES - 1 {
+                    self.state.store(IamState::Error as u8, Ordering::SeqCst);
+                    warn!(
+                        attempts = MAX_RETRIES,
+                        error = ?e,
+                        "IAM initial load failed"
+                    );
+                    load_error = Some(e);
+                } else {
+                    warn!(attempt = attempt + 1, max_attempts = MAX_RETRIES, "IAM load retry scheduled");
+                    tokio::time::sleep(INITIAL_LOAD_RETRY_DELAY).await;
+                }
+            } else {
+                break;
+            }
+        }
+
+        if let Some(err) = load_error {
+            return Err(err);
+        }
+
+        self.state.store(IamState::Ready as u8, Ordering::SeqCst);
+        debug!(state = "ready", "IAM manager ready");
+
+        // Background ticker for synchronization
+        // Check if environment variable is set
+        let skip_background_task = get_env_opt_str("RUSTFS_SKIP_BACKGROUND_TASK").is_some();
+
+        if !skip_background_task {
+            // Background thread starts periodic updates or receives signal updates
+            tokio::spawn({
+                let s = Arc::clone(&self);
+                async move {
+                    let ticker = tokio::time::interval(Duration::from_secs(120));
+                    tokio::pin!(ticker, receiver);
+                    loop {
+                        select! {
+                            _ = ticker.tick() => {
+                                debug!(source = "ticker", "IAM reload tick");
+                                if let Err(err) =s.clone().load().await{
+                                    warn!(source = "ticker", error = ?err, "IAM reload failed");
+                                }
+                            },
+                            i = receiver.recv() => {
+                                debug!(source = "receiver", "IAM reload signal received");
+                                match i {
+                                    Some(t) => {
+                                        let last = s.last_timestamp.load(Ordering::Relaxed);
+                                        if last <= t {
+                                            debug!(source = "receiver", "IAM reload accepted");
+                                            if let Err(err) =s.clone().load().await{
+                                                warn!(source = "receiver", error = ?err, "IAM reload failed");
+                                            }
+                                            ticker.reset();
+                                        }
+                                    },
+                                    None => return,
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Check if IAM system is ready
+    pub fn is_ready(&self) -> bool {
+        self.state.load(Ordering::SeqCst) == IamState::Ready as u8
+    }
+
+    async fn _notify(&self) {
+        self.send_chan.send(OffsetDateTime::now_utc().unix_timestamp()).await.unwrap();
+    }
+
+    async fn load(self: Arc<Self>) -> Result<()> {
+        let started_at = std::time::Instant::now();
+        match self.api.load_all(&self.cache).await {
+            Ok(()) => {
+                self.last_timestamp
+                    .store(OffsetDateTime::now_utc().unix_timestamp(), Ordering::Relaxed);
+                self.sync_successes.fetch_add(1, Ordering::Relaxed);
+                self.last_sync_duration_millis
+                    .store(started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64, Ordering::Relaxed);
+                Ok(())
+            }
+            Err(err) => {
+                self.sync_failures.fetch_add(1, Ordering::Relaxed);
+                Err(err)
+            }
+        }
+    }
+
+    pub fn sync_metrics_snapshot(&self) -> IamSyncMetricsSnapshot {
+        let now_secs = OffsetDateTime::now_utc().unix_timestamp();
+        let last_sync_secs = self.last_timestamp.load(Ordering::Relaxed);
+        let since_last_sync_millis = if last_sync_secs > 0 && now_secs >= last_sync_secs {
+            ((now_secs - last_sync_secs) as u64).saturating_mul(1000)
+        } else {
+            0
+        };
+
+        IamSyncMetricsSnapshot {
+            last_sync_duration_millis: self.last_sync_duration_millis.load(Ordering::Relaxed),
+            since_last_sync_millis,
+            sync_failures: self.sync_failures.load(Ordering::Relaxed),
+            sync_successes: self.sync_successes.load(Ordering::Relaxed),
+        }
+    }
+
+    pub async fn load_user(&self, access_key: &str) -> Result<()> {
+        let sts_mutation_lock = self.cache.sts_account_mutation_lock(access_key);
+        let _sts_mutation_guard = sts_mutation_lock.lock().await;
+        let mut users_map: HashMap<String, UserIdentity> = HashMap::new();
+        let mut user_policy_map = HashMap::new();
+        let mut sts_users_map = HashMap::new();
+        let mut sts_policy_map = HashMap::new();
+        let mut policy_docs_map = HashMap::new();
+
+        match self.api.load_user(access_key, UserType::Svc, &mut users_map).await {
+            Ok(()) => {}
+            Err(err) if is_err_no_such_user(&err) => {}
+            Err(err) => return Err(err),
+        }
+
+        let parent_user = users_map.get(access_key).map(|svc| svc.credentials.parent_user.clone());
+
+        if let Some(parent_user) = parent_user {
+            match self.api.load_user(&parent_user, UserType::Reg, &mut users_map).await {
+                Ok(()) => {}
+                Err(err) if is_err_no_such_user(&err) => {}
+                Err(err) => return Err(err),
+            }
+            let _ = self
+                .api
+                .load_mapped_policy(&parent_user, UserType::Reg, false, &mut user_policy_map)
+                .await;
+        } else {
+            match self.api.load_user(access_key, UserType::Reg, &mut users_map).await {
+                Ok(()) => {}
+                Err(err) if is_err_no_such_user(&err) => {}
+                Err(err) => return Err(err),
+            }
+            if users_map.contains_key(access_key) {
+                let _ = self
+                    .api
+                    .load_mapped_policy(access_key, UserType::Reg, false, &mut user_policy_map)
+                    .await;
+            }
+
+            match self.api.load_user(access_key, UserType::Sts, &mut sts_users_map).await {
+                Ok(()) => {}
+                Err(err) if is_err_no_such_user(&err) => {}
+                Err(err) => return Err(err),
+            }
+
+            let has_sts_user = sts_users_map.get(access_key);
+
+            if let Some(parent) = has_sts_user.map(|sts| sts.credentials.parent_user.clone()) {
+                let _ = self
+                    .api
+                    .load_mapped_policy(&parent, UserType::Sts, false, &mut sts_policy_map)
+                    .await;
+
+                if let Some(plc) = sts_policy_map.get(&parent) {
+                    for p in plc.to_slice().iter() {
+                        if !policy_docs_map.contains_key(p) {
+                            let _ = self.api.load_policy_doc(p, &mut policy_docs_map).await;
+                        }
+                    }
+                }
+            }
+        }
+
+        for plc in user_policy_map.values() {
+            for p in plc.to_slice().iter() {
+                if !policy_docs_map.contains_key(p) {
+                    let _ = self.api.load_policy_doc(p, &mut policy_docs_map).await;
+                }
+            }
+        }
+
+        self.cache.with_write_lock(|cache| {
+            let now = OffsetDateTime::now_utc();
+            for (key, user) in users_map.iter() {
+                cache.add_or_update_user(key, user, now);
+            }
+            for (key, user_policy) in user_policy_map.iter() {
+                cache.add_or_update_user_policy(key, user_policy, now);
+            }
+            for (key, sts_user) in sts_users_map.iter() {
+                cache.add_or_update_sts_account(key, sts_user, now);
+            }
+            for (key, sts_policy) in sts_policy_map.iter() {
+                cache.add_or_update_sts_policy(key, sts_policy, now);
+            }
+            for (key, policy_doc) in policy_docs_map.iter() {
+                cache.add_or_update_policy_doc(key, policy_doc, now);
+            }
+        });
+
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    async fn save_iam_formatter(self: Arc<Self>) -> Result<()> {
+        let path = get_iam_format_file_path();
+
+        let iam_fmt: Format = match self.api.load_iam_config(&path).await {
+            Ok(v) => v,
+            Err(err) => {
+                if !is_err_config_not_found(&err) {
+                    return Err(err);
+                }
+
+                Format::default()
+            }
+        };
+
+        if iam_fmt.version >= IAM_FORMAT_VERSION_1 {
+            return Ok(());
+        }
+
+        if !is_iam_first_cluster_node_local().await {
+            return Ok(());
+        }
+
+        self.api.save_iam_config(IAMFormat::new_version_1(), path).await
+    }
+    pub async fn get_user(&self, access_key: &str) -> Option<UserIdentity> {
+        let cache = self.cache.snapshot();
+        cache
+            .users
+            .get(access_key)
+            .cloned()
+            .or_else(|| cache.sts_accounts.get(access_key).cloned())
+    }
+
+    pub async fn get_mapped_policy(&self, name: &str, is_group: bool) -> Option<MappedPolicy> {
+        let cache = self.cache.snapshot();
+        if is_group {
+            cache.group_policies.get(name).cloned()
+        } else {
+            cache.user_policies.get(name).cloned()
+        }
+    }
+
+    /// The cached mapping record for one user or group, looked up in the same
+    /// cache partition `policy_db_set` writes it to (group / STS / regular+service
+    /// user). `None` when no mapping is stored.
+    pub async fn get_mapped_policy_record(&self, name: &str, user_type: UserType, is_group: bool) -> Option<MappedPolicy> {
+        let cache = self.cache.snapshot();
+        if is_group {
+            cache.group_policies.get(name).cloned()
+        } else if user_type == UserType::Sts {
+            cache.sts_policies.get(name).cloned()
+        } else {
+            cache.user_policies.get(name).cloned()
+        }
+    }
+
+    /// The cached group record (members, status, own timestamp) without the
+    /// mapped-policy overlay `get_group_description` applies. `None` when the
+    /// group does not exist.
+    pub async fn get_group_info(&self, name: &str) -> Option<GroupInfo> {
+        self.cache.snapshot().groups.get(name).cloned()
+    }
+
+    pub async fn get_policy(&self, name: &str) -> Result<Policy> {
+        if name.is_empty() {
+            return Err(Error::InvalidArgument);
+        }
+
+        let policies = MappedPolicy::new(name).to_slice();
+        let cache = self.cache.snapshot();
+        let policy_docs = Arc::clone(&cache.policy_docs);
+        drop(cache);
+
+        let mut to_merge = Vec::new();
+        for policy in policies {
+            if policy.is_empty() {
+                continue;
+            }
+
+            let v = policy_docs.get(&policy).cloned().ok_or(Error::NoSuchPolicy)?;
+
+            to_merge.push(v.policy);
+        }
+
+        if to_merge.is_empty() {
+            return Err(Error::NoSuchPolicy);
+        }
+
+        Ok(Policy::merge_policies(to_merge))
+    }
+
+    pub async fn get_policy_doc(&self, name: &str) -> Result<PolicyDoc> {
+        if name.is_empty() {
+            return Err(Error::InvalidArgument);
+        }
+
+        self.cache
+            .snapshot()
+            .policy_docs
+            .get(name)
+            .cloned()
+            .ok_or(Error::NoSuchPolicy)
+    }
+
+    pub async fn delete_policy(&self, name: &str, is_from_notify: bool) -> Result<()> {
+        if name.is_empty() {
+            return Err(Error::InvalidArgument);
+        }
+
+        if is_from_notify {
+            let cache = self.cache.snapshot();
+            let user_policy_cache = Arc::clone(&cache.user_policies);
+            let group_policy_cache = Arc::clone(&cache.group_policies);
+            let users_cache = Arc::clone(&cache.users);
+
+            let mut users = Vec::new();
+            let mut stale_user_policies = Vec::new();
+            user_policy_cache.iter().for_each(|(k, v)| {
+                if !users_cache.contains_key(k) {
+                    stale_user_policies.push(k.to_owned());
+                    return;
+                }
+
+                if v.policy_set().contains(name) {
+                    users.push(k.to_owned());
+                }
+            });
+
+            let mut groups = Vec::new();
+            group_policy_cache.iter().for_each(|(k, v)| {
+                if v.policy_set().contains(name) {
+                    groups.push(k.to_owned());
+                }
+            });
+
+            if !stale_user_policies.is_empty() {
+                self.cache.with_write_lock(|cache| {
+                    let now = OffsetDateTime::now_utc();
+                    for user in stale_user_policies.iter() {
+                        cache.delete_user_policy(user, now);
+                    }
+                });
+            }
+
+            if !users.is_empty() || !groups.is_empty() {
+                return Err(Error::PolicyInUse);
+            }
+
+            if let Err(err) = self.api.delete_policy_doc(name).await {
+                // A real backend failure (disk IO, insufficient quorum, etc.) means the on-disk
+                // policy was NOT removed: propagate the error so callers do not report a phantom
+                // success and evict a policy that is still persisted (it would reappear on the
+                // next full IAM reload).
+                if !is_err_no_such_policy(&err) {
+                    return Err(err);
+                }
+
+                // NoSuchPolicy means the doc is already gone on the backend; treat the delete as
+                // idempotently successful and fall through to evict any stale cache entry below.
+            }
+        }
+
+        self.cache.delete_policy_doc(name, OffsetDateTime::now_utc());
+
+        Ok(())
+    }
+
+    pub async fn set_policy(&self, name: &str, policy: Policy) -> Result<OffsetDateTime> {
+        self.set_policy_at(name, policy, OffsetDateTime::now_utc()).await
+    }
+
+    /// [`Self::set_policy`] stamping the document with `updated_at` instead
+    /// of the local clock.
+    ///
+    /// A site-replication receiver passes the edit's source time: the next
+    /// incoming revision is judged against the stored `UpdateDate`, so a
+    /// local stamp would reject a newer source edit that was merely delivered
+    /// later (backlog#2291). The returned stamp is the one persisted.
+    pub async fn set_policy_at(&self, name: &str, policy: Policy, updated_at: OffsetDateTime) -> Result<OffsetDateTime> {
+        if name.is_empty() || policy.is_empty() {
+            return Err(Error::InvalidArgument);
+        }
+
+        let cache = self.cache.snapshot();
+        let policy_doc = cache
+            .policy_docs
+            .get(name)
+            .map(|v| {
+                let mut p = v.clone();
+                p.update_at(policy.clone(), updated_at);
+                p
+            })
+            .unwrap_or_else(|| PolicyDoc::new_at(policy, updated_at));
+
+        self.api.save_policy_doc(name, policy_doc.clone()).await?;
+
+        self.cache
+            .add_or_update_policy_doc(name, &policy_doc, OffsetDateTime::now_utc());
+
+        Ok(updated_at)
+    }
+
+    pub async fn list_policies(&self, bucket_name: &str) -> Result<HashMap<String, Policy>> {
+        let mut m = HashMap::new();
+
+        self.api.load_policy_docs(&mut m).await?;
+        set_default_canned_policies(&mut m);
+
+        let policy_docs_cache = CacheEntity::new(m.clone());
+
+        self.cache
+            .with_write_lock(|cache| cache.replace_policy_docs(policy_docs_cache));
+
+        let items: Vec<_> = m.into_iter().map(|(k, v)| (k, v.policy)).collect();
+
+        let futures: Vec<_> = items.iter().map(|(_, policy)| policy.match_resource(bucket_name)).collect();
+
+        let results = join_all(futures).await;
+
+        let filtered = items
+            .into_iter()
+            .zip(results)
+            .filter_map(|((k, policy), matches)| {
+                if bucket_name.is_empty() || matches {
+                    Some((k, policy))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        Ok(filtered)
+    }
+
+    /// Backward-compatible misspelling retained until the next breaking release.
+    #[deprecated(
+        since = "1.0.0",
+        note = "use list_policies instead; this alias will be removed in the next breaking release"
+    )]
+    pub async fn list_polices(&self, bucket_name: &str) -> Result<HashMap<String, Policy>> {
+        self.list_policies(bucket_name).await
+    }
+
+    pub async fn merge_policies(&self, name: &str) -> (String, Policy) {
+        let mut policies = Vec::new();
+        let mut to_merge = Vec::new();
+        let mut miss_policies = Vec::new();
+        let cache = self.cache.snapshot();
+        let policy_docs = Arc::clone(&cache.policy_docs);
+        drop(cache);
+
+        for policy in MappedPolicy::new(name).to_slice() {
+            if policy.is_empty() {
+                continue;
+            }
+
+            if let Some(v) = policy_docs.get(&policy).cloned() {
+                policies.push(policy);
+                to_merge.push(v.policy);
+            } else {
+                miss_policies.push(policy);
+            }
+        }
+
+        if !miss_policies.is_empty() {
+            let mut m = HashMap::new();
+            for policy in miss_policies {
+                let _ = self.api.load_policy_doc(&policy, &mut m).await;
+            }
+
+            self.cache.with_write_lock(|cache| {
+                let now = OffsetDateTime::now_utc();
+                for (k, v) in m.iter() {
+                    cache.add_or_update_policy_doc(k, v, now);
+                    policies.push(k.clone());
+                    to_merge.push(v.policy.clone());
+                }
+            });
+        }
+
+        (policies.join(","), Policy::merge_policies(to_merge))
+    }
+
+    pub async fn list_policy_docs(&self, bucket_name: &str) -> Result<HashMap<String, PolicyDoc>> {
+        let mut m = HashMap::new();
+
+        self.api.load_policy_docs(&mut m).await?;
+        set_default_canned_policies(&mut m);
+
+        let policy_docs_cache = CacheEntity::new(m.clone());
+
+        self.cache
+            .with_write_lock(|cache| cache.replace_policy_docs(policy_docs_cache));
+
+        let items: Vec<_> = m.into_iter().collect();
+
+        let futures: Vec<_> = items
+            .iter()
+            .map(|(_, policy_doc)| policy_doc.policy.match_resource(bucket_name))
+            .collect();
+
+        let results = join_all(futures).await;
+
+        let filtered = items
+            .into_iter()
+            .zip(results)
+            .filter_map(|((k, policy_doc), matches)| {
+                if bucket_name.is_empty() || matches {
+                    Some((k, policy_doc))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        Ok(filtered)
+    }
+
+    pub async fn list_policy_docs_internal(&self, bucket_name: &str) -> Result<HashMap<String, PolicyDoc>> {
+        let cache = self.cache.snapshot();
+        let items: Vec<_> = cache.policy_docs.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+
+        let futures: Vec<_> = items
+            .iter()
+            .map(|(_, policy_doc)| policy_doc.policy.match_resource(bucket_name))
+            .collect();
+
+        let results = join_all(futures).await;
+
+        let ret = items
+            .into_iter()
+            .zip(results)
+            .filter_map(|((k, policy_doc), matches)| {
+                if bucket_name.is_empty() || matches {
+                    Some((k, policy_doc))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        Ok(ret)
+    }
+
+    pub async fn list_temp_accounts(&self, access_key: &str) -> Result<Vec<UserIdentity>> {
+        let cache = self.cache.snapshot();
+        let users = Arc::clone(&cache.users);
+        let mut user_exists = false;
+        let mut ret = Vec::new();
+
+        for v in users.values() {
+            let is_derived = v.credentials.is_service_account() || v.credentials.is_temp();
+
+            if !is_derived && v.credentials.access_key.as_str() == access_key {
+                user_exists = true;
+            } else if is_derived && v.credentials.parent_user == access_key {
+                user_exists = true;
+                if v.credentials.is_temp() {
+                    let mut u = v.clone();
+                    u.credentials.secret_key = String::new();
+                    u.credentials.session_token = String::new();
+
+                    ret.push(u);
+                }
+            }
+        }
+
+        let sts_accounts = Arc::clone(&cache.sts_accounts);
+        for v in sts_accounts.values() {
+            if v.credentials.parent_user == access_key {
+                user_exists = true;
+                if v.credentials.is_temp() && !v.credentials.is_service_account() {
+                    let mut u = v.clone();
+                    u.credentials.secret_key = String::new();
+                    u.credentials.session_token = String::new();
+
+                    ret.push(u);
+                }
+            }
+        }
+
+        if !user_exists {
+            return Err(Error::NoSuchUser(access_key.to_string()));
+        }
+
+        Ok(ret)
+    }
+
+    pub async fn list_sts_accounts(&self, access_key: &str) -> Result<Vec<Credentials>> {
+        let cache = self.cache.snapshot();
+        let sts_accounts = Arc::clone(&cache.sts_accounts);
+        Ok(sts_accounts
+            .values()
+            .filter_map(|x| {
+                if !access_key.is_empty()
+                    && x.credentials.parent_user.as_str() == access_key
+                    && x.credentials.is_temp()
+                    && !x.credentials.is_service_account()
+                {
+                    let mut c = x.credentials.clone();
+                    c.secret_key = String::new();
+                    c.session_token = String::new();
+                    return Some(c);
+                }
+
+                None
+            })
+            .collect())
+    }
+
+    pub async fn list_service_accounts(&self, access_key: &str) -> Result<Vec<Credentials>> {
+        let cache = self.cache.snapshot();
+        let users = Arc::clone(&cache.users);
+        Ok(users
+            .values()
+            .filter_map(|x| {
+                if !access_key.is_empty()
+                    && x.credentials.parent_user.as_str() == access_key
+                    && x.credentials.is_service_account()
+                {
+                    let mut c = x.credentials.clone();
+                    c.secret_key = String::new();
+                    c.session_token = String::new();
+                    return Some(c);
+                }
+
+                None
+            })
+            .collect())
+    }
+
+    /// create a service account and update cache
+    pub async fn add_service_account(&self, cred: Credentials) -> Result<OffsetDateTime> {
+        self.add_service_account_at(cred, OffsetDateTime::now_utc()).await
+    }
+
+    /// [`Self::add_service_account`] stamping the identity with `updated_at`
+    /// instead of the local clock; see [`Self::set_policy_at`] (backlog#2291).
+    pub async fn add_service_account_at(&self, cred: Credentials, updated_at: OffsetDateTime) -> Result<OffsetDateTime> {
+        if cred.access_key.is_empty() || cred.parent_user.is_empty() {
+            return Err(Error::InvalidArgument);
+        }
+
+        let _mutation_guard = self.cache.service_account_mutation_lock().lock().await;
+        let cache = self.cache.snapshot();
+        if cache.users.contains_key(&cred.access_key) || cache.sts_accounts.contains_key(&cred.access_key) {
+            return Err(Error::AccessKeyAlreadyExists);
+        }
+        drop(cache);
+
+        let mut u = UserIdentity::new(cred);
+        u.update_at = Some(updated_at);
+
+        self.api
+            .save_user_identity(&u.credentials.access_key, UserType::Svc, u.clone(), None)
+            .await?;
+
+        self.update_user_with_claims(&u.credentials.access_key, u.clone())?;
+
+        Ok(updated_at)
+    }
+
+    pub async fn update_service_account(&self, name: &str, opts: UpdateServiceAccountOpts) -> Result<OffsetDateTime> {
+        self.update_service_account_at(name, opts, OffsetDateTime::now_utc()).await
+    }
+
+    /// [`Self::update_service_account`] stamping the identity with
+    /// `updated_at` instead of the local clock; see [`Self::set_policy_at`]
+    /// (backlog#2291).
+    pub async fn update_service_account_at(
+        &self,
+        name: &str,
+        opts: UpdateServiceAccountOpts,
+        updated_at: OffsetDateTime,
+    ) -> Result<OffsetDateTime> {
+        let _mutation_guard = self.cache.service_account_mutation_lock().lock().await;
+        let cache = self.cache.snapshot();
+        let Some(ui) = cache.users.get(name).cloned() else {
+            return Err(Error::NoSuchServiceAccount(name.to_string()));
+        };
+
+        if !ui.credentials.is_service_account() {
+            return Err(Error::NoSuchServiceAccount(name.to_string()));
+        }
+        drop(cache);
+
+        let mut cr = ui.credentials.clone();
+        let current_secret_key = cr.secret_key.clone();
+
+        if let Some(secret) = opts.secret_key {
+            if !is_secret_key_valid(&secret) {
+                return Err(Error::InvalidSecretKeyLength);
+            }
+            cr.secret_key = secret;
+        }
+
+        if let Some(parent_user) = opts.parent_user {
+            // Same gate as the account itself: a rebind grants the account whatever the new
+            // parent can do, so only the site-replication repair path may ask for one.
+            if parent_user.is_empty() || !opts.allow_site_replicator_account || name != SITE_REPLICATOR_SERVICE_ACCOUNT {
+                return Err(Error::IAMActionNotAllowed);
+            }
+            cr.parent_user = parent_user;
+        }
+
+        if opts.name.is_some() {
+            cr.name = opts.name;
+        }
+
+        if opts.description.is_some() {
+            cr.description = opts.description;
+        }
+
+        let token_without_expiration = cr.expiration.is_none();
+
+        if opts.expiration.is_some() {
+            // TODO: check expiration
+            cr.expiration = opts.expiration;
+        }
+
+        if let Some(status) = opts.status {
+            cr.status = account_status_flag(&status).to_owned();
+        }
+
+        let mut m: HashMap<String, Value> = if token_without_expiration {
+            get_claims_from_token_with_secret_allow_missing_exp(&cr.session_token, &current_secret_key)?
+        } else {
+            get_claims_from_token_with_secret(&cr.session_token, &current_secret_key)?
+        };
+        m.remove(SESSION_POLICY_NAME_EXTRACTED);
+
+        let nosp = if let Some(policy) = &opts.session_policy {
+            policy.version.is_empty() && policy.statements.is_empty()
+        } else {
+            false
+        };
+
+        if m.contains_key(SESSION_POLICY_NAME) && nosp {
+            m.remove(SESSION_POLICY_NAME);
+            m.insert(iam_policy_claim_name_sa(), Value::String(INHERITED_POLICY_TYPE.to_owned()));
+        }
+
+        if let Some(session_policy) = &opts.session_policy {
+            session_policy.validate()?;
+            if !session_policy.version.is_empty() && !session_policy.statements.is_empty() {
+                let policy_buf = serde_json::to_vec(&session_policy)?;
+                if policy_buf.len() > MAX_SVCSESSION_POLICY_SIZE {
+                    return Err(Error::PolicyTooLarge);
+                }
+
+                m.insert(
+                    SESSION_POLICY_NAME.to_owned(),
+                    Value::String(base64_simd::URL_SAFE_NO_PAD.encode_to_string(&policy_buf)),
+                );
+                m.insert(iam_policy_claim_name_sa(), Value::String(EMBEDDED_POLICY_TYPE.to_owned()));
+            }
+        }
+
+        if let Some(expiration) = opts.expiration {
+            m.insert("exp".to_owned(), Value::Number(serde_json::Number::from(expiration.unix_timestamp())));
+        }
+
+        m.insert("accessKey".to_owned(), Value::String(name.to_owned()));
+        if name == SITE_REPLICATOR_SERVICE_ACCOUNT && opts.allow_site_replicator_account {
+            m.insert(SITE_REPLICATOR_CLAIM.to_owned(), Value::Bool(true));
+        }
+        // The parent lives in the token as well, and `prepare_service_account_auth` denies the
+        // request when the two disagree — a rebind that updated only the credential would
+        // lock the account out.
+        m.insert("parent".to_owned(), Value::String(cr.parent_user.clone()));
+
+        cr.session_token = jwt_sign(&m, &cr.secret_key)?;
+
+        let mut u = UserIdentity::new(cr);
+        u.update_at = Some(updated_at);
+        self.api
+            .save_user_identity(&u.credentials.access_key, UserType::Svc, u.clone(), None)
+            .await?;
+        self.update_user_with_claims(&u.credentials.access_key, u.clone())?;
+
+        Ok(updated_at)
+    }
+
+    pub async fn policy_db_get(&self, name: &str, groups: &Option<Vec<String>>) -> Result<Vec<String>> {
+        if name.is_empty() {
+            return Err(Error::InvalidArgument);
+        }
+
+        let (policies, _) = self.policy_db_get_internal(name, false, false).await?;
+        self.policy_db_get_with_groups(policies, groups).await
+    }
+
+    pub async fn sts_policy_db_get(&self, name: &str, groups: &Option<Vec<String>>) -> Result<Vec<String>> {
+        if name.is_empty() {
+            return Err(Error::InvalidArgument);
+        }
+
+        let cache = self.cache.snapshot();
+        let sts_policies = Arc::clone(&cache.sts_policies);
+        drop(cache);
+        let mapped_policy = match sts_policies.get(name) {
+            Some(policy) => policy.clone(),
+            None => {
+                let mut policies = HashMap::new();
+                if let Err(err) = self.api.load_mapped_policy(name, UserType::Sts, false, &mut policies).await
+                    && !is_err_no_such_policy(&err)
+                {
+                    return Err(err);
+                }
+                match policies.get(name) {
+                    Some(policy) => {
+                        self.cache.add_or_update_sts_policy(name, policy, OffsetDateTime::now_utc());
+                        policy.clone()
+                    }
+                    None => MappedPolicy::default(),
+                }
+            }
+        };
+
+        self.policy_db_get_with_groups(mapped_policy.to_slice(), groups).await
+    }
+
+    async fn policy_db_get_with_groups(&self, mut policies: Vec<String>, groups: &Option<Vec<String>>) -> Result<Vec<String>> {
+        let present = !policies.is_empty();
+
+        if let Some(groups) = groups {
+            for group in groups.iter() {
+                let (gp, _) = match self.policy_db_get_internal(group, true, present).await {
+                    Ok(result) => result,
+                    Err(err) if is_err_no_such_group(&err) => continue,
+                    Err(err) => return Err(err),
+                };
+                gp.iter().for_each(|v| {
+                    policies.push(v.clone());
+                });
+            }
+        }
+
+        Ok(policies)
+    }
+
+    async fn policy_db_get_internal(
+        &self,
+        name: &str,
+        is_group: bool,
+        policy_present: bool,
+    ) -> Result<(Vec<String>, OffsetDateTime)> {
+        if is_group {
+            let cache = self.cache.snapshot();
+            let groups = Arc::clone(&cache.groups);
+            drop(cache);
+
+            let g = match groups.get(name) {
+                Some(p) => p.clone(),
+                None => {
+                    let mut m = HashMap::new();
+                    self.api.load_group(name, &mut m).await?;
+                    if let Some(p) = m.get(name) {
+                        self.cache.add_or_update_group(name, p, OffsetDateTime::now_utc());
+                    }
+
+                    m.get(name).cloned().ok_or_else(|| Error::NoSuchGroup(name.to_string()))?
+                }
+            };
+
+            if g.status == STATUS_DISABLED {
+                return Ok((Vec::new(), OffsetDateTime::now_utc()));
+            }
+
+            let cache = self.cache.snapshot();
+            let group_policies = Arc::clone(&cache.group_policies);
+            drop(cache);
+            if let Some(policy) = group_policies.get(name) {
+                return Ok((policy.to_slice(), policy.update_at));
+            }
+
+            if !policy_present {
+                let mut m = HashMap::new();
+                if let Err(err) = self.api.load_mapped_policy(name, UserType::Reg, true, &mut m).await
+                    && !is_err_no_such_policy(&err)
+                {
+                    return Err(err);
+                }
+                if let Some(p) = m.get(name) {
+                    self.cache.add_or_update_group_policy(name, p, OffsetDateTime::now_utc());
+                    return Ok((p.to_slice(), p.update_at));
+                }
+
+                return Ok((Vec::new(), OffsetDateTime::now_utc()));
+            }
+
+            return Ok((Vec::new(), OffsetDateTime::now_utc()));
+        }
+
+        let cache = self.cache.snapshot();
+        let users = Arc::clone(&cache.users);
+        let user_policies = Arc::clone(&cache.user_policies);
+        let sts_policies = Arc::clone(&cache.sts_policies);
+        let groups_cache = Arc::clone(&cache.groups);
+        let group_policies = Arc::clone(&cache.group_policies);
+        let user_group_memberships = Arc::clone(&cache.user_group_memberships);
+        drop(cache);
+        let u = users.get(name).cloned().unwrap_or_default();
+        if !u.credentials.is_valid() {
+            return Ok((Vec::new(), OffsetDateTime::now_utc()));
+        }
+
+        let mp = match user_policies.get(name) {
+            Some(p) => p.clone(),
+            None => {
+                let mut m = HashMap::new();
+                if let Err(err) = self.api.load_mapped_policy(name, UserType::Reg, false, &mut m).await
+                    && !is_err_no_such_policy(&err)
+                {
+                    return Err(err);
+                }
+                if let Some(p) = m.get(name) {
+                    self.cache.add_or_update_user_policy(name, p, OffsetDateTime::now_utc());
+                    p.clone()
+                } else {
+                    match sts_policies.get(name) {
+                        Some(p) => p.clone(),
+                        None => {
+                            let mut m = HashMap::new();
+                            if let Err(err) = self.api.load_mapped_policy(name, UserType::Sts, false, &mut m).await
+                                && !is_err_no_such_policy(&err)
+                            {
+                                return Err(err);
+                            }
+                            if let Some(p) = m.get(name) {
+                                self.cache.add_or_update_sts_policy(name, p, OffsetDateTime::now_utc());
+                                p.clone()
+                            } else {
+                                MappedPolicy::default()
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        let mut policies: HashSet<String> = mp.to_slice().into_iter().collect();
+
+        if let Some(groups) = u.credentials.groups.as_ref() {
+            for group in groups.iter() {
+                if groups_cache.get(group).filter(|v| v.status == STATUS_DISABLED).is_some() {
+                    return Ok((Vec::new(), OffsetDateTime::now_utc()));
+                }
+
+                let mp = match group_policies.get(group) {
+                    Some(p) => p.clone(),
+                    None => {
+                        let mut m = HashMap::new();
+                        if let Err(err) = self.api.load_mapped_policy(group, UserType::Reg, true, &mut m).await
+                            && !is_err_no_such_policy(&err)
+                        {
+                            return Err(err);
+                        }
+                        if let Some(p) = m.get(group) {
+                            self.cache.add_or_update_group_policy(group, p, OffsetDateTime::now_utc());
+                            p.clone()
+                        } else {
+                            MappedPolicy::default()
+                        }
+                    }
+                };
+
+                mp.to_slice().iter().for_each(|v| {
+                    policies.insert(v.clone());
+                });
+            }
+        }
+
+        let update_at = mp.update_at;
+
+        for group in user_group_memberships.get(name).cloned().unwrap_or_default().iter() {
+            if groups_cache.get(group).filter(|v| v.status == STATUS_DISABLED).is_some() {
+                return Ok((Vec::new(), OffsetDateTime::now_utc()));
+            }
+
+            let mp = match group_policies.get(group) {
+                Some(p) => p.clone(),
+                None => {
+                    let mut m = HashMap::new();
+                    if let Err(err) = self.api.load_mapped_policy(group, UserType::Reg, true, &mut m).await
+                        && !is_err_no_such_policy(&err)
+                    {
+                        return Err(err);
+                    }
+                    if let Some(p) = m.get(group) {
+                        self.cache.add_or_update_group_policy(group, p, OffsetDateTime::now_utc());
+                        p.clone()
+                    } else {
+                        MappedPolicy::default()
+                    }
+                }
+            };
+
+            mp.to_slice().iter().for_each(|v| {
+                policies.insert(v.clone());
+            });
+        }
+
+        Ok((policies.into_iter().collect(), update_at))
+    }
+    pub async fn policy_db_set(&self, name: &str, user_type: UserType, is_group: bool, policy: &str) -> Result<OffsetDateTime> {
+        self.policy_db_set_at(name, user_type, is_group, policy, OffsetDateTime::now_utc())
+            .await
+    }
+
+    /// [`Self::policy_db_set`] stamping the mapping with `updated_at` instead
+    /// of the local clock; see [`Self::set_policy_at`] (backlog#2291).
+    pub async fn policy_db_set_at(
+        &self,
+        name: &str,
+        user_type: UserType,
+        is_group: bool,
+        policy: &str,
+        updated_at: OffsetDateTime,
+    ) -> Result<OffsetDateTime> {
+        if name.is_empty() {
+            return Err(Error::InvalidArgument);
+        }
+
+        if policy.is_empty() {
+            if let Err(err) = self.api.delete_mapped_policy(name, user_type, is_group).await
+                && !is_err_no_such_policy(&err)
+            {
+                return Err(err);
+            }
+
+            if is_group {
+                self.cache.delete_group_policy(name, OffsetDateTime::now_utc());
+            } else if user_type == UserType::Sts {
+                self.cache.delete_sts_policy(name, OffsetDateTime::now_utc());
+            } else {
+                self.cache.delete_user_policy(name, OffsetDateTime::now_utc());
+            }
+
+            return Ok(updated_at);
+        }
+
+        let mut mp = MappedPolicy::new(policy);
+        mp.update_at = updated_at;
+
+        let cache = self.cache.snapshot();
+        let policy_docs_cache = Arc::clone(&cache.policy_docs);
+        drop(cache);
+        for p in mp.to_slice() {
+            if !policy_docs_cache.contains_key(&p) {
+                return Err(Error::NoSuchPolicy);
+            }
+        }
+
+        self.api
+            .save_mapped_policy(name, user_type, is_group, mp.clone(), None)
+            .await?;
+
+        if is_group {
+            self.cache.add_or_update_group_policy(name, &mp, OffsetDateTime::now_utc());
+        } else if user_type == UserType::Sts {
+            self.cache.add_or_update_sts_policy(name, &mp, OffsetDateTime::now_utc());
+        } else {
+            self.cache.add_or_update_user_policy(name, &mp, OffsetDateTime::now_utc());
+        }
+
+        Ok(updated_at)
+    }
+
+    pub async fn set_temp_user(&self, access_key: &str, cred: &Credentials, policy_name: Option<&str>) -> Result<OffsetDateTime> {
+        if access_key.is_empty() || !cred.is_temp() || cred.is_expired() || cred.parent_user.is_empty() {
+            error!(
+                "set temp user invalid argument, access_key: {},  is_temp: {}, is_expired: {}, parent_user_empty: {}",
+                access_key,
+                cred.is_temp(),
+                cred.is_expired(),
+                cred.parent_user.is_empty()
+            );
+            return Err(Error::InvalidArgument);
+        }
+
+        let mutation_lock = self.cache.sts_account_mutation_lock(access_key);
+        let _mutation_guard = mutation_lock.lock().await;
+
+        let sts_policy_update = if let Some(policy) = policy_name {
+            let mp = MappedPolicy::new(policy);
+            let (_, combined_policy_stmt) = filter_policies(&self.cache, &mp.policies, "temp");
+            if combined_policy_stmt.is_empty() {
+                return Err(Error::other(format!("Required policy not found: {}", IamError::NoSuchPolicy)));
+            }
+
+            self.api
+                .save_mapped_policy(&cred.parent_user, UserType::Sts, false, mp.clone(), None)
+                .await?;
+
+            Some(mp)
+        } else {
+            None
+        };
+
+        let u = UserIdentity::new(cred.clone());
+        self.api
+            .save_user_identity(access_key, UserType::Sts, u.clone(), None)
+            .await?;
+        self.verify_temp_user_persistence(access_key).await?;
+
+        let now = self.cache.with_write_lock(|cache| {
+            let now = OffsetDateTime::now_utc();
+            if let Some(mp) = &sts_policy_update {
+                cache.add_or_update_sts_policy(&cred.parent_user, mp, now);
+            }
+            cache.add_or_update_sts_account(access_key, &u, now);
+            now
+        });
+
+        Ok(now)
+    }
+
+    pub async fn get_user_info(&self, name: &str) -> Result<rustfs_madmin::UserInfo> {
+        let cache = self.cache.snapshot();
+        let users = Arc::clone(&cache.users);
+        let policies = Arc::clone(&cache.user_policies);
+        let group_members = Arc::clone(&cache.user_group_memberships);
+
+        let u = match users.get(name) {
+            Some(u) => u,
+            None => return Err(Error::NoSuchUser(name.to_string())),
+        };
+
+        if u.credentials.is_temp() || u.credentials.is_service_account() {
+            return Err(Error::IAMActionNotAllowed);
+        }
+
+        let mut uinfo = rustfs_madmin::UserInfo {
+            status: if u.credentials.is_valid() {
+                AccountStatus::Enabled
+            } else {
+                AccountStatus::Disabled
+            },
+            updated_at: u.update_at,
+            ..Default::default()
+        };
+
+        if let Some(p) = policies.get(name) {
+            uinfo.policy_name = Some(p.policies.clone());
+            uinfo.updated_at = Some(p.update_at);
+        }
+
+        if let Some(members) = group_members.get(name) {
+            uinfo.member_of = Some(members.iter().cloned().collect());
+        }
+
+        Ok(uinfo)
+    }
+
+    // returns all users (not STS or service accounts)
+    pub async fn get_users(&self) -> Result<HashMap<String, rustfs_madmin::UserInfo>> {
+        let mut m = HashMap::new();
+
+        let cache = self.cache.snapshot();
+        let users = Arc::clone(&cache.users);
+        let policies = Arc::clone(&cache.user_policies);
+        let group_members = Arc::clone(&cache.user_group_memberships);
+
+        for (k, v) in users.iter() {
+            if v.credentials.is_temp() || v.credentials.is_service_account() {
+                continue;
+            }
+
+            let mut u = rustfs_madmin::UserInfo {
+                status: if v.credentials.is_valid() {
+                    AccountStatus::Enabled
+                } else {
+                    AccountStatus::Disabled
+                },
+                updated_at: v.update_at,
+                ..Default::default()
+            };
+
+            if let Some(p) = policies.get(k) {
+                u.policy_name = Some(p.policies.clone());
+                u.updated_at = Some(p.update_at);
+            }
+
+            if let Some(members) = group_members.get(k) {
+                u.member_of = Some(members.iter().cloned().collect());
+            }
+
+            m.insert(k.clone(), u);
+        }
+
+        Ok(m)
+    }
+    pub async fn get_bucket_users(&self, bucket_name: &str) -> Result<HashMap<String, rustfs_madmin::UserInfo>> {
+        let cache = self.cache.snapshot();
+        let users = Arc::clone(&cache.users);
+        let policies_cache = Arc::clone(&cache.user_policies);
+        let group_members = Arc::clone(&cache.user_group_memberships);
+        let group_policy_cache = Arc::clone(&cache.group_policies);
+        let policy_docs_cache = Arc::clone(&cache.policy_docs);
+        drop(cache);
+
+        let mut ret = HashMap::new();
+
+        for (k, v) in users.iter() {
+            if v.credentials.is_temp() || v.credentials.is_service_account() {
+                continue;
+            }
+
+            let mut policies = Vec::new();
+            if let Some(p) = policies_cache.get(k) {
+                policies.push(p.policies.clone());
+
+                if let Some(groups) = group_members.get(k) {
+                    for group in groups {
+                        if let Some(p) = group_policy_cache.get(group) {
+                            policies.push(p.policies.clone());
+                        }
+                    }
+                }
+            }
+
+            let matched_policies = filter_policies_from_docs(policy_docs_cache.as_ref(), &policies.join(","), bucket_name).0;
+            if matched_policies.is_empty() {
+                continue;
+            }
+
+            let mut u = rustfs_madmin::UserInfo {
+                policy_name: Some(matched_policies),
+                status: if v.credentials.is_valid() {
+                    AccountStatus::Enabled
+                } else {
+                    AccountStatus::Disabled
+                },
+                updated_at: v.update_at,
+                ..Default::default()
+            };
+
+            if let Some(members) = group_members.get(k) {
+                u.member_of = Some(members.iter().cloned().collect());
+            }
+
+            ret.insert(k.clone(), u);
+        }
+
+        Ok(ret)
+    }
+    pub async fn get_users_with_mapped_policies(&self) -> HashMap<String, String> {
+        let mut m = HashMap::new();
+
+        let cache = self.cache.snapshot();
+        cache.user_policies.iter().for_each(|(k, v)| {
+            m.insert(k.clone(), v.policies.clone());
+        });
+
+        cache.sts_policies.iter().for_each(|(k, v)| {
+            m.insert(k.clone(), v.policies.clone());
+        });
+
+        m
+    }
+
+    pub async fn add_user(&self, access_key: &str, args: &AddOrUpdateUserReq) -> Result<OffsetDateTime> {
+        self.add_user_at(access_key, args, OffsetDateTime::now_utc()).await
+    }
+
+    /// [`Self::add_user`] stamping the identity with `updated_at` instead of
+    /// the local clock; see [`Self::set_policy_at`] (backlog#2291).
+    pub async fn add_user_at(
+        &self,
+        access_key: &str,
+        args: &AddOrUpdateUserReq,
+        updated_at: OffsetDateTime,
+    ) -> Result<OffsetDateTime> {
+        let cache = self.cache.snapshot();
+        let users = Arc::clone(&cache.users);
+        if let Some(x) = users.get(access_key) {
+            warn!(error = ?x, "IAM user already exists");
+            if x.credentials.is_temp() {
+                return Err(Error::AccessKeyAlreadyExists);
+            }
+        }
+        drop(cache);
+        drop(users);
+
+        let status = {
+            match &args.status {
+                AccountStatus::Enabled => auth::ACCOUNT_ON,
+                _ => auth::ACCOUNT_OFF,
+            }
+        };
+        let mut user_entry = UserIdentity::from(Credentials {
+            access_key: access_key.to_string(),
+            secret_key: args.secret_key.to_string(),
+            status: status.to_owned(),
+            ..Default::default()
+        });
+        user_entry.update_at = Some(updated_at);
+
+        self.api
+            .save_user_identity(access_key, UserType::Reg, user_entry.clone(), None)
+            .await?;
+
+        self.update_user_with_claims(access_key, user_entry)?;
+
+        Ok(updated_at)
+    }
+
+    pub async fn delete_user(&self, access_key: &str, utype: UserType) -> Result<()> {
+        self.delete_user_with_revision(access_key, utype).await?;
+        Ok(())
+    }
+
+    pub async fn delete_service_account_with_revision(&self, access_key: &str) -> Result<OffsetDateTime> {
+        self.delete_user_with_revision(access_key, UserType::Svc).await
+    }
+
+    async fn delete_user_with_revision(&self, access_key: &str, utype: UserType) -> Result<OffsetDateTime> {
+        if access_key.is_empty() {
+            return Err(Error::InvalidArgument);
+        }
+
+        let sts_mutation_lock = (utype == UserType::Sts).then(|| self.cache.sts_account_mutation_lock(access_key));
+        let _sts_mutation_guard = match &sts_mutation_lock {
+            Some(lock) => Some(lock.lock().await),
+            None => None,
+        };
+        let _service_account_guard = if utype == UserType::Svc {
+            Some(self.cache.service_account_mutation_lock().lock().await)
+        } else {
+            None
+        };
+
+        if utype == UserType::Reg {
+            let cache = self.cache.snapshot();
+            let member_of = cache.user_group_memberships.get(access_key).cloned();
+            drop(cache);
+            if let Some(member_of) = member_of {
+                for member in member_of.iter() {
+                    let _ = self
+                        .remove_members_from_group(member, vec![access_key.to_string()], false)
+                        .await?;
+                }
+            }
+
+            let mut service_accounts_to_delete = Vec::new();
+            let mut temp_accounts_to_delete = HashSet::new();
+            let cache = self.cache.snapshot();
+            for v in cache.users.values() {
+                let u = &v.credentials;
+                if u.parent_user.as_str() == access_key {
+                    if u.is_service_account() {
+                        service_accounts_to_delete.push(u.access_key.clone());
+                    }
+
+                    if u.is_temp() {
+                        temp_accounts_to_delete.insert(u.access_key.clone());
+                    }
+                }
+            }
+            for v in cache.sts_accounts.values() {
+                let u = &v.credentials;
+                if u.parent_user.as_str() == access_key {
+                    temp_accounts_to_delete.insert(u.access_key.clone());
+                }
+            }
+            drop(cache);
+
+            for access_key in service_accounts_to_delete.iter() {
+                let _ = self.api.delete_user_identity(access_key, UserType::Svc).await;
+            }
+            for access_key in temp_accounts_to_delete.iter() {
+                let _ = self.api.delete_user_identity(access_key, UserType::Sts).await;
+            }
+
+            self.cache.with_write_lock(|cache| {
+                let now = OffsetDateTime::now_utc();
+                for access_key in service_accounts_to_delete.iter() {
+                    cache.delete_user(access_key, now);
+                }
+                for access_key in temp_accounts_to_delete.iter() {
+                    cache.delete_sts_account(access_key, now);
+                    cache.delete_user(access_key, now);
+                }
+            });
+        }
+
+        if utype != UserType::Sts {
+            let _ = self.api.delete_mapped_policy(access_key, utype, false).await;
+        }
+
+        if utype != UserType::Sts {
+            self.cache.delete_user_policy(access_key, OffsetDateTime::now_utc());
+        }
+
+        if let Err(err) = self.api.delete_user_identity(access_key, utype).await
+            && !is_err_no_such_user(&err)
+        {
+            return Err(err);
+        }
+
+        let deleted_at = OffsetDateTime::now_utc();
+        self.cache.with_write_lock(|cache| {
+            if utype == UserType::Sts {
+                cache.delete_sts_account(access_key, deleted_at);
+                if cache
+                    .state()
+                    .users
+                    .get(access_key)
+                    .is_some_and(|identity| identity.credentials.is_temp())
+                {
+                    cache.delete_user(access_key, deleted_at);
+                }
+            } else {
+                cache.delete_user(access_key, deleted_at);
+            }
+        });
+
+        Ok(deleted_at)
+    }
+
+    pub async fn update_user_secret_key(&self, access_key: &str, secret_key: &str) -> Result<(OffsetDateTime, AccountStatus)> {
+        if access_key.is_empty() || secret_key.is_empty() {
+            return Err(Error::InvalidArgument);
+        }
+
+        let cache = self.cache.snapshot();
+        let users = Arc::clone(&cache.users);
+        let u = match users.get(access_key) {
+            Some(u) => u,
+            None => return Err(Error::NoSuchUser(access_key.to_string())),
+        };
+
+        let mut cred = u.credentials.clone();
+        cred.secret_key = secret_key.to_string();
+
+        // Status is captured from the same credential snapshot the new secret
+        // is persisted with, so a caller replicating the rotation broadcasts
+        // exactly what was written rather than re-reading racily.
+        let status = if cred.is_valid() {
+            AccountStatus::Enabled
+        } else {
+            AccountStatus::Disabled
+        };
+        let u = UserIdentity::from(cred);
+        let updated_at = u.update_at.unwrap_or_else(OffsetDateTime::now_utc);
+        drop(cache);
+        drop(users);
+
+        self.api
+            .save_user_identity(access_key, UserType::Reg, u.clone(), None)
+            .await?;
+
+        self.update_user_with_claims(access_key, u)?;
+        Ok((updated_at, status))
+    }
+
+    /// Add SSH public key for a user (for SFTP authentication)
+    pub async fn add_user_ssh_public_key(&self, access_key: &str, public_key: &str) -> Result<()> {
+        if access_key.is_empty() || public_key.is_empty() {
+            return Err(Error::InvalidArgument);
+        }
+
+        let cache = self.cache.snapshot();
+        let users = Arc::clone(&cache.users);
+        let u = match users.get(access_key) {
+            Some(u) => u,
+            None => return Err(Error::NoSuchUser(access_key.to_string())),
+        };
+
+        let mut user_identity = u.clone();
+        user_identity.add_ssh_public_key(public_key);
+        drop(cache);
+        drop(users);
+
+        self.api
+            .save_user_identity(access_key, UserType::Reg, user_identity.clone(), None)
+            .await?;
+
+        self.update_user_with_claims(access_key, user_identity)
+    }
+
+    pub async fn set_user_status(&self, access_key: &str, status: AccountStatus) -> Result<OffsetDateTime> {
+        self.set_user_status_at(access_key, status, OffsetDateTime::now_utc()).await
+    }
+
+    /// [`Self::set_user_status`] stamping the identity with `updated_at`
+    /// instead of the local clock; see [`Self::set_policy_at`] (backlog#2291).
+    pub async fn set_user_status_at(
+        &self,
+        access_key: &str,
+        status: AccountStatus,
+        updated_at: OffsetDateTime,
+    ) -> Result<OffsetDateTime> {
+        if access_key.is_empty() {
+            return Err(Error::InvalidArgument);
+        }
+
+        if !access_key.is_empty() && status != AccountStatus::Enabled && status != AccountStatus::Disabled {
+            return Err(Error::InvalidArgument);
+        }
+
+        let cache = self.cache.snapshot();
+        let users = Arc::clone(&cache.users);
+        let u = match users.get(access_key) {
+            Some(u) => u,
+            None => return Err(Error::NoSuchUser(access_key.to_string())),
+        };
+
+        if u.credentials.is_temp() || u.credentials.is_service_account() {
+            return Err(Error::IAMActionNotAllowed);
+        }
+
+        let status = {
+            match status {
+                AccountStatus::Enabled => auth::ACCOUNT_ON,
+                _ => auth::ACCOUNT_OFF,
+            }
+        };
+
+        let mut user_entry = UserIdentity::from(Credentials {
+            access_key: access_key.to_string(),
+            secret_key: u.credentials.secret_key.clone(),
+            status: status.to_owned(),
+            ..Default::default()
+        });
+        user_entry.update_at = Some(updated_at);
+        drop(cache);
+        drop(users);
+
+        self.api
+            .save_user_identity(access_key, UserType::Reg, user_entry.clone(), None)
+            .await?;
+
+        self.update_user_with_claims(access_key, user_entry)?;
+
+        Ok(updated_at)
+    }
+
+    fn update_user_with_claims(&self, k: &str, u: UserIdentity) -> Result<()> {
+        let mut u = u;
+        if !u.credentials.session_token.is_empty() {
+            u.credentials.claims = Some(if u.credentials.expiration.is_none() {
+                extract_jwt_claims_allow_missing_exp(&u)?
+            } else {
+                extract_jwt_claims(&u)?
+            });
+        }
+
+        if u.credentials.is_temp() && !u.credentials.is_service_account() {
+            self.cache.add_or_update_sts_account(k, &u, OffsetDateTime::now_utc());
+        } else {
+            self.cache.add_or_update_user(k, &u, OffsetDateTime::now_utc());
+        }
+
+        Ok(())
+    }
+
+    pub async fn is_temp_user(&self, access_key: &str) -> Result<(bool, String)> {
+        let u = match self.get_user(access_key).await {
+            Some(u) => u,
+            None => return Err(Error::NoSuchUser(access_key.to_string())),
+        };
+
+        if u.credentials.is_temp() {
+            Ok((true, u.credentials.parent_user))
+        } else {
+            Ok((false, String::new()))
+        }
+    }
+
+    pub async fn add_users_to_group(&self, group: &str, members: Vec<String>) -> Result<OffsetDateTime> {
+        self.add_users_to_group_at(group, members, OffsetDateTime::now_utc()).await
+    }
+
+    /// [`Self::add_users_to_group`] stamping the group with `updated_at`
+    /// instead of the local clock; see [`Self::set_policy_at`] (backlog#2291).
+    pub async fn add_users_to_group_at(
+        &self,
+        group: &str,
+        members: Vec<String>,
+        updated_at: OffsetDateTime,
+    ) -> Result<OffsetDateTime> {
+        if group.is_empty() {
+            return Err(Error::InvalidArgument);
+        }
+
+        let cache = self.cache.snapshot();
+        let users_cache = Arc::clone(&cache.users);
+
+        for member in members.iter() {
+            if let Some(u) = users_cache.get(member) {
+                if u.credentials.is_temp() || u.credentials.is_service_account() {
+                    return Err(Error::IAMActionNotAllowed);
+                }
+            } else {
+                return Err(Error::NoSuchUser(member.to_string()));
+            }
+        }
+
+        // The group's own timestamp moves with every membership or status
+        // change: site replication judges an incoming group item against it
+        // (backlog#2291), so it must reflect the last change, not creation.
+        // `updated_at` is the record's stamp only; the cache is published
+        // with the local clock, because `LockedCache::exec` drops a write
+        // whose time predates the entity's load time — a replicated edit
+        // whose source time is older than this node's startup would
+        // otherwise never reach the cache.
+        let gi = match cache.groups.get(group) {
+            Some(res) => {
+                let mut gi = res.clone();
+                let mut uniq_set: HashSet<String, std::collections::hash_map::RandomState> =
+                    HashSet::from_iter(gi.members.iter().cloned());
+                uniq_set.extend(members.iter().cloned());
+
+                gi.members = uniq_set.into_iter().collect();
+                gi.update_at = Some(updated_at);
+                gi
+            }
+            None => {
+                let mut gi = GroupInfo::new(members.clone());
+                gi.update_at = Some(updated_at);
+                gi
+            }
+        };
+        drop(cache);
+
+        self.api.save_group_info(group, gi.clone()).await?;
+
+        self.cache.with_write_lock(|cache| {
+            let now = OffsetDateTime::now_utc();
+            cache.add_or_update_group(group, &gi, now);
+
+            let user_group_memberships = Arc::clone(&cache.state().user_group_memberships);
+            members.iter().for_each(|member| {
+                let mut m = user_group_memberships.get(member).cloned().unwrap_or_default();
+                m.insert(group.to_string());
+                cache.add_or_update_user_group_membership(member, &m, now);
+            });
+        });
+
+        Ok(updated_at)
+    }
+
+    pub async fn set_group_status(&self, name: &str, enable: bool) -> Result<OffsetDateTime> {
+        self.set_group_status_at(name, enable, OffsetDateTime::now_utc()).await
+    }
+
+    /// [`Self::set_group_status`] stamping the group with `updated_at` instead
+    /// of the local clock; see [`Self::set_policy_at`] (backlog#2291).
+    pub async fn set_group_status_at(&self, name: &str, enable: bool, updated_at: OffsetDateTime) -> Result<OffsetDateTime> {
+        if name.is_empty() {
+            return Err(Error::InvalidArgument);
+        }
+
+        let cache = self.cache.snapshot();
+        let groups = Arc::clone(&cache.groups);
+        let mut gi = match groups.get(name) {
+            Some(gi) => gi.clone(),
+            None => return Err(Error::NoSuchGroup(name.to_string())),
+        };
+        drop(cache);
+
+        if enable {
+            gi.status = STATUS_ENABLED.to_owned();
+        } else {
+            gi.status = STATUS_DISABLED.to_owned();
+        }
+        gi.update_at = Some(updated_at);
+
+        self.api.save_group_info(name, gi.clone()).await?;
+
+        // Cache publication time is the local clock, not the record stamp
+        // (see `add_users_to_group_at`).
+        self.cache.add_or_update_group(name, &gi, OffsetDateTime::now_utc());
+
+        Ok(updated_at)
+    }
+
+    pub async fn get_group_description(&self, name: &str) -> Result<GroupDesc> {
+        let cache = self.cache.snapshot();
+        let gi = cache
+            .groups
+            .get(name)
+            .cloned()
+            .ok_or_else(|| Error::NoSuchGroup(name.to_string()))?;
+
+        let cached_mapped_policy = cache.group_policies.get(name).cloned();
+        drop(cache);
+
+        let mapped_policy = if let Some(policy) = cached_mapped_policy {
+            Some(policy)
+        } else {
+            let mut policies = HashMap::new();
+            if let Err(err) = self.api.load_mapped_policy(name, UserType::Reg, true, &mut policies).await
+                && !is_err_no_such_policy(&err)
+            {
+                return Err(err);
+            }
+
+            if let Some(policy) = policies.get(name).cloned() {
+                self.cache
+                    .add_or_update_group_policy(name, &policy, OffsetDateTime::now_utc());
+                Some(policy)
+            } else {
+                None
+            }
+        };
+
+        Ok(build_group_desc(name, gi, mapped_policy))
+    }
+
+    pub async fn list_groups(&self) -> Result<Vec<String>> {
+        Ok(self.cache.snapshot().groups.keys().cloned().collect())
+    }
+
+    pub async fn update_groups(&self) -> Result<Vec<String>> {
+        let mut groups_set = HashSet::new();
+        let mut groups = HashMap::new();
+        self.api.load_groups(&mut groups).await?;
+
+        let mut group_policies = HashMap::new();
+
+        self.api
+            .load_mapped_policies(UserType::Reg, true, &mut group_policies)
+            .await?;
+        self.cache.with_write_lock(|cache| {
+            let now = OffsetDateTime::now_utc();
+            for (group, gi) in groups.iter() {
+                cache.add_or_update_group(group, gi, now);
+                groups_set.insert(group.to_string());
+            }
+            for (group, gi) in group_policies.iter() {
+                cache.add_or_update_group_policy(group, gi, now);
+                groups_set.insert(group.to_string());
+            }
+        });
+
+        Ok(groups_set.into_iter().collect())
+    }
+
+    pub async fn remove_members_from_group(
+        &self,
+        name: &str,
+        members: Vec<String>,
+        update_cache_only: bool,
+    ) -> Result<OffsetDateTime> {
+        self.remove_members_from_group_at(name, members, update_cache_only, OffsetDateTime::now_utc())
+            .await
+    }
+
+    /// [`Self::remove_members_from_group`] stamping the group with
+    /// `updated_at` instead of the local clock; see [`Self::set_policy_at`]
+    /// (backlog#2291).
+    pub async fn remove_members_from_group_at(
+        &self,
+        name: &str,
+        members: Vec<String>,
+        update_cache_only: bool,
+        updated_at: OffsetDateTime,
+    ) -> Result<OffsetDateTime> {
+        let cache = self.cache.snapshot();
+        let mut gi = cache
+            .groups
+            .get(name)
+            .cloned()
+            .ok_or_else(|| Error::NoSuchGroup(name.to_string()))?;
+        drop(cache);
+
+        let s: HashSet<&String> = HashSet::from_iter(gi.members.iter());
+        let d: HashSet<&String> = HashSet::from_iter(members.iter());
+        gi.members = s.difference(&d).map(|v| v.to_string()).collect::<Vec<String>>();
+        gi.update_at = Some(updated_at);
+        if !update_cache_only {
+            self.api.save_group_info(name, gi.clone()).await?;
+        }
+
+        self.cache.with_write_lock(|cache| {
+            // Sample after storage completes so a concurrent reload cannot
+            // make this publication older than the cache it must update.
+            let now = OffsetDateTime::now_utc();
+            cache.add_or_update_group(name, &gi, now);
+
+            let user_group_memberships = Arc::clone(&cache.state().user_group_memberships);
+            members.iter().for_each(|member| {
+                if let Some(m) = user_group_memberships.get(member) {
+                    let mut m = m.clone();
+                    m.remove(name);
+                    cache.add_or_update_user_group_membership(member, &m, now);
+                }
+            });
+        });
+
+        Ok(updated_at)
+    }
+
+    pub async fn remove_users_from_group(&self, group: &str, members: Vec<String>) -> Result<OffsetDateTime> {
+        self.remove_users_from_group_at(group, members, OffsetDateTime::now_utc())
+            .await
+    }
+
+    /// [`Self::remove_users_from_group`] stamping the group with `updated_at`
+    /// instead of the local clock; a group delete (no members) leaves no
+    /// record and returns the stamp unchanged (backlog#2291).
+    pub async fn remove_users_from_group_at(
+        &self,
+        group: &str,
+        members: Vec<String>,
+        updated_at: OffsetDateTime,
+    ) -> Result<OffsetDateTime> {
+        if group.is_empty() {
+            return Err(Error::InvalidArgument);
+        }
+
+        let cache = self.cache.snapshot();
+        let users_cache = Arc::clone(&cache.users);
+        let groups_cache = Arc::clone(&cache.groups);
+        drop(cache);
+
+        for member in members.iter() {
+            if let Some(u) = users_cache.get(member) {
+                if u.credentials.is_temp() || u.credentials.is_service_account() {
+                    return Err(Error::IAMActionNotAllowed);
+                }
+            } else {
+                return Err(Error::NoSuchUser(member.to_string()));
+            }
+        }
+
+        let gi = if members.is_empty() {
+            // Reload from backend so we see latest members (e.g. after user was deleted elsewhere)
+            let mut m = HashMap::new();
+            self.api.load_group(group, &mut m).await?;
+            m.get(group).cloned().ok_or_else(|| Error::NoSuchGroup(group.to_string()))?
+        } else {
+            groups_cache
+                .get(group)
+                .cloned()
+                .ok_or_else(|| Error::NoSuchGroup(group.to_string()))?
+        };
+
+        if members.is_empty() && !gi.members.is_empty() {
+            return Err(Error::GroupNotEmpty);
+        }
+
+        if members.is_empty() {
+            if let Err(err) = self.api.delete_mapped_policy(group, UserType::Reg, true).await
+                && !is_err_no_such_policy(&err)
+            {
+                return Err(err);
+            }
+
+            if let Err(err) = self.api.delete_group_info(group).await
+                && !is_err_no_such_group(&err)
+            {
+                return Err(err);
+            }
+
+            self.cache.with_write_lock(|cache| {
+                let now = OffsetDateTime::now_utc();
+                self.remove_group_from_memberships_map_unlocked(cache, group, now);
+                cache.delete_group(group, now);
+                cache.delete_group_policy(group, now);
+            });
+
+            return Ok(updated_at);
+        }
+
+        self.remove_members_from_group_at(group, members, false, updated_at).await
+    }
+
+    fn remove_group_from_memberships_map_unlocked(&self, cache: &mut LockedCache, group: &str, now: OffsetDateTime) {
+        let user_group_memberships = Arc::clone(&cache.state().user_group_memberships);
+        for (k, v) in user_group_memberships.iter() {
+            if v.contains(group) {
+                let mut m = v.clone();
+                m.remove(group);
+                cache.add_or_update_user_group_membership(k, &m, now);
+            }
+        }
+    }
+
+    fn update_group_memberships_map_unlocked(&self, cache: &mut LockedCache, group: &str, gi: &GroupInfo, now: OffsetDateTime) {
+        let user_group_memberships = Arc::clone(&cache.state().user_group_memberships);
+        for member in gi.members.iter() {
+            let mut m = user_group_memberships.get(member).cloned().unwrap_or_default();
+            m.insert(group.to_string());
+            cache.add_or_update_user_group_membership(member, &m, now);
+        }
+    }
+
+    fn remove_user_from_cached_groups(&self, cache: &mut LockedCache, user: &str, now: OffsetDateTime) {
+        let member_of = cache.state().user_group_memberships.get(user).cloned().unwrap_or_default();
+        for group in member_of.iter() {
+            if let Some(group_info) = cache.state().groups.get(group).cloned() {
+                let mut group_info = group_info;
+                group_info.members.retain(|member| member != user);
+                cache.add_or_update_group(group, &group_info, now);
+            }
+        }
+        cache.delete_user_group_membership(user, now);
+    }
+
+    pub async fn group_notification_handler(&self, group: &str) -> Result<()> {
+        let mut m = HashMap::new();
+        if let Err(err) = self.api.load_group_no_lock(group, &mut m).await {
+            if !is_err_no_such_group(&err) {
+                return Err(err);
+            }
+
+            self.cache.with_write_lock(|cache| {
+                let now = OffsetDateTime::now_utc();
+                self.remove_group_from_memberships_map_unlocked(cache, group, now);
+                cache.delete_group(group, now);
+                cache.delete_group_policy(group, now);
+            });
+
+            return Ok(());
+        }
+
+        let gi = m[group].clone();
+
+        self.cache.with_write_lock(|cache| {
+            let now = OffsetDateTime::now_utc();
+            cache.add_or_update_group(group, &gi, now);
+            self.remove_group_from_memberships_map_unlocked(cache, group, now);
+            self.update_group_memberships_map_unlocked(cache, group, &gi, now);
+        });
+
+        Ok(())
+    }
+
+    pub async fn policy_notification_handler(&self, policy: &str) -> Result<()> {
+        let mut m = HashMap::new();
+        if let Err(err) = self.api.load_policy_doc_no_lock(policy, &mut m).await {
+            if !is_err_no_such_policy(&err) {
+                return Err(err);
+            }
+
+            self.cache.with_write_lock(|cache| {
+                let now = OffsetDateTime::now_utc();
+                cache.delete_policy_doc(policy, now);
+
+                let user_policy_cache = Arc::clone(&cache.state().user_policies);
+                let users_cache = Arc::clone(&cache.state().users);
+                for (k, v) in user_policy_cache.iter() {
+                    let mut set = v.policy_set();
+                    if set.contains(policy) {
+                        if !users_cache.contains_key(k) {
+                            cache.delete_user_policy(k, now);
+                            continue;
+                        }
+
+                        set.remove(policy);
+
+                        let mp = MappedPolicy::new(&set.iter().cloned().collect::<Vec<_>>().join(","));
+
+                        cache.add_or_update_user_policy(k, &mp, now);
+                    }
+                }
+
+                let group_policy_cache = Arc::clone(&cache.state().group_policies);
+                for (k, v) in group_policy_cache.iter() {
+                    let mut set = v.policy_set();
+                    if set.contains(policy) {
+                        set.remove(policy);
+
+                        let mp = MappedPolicy::new(&set.iter().cloned().collect::<Vec<_>>().join(","));
+                        cache.add_or_update_group_policy(k, &mp, now);
+                    }
+                }
+            });
+
+            return Ok(());
+        }
+
+        self.cache.with_write_lock(|cache| {
+            cache.add_or_update_policy_doc(policy, &m[policy], OffsetDateTime::now_utc());
+        });
+
+        Ok(())
+    }
+
+    pub async fn policy_mapping_notification_handler(&self, name: &str, user_type: UserType, is_group: bool) -> Result<()> {
+        let mut m = HashMap::new();
+        if let Err(err) = self.api.load_mapped_policy_no_lock(name, user_type, is_group, &mut m).await {
+            if !is_err_no_such_policy(&err) {
+                return Err(err);
+            }
+
+            self.cache.with_write_lock(|cache| {
+                let now = OffsetDateTime::now_utc();
+                if is_group {
+                    cache.delete_group_policy(name, now);
+                } else if user_type == UserType::Sts {
+                    cache.delete_sts_policy(name, now);
+                } else {
+                    cache.delete_user_policy(name, now);
+                }
+            });
+
+            return Ok(());
+        }
+
+        let mp = m[name].clone();
+
+        self.cache.with_write_lock(|cache| {
+            let now = OffsetDateTime::now_utc();
+            if is_group {
+                cache.add_or_update_group_policy(name, &mp, now);
+            } else if user_type == UserType::Sts {
+                cache.add_or_update_sts_policy(name, &mp, now);
+            } else {
+                cache.add_or_update_user_policy(name, &mp, now);
+            }
+        });
+
+        Ok(())
+    }
+    pub async fn user_notification_handler(&self, name: &str, user_type: UserType) -> Result<()> {
+        let sts_mutation_lock = (user_type == UserType::Sts).then(|| self.cache.sts_account_mutation_lock(name));
+        let _sts_mutation_guard = match &sts_mutation_lock {
+            Some(lock) => Some(lock.lock().await),
+            None => None,
+        };
+        let _service_account_guard = if user_type == UserType::Svc {
+            Some(self.cache.service_account_mutation_lock().lock().await)
+        } else {
+            None
+        };
+        let mut m = HashMap::new();
+        if let Err(err) = self.api.load_user_no_lock(name, user_type, &mut m).await {
+            if !is_err_no_such_user(&err) {
+                return Err(err);
+            }
+
+            let mut service_accounts_to_delete = Vec::new();
+            let mut temp_accounts_to_delete = HashSet::new();
+            if user_type == UserType::Reg {
+                let cache = self.cache.snapshot();
+                for v in cache.users.values() {
+                    let u = &v.credentials;
+                    if u.parent_user.as_str() == name && u.is_service_account() {
+                        service_accounts_to_delete.push(u.access_key.clone());
+                    }
+                }
+
+                for u in cache.sts_accounts.values() {
+                    let u = &u.credentials;
+                    if u.parent_user.as_str() == name {
+                        temp_accounts_to_delete.insert(u.access_key.clone());
+                    }
+                }
+                drop(cache);
+
+                for access_key in service_accounts_to_delete.iter() {
+                    let _ = self.api.delete_user_identity(access_key, UserType::Svc).await;
+                }
+                for access_key in temp_accounts_to_delete.iter() {
+                    let _ = self.api.delete_user_identity(access_key, UserType::Sts).await;
+                }
+            }
+
+            self.cache.with_write_lock(|cache| {
+                let now = OffsetDateTime::now_utc();
+                match user_type {
+                    UserType::Sts => cache.delete_sts_account(name, now),
+                    UserType::Reg | UserType::Svc => cache.delete_user(name, now),
+                    UserType::None => {}
+                }
+                if user_type != UserType::Sts {
+                    self.remove_user_from_cached_groups(cache, name, now);
+                }
+                if user_type == UserType::Reg {
+                    for access_key in service_accounts_to_delete.iter() {
+                        cache.delete_user(access_key, now);
+                    }
+                    for access_key in temp_accounts_to_delete.iter() {
+                        cache.delete_sts_account(access_key, now);
+                        cache.delete_user(access_key, now);
+                    }
+                }
+                if user_type != UserType::Sts {
+                    cache.delete_user_policy(name, now);
+                }
+            });
+
+            return Ok(());
+        }
+
+        let u = m[name].clone();
+        let mut user_policy_update = None;
+        let mut sts_policy_update = None;
+
+        match user_type {
+            UserType::Sts => {
+                let parent_user = u.credentials.parent_user.clone();
+                let mut policies = HashMap::new();
+                if let Err(err) = self
+                    .api
+                    .load_mapped_policy_no_lock(&parent_user, user_type, false, &mut policies)
+                    .await
+                {
+                    if !is_err_no_such_policy(&err) {
+                        return Err(err);
+                    }
+                } else if let Some(policy) = policies.get(&parent_user).cloned() {
+                    sts_policy_update = Some((parent_user, policy));
+                }
+            }
+            UserType::Reg => {
+                let mut policies = HashMap::new();
+                if let Err(err) = self
+                    .api
+                    .load_mapped_policy_no_lock(name, user_type, false, &mut policies)
+                    .await
+                {
+                    if !is_err_no_such_policy(&err) {
+                        return Err(err);
+                    }
+                } else if let Some(policy) = policies.get(name).cloned() {
+                    user_policy_update = Some((name.to_string(), policy));
+                }
+            }
+
+            UserType::Svc => {
+                let parent_user = u.credentials.parent_user.clone();
+                let cache = self.cache.snapshot();
+                let parent_user_type = if cache.users.contains_key(&parent_user) {
+                    UserType::Reg
+                } else {
+                    UserType::Sts
+                };
+                drop(cache);
+
+                if parent_user_type == UserType::Reg {
+                    let mut policies = HashMap::new();
+                    if let Err(err) = self
+                        .api
+                        .load_mapped_policy_no_lock(&parent_user, UserType::Reg, false, &mut policies)
+                        .await
+                    {
+                        if !is_err_no_such_policy(&err) {
+                            return Err(err);
+                        }
+                    } else if let Some(policy) = policies.get(&parent_user).cloned() {
+                        user_policy_update = Some((parent_user, policy));
+                    }
+                } else {
+                    let mut policies = HashMap::new();
+                    if let Err(err) = self
+                        .api
+                        .load_mapped_policy_no_lock(&parent_user, UserType::Sts, false, &mut policies)
+                        .await
+                    {
+                        if !is_err_no_such_policy(&err) {
+                            return Err(err);
+                        }
+                    } else if let Some(policy) = policies.get(&parent_user).cloned() {
+                        sts_policy_update = Some((parent_user, policy));
+                    }
+                }
+            }
+            UserType::None => {}
+        }
+
+        self.cache.with_write_lock(|cache| {
+            let now = OffsetDateTime::now_utc();
+            match user_type {
+                UserType::Sts => {
+                    cache.add_or_update_sts_account(name, &u, now);
+                }
+                UserType::Reg | UserType::Svc => {
+                    cache.add_or_update_user(name, &u, now);
+                }
+                UserType::None => {}
+            }
+
+            if let Some((name, policy)) = &user_policy_update {
+                cache.add_or_update_user_policy(name, policy, now);
+            }
+            if let Some((name, policy)) = &sts_policy_update {
+                cache.add_or_update_sts_policy(name, policy, now);
+            }
+        });
+
+        Ok(())
+    }
+}
+
+/// The stored `status` flag for a service-account status given on the admin
+/// or replication wire: the madmin `enabled` / `disabled` words and the stored
+/// `on` / `off` flags are both accepted; anything else disables the account.
+pub(crate) fn account_status_flag(status: &str) -> &'static str {
+    match status {
+        val if val == AccountStatus::Enabled.as_ref() => auth::ACCOUNT_ON,
+        val if val == AccountStatus::Disabled.as_ref() => auth::ACCOUNT_OFF,
+        auth::ACCOUNT_ON => auth::ACCOUNT_ON,
+        auth::ACCOUNT_OFF => auth::ACCOUNT_OFF,
+        _ => auth::ACCOUNT_OFF,
+    }
+}
+
+pub fn get_default_policies() -> HashMap<String, PolicyDoc> {
+    let default_policies = &DEFAULT_POLICIES;
+    default_policies
+        .iter()
+        .map(|(n, p)| {
+            (
+                n.to_string(),
+                PolicyDoc {
+                    version: 1,
+                    policy: p.clone(),
+                    ..Default::default()
+                },
+            )
+        })
+        .collect()
+}
+
+/// Backward-compatible misspelling retained until the next breaking release.
+#[deprecated(
+    since = "1.0.0",
+    note = "use get_default_policies instead; this alias will be removed in the next breaking release"
+)]
+pub fn get_default_policyes() -> HashMap<String, PolicyDoc> {
+    get_default_policies()
+}
+
+fn set_default_canned_policies(policies: &mut HashMap<String, PolicyDoc>) {
+    let default_policies = &DEFAULT_POLICIES;
+    for (k, v) in default_policies.iter() {
+        let name = k.to_string();
+        policies.entry(name).or_insert_with(|| PolicyDoc::default_policy(v.clone()));
+    }
+}
+
+pub fn get_token_signing_key() -> Option<String> {
+    crate::root_credentials::token_signing_key()
+}
+
+pub fn extract_jwt_claims(u: &UserIdentity) -> Result<HashMap<String, Value>> {
+    let Some(sys_key) = get_token_signing_key() else {
+        return Err(Error::other("global active sk not init"));
+    };
+
+    let keys = vec![&sys_key, &u.credentials.secret_key];
+
+    for key in keys {
+        if let Ok(claims) = get_claims_from_token_with_secret(&u.credentials.session_token, key) {
+            return Ok(claims);
+        }
+    }
+    Err(Error::other("unable to extract claims"))
+}
+
+pub fn extract_jwt_claims_allow_missing_exp(u: &UserIdentity) -> Result<HashMap<String, Value>> {
+    let Some(sys_key) = get_token_signing_key() else {
+        return Err(Error::other("global active sk not init"));
+    };
+
+    let keys = vec![&sys_key, &u.credentials.secret_key];
+
+    for key in keys {
+        if let Ok(claims) = get_claims_from_token_with_secret_allow_missing_exp(&u.credentials.session_token, key) {
+            return Ok(claims);
+        }
+    }
+    Err(Error::other("unable to extract claims"))
+}
+
+fn filter_policies(cache: &Cache, policy_name: &str, bucket_name: &str) -> (String, Policy) {
+    let cache = cache.snapshot();
+    filter_policies_from_docs(cache.policy_docs.as_ref(), policy_name, bucket_name)
+}
+
+fn filter_policies_from_docs(policy_docs: &CacheEntity<PolicyDoc>, policy_name: &str, bucket_name: &str) -> (String, Policy) {
+    let mp = MappedPolicy::new(policy_name).to_slice();
+
+    let mut policies = Vec::new();
+    let mut to_merge = Vec::new();
+    for policy in mp {
+        if policy.is_empty() {
+            continue;
+        }
+
+        if let Some(p) = policy_docs.get(&policy)
+            && (bucket_name.is_empty() || pollster::block_on(p.policy.match_resource(bucket_name)))
+        {
+            policies.push(policy);
+            to_merge.push(p.policy.clone());
+        }
+    }
+
+    (policies.join(","), Policy::merge_policies(to_merge))
+}
+
+fn build_group_desc(name: &str, group_info: GroupInfo, mapped_policy: Option<MappedPolicy>) -> GroupDesc {
+    // A group without a mapped policy must report the group's own stored
+    // timestamp, not the wall clock: this value feeds content-addressed
+    // consumers (the site-replication repair plan hashes it), and a fresh
+    // clock on every read makes equal states hash differently.
+    let (policy, updated_at) = mapped_policy
+        .map(|policy| (policy.policies, Some(policy.update_at)))
+        .unwrap_or_else(|| (String::new(), group_info.update_at));
+
+    GroupDesc {
+        name: name.to_string(),
+        policy,
+        members: group_info.members,
+        updated_at,
+        status: group_info.status,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustfs_policy::policy::{Policy, PolicyDoc};
+    use serde_json::json;
+    use std::{
+        collections::HashMap,
+        sync::{
+            Arc, Mutex,
+            atomic::{AtomicBool, AtomicUsize, Ordering},
+        },
+    };
+    use tokio::sync::Notify;
+
+    #[test]
+    fn test_build_group_desc_without_mapping_reports_the_stored_group_timestamp() {
+        let stamp = OffsetDateTime::from_unix_timestamp(1_700_000_000).expect("valid timestamp");
+        let group_info = GroupInfo {
+            version: 1,
+            status: "enabled".to_string(),
+            members: vec!["alice".to_string()],
+            update_at: Some(stamp),
+        };
+
+        let first = build_group_desc("team", group_info.clone(), None);
+        let second = build_group_desc("team", group_info, None);
+
+        assert_eq!(first.updated_at, Some(stamp));
+        assert_eq!(first.updated_at, second.updated_at);
+        assert!(first.policy.is_empty());
+    }
+
+    #[test]
+    fn test_build_group_desc_with_mapping_reports_the_mapping_timestamp() {
+        let group_stamp = OffsetDateTime::from_unix_timestamp(1_700_000_000).expect("valid timestamp");
+        let mapping_stamp = OffsetDateTime::from_unix_timestamp(1_700_000_500).expect("valid timestamp");
+        let group_info = GroupInfo {
+            version: 1,
+            status: "enabled".to_string(),
+            members: vec![],
+            update_at: Some(group_stamp),
+        };
+        let mapping = MappedPolicy {
+            version: 1,
+            policies: "readwrite".to_string(),
+            update_at: mapping_stamp,
+        };
+
+        let desc = build_group_desc("team", group_info, Some(mapping));
+
+        assert_eq!(desc.updated_at, Some(mapping_stamp));
+        assert_eq!(desc.policy, "readwrite");
+    }
+
+    #[derive(Clone)]
+    struct FailingInitialLoadStore;
+
+    #[async_trait::async_trait]
+    impl Store for FailingInitialLoadStore {
+        fn has_watcher(&self) -> bool {
+            false
+        }
+
+        async fn save_iam_config<Item: Serialize + Send>(&self, _item: Item, _path: impl AsRef<str> + Send) -> Result<()> {
+            Ok(())
+        }
+
+        async fn load_iam_config<Item: serde::de::DeserializeOwned>(&self, _path: impl AsRef<str> + Send) -> Result<Item> {
+            Err(Error::ConfigNotFound)
+        }
+
+        async fn delete_iam_config(&self, _path: impl AsRef<str> + Send) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn save_user_identity(
+            &self,
+            _name: &str,
+            _user_type: UserType,
+            _item: UserIdentity,
+            _ttl: Option<usize>,
+        ) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn delete_user_identity(&self, _name: &str, _user_type: UserType) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn load_user_identity(&self, _name: &str, _user_type: UserType) -> Result<UserIdentity> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn load_user(&self, _name: &str, _user_type: UserType, _m: &mut HashMap<String, UserIdentity>) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn load_users(&self, _user_type: UserType, _m: &mut HashMap<String, UserIdentity>) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn load_secret_key(&self, _name: &str, _user_type: UserType) -> Result<String> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn save_group_info(&self, _name: &str, _item: GroupInfo) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn delete_group_info(&self, _name: &str) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn load_group(&self, _name: &str, _m: &mut HashMap<String, GroupInfo>) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn load_groups(&self, _m: &mut HashMap<String, GroupInfo>) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn save_policy_doc(&self, _name: &str, _item: PolicyDoc) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn delete_policy_doc(&self, _name: &str) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn load_policy(&self, _name: &str) -> Result<PolicyDoc> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn load_policy_doc(&self, _name: &str, _m: &mut HashMap<String, PolicyDoc>) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn load_policy_docs(&self, _m: &mut HashMap<String, PolicyDoc>) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn save_mapped_policy(
+            &self,
+            _name: &str,
+            _user_type: UserType,
+            _is_group: bool,
+            _item: MappedPolicy,
+            _ttl: Option<usize>,
+        ) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn delete_mapped_policy(&self, _name: &str, _user_type: UserType, _is_group: bool) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn load_mapped_policy(
+            &self,
+            _name: &str,
+            _user_type: UserType,
+            _is_group: bool,
+            _m: &mut HashMap<String, MappedPolicy>,
+        ) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn load_mapped_policies(
+            &self,
+            _user_type: UserType,
+            _is_group: bool,
+            _m: &mut HashMap<String, MappedPolicy>,
+        ) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn load_all(&self, _cache: &Cache) -> Result<()> {
+            Err(Error::Io(std::io::Error::other("initial load failed")))
+        }
+    }
+
+    #[derive(Clone)]
+    struct DelayedTempUserVisibilityStore {
+        saved_user: Arc<Mutex<Option<UserIdentity>>>,
+        load_attempts: Arc<AtomicUsize>,
+        visible_after_attempt: usize,
+        block_account_save: Arc<AtomicBool>,
+        account_save_started: Arc<Notify>,
+        release_account_save: Arc<Notify>,
+        block_account_load: Arc<AtomicBool>,
+        account_load_started: Arc<Notify>,
+        release_account_load: Arc<Notify>,
+    }
+
+    impl DelayedTempUserVisibilityStore {
+        fn new(visible_after_attempt: usize) -> Self {
+            Self {
+                saved_user: Arc::new(Mutex::new(None)),
+                load_attempts: Arc::new(AtomicUsize::new(0)),
+                visible_after_attempt,
+                block_account_save: Arc::new(AtomicBool::new(false)),
+                account_save_started: Arc::new(Notify::new()),
+                release_account_save: Arc::new(Notify::new()),
+                block_account_load: Arc::new(AtomicBool::new(false)),
+                account_load_started: Arc::new(Notify::new()),
+                release_account_load: Arc::new(Notify::new()),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl Store for DelayedTempUserVisibilityStore {
+        fn has_watcher(&self) -> bool {
+            false
+        }
+
+        async fn save_iam_config<Item: Serialize + Send>(&self, _item: Item, _path: impl AsRef<str> + Send) -> Result<()> {
+            Ok(())
+        }
+
+        async fn load_iam_config<Item: serde::de::DeserializeOwned>(&self, _path: impl AsRef<str> + Send) -> Result<Item> {
+            Err(Error::ConfigNotFound)
+        }
+
+        async fn delete_iam_config(&self, _path: impl AsRef<str> + Send) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn save_user_identity(
+            &self,
+            _name: &str,
+            user_type: UserType,
+            item: UserIdentity,
+            _ttl: Option<usize>,
+        ) -> Result<()> {
+            if matches!(user_type, UserType::Svc | UserType::Sts) && self.block_account_save.load(Ordering::SeqCst) {
+                self.account_save_started.notify_one();
+                self.release_account_save.notified().await;
+            }
+            *self.saved_user.lock().expect("saved_user mutex poisoned") = Some(item);
+            Ok(())
+        }
+
+        async fn delete_user_identity(&self, _name: &str, _user_type: UserType) -> Result<()> {
+            *self.saved_user.lock().expect("saved_user mutex poisoned") = None;
+            Ok(())
+        }
+
+        async fn load_user_identity(&self, name: &str, _user_type: UserType) -> Result<UserIdentity> {
+            let attempt = self.load_attempts.fetch_add(1, Ordering::SeqCst) + 1;
+            if attempt <= self.visible_after_attempt {
+                return Err(Error::NoSuchUser(name.to_string()));
+            }
+
+            self.saved_user
+                .lock()
+                .expect("saved_user mutex poisoned")
+                .clone()
+                .ok_or_else(|| Error::NoSuchUser(name.to_string()))
+        }
+
+        async fn load_user(&self, name: &str, user_type: UserType, m: &mut HashMap<String, UserIdentity>) -> Result<()> {
+            let loaded = self
+                .saved_user
+                .lock()
+                .expect("saved_user mutex poisoned")
+                .clone()
+                .ok_or_else(|| Error::NoSuchUser(name.to_string()))?;
+            let matches_user_type = match user_type {
+                UserType::Sts => loaded.credentials.is_temp(),
+                UserType::Svc => loaded.credentials.is_service_account(),
+                UserType::Reg => !loaded.credentials.is_temp() && !loaded.credentials.is_service_account(),
+                UserType::None => false,
+            };
+            if !matches_user_type {
+                return Err(Error::NoSuchUser(name.to_string()));
+            }
+            if self.block_account_load.load(Ordering::SeqCst) {
+                self.account_load_started.notify_one();
+                self.release_account_load.notified().await;
+            }
+            m.insert(name.to_string(), loaded);
+            Ok(())
+        }
+
+        async fn load_users(&self, _user_type: UserType, _m: &mut HashMap<String, UserIdentity>) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn load_secret_key(&self, _name: &str, _user_type: UserType) -> Result<String> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn save_group_info(&self, _name: &str, _item: GroupInfo) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn delete_group_info(&self, _name: &str) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn load_group(&self, _name: &str, _m: &mut HashMap<String, GroupInfo>) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn load_groups(&self, _m: &mut HashMap<String, GroupInfo>) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn save_policy_doc(&self, _name: &str, _item: PolicyDoc) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn delete_policy_doc(&self, _name: &str) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn load_policy(&self, _name: &str) -> Result<PolicyDoc> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn load_policy_doc(&self, _name: &str, _m: &mut HashMap<String, PolicyDoc>) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn load_policy_docs(&self, _m: &mut HashMap<String, PolicyDoc>) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn save_mapped_policy(
+            &self,
+            _name: &str,
+            _user_type: UserType,
+            _is_group: bool,
+            _item: MappedPolicy,
+            _ttl: Option<usize>,
+        ) -> Result<()> {
+            Ok(())
+        }
+
+        async fn delete_mapped_policy(&self, _name: &str, _user_type: UserType, _is_group: bool) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn load_mapped_policy(
+            &self,
+            _name: &str,
+            _user_type: UserType,
+            _is_group: bool,
+            _m: &mut HashMap<String, MappedPolicy>,
+        ) -> Result<()> {
+            Err(Error::NoSuchPolicy)
+        }
+
+        async fn load_mapped_policies(
+            &self,
+            _user_type: UserType,
+            _is_group: bool,
+            _m: &mut HashMap<String, MappedPolicy>,
+        ) -> Result<()> {
+            Err(Error::InvalidArgument)
+        }
+
+        async fn load_all(&self, _cache: &Cache) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    fn build_test_temp_credentials() -> Credentials {
+        Credentials {
+            access_key: "STSACCESS123".to_string(),
+            secret_key: "test-secret-key".to_string(),
+            session_token: "test-session-token".to_string(),
+            expiration: Some(OffsetDateTime::now_utc() + time::Duration::hours(1)),
+            status: STATUS_ENABLED.to_string(),
+            parent_user: "parent-user".to_string(),
+            groups: Some(vec!["console-admins".to_string()]),
+            claims: None,
+            name: None,
+            description: None,
+        }
+    }
+
+    fn build_test_iam_cache<T: Store>(api: T) -> IamCache<T> {
+        let (sender, _receiver) = mpsc::channel::<i64>(1);
+        IamCache {
+            cache: Cache::default(),
+            api,
+            state: Arc::new(AtomicU8::new(IamState::Ready as u8)),
+            loading: Arc::new(AtomicBool::new(false)),
+            roles: HashMap::new(),
+            send_chan: sender,
+            last_timestamp: AtomicI64::new(0),
+            sync_failures: AtomicU64::new(0),
+            sync_successes: AtomicU64::new(0),
+            last_sync_duration_millis: AtomicU64::new(0),
+        }
+    }
+
+    #[tokio::test]
+    async fn sts_policy_lookup_ignores_colliding_regular_user_mapping() {
+        let iam = build_test_iam_cache(FailingInitialLoadStore);
+        let parent = "TwyekekG2eMes0qk9Tgh7KXEitwGi1z2W1f2KccrXGA";
+        let user = UserIdentity::new(Credentials {
+            access_key: parent.to_string(),
+            secret_key: "regular-user-secret".to_string(),
+            status: STATUS_ENABLED.to_string(),
+            ..Default::default()
+        });
+        let now = OffsetDateTime::now_utc();
+        iam.cache.add_or_update_user(parent, &user, now);
+        iam.cache
+            .add_or_update_user_policy(parent, &MappedPolicy::new("regular-policy"), now);
+        iam.cache
+            .add_or_update_sts_policy(parent, &MappedPolicy::new("oidc-policy"), now);
+
+        assert_eq!(
+            iam.policy_db_get(parent, &None).await.expect("regular lookup should succeed"),
+            vec!["regular-policy"]
+        );
+        assert_eq!(
+            iam.sts_policy_db_get(parent, &None).await.expect("STS lookup should succeed"),
+            vec!["oidc-policy"]
+        );
+    }
+
+    #[tokio::test]
+    async fn set_temp_user_retries_until_sts_identity_becomes_visible() {
+        let store = DelayedTempUserVisibilityStore::new(2);
+        let cache = build_test_iam_cache(store.clone());
+        let cred = build_test_temp_credentials();
+
+        let updated_at = cache
+            .set_temp_user(&cred.access_key, &cred, None)
+            .await
+            .expect("temp user should succeed once persistence becomes visible");
+
+        assert!(updated_at <= OffsetDateTime::now_utc());
+        assert_eq!(store.load_attempts.load(Ordering::SeqCst), 3);
+
+        let snapshot = cache.cache.snapshot();
+        let sts_identity = snapshot
+            .sts_accounts
+            .get(&cred.access_key)
+            .expect("verified temp user should be cached");
+        assert_eq!(sts_identity.credentials.parent_user, cred.parent_user);
+    }
+
+    #[tokio::test]
+    async fn set_temp_user_fails_when_sts_identity_never_becomes_visible() {
+        let store = DelayedTempUserVisibilityStore::new(TEMP_USER_PERSISTENCE_VERIFY_MAX_RETRIES + 1);
+        let cache = build_test_iam_cache(store.clone());
+        let cred = build_test_temp_credentials();
+
+        let err = cache
+            .set_temp_user(&cred.access_key, &cred, None)
+            .await
+            .expect_err("temp user should fail when persistence never becomes visible");
+
+        assert!(matches!(err, Error::NoSuchUser(user) if user == cred.access_key));
+        assert_eq!(store.load_attempts.load(Ordering::SeqCst), TEMP_USER_PERSISTENCE_VERIFY_MAX_RETRIES + 1);
+
+        let snapshot = cache.cache.snapshot();
+        assert!(
+            !snapshot.sts_accounts.contains_key(&cred.access_key),
+            "cache must not publish a temp user that was not durably visible"
+        );
+    }
+
+    #[tokio::test]
+    async fn service_account_notification_cannot_overwrite_concurrent_update() {
+        let _ = rustfs_credentials::init_global_action_credentials(
+            Some("TESTROOTACCESSKEY".to_string()),
+            Some("TESTROOTSECRET123".to_string()),
+        );
+        let store = DelayedTempUserVisibilityStore::new(0);
+        let cache = Arc::new(build_test_iam_cache(store.clone()));
+        let access_key = "SERIALIZEDSERVICE01";
+        let secret_key = "serializedServiceSecret123";
+        let metadata = HashMap::from([
+            ("parent".to_string(), Value::String("parent-user".to_string())),
+            (iam_policy_claim_name_sa(), Value::String(INHERITED_POLICY_TYPE.to_string())),
+        ]);
+        let credentials = Credentials {
+            access_key: access_key.to_string(),
+            secret_key: secret_key.to_string(),
+            session_token: jwt_sign(&metadata, secret_key).expect("sign service account token"),
+            status: auth::ACCOUNT_ON.to_string(),
+            parent_user: "parent-user".to_string(),
+            claims: Some(metadata),
+            description: Some("old".to_string()),
+            ..Default::default()
+        };
+        cache.add_service_account(credentials).await.expect("seed service account");
+
+        store.block_account_load.store(true, Ordering::SeqCst);
+        let notification = {
+            let cache = Arc::clone(&cache);
+            tokio::spawn(async move { cache.user_notification_handler(access_key, UserType::Svc).await })
+        };
+        store.account_load_started.notified().await;
+
+        let update = {
+            let cache = Arc::clone(&cache);
+            tokio::spawn(async move {
+                cache
+                    .update_service_account(
+                        access_key,
+                        UpdateServiceAccountOpts {
+                            session_policy: None,
+                            secret_key: None,
+                            name: None,
+                            description: Some("new".to_string()),
+                            expiration: None,
+                            status: None,
+                            parent_user: None,
+                            allow_site_replicator_account: false,
+                        },
+                    )
+                    .await
+            })
+        };
+        tokio::task::yield_now().await;
+        assert!(!update.is_finished(), "update must wait for the in-flight cache refresh");
+
+        store.release_account_load.notify_one();
+        notification.await.expect("notification task").expect("notification refresh");
+        update.await.expect("update task").expect("service account update");
+
+        let snapshot = cache.cache.snapshot();
+        assert_eq!(
+            snapshot
+                .users
+                .get(access_key)
+                .and_then(|identity| identity.credentials.description.as_deref()),
+            Some("new")
+        );
+    }
+
+    #[tokio::test]
+    async fn concurrent_service_account_create_cannot_overwrite_first_writer() {
+        let store = DelayedTempUserVisibilityStore::new(0);
+        store.block_account_save.store(true, Ordering::SeqCst);
+        let cache = Arc::new(build_test_iam_cache(store.clone()));
+        let access_key = "SERIALIZEDSERVICE00";
+        let credentials = |secret_key: &str| Credentials {
+            access_key: access_key.to_string(),
+            secret_key: secret_key.to_string(),
+            status: auth::ACCOUNT_ON.to_string(),
+            parent_user: "parent-user".to_string(),
+            ..Default::default()
+        };
+
+        let first = {
+            let cache = Arc::clone(&cache);
+            tokio::spawn(async move { cache.add_service_account(credentials("firstServiceSecret123")).await })
+        };
+        store.account_save_started.notified().await;
+
+        let second = {
+            let cache = Arc::clone(&cache);
+            tokio::spawn(async move { cache.add_service_account(credentials("secondServiceSecret234")).await })
+        };
+        tokio::task::yield_now().await;
+        assert!(!second.is_finished(), "second create must wait for the first writer");
+
+        store.block_account_save.store(false, Ordering::SeqCst);
+        store.release_account_save.notify_waiters();
+        first.await.expect("first create task").expect("first create");
+        let err = second
+            .await
+            .expect("second create task")
+            .expect_err("duplicate create must fail");
+
+        assert_eq!(err, Error::AccessKeyAlreadyExists);
+        assert_eq!(
+            cache
+                .cache
+                .snapshot()
+                .users
+                .get(access_key)
+                .map(|identity| identity.credentials.secret_key.as_str()),
+            Some("firstServiceSecret123")
+        );
+    }
+
+    #[tokio::test]
+    async fn service_account_notification_cannot_restore_concurrent_delete() {
+        let _ = rustfs_credentials::init_global_action_credentials(
+            Some("TESTROOTACCESSKEY".to_string()),
+            Some("TESTROOTSECRET123".to_string()),
+        );
+        let store = DelayedTempUserVisibilityStore::new(0);
+        let cache = Arc::new(build_test_iam_cache(store.clone()));
+        let access_key = "SERIALIZEDSERVICE02";
+        let secret_key = "serializedServiceSecret234";
+        let metadata = HashMap::from([
+            ("parent".to_string(), Value::String("parent-user".to_string())),
+            (iam_policy_claim_name_sa(), Value::String(INHERITED_POLICY_TYPE.to_string())),
+        ]);
+        let credentials = Credentials {
+            access_key: access_key.to_string(),
+            secret_key: secret_key.to_string(),
+            session_token: jwt_sign(&metadata, secret_key).expect("sign service account token"),
+            status: auth::ACCOUNT_ON.to_string(),
+            parent_user: "parent-user".to_string(),
+            claims: Some(metadata),
+            ..Default::default()
+        };
+        cache.add_service_account(credentials).await.expect("seed service account");
+
+        store.block_account_load.store(true, Ordering::SeqCst);
+        let notification = {
+            let cache = Arc::clone(&cache);
+            tokio::spawn(async move { cache.user_notification_handler(access_key, UserType::Svc).await })
+        };
+        store.account_load_started.notified().await;
+
+        let delete = {
+            let cache = Arc::clone(&cache);
+            tokio::spawn(async move { cache.delete_service_account_with_revision(access_key).await })
+        };
+        tokio::task::yield_now().await;
+        assert!(!delete.is_finished(), "delete must wait for the in-flight cache refresh");
+
+        store.release_account_load.notify_one();
+        notification.await.expect("notification task").expect("notification refresh");
+        delete.await.expect("delete task").expect("service account delete");
+
+        assert!(!cache.cache.snapshot().users.contains_key(access_key));
+        assert!(store.saved_user.lock().expect("saved_user mutex poisoned").is_none());
+    }
+
+    #[tokio::test]
+    async fn sts_notification_cannot_restore_concurrent_delete() {
+        let store = DelayedTempUserVisibilityStore::new(0);
+        let cache = Arc::new(build_test_iam_cache(store.clone()));
+        let credentials = build_test_temp_credentials();
+        let access_key = credentials.access_key.clone();
+        cache
+            .set_temp_user(&access_key, &credentials, None)
+            .await
+            .expect("seed temporary account");
+
+        store.block_account_load.store(true, Ordering::SeqCst);
+        let notification = {
+            let cache = Arc::clone(&cache);
+            let access_key = access_key.clone();
+            tokio::spawn(async move { cache.user_notification_handler(&access_key, UserType::Sts).await })
+        };
+        store.account_load_started.notified().await;
+
+        let delete_started = Arc::new(Notify::new());
+        let delete = {
+            let cache = Arc::clone(&cache);
+            let access_key = access_key.clone();
+            let delete_started = Arc::clone(&delete_started);
+            tokio::spawn(async move {
+                delete_started.notify_one();
+                cache.delete_user(&access_key, UserType::Sts).await
+            })
+        };
+        delete_started.notified().await;
+        tokio::task::yield_now().await;
+        let delete_waited_for_notification = !delete.is_finished();
+
+        store.release_account_load.notify_one();
+        notification.await.expect("notification task").expect("notification refresh");
+        delete.await.expect("delete task").expect("temporary account delete");
+
+        assert!(delete_waited_for_notification, "delete must wait for the in-flight STS cache refresh");
+        assert!(!cache.cache.snapshot().sts_accounts.contains_key(&access_key));
+        assert!(store.saved_user.lock().expect("saved_user mutex poisoned").is_none());
+    }
+
+    #[tokio::test]
+    async fn sts_auth_reload_cannot_restore_concurrent_delete() {
+        let store = DelayedTempUserVisibilityStore::new(0);
+        let cache = Arc::new(build_test_iam_cache(store.clone()));
+        let credentials = build_test_temp_credentials();
+        let access_key = credentials.access_key.clone();
+        cache
+            .set_temp_user(&access_key, &credentials, None)
+            .await
+            .expect("seed temporary account");
+        cache.cache.delete_sts_account(&access_key, OffsetDateTime::now_utc());
+
+        store.block_account_load.store(true, Ordering::SeqCst);
+        let reload = {
+            let cache = Arc::clone(&cache);
+            let access_key = access_key.clone();
+            tokio::spawn(async move { cache.load_user(&access_key).await })
+        };
+        store.account_load_started.notified().await;
+
+        let delete_started = Arc::new(Notify::new());
+        let delete = {
+            let cache = Arc::clone(&cache);
+            let access_key = access_key.clone();
+            let delete_started = Arc::clone(&delete_started);
+            tokio::spawn(async move {
+                delete_started.notify_one();
+                cache.delete_user(&access_key, UserType::Sts).await
+            })
+        };
+        delete_started.notified().await;
+        tokio::task::yield_now().await;
+        let delete_waited_for_reload = !delete.is_finished();
+
+        store.release_account_load.notify_one();
+        reload.await.expect("reload task").expect("authentication cache reload");
+        delete.await.expect("delete task").expect("temporary account delete");
+
+        assert!(delete_waited_for_reload, "delete must wait for the in-flight authentication reload");
+        assert!(!cache.cache.snapshot().sts_accounts.contains_key(&access_key));
+        assert!(store.saved_user.lock().expect("saved_user mutex poisoned").is_none());
+    }
+
+    #[tokio::test]
+    async fn sts_create_cannot_restore_concurrent_delete() {
+        let store = DelayedTempUserVisibilityStore::new(0);
+        store.block_account_save.store(true, Ordering::SeqCst);
+        let cache = Arc::new(build_test_iam_cache(store.clone()));
+        let credentials = build_test_temp_credentials();
+        let access_key = credentials.access_key.clone();
+
+        let create = {
+            let cache = Arc::clone(&cache);
+            let access_key = access_key.clone();
+            tokio::spawn(async move { cache.set_temp_user(&access_key, &credentials, None).await })
+        };
+        store.account_save_started.notified().await;
+
+        let delete_started = Arc::new(Notify::new());
+        let delete = {
+            let cache = Arc::clone(&cache);
+            let access_key = access_key.clone();
+            let delete_started = Arc::clone(&delete_started);
+            tokio::spawn(async move {
+                delete_started.notify_one();
+                cache.delete_user(&access_key, UserType::Sts).await
+            })
+        };
+        delete_started.notified().await;
+        tokio::task::yield_now().await;
+        let delete_waited_for_create = !delete.is_finished();
+
+        store.block_account_save.store(false, Ordering::SeqCst);
+        store.release_account_save.notify_one();
+        create.await.expect("create task").expect("temporary account create");
+        delete.await.expect("delete task").expect("temporary account delete");
+
+        assert!(delete_waited_for_create, "delete must wait for the in-flight STS create");
+        assert!(!cache.cache.snapshot().sts_accounts.contains_key(&access_key));
+        assert!(store.saved_user.lock().expect("saved_user mutex poisoned").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_init_keeps_error_state_when_initial_load_fails() {
+        let (sender, receiver) = mpsc::channel::<i64>(1);
+        let sys = Arc::new(IamCache {
+            api: FailingInitialLoadStore,
+            cache: Cache::default(),
+            state: Arc::new(AtomicU8::new(IamState::Uninitialized as u8)),
+            loading: Arc::new(AtomicBool::new(false)),
+            send_chan: sender,
+            roles: HashMap::new(),
+            last_timestamp: AtomicI64::new(0),
+            sync_failures: AtomicU64::new(0),
+            sync_successes: AtomicU64::new(0),
+            last_sync_duration_millis: AtomicU64::new(0),
+        });
+
+        let result = Arc::clone(&sys).init(receiver).await;
+
+        assert!(matches!(result, Err(Error::Io(_))));
+        assert!(!sys.is_ready());
+        assert_eq!(sys.state.load(Ordering::SeqCst), IamState::Error as u8);
+        assert_eq!(sys.sync_failures.load(Ordering::Relaxed), 3);
+    }
+
+    #[test]
+    fn test_get_iam_format_file_path() {
+        let path = get_iam_format_file_path();
+        assert!(path.contains(IAM_FORMAT_FILE));
+        assert!(path.contains(&*IAM_CONFIG_PREFIX));
+        assert_eq!(path, format!("{}/{}", *IAM_CONFIG_PREFIX, IAM_FORMAT_FILE));
+    }
+
+    #[test]
+    fn test_get_default_policies() {
+        let policies = get_default_policies();
+
+        // Should contain some default policies
+        assert!(!policies.is_empty());
+
+        // Check that all values are PolicyDoc
+        for (name, policy_doc) in &policies {
+            assert!(!name.is_empty());
+            // PolicyDoc.version is i64, not String
+            assert!(policy_doc.version >= 0);
+        }
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn deprecated_get_default_policyes_matches_current_api() {
+        assert_eq!(get_default_policyes().len(), get_default_policies().len());
+    }
+
+    #[test]
+    fn test_get_token_signing_key() {
+        // This function returns the global action credential's secret key
+        // In test environment, it might be None
+        let key = get_token_signing_key();
+        // Just verify it doesn't panic and returns an Option
+        if let Some(k) = key {
+            assert!(!k.is_empty());
+        } // This is acceptable in test environment when None
+    }
+
+    #[test]
+    fn test_extract_jwt_claims_basic() {
+        let user_identity = UserIdentity {
+            version: 1,
+            credentials: Credentials {
+                access_key: "test-access-key".to_string(),
+                secret_key: "test-secret-key".to_string(),
+                session_token: "invalid-token".to_string(), // Invalid token for testing error handling
+                expiration: None,
+                status: "enabled".to_string(),
+                parent_user: "".to_string(),
+                groups: None,
+                claims: Some({
+                    let mut claims = HashMap::new();
+                    claims.insert("sub".to_string(), json!("test-user"));
+                    claims.insert("aud".to_string(), json!("test-audience"));
+                    claims
+                }),
+                name: None,
+                description: None,
+            },
+            update_at: Some(OffsetDateTime::now_utc()),
+        };
+
+        let result = extract_jwt_claims(&user_identity);
+        // In test environment without proper JWT setup, this should fail
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_jwt_claims_no_claims() {
+        let user_identity = UserIdentity {
+            version: 1,
+            credentials: Credentials {
+                access_key: "test-access-key".to_string(),
+                secret_key: "test-secret-key".to_string(),
+                session_token: "".to_string(), // Empty token
+                expiration: None,
+                status: "enabled".to_string(),
+                parent_user: "".to_string(),
+                groups: None,
+                claims: None,
+                name: None,
+                description: None,
+            },
+            update_at: Some(OffsetDateTime::now_utc()),
+        };
+
+        let result = extract_jwt_claims(&user_identity);
+        // Should fail with empty session token
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_filter_policies_empty_bucket() {
+        let cache = Cache::default();
+        let policy_name = "test-policy";
+        let bucket_name = "";
+
+        let (name, policy) = filter_policies(&cache, policy_name, bucket_name);
+
+        // When cache is empty, should return empty name and empty policy
+        assert_eq!(name, "");
+        assert!(policy.statements.is_empty());
+    }
+
+    #[test]
+    fn test_filter_policies_with_bucket() {
+        let cache = Cache::default();
+        let policy_name = "test-policy";
+        let bucket_name = "test-bucket";
+
+        let (name, policy) = filter_policies(&cache, policy_name, bucket_name);
+
+        // When cache is empty, should return empty name and empty policy regardless of bucket
+        assert_eq!(name, "");
+        assert!(policy.statements.is_empty());
+    }
+
+    #[test]
+    fn test_mapped_policy_operations() {
+        let policy_name = "test-policy";
+        let mapped_policy = MappedPolicy::new(policy_name);
+
+        // Test that MappedPolicy can be created
+        let policies = mapped_policy.to_slice();
+        assert!(!policies.is_empty());
+        assert!(policies.iter().any(|p| p.contains(policy_name)));
+    }
+
+    #[test]
+    fn test_user_identity_structure() {
+        let credentials = Credentials {
+            access_key: "AKIAIOSFODNN7EXAMPLE".to_string(),
+            secret_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_string(),
+            session_token: "".to_string(),
+            expiration: None,
+            status: "enabled".to_string(),
+            parent_user: "parent-user".to_string(),
+            groups: Some(vec!["group1".to_string(), "group2".to_string()]),
+            claims: None,
+            name: None,
+            description: None,
+        };
+
+        let user_identity = UserIdentity {
+            version: 1,
+            credentials,
+            update_at: Some(OffsetDateTime::now_utc()),
+        };
+
+        // Test basic structure
+        assert_eq!(user_identity.version, 1);
+        assert_eq!(user_identity.credentials.access_key, "AKIAIOSFODNN7EXAMPLE");
+        assert_eq!(user_identity.credentials.secret_key, "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
+        assert_eq!(user_identity.credentials.status, "enabled");
+        assert_eq!(user_identity.credentials.parent_user, "parent-user");
+        assert_eq!(user_identity.credentials.groups, Some(vec!["group1".to_string(), "group2".to_string()]));
+    }
+
+    #[test]
+    fn test_policy_structure() {
+        let policy = Policy {
+            id: Default::default(),
+            version: "2012-10-17".to_string(),
+            statements: vec![],
+        };
+
+        // Test basic structure
+        assert_eq!(policy.version, "2012-10-17");
+        assert_eq!(policy.statements.len(), 0);
+        assert!(policy.is_empty());
+    }
+
+    #[test]
+    fn test_policy_doc_structure() {
+        let policy = Policy {
+            id: Default::default(),
+            version: "2012-10-17".to_string(),
+            statements: vec![],
+        };
+
+        let policy_doc = PolicyDoc {
+            version: 1,
+            policy,
+            create_date: Some(OffsetDateTime::now_utc()),
+            update_date: Some(OffsetDateTime::now_utc()),
+        };
+
+        // Test basic structure
+        assert_eq!(policy_doc.version, 1);
+        assert_eq!(policy_doc.policy.version, "2012-10-17");
+        assert!(policy_doc.policy.statements.is_empty());
+    }
+
+    #[test]
+    fn test_group_info_basic() {
+        // Test that GroupInfo can be created and used
+        let group_info = GroupInfo {
+            version: 1,
+            status: STATUS_ENABLED.to_string(),
+            members: vec!["user1".to_string(), "user2".to_string()],
+            update_at: Some(OffsetDateTime::now_utc()),
+        };
+
+        assert_eq!(group_info.version, 1);
+        assert_eq!(group_info.status, STATUS_ENABLED);
+        assert_eq!(group_info.members.len(), 2);
+        assert!(group_info.members.contains(&"user1".to_string()));
+        assert!(group_info.members.contains(&"user2".to_string()));
+    }
+
+    #[test]
+    fn test_update_service_account_opts() {
+        let policy = Policy {
+            id: Default::default(),
+            version: "2012-10-17".to_string(),
+            statements: vec![],
+        };
+
+        let opts = UpdateServiceAccountOpts {
+            secret_key: Some("new-secret-key".to_string()),
+            status: Some(STATUS_ENABLED.to_string()),
+            name: Some("service-account-name".to_string()),
+            description: Some("Updated service account".to_string()),
+            expiration: None,
+            session_policy: Some(policy),
+            parent_user: None,
+            allow_site_replicator_account: false,
+        };
+
+        assert_eq!(opts.secret_key, Some("new-secret-key".to_string()));
+        assert_eq!(opts.status, Some(STATUS_ENABLED.to_string()));
+        assert_eq!(opts.name, Some("service-account-name".to_string()));
+        assert_eq!(opts.description, Some("Updated service account".to_string()));
+        assert!(opts.session_policy.is_some());
+        assert!(opts.expiration.is_none());
+    }
+
+    #[test]
+    fn test_status_constants() {
+        // Test that status constants are properly defined
+        assert_eq!(STATUS_ENABLED, "enabled");
+        assert_eq!(STATUS_DISABLED, "disabled");
+    }
+
+    #[test]
+    fn test_session_policy_constants() {
+        // Test session policy related constants - these are compile-time constants
+        // so we just verify they exist and have expected values
+        assert_eq!(SESSION_POLICY_NAME, "sessionPolicy");
+        assert_eq!(SESSION_POLICY_NAME_EXTRACTED, "sessionPolicy-extracted");
+        // MAX_SVCSESSION_POLICY_SIZE is a positive constant defined at compile time
+        assert_eq!(MAX_SVCSESSION_POLICY_SIZE, 4096); // Verify the actual expected value
+    }
+
+    #[test]
+    fn test_credentials_validation() {
+        let credentials = Credentials {
+            access_key: "AKIAIOSFODNN7EXAMPLE".to_string(),
+            secret_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_string(),
+            session_token: "".to_string(),
+            expiration: None,
+            status: "on".to_string(),
+            parent_user: "".to_string(),
+            groups: None,
+            claims: None,
+            name: None,
+            description: None,
+        };
+
+        // Test validation methods
+        assert!(credentials.is_valid());
+        assert!(!credentials.is_expired());
+        assert!(!credentials.is_temp());
+        assert!(!credentials.is_service_account());
+    }
+
+    #[test]
+    fn test_credentials_with_session_token() {
+        let credentials = Credentials {
+            access_key: "AKIAIOSFODNN7EXAMPLE".to_string(),
+            secret_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_string(),
+            session_token: "session-token".to_string(),
+            expiration: Some(OffsetDateTime::now_utc() + time::Duration::hours(1)),
+            status: "on".to_string(),
+            parent_user: "".to_string(),
+            groups: None,
+            claims: None,
+            name: None,
+            description: None,
+        };
+
+        // Test temp credentials
+        assert!(credentials.is_valid());
+        assert!(!credentials.is_expired());
+        assert!(credentials.is_temp());
+    }
+
+    #[test]
+    fn test_policy_merge() {
+        let policy1 = Policy {
+            id: Default::default(),
+            version: "2012-10-17".to_string(),
+            statements: vec![],
+        };
+
+        let policy2 = Policy {
+            id: Default::default(),
+            version: "2012-10-17".to_string(),
+            statements: vec![],
+        };
+
+        let merged = Policy::merge_policies(vec![policy1, policy2]);
+        assert_eq!(merged.version, "2012-10-17");
+        assert!(merged.statements.is_empty());
+        assert!(merged.is_empty());
+    }
+
+    #[test]
+    fn test_build_group_desc_preserves_policy_for_disabled_group() {
+        let group_info = GroupInfo {
+            status: STATUS_DISABLED.to_string(),
+            members: vec!["alice".to_string()],
+            ..Default::default()
+        };
+        let mapped_policy = MappedPolicy::new("readonly");
+
+        let desc = build_group_desc("ops", group_info, Some(mapped_policy));
+
+        assert_eq!(desc.name, "ops");
+        assert_eq!(desc.status, STATUS_DISABLED);
+        assert_eq!(desc.policy, "readonly");
+        assert_eq!(desc.members, vec!["alice".to_string()]);
+        assert!(desc.updated_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn delete_policy_propagates_backend_error_and_keeps_cache() {
+        // Regression: on the admin delete path (is_from_notify = true), a real backend delete
+        // failure (here Error::InvalidArgument, standing in for disk IO / insufficient quorum)
+        // must propagate — NOT be swallowed as Ok(()) while evicting the still-persisted policy.
+        let cache = build_test_iam_cache(FailingInitialLoadStore);
+
+        let policy = Policy {
+            id: Default::default(),
+            version: "2012-10-17".to_string(),
+            statements: vec![],
+        };
+        let policy_doc = PolicyDoc {
+            version: 1,
+            policy,
+            create_date: Some(OffsetDateTime::now_utc()),
+            update_date: Some(OffsetDateTime::now_utc()),
+        };
+        cache
+            .cache
+            .add_or_update_policy_doc("permissive-policy", &policy_doc, OffsetDateTime::now_utc());
+
+        let result = cache.delete_policy("permissive-policy", true).await;
+
+        // Pre-fix this returned Ok(()) (phantom success) and evicted the cache entry.
+        assert!(
+            result.is_err(),
+            "delete_policy must surface a real backend delete failure instead of reporting success"
+        );
+        assert!(
+            cache.cache.snapshot().policy_docs.contains_key("permissive-policy"),
+            "cache must not evict a policy whose backend delete failed"
+        );
+    }
+}

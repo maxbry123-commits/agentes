@@ -1,0 +1,1 @@
+G7 canonical sources: port.py blob c808a9dbd2b869842db9099b1d27f8957c231c91; openclaw_stub.py blob e7fcd349d42442a0ba551781fcedc0ca0a4427b8; hermes_stub.py blob 686b8e26d651c97d381aef43ac1aacc948d5f4. Current bodies are explicitly stubs.

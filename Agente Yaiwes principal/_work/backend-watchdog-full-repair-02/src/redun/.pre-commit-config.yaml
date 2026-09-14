@@ -1,0 +1,23 @@
+repos:
+  - repo: local
+    hooks:
+      - id: uv-lock
+        name: uv-lock
+        entry: uv lock --check
+        language: system
+        files: ^(pyproject\.toml|uv\.lock)$
+        pass_filenames: false
+      - id: ty
+        name: type-check
+        entry: uv run ty check
+        language: system
+        types: [python]
+        pass_filenames: false
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.10
+    hooks:
+      # Run the linter.
+      - id: ruff
+        args: [--fix]
+      # Run the formatter.
+      - id: ruff-format

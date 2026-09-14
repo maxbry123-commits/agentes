@@ -1,0 +1,109 @@
+<!--
+Licensed to the Apache Software Foundation (ASF) under one
+or more contributor license agreements.  See the NOTICE file
+distributed with this work for additional information
+regarding copyright ownership.  The ASF licenses this file
+to you under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance
+with the License.  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing,
+software distributed under the License is distributed on an
+"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+KIND, either express or implied.  See the License for the
+specific language governing permissions and limitations
+under the License.
+-->
+
+# Apache Hamilton UI SDK: Client Code &amp; Related
+
+> **Disclaimer**
+>
+> Apache Hamilton is an effort undergoing incubation at the Apache Software Foundation (ASF), sponsored by the Apache Incubator PMC.
+>
+> Incubation is required of all newly accepted projects until a further review indicates that the infrastructure, communications, and decision making process have stabilized in a manner consistent with other successful ASF projects.
+>
+> While incubation status is not necessarily a reflection of the completeness or stability of the code, it does indicate that the project has yet to be fully endorsed by the ASF.
+
+Welcome to using the Apache Hamilton UI!
+
+Here are instructions on how to get started with tracking, and managing your Apache Hamilton
+DAGs with the Apache Hamilton UI.
+
+## Getting Started
+
+For the latest documentation, please consult our
+[Apache Hamilton documentation](https://hamilton.apache.org/) under `Apache Hamilton UI`.
+
+For a quick overview of Apache Hamilton, we suggest [tryhamilton.dev](https://www.tryhamilton.dev/).
+
+## Using the HamiltonTracker
+
+First, you'll need to install the Apache Hamilton SDK package. Assuming you're using pip, you
+can do this with:
+
+```bash
+# install the package & cli into your favorite python environment.
+pip install "apache-hamilton[sdk]"
+
+# And validate -- this should not error.
+python -c "from hamilton_sdk import adapters"
+```
+
+Next, you'll need to modify your Apache Hamilton driver. You'll only need to use one line of code to
+replace your driver with ours:
+
+```python
+from hamilton_sdk import adapters
+from hamilton import driver
+
+tracker = adapters.HamiltonTracker(
+   project_id=PROJECT_ID,  # modify this as needed
+   username=YOUR_EMAIL, # modify this as needed
+   dag_name="my_version_of_the_dag",
+   tags={"environment": "DEV", "team": "MY_TEAM", "version": "X"}
+)
+dr = (
+  driver.Builder()
+    .with_config(your_config)
+    .with_modules(*your_modules)
+    .with_adapters(tracker)
+    .build()
+)
+# to run call .execute() or .materialize() on the driver
+```
+*Project ID*: You'll need a project ID. Create a project if you don't have one, and take the ID from that.
+
+*username*: This is the email address you used to set up the Apache Hamilton UI.
+
+*dag_name*: for a project, the DAG name is the top level way to group DAGs.
+E.g. ltv_model, us_sales, etc.
+
+*tags*: these are optional are string key value paris. They allow you to filter and curate
+various DAG runs.
+
+Then run Apache Hamilton as normal! Each DAG run will be tracked, and you'll have access to it in the
+Apache Hamilton UI. After spinning up the Apache Hamilton UI application, visit it to see your projects & DAGs.
+
+
+# Building from source
+
+This package uses [flit](https://flit.pypa.io/) as its build backend (declared
+in `pyproject.toml`). To build the source distribution and wheel from a source
+checkout:
+
+```bash
+# from the ui/sdk directory (the package root)
+python -m pip install flit
+flit build --no-use-vcs
+# artifacts are written to dist/
+```
+
+`flit build` produces both the `.tar.gz` source distribution and the
+`.whl` wheel. `--no-use-vcs` selects files from the working tree rather than
+git, which is what you want when building from an unpacked source release.
+
+# License
+The code here is licensed under the Apache 2.0 license. See the [LICENSE](LICENSE) file included with this package for details.

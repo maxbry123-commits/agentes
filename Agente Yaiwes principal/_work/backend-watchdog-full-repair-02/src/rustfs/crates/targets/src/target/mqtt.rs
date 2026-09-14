@@ -1,0 +1,1983 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use crate::plugin::PluginEvent;
+use crate::{
+    StoreError, Target,
+    arn::TargetID,
+    error::TargetError,
+    runtime::tls::{
+        ReloadableTargetTls, TargetTlsGeneration, TargetTlsInputSet, TargetTlsState, TlsReloadAdapter, config::ReloadApplyMode,
+        validate_tls_material,
+    },
+    store::{Key, Store},
+    target::{
+        ChannelTargetType, EntityTarget, QueuedPayload, QueuedPayloadMeta, TargetDeliveryCounters, TargetDeliverySnapshot,
+        TargetType, build_queued_payload_with_records, mark_target_disconnected_on_connectivity_error, open_target_queue_store,
+        persist_queued_payload_to_store, redacted_secret,
+    },
+};
+use arc_swap::ArcSwap;
+use async_trait::async_trait;
+use hyper_rustls::ConfigBuilderExt;
+use rumqttc::{
+    AsyncClient, Broker, ClientError, ConnectionError, EventLoop, Incoming, MqttOptions, Outgoing, ProtocolViolation,
+    PublishNoticeError, PublishOptions, QoS, Transport, mqttbytes::Error as MqttBytesError,
+};
+use rustfs_config::{
+    EnableState, MQTT_TLS_CA, MQTT_TLS_CLIENT_CERT, MQTT_TLS_CLIENT_KEY, MQTT_TLS_TRUST_LEAF_AS_CA, MQTT_WS_PATH_ALLOWLIST,
+};
+use rustfs_tls_runtime::{load_certs, load_private_key};
+use rustls::ClientConfig;
+use std::fmt;
+use std::sync::Arc;
+use std::{
+    marker::PhantomData,
+    path::Path,
+    sync::atomic::{AtomicBool, Ordering},
+    time::Duration,
+};
+use tokio::sync::{Mutex, OnceCell, mpsc};
+use tracing::{debug, error, info, instrument, trace, warn};
+use url::Url;
+
+const DEFAULT_CONNECTION_TIMEOUT: Duration = Duration::from_secs(15);
+const EVENT_LOOP_POLL_TIMEOUT: Duration = Duration::from_secs(10); // For initial connection check in task
+const DEFAULT_MQTT_TCP_PORT: u16 = 1883;
+const DEFAULT_MQTT_TLS_PORT: u16 = 8883;
+const DEFAULT_MQTT_WSS_PORT: u16 = 443;
+const MAX_MQTT_PACKET_SIZE_BYTES: u32 = 100 * 1024 * 1024;
+/// Upper bound on how long a single publish may wait for broker acknowledgement
+/// (PUBACK/PUBCOMP for QoS>=1, or network flush for QoS0) before it is treated as
+/// a timeout so the durable copy is retained and replayed (backlog#971).
+const MQTT_PUBLISH_CONFIRM_TIMEOUT: Duration = Duration::from_secs(30);
+/// Minimum delay before the supervisor rebuilds the client and event loop
+/// after a session exits. Also the delay used right after a session that had
+/// successfully connected, so a transient drop reconnects promptly.
+const MQTT_RECONNECT_BACKOFF_MIN: Duration = Duration::from_secs(1);
+/// Upper bound for the exponential reconnect backoff, so repeated fatal
+/// failures never turn into a tight reconnect storm.
+const MQTT_RECONNECT_BACKOFF_MAX: Duration = Duration::from_secs(30);
+const DEFAULT_MQTT_WS_PATH_ALLOWLIST: &[&str] = &["/", "/mqtt"];
+const LOG_COMPONENT_TARGETS: &str = "targets";
+const LOG_SUBSYSTEM_MQTT: &str = "mqtt";
+const EVENT_MQTT_TARGET_STATE: &str = "mqtt_target_state";
+const EVENT_MQTT_DELIVERY_STATE: &str = "mqtt_delivery_state";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MQTTTlsPolicy {
+    SystemCa,
+    CustomCa,
+}
+
+impl MQTTTlsPolicy {
+    fn parse(value: &str) -> Result<Self, TargetError> {
+        match value.trim() {
+            value if value.eq_ignore_ascii_case("system_ca") => Ok(Self::SystemCa),
+            value if value.eq_ignore_ascii_case("custom_ca") => Ok(Self::CustomCa),
+            _ => Err(TargetError::Configuration(
+                "MQTT tls_policy must be one of: system_ca, custom_ca".to_string(),
+            )),
+        }
+    }
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct MQTTTlsConfig {
+    pub policy: Option<MQTTTlsPolicy>,
+    pub ca_path: String,
+    pub client_cert_path: String,
+    pub client_key_path: String,
+    pub trust_leaf_as_ca: bool,
+    pub ws_path_allowlist: Vec<String>,
+}
+
+impl fmt::Debug for MQTTTlsConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MQTTTlsConfig")
+            .field("policy", &self.policy)
+            .field("ca_path", &self.ca_path)
+            .field("client_cert_path", &self.client_cert_path)
+            .field("client_key_path", &redacted_secret(&self.client_key_path))
+            .field("trust_leaf_as_ca", &self.trust_leaf_as_ca)
+            .field("ws_path_allowlist", &self.ws_path_allowlist)
+            .finish()
+    }
+}
+
+impl MQTTTlsConfig {
+    pub fn from_values(
+        policy: Option<&str>,
+        ca_path: Option<&str>,
+        client_cert_path: Option<&str>,
+        client_key_path: Option<&str>,
+        trust_leaf_as_ca: Option<&str>,
+        ws_path_allowlist: Option<&str>,
+    ) -> Result<Self, TargetError> {
+        let policy = match policy.map(str::trim).filter(|value| !value.is_empty()) {
+            Some(value) => Some(MQTTTlsPolicy::parse(value)?),
+            None => None,
+        };
+
+        let trust_leaf_as_ca = match trust_leaf_as_ca.map(str::trim).filter(|value| !value.is_empty()) {
+            Some(value) => value
+                .parse::<EnableState>()
+                .map(EnableState::is_enabled)
+                .map_err(|_| TargetError::Configuration(format!("Invalid value for {MQTT_TLS_TRUST_LEAF_AS_CA}")))?,
+            None => false,
+        };
+
+        let ws_path_allowlist = match ws_path_allowlist.map(str::trim).filter(|value| !value.is_empty()) {
+            Some(value) => parse_ws_path_allowlist(value)?,
+            None => Vec::new(),
+        };
+
+        Ok(Self {
+            policy,
+            ca_path: ca_path.unwrap_or_default().trim().to_string(),
+            client_cert_path: client_cert_path.unwrap_or_default().trim().to_string(),
+            client_key_path: client_key_path.unwrap_or_default().trim().to_string(),
+            trust_leaf_as_ca,
+            ws_path_allowlist,
+        })
+    }
+
+    fn effective_ws_path_allowlist(&self) -> Vec<&str> {
+        if self.ws_path_allowlist.is_empty() {
+            DEFAULT_MQTT_WS_PATH_ALLOWLIST.to_vec()
+        } else {
+            self.ws_path_allowlist.iter().map(String::as_str).collect()
+        }
+    }
+}
+
+fn parse_ws_path_allowlist(value: &str) -> Result<Vec<String>, TargetError> {
+    let mut allowlist = Vec::new();
+    for raw in value.split(',') {
+        let path = raw.trim();
+        if path.is_empty() {
+            continue;
+        }
+        if !path.starts_with('/') || path.contains('?') || path.contains('#') {
+            return Err(TargetError::Configuration(format!(
+                "{MQTT_WS_PATH_ALLOWLIST} entries must be absolute paths without query or fragment"
+            )));
+        }
+        allowlist.push(path.to_string());
+    }
+
+    if allowlist.is_empty() {
+        return Err(TargetError::Configuration(format!(
+            "{MQTT_WS_PATH_ALLOWLIST} must contain at least one websocket path"
+        )));
+    }
+
+    Ok(allowlist)
+}
+
+fn keep_alive_seconds(duration: Duration) -> u16 {
+    duration.as_secs().min(u64::from(u16::MAX)) as u16
+}
+
+fn default_broker_port(scheme: &str) -> u16 {
+    match scheme {
+        "ssl" | "tls" | "tcps" | "mqtts" => DEFAULT_MQTT_TLS_PORT,
+        "wss" => DEFAULT_MQTT_WSS_PORT,
+        _ => DEFAULT_MQTT_TCP_PORT,
+    }
+}
+
+fn websocket_broker_url(broker: &Url, secure: bool) -> Result<String, TargetError> {
+    let mut url = broker.clone();
+    url.set_scheme("ws")
+        .map_err(|_| TargetError::Configuration("Failed to normalize websocket broker URL scheme".to_string()))?;
+
+    if secure && url.port().is_none() {
+        url.set_port(Some(DEFAULT_MQTT_WSS_PORT))
+            .map_err(|_| TargetError::Configuration("Failed to set default secure websocket broker port".to_string()))?;
+    }
+
+    Ok(url.to_string())
+}
+
+fn validate_path_is_absolute(path: &str, field: &str) -> Result<(), TargetError> {
+    if !Path::new(path).is_absolute() {
+        return Err(TargetError::Configuration(format!("{field} must be an absolute path")));
+    }
+    Ok(())
+}
+
+fn build_root_store(ca_path: &str, trust_leaf_as_ca: bool) -> Result<rustls::RootCertStore, TargetError> {
+    let certs = load_certs(ca_path).map_err(|e| TargetError::Configuration(format!("Failed to load MQTT tls_ca: {e}")))?;
+    let mut store = rustls::RootCertStore::empty();
+
+    if trust_leaf_as_ca {
+        let (valid, invalid) = store.add_parsable_certificates(certs);
+        if valid == 0 {
+            return Err(TargetError::Configuration(format!(
+                "MQTT tls_ca did not contain any parsable trust anchors (ignored {invalid} entries)"
+            )));
+        }
+    } else {
+        for cert in certs {
+            store
+                .add(cert)
+                .map_err(|e| TargetError::Configuration(format!("Failed to add MQTT tls_ca to root store: {e}")))?;
+        }
+    }
+
+    Ok(store)
+}
+
+fn build_mqtt_tls_transport(broker: &Url, tls: &MQTTTlsConfig) -> Result<Transport, TargetError> {
+    super::ensure_rustls_provider_installed();
+
+    let client_config = match tls
+        .policy
+        .ok_or_else(|| TargetError::Configuration("Secure MQTT schemes require an explicit tls_policy".to_string()))?
+    {
+        MQTTTlsPolicy::SystemCa => {
+            let builder = ClientConfig::builder()
+                .with_native_roots()
+                .map_err(|e| TargetError::Configuration(format!("Failed to load native root certificates: {e}")))?;
+
+            if tls.client_cert_path.is_empty() {
+                builder.with_no_client_auth()
+            } else {
+                let certs = load_certs(&tls.client_cert_path)
+                    .map_err(|e| TargetError::Configuration(format!("Failed to load MQTT tls_client_cert: {e}")))?;
+                let key = load_private_key(&tls.client_key_path)
+                    .map_err(|e| TargetError::Configuration(format!("Failed to load MQTT tls_client_key: {e}")))?;
+                builder
+                    .with_client_auth_cert(certs, key)
+                    .map_err(|e| TargetError::Configuration(format!("Failed to build MQTT client mTLS identity: {e}")))?
+            }
+        }
+        MQTTTlsPolicy::CustomCa => {
+            let builder = ClientConfig::builder().with_root_certificates(build_root_store(&tls.ca_path, tls.trust_leaf_as_ca)?);
+
+            if tls.client_cert_path.is_empty() {
+                builder.with_no_client_auth()
+            } else {
+                let certs = load_certs(&tls.client_cert_path)
+                    .map_err(|e| TargetError::Configuration(format!("Failed to load MQTT tls_client_cert: {e}")))?;
+                let key = load_private_key(&tls.client_key_path)
+                    .map_err(|e| TargetError::Configuration(format!("Failed to load MQTT tls_client_key: {e}")))?;
+                builder
+                    .with_client_auth_cert(certs, key)
+                    .map_err(|e| TargetError::Configuration(format!("Failed to build MQTT client mTLS identity: {e}")))?
+            }
+        }
+    };
+
+    if matches!(broker.scheme(), "wss") {
+        Ok(Transport::wss_with_config(client_config.into()))
+    } else {
+        Ok(Transport::tls_with_config(client_config.into()))
+    }
+}
+
+pub fn validate_mqtt_broker_url(broker: &Url, tls: &MQTTTlsConfig) -> Result<(), TargetError> {
+    match broker.scheme() {
+        "ws" | "wss" | "tcp" | "ssl" | "tls" | "tcps" | "mqtt" | "mqtts" => {}
+        _ => {
+            return Err(TargetError::Configuration("unknown protocol in broker address".to_string()));
+        }
+    }
+
+    if !broker.username().is_empty() || broker.password().is_some() {
+        return Err(TargetError::Configuration("Broker URL must not embed username or password".to_string()));
+    }
+
+    broker
+        .host_str()
+        .ok_or_else(|| TargetError::Configuration("Broker is missing host".to_string()))?;
+
+    let secure_scheme = matches!(broker.scheme(), "wss" | "ssl" | "tls" | "tcps" | "mqtts");
+    let websocket_scheme = matches!(broker.scheme(), "ws" | "wss");
+
+    if !websocket_scheme {
+        if !matches!(broker.path(), "" | "/") {
+            return Err(TargetError::Configuration(
+                "Broker URL path is only supported for ws/wss schemes".to_string(),
+            ));
+        }
+
+        if broker.query().is_some() {
+            return Err(TargetError::Configuration(
+                "Broker URL query is only supported for ws/wss schemes".to_string(),
+            ));
+        }
+
+        if broker.fragment().is_some() {
+            return Err(TargetError::Configuration(
+                "Broker URL fragment is only supported for ws/wss schemes".to_string(),
+            ));
+        }
+
+        if !tls.ws_path_allowlist.is_empty() {
+            return Err(TargetError::Configuration(format!(
+                "{MQTT_WS_PATH_ALLOWLIST} is only supported for ws/wss schemes"
+            )));
+        }
+    } else if !tls
+        .effective_ws_path_allowlist()
+        .iter()
+        .any(|allowed_path| *allowed_path == broker.path())
+    {
+        return Err(TargetError::Configuration(format!(
+            "Websocket broker path '{}' is not in the {MQTT_WS_PATH_ALLOWLIST} allowlist",
+            broker.path()
+        )));
+    }
+
+    if secure_scheme {
+        let policy = tls
+            .policy
+            .ok_or_else(|| TargetError::Configuration("Secure MQTT schemes require an explicit tls_policy".to_string()))?;
+
+        if !tls.client_cert_path.is_empty() {
+            validate_path_is_absolute(&tls.client_cert_path, MQTT_TLS_CLIENT_CERT)?;
+        }
+
+        if !tls.client_key_path.is_empty() {
+            validate_path_is_absolute(&tls.client_key_path, MQTT_TLS_CLIENT_KEY)?;
+        }
+
+        if tls.client_cert_path.is_empty() != tls.client_key_path.is_empty() {
+            return Err(TargetError::Configuration(
+                "MQTT tls_client_cert and tls_client_key must be specified together".to_string(),
+            ));
+        }
+
+        match policy {
+            MQTTTlsPolicy::SystemCa => {
+                if !tls.ca_path.is_empty() {
+                    return Err(TargetError::Configuration(format!(
+                        "{MQTT_TLS_CA} is not allowed when tls_policy=system_ca"
+                    )));
+                }
+                if tls.trust_leaf_as_ca {
+                    return Err(TargetError::Configuration(format!(
+                        "{MQTT_TLS_TRUST_LEAF_AS_CA} requires tls_policy=custom_ca"
+                    )));
+                }
+            }
+            MQTTTlsPolicy::CustomCa => {
+                if tls.ca_path.is_empty() {
+                    return Err(TargetError::Configuration(format!("{MQTT_TLS_CA} is required when tls_policy=custom_ca")));
+                }
+                validate_path_is_absolute(&tls.ca_path, MQTT_TLS_CA)?;
+            }
+        }
+    } else if tls.policy.is_some()
+        || !tls.ca_path.is_empty()
+        || !tls.client_cert_path.is_empty()
+        || !tls.client_key_path.is_empty()
+        || tls.trust_leaf_as_ca
+    {
+        return Err(TargetError::Configuration(
+            "TLS settings are only allowed for mqtts/ssl/tls/tcps/wss schemes".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+pub(crate) fn build_mqtt_options(
+    client_id: String,
+    broker: &Url,
+    username: Option<&str>,
+    password: Option<&str>,
+    tls: &MQTTTlsConfig,
+    keep_alive: Duration,
+    max_packet_size: Option<u32>,
+) -> Result<MqttOptions, TargetError> {
+    validate_mqtt_broker_url(broker, tls)?;
+
+    let host = broker
+        .host_str()
+        .ok_or_else(|| TargetError::Configuration("Broker is missing host".to_string()))?;
+    let port = broker.port().unwrap_or_else(|| default_broker_port(broker.scheme()));
+    let mut mqtt_options = match broker.scheme() {
+        "tcp" | "mqtt" => MqttOptions::new(client_id, (host, port)),
+        "ssl" | "tls" | "tcps" | "mqtts" => {
+            let mut options = MqttOptions::new(client_id, (host, port));
+            options.set_transport(build_mqtt_tls_transport(broker, tls)?);
+            options
+        }
+        "ws" => {
+            let websocket_broker = Broker::websocket(broker.as_str().to_string())
+                .map_err(|e| TargetError::Configuration(format!("Invalid websocket broker URL: {e}")))?;
+            MqttOptions::new(client_id, websocket_broker)
+        }
+        "wss" => {
+            let websocket_broker = Broker::websocket(websocket_broker_url(broker, true)?)
+                .map_err(|e| TargetError::Configuration(format!("Invalid secure websocket broker URL: {e}")))?;
+            let mut options = MqttOptions::new(client_id, websocket_broker);
+            options.set_transport(build_mqtt_tls_transport(broker, tls)?);
+            options
+        }
+        _ => {
+            return Err(TargetError::Configuration("unknown protocol in broker address".to_string()));
+        }
+    };
+
+    mqtt_options.set_keep_alive(keep_alive_seconds(keep_alive));
+
+    if let Some(max_packet_size) = max_packet_size {
+        mqtt_options.set_max_packet_size(Some(max_packet_size));
+    }
+
+    if let Some(user) = username
+        && !user.is_empty()
+    {
+        mqtt_options.set_credentials(user.to_string(), password.unwrap_or("").to_string());
+    }
+
+    Ok(mqtt_options)
+}
+
+/// Arguments for configuring an MQTT target
+#[derive(Clone)]
+pub struct MQTTArgs {
+    /// Whether the target is enabled
+    pub enable: bool,
+    /// The broker URL
+    pub broker: Url,
+    /// The topic to publish to
+    pub topic: String,
+    /// The quality of service level
+    pub qos: QoS,
+    /// The username for the broker
+    pub username: String,
+    /// The password for the broker
+    pub password: String,
+    /// Explicit TLS configuration for secure MQTT transports
+    pub tls: MQTTTlsConfig,
+    /// The maximum interval for reconnection attempts (Note: rumqttc has internal strategy)
+    pub max_reconnect_interval: Duration,
+    /// The keep alive interval
+    pub keep_alive: Duration,
+    /// The directory to store events in case of failure
+    pub queue_dir: String,
+    /// The maximum number of events to store
+    pub queue_limit: u64,
+    /// the target type
+    pub target_type: TargetType,
+}
+
+impl fmt::Debug for MQTTArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MQTTArgs")
+            .field("enable", &self.enable)
+            .field("broker", &self.broker)
+            .field("topic", &self.topic)
+            .field("qos", &self.qos)
+            .field("username", &self.username)
+            .field("password", &redacted_secret(&self.password))
+            .field("tls", &self.tls)
+            .field("max_reconnect_interval", &self.max_reconnect_interval)
+            .field("keep_alive", &self.keep_alive)
+            .field("queue_dir", &self.queue_dir)
+            .field("queue_limit", &self.queue_limit)
+            .field("target_type", &self.target_type)
+            .finish()
+    }
+}
+
+impl MQTTArgs {
+    pub fn validate(&self) -> Result<(), TargetError> {
+        if !self.enable {
+            return Ok(());
+        }
+
+        validate_mqtt_broker_url(&self.broker, &self.tls)?;
+
+        if self.topic.is_empty() {
+            return Err(TargetError::Configuration("MQTT topic cannot be empty".to_string()));
+        }
+
+        if !self.queue_dir.is_empty() {
+            let path = Path::new(&self.queue_dir);
+            if !path.is_absolute() {
+                return Err(TargetError::Configuration("mqtt queue_dir path should be absolute".to_string()));
+            }
+
+            if self.qos == QoS::AtMostOnce {
+                return Err(TargetError::Configuration(
+                    "QoS should be AtLeastOnce (1) or ExactlyOnce (2) if queue_dir is set".to_string(),
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+struct BgTaskManager {
+    init_cell: OnceCell<tokio::task::JoinHandle<()>>,
+    cancel_tx: mpsc::Sender<()>,
+    initial_cancel_rx: Mutex<Option<mpsc::Receiver<()>>>,
+}
+
+/// A target that sends events to an MQTT broker
+pub struct MQTTTarget<E>
+where
+    E: PluginEvent,
+{
+    id: TargetID,
+    args: MQTTArgs,
+    client: Arc<Mutex<Option<AsyncClient>>>,
+    store: Option<Box<dyn Store<QueuedPayload, Error = StoreError, Key = Key> + Send + Sync>>,
+    connected: Arc<AtomicBool>,
+    bg_task_manager: Arc<BgTaskManager>,
+    /// TLS fingerprint tracking for inline fallback path.
+    tls_state: Arc<parking_lot::Mutex<TargetTlsState>>,
+    /// When set, the coordinator drives TLS reload; inline fingerprint check is skipped.
+    tls_adapter: Option<TlsReloadAdapter<MqttOptions>>,
+    /// Updated MqttOptions from coordinator for use on next reconnection.
+    pending_mqtt_options: Arc<ArcSwap<MqttOptions>>,
+    delivery_counters: Arc<TargetDeliveryCounters>,
+    _phantom: PhantomData<E>,
+}
+
+impl<E> MQTTTarget<E>
+where
+    E: PluginEvent,
+{
+    /// Creates a new MQTTTarget
+    #[instrument(skip(args), fields(target_id_as_string = %id))]
+    pub fn new(id: String, args: MQTTArgs) -> Result<Self, TargetError> {
+        args.validate()?;
+        let target_id = TargetID::new(id, ChannelTargetType::Mqtt.as_str().to_string());
+        let queue_store = open_target_queue_store(
+            &args.queue_dir,
+            args.queue_limit,
+            args.target_type,
+            ChannelTargetType::Mqtt.as_str(),
+            &target_id,
+            "Failed to open store for MQTT target",
+        )?;
+
+        let (cancel_tx, cancel_rx) = mpsc::channel(1);
+        let bg_task_manager = Arc::new(BgTaskManager {
+            init_cell: OnceCell::new(),
+            cancel_tx,
+            initial_cancel_rx: Mutex::new(Some(cancel_rx)),
+        });
+
+        // Build the initial MqttOptions for TLS reload support.
+        let initial_mqtt_options = build_mqtt_options(
+            format!("rustfs_notify_{}", uuid::Uuid::new_v4()),
+            &args.broker,
+            Some(args.username.as_str()),
+            Some(args.password.as_str()),
+            &args.tls,
+            args.keep_alive,
+            Some(MAX_MQTT_PACKET_SIZE_BYTES),
+        )?;
+
+        info!(
+            event = EVENT_MQTT_TARGET_STATE,
+            component = LOG_COMPONENT_TARGETS,
+            subsystem = LOG_SUBSYSTEM_MQTT,
+            target_id = %target_id,
+            state = "created",
+            "mqtt target state"
+        );
+        Ok(MQTTTarget::<E> {
+            id: target_id,
+            args,
+            client: Arc::new(Mutex::new(None)),
+            store: queue_store,
+            connected: Arc::new(AtomicBool::new(false)),
+            bg_task_manager,
+            tls_state: Arc::new(parking_lot::Mutex::new(TargetTlsState::default())),
+            tls_adapter: None,
+            pending_mqtt_options: Arc::new(ArcSwap::from(Arc::new(initial_mqtt_options))),
+            delivery_counters: Arc::new(TargetDeliveryCounters::default()),
+            _phantom: PhantomData,
+        })
+    }
+
+    #[instrument(skip(self), fields(target_id = %self.id))]
+    async fn init(&self) -> Result<(), TargetError> {
+        if self.connected.load(Ordering::SeqCst) {
+            debug!(
+                event = EVENT_MQTT_TARGET_STATE,
+                component = LOG_COMPONENT_TARGETS,
+                subsystem = LOG_SUBSYSTEM_MQTT,
+                target_id = %self.id,
+                state = "already_connected",
+                "mqtt target state"
+            );
+            return Ok(());
+        }
+
+        let bg_task_manager = Arc::clone(&self.bg_task_manager);
+        let client_arc = Arc::clone(&self.client);
+        let connected_arc = Arc::clone(&self.connected);
+        let target_id_clone = self.id.clone();
+        let args_clone = self.args.clone();
+        let pending_mqtt_options = Arc::clone(&self.pending_mqtt_options);
+
+        let _ = bg_task_manager
+            .init_cell
+            .get_or_try_init(|| async {
+                debug!(
+                    event = EVENT_MQTT_TARGET_STATE,
+                    component = LOG_COMPONENT_TARGETS,
+                    subsystem = LOG_SUBSYSTEM_MQTT,
+                    target_id = %target_id_clone,
+                    state = "background_task_initializing",
+                    "mqtt target state"
+                );
+
+                let mut rx_guard = bg_task_manager.initial_cancel_rx.lock().await;
+                let cancel_rx = rx_guard.take().ok_or_else(|| {
+                    error!(
+                        event = EVENT_MQTT_TARGET_STATE,
+                        component = LOG_COMPONENT_TARGETS,
+                        subsystem = LOG_SUBSYSTEM_MQTT,
+                        target_id = %target_id_clone,
+                        state = "cancel_receiver_unavailable",
+                        "mqtt target state"
+                    );
+                    TargetError::Configuration("MQTT cancel receiver already taken for task".to_string())
+                })?;
+                drop(rx_guard);
+
+                info!(
+                    event = EVENT_MQTT_TARGET_STATE,
+                    component = LOG_COMPONENT_TARGETS,
+                    subsystem = LOG_SUBSYSTEM_MQTT,
+                    target_id = %target_id_clone,
+                    state = "supervisor_spawning",
+                    "mqtt target state"
+                );
+                // Spawn a supervisor that owns the reconnect loop. Building the
+                // client/event loop, subscribing, and publishing the client to
+                // `client_arc` all happen per session inside the supervisor, so a
+                // fatal protocol error that ends one session is followed by a
+                // backoff and a fresh session instead of permanent silence.
+                let task_handle = tokio::spawn(supervise_mqtt_event_loop(
+                    pending_mqtt_options,
+                    args_clone,
+                    client_arc,
+                    connected_arc,
+                    target_id_clone,
+                    cancel_rx,
+                ));
+                Ok(task_handle)
+            })
+            .await
+            .map_err(|e: TargetError| {
+                error!(
+                    event = EVENT_MQTT_TARGET_STATE,
+                    component = LOG_COMPONENT_TARGETS,
+                    subsystem = LOG_SUBSYSTEM_MQTT,
+                    target_id = %self.id,
+                    state = "background_task_init_failed",
+                    error = %e,
+                    "mqtt target state"
+                );
+                e
+            })?;
+        debug!(
+            event = EVENT_MQTT_TARGET_STATE,
+            component = LOG_COMPONENT_TARGETS,
+            subsystem = LOG_SUBSYSTEM_MQTT,
+            target_id = %self.id,
+            state = "background_task_initialized",
+            "mqtt target state"
+        );
+
+        match tokio::time::timeout(DEFAULT_CONNECTION_TIMEOUT, async {
+            while !self.connected.load(Ordering::SeqCst) {
+                if let Some(handle) = self.bg_task_manager.init_cell.get()
+                    && handle.is_finished()
+                    && !self.connected.load(Ordering::SeqCst)
+                {
+                    error!(
+                        event = EVENT_MQTT_TARGET_STATE,
+                        component = LOG_COMPONENT_TARGETS,
+                        subsystem = LOG_SUBSYSTEM_MQTT,
+                        target_id = %self.id,
+                        state = "background_task_exited_before_connect",
+                        "mqtt target state"
+                    );
+                    return Err(TargetError::Network("MQTT background task exited prematurely".to_string()));
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            debug!(
+                event = EVENT_MQTT_TARGET_STATE,
+                component = LOG_COMPONENT_TARGETS,
+                subsystem = LOG_SUBSYSTEM_MQTT,
+                target_id = %self.id,
+                state = "connected",
+                "mqtt target state"
+            );
+            Ok(())
+        })
+        .await
+        {
+            Ok(Ok(_)) => {
+                info!(
+                    event = EVENT_MQTT_TARGET_STATE,
+                    component = LOG_COMPONENT_TARGETS,
+                    subsystem = LOG_SUBSYSTEM_MQTT,
+                    target_id = %self.id,
+                    state = "ready",
+                    "mqtt target state"
+                );
+                Ok(())
+            }
+            Ok(Err(e)) => Err(e),
+            Err(_) => {
+                error!(
+                    event = EVENT_MQTT_TARGET_STATE,
+                    component = LOG_COMPONENT_TARGETS,
+                    subsystem = LOG_SUBSYSTEM_MQTT,
+                    target_id = %self.id,
+                    state = "connect_timeout",
+                    "mqtt target state"
+                );
+                Err(TargetError::Network("Timeout waiting for MQTT connection".to_string()))
+            }
+        }
+    }
+
+    fn build_queued_payload(&self, event: &EntityTarget<E>) -> Result<QueuedPayload, TargetError> {
+        build_queued_payload_with_records(event, vec![event.clone()])
+    }
+
+    #[instrument(skip(self, body, meta), fields(target_id = %self.id))]
+    async fn send_body(&self, body: Vec<u8>, meta: &QueuedPayloadMeta) -> Result<(), TargetError> {
+        debug!(
+            event = EVENT_MQTT_DELIVERY_STATE,
+            component = LOG_COMPONENT_TARGETS,
+            subsystem = LOG_SUBSYSTEM_MQTT,
+            target_id = %self.id,
+            bucket = %meta.bucket_name,
+            object = %meta.object_name,
+            event = %meta.event_name,
+            payload_len = body.len(),
+            state = "publishing",
+            "mqtt delivery state"
+        );
+
+        // Enqueue a tracked publish so we can wait for broker acknowledgement
+        // (PUBACK for QoS1, PUBCOMP for QoS2, or network flush for QoS0) before
+        // reporting success. Previously the publish was treated as delivered as
+        // soon as it was queued on the event loop, so a disconnect after queueing
+        // silently dropped the event while its durable copy was already deleted
+        // (backlog#971). Error classification now matches on the typed error
+        // instead of substring matching on the display string.
+        let notice = match tokio::time::timeout(MQTT_PUBLISH_CONFIRM_TIMEOUT, async {
+            let client_guard = self.client.lock().await;
+            let client = client_guard
+                .as_ref()
+                .ok_or_else(|| TargetError::Configuration("MQTT client not initialized".to_string()))?;
+            let notice = client
+                .publish_tracked(&self.args.topic, body, PublishOptions::new(self.args.qos))
+                .await
+                .map_err(|error| classify_mqtt_client_error(&error))?;
+            drop(client_guard);
+            Ok(notice)
+        })
+        .await
+        {
+            Ok(Ok(notice)) => notice,
+            Ok(Err(err)) => {
+                warn!(
+                    event = EVENT_MQTT_DELIVERY_STATE,
+                    component = LOG_COMPONENT_TARGETS,
+                    subsystem = LOG_SUBSYSTEM_MQTT,
+                    target_id = %self.id,
+                    state = "publish_failed",
+                    reason = "enqueue_error",
+                    error = %err,
+                    "mqtt delivery state"
+                );
+                mark_target_disconnected_on_connectivity_error(&self.connected, &err);
+                return Err(err);
+            }
+            Err(_) => {
+                warn!(
+                    event = EVENT_MQTT_DELIVERY_STATE,
+                    component = LOG_COMPONENT_TARGETS,
+                    subsystem = LOG_SUBSYSTEM_MQTT,
+                    target_id = %self.id,
+                    state = "publish_failed",
+                    reason = "enqueue_timeout",
+                    "mqtt delivery state"
+                );
+                // Admission can time out because the local bounded request
+                // channel is full while the MQTT session remains connected.
+                // Only protocol/client failures are evidence of disconnect.
+                return Err(TargetError::Timeout("MQTT publish enqueue timed out".to_string()));
+            }
+        };
+
+        match tokio::time::timeout(MQTT_PUBLISH_CONFIRM_TIMEOUT, notice.wait_completion_async()).await {
+            Ok(Ok(())) => {
+                debug!(
+                    event = EVENT_MQTT_DELIVERY_STATE,
+                    component = LOG_COMPONENT_TARGETS,
+                    subsystem = LOG_SUBSYSTEM_MQTT,
+                    target_id = %self.id,
+                    topic = %self.args.topic,
+                    state = "published",
+                    "mqtt delivery state"
+                );
+                self.delivery_counters.record_success();
+                Ok(())
+            }
+            Ok(Err(e)) => {
+                let err = classify_mqtt_notice_error(&e);
+                warn!(
+                    event = EVENT_MQTT_DELIVERY_STATE,
+                    component = LOG_COMPONENT_TARGETS,
+                    subsystem = LOG_SUBSYSTEM_MQTT,
+                    target_id = %self.id,
+                    state = "publish_unconfirmed",
+                    error = %e,
+                    "mqtt delivery state"
+                );
+                mark_target_disconnected_on_connectivity_error(&self.connected, &err);
+                Err(err)
+            }
+            Err(_) => {
+                let err = TargetError::Timeout("Timed out waiting for MQTT publish acknowledgement".to_string());
+                warn!(
+                    event = EVENT_MQTT_DELIVERY_STATE,
+                    component = LOG_COMPONENT_TARGETS,
+                    subsystem = LOG_SUBSYSTEM_MQTT,
+                    target_id = %self.id,
+                    state = "publish_confirm_timeout",
+                    "mqtt delivery state"
+                );
+                mark_target_disconnected_on_connectivity_error(&self.connected, &err);
+                Err(err)
+            }
+        }
+    }
+
+    pub fn clone_target(&self) -> Box<dyn Target<E> + Send + Sync> {
+        Box::new(MQTTTarget::<E> {
+            id: self.id.clone(),
+            args: self.args.clone(),
+            client: self.client.clone(),
+            store: self.store.as_ref().map(|s| s.boxed_clone()),
+            connected: self.connected.clone(),
+            bg_task_manager: self.bg_task_manager.clone(),
+            tls_state: Arc::clone(&self.tls_state),
+            tls_adapter: self.tls_adapter.clone(),
+            pending_mqtt_options: Arc::clone(&self.pending_mqtt_options),
+            delivery_counters: self.delivery_counters.clone(),
+            _phantom: PhantomData,
+        })
+    }
+}
+
+/// Coordinated TLS hot-reload implementation for MQTT targets.
+///
+/// MQTT uses `MqttOptions` as the material type. The coordinator rebuilds
+/// `MqttOptions` on TLS file changes, and `apply_tls_material` stores it in
+/// an `ArcSwap` for use on the next reconnection. The running event loop is
+/// not interrupted; rumqttc handles reconnection internally.
+#[async_trait]
+impl<E> ReloadableTargetTls for MQTTTarget<E>
+where
+    E: PluginEvent,
+{
+    type Material = MqttOptions;
+
+    fn tls_input_set(&self) -> TargetTlsInputSet {
+        TargetTlsInputSet {
+            ca_path: self.args.tls.ca_path.clone(),
+            client_cert_path: self.args.tls.client_cert_path.clone(),
+            client_key_path: self.args.tls.client_key_path.clone(),
+            target_label: format!("mqtt:{}", self.id.id),
+        }
+    }
+
+    async fn build_tls_material(&self) -> Result<Self::Material, TargetError> {
+        build_mqtt_options(
+            format!("rustfs_notify_{}", uuid::Uuid::new_v4()),
+            &self.args.broker,
+            Some(self.args.username.as_str()),
+            Some(self.args.password.as_str()),
+            &self.args.tls,
+            self.args.keep_alive,
+            Some(MAX_MQTT_PACKET_SIZE_BYTES),
+        )
+    }
+
+    async fn apply_tls_material(
+        &self,
+        _generation: TargetTlsGeneration,
+        material: Arc<Self::Material>,
+        _mode: ReloadApplyMode,
+    ) -> Result<(), TargetError> {
+        // Store the new MqttOptions for use on next reconnection.
+        // The running event loop is not interrupted; rumqttc handles reconnection.
+        self.pending_mqtt_options.store(material);
+        Ok(())
+    }
+
+    async fn validate_tls_files(&self) -> Result<(), TargetError> {
+        validate_tls_material(&self.args.tls.ca_path, &self.args.tls.client_cert_path, &self.args.tls.client_key_path)
+    }
+}
+
+/// Computes the next reconnect backoff by doubling the current delay, capped at
+/// [`MQTT_RECONNECT_BACKOFF_MAX`]. Kept as a pure function so the backoff policy
+/// can be unit tested without a live broker.
+fn next_reconnect_backoff(current: Duration) -> Duration {
+    current.saturating_mul(2).min(MQTT_RECONNECT_BACKOFF_MAX)
+}
+
+/// Drives the supervised reconnect loop: run a session, then wait a backoff
+/// before restarting, until a cancellation signal arrives. Cancellation drops
+/// the in-flight session future (the outer `select!`), so `close()` stops the
+/// loop promptly without the session needing its own cancel channel.
+///
+/// `run_session` returns whether its session connected at least once; a
+/// connected session resets the backoff so a transient drop reconnects quickly,
+/// while repeated immediate failures back off exponentially.
+async fn reconnect_supervisor<F, Fut>(mut cancel_rx: mpsc::Receiver<()>, mut run_session: F)
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = bool>,
+{
+    let mut backoff = MQTT_RECONNECT_BACKOFF_MIN;
+    loop {
+        let connected = tokio::select! {
+            biased;
+            _ = cancel_rx.recv() => break,
+            connected = run_session() => connected,
+        };
+
+        if connected {
+            backoff = MQTT_RECONNECT_BACKOFF_MIN;
+        }
+
+        tokio::select! {
+            biased;
+            _ = cancel_rx.recv() => break,
+            _ = tokio::time::sleep(backoff) => {}
+        }
+
+        backoff = next_reconnect_backoff(backoff);
+    }
+}
+
+/// Supervises the MQTT event loop for the lifetime of the target. Each session
+/// rebuilds the client and event loop from the latest `MqttOptions`, so TLS
+/// reloads are picked up on reconnect, and a session that exits (including on a
+/// fatal protocol error) is restarted after a backoff instead of leaving the
+/// target permanently wedged.
+async fn supervise_mqtt_event_loop(
+    pending_mqtt_options: Arc<ArcSwap<MqttOptions>>,
+    args: MQTTArgs,
+    client_arc: Arc<Mutex<Option<AsyncClient>>>,
+    connected_status: Arc<AtomicBool>,
+    target_id: TargetID,
+    cancel_rx: mpsc::Receiver<()>,
+) {
+    info!(
+        event = EVENT_MQTT_TARGET_STATE,
+        component = LOG_COMPONENT_TARGETS,
+        subsystem = LOG_SUBSYSTEM_MQTT,
+        target_id = %target_id,
+        state = "supervisor_started",
+        "mqtt target state"
+    );
+
+    reconnect_supervisor(cancel_rx, || {
+        let pending_mqtt_options = Arc::clone(&pending_mqtt_options);
+        let args = args.clone();
+        let client_arc = Arc::clone(&client_arc);
+        let connected_status = Arc::clone(&connected_status);
+        let target_id = target_id.clone();
+        async move { run_one_mqtt_session(pending_mqtt_options, args, client_arc, connected_status, target_id).await }
+    })
+    .await;
+
+    connected_status.store(false, Ordering::SeqCst);
+    info!(
+        event = EVENT_MQTT_TARGET_STATE,
+        component = LOG_COMPONENT_TARGETS,
+        subsystem = LOG_SUBSYSTEM_MQTT,
+        target_id = %target_id,
+        state = "supervisor_stopped",
+        "mqtt target state"
+    );
+}
+
+/// Builds a client and event loop, subscribes, publishes the client for
+/// `send_body`, then runs the event loop until it exits. Returns whether the
+/// session established a connection at least once.
+async fn run_one_mqtt_session(
+    pending_mqtt_options: Arc<ArcSwap<MqttOptions>>,
+    args: MQTTArgs,
+    client_arc: Arc<Mutex<Option<AsyncClient>>>,
+    connected_status: Arc<AtomicBool>,
+    target_id: TargetID,
+) -> bool {
+    // Use the latest MqttOptions (may have been updated by TLS reload coordinator).
+    let mqtt_options: MqttOptions = (**pending_mqtt_options.load()).clone();
+    let (new_client, eventloop) = AsyncClient::builder(mqtt_options).capacity(10).build();
+
+    if let Err(e) = new_client.subscribe(&args.topic, args.qos).await {
+        error!(
+            event = EVENT_MQTT_TARGET_STATE,
+            component = LOG_COMPONENT_TARGETS,
+            subsystem = LOG_SUBSYSTEM_MQTT,
+            target_id = %target_id,
+            state = "subscribe_failed",
+            error = %e,
+            "mqtt target state"
+        );
+        return false;
+    }
+
+    *client_arc.lock().await = Some(new_client);
+    connected_status.store(false, Ordering::SeqCst);
+
+    info!(
+        event = EVENT_MQTT_TARGET_STATE,
+        component = LOG_COMPONENT_TARGETS,
+        subsystem = LOG_SUBSYSTEM_MQTT,
+        target_id = %target_id,
+        state = "event_loop_spawning",
+        "mqtt target state"
+    );
+
+    run_mqtt_event_loop(eventloop, connected_status, target_id).await
+}
+
+/// Runs a single MQTT event-loop session until it exits (fatal protocol error
+/// or `RequestsDone`). Returns whether the session connected at least once.
+/// Cancellation is handled by the supervisor dropping this future, so no cancel
+/// channel is needed here.
+async fn run_mqtt_event_loop(mut eventloop: EventLoop, connected_status: Arc<AtomicBool>, target_id: TargetID) -> bool {
+    info!(
+        event = EVENT_MQTT_TARGET_STATE,
+        component = LOG_COMPONENT_TARGETS,
+        subsystem = LOG_SUBSYSTEM_MQTT,
+        target_id = %target_id,
+        state = "event_loop_started",
+        "mqtt target state"
+    );
+    let mut initial_connection_established = false;
+
+    loop {
+        let polled_event_result = if !initial_connection_established || !connected_status.load(Ordering::SeqCst) {
+            match tokio::time::timeout(EVENT_LOOP_POLL_TIMEOUT, eventloop.poll()).await {
+                Ok(result) => Some(result),
+                Err(_) => {
+                    debug!(
+                        event = EVENT_MQTT_TARGET_STATE,
+                        component = LOG_COMPONENT_TARGETS,
+                        subsystem = LOG_SUBSYSTEM_MQTT,
+                        target_id = %target_id,
+                        state = "poll_timeout",
+                        "mqtt target state"
+                    );
+                    connected_status.store(false, Ordering::SeqCst);
+                    None
+                }
+            }
+        } else {
+            Some(eventloop.poll().await)
+        };
+
+        match polled_event_result {
+            Some(Ok(notification)) => {
+                trace!(target_id = %target_id, event = ?notification, "Received MQTT event");
+                match notification {
+                    rumqttc::Event::Incoming(Incoming::ConnAck(_conn_ack)) => {
+                        info!(
+                            event = EVENT_MQTT_TARGET_STATE,
+                            component = LOG_COMPONENT_TARGETS,
+                            subsystem = LOG_SUBSYSTEM_MQTT,
+                            target_id = %target_id,
+                            state = "connack_received",
+                            "mqtt target state"
+                        );
+                        connected_status.store(true, Ordering::SeqCst);
+                        initial_connection_established = true;
+                    }
+                    rumqttc::Event::Incoming(Incoming::Publish(publish)) => {
+                        debug!(
+                            event = EVENT_MQTT_TARGET_STATE,
+                            component = LOG_COMPONENT_TARGETS,
+                            subsystem = LOG_SUBSYSTEM_MQTT,
+                            target_id = %target_id,
+                            state = "publish_received",
+                            topic = ?publish.topic,
+                            payload_len = publish.payload.len(),
+                            "mqtt target state"
+                        );
+                    }
+                    rumqttc::Event::Incoming(Incoming::Disconnect(_)) => {
+                        info!(
+                            event = EVENT_MQTT_TARGET_STATE,
+                            component = LOG_COMPONENT_TARGETS,
+                            subsystem = LOG_SUBSYSTEM_MQTT,
+                            target_id = %target_id,
+                            state = "broker_disconnected",
+                            "mqtt target state"
+                        );
+                        connected_status.store(false, Ordering::SeqCst);
+                    }
+                    rumqttc::Event::Incoming(Incoming::PingResp) => {
+                        trace!(target_id = %target_id, "Received PingResp from broker. Connection is alive.");
+                    }
+                    rumqttc::Event::Incoming(Incoming::SubAck(suback)) => {
+                        trace!(target_id = %target_id, "Received SubAck for pkid: {}", suback.pkid);
+                    }
+                    rumqttc::Event::Incoming(Incoming::PubAck(puback)) => {
+                        trace!(target_id = %target_id, "Received PubAck for pkid: {}", puback.pkid);
+                    }
+                    // Process other incoming packet types as needed (PubRec, PubRel, PubComp, UnsubAck)
+                    rumqttc::Event::Outgoing(Outgoing::Disconnect) => {
+                        info!(
+                            event = EVENT_MQTT_TARGET_STATE,
+                            component = LOG_COMPONENT_TARGETS,
+                            subsystem = LOG_SUBSYSTEM_MQTT,
+                            target_id = %target_id,
+                            state = "client_disconnect_requested",
+                            "mqtt target state"
+                        );
+                        connected_status.store(false, Ordering::SeqCst);
+                    }
+                    rumqttc::Event::Outgoing(Outgoing::PingReq) => {
+                        trace!(target_id = %target_id, "Client sent PingReq to broker.");
+                    }
+                    // Other Outgoing events (Subscribe, Unsubscribe, Publish) usually do not need to handle connection status here,
+                    // Because they are actions initiated by the client.
+                    _ => {
+                        // Log other unspecified MQTT events that are not handled, which helps debug
+                        trace!(target_id = %target_id, "Unhandled or generic MQTT event: {:?}", notification);
+                    }
+                }
+            }
+            Some(Err(e)) => {
+                connected_status.store(false, Ordering::SeqCst);
+                error!(
+                    event = EVENT_MQTT_TARGET_STATE,
+                    component = LOG_COMPONENT_TARGETS,
+                    subsystem = LOG_SUBSYSTEM_MQTT,
+                    target_id = %target_id,
+                    state = "poll_failed",
+                    error = %e,
+                    "mqtt target state"
+                );
+
+                if matches!(
+                    e,
+                    ConnectionError::Io(_)
+                        | ConnectionError::Timeout(_)
+                        | ConnectionError::ConnectionRefused(_)
+                        | ConnectionError::Tls(_)
+                ) {
+                    warn!(
+                        event = EVENT_MQTT_TARGET_STATE,
+                        component = LOG_COMPONENT_TARGETS,
+                        subsystem = LOG_SUBSYSTEM_MQTT,
+                        target_id = %target_id,
+                        state = "reconnect_pending",
+                        error = %e,
+                        "mqtt target state"
+                    );
+                }
+                // Fatal protocol errors end this session; the supervisor rebuilds
+                // the client and event loop after a backoff. Non-fatal errors are
+                // usually handled by rumqttc's internal reconnection, so keep
+                // polling after a short pause to avoid a busy loop on rapid failure.
+                if is_fatal_mqtt_error(&e) {
+                    error!(
+                        event = EVENT_MQTT_TARGET_STATE,
+                        component = LOG_COMPONENT_TARGETS,
+                        subsystem = LOG_SUBSYSTEM_MQTT,
+                        target_id = %target_id,
+                        state = "fatal_error",
+                        error = %e,
+                        "mqtt target state"
+                    );
+                    break;
+                }
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+            None => {
+                warn!(
+                    event = EVENT_MQTT_TARGET_STATE,
+                    component = LOG_COMPONENT_TARGETS,
+                    subsystem = LOG_SUBSYSTEM_MQTT,
+                    target_id = %target_id,
+                    state = "poll_retry_scheduled",
+                    "mqtt target state"
+                );
+                continue;
+            }
+        }
+    }
+    connected_status.store(false, Ordering::SeqCst);
+    info!(
+        event = EVENT_MQTT_TARGET_STATE,
+        component = LOG_COMPONENT_TARGETS,
+        subsystem = LOG_SUBSYSTEM_MQTT,
+        target_id = %target_id,
+        state = "event_loop_finished",
+        "mqtt target state"
+    );
+
+    initial_connection_established
+}
+
+/// Classifies a publish-enqueue failure. Every [`ClientError`] variant means the
+/// publish could not be handed to the event loop (channel closed/full, or the
+/// tracked-publish API is unavailable), i.e. the client is not currently able to
+/// deliver. These are treated as retriable connectivity errors so the durable
+/// copy is preserved and replayed rather than dropped (backlog#971).
+fn classify_mqtt_client_error(err: &ClientError) -> TargetError {
+    match err {
+        ClientError::RequestChannelFull(_) | ClientError::RequestChannelDisconnected(_) | ClientError::TrackingUnavailable => {
+            TargetError::NotConnected
+        }
+        ClientError::InvalidRequest(_) => TargetError::Request(format!("Invalid MQTT publish request: {err}")),
+        _ => TargetError::NotConnected,
+    }
+}
+
+/// Classifies a publish acknowledgement failure returned while waiting for the
+/// broker to confirm delivery. Connectivity/session problems keep the event for
+/// replay; a broker rejection with a failing reason code is surfaced as a
+/// request-level error (backlog#971).
+fn classify_mqtt_notice_error(err: &PublishNoticeError) -> TargetError {
+    match err {
+        PublishNoticeError::Recv
+        | PublishNoticeError::SessionReset
+        | PublishNoticeError::Qos0NotFlushed
+        | PublishNoticeError::BrokerOnlySessionResume
+        | PublishNoticeError::SessionPersistence(_)
+        | PublishNoticeError::TopicAliasReplayUnavailable(_) => TargetError::NotConnected,
+        PublishNoticeError::RetainNotSupported => TargetError::Request(format!("MQTT broker rejected publish: {err}")),
+        PublishNoticeError::V5PubAck(_) | PublishNoticeError::V5PubRec(_) | PublishNoticeError::V5PubComp(_) => {
+            TargetError::Request(format!("MQTT broker rejected publish: {err}"))
+        }
+        _ => TargetError::NotConnected,
+    }
+}
+
+/// Check whether the given MQTT connection error should be considered a fatal error,
+/// For fatal errors, the event loop should terminate.
+fn is_fatal_mqtt_error(err: &ConnectionError) -> bool {
+    match err {
+        // If the client request has been processed all (for example, AsyncClient is dropped), the event loop can end.
+        ConnectionError::RequestsDone => true,
+
+        // Check for the underlying MQTT status error
+        ConnectionError::MqttState(state_err) => {
+            // The type of state_err is &rumqttc::StateError
+            match state_err {
+                // If StateError is caused by deserialization issues, check the underlying MqttBytesError
+                rumqttc::StateError::Deserialization(mqtt_bytes_err) => { // The type of mqtt_bytes_err is &rumqttc::mqttbytes::Error
+                    matches!(
+                        mqtt_bytes_err,
+                        MqttBytesError::InvalidProtocol // Invalid agreement
+                        | MqttBytesError::InvalidProtocolLevel(_) // Invalid protocol level
+                        | MqttBytesError::IncorrectPacketFormat // Package format is incorrect
+                        | MqttBytesError::InvalidPacketType(_) // Invalid package type
+                        | MqttBytesError::MalformedPacket // Package format error
+                        | MqttBytesError::PayloadTooLong // Too long load
+                        | MqttBytesError::PayloadSizeLimitExceeded { .. } // Load size limit exceeded
+                        | MqttBytesError::TopicNotUtf8 { .. } // Topic Non-UTF-8 (Serious Agreement Violation)
+                    )
+                }
+                // Others that are fatal StateError variants
+                rumqttc::StateError::InvalidState          // The internal state machine is in invalid state
+                | rumqttc::StateError::ProtocolViolation(ProtocolViolation::UnexpectedIncomingPacket(_)) // Agreement Violation: Unexpected Data Packet Received
+                | rumqttc::StateError::ProtocolViolation(_) // Agreement Violation
+                | rumqttc::StateError::Unsolicited(_)      // Agreement Violation: Unsolicited ACK Received
+                | rumqttc::StateError::CollisionTimeout    // Agreement Violation (if this stage occurs)
+                | rumqttc::StateError::EmptySubscription   // Agreement violation (if this stage occurs)
+                => true,
+
+                // Other StateErrors (such as Io, AwaitPingResp, CollisionTimeout) are not considered deadly here.
+                // They may be processed internally by rumqttc or upgraded to other ConnectionError types.
+                _ => false,
+            }
+        }
+
+        // Other types of ConnectionErrors (such as Io, Tls, NetworkTimeout, ConnectionRefused, NotConnAck, etc.)
+        // It is usually considered temporary, or the reconnect logic inside rumqttc will be processed.
+        _ => false,
+    }
+}
+
+#[async_trait]
+impl<E> Target<E> for MQTTTarget<E>
+where
+    E: PluginEvent,
+{
+    fn id(&self) -> TargetID {
+        self.id.clone()
+    }
+
+    #[instrument(skip(self), fields(target_id = %self.id))]
+    async fn is_active(&self) -> Result<bool, TargetError> {
+        debug!(
+            event = EVENT_MQTT_TARGET_STATE,
+            component = LOG_COMPONENT_TARGETS,
+            subsystem = LOG_SUBSYSTEM_MQTT,
+            target_id = %self.id,
+            state = "activity_check",
+            "mqtt target state"
+        );
+        if self.client.lock().await.is_none() && !self.connected.load(Ordering::SeqCst) {
+            // Check if the background task is running and has not panicked
+            if let Some(handle) = self.bg_task_manager.init_cell.get()
+                && handle.is_finished()
+            {
+                error!(
+                    event = EVENT_MQTT_TARGET_STATE,
+                    component = LOG_COMPONENT_TARGETS,
+                    subsystem = LOG_SUBSYSTEM_MQTT,
+                    target_id = %self.id,
+                    state = "inactive_background_task_finished",
+                    "mqtt target state"
+                );
+                return Err(TargetError::Network("MQTT background task terminated".to_string()));
+            }
+            debug!(
+                event = EVENT_MQTT_TARGET_STATE,
+                component = LOG_COMPONENT_TARGETS,
+                subsystem = LOG_SUBSYSTEM_MQTT,
+                target_id = %self.id,
+                state = "inactive_client_unavailable",
+                "mqtt target state"
+            );
+            return Err(TargetError::Configuration(
+                "MQTT client not available or not initialized/connected".to_string(),
+            ));
+        }
+
+        if self.connected.load(Ordering::SeqCst) {
+            debug!(
+                event = EVENT_MQTT_TARGET_STATE,
+                component = LOG_COMPONENT_TARGETS,
+                subsystem = LOG_SUBSYSTEM_MQTT,
+                target_id = %self.id,
+                state = "active",
+                "mqtt target state"
+            );
+            Ok(true)
+        } else {
+            debug!(
+                event = EVENT_MQTT_TARGET_STATE,
+                component = LOG_COMPONENT_TARGETS,
+                subsystem = LOG_SUBSYSTEM_MQTT,
+                target_id = %self.id,
+                state = "inactive_not_connected",
+                "mqtt target state"
+            );
+            Err(TargetError::NotConnected)
+        }
+    }
+
+    #[instrument(skip(self, event), fields(target_id = %self.id))]
+    async fn save(&self, event: Arc<EntityTarget<E>>) -> Result<(), TargetError> {
+        let queued = match self.build_queued_payload(&event) {
+            Ok(queued) => queued,
+            Err(err) => {
+                self.delivery_counters.record_final_failure();
+                return Err(err);
+            }
+        };
+
+        if let Some(store) = &self.store {
+            debug!(
+                event = EVENT_MQTT_DELIVERY_STATE,
+                component = LOG_COMPONENT_TARGETS,
+                subsystem = LOG_SUBSYSTEM_MQTT,
+                target_id = %self.id,
+                state = "store_enqueue_started",
+                "mqtt delivery state"
+            );
+            match persist_queued_payload_to_store(store.as_ref(), &queued) {
+                Ok(_) => {
+                    debug!(
+                        event = EVENT_MQTT_DELIVERY_STATE,
+                        component = LOG_COMPONENT_TARGETS,
+                        subsystem = LOG_SUBSYSTEM_MQTT,
+                        target_id = %self.id,
+                        state = "store_enqueued",
+                        "mqtt delivery state"
+                    );
+                    Ok(())
+                }
+                Err(e) => {
+                    error!(
+                        event = EVENT_MQTT_DELIVERY_STATE,
+                        component = LOG_COMPONENT_TARGETS,
+                        subsystem = LOG_SUBSYSTEM_MQTT,
+                        target_id = %self.id,
+                        state = "store_enqueue_failed",
+                        error = %e,
+                        "mqtt delivery state"
+                    );
+                    self.delivery_counters.record_final_failure();
+                    Err(e)
+                }
+            }
+        } else {
+            if !self.is_enabled() {
+                return Err(TargetError::Disabled);
+            }
+
+            if !self.connected.load(Ordering::SeqCst) {
+                warn!(
+                    event = EVENT_MQTT_TARGET_STATE,
+                    component = LOG_COMPONENT_TARGETS,
+                    subsystem = LOG_SUBSYSTEM_MQTT,
+                    target_id = %self.id,
+                    state = "direct_send_requires_init",
+                    "mqtt target state"
+                );
+                // Call the struct's init method, not the trait's default
+                match MQTTTarget::<E>::init(self).await {
+                    Ok(_) => debug!(
+                        event = EVENT_MQTT_TARGET_STATE,
+                        component = LOG_COMPONENT_TARGETS,
+                        subsystem = LOG_SUBSYSTEM_MQTT,
+                        target_id = %self.id,
+                        state = "init_completed",
+                        "mqtt target state"
+                    ),
+                    Err(e) => {
+                        error!(
+                            event = EVENT_MQTT_TARGET_STATE,
+                            component = LOG_COMPONENT_TARGETS,
+                            subsystem = LOG_SUBSYSTEM_MQTT,
+                            target_id = %self.id,
+                            state = "init_failed",
+                            error = %e,
+                            "mqtt target state"
+                        );
+                        self.delivery_counters.record_final_failure();
+                        return Err(TargetError::NotConnected);
+                    }
+                }
+                if !self.connected.load(Ordering::SeqCst) {
+                    error!(
+                        event = EVENT_MQTT_TARGET_STATE,
+                        component = LOG_COMPONENT_TARGETS,
+                        subsystem = LOG_SUBSYSTEM_MQTT,
+                        target_id = %self.id,
+                        state = "init_completed_not_connected",
+                        "mqtt target state"
+                    );
+                    self.delivery_counters.record_final_failure();
+                    return Err(TargetError::NotConnected);
+                }
+            }
+            if let Err(err) = self.send_body(queued.body, &queued.meta).await {
+                self.delivery_counters.record_final_failure();
+                return Err(err);
+            }
+            Ok(())
+        }
+    }
+
+    #[instrument(skip(self, body, meta), fields(target_id = %self.id))]
+    async fn send_raw_from_store(&self, key: Key, body: Vec<u8>, meta: QueuedPayloadMeta) -> Result<(), TargetError> {
+        debug!(
+            event = EVENT_MQTT_DELIVERY_STATE,
+            component = LOG_COMPONENT_TARGETS,
+            subsystem = LOG_SUBSYSTEM_MQTT,
+            target_id = %self.id,
+            ?key,
+            state = "store_replay_started",
+            "mqtt delivery state"
+        );
+
+        if !self.is_enabled() {
+            return Err(TargetError::Disabled);
+        }
+
+        if !self.connected.load(Ordering::SeqCst) {
+            warn!(
+                event = EVENT_MQTT_TARGET_STATE,
+                component = LOG_COMPONENT_TARGETS,
+                subsystem = LOG_SUBSYSTEM_MQTT,
+                target_id = %self.id,
+                state = "store_replay_requires_init",
+                "mqtt target state"
+            );
+            match MQTTTarget::<E>::init(self).await {
+                Ok(_) => debug!(
+                    event = EVENT_MQTT_TARGET_STATE,
+                    component = LOG_COMPONENT_TARGETS,
+                    subsystem = LOG_SUBSYSTEM_MQTT,
+                    target_id = %self.id,
+                    state = "init_completed",
+                    "mqtt target state"
+                ),
+                Err(e) => {
+                    error!(
+                        event = EVENT_MQTT_TARGET_STATE,
+                        component = LOG_COMPONENT_TARGETS,
+                        subsystem = LOG_SUBSYSTEM_MQTT,
+                        target_id = %self.id,
+                        state = "init_failed",
+                        error = %e,
+                        "mqtt target state"
+                    );
+                    return Err(TargetError::NotConnected);
+                }
+            }
+            if !self.connected.load(Ordering::SeqCst) {
+                error!(
+                    event = EVENT_MQTT_TARGET_STATE,
+                    component = LOG_COMPONENT_TARGETS,
+                    subsystem = LOG_SUBSYSTEM_MQTT,
+                    target_id = %self.id,
+                    state = "init_completed_not_connected",
+                    "mqtt target state"
+                );
+                return Err(TargetError::NotConnected);
+            }
+        }
+
+        debug!(
+            event = EVENT_MQTT_DELIVERY_STATE,
+            component = LOG_COMPONENT_TARGETS,
+            subsystem = LOG_SUBSYSTEM_MQTT,
+            target_id = %self.id,
+            ?key,
+            state = "store_replay_publishing",
+            "mqtt delivery state"
+        );
+        if let Err(e) = self.send_body(body, &meta).await {
+            if matches!(e, TargetError::NotConnected) {
+                warn!(
+                    event = EVENT_MQTT_DELIVERY_STATE,
+                    component = LOG_COMPONENT_TARGETS,
+                    subsystem = LOG_SUBSYSTEM_MQTT,
+                    target_id = %self.id,
+                    ?key,
+                    state = "store_replay_deferred",
+                    reason = "not_connected",
+                    "mqtt delivery state"
+                );
+                return Err(TargetError::NotConnected);
+            }
+            error!(
+                event = EVENT_MQTT_DELIVERY_STATE,
+                component = LOG_COMPONENT_TARGETS,
+                subsystem = LOG_SUBSYSTEM_MQTT,
+                target_id = %self.id,
+                ?key,
+                state = "store_replay_failed",
+                error = %e,
+                "mqtt delivery state"
+            );
+            return Err(e);
+        }
+        debug!(
+            event = EVENT_MQTT_DELIVERY_STATE,
+            component = LOG_COMPONENT_TARGETS,
+            subsystem = LOG_SUBSYSTEM_MQTT,
+            target_id = %self.id,
+            ?key,
+            state = "store_replay_published",
+            "mqtt delivery state"
+        );
+        Ok(())
+    }
+
+    async fn close(&self) -> Result<(), TargetError> {
+        info!(
+            event = EVENT_MQTT_TARGET_STATE,
+            component = LOG_COMPONENT_TARGETS,
+            subsystem = LOG_SUBSYSTEM_MQTT,
+            target_id = %self.id,
+            state = "closing",
+            "mqtt target state"
+        );
+
+        if let Err(e) = self.bg_task_manager.cancel_tx.send(()).await {
+            warn!(
+                event = EVENT_MQTT_TARGET_STATE,
+                component = LOG_COMPONENT_TARGETS,
+                subsystem = LOG_SUBSYSTEM_MQTT,
+                target_id = %self.id,
+                state = "cancel_signal_failed",
+                error = %e,
+                "mqtt target state"
+            );
+        }
+
+        // The cancel signal above makes the supervisor's `select!` drop the
+        // in-flight session and stop the reconnect loop. The `JoinHandle` lives
+        // in a `OnceCell` shared across `clone_target()` clones, so it cannot be
+        // taken out to be joined here; we rely on the cancel signal for a prompt,
+        // graceful stop.
+        if self.bg_task_manager.init_cell.get().is_some() {
+            debug!(
+                event = EVENT_MQTT_TARGET_STATE,
+                component = LOG_COMPONENT_TARGETS,
+                subsystem = LOG_SUBSYSTEM_MQTT,
+                target_id = %self.id,
+                state = "supervisor_stop_signalled",
+                "mqtt target state"
+            );
+        }
+
+        if let Some(client_instance) = self.client.lock().await.take() {
+            info!(
+                event = EVENT_MQTT_TARGET_STATE,
+                component = LOG_COMPONENT_TARGETS,
+                subsystem = LOG_SUBSYSTEM_MQTT,
+                target_id = %self.id,
+                state = "disconnecting_client",
+                "mqtt target state"
+            );
+            if let Err(e) = client_instance.disconnect().await {
+                warn!(
+                    event = EVENT_MQTT_TARGET_STATE,
+                    component = LOG_COMPONENT_TARGETS,
+                    subsystem = LOG_SUBSYSTEM_MQTT,
+                    target_id = %self.id,
+                    state = "disconnect_failed",
+                    error = %e,
+                    "mqtt target state"
+                );
+            }
+        }
+
+        self.tls_state.lock().reset();
+        // If a TLS reload adapter is attached, reset its error tracking
+        // so that a future re-init does not inherit stale failure state.
+        if let Some(adapter) = &self.tls_adapter {
+            *adapter.runtime_state().last_error.write() = None;
+        }
+
+        self.connected.store(false, Ordering::SeqCst);
+        info!(
+            event = EVENT_MQTT_TARGET_STATE,
+            component = LOG_COMPONENT_TARGETS,
+            subsystem = LOG_SUBSYSTEM_MQTT,
+            target_id = %self.id,
+            state = "closed",
+            "mqtt target state"
+        );
+        Ok(())
+    }
+
+    fn store(&self) -> Option<&(dyn Store<QueuedPayload, Error = StoreError, Key = Key> + Send + Sync)> {
+        self.store.as_deref()
+    }
+
+    fn clone_dyn(&self) -> Box<dyn Target<E> + Send + Sync> {
+        self.clone_target()
+    }
+
+    async fn init(&self) -> Result<(), TargetError> {
+        if !self.is_enabled() {
+            debug!(
+                event = EVENT_MQTT_TARGET_STATE,
+                component = LOG_COMPONENT_TARGETS,
+                subsystem = LOG_SUBSYSTEM_MQTT,
+                target_id = %self.id,
+                state = "disabled",
+                "mqtt target state"
+            );
+            return Ok(());
+        }
+        // Call the internal init logic
+        MQTTTarget::<E>::init(self).await
+    }
+
+    fn is_enabled(&self) -> bool {
+        self.args.enable
+    }
+
+    fn delivery_snapshot(&self) -> TargetDeliverySnapshot {
+        self.delivery_counters.snapshot(
+            self.store.as_deref().map_or(0, |store| store.len() as u64),
+            // MQTT targets record no terminal failures and keep no failed store.
+            0,
+        )
+    }
+
+    fn record_final_failure(&self) {
+        self.delivery_counters.record_final_failure();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        AsyncClient, ClientError, MQTT_RECONNECT_BACKOFF_MAX, MQTT_RECONNECT_BACKOFF_MIN, MQTTArgs, MQTTTarget, MQTTTlsConfig,
+        MqttOptions, PublishNoticeError, PublishOptions, QoS, QueuedPayloadMeta, classify_mqtt_client_error,
+        classify_mqtt_notice_error, next_reconnect_backoff, reconnect_supervisor, validate_mqtt_broker_url,
+    };
+    use crate::error::TargetError;
+    use crate::target::{REDACTED_SECRET, TargetType};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
+    use tokio::sync::mpsc;
+    use url::Url;
+
+    fn base_mqtt_args() -> MQTTArgs {
+        MQTTArgs {
+            enable: true,
+            broker: Url::parse("mqtt://broker.example.com:1883").expect("valid broker"),
+            topic: "rustfs/events".to_string(),
+            qos: QoS::AtLeastOnce,
+            username: String::new(),
+            password: String::new(),
+            tls: MQTTTlsConfig::default(),
+            max_reconnect_interval: Duration::from_secs(1),
+            keep_alive: Duration::from_secs(30),
+            queue_dir: String::new(),
+            queue_limit: 0,
+            target_type: TargetType::NotifyEvent,
+        }
+    }
+
+    #[test]
+    fn mqtt_client_error_classified_as_not_connected() {
+        // A publish that cannot be handed to the event loop means the client is
+        // not connected; the durable copy must be kept for replay (backlog#971).
+        assert!(matches!(
+            classify_mqtt_client_error(&ClientError::TrackingUnavailable),
+            TargetError::NotConnected
+        ));
+    }
+
+    #[test]
+    fn mqtt_notice_connectivity_errors_kept_for_replay() {
+        for err in [
+            PublishNoticeError::SessionReset,
+            PublishNoticeError::Qos0NotFlushed,
+            PublishNoticeError::Recv,
+        ] {
+            assert!(
+                matches!(classify_mqtt_notice_error(&err), TargetError::NotConnected),
+                "unconfirmed publish {err:?} should be retriable"
+            );
+        }
+    }
+
+    #[test]
+    fn mqtt_notice_broker_rejection_is_request_error() {
+        // The broker acknowledged the publish but rejected it: this is a
+        // request-level failure, not a transient disconnect.
+        let err = PublishNoticeError::V5PubAck(rumqttc::PubAckReason::NotAuthorized);
+        assert!(matches!(classify_mqtt_notice_error(&err), TargetError::Request(_)));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn enqueue_timeout_keeps_a_live_session_connected() {
+        let target = MQTTTarget::<String>::new("mqtt:test".to_string(), base_mqtt_args()).expect("target should build");
+        let (client, _event_loop) = AsyncClient::builder(MqttOptions::new("mqtt-timeout-test", ("localhost", 1883)))
+            .capacity(1)
+            .build();
+        client
+            .publish("fill", b"fill".as_slice(), PublishOptions::new(QoS::AtLeastOnce))
+            .await
+            .expect("first publish should fill the local channel");
+        *target.client.lock().await = Some(client);
+        target.connected.store(true, Ordering::SeqCst);
+        let meta = QueuedPayloadMeta::new(
+            rustfs_s3_types::EventName::ObjectCreatedPut,
+            "bucket".to_string(),
+            "object".to_string(),
+            "application/json",
+            2,
+        );
+
+        let error = target
+            .send_body(b"{}".to_vec(), &meta)
+            .await
+            .expect_err("a full local request channel should hit the enqueue deadline");
+
+        assert!(matches!(error, TargetError::Timeout(_)));
+        assert!(
+            target.connected.load(Ordering::SeqCst),
+            "local admission pressure is not evidence that the MQTT session disconnected"
+        );
+    }
+
+    #[test]
+    fn next_reconnect_backoff_doubles_until_capped() {
+        let mut backoff = MQTT_RECONNECT_BACKOFF_MIN;
+        // Doubles on each step.
+        backoff = next_reconnect_backoff(backoff);
+        assert_eq!(backoff, MQTT_RECONNECT_BACKOFF_MIN * 2);
+        backoff = next_reconnect_backoff(backoff);
+        assert_eq!(backoff, MQTT_RECONNECT_BACKOFF_MIN * 4);
+
+        // Never exceeds the cap, even from a huge starting point.
+        assert_eq!(next_reconnect_backoff(MQTT_RECONNECT_BACKOFF_MAX), MQTT_RECONNECT_BACKOFF_MAX);
+        assert_eq!(next_reconnect_backoff(Duration::from_secs(3600)), MQTT_RECONNECT_BACKOFF_MAX);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn supervisor_restarts_session_until_cancelled() {
+        // A session that exits immediately (as after a fatal protocol error)
+        // must be restarted by the supervisor rather than leaving the target
+        // permanently silent. Time is paused so the reconnect backoff advances
+        // automatically without real waits.
+        let (cancel_tx, cancel_rx) = mpsc::channel(1);
+        let (attempt_tx, mut attempt_rx) = mpsc::unbounded_channel();
+        let attempts = Arc::new(AtomicUsize::new(0));
+
+        let attempts_in_task = Arc::clone(&attempts);
+        let handle = tokio::spawn(reconnect_supervisor(cancel_rx, move || {
+            let attempt_tx = attempt_tx.clone();
+            let attempts_in_task = Arc::clone(&attempts_in_task);
+            async move {
+                attempts_in_task.fetch_add(1, Ordering::SeqCst);
+                let _ = attempt_tx.send(());
+                // Session exits immediately and never connected.
+                false
+            }
+        }));
+
+        // Observe several automatic restarts driven purely by the supervisor.
+        for _ in 0..4 {
+            attempt_rx.recv().await.expect("supervisor should restart the session");
+        }
+
+        cancel_tx.send(()).await.expect("cancel signal should be delivered");
+        handle.await.expect("supervisor task should stop cleanly");
+
+        assert!(attempts.load(Ordering::SeqCst) >= 4, "session should have been restarted repeatedly");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn supervisor_stops_promptly_on_cancel() {
+        // A connected session that stays up must be torn down by cancellation
+        // (the supervisor drops the in-flight session future).
+        let (cancel_tx, cancel_rx) = mpsc::channel(1);
+        let started = Arc::new(AtomicUsize::new(0));
+
+        let started_in_task = Arc::clone(&started);
+        let handle = tokio::spawn(reconnect_supervisor(cancel_rx, move || {
+            let started_in_task = Arc::clone(&started_in_task);
+            async move {
+                started_in_task.fetch_add(1, Ordering::SeqCst);
+                // Long-lived, "connected" session that never returns on its own.
+                std::future::pending::<bool>().await
+            }
+        }));
+
+        // Let the session start, then cancel; the supervisor must stop.
+        while started.load(Ordering::SeqCst) == 0 {
+            tokio::task::yield_now().await;
+        }
+        cancel_tx.send(()).await.expect("cancel signal should be delivered");
+        handle.await.expect("supervisor task should stop cleanly on cancel");
+
+        assert_eq!(started.load(Ordering::SeqCst), 1, "session should not be restarted after cancel");
+    }
+
+    #[test]
+    fn validate_mqtt_broker_url_rejects_non_websocket_path() {
+        let url = Url::parse("mqtt://broker.example.com:1883/custom").expect("valid url");
+        let err = validate_mqtt_broker_url(&url, &MQTTTlsConfig::default()).expect_err("non-websocket path should be rejected");
+        assert!(err.to_string().contains("path is only supported"));
+    }
+
+    #[test]
+    fn validate_mqtt_broker_url_rejects_non_websocket_query() {
+        let url = Url::parse("mqtt://broker.example.com:1883?client_id=test").expect("valid url");
+        let err = validate_mqtt_broker_url(&url, &MQTTTlsConfig::default()).expect_err("non-websocket query should be rejected");
+        assert!(err.to_string().contains("query is only supported"));
+    }
+
+    #[test]
+    fn validate_mqtt_broker_url_rejects_non_websocket_fragment() {
+        let url = Url::parse("mqtt://broker.example.com:1883/#section").expect("valid url");
+        let err =
+            validate_mqtt_broker_url(&url, &MQTTTlsConfig::default()).expect_err("non-websocket fragment should be rejected");
+        assert!(err.to_string().contains("fragment is only supported"));
+    }
+
+    #[test]
+    fn validate_mqtt_broker_url_allows_websocket_path_and_query() {
+        let url = Url::parse("ws://broker.example.com:8080/mqtt?client_id=test").expect("valid url");
+        validate_mqtt_broker_url(&url, &MQTTTlsConfig::default()).expect("websocket path and query should be allowed");
+    }
+
+    #[test]
+    fn validate_mqtt_broker_url_rejects_url_embedded_credentials() {
+        let url = Url::parse("mqtt://user:pass@broker.example.com:1883").expect("valid url");
+        let err = validate_mqtt_broker_url(&url, &MQTTTlsConfig::default()).expect_err("url credentials should be rejected");
+        assert!(err.to_string().contains("must not embed username or password"));
+    }
+
+    #[test]
+    fn debug_redacts_mqtt_secret_fields() {
+        let args = MQTTArgs {
+            username: "mqtt-user".to_string(),
+            password: "mqtt-password".to_string(),
+            tls: MQTTTlsConfig {
+                client_key_path: "/etc/rustfs/mqtt.key".to_string(),
+                ..MQTTTlsConfig::default()
+            },
+            ..base_mqtt_args()
+        };
+
+        let rendered = format!("{args:?}");
+
+        assert!(!rendered.contains("mqtt-password"));
+        assert!(!rendered.contains("/etc/rustfs/mqtt.key"));
+        assert!(rendered.contains(REDACTED_SECRET));
+        assert!(rendered.contains("mqtt-user"));
+    }
+
+    #[test]
+    fn validate_mqtt_broker_url_requires_explicit_tls_policy_for_secure_scheme() {
+        let url = Url::parse("mqtts://broker.example.com:8883").expect("valid url");
+        let err = validate_mqtt_broker_url(&url, &MQTTTlsConfig::default())
+            .expect_err("secure scheme should require explicit tls policy");
+        assert!(err.to_string().contains("explicit tls_policy"));
+    }
+
+    #[test]
+    fn validate_mqtt_broker_url_rejects_disallowed_websocket_path() {
+        let url = Url::parse("wss://broker.example.com/private").expect("valid url");
+        let tls = MQTTTlsConfig::from_values(Some("system_ca"), None, None, None, None, Some("/mqtt")).expect("valid tls config");
+        let err = validate_mqtt_broker_url(&url, &tls).expect_err("path outside allowlist should be rejected");
+        assert!(err.to_string().contains("allowlist"));
+    }
+
+    #[test]
+    fn validate_mqtt_broker_url_requires_tls_ca_for_custom_ca_policy() {
+        let url = Url::parse("mqtts://broker.example.com:8883").expect("valid url");
+        let tls = MQTTTlsConfig::from_values(Some("custom_ca"), None, None, None, None, None).expect("valid tls config");
+        let err = validate_mqtt_broker_url(&url, &tls).expect_err("custom_ca policy without path should be rejected");
+        assert!(err.to_string().contains("tls_ca"));
+    }
+}

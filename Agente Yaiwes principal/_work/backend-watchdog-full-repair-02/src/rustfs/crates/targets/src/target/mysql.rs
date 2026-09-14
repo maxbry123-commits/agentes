@@ -1,0 +1,1640 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use crate::plugin::PluginEvent;
+use crate::{
+    StoreError, Target,
+    arn::TargetID,
+    error::TargetError,
+    runtime::tls::{
+        ReloadableTargetTls, TargetTlsInputSet, TlsReloadAdapter, config::ReloadApplyMode, fingerprint::TargetTlsGeneration,
+        validate::validate_tls_material,
+    },
+    store::{Key, Store},
+    target::{
+        ChannelTargetType, EntityTarget, QueuedPayload, QueuedPayloadMeta, TargetDeliveryCounters, TargetDeliverySnapshot,
+        TargetType, build_queued_payload, delete_stored_payload, is_connectivity_error, open_target_queue_store,
+        persist_queued_payload_to_store, redacted_secret, with_delivery_deadline,
+    },
+};
+use async_trait::async_trait;
+use mysql_async::{Conn, Opts, OptsBuilder, Pool, PoolConstraints, PoolOpts, SslOpts, prelude::Queryable};
+use rustfs_config::{MYSQL_TLS_CA, MYSQL_TLS_CLIENT_CERT, MYSQL_TLS_CLIENT_KEY};
+use rustfs_tls_runtime::{load_certs, load_private_key};
+use std::fmt;
+use std::marker::PhantomData;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, SystemTime};
+use tokio::sync::Mutex;
+use tracing::{debug, error, info, warn};
+use uuid::Uuid;
+
+/// Bounds `pool.get_conn()` so an unreachable MySQL server (or an exhausted
+/// pool) cannot block the delivery thread indefinitely. A timeout maps to
+/// `TargetError::Timeout`, a connectivity error, so the payload stays queued
+/// for replay.
+const MYSQL_CONN_CHECKOUT_TIMEOUT: Duration = Duration::from_secs(15);
+/// Absolute ceiling for one INSERT, including pool checkout and server execution.
+const MYSQL_DELIVERY_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Name of the optional idempotency-key column / primary key. Present on tables
+/// created by this target; absent on legacy two-column tables.
+const MYSQL_EVENT_ID_COLUMN: &str = "event_id";
+
+/// Modification timestamps of the three TLS material files, used to avoid
+/// re-reading and re-hashing certificate files on every pool checkout.
+///
+/// The inline TLS fingerprint is only recomputed when one of these mtimes
+/// changes, which still catches on-disk rotation while eliminating the
+/// per-send file reads.
+#[derive(Clone, PartialEq, Eq)]
+struct TlsFileMtimes {
+    ca: Option<SystemTime>,
+    client_cert: Option<SystemTime>,
+    client_key: Option<SystemTime>,
+}
+
+impl TlsFileMtimes {
+    /// Reads the current mtimes of the configured TLS files. A missing/empty
+    /// path yields `None`; an unreadable path also yields `None`, which is
+    /// treated conservatively as "changed" so the fingerprint is recomputed.
+    fn read(args: &MySqlArgs) -> Self {
+        fn mtime(path: &str) -> Option<SystemTime> {
+            if path.is_empty() {
+                return None;
+            }
+            std::fs::metadata(path).and_then(|m| m.modified()).ok()
+        }
+        TlsFileMtimes {
+            ca: mtime(&args.tls_ca),
+            client_cert: mtime(&args.tls_client_cert),
+            client_key: mtime(&args.tls_client_key),
+        }
+    }
+}
+
+/// Checks out a connection from the pool under a Tokio timeout.
+///
+/// `get_conn()` failures are always transient here (connection lost or pool
+/// temporarily exhausted), so both an error and a timeout map to a
+/// connectivity error that keeps the payload queued for replay.
+async fn checkout_conn(pool: &Pool) -> Result<Conn, TargetError> {
+    match tokio::time::timeout(MYSQL_CONN_CHECKOUT_TIMEOUT, pool.get_conn()).await {
+        Ok(Ok(conn)) => Ok(conn),
+        Ok(Err(_)) => Err(TargetError::NotConnected),
+        Err(_) => Err(TargetError::Timeout(format!(
+            "MySQL connection checkout timed out after {}s",
+            MYSQL_CONN_CHECKOUT_TIMEOUT.as_secs()
+        ))),
+    }
+}
+
+/// INSERT for tables that carry the `event_id` idempotency key. Replays of the
+/// same physical event share the same key, so `ON DUPLICATE KEY UPDATE` makes
+/// the write a no-op instead of appending a duplicate audit row.
+pub(crate) fn mysql_insert_sql_with_event_id(quoted_table: &str) -> String {
+    format!(
+        "INSERT INTO {quoted_table} ({MYSQL_EVENT_ID_COLUMN}, event_time, event_data) \
+         VALUES (?, ?, CAST(? AS JSON)) \
+         ON DUPLICATE KEY UPDATE {MYSQL_EVENT_ID_COLUMN} = {MYSQL_EVENT_ID_COLUMN}"
+    )
+}
+
+/// Legacy INSERT for pre-existing two-column tables that lack the `event_id`
+/// key. Idempotency is not available in this mode (replays may duplicate).
+pub(crate) fn mysql_insert_sql_legacy(quoted_table: &str) -> String {
+    format!("INSERT INTO {quoted_table} (event_time, event_data) VALUES (?, CAST(? AS JSON))")
+}
+
+/// DDL used to create the target table. Tables created here carry the
+/// `event_id` primary key so that store replays are idempotent.
+pub(crate) fn mysql_create_table_sql(quoted_table: &str) -> String {
+    format!(
+        "CREATE TABLE IF NOT EXISTS {quoted_table} (\
+         {MYSQL_EVENT_ID_COLUMN} VARCHAR(255) NOT NULL, \
+         event_time DATETIME(6) NOT NULL, \
+         event_data JSON NOT NULL, \
+         PRIMARY KEY ({MYSQL_EVENT_ID_COLUMN}))"
+    )
+}
+
+/// Arguments for configuring a MySQL notification target.
+///
+/// Contains all configuration values needed to connect to a MySQL/TiDB
+/// database and write event notification records.
+#[derive(Clone)]
+pub struct MySqlArgs {
+    /// Whether the target is enabled
+    pub enable: bool,
+    /// MySQL data source name in format: `<user>:<password>@tcp(<host>:<port>)/<database>`
+    pub dsn_string: String,
+    /// Target table name, accepts `identifier` or `database.identifier`
+    pub table: String,
+    /// Write format (currently only `access` is supported)
+    pub format: String,
+    /// Optional custom CA certificate file for TLS server verification
+    pub tls_ca: String,
+    /// Optional client certificate chain file for mutual TLS
+    pub tls_client_cert: String,
+    /// Optional client private key file for mutual TLS
+    pub tls_client_key: String,
+    /// Directory for persistent queue storage; must be an absolute path if non-empty
+    pub queue_dir: String,
+    /// Maximum number of events stored in the local queue
+    pub queue_limit: u64,
+    /// Maximum number of open MySQL connections in the pool (0 relies on the underlying library default)
+    pub max_open_connections: usize,
+    /// The target type (notify or audit)
+    pub target_type: TargetType,
+}
+
+impl fmt::Debug for MySqlArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MySqlArgs")
+            .field("enable", &self.enable)
+            .field("dsn_string", &redact_mysql_dsn(&self.dsn_string))
+            .field("table", &self.table)
+            .field("format", &self.format)
+            .field("tls_ca", &self.tls_ca)
+            .field("tls_client_cert", &self.tls_client_cert)
+            .field("tls_client_key", &redacted_secret(&self.tls_client_key))
+            .field("queue_dir", &self.queue_dir)
+            .field("queue_limit", &self.queue_limit)
+            .field("max_open_connections", &self.max_open_connections)
+            .field("target_type", &self.target_type)
+            .finish()
+    }
+}
+
+impl MySqlArgs {
+    /// Validates the MySQL target configuration.
+    pub fn validate(&self) -> Result<(), TargetError> {
+        // If the target is disabled, validation is skipped.
+        if !self.enable {
+            return Ok(());
+        }
+
+        if self.dsn_string.trim().is_empty() {
+            return Err(TargetError::Configuration("MySQL dsn_string cannot be empty".to_string()));
+        }
+
+        let _ = MySqlDsn::parse(&self.dsn_string)?;
+
+        validate_table_name(&self.table)?;
+
+        if self.format != "access" {
+            return Err(TargetError::Configuration(format!(
+                "MySQL format '{}' is not supported; only 'access' is available",
+                self.format
+            )));
+        }
+
+        if self.tls_client_cert.is_empty() != self.tls_client_key.is_empty() {
+            return Err(TargetError::Configuration(format!(
+                "MySQL {MYSQL_TLS_CLIENT_CERT} and {MYSQL_TLS_CLIENT_KEY} must be specified together"
+            )));
+        }
+        if !self.tls_ca.is_empty() && !Path::new(&self.tls_ca).is_absolute() {
+            return Err(TargetError::Configuration(format!("{MYSQL_TLS_CA} must be an absolute path")));
+        }
+        if !self.tls_client_cert.is_empty() && !Path::new(&self.tls_client_cert).is_absolute() {
+            return Err(TargetError::Configuration(format!("{MYSQL_TLS_CLIENT_CERT} must be an absolute path")));
+        }
+        if !self.tls_client_key.is_empty() && !Path::new(&self.tls_client_key).is_absolute() {
+            return Err(TargetError::Configuration(format!("{MYSQL_TLS_CLIENT_KEY} must be an absolute path")));
+        }
+
+        if !self.queue_dir.is_empty() {
+            let path = Path::new(&self.queue_dir);
+            if !path.is_absolute() {
+                return Err(TargetError::Configuration("MySQL queue_dir must be an absolute path".to_string()));
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Parsed representation of a MySQL DSN string.
+///
+/// Produced by [`MySqlDsn::parse`] and consumed by the MySQL
+/// target runtime to build connection options.
+#[derive(Clone, PartialEq, Eq)]
+pub struct MySqlDsn {
+    /// MySQL user name
+    pub user: String,
+    /// MySQL password (plaintext, must be redacted before logging)
+    pub password: String,
+    /// MySQL server hostname or IP address
+    pub host: String,
+    /// MySQL server TCP port
+    pub port: u16,
+    /// Target database name
+    pub database: String,
+    /// Whether TLS is enabled
+    pub tls: bool,
+}
+
+impl fmt::Debug for MySqlDsn {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MySqlDsn")
+            .field("user", &self.user)
+            .field("password", &redacted_secret(&self.password))
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("database", &self.database)
+            .field("tls", &self.tls)
+            .finish()
+    }
+}
+
+impl MySqlDsn {
+    /// Parses a MySQL DSN string into its components.
+    ///
+    /// Supported formats:
+    /// ```text
+    /// <user>:<password>@tcp(<host>:<port>)/<database>
+    /// mysql://<user>:<password>@tcp(<host>:<port>)/<database>
+    /// ```
+    ///
+    /// Only `?tls=true`, `?tls=false`, and bare `?tls` are accepted;
+    /// other TLS query parameters (`verify_ca`, etc.) are rejected.
+    pub fn parse(dsn_string: &str) -> Result<MySqlDsn, TargetError> {
+        let input = dsn_string.trim();
+        if input.is_empty() {
+            return Err(TargetError::Configuration("MySQL dsn_string cannot be empty".to_string()));
+        }
+
+        let (_, remainder) = split_mysql_scheme(input);
+
+        let (body, query) = match remainder.split_once('?') {
+            Some((b, q)) => (b, Some(q)),
+            None => (remainder, None),
+        };
+
+        let mut tls = false;
+        if let Some(query) = query {
+            for param in query.split('&') {
+                let param = param.trim();
+                if param.is_empty() {
+                    continue;
+                }
+                let (key, value) = param.split_once('=').unwrap_or((param, ""));
+                match key.trim().to_ascii_lowercase().as_str() {
+                    "tls" => {
+                        let val = value.trim().to_ascii_lowercase();
+                        if val == "true" || val.is_empty() {
+                            tls = true;
+                        } else if val == "false" {
+                            tls = false;
+                        } else {
+                            return Err(TargetError::Configuration(format!(
+                                "unsupported value '{}' for TLS query parameter; use tls=true",
+                                val
+                            )));
+                        }
+                    }
+                    _ => {
+                        return Err(TargetError::Configuration(format!("unsupported MySQL DSN query parameter '{}'", key)));
+                    }
+                }
+            }
+        }
+
+        let Some((credentials, host_part)) = body.split_once('@') else {
+            return Err(TargetError::Configuration(
+                "MySQL dsn_string must contain user:password@tcp(host:port)/database".to_string(),
+            ));
+        };
+
+        let Some((user, password)) = credentials.split_once(':') else {
+            return Err(TargetError::Configuration("MySQL dsn_string must contain user:password".to_string()));
+        };
+
+        let user = user.trim();
+        let password = password.trim();
+
+        if user.is_empty() {
+            return Err(TargetError::Configuration("MySQL dsn_string user is empty".to_string()));
+        }
+
+        let host_part = host_part.trim();
+
+        let Some(host_part_rest) = host_part.strip_prefix("tcp(") else {
+            return Err(TargetError::Configuration("MySQL dsn_string must use tcp(host:port) format".to_string()));
+        };
+
+        let Some((host_port, rest)) = host_part_rest.split_once(')') else {
+            return Err(TargetError::Configuration(
+                "MySQL dsn_string missing closing ')' after host:port".to_string(),
+            ));
+        };
+
+        let (host, port_str) = host_port
+            .split_once(':')
+            .ok_or_else(|| TargetError::Configuration("MySQL dsn_string host:port is required".to_string()))?;
+
+        let host = host.trim();
+        let port_str = port_str.trim();
+
+        if host.is_empty() {
+            return Err(TargetError::Configuration("MySQL dsn_string host is empty".to_string()));
+        }
+
+        let port: u16 = port_str
+            .parse()
+            .map_err(|_| TargetError::Configuration(format!("MySQL dsn_string port '{}' is not a valid u16", port_str)))?;
+
+        let database = rest
+            .strip_prefix('/')
+            .ok_or_else(|| TargetError::Configuration("MySQL dsn_string must include /database after host:port".to_string()))?
+            .trim();
+
+        if database.is_empty() {
+            return Err(TargetError::Configuration("MySQL dsn_string database is empty".to_string()));
+        }
+
+        Ok(MySqlDsn {
+            user: user.to_string(),
+            password: password.to_string(),
+            host: host.to_string(),
+            port,
+            database: database.to_string(),
+            tls,
+        })
+    }
+}
+
+fn split_mysql_scheme(input: &str) -> (&str, &str) {
+    const MYSQL_SCHEME: &str = "mysql://";
+
+    match input.get(..MYSQL_SCHEME.len()) {
+        Some(prefix) if prefix.eq_ignore_ascii_case(MYSQL_SCHEME) => input.split_at(MYSQL_SCHEME.len()),
+        _ => ("", input),
+    }
+}
+
+/// Returns a redacted version of the DSN string with the password replaced by `***`.
+///
+/// The credentials/host boundary is the *last* `@` before the `tcp(...)` host
+/// component. Splitting on the first `@` would leak the tail of a password that
+/// itself contains `@` (e.g. `user:p@ss@tcp(host:3306)/db`). We therefore split
+/// on the last `@` and replace the entire password segment.
+pub(crate) fn redact_mysql_dsn(dsn_string: &str) -> String {
+    let input = dsn_string.trim();
+    if input.is_empty() {
+        return String::new();
+    }
+
+    let (prefix, remainder) = split_mysql_scheme(input);
+
+    match remainder.rsplit_once('@') {
+        Some((credentials, host_part)) => match credentials.split_once(':') {
+            // `user` is everything before the first `:`; the password (which may
+            // contain `@` or `:`) is fully replaced, so nothing after it leaks.
+            Some((user, _)) => format!("{}{}:***@{}", prefix, user.trim(), host_part.trim()),
+            None => format!("{prefix}***@{}", host_part.trim()),
+        },
+        None => format!("{prefix}***"),
+    }
+}
+
+fn is_valid_identifier_segment(segment: &str) -> bool {
+    if segment.is_empty() {
+        return false;
+    }
+
+    let mut chars = segment.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !first.is_ascii_alphabetic() && first != '_' {
+        return false;
+    }
+
+    for ch in chars {
+        if !ch.is_ascii_alphanumeric() && ch != '_' {
+            return false;
+        }
+    }
+
+    true
+}
+
+pub(crate) fn validate_table_name(table: &str) -> Result<(), TargetError> {
+    let table = table.trim();
+
+    if table.is_empty() {
+        return Err(TargetError::Configuration("MySQL table name is empty".to_string()));
+    }
+
+    if table.contains('.') {
+        let parts: Vec<&str> = table.splitn(2, '.').collect();
+        if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
+            return Err(TargetError::Configuration(format!(
+                "MySQL table name '{}' is invalid; use identifier or database.identifier",
+                table
+            )));
+        }
+
+        if !is_valid_identifier_segment(parts[0]) {
+            return Err(TargetError::Configuration(format!(
+                "MySQL database name '{}' in '{}' is not a valid identifier",
+                parts[0], table
+            )));
+        }
+
+        if !is_valid_identifier_segment(parts[1]) {
+            return Err(TargetError::Configuration(format!(
+                "MySQL table name '{}' in '{}' is not a valid identifier",
+                parts[1], table
+            )));
+        }
+    } else if !is_valid_identifier_segment(table) {
+        return Err(TargetError::Configuration(format!(
+            "MySQL table name '{}' is not a valid identifier",
+            table
+        )));
+    }
+
+    Ok(())
+}
+
+pub(crate) fn quote_table_name(table: &str) -> Result<String, TargetError> {
+    let table = table.trim();
+
+    if table.contains('.') {
+        let parts: Vec<&str> = table.splitn(2, '.').collect();
+        Ok(format!("`{}`.`{}`", parts[0].trim(), parts[1].trim()))
+    } else {
+        Ok(format!("`{}`", table))
+    }
+}
+
+/// Extracts `event_time` from a serialized event JSON body.
+///
+/// Reads `Records[0].eventTime` from the JSON payload, parses it as an
+/// RFC 3339 timestamp, and returns it formatted as a MySQL DATETIME(6)
+/// string (`YYYY-MM-DD HH:MM:SS.ffffff`).
+///
+/// Returns an error if the field is missing, not a string, or cannot
+/// be parsed; never falls back to the current time.
+pub(crate) fn extract_event_time(body: &[u8]) -> Result<String, TargetError> {
+    let value: serde_json::Value =
+        serde_json::from_slice(body).map_err(|e| TargetError::Serialization(format!("Failed to parse event_data JSON: {e}")))?;
+
+    let event_time = value
+        .get("Records")
+        .and_then(|r| r.get(0))
+        .and_then(|r| r.get("eventTime"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| TargetError::Serialization("event_data is missing Records[0].eventTime".to_string()))?;
+
+    let pieces = jiff::fmt::temporal::Pieces::parse(event_time)
+        .map_err(|e| TargetError::Serialization(format!("Failed to parse eventTime '{}': {}", event_time, e)))?;
+    let time = pieces
+        .time()
+        .ok_or_else(|| TargetError::Serialization(format!("Failed to parse eventTime '{}': missing RFC3339 time", event_time)))?;
+    if pieces.offset().is_none() {
+        return Err(TargetError::Serialization(format!(
+            "Failed to parse eventTime '{}': missing RFC3339 offset",
+            event_time
+        )));
+    }
+    if pieces.time_zone_annotation().is_some() {
+        return Err(TargetError::Serialization(format!(
+            "Failed to parse eventTime '{}': RFC3339 timestamp must not include a time zone annotation",
+            event_time
+        )));
+    }
+    let date = pieces.date();
+
+    Ok(format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:06}",
+        date.year(),
+        date.month(),
+        date.day(),
+        time.hour(),
+        time.minute(),
+        time.second(),
+        time.subsec_nanosecond() / 1_000
+    ))
+}
+
+/// Validates the required `event_time`/`event_data` columns and reports whether
+/// the optional `event_id` idempotency key column is present.
+///
+/// Returns `Ok(true)` when the `event_id` column exists (idempotent inserts
+/// available), `Ok(false)` for a valid legacy two-column table.
+async fn validate_existing_schema(conn: &mut Conn, table: &str) -> Result<bool, TargetError> {
+    let quoted = quote_table_name(table)?;
+    let sql = format!("SHOW COLUMNS FROM {quoted}");
+
+    let columns: Vec<mysql_async::Row> = conn
+        .query(sql)
+        .await
+        .map_err(|e| TargetError::Initialization(format!("Failed to check MySQL table schema: {e}")))?;
+
+    let mut has_event_time = false;
+    let mut has_event_data = false;
+    let mut has_event_id = false;
+
+    for row in &columns {
+        let field: String = row.get(0).unwrap_or_default();
+        let col_type: String = row.get(1).unwrap_or_default();
+        let nullable: String = row.get(2).unwrap_or_default();
+
+        if field == MYSQL_EVENT_ID_COLUMN {
+            has_event_id = true;
+        } else if field == "event_time" {
+            has_event_time = true;
+            if col_type.to_lowercase() != "datetime(6)" {
+                return Err(TargetError::Initialization(
+                    "MySQL table column 'event_time' must be DATETIME(6) to match insert precision".to_string(),
+                ));
+            }
+            if nullable.to_lowercase() != "no" {
+                return Err(TargetError::Initialization(
+                    "MySQL table column 'event_time' must be NOT NULL".to_string(),
+                ));
+            }
+        } else if field == "event_data" {
+            has_event_data = true;
+            if col_type.to_lowercase() != "json" {
+                return Err(TargetError::Initialization(
+                    "MySQL table column 'event_data' must be JSON type".to_string(),
+                ));
+            }
+            if nullable.to_lowercase() != "no" {
+                return Err(TargetError::Initialization(
+                    "MySQL table column 'event_data' must be NOT NULL".to_string(),
+                ));
+            }
+        }
+    }
+
+    if !has_event_time {
+        return Err(TargetError::Initialization(
+            "MySQL table is missing required column 'event_time'".to_string(),
+        ));
+    }
+    if !has_event_data {
+        return Err(TargetError::Initialization(
+            "MySQL table is missing required column 'event_data'".to_string(),
+        ));
+    }
+
+    Ok(has_event_id)
+}
+
+/// A notification target that writes events to a MySQL/TiDB table.
+///
+/// Each event is appended as a new row with `event_time` and `event_data`
+/// columns. The target supports at-least-once delivery semantics via a
+/// local `QueueStore` that replays events after transient MySQL outages.
+///
+/// # Configuration example using `rc`
+///
+/// ```bash
+/// rc admin config set ALIAS notify_mysql:primary \
+///   enable=on \
+///   dsn_string="rustfs:password@tcp(mysql.example.com:3306)/rustfs_events?tls=true" \
+///   table="rustfs_events" \
+///   tls_ca="/etc/ssl/mysql/ca.pem" \
+///   tls_client_cert="/etc/ssl/mysql/client.pem" \
+///   tls_client_key="/etc/ssl/mysql/client.key" \
+///   queue_dir="/var/lib/rustfs/events" \
+///   queue_limit="100000" \
+///   max_open_connections="2"
+/// ```
+///
+/// # Environment variables
+///
+/// ```bash
+/// RUSTFS_NOTIFY_MYSQL_ENABLE=on
+/// RUSTFS_NOTIFY_MYSQL_DSN_STRING=rustfs:password@tcp(127.0.0.1:3306)/rustfs_events
+/// RUSTFS_NOTIFY_MYSQL_TABLE=rustfs_events
+/// RUSTFS_NOTIFY_MYSQL_TLS_CA=/etc/ssl/mysql/ca.pem
+/// RUSTFS_NOTIFY_MYSQL_TLS_CLIENT_CERT=/etc/ssl/mysql/client.pem
+/// RUSTFS_NOTIFY_MYSQL_TLS_CLIENT_KEY=/etc/ssl/mysql/client.key
+/// RUSTFS_NOTIFY_MYSQL_QUEUE_DIR=/opt/rustfs/events
+/// RUSTFS_NOTIFY_MYSQL_QUEUE_LIMIT=100000
+/// RUSTFS_NOTIFY_MYSQL_MAX_OPEN_CONNECTIONS=2
+/// ```
+pub struct MySqlTarget<E>
+where
+    E: PluginEvent,
+{
+    /// Unique target identifier (name + type)
+    id: TargetID,
+    /// Parsed configuration for this MySQL target
+    args: MySqlArgs,
+    /// Optional persistent queue store for at-least-once delivery
+    store: Option<Box<dyn Store<QueuedPayload, Error = StoreError, Key = Key> + Send + Sync>>,
+    /// Lazily-initialized MySQL connection pool
+    pool: Arc<Mutex<Option<Pool>>>,
+    /// TLS fingerprint tracking for hot reload (inline fallback path)
+    tls_state: Arc<parking_lot::Mutex<super::TargetTlsState>>,
+    /// Cached mtimes of the TLS material files. The inline fingerprint is only
+    /// recomputed when these change, avoiding a per-send read of all three cert
+    /// files.
+    tls_mtime_cache: Arc<parking_lot::Mutex<Option<TlsFileMtimes>>>,
+    /// Whether the target table carries the `event_id` idempotency key. Set when
+    /// the pool is built; when `false` the legacy (non-idempotent) insert is used
+    /// for backward compatibility with pre-existing two-column tables.
+    idempotency_supported: Arc<AtomicBool>,
+    /// When present, the adapter provides coordinator-managed TLS material;
+    /// otherwise the inline fingerprint path is used as a fallback.
+    tls_adapter: Option<TlsReloadAdapter<Pool>>,
+    /// Success/failure counters exposed via `delivery_snapshot`
+    delivery_counters: Arc<TargetDeliveryCounters>,
+    /// Zero-sized marker for the event type `E`
+    _phantom: PhantomData<E>,
+}
+
+impl<E> MySqlTarget<E>
+where
+    E: PluginEvent,
+{
+    /// Creates a new MySqlTarget.
+    ///
+    /// The target starts without a TLS reload coordinator. Use
+    /// `TlsReloadAdapter::try_register` to opt into coordinated TLS hot-reload.
+    pub fn new(id: String, args: MySqlArgs) -> Result<Self, TargetError> {
+        args.validate()?;
+
+        let target_id = TargetID::new(id, ChannelTargetType::MySql.as_str().to_string());
+
+        let queue_store = open_target_queue_store(
+            &args.queue_dir,
+            args.queue_limit,
+            args.target_type,
+            ChannelTargetType::MySql.as_str(),
+            &target_id,
+            "Failed to open MySQL queue store",
+        )?;
+
+        info!(target_id = %target_id.id, table = %args.table, "MySQL target created");
+
+        Ok(MySqlTarget {
+            id: target_id,
+            args,
+            store: queue_store,
+            // Pool is lazily initialized on first use to avoid unnecessary connections at startup and allow for better error handling
+            pool: Arc::new(Mutex::new(None)),
+            tls_state: Arc::new(parking_lot::Mutex::new(super::TargetTlsState::default())),
+            tls_mtime_cache: Arc::new(parking_lot::Mutex::new(None)),
+            idempotency_supported: Arc::new(AtomicBool::new(false)),
+            tls_adapter: None,
+            delivery_counters: Arc::new(TargetDeliveryCounters::default()),
+            _phantom: PhantomData,
+        })
+    }
+
+    /// Returns or lazily initializes the MySQL connection pool.
+    ///
+    /// When `tls_adapter` is present (coordinator-managed), the pool
+    /// is sourced from the coordinator's published material.
+    /// Otherwise, the inline fingerprint-based path is used as a fallback.
+    ///
+    /// # Errors
+    ///
+    /// | Scenario | Error variant |
+    /// |---|---|
+    /// | Connection refused / host unreachable / TLS handshake failed | `NotConnected` |
+    /// | `SELECT 1` health check failed | `NotConnected` |
+    /// | DDL permission denied / `CREATE TABLE` failed | `Initialization` |
+    /// | Existing table has incompatible schema | `Initialization` |
+    /// | DSN parse failure / invalid config | `Configuration` |
+    async fn get_or_init_pool(&self) -> Result<Pool, TargetError> {
+        // Adapter-managed path: use the material directly from the coordinator.
+        if let Some(adapter) = &self.tls_adapter {
+            let pool: Pool = (*adapter.current_material()).clone();
+
+            // Ensure the pool is also stored locally so that close() can drain it.
+            {
+                let mut guard = self.pool.lock().await;
+                *guard = Some(pool.clone());
+            }
+            return Ok(pool);
+        }
+
+        // Inline fingerprint fallback path (no coordinator).
+        //
+        // Recomputing the TLS content fingerprint reads and hashes up to three
+        // certificate files. To avoid doing that on every checkout, we first
+        // compare the cheap file mtimes and only recompute the fingerprint when
+        // a file's mtime changed (or on the first call).
+        let current_mtimes = TlsFileMtimes::read(&self.args);
+        let mtimes_unchanged = {
+            let cache = self.tls_mtime_cache.lock();
+            cache.as_ref() == Some(&current_mtimes)
+        };
+
+        if !mtimes_unchanged {
+            let next_fingerprint =
+                super::build_target_tls_fingerprint(&self.args.tls_ca, &self.args.tls_client_cert, &self.args.tls_client_key)
+                    .await?;
+            let tls_changed = {
+                let tls_state_guard = self.tls_state.lock();
+                tls_state_guard.needs_update(&next_fingerprint)
+            };
+            if tls_changed {
+                // Disconnect the old pool before dropping it so its connections
+                // are closed gracefully instead of leaked on TLS rotation.
+                let old_pool = {
+                    let mut guard = self.pool.lock().await;
+                    guard.take()
+                };
+                if let Some(old_pool) = old_pool
+                    && let Err(err) = old_pool.disconnect().await
+                {
+                    warn!(target_id = %self.id, error = %err, "Failed to disconnect stale MySQL pool during TLS reload");
+                }
+                self.tls_state.lock().refresh(next_fingerprint);
+            }
+            *self.tls_mtime_cache.lock() = Some(current_mtimes);
+        }
+
+        {
+            let guard = self.pool.lock().await;
+            if let Some(pool) = guard.as_ref() {
+                return Ok(pool.clone());
+            }
+        }
+
+        let (pool, idempotency) = build_mysql_pool_from_args(&self.args).await?;
+
+        // Double-check: another caller may have initialized the pool
+        // while we were doing I/O.
+        let mut guard = self.pool.lock().await;
+        if let Some(existing) = guard.as_ref() {
+            debug!(
+                "MySQL pool for target '{}' was initialized by another task during setup; using existing pool",
+                self.id
+            );
+            return Ok(existing.clone());
+        }
+        self.idempotency_supported.store(idempotency, Ordering::Relaxed);
+        *guard = Some(pool.clone());
+        Ok(pool)
+    }
+
+    /// Inserts an event into the MySQL table.
+    ///
+    /// `event_id` is a stable per-event identifier used as the idempotency key:
+    /// the store key for replays, or a fresh UUID for immediate delivery. When
+    /// the table carries the `event_id` primary key, the insert is idempotent
+    /// (`ON DUPLICATE KEY UPDATE` no-op) so a replay after a lost ack does not
+    /// append a duplicate audit row. On legacy two-column tables the key is
+    /// ignored and the legacy insert is used.
+    async fn insert_event(&self, body: &[u8], meta: &QueuedPayloadMeta, event_id: &str) -> Result<(), TargetError> {
+        debug!(
+            target_id = %self.id,
+            bucket = %meta.bucket_name,
+            object = %meta.object_name,
+            event = %meta.event_name,
+            payload_len = body.len(),
+            "Inserting MySQL event"
+        );
+
+        let event_time = extract_event_time(body)?;
+        let event_data =
+            std::str::from_utf8(body).map_err(|e| TargetError::Serialization(format!("Event body is not valid UTF-8: {e}")))?;
+
+        let quoted_table = quote_table_name(&self.args.table)?;
+        with_delivery_deadline(MYSQL_DELIVERY_TIMEOUT, "MySQL delivery", async {
+            let pool = self.get_or_init_pool().await?;
+            // At this point the pool has already been initialized (get_or_init_pool
+            // succeeded above), so get_conn() failures are always transient: the
+            // connection was lost or the pool is temporarily exhausted.
+            let mut conn = checkout_conn(&pool).await?;
+
+            if self.idempotency_supported.load(Ordering::Relaxed) {
+                let sql = mysql_insert_sql_with_event_id(&quoted_table);
+                conn.exec_drop(sql, (event_id, event_time.as_str(), event_data))
+                    .await
+                    .map_err(|err| map_mysql_error(err, "Failed to insert event"))?;
+            } else {
+                let sql = mysql_insert_sql_legacy(&quoted_table);
+                conn.exec_drop(sql, (event_time.as_str(), event_data))
+                    .await
+                    .map_err(|err| map_mysql_error(err, "Failed to insert event"))?;
+            }
+
+            Ok(())
+        })
+        .await?;
+
+        self.delivery_counters.record_success();
+        debug!(target_id = %self.id, "MySQL event inserted");
+        Ok(())
+    }
+
+    fn clone_box(&self) -> Box<dyn Target<E> + Send + Sync> {
+        Box::new(MySqlTarget::<E> {
+            id: self.id.clone(),
+            args: self.args.clone(),
+            store: self.store.as_ref().map(|s| s.boxed_clone()),
+            pool: Arc::clone(&self.pool),
+            tls_state: Arc::clone(&self.tls_state),
+            tls_mtime_cache: Arc::clone(&self.tls_mtime_cache),
+            idempotency_supported: Arc::clone(&self.idempotency_supported),
+            tls_adapter: self.tls_adapter.clone(),
+            delivery_counters: Arc::clone(&self.delivery_counters),
+            _phantom: PhantomData,
+        })
+    }
+}
+
+/// Builds a MySQL connection pool from the given args, including TLS setup,
+/// DDL table creation, and schema validation.
+///
+/// This is a standalone function so it can be called both from
+/// `get_or_init_pool` (inline fallback) and from `build_tls_material`
+/// (coordinator path).
+///
+/// Returns the pool together with a boolean indicating whether the target table
+/// carries the `event_id` idempotency key (`true`) or is a legacy two-column
+/// table (`false`).
+async fn build_mysql_pool_from_args(args: &MySqlArgs) -> Result<(Pool, bool), TargetError> {
+    let dsn = MySqlDsn::parse(&args.dsn_string)?;
+
+    let mut builder = OptsBuilder::default()
+        .user(Some(dsn.user.clone()))
+        .pass(Some(dsn.password.clone()))
+        .ip_or_hostname(dsn.host.clone())
+        .tcp_port(dsn.port)
+        .db_name(Some(dsn.database.clone()));
+
+    if dsn.tls {
+        super::ensure_rustls_provider_installed();
+        let mut ssl_opts = SslOpts::default();
+        if !args.tls_ca.is_empty() {
+            let _ =
+                load_certs(&args.tls_ca).map_err(|e| TargetError::Configuration(format!("Failed to load MySQL tls_ca: {e}")))?;
+            ssl_opts = ssl_opts.with_root_certs(vec![PathBuf::from(args.tls_ca.clone()).into()]);
+        }
+        if !args.tls_client_cert.is_empty() && !args.tls_client_key.is_empty() {
+            let _ = load_certs(&args.tls_client_cert)
+                .map_err(|e| TargetError::Configuration(format!("Failed to load MySQL tls_client_cert: {e}")))?;
+            let _ = load_private_key(&args.tls_client_key)
+                .map_err(|e| TargetError::Configuration(format!("Failed to load MySQL tls_client_key: {e}")))?;
+            let identity = mysql_async::ClientIdentity::new(
+                PathBuf::from(args.tls_client_cert.clone()).into(),
+                PathBuf::from(args.tls_client_key.clone()).into(),
+            );
+            ssl_opts = ssl_opts.with_client_identity(Some(identity));
+        }
+        builder = builder.ssl_opts(Some(ssl_opts));
+    } else {
+        warn!("MySQL target is configured without TLS. This is insecure and should not be used in production.");
+    }
+
+    // When max_open_connections is 0, no explicit upper bound is set —
+    // mysql_async uses its default pool constraints (10–100).
+    if args.max_open_connections > 0 {
+        let constraints = PoolConstraints::new(1, args.max_open_connections).ok_or_else(|| {
+            TargetError::Configuration(format!("MySQL max_open_connections must be >= 1, got {}", args.max_open_connections))
+        })?;
+        builder = builder.pool_opts(PoolOpts::default().with_constraints(constraints));
+    }
+
+    let opts = Opts::from(builder);
+    let pool = Pool::new(opts);
+
+    // Uses a double-check pattern: the mutex guard is only held for
+    // short reads/writes to the pool cache. All I/O (connecting,
+    // DDL, schema validation) happens outside the lock so that
+    // concurrent callers are not blocked by a slow MySQL server.
+    let mut conn = checkout_conn(&pool).await?;
+
+    conn.query_drop("SELECT 1").await.map_err(|_| TargetError::NotConnected)?;
+
+    let quoted_table = quote_table_name(&args.table)?;
+    // Tables created here carry the `event_id` primary key so that store
+    // replays are idempotent. Pre-existing legacy tables are left untouched by
+    // `CREATE TABLE IF NOT EXISTS`.
+    conn.query_drop(mysql_create_table_sql(&quoted_table))
+        .await
+        .map_err(|e| TargetError::Initialization(format!("Failed to create MySQL table: {e}")))?;
+
+    let idempotency_supported = validate_existing_schema(&mut conn, &args.table).await?;
+    if !idempotency_supported {
+        warn!(
+            table = %args.table,
+            "MySQL table lacks the '{}' idempotency key column; store replays may create duplicate rows. \
+             Add an '{}' VARCHAR(255) PRIMARY KEY column to enable exactly-once inserts.",
+            MYSQL_EVENT_ID_COLUMN, MYSQL_EVENT_ID_COLUMN
+        );
+    }
+
+    Ok((pool, idempotency_supported))
+}
+
+/// Maps a mysql_async error to `TargetError`:
+/// - `Io`/`Driver` → `NotConnected` (connection lost, fixed-delay retry)
+/// - `Server(1213|1205|1040)` → `Timeout` (deadlock/lock timeout/too
+///   many connections, exponential-backoff retry)
+/// - everything else → `Request` (permanent failure)
+pub(crate) fn map_mysql_error(err: mysql_async::Error, operation: &str) -> TargetError {
+    match &err {
+        mysql_async::Error::Io(_) | mysql_async::Error::Driver(_) => TargetError::NotConnected,
+        mysql_async::Error::Server(server_err) => match server_err.code {
+            1213 | 1205 | 1040 => {
+                TargetError::Timeout(format!("MySQL transient server error {}: {}", server_err.code, server_err.message))
+            }
+            _ => TargetError::Request(format!("{operation}: {err}")),
+        },
+        _ => TargetError::Request(format!("{operation}: {err}")),
+    }
+}
+
+#[async_trait]
+impl<E> Target<E> for MySqlTarget<E>
+where
+    E: PluginEvent,
+{
+    fn id(&self) -> TargetID {
+        self.id.clone()
+    }
+
+    async fn is_active(&self) -> Result<bool, TargetError> {
+        if !self.args.enable {
+            return Ok(false);
+        }
+
+        let pool = self.get_or_init_pool().await?;
+
+        let health_result = tokio::time::timeout(tokio::time::Duration::from_secs(10), async {
+            let mut conn = pool.get_conn().await?;
+            conn.query_drop("SELECT 1").await
+        })
+        .await;
+
+        match health_result {
+            Ok(Ok(())) => {
+                debug!("MySQL target '{}' is reachable", self.id);
+                Ok(true)
+            }
+            // get_or_init_pool has already verified connectivity, DDL, and
+            // schema, so a SELECT 1 failure here is always transient
+            // (connection lost). No need to classify error codes.
+            Ok(Err(_)) => Err(TargetError::NotConnected),
+            Err(_elapsed) => Err(TargetError::Timeout("MySQL is_active health check timed out after 10s".to_string())),
+        }
+    }
+
+    async fn save(&self, event: Arc<EntityTarget<E>>) -> Result<(), TargetError> {
+        let queued = match build_queued_payload(event.as_ref()) {
+            Ok(queued) => queued,
+            Err(err) => {
+                self.delivery_counters.record_final_failure();
+                return Err(err);
+            }
+        };
+
+        if let Some(store) = &self.store {
+            if let Err(e) = persist_queued_payload_to_store(store.as_ref(), &queued) {
+                self.delivery_counters.record_final_failure();
+                return Err(e);
+            }
+
+            debug!("Event saved to queue store for MySQL target: {}", self.id);
+            Ok(())
+        } else {
+            // No queue: deliver immediately. A fresh UUID is the idempotency
+            // key so caller-side retries produce distinct rows.
+            let event_id = Uuid::new_v4().to_string();
+            if let Err(err) = self.insert_event(&queued.body, &queued.meta, &event_id).await {
+                self.delivery_counters.record_final_failure();
+                return Err(err);
+            }
+
+            Ok(())
+        }
+    }
+
+    async fn send_raw_from_store(&self, key: Key, body: Vec<u8>, meta: QueuedPayloadMeta) -> Result<(), TargetError> {
+        debug!(target_id = %self.id, key = %key, payload_len = body.len(), "Sending queued payload from store to MySQL target");
+
+        match extract_event_time(&body) {
+            Ok(_) => {}
+            Err(_) => {
+                // If the payload is missing the required eventTime field or it
+                // cannot be parsed, we consider it corrupted and drop it to
+                // avoid blocking the queue with undeliverable entries.
+                error!(
+                    target_id = %self.id,
+                    key = %key,
+                    "Corrupted queued MySQL payload: missing or invalid Records[0].eventTime; dropping entry"
+                );
+
+                // attempt to delete the corrupted entry from the store if possible
+                if let Some(store) = &self.store
+                    && let Err(e) = delete_stored_payload(store.as_ref(), &key)
+                {
+                    error!(target_id = %self.id, key=%key, error = %e, "Failed to delete corrupted queue entry");
+                }
+
+                self.delivery_counters.record_final_failure();
+                return Err(TargetError::Dropped(format!(
+                    "Dropped corrupted queued MySQL payload {key}: missing or invalid Records[0].eventTime"
+                )));
+            }
+        }
+
+        // Use the stable store key as the idempotency key so replays of the
+        // same physical event are deduplicated by the `event_id` primary key.
+        let event_id = key.to_string();
+        if let Err(e) = self.insert_event(&body, &meta, &event_id).await {
+            if is_connectivity_error(&e) {
+                warn!(target_id = %self.id, "MySQL not reachable, event remains in queue store");
+                return Err(e);
+            }
+            error!(target_id = %self.id, error = %e, "Failed to send event from store");
+            return Err(e);
+        }
+
+        debug!(target_id = %self.id, key = %key, "MySQL event replayed from store");
+        Ok(())
+    }
+
+    async fn close(&self) -> Result<(), TargetError> {
+        let pool = {
+            let mut guard = self.pool.lock().await;
+            guard.take()
+        };
+
+        if let Some(pool) = pool {
+            pool.disconnect()
+                .await
+                .map_err(|err| TargetError::Network(format!("Failed to disconnect MySQL pool: {err}")))?;
+        }
+
+        // Adapter cleanup is done by the coordinator; no local state to reset.
+
+        info!("MySQL target closed: {}", self.id);
+        Ok(())
+    }
+
+    fn store(&self) -> Option<&(dyn Store<QueuedPayload, Error = StoreError, Key = Key> + Send + Sync)> {
+        self.store.as_deref()
+    }
+
+    fn clone_dyn(&self) -> Box<dyn Target<E> + Send + Sync> {
+        self.clone_box()
+    }
+
+    async fn init(&self) -> Result<(), TargetError> {
+        if !self.args.enable {
+            debug!("MySQL target '{}' is disabled, skipping initialization", self.id);
+            return Ok(());
+        }
+        self.get_or_init_pool().await?;
+        Ok(())
+    }
+
+    fn is_enabled(&self) -> bool {
+        self.args.enable
+    }
+
+    fn delivery_snapshot(&self) -> TargetDeliverySnapshot {
+        self.delivery_counters.snapshot(
+            self.store.as_deref().map_or(0, |store| store.len() as u64),
+            // MySQL targets record no terminal failures and keep no failed store.
+            0,
+        )
+    }
+
+    fn record_final_failure(&self) {
+        self.delivery_counters.record_final_failure();
+    }
+}
+
+/// Coordinated TLS hot-reload implementation for MySQL targets.
+///
+/// The coordinator calls these methods on a background poll loop to detect
+/// TLS file changes and rebuild the connection pool without restarting.
+#[async_trait]
+impl<E> ReloadableTargetTls for MySqlTarget<E>
+where
+    E: PluginEvent,
+{
+    type Material = Pool;
+
+    fn tls_input_set(&self) -> TargetTlsInputSet {
+        TargetTlsInputSet {
+            ca_path: self.args.tls_ca.clone(),
+            client_cert_path: self.args.tls_client_cert.clone(),
+            client_key_path: self.args.tls_client_key.clone(),
+            target_label: format!("mysql:{}", self.id.id),
+        }
+    }
+
+    async fn build_tls_material(&self) -> Result<Self::Material, TargetError> {
+        let (pool, idempotency) = build_mysql_pool_from_args(&self.args).await?;
+        self.idempotency_supported.store(idempotency, Ordering::Relaxed);
+        Ok(pool)
+    }
+
+    async fn apply_tls_material(
+        &self,
+        _generation: TargetTlsGeneration,
+        material: Arc<Self::Material>,
+        _mode: ReloadApplyMode,
+    ) -> Result<(), TargetError> {
+        let mut guard = self.pool.lock().await;
+        *guard = Some((*material).clone());
+        Ok(())
+    }
+
+    async fn validate_tls_files(&self) -> Result<(), TargetError> {
+        validate_tls_material(&self.args.tls_ca, &self.args.tls_client_cert, &self.args.tls_client_key)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::target::REDACTED_SECRET;
+
+    fn absolute_test_path(path: &str) -> String {
+        std::env::temp_dir().join(path).to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn parse_dsn_format() {
+        let dsn = MySqlDsn::parse("rustfs:secret123@tcp(mysql.example.com:3306)/rustfs_events").expect("valid DSN");
+        assert_eq!(dsn.user, "rustfs");
+        assert_eq!(dsn.password, "secret123");
+        assert_eq!(dsn.host, "mysql.example.com");
+        assert_eq!(dsn.port, 3306);
+        assert_eq!(dsn.database, "rustfs_events");
+        assert!(!dsn.tls);
+    }
+
+    #[test]
+    fn parse_dsn_with_mysql_prefix() {
+        let dsn = MySqlDsn::parse("mysql://rustfs:password@tcp(127.0.0.1:3306)/mydb").expect("valid DSN with prefix");
+        assert_eq!(dsn.user, "rustfs");
+        assert_eq!(dsn.password, "password");
+        assert_eq!(dsn.host, "127.0.0.1");
+        assert_eq!(dsn.port, 3306);
+        assert_eq!(dsn.database, "mydb");
+    }
+
+    #[test]
+    fn parse_dsn_with_mixed_case_mysql_prefix() {
+        let dsn = MySqlDsn::parse("MySQL://rustfs:password@tcp(127.0.0.1:3306)/mydb").expect("valid DSN with mixed-case prefix");
+        assert_eq!(dsn.user, "rustfs");
+        assert_eq!(dsn.password, "password");
+        assert_eq!(dsn.host, "127.0.0.1");
+        assert_eq!(dsn.port, 3306);
+        assert_eq!(dsn.database, "mydb");
+    }
+
+    #[test]
+    fn parse_dsn_with_tls_true() {
+        let dsn = MySqlDsn::parse("rustfs:password@tcp(127.0.0.1:3306)/mydb?tls=true").expect("valid DSN with TLS");
+        assert!(dsn.tls);
+    }
+
+    #[test]
+    fn parse_dsn_with_tls_bare() {
+        let dsn = MySqlDsn::parse("rustfs:password@tcp(127.0.0.1:3306)/mydb?tls").expect("bare tls param");
+        assert!(dsn.tls);
+    }
+
+    #[test]
+    fn parse_dsn_rejects_unsupported_tls_params() {
+        let err =
+            MySqlDsn::parse("rustfs:password@tcp(127.0.0.1:3306)/mydb?verify_ca=true").expect_err("verify_ca should be rejected");
+        assert!(err.to_string().contains("verify_ca"));
+
+        let err = MySqlDsn::parse("rustfs:password@tcp(127.0.0.1:3306)/mydb?verify_identity=true")
+            .expect_err("verify_identity should be rejected");
+        assert!(err.to_string().contains("verify_identity"));
+
+        let err = MySqlDsn::parse("rustfs:password@tcp(127.0.0.1:3306)/mydb?built_in_roots=true")
+            .expect_err("built_in_roots should be rejected");
+        assert!(err.to_string().contains("built_in_roots"));
+    }
+
+    #[test]
+    fn parse_dsn_rejects_empty() {
+        let err = MySqlDsn::parse("").expect_err("empty DSN");
+        assert!(err.to_string().contains("empty"));
+    }
+
+    #[test]
+    fn parse_dsn_rejects_missing_at() {
+        let err = MySqlDsn::parse("rustfs:password").expect_err("missing @");
+        assert!(err.to_string().contains("must contain user:password@"));
+    }
+
+    #[test]
+    fn parse_dsn_rejects_non_tcp() {
+        let err = MySqlDsn::parse("rustfs:password@unix(/tmp/mysql.sock)/mydb").expect_err("non-tcp should be rejected");
+        assert!(err.to_string().contains("tcp("));
+    }
+
+    #[test]
+    fn redact_dsn_masks_password() {
+        let redacted = redact_mysql_dsn("rustfs:secret123@tcp(mysql.example.com:3306)/rustfs_events");
+        assert_eq!(redacted, "rustfs:***@tcp(mysql.example.com:3306)/rustfs_events");
+    }
+
+    #[test]
+    fn redact_dsn_with_mysql_prefix() {
+        let redacted = redact_mysql_dsn("mysql://rustfs:secret123@tcp(127.0.0.1:3306)/mydb");
+        assert_eq!(redacted, "mysql://rustfs:***@tcp(127.0.0.1:3306)/mydb");
+    }
+
+    #[test]
+    fn redact_dsn_with_mixed_case_mysql_prefix() {
+        let redacted = redact_mysql_dsn("MySQL://rustfs:secret123@tcp(127.0.0.1:3306)/mydb");
+        assert_eq!(redacted, "MySQL://rustfs:***@tcp(127.0.0.1:3306)/mydb");
+    }
+
+    #[test]
+    fn redact_dsn_empty_password() {
+        let redacted = redact_mysql_dsn("root:@tcp(127.0.0.1:4000)/testdb");
+        assert_eq!(redacted, "root:***@tcp(127.0.0.1:4000)/testdb");
+    }
+
+    #[test]
+    fn redact_dsn_password_containing_at_sign_does_not_leak() {
+        // A password containing '@' must not leak its tail into the redacted
+        // output; the credentials/host boundary is the last '@'.
+        let redacted = redact_mysql_dsn("rustfs:p@ss@w0rd@tcp(mysql.example.com:3306)/rustfs_events");
+        assert_eq!(redacted, "rustfs:***@tcp(mysql.example.com:3306)/rustfs_events");
+        assert!(!redacted.contains("ss@w0rd"));
+        assert!(!redacted.contains("w0rd"));
+    }
+
+    #[test]
+    fn redact_dsn_password_with_at_and_prefix() {
+        let redacted = redact_mysql_dsn("mysql://rustfs:a@b:c@tcp(127.0.0.1:3306)/mydb");
+        assert_eq!(redacted, "mysql://rustfs:***@tcp(127.0.0.1:3306)/mydb");
+        assert!(!redacted.contains("a@b"));
+    }
+
+    #[test]
+    fn insert_sql_with_event_id_is_idempotent() {
+        let sql = mysql_insert_sql_with_event_id("`rustfs_events`");
+        assert!(sql.contains("event_id, event_time, event_data"));
+        assert!(sql.contains("CAST(? AS JSON)"));
+        assert!(sql.contains("ON DUPLICATE KEY UPDATE event_id = event_id"));
+        assert!(sql.contains("`rustfs_events`"));
+    }
+
+    #[test]
+    fn insert_sql_legacy_has_no_idempotency_clause() {
+        let sql = mysql_insert_sql_legacy("`rustfs_events`");
+        assert!(sql.contains("(event_time, event_data)"));
+        assert!(sql.contains("CAST(? AS JSON)"));
+        assert!(!sql.contains("event_id"));
+        assert!(!sql.contains("ON DUPLICATE KEY"));
+    }
+
+    #[test]
+    fn create_table_sql_defines_event_id_primary_key() {
+        let sql = mysql_create_table_sql("`my_db`.`events`");
+        assert!(sql.contains("CREATE TABLE IF NOT EXISTS `my_db`.`events`"));
+        assert!(sql.contains("event_id VARCHAR(255) NOT NULL"));
+        assert!(sql.contains("event_time DATETIME(6) NOT NULL"));
+        assert!(sql.contains("event_data JSON NOT NULL"));
+        assert!(sql.contains("PRIMARY KEY (event_id)"));
+    }
+
+    #[test]
+    fn debug_redacts_mysql_secret_fields() {
+        let args = MySqlArgs {
+            enable: true,
+            dsn_string: "rustfs:mysql-password@tcp(127.0.0.1:3306)/db".to_string(),
+            table: "events".to_string(),
+            format: "access".to_string(),
+            tls_ca: String::new(),
+            tls_client_cert: String::new(),
+            tls_client_key: "/etc/rustfs/mysql.key".to_string(),
+            queue_dir: String::new(),
+            queue_limit: 0,
+            max_open_connections: 0,
+            target_type: TargetType::NotifyEvent,
+        };
+        let dsn = MySqlDsn::parse(&args.dsn_string).expect("valid DSN");
+
+        let rendered_args = format!("{args:?}");
+        let rendered_dsn = format!("{dsn:?}");
+
+        assert!(!rendered_args.contains("mysql-password"));
+        assert!(!rendered_args.contains("/etc/rustfs/mysql.key"));
+        assert!(!rendered_dsn.contains("mysql-password"));
+        assert!(rendered_args.contains("rustfs:***@"));
+        assert!(rendered_dsn.contains(REDACTED_SECRET));
+    }
+
+    #[test]
+    fn validate_table_name_accepts_valid_identifier() {
+        validate_table_name("rustfs_events").expect("valid table name");
+        validate_table_name("my_db.events").expect("valid db.table");
+        validate_table_name("_events").expect("valid starting underscore");
+        validate_table_name("table_2").expect("valid with numbers");
+    }
+
+    #[test]
+    fn validate_table_name_rejects_invalid() {
+        let err = validate_table_name("").expect_err("empty");
+        assert!(err.to_string().contains("empty"));
+
+        let err = validate_table_name("1table").expect_err("starts with digit");
+        assert!(err.to_string().contains("not a valid identifier"));
+
+        let err = validate_table_name("my-table").expect_err("contains dash");
+        assert!(err.to_string().contains("not a valid identifier"));
+
+        let err = validate_table_name(".table").expect_err("empty db part");
+        assert!(err.to_string().contains("invalid"));
+
+        let err = validate_table_name("db.").expect_err("empty table part");
+        assert!(err.to_string().contains("invalid"));
+    }
+
+    #[test]
+    fn quote_table_name_quotes_simple() {
+        let quoted = quote_table_name("rustfs_events").expect("valid");
+        assert_eq!(quoted, "`rustfs_events`");
+    }
+
+    #[test]
+    fn quote_table_name_quotes_database_table() {
+        let quoted = quote_table_name("my_db.events").expect("valid");
+        assert_eq!(quoted, "`my_db`.`events`");
+    }
+
+    #[test]
+    fn extract_event_time_parses_valid_rfc3339() {
+        let body =
+            br#"{"EventName":"s3:ObjectCreated:Put","Key":"bucket/obj.txt","Records":[{"eventTime":"2026-05-03T10:00:00Z"}]}"#;
+        let result = extract_event_time(body).expect("valid event_time");
+        assert_eq!(result, "2026-05-03 10:00:00.000000");
+    }
+
+    #[test]
+    fn extract_event_time_preserves_input_offset_wall_time() {
+        let body = br#"{"EventName":"s3:ObjectCreated:Put","Records":[{"eventTime":"2026-05-03T10:00:00.123456789+08:00"}]}"#;
+        let result = extract_event_time(body).expect("valid event_time");
+        assert_eq!(result, "2026-05-03 10:00:00.123456");
+    }
+
+    #[test]
+    fn extract_event_time_missing_field_errors() {
+        let body = br#"{"EventName":"s3:ObjectCreated:Put","Key":"bucket/obj.txt","Records":[]}"#;
+        let err = extract_event_time(body).expect_err("missing eventTime should fail");
+        assert!(err.to_string().contains("missing Records[0].eventTime"));
+    }
+
+    #[test]
+    fn extract_event_time_non_string_errors() {
+        let body = br#"{"EventName":"s3:ObjectCreated:Put","Records":[{"eventTime":123}]}"#;
+        let err = extract_event_time(body).expect_err("non-string eventTime should fail");
+        assert!(err.to_string().contains("missing Records[0].eventTime"));
+    }
+
+    #[test]
+    fn extract_event_time_malformed_rfc3339_errors() {
+        let body = br#"{"Records":[{"eventTime":"not-a-date"}]}"#;
+        let err = extract_event_time(body).expect_err("malformed date should fail");
+        assert!(err.to_string().contains("Failed to parse eventTime"));
+    }
+
+    #[test]
+    fn extract_event_time_without_offset_errors() {
+        let body = br#"{"Records":[{"eventTime":"2026-05-03T10:00:00"}]}"#;
+        let err = extract_event_time(body).expect_err("missing offset should fail");
+        assert!(err.to_string().contains("missing RFC3339 offset"));
+    }
+
+    #[test]
+    fn extract_event_time_with_time_zone_annotation_errors() {
+        let body = br#"{"Records":[{"eventTime":"2026-05-03T10:00:00+08:00[Asia/Shanghai]"}]}"#;
+        let err = extract_event_time(body).expect_err("time zone annotation should fail");
+        assert!(err.to_string().contains("must not include a time zone annotation"));
+    }
+
+    #[test]
+    fn extract_event_time_missing_records_errors() {
+        let body = br#"{"EventName":"s3:ObjectCreated:Put"}"#;
+        let err = extract_event_time(body).expect_err("missing Records should fail");
+        assert!(err.to_string().contains("missing Records[0].eventTime"));
+    }
+
+    #[test]
+    fn queued_payload_round_trip_preserves_event_data() {
+        let entity = EntityTarget {
+            object_name: "bucket%2Fobj.txt".to_string(),
+            bucket_name: "testbucket".to_string(),
+            event_name: rustfs_s3_types::EventName::ObjectCreatedPut,
+            data: serde_json::json!({"eventTime": "2026-05-03T10:00:00Z"}),
+        };
+
+        let payload = build_queued_payload(&entity).expect("build payload");
+        let encoded = payload.encode().expect("encode");
+        let decoded = QueuedPayload::decode(&encoded).expect("decode");
+
+        assert_eq!(decoded.meta.event_name, payload.meta.event_name);
+        assert_eq!(decoded.meta.bucket_name, "testbucket");
+        assert_eq!(decoded.meta.object_name, "bucket%2Fobj.txt");
+        assert_eq!(decoded.meta.content_type, "application/json");
+
+        let body_str = std::str::from_utf8(&decoded.body).expect("utf8 body");
+        assert!(body_str.contains("\"EventName\""));
+        assert!(body_str.contains("\"Key\""));
+        assert!(body_str.contains("testbucket"));
+        assert!(body_str.contains("\"Records\""));
+        assert!(body_str.contains("\"eventTime\""));
+    }
+
+    #[test]
+    fn send_raw_from_store_drops_corrupted_payload() {
+        let tmpdir = tempfile::TempDir::new().expect("temp dir");
+        let queue_dir = tmpdir.path().to_str().expect("valid path").to_string();
+
+        let target: MySqlTarget<serde_json::Value> = MySqlTarget::new(
+            "test-corrupted".to_string(),
+            MySqlArgs {
+                enable: false,
+                dsn_string: "rustfs:pass@tcp(127.0.0.1:3306)/db".to_string(),
+                table: "events".to_string(),
+                format: "access".to_string(),
+                tls_ca: String::new(),
+                tls_client_cert: String::new(),
+                tls_client_key: String::new(),
+                queue_dir,
+                queue_limit: 10,
+                max_open_connections: 2,
+                target_type: TargetType::NotifyEvent,
+            },
+        )
+        .expect("valid args");
+
+        let body = br#"{"Records":[]}"#.to_vec();
+        let meta = QueuedPayloadMeta::new(
+            rustfs_s3_types::EventName::ObjectCreatedPut,
+            "testbucket".to_string(),
+            "obj.txt".to_string(),
+            "application/json",
+            body.len(),
+        );
+
+        let encoded = QueuedPayload::new(meta.clone(), body.clone())
+            .encode()
+            .expect("encode queued payload");
+
+        let stored_key = target.store().unwrap().put_raw(&encoded).expect("put raw");
+
+        let rt = tokio::runtime::Runtime::new().expect("runtime");
+        let result = rt.block_on(target.send_raw_from_store(stored_key.clone(), body, meta));
+
+        match result {
+            Err(TargetError::Dropped(msg)) => {
+                assert!(msg.contains("Dropped"));
+                assert!(msg.contains("eventTime"));
+            }
+            other => panic!("expected TargetError::Dropped, got {:?}", other),
+        }
+
+        assert!(
+            target.store().unwrap().get_raw(&stored_key).is_err(),
+            "corrupted entry should have been deleted from store"
+        );
+
+        assert_eq!(target.delivery_snapshot().failed_messages, 1);
+    }
+
+    #[test]
+    fn send_raw_from_store_replays_valid_payload() {
+        let tmpdir = tempfile::TempDir::new().expect("temp dir");
+        let queue_dir = tmpdir.path().to_str().expect("valid path").to_string();
+
+        let target: MySqlTarget<serde_json::Value> = MySqlTarget::new(
+            "test-valid-replay".to_string(),
+            MySqlArgs {
+                enable: false,
+                dsn_string: "rustfs:pass@tcp(127.0.0.1:3306)/db".to_string(),
+                table: "events".to_string(),
+                format: "access".to_string(),
+                tls_ca: String::new(),
+                tls_client_cert: String::new(),
+                tls_client_key: String::new(),
+                queue_dir,
+                queue_limit: 10,
+                max_open_connections: 2,
+                target_type: TargetType::NotifyEvent,
+            },
+        )
+        .expect("valid args");
+
+        let body =
+            br#"{"EventName":"s3:ObjectCreated:Put","Key":"bucket/obj.txt","Records":[{"eventTime":"2026-05-03T10:00:00Z"}]}"#
+                .to_vec();
+        let meta = QueuedPayloadMeta::new(
+            rustfs_s3_types::EventName::ObjectCreatedPut,
+            "testbucket".to_string(),
+            "obj.txt".to_string(),
+            "application/json",
+            body.len(),
+        );
+
+        let encoded = QueuedPayload::new(meta.clone(), body.clone())
+            .encode()
+            .expect("encode queued payload");
+
+        let stored_key = target.store().unwrap().put_raw(&encoded).expect("put raw");
+
+        // With enable=false and no real MySQL, the insert will fail at
+        // pool init. But send_raw_from_store validates event_time before
+        // insert, so valid payloads pass the time check. We verify the
+        // payload is NOT treated as corrupted.
+        let rt = tokio::runtime::Runtime::new().expect("runtime");
+        let result = rt.block_on(target.send_raw_from_store(stored_key.clone(), body, meta));
+
+        assert!(!matches!(result, Err(TargetError::Dropped(_))), "valid payload should not return Dropped");
+
+        // Verify entry is NOT deleted on non-Dropped errors
+        assert!(target.store().unwrap().get_raw(&stored_key).is_ok(), "valid entry should remain in store");
+    }
+
+    #[test]
+    fn validate_rejects_unpaired_tls_client_fields() {
+        let args = MySqlArgs {
+            enable: true,
+            dsn_string: "rustfs:password@tcp(127.0.0.1:3306)/db".to_string(),
+            table: "events".to_string(),
+            format: "access".to_string(),
+            tls_ca: String::new(),
+            tls_client_cert: "/etc/ssl/mysql/client.pem".to_string(),
+            tls_client_key: String::new(),
+            queue_dir: "/tmp".to_string(),
+            queue_limit: 100,
+            max_open_connections: 2,
+            target_type: TargetType::NotifyEvent,
+        };
+
+        let err = args.validate().expect_err("unpaired tls client fields should fail");
+        assert!(err.to_string().contains("must be specified together"));
+    }
+
+    #[test]
+    fn validate_rejects_relative_tls_paths() {
+        let args = MySqlArgs {
+            enable: true,
+            dsn_string: "rustfs:password@tcp(127.0.0.1:3306)/db".to_string(),
+            table: "events".to_string(),
+            format: "access".to_string(),
+            tls_ca: "ca.pem".to_string(),
+            tls_client_cert: String::new(),
+            tls_client_key: String::new(),
+            queue_dir: "/tmp".to_string(),
+            queue_limit: 100,
+            max_open_connections: 2,
+            target_type: TargetType::NotifyEvent,
+        };
+
+        let err = args.validate().expect_err("relative tls_ca should fail");
+        assert!(err.to_string().contains("absolute path"));
+    }
+
+    #[test]
+    fn validate_accepts_absolute_tls_paths() {
+        let args = MySqlArgs {
+            enable: true,
+            dsn_string: "rustfs:password@tcp(127.0.0.1:3306)/db".to_string(),
+            table: "events".to_string(),
+            format: "access".to_string(),
+            tls_ca: absolute_test_path("mysql-ca.pem"),
+            tls_client_cert: absolute_test_path("mysql-client.pem"),
+            tls_client_key: absolute_test_path("mysql-client.key"),
+            queue_dir: absolute_test_path("mysql-queue"),
+            queue_limit: 100,
+            max_open_connections: 2,
+            target_type: TargetType::NotifyEvent,
+        };
+
+        args.validate().expect("absolute tls paths should pass");
+    }
+}

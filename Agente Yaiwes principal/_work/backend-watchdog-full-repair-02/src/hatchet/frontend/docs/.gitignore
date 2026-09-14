@@ -1,0 +1,8 @@
+.next
+node_modules
+public/llms.txt
+public/llms-full.txt
+public/llms/
+public/llms-search-index.json
+tsconfig.tsbuildinfo
+.source

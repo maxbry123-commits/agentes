@@ -1,0 +1,12 @@
+apache-hamilton[visualization] == 1.27.3
+arxiv
+fastapi
+openai
+pandas
+pydantic
+PyPDF2
+python-multipart
+tenacity
+tiktoken
+uvicorn
+weaviate-client

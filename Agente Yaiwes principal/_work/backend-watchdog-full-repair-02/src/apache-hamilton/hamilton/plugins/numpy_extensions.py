@@ -1,0 +1,105 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+import dataclasses
+import pathlib
+from collections.abc import Collection
+from typing import IO, Any
+
+try:
+    import numpy as np
+except ImportError as e:
+    raise NotImplementedError("Numpy is not installed.") from e
+
+from typing import Literal
+
+from hamilton import registry
+from hamilton.io import utils
+from hamilton.io.data_adapters import DataLoader, DataSaver
+
+
+@dataclasses.dataclass
+class NumpyNpyWriter(DataSaver):
+    """Write Numpy multidimensional arrays to custom .npy format
+    ref: https://numpy.org/doc/stable/reference/routines.io.html
+    """
+
+    path: str | pathlib.Path | IO
+    allow_pickle: bool | None = None
+    fix_imports: bool | None = None
+
+    def save_data(self, data: np.ndarray) -> dict[str, Any]:
+        kwargs = dict(file=self.path, arr=data, allow_pickle=self.allow_pickle)
+        if np.__version__ < "2.4" and self.fix_imports is not None:
+            kwargs["fix_imports"] = self.fix_imports
+        np.save(**kwargs)
+        return utils.get_file_metadata(self.path)
+
+    @classmethod
+    def applicable_types(cls) -> Collection[type]:
+        return [np.ndarray]
+
+    @classmethod
+    def name(cls) -> str:
+        return "npy"
+
+
+@dataclasses.dataclass
+class NumpyNpyReader(DataLoader):
+    """Read Numpy multidimensional arrays from custom .npy format
+    ref: https://numpy.org/doc/stable/reference/routines.io.html
+    """
+
+    path: str | pathlib.Path | IO
+    mmap_mode: str | None = None
+    allow_pickle: bool | None = None
+    fix_imports: bool | None = None
+    encoding: Literal["ASCII", "latin1", "bytes"] = "ASCII"
+
+    @classmethod
+    def applicable_types(cls) -> Collection[type]:
+        return [np.ndarray]
+
+    def load_data(self, type_: type) -> tuple[np.ndarray, dict[str, Any]]:
+        kwargs = dict(
+            file=self.path,
+            mmap_mode=self.mmap_mode,
+            allow_pickle=self.allow_pickle,
+            encoding=self.encoding,
+        )
+        if np.__version__ < "2.4" and self.fix_imports is not None:
+            kwargs["fix_imports"] = self.fix_imports
+        array = np.load(**kwargs)
+        metadata = utils.get_file_metadata(self.path)
+        return array, metadata
+
+    @classmethod
+    def name(cls) -> str:
+        return "npy"
+
+
+def register_data_loaders():
+    for loader in [
+        NumpyNpyWriter,
+        NumpyNpyReader,
+    ]:
+        registry.register_adapter(loader)
+
+
+register_data_loaders()
+
+COLUMN_FRIENDLY_DF_TYPE = False

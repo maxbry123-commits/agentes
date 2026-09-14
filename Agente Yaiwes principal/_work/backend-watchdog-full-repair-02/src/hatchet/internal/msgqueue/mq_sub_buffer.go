@@ -1,0 +1,327 @@
+package msgqueue
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/hatchet-dev/hatchet/internal/syncx"
+)
+
+// nolint: staticcheck
+var (
+	SUB_FLUSH_INTERVAL  = 10 * time.Millisecond
+	SUB_BUFFER_SIZE     = 10
+	SUB_MAX_CONCURRENCY = 10
+)
+
+type DstFunc func(tenantId uuid.UUID, msgId string, payloads [][]byte) error
+
+func JSONConvert[T any](payloads [][]byte) []*T {
+	ret := make([]*T, 0)
+	for _, p := range payloads {
+		var t T
+		if err := json.Unmarshal(p, &t); err != nil {
+			return nil
+		}
+		ret = append(ret, &t)
+	}
+	return ret
+}
+
+type SubBufferKind string
+
+const (
+	PostAck SubBufferKind = "postAck"
+	PreAck  SubBufferKind = "preAck"
+)
+
+// SubscribeFunc subscribes to a message source with pre-ack and post-ack
+// hooks, returning a cleanup function.
+type SubscribeFunc func(preAck MsgHandler, postAck MsgHandler) (func() error, error)
+
+// MQSubBuffer buffers messages coming out of the task queue, groups them by tenantId and msgId, and then flushes them
+// to the task handler as necessary.
+type MQSubBuffer struct {
+	sub SubscribeFunc
+
+	// buffers is keyed on a composite (tenantId, msgId) and contains a buffer of messages for that tenantId and msgId.
+	buffers syncx.Map[string, *msgIdBuffer]
+
+	// the destination function to send the messages to
+	dst DstFunc
+
+	// the kind of sub buffer
+	kind SubBufferKind
+
+	flushInterval         time.Duration
+	bufferSize            int
+	maxConcurrency        int
+	disableImmediateFlush bool
+}
+
+type mqSubBufferOpts struct {
+	kind                  SubBufferKind
+	flushInterval         time.Duration
+	bufferSize            int
+	maxConcurrency        int
+	disableImmediateFlush bool
+}
+
+type mqSubBufferOptFunc func(*mqSubBufferOpts)
+
+func WithKind(kind SubBufferKind) mqSubBufferOptFunc {
+	return func(opts *mqSubBufferOpts) { opts.kind = kind }
+}
+
+func WithFlushInterval(flushInterval time.Duration) mqSubBufferOptFunc {
+	return func(opts *mqSubBufferOpts) { opts.flushInterval = flushInterval }
+}
+
+func WithBufferSize(bufferSize int) mqSubBufferOptFunc {
+	return func(opts *mqSubBufferOpts) { opts.bufferSize = bufferSize }
+}
+
+func WithMaxConcurrency(maxConcurrency int) mqSubBufferOptFunc {
+	return func(opts *mqSubBufferOpts) { opts.maxConcurrency = maxConcurrency }
+}
+
+func WithDisableImmediateFlush(disableImmediateFlush bool) mqSubBufferOptFunc {
+	return func(opts *mqSubBufferOpts) { opts.disableImmediateFlush = disableImmediateFlush }
+}
+
+func defaultMQSubBufferOpts() *mqSubBufferOpts {
+	return &mqSubBufferOpts{
+		kind:           PreAck,
+		flushInterval:  SUB_FLUSH_INTERVAL,
+		bufferSize:     SUB_BUFFER_SIZE,
+		maxConcurrency: SUB_MAX_CONCURRENCY,
+	}
+}
+
+func NewMQSubBuffer(queue Queue, mq MessageQueue, dst DstFunc, fs ...mqSubBufferOptFunc) *MQSubBuffer {
+	return NewSubBufferFromSubscribe(func(preAck MsgHandler, postAck MsgHandler) (func() error, error) {
+		return mq.Subscribe(queue, preAck, postAck)
+	}, dst, fs...)
+}
+
+// NewSubBufferFromSubscribe creates a sub buffer over an arbitrary subscribe
+// function, so the buffer can sit on top of either the durable MessageQueue
+// or a best-effort PubSub subscription.
+func NewSubBufferFromSubscribe(sub SubscribeFunc, dst DstFunc, fs ...mqSubBufferOptFunc) *MQSubBuffer {
+	opts := defaultMQSubBufferOpts()
+	for _, f := range fs {
+		f(opts)
+	}
+	return &MQSubBuffer{
+		sub:                   sub,
+		dst:                   dst,
+		kind:                  opts.kind,
+		flushInterval:         opts.flushInterval,
+		bufferSize:            opts.bufferSize,
+		maxConcurrency:        opts.maxConcurrency,
+		disableImmediateFlush: opts.disableImmediateFlush,
+	}
+}
+
+func (m *MQSubBuffer) Start() (func() error, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	f := func(msg *Message) error {
+		return m.handleMsg(ctx, msg)
+	}
+
+	var cleanupQueue func() error
+	var err error
+
+	switch m.kind {
+	case PreAck:
+		cleanupQueue, err = m.sub(f, NoOpHook)
+	case PostAck:
+		cleanupQueue, err = m.sub(NoOpHook, f)
+	}
+
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("could not subscribe in mq buffer: %w", err)
+	}
+
+	go m.runEvictor(ctx)
+
+	cleanup := func() error {
+		defer cancel()
+		if err := cleanupQueue(); err != nil {
+			return fmt.Errorf("could not cleanup message queue listener: %w", err)
+		}
+		return nil
+	}
+
+	return cleanup, nil
+}
+
+type msgWithResultCh struct {
+	msg    *Message
+	result chan error
+}
+
+func (m *MQSubBuffer) handleMsg(ctx context.Context, msg *Message) error {
+	if msg.TenantID == uuid.Nil {
+		return nil
+	}
+
+	msgWithResult := &msgWithResultCh{
+		msg:    msg,
+		result: make(chan error),
+	}
+
+	k := getKey(msg.TenantID, msg.ID)
+
+	var msgBuf *msgIdBuffer
+
+	for {
+		var ok bool
+		msgBuf, ok = m.buffers.Load(k)
+
+		if !ok {
+			newBuf := newMsgIDBuffer(ctx, msg.TenantID, msg.ID, m.dst, m.flushInterval, m.bufferSize, m.maxConcurrency, m.disableImmediateFlush)
+
+			var loaded bool
+			msgBuf, loaded = m.buffers.LoadOrStore(k, newBuf)
+
+			if loaded {
+				// lost the store race; stop the discarded buffer's goroutines
+				newBuf.stop()
+			}
+		}
+
+		// the buffer may have been evicted between the load and the acquire, in
+		// which case it is no longer in the map and we create a fresh one
+		if msgBuf.tryAcquire() {
+			break
+		}
+	}
+
+	// Signal early flush if the send would block due to capacity.
+	select {
+	case msgBuf.msgIdBufferCh <- msgWithResult:
+		// sent without blocking
+	default:
+		select {
+		case msgBuf.capacityRelease <- struct{}{}:
+		default:
+		}
+		// this places some backpressure on the consumer if buffers are full
+		msgBuf.msgIdBufferCh <- msgWithResult
+	}
+	msgBuf.notifier <- struct{}{}
+	msgBuf.release()
+
+	// wait for the message to be processed
+	err, ok := <-msgWithResult.result
+
+	// if the channel is closed, then the buffer has been flushed without error
+	if !ok {
+		return nil
+	}
+
+	return err
+}
+
+func getKey(tenantId uuid.UUID, msgId string) string {
+	return tenantId.String() + msgId
+}
+
+// runEvictor periodically removes buffers that have not seen a message for
+// BUFFER_IDLE_TIMEOUT. Without eviction the buffers map grows with every
+// (tenantId, msgId) pair seen over the lifetime of the process.
+func (m *MQSubBuffer) runEvictor(ctx context.Context) {
+	ticker := time.NewTicker(BUFFER_IDLE_TIMEOUT / 2)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			m.buffers.Range(func(k string, b *msgIdBuffer) bool {
+				if len(b.msgIdBufferCh) == 0 && b.tryEvict(BUFFER_IDLE_TIMEOUT) {
+					m.buffers.Delete(k)
+					b.stop()
+				}
+
+				return true
+			})
+		}
+	}
+}
+
+type msgIdBuffer struct {
+	*bufferCore
+
+	tenantId      uuid.UUID
+	msgId         string
+	msgIdBufferCh chan *msgWithResultCh
+	dst           DstFunc
+}
+
+func newMsgIDBuffer(ctx context.Context, tenantID uuid.UUID, msgID string, dst DstFunc, flushInterval time.Duration, bufferSize, maxConcurrency int, disableImmediateFlush bool) *msgIdBuffer {
+	ctx, stop := context.WithCancel(ctx)
+
+	b := &msgIdBuffer{
+		bufferCore:    newBufferCore(flushInterval, bufferSize, maxConcurrency, disableImmediateFlush, false),
+		tenantId:      tenantID,
+		msgId:         msgID,
+		msgIdBufferCh: make(chan *msgWithResultCh, bufferSize),
+		dst:           dst,
+	}
+	b.stop = stop
+	b.startFlusher(ctx, func() int { return len(b.msgIdBufferCh) }, b.flush)
+	b.startSemaphoreReleaser(ctx, func() int { return len(b.msgIdBufferCh) }, b.flush)
+	return b
+}
+
+func (m *msgIdBuffer) flush() {
+	select {
+	case m.semaphore <- struct{}{}:
+	default:
+		return
+	}
+
+	startedFlush := time.Now()
+	defer func() {
+		go func() {
+			m.semaphoreRelease <- m.flushInterval - time.Since(startedFlush)
+		}()
+	}()
+
+	// drainN uses the instance bufferSize, fixing the previous bug where the global
+	// SUB_BUFFER_SIZE was used regardless of how the buffer was configured.
+	drained := drainN(m.msgIdBufferCh, m.bufferSize)
+
+	payloads := make([][]byte, 0, len(drained))
+	for _, item := range drained {
+		payloads = append(payloads, item.msg.Payloads...)
+	}
+
+	if len(payloads) == 0 {
+		for _, item := range drained {
+			close(item.result)
+		}
+		return
+	}
+
+	err := m.dst(m.tenantId, m.msgId, payloads)
+
+	if err != nil {
+		for _, item := range drained {
+			item.result <- err
+		}
+	}
+
+	for _, item := range drained {
+		close(item.result)
+	}
+}

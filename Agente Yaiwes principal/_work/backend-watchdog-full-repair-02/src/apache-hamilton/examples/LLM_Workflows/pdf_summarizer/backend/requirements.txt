@@ -1,0 +1,11 @@
+apache-hamilton[visualization]
+dagworks-sdk>=0.3.2 # DAGWorks Tracker
+fastapi
+openai
+pydantic
+PyPDF2
+python-multipart
+tenacity
+tiktoken
+tqdm
+uvicorn

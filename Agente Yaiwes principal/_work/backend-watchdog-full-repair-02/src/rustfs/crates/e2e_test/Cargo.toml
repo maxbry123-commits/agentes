@@ -1,0 +1,149 @@
+# Copyright 2024 RustFS Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+[package]
+name = "e2e_test"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+hotpath = [
+    "hotpath/hotpath",
+    "hotpath/tokio",
+    "hotpath/futures",
+    "hotpath/reqwest-0-13",
+    "rustfs-config/hotpath",
+    "rustfs-credentials/hotpath",
+    "rustfs-data-usage/hotpath",
+    "rustfs-ecstore/hotpath",
+    "rustfs-filemeta/hotpath",
+    "rustfs-lock/hotpath",
+    "rustfs-madmin/hotpath",
+    "rustfs-protos/hotpath",
+    "rustfs-rio/hotpath",
+    "rustfs-signer/hotpath",
+    "rustfs-utils/hotpath",
+]
+hotpath-alloc = [
+    "hotpath",
+    "hotpath/hotpath-alloc",
+    "rustfs-config/hotpath-alloc",
+    "rustfs-credentials/hotpath-alloc",
+    "rustfs-data-usage/hotpath-alloc",
+    "rustfs-ecstore/hotpath-alloc",
+    "rustfs-filemeta/hotpath-alloc",
+    "rustfs-lock/hotpath-alloc",
+    "rustfs-madmin/hotpath-alloc",
+    "rustfs-protos/hotpath-alloc",
+    "rustfs-rio/hotpath-alloc",
+    "rustfs-signer/hotpath-alloc",
+    "rustfs-utils/hotpath-alloc",
+]
+hotpath-cpu = [
+    "hotpath",
+    "hotpath/hotpath-cpu",
+    "rustfs-config/hotpath-cpu",
+    "rustfs-credentials/hotpath-cpu",
+    "rustfs-data-usage/hotpath-cpu",
+    "rustfs-ecstore/hotpath-cpu",
+    "rustfs-filemeta/hotpath-cpu",
+    "rustfs-lock/hotpath-cpu",
+    "rustfs-madmin/hotpath-cpu",
+    "rustfs-protos/hotpath-cpu",
+    "rustfs-rio/hotpath-cpu",
+    "rustfs-signer/hotpath-cpu",
+    "rustfs-utils/hotpath-cpu",
+]
+ftps = []
+sftp = []
+
+[dependencies]
+hotpath.workspace = true
+rustfs-config = { workspace = true, features = ["constants"] }
+rustfs-credentials.workspace = true
+rustfs-ecstore.workspace = true
+rustfs-data-usage.workspace = true
+rustfs-rio.workspace = true
+rustfs-utils = { workspace = true, features = ["egress"] }
+flatbuffers.workspace = true
+futures.workspace = true
+rustfs-lock.workspace = true
+rustfs-protos.workspace = true
+rmp-serde.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["raw_value"] }
+tonic = { workspace = true, features = ["gzip", "deflate"] }
+tokio = { workspace = true, features = ["fs", "rt-multi-thread"] }
+tokio-stream = { workspace = true }
+rustfs-madmin.workspace = true
+rustfs-filemeta.workspace = true
+bytes = { workspace = true, features = ["serde"] }
+aws-sdk-s3 = { workspace = true, default-features = false, features = ["sigv4a", "default-https-client", "rt-tokio"] }
+aws-sdk-sts = { workspace = true, default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-config = { workspace = true }
+aws-smithy-http-client = { workspace = true, default-features = false, features = ["rustls-aws-lc"] }
+aws-smithy-types.workspace = true
+async-compression = { workspace = true, features = ["tokio", "bzip2", "lz4", "xz"] }
+async-trait = { workspace = true }
+flate2.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+hyper = { workspace = true, features = ["http2", "http1", "server"] }
+hyper-util = { workspace = true, features = ["tokio", "server-auto", "server-graceful", "tracing"] }
+reqwest = { workspace = true, features = ["json", "multipart", "stream"] }
+rustfs-signer.workspace = true
+
+# The MFA e2e test computes RFC 6238 codes itself rather than calling the
+# server's implementation: a shared helper could agree with a bug on both sides.
+data-encoding = { workspace = true }
+hmac = { workspace = true }
+minlz.workspace = true
+sha1 = { workspace = true }
+serde_urlencoded = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "time"] }
+uuid = { workspace = true, features = ["v4", "fast-rng", "macro-diagnostics"] }
+urlencoding.workspace = true
+walkdir.workspace = true
+base64-simd = { workspace = true }
+rand = { workspace = true, features = ["serde"] }
+chrono = { workspace = true, features = ["serde"] }
+hex-simd = { workspace = true }
+md-5 = { workspace = true }
+opentelemetry-proto = { workspace = true }
+prost.workspace = true
+sha2 = { workspace = true }
+astral-tokio-tar = { workspace = true }
+s3s = { workspace = true, features = ["minio"] }
+zstd.workspace = true
+time = { workspace = true, features = ["parsing", "formatting", "macros", "serde"] }
+suppaftp = { workspace = true, features = ["rustls-aws-lc-rs", "tokio-rustls-aws-lc-rs"] }
+rcgen.workspace = true
+local-ip-address.workspace = true
+anyhow.workspace = true
+rustls = { workspace = true, default-features = false, features = ["aws-lc-rs", "logging", "tls12", "prefer-post-quantum", "std"] }
+russh = { workspace = true, features = ["serde"] }
+russh-sftp = { workspace = true }
+zip.workspace = true
+clap = { workspace = true, features = ["derive", "env"] }
+
+[dev-dependencies]
+tempfile.workspace = true

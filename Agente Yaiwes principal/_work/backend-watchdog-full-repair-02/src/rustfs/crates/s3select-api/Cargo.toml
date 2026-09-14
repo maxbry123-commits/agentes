@@ -1,0 +1,94 @@
+# Copyright 2024 RustFS Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+[package]
+name = "rustfs-s3select-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+homepage.workspace = true
+description = "S3 Select API implementation for RustFS, enabling efficient data retrieval from S3-compatible object stores."
+keywords = ["s3-select", "api", "rustfs", "Minio", "object-store"]
+categories = ["web-programming", "development-tools", "asynchronous"]
+documentation = "https://docs.rs/rustfs-s3select-api/latest/rustfs_s3select_api/"
+
+[lints]
+workspace = true
+
+[features]
+default = []
+hotpath = [
+    "hotpath/hotpath",
+    "hotpath/tokio",
+    "hotpath/futures",
+    "hotpath/parking_lot",
+    "rustfs-common/hotpath",
+    "rustfs-ecstore/hotpath",
+    "rustfs-storage-api/hotpath",
+    "rustfs-test-utils/hotpath",
+]
+hotpath-alloc = [
+    "hotpath",
+    "hotpath/hotpath-alloc",
+    "rustfs-common/hotpath-alloc",
+    "rustfs-ecstore/hotpath-alloc",
+    "rustfs-storage-api/hotpath-alloc",
+    "rustfs-test-utils/hotpath-alloc",
+]
+hotpath-cpu = [
+    "hotpath",
+    "hotpath/hotpath-cpu",
+    "rustfs-common/hotpath-cpu",
+    "rustfs-ecstore/hotpath-cpu",
+    "rustfs-storage-api/hotpath-cpu",
+    "rustfs-test-utils/hotpath-cpu",
+]
+
+[dependencies]
+hotpath.workspace = true
+metrics = { workspace = true }
+async-compression = { workspace = true, features = ["tokio", "gzip", "bzip2"] }
+async-trait.workspace = true
+arc-swap.workspace = true
+bytes = { workspace = true, features = ["serde"] }
+chrono = { workspace = true, features = ["serde"] }
+crc-fast.workspace = true
+rustfs-common.workspace = true
+datafusion = { workspace = true, default-features = false, features = ["parquet", "recursive_protection", "sql"] }
+rustfs-ecstore.workspace = true
+rustfs-storage-api.workspace = true
+futures = { workspace = true }
+futures-core = { workspace = true }
+flate2.workspace = true
+http.workspace = true
+s3s = { workspace = true, features = ["minio"] }
+serde_json = { workspace = true, features = ["raw_value"] }
+thiserror = { workspace = true }
+parking_lot.workspace = true
+tokio = { workspace = true, features = ["fs", "rt-multi-thread"] }
+tokio-stream.workspace = true
+tokio-util = { workspace = true, features = ["io", "compat"] }
+tracing.workspace = true
+uuid.workspace = true
+transform-stream.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+rustfs-test-utils = { workspace = true, features = ["put-object-commit-barrier"] }
+serial_test.workspace = true
+
+[lib]
+doctest = false

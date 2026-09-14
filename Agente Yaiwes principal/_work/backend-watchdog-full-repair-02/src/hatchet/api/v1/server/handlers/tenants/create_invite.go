@@ -1,0 +1,116 @@
+package tenants
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"time"
+
+	"github.com/labstack/echo/v4"
+
+	"github.com/hatchet-dev/hatchet/api/v1/server/oas/apierrors"
+	"github.com/hatchet-dev/hatchet/api/v1/server/oas/gen"
+	"github.com/hatchet-dev/hatchet/api/v1/server/oas/transformers"
+	"github.com/hatchet-dev/hatchet/pkg/analytics"
+	"github.com/hatchet-dev/hatchet/pkg/integrations/email"
+	v1 "github.com/hatchet-dev/hatchet/pkg/repository"
+	"github.com/hatchet-dev/hatchet/pkg/repository/sqlcv1"
+)
+
+func (t *TenantService) TenantInviteCreate(ctx echo.Context, request gen.TenantInviteCreateRequestObject) (gen.TenantInviteCreateResponseObject, error) {
+	user := ctx.Get("user").(*sqlcv1.User)
+	tenant := ctx.Get("tenant").(*sqlcv1.Tenant)
+	tenantId := tenant.ID
+	tenantMember := ctx.Get("tenant-member").(*sqlcv1.PopulateTenantMembersRow)
+	if !t.config.Runtime.AllowInvites {
+		t.config.Logger.Warn().Msg("tenant invites are disabled")
+		return gen.TenantInviteCreate400JSONResponse(
+			apierrors.NewAPIErrors("tenant invites are disabled"),
+		), nil
+	}
+
+	// validate the request
+	if apiErrors, err := t.config.Validator.ValidateAPI(request.Body); err != nil {
+		return nil, err
+	} else if apiErrors != nil {
+		t.config.Logger.Warn().Msg("invalid request")
+		return gen.TenantInviteCreate400JSONResponse(*apiErrors), nil
+	}
+
+	inviteeEmail := strings.ToLower(request.Body.Email)
+
+	// ensure that this user isn't already a member of the tenant
+	if _, err := t.config.V1.Tenant().GetTenantMemberByEmail(ctx.Request().Context(), tenantId, inviteeEmail); err == nil {
+		t.config.Logger.Warn().Msg("this user is already a member of this tenant")
+		return gen.TenantInviteCreate400JSONResponse(
+			apierrors.NewAPIErrors("this user is already a member of this tenant"),
+		), nil
+	}
+
+	// if user is not an owner, they cannot change a role to owner
+	if tenantMember.Role != sqlcv1.TenantMemberRoleOWNER && request.Body.Role == gen.OWNER {
+		t.config.Logger.Warn().Msg("only an owner can change a role to owner")
+		return gen.TenantInviteCreate400JSONResponse(
+			apierrors.NewAPIErrors("only an owner can change a role to owner"),
+		), nil
+	}
+
+	// construct the database query
+	createOpts := &v1.CreateTenantInviteOpts{
+		InviteeEmail:    inviteeEmail,
+		InviterEmail:    user.Email,
+		ExpiresAt:       time.Now().Add(7 * 24 * time.Hour), // 1 week expiration
+		Role:            string(request.Body.Role),
+		CanViewPayloads: request.Body.CanViewPayloads,
+		MaxPending:      t.config.Runtime.MaxPendingInvites,
+	}
+
+	// create the invite
+	invite, err := t.config.V1.TenantInvite().CreateTenantInvite(ctx.Request().Context(), tenantId, createOpts)
+
+	if err != nil {
+		t.config.Logger.Err(err).Msg("could not create tenant invite")
+
+		if errors.Is(err, v1.ErrInviteAlreadyExists) {
+			return gen.TenantInviteCreate400JSONResponse(
+				apierrors.NewAPIErrors("invite already exists for this email"),
+			), nil
+		}
+
+		return gen.TenantInviteCreate403JSONResponse{
+			Description: err.Error(),
+		}, nil
+	}
+
+	// send an email
+	go func() {
+		emailCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		name := user.Email
+
+		if user.Name.Valid {
+			name = user.Name.String
+		}
+
+		if err := t.config.Email.SendTenantInviteEmail(emailCtx, inviteeEmail, email.TenantInviteEmailData{
+			InviteSenderName: name,
+			TenantName:       tenant.Name,
+			ActionURL:        t.config.Runtime.FrontendURL,
+		}); err != nil {
+			t.config.Logger.Err(err).Msg("could not send tenant invite email")
+		}
+	}()
+
+	t.config.Analytics.Enqueue(ctx.Request().Context(),
+		analytics.Invite, analytics.Create,
+		invite.ID.String(),
+		map[string]interface{}{
+			"role": string(request.Body.Role),
+		},
+	)
+
+	return gen.TenantInviteCreate201JSONResponse(
+		*transformers.ToTenantInviteLink(invite),
+	), nil
+}

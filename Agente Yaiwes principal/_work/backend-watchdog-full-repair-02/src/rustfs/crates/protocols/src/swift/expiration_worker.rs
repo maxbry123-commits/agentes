@@ -1,0 +1,1070 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Background Worker for Automatic Object Expiration Cleanup
+//!
+//! This module implements a background worker that periodically scans for and
+//! deletes expired objects based on their X-Delete-At metadata.
+//!
+//! # Architecture
+//!
+//! The worker uses a priority queue to efficiently track objects nearing expiration:
+//! - Objects with expiration timestamps are added to a min-heap
+//! - Worker periodically checks the heap for expired objects
+//! - Expired objects are deleted and removed from the heap
+//! - Incremental scanning prevents full table scans on each iteration
+//!
+//! # Configuration
+//!
+//! ```rust
+//! use rustfs_protocols::swift::expiration_worker::*;
+//!
+//! let config = ExpirationWorkerConfig {
+//!     scan_interval_secs: 300,      // Scan every 5 minutes
+//!     batch_size: 100,               // Process 100 objects per batch
+//!     max_workers: 4,                // Support distributed scanning
+//!     worker_id: 0,                  // This worker's ID (0-3)
+//! };
+//!
+//! let worker = ExpirationWorker::new(config);
+//! worker.start().await;
+//! ```
+//!
+//! # Distributed Scanning
+//!
+//! Multiple workers can scan in parallel using consistent hashing:
+//! - Each worker is assigned a worker_id (0 to max_workers-1)
+//! - Objects are assigned to workers based on hash(account + container + object) % max_workers
+//! - This prevents duplicate deletions and distributes load
+
+use super::container::ContainerMapper;
+use super::object::ObjectKeyMapper;
+use super::storage_api::object::ObjectOperations as _;
+use super::{SwiftError, SwiftObjectOptions, SwiftResult, resolve_swift_object_store_handle};
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashMap};
+use std::sync::{Arc, OnceLock};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tokio::sync::RwLock;
+use tokio::time::interval;
+use tracing::{debug, error, info, warn};
+
+const LOG_COMPONENT_PROTOCOLS: &str = "protocols";
+const LOG_SUBSYSTEM_SWIFT_EXPIRATION: &str = "swift_expiration_worker";
+const EVENT_SWIFT_EXPIRATION_WORKER_STATE: &str = "swift_expiration_worker_state";
+const EVENT_SWIFT_EXPIRATION_OBJECT_TRACKING: &str = "swift_expiration_object_tracking";
+const EVENT_SWIFT_EXPIRATION_ITERATION_SUMMARY: &str = "swift_expiration_iteration_summary";
+const EVENT_SWIFT_EXPIRATION_DELETE_STATE: &str = "swift_expiration_delete_state";
+const EVENT_SWIFT_EXPIRATION_SCAN_STATE: &str = "swift_expiration_scan_state";
+const SWIFT_DELETE_AT_METADATA: &str = "x-delete-at";
+
+static GLOBAL_EXPIRATION_WORKER: OnceLock<Arc<ExpirationWorker>> = OnceLock::new();
+
+fn global_expiration_worker() -> Arc<ExpirationWorker> {
+    Arc::clone(GLOBAL_EXPIRATION_WORKER.get_or_init(|| Arc::new(ExpirationWorker::new(ExpirationWorkerConfig::default()))))
+}
+
+pub async fn track_object_expiration(account: &str, container: &str, object: &str, expires_at: u64) {
+    let worker = global_expiration_worker();
+    worker.track_object(account, container, object, expires_at).await;
+    worker.ensure_started().await;
+}
+
+pub async fn untrack_object_expiration(account: &str, container: &str, object: &str) {
+    if let Some(worker) = GLOBAL_EXPIRATION_WORKER.get() {
+        worker.untrack_object(account, container, object).await;
+    }
+}
+
+#[async_trait::async_trait]
+trait ExpirationObjectBackend: Send + Sync {
+    async fn expiring_objects(&self) -> SwiftResult<Vec<ExpirationCandidate>>;
+
+    async fn object_metadata(&self, account: &str, container: &str, object: &str)
+    -> SwiftResult<Option<HashMap<String, String>>>;
+
+    async fn delete_object(&self, account: &str, container: &str, object: &str) -> SwiftResult<()>;
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct ExpirationCandidate {
+    account: String,
+    container: String,
+    object: String,
+    expires_at: u64,
+}
+
+#[derive(Debug, Default)]
+struct SwiftStorageExpirationBackend;
+
+#[async_trait::async_trait]
+impl ExpirationObjectBackend for SwiftStorageExpirationBackend {
+    async fn expiring_objects(&self) -> SwiftResult<Vec<ExpirationCandidate>> {
+        Ok(Vec::new())
+    }
+
+    async fn object_metadata(
+        &self,
+        account: &str,
+        container: &str,
+        object: &str,
+    ) -> SwiftResult<Option<HashMap<String, String>>> {
+        let (bucket, object_key) = swift_storage_location(account, container, object)?;
+        let Some(store) = resolve_swift_object_store_handle() else {
+            return Err(SwiftError::InternalServerError("Storage layer not initialized".to_string()));
+        };
+
+        let opts = SwiftObjectOptions::default();
+        match store.get_object_info(&bucket, &object_key, &opts).await {
+            Ok(info) if info.delete_marker => Ok(None),
+            Ok(info) => Ok(Some(info.user_defined.as_ref().clone())),
+            Err(err) => {
+                let err_msg = err.to_string();
+                if storage_error_is_not_found(&err_msg) {
+                    Ok(None)
+                } else {
+                    Err(storage_error("Object expiration metadata retrieval", err_msg))
+                }
+            }
+        }
+    }
+
+    async fn delete_object(&self, account: &str, container: &str, object: &str) -> SwiftResult<()> {
+        let (bucket, object_key) = swift_storage_location(account, container, object)?;
+        let Some(store) = resolve_swift_object_store_handle() else {
+            return Err(SwiftError::InternalServerError("Storage layer not initialized".to_string()));
+        };
+
+        store
+            .delete_object(&bucket, &object_key, SwiftObjectOptions::default())
+            .await
+            .map(|_| ())
+            .map_err(|err| storage_error("Object expiration deletion", err))
+    }
+}
+
+fn swift_storage_location(account: &str, container: &str, object: &str) -> SwiftResult<(String, String)> {
+    let project_id = account
+        .strip_prefix("AUTH_")
+        .ok_or_else(|| SwiftError::Unauthorized("Invalid account format".to_string()))?;
+    let object_key = ObjectKeyMapper::swift_to_s3_key(object)?;
+    let bucket = ContainerMapper::default().swift_to_s3_bucket(container, project_id);
+    Ok((bucket, object_key))
+}
+
+fn storage_error_is_not_found(message: &str) -> bool {
+    let normalized = message.to_ascii_lowercase();
+    normalized.contains("does not exist") || normalized.contains("not found")
+}
+
+fn storage_error<E: std::fmt::Display>(operation: &str, error: E) -> SwiftError {
+    error!(
+        event = EVENT_SWIFT_EXPIRATION_DELETE_STATE,
+        component = LOG_COMPONENT_PROTOCOLS,
+        subsystem = LOG_SUBSYSTEM_SWIFT_EXPIRATION,
+        operation = %operation,
+        error = %error,
+        result = "failed",
+        "swift expiration delete state changed"
+    );
+    SwiftError::InternalServerError(format!("{operation} operation failed"))
+}
+
+/// Configuration for expiration worker
+#[derive(Debug, Clone)]
+pub struct ExpirationWorkerConfig {
+    /// Scan interval in seconds (default: 300 = 5 minutes)
+    pub scan_interval_secs: u64,
+
+    /// Batch size for processing objects (default: 100)
+    pub batch_size: usize,
+
+    /// Maximum number of distributed workers (default: 1)
+    pub max_workers: u32,
+
+    /// This worker's ID (0 to max_workers-1)
+    pub worker_id: u32,
+}
+
+impl Default for ExpirationWorkerConfig {
+    fn default() -> Self {
+        Self {
+            scan_interval_secs: 300, // 5 minutes
+            batch_size: 100,
+            max_workers: 1,
+            worker_id: 0,
+        }
+    }
+}
+
+/// Object expiration entry in priority queue
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct ExpirationEntry {
+    /// Unix timestamp when object expires
+    expires_at: u64,
+
+    /// Object path: "account/container/object"
+    path: String,
+}
+
+impl Ord for ExpirationEntry {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // Min-heap: earliest expiration first
+        self.expires_at
+            .cmp(&other.expires_at)
+            .then_with(|| self.path.cmp(&other.path))
+    }
+}
+
+impl PartialOrd for ExpirationEntry {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+/// Metrics for expiration worker
+#[derive(Debug, Clone, Default)]
+pub struct ExpirationMetrics {
+    /// Total objects scanned
+    pub objects_scanned: u64,
+
+    /// Total objects deleted
+    pub objects_deleted: u64,
+
+    /// Total scan iterations
+    pub scan_iterations: u64,
+
+    /// Last scan duration in milliseconds
+    pub last_scan_duration_ms: u64,
+
+    /// Objects currently in priority queue
+    pub queue_size: usize,
+
+    /// Errors encountered
+    pub error_count: u64,
+}
+
+/// Background worker for object expiration cleanup
+pub struct ExpirationWorker {
+    config: ExpirationWorkerConfig,
+    priority_queue: Arc<RwLock<BinaryHeap<Reverse<ExpirationEntry>>>>,
+    metrics: Arc<RwLock<ExpirationMetrics>>,
+    running: Arc<RwLock<bool>>,
+}
+
+impl ExpirationWorker {
+    /// Create new expiration worker
+    pub fn new(config: ExpirationWorkerConfig) -> Self {
+        Self {
+            config,
+            priority_queue: Arc::new(RwLock::new(BinaryHeap::new())),
+            metrics: Arc::new(RwLock::new(ExpirationMetrics::default())),
+            running: Arc::new(RwLock::new(false)),
+        }
+    }
+
+    /// Start the background worker
+    ///
+    /// This spawns a tokio task that runs the cleanup loop
+    pub async fn start(&self) {
+        let mut running = self.running.write().await;
+        if *running {
+            warn!(
+                event = EVENT_SWIFT_EXPIRATION_WORKER_STATE,
+                component = LOG_COMPONENT_PROTOCOLS,
+                subsystem = LOG_SUBSYSTEM_SWIFT_EXPIRATION,
+                result = "already_running",
+                worker_id = self.config.worker_id,
+                max_workers = self.config.max_workers,
+                "swift expiration worker state changed"
+            );
+            return;
+        }
+        *running = true;
+        drop(running);
+
+        info!(
+            event = EVENT_SWIFT_EXPIRATION_WORKER_STATE,
+            component = LOG_COMPONENT_PROTOCOLS,
+            subsystem = LOG_SUBSYSTEM_SWIFT_EXPIRATION,
+            state = "started",
+            scan_interval_secs = self.config.scan_interval_secs,
+            worker_id = self.config.worker_id,
+            max_workers = self.config.max_workers,
+            "swift expiration worker state changed"
+        );
+
+        let config = self.config.clone();
+        let priority_queue = Arc::clone(&self.priority_queue);
+        let metrics = Arc::clone(&self.metrics);
+        let running = Arc::clone(&self.running);
+
+        tokio::spawn(async move {
+            let mut ticker = interval(Duration::from_secs(config.scan_interval_secs));
+
+            loop {
+                ticker.tick().await;
+
+                // Check if still running
+                if !*running.read().await {
+                    info!(
+                        event = EVENT_SWIFT_EXPIRATION_WORKER_STATE,
+                        component = LOG_COMPONENT_PROTOCOLS,
+                        subsystem = LOG_SUBSYSTEM_SWIFT_EXPIRATION,
+                        state = "stopped",
+                        worker_id = config.worker_id,
+                        "swift expiration worker state changed"
+                    );
+                    break;
+                }
+
+                // Run cleanup iteration
+                if let Err(e) = Self::cleanup_iteration(&config, &priority_queue, &metrics).await {
+                    error!(
+                        event = EVENT_SWIFT_EXPIRATION_ITERATION_SUMMARY,
+                        component = LOG_COMPONENT_PROTOCOLS,
+                        subsystem = LOG_SUBSYSTEM_SWIFT_EXPIRATION,
+                        result = "error",
+                        worker_id = config.worker_id,
+                        error = %e,
+                        "swift expiration iteration summary"
+                    );
+                    metrics.write().await.error_count += 1;
+                }
+            }
+        });
+    }
+
+    pub async fn ensure_started(&self) {
+        if *self.running.read().await {
+            return;
+        }
+
+        self.start().await;
+    }
+
+    /// Stop the background worker
+    pub async fn stop(&self) {
+        let mut running = self.running.write().await;
+        *running = false;
+        info!(
+            event = EVENT_SWIFT_EXPIRATION_WORKER_STATE,
+            component = LOG_COMPONENT_PROTOCOLS,
+            subsystem = LOG_SUBSYSTEM_SWIFT_EXPIRATION,
+            state = "stopping",
+            worker_id = self.config.worker_id,
+            "swift expiration worker state changed"
+        );
+    }
+
+    /// Get current metrics
+    pub async fn get_metrics(&self) -> ExpirationMetrics {
+        self.metrics.read().await.clone()
+    }
+
+    /// Add object to expiration tracking
+    ///
+    /// Called when an object with X-Delete-At is created or updated
+    pub async fn track_object(&self, account: &str, container: &str, object: &str, expires_at: u64) {
+        let path = format!("{}/{}/{}", account, container, object);
+
+        // Check if this worker should handle this object (distributed hashing)
+        if !self.should_handle_object(&path) {
+            debug!(
+                event = EVENT_SWIFT_EXPIRATION_OBJECT_TRACKING,
+                component = LOG_COMPONENT_PROTOCOLS,
+                subsystem = LOG_SUBSYSTEM_SWIFT_EXPIRATION,
+                state = "skipped",
+                reason = "assigned_to_other_worker",
+                path = %path,
+                worker_id = self.config.worker_id,
+                max_workers = self.config.max_workers,
+                "swift expiration object tracking changed"
+            );
+            return;
+        }
+
+        let entry = ExpirationEntry {
+            expires_at,
+            path: path.clone(),
+        };
+
+        let mut queue = self.priority_queue.write().await;
+        queue.push(Reverse(entry));
+
+        debug!(
+            event = EVENT_SWIFT_EXPIRATION_OBJECT_TRACKING,
+            component = LOG_COMPONENT_PROTOCOLS,
+            subsystem = LOG_SUBSYSTEM_SWIFT_EXPIRATION,
+            state = "tracked",
+            path = %path,
+            expires_at,
+            worker_id = self.config.worker_id,
+            "swift expiration object tracking changed"
+        );
+    }
+
+    /// Remove object from expiration tracking
+    ///
+    /// Called when an object is deleted or expiration is removed
+    pub async fn untrack_object(&self, account: &str, container: &str, object: &str) {
+        let path = format!("{}/{}/{}", account, container, object);
+
+        // Note: We can't efficiently remove from BinaryHeap, so we rely on
+        // the cleanup iteration to skip objects that no longer exist.
+        // This is acceptable because the queue size is bounded and cleanup is periodic.
+
+        debug!(
+            event = EVENT_SWIFT_EXPIRATION_OBJECT_TRACKING,
+            component = LOG_COMPONENT_PROTOCOLS,
+            subsystem = LOG_SUBSYSTEM_SWIFT_EXPIRATION,
+            state = "untracked",
+            path = %path,
+            worker_id = self.config.worker_id,
+            "swift expiration object tracking changed"
+        );
+    }
+
+    /// Check if this worker should handle the given object (consistent hashing)
+    fn should_handle_object(&self, path: &str) -> bool {
+        if self.config.max_workers == 1 {
+            return true; // Single worker handles everything
+        }
+
+        // Hash the path and mod by max_workers
+        let hash = Self::hash_path(path);
+        let assigned_worker = (hash % self.config.max_workers as u64) as u32;
+
+        assigned_worker == self.config.worker_id
+    }
+
+    /// Simple hash function for consistent hashing
+    fn hash_path(path: &str) -> u64 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = DefaultHasher::new();
+        path.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    /// Run one cleanup iteration
+    async fn cleanup_iteration(
+        config: &ExpirationWorkerConfig,
+        priority_queue: &Arc<RwLock<BinaryHeap<Reverse<ExpirationEntry>>>>,
+        metrics: &Arc<RwLock<ExpirationMetrics>>,
+    ) -> SwiftResult<()> {
+        let start_time = SystemTime::now();
+        let now = start_time
+            .duration_since(UNIX_EPOCH)
+            .expect("operation should succeed")
+            .as_secs();
+
+        debug!(
+            event = EVENT_SWIFT_EXPIRATION_ITERATION_SUMMARY,
+            component = LOG_COMPONENT_PROTOCOLS,
+            subsystem = LOG_SUBSYSTEM_SWIFT_EXPIRATION,
+            state = "started",
+            worker_id = config.worker_id,
+            batch_size = config.batch_size,
+            "swift expiration iteration summary"
+        );
+
+        let mut deleted_count = 0;
+        let mut scanned_count = 0;
+        let mut batch = Vec::new();
+
+        // Process expired objects from priority queue
+        loop {
+            // Check if we have a batch to process
+            if batch.len() >= config.batch_size {
+                break;
+            }
+
+            // Peek at next expired object
+            let mut queue = priority_queue.write().await;
+
+            if let Some(Reverse(entry)) = queue.peek() {
+                if entry.expires_at > now {
+                    // No more expired objects
+                    break;
+                }
+
+                // Remove from queue and add to batch
+                let entry = queue.pop().expect("operation should succeed").0;
+                drop(queue); // Release lock
+
+                batch.push(entry);
+            } else {
+                // Queue is empty
+                break;
+            }
+        }
+
+        // Process batch
+        for entry in batch {
+            scanned_count += 1;
+
+            // Parse path: "account/container/object"
+            let parts: Vec<&str> = entry.path.splitn(3, '/').collect();
+            if parts.len() != 3 {
+                warn!(
+                    event = EVENT_SWIFT_EXPIRATION_DELETE_STATE,
+                    component = LOG_COMPONENT_PROTOCOLS,
+                    subsystem = LOG_SUBSYSTEM_SWIFT_EXPIRATION,
+                    result = "invalid_path",
+                    path = %entry.path,
+                    worker_id = config.worker_id,
+                    "swift expiration delete state changed"
+                );
+                continue;
+            }
+
+            let (account, container, object) = (parts[0], parts[1], parts[2]);
+
+            // Attempt to delete object
+            match Self::delete_expired_object(account, container, object, entry.expires_at).await {
+                Ok(true) => {
+                    deleted_count += 1;
+                    debug!(
+                        event = EVENT_SWIFT_EXPIRATION_DELETE_STATE,
+                        component = LOG_COMPONENT_PROTOCOLS,
+                        subsystem = LOG_SUBSYSTEM_SWIFT_EXPIRATION,
+                        result = "deleted",
+                        path = %entry.path,
+                        expires_at = entry.expires_at,
+                        worker_id = config.worker_id,
+                        "swift expiration delete state changed"
+                    );
+                }
+                Ok(false) => {
+                    debug!(
+                        event = EVENT_SWIFT_EXPIRATION_DELETE_STATE,
+                        component = LOG_COMPONENT_PROTOCOLS,
+                        subsystem = LOG_SUBSYSTEM_SWIFT_EXPIRATION,
+                        result = "not_deleted",
+                        reason = "missing_or_expiration_removed",
+                        path = %entry.path,
+                        expires_at = entry.expires_at,
+                        worker_id = config.worker_id,
+                        "swift expiration delete state changed"
+                    );
+                }
+                Err(e) => {
+                    error!(
+                        event = EVENT_SWIFT_EXPIRATION_DELETE_STATE,
+                        component = LOG_COMPONENT_PROTOCOLS,
+                        subsystem = LOG_SUBSYSTEM_SWIFT_EXPIRATION,
+                        result = "delete_failed",
+                        path = %entry.path,
+                        expires_at = entry.expires_at,
+                        worker_id = config.worker_id,
+                        error = %e,
+                        "swift expiration delete state changed"
+                    );
+                    metrics.write().await.error_count += 1;
+                }
+            }
+        }
+
+        // Update metrics
+        let duration = SystemTime::now()
+            .duration_since(start_time)
+            .expect("operation should succeed");
+        let mut m = metrics.write().await;
+        m.objects_scanned += scanned_count;
+        m.objects_deleted += deleted_count;
+        m.scan_iterations += 1;
+        m.last_scan_duration_ms = duration.as_millis() as u64;
+        m.queue_size = priority_queue.read().await.len();
+
+        info!(
+            event = EVENT_SWIFT_EXPIRATION_ITERATION_SUMMARY,
+            component = LOG_COMPONENT_PROTOCOLS,
+            subsystem = LOG_SUBSYSTEM_SWIFT_EXPIRATION,
+            state = "completed",
+            worker_id = config.worker_id,
+            scanned_count,
+            deleted_count,
+            duration_ms = m.last_scan_duration_ms,
+            queue_size = m.queue_size,
+            error_count = m.error_count,
+            "swift expiration iteration summary"
+        );
+
+        Ok(())
+    }
+
+    /// Delete an expired object
+    ///
+    /// Returns:
+    /// - Ok(true) if object was deleted
+    /// - Ok(false) if object doesn't exist or expiration was removed
+    /// - Err if deletion failed
+    async fn delete_expired_object(account: &str, container: &str, object: &str, expected_expires_at: u64) -> SwiftResult<bool> {
+        Self::delete_expired_object_with_backend(&SwiftStorageExpirationBackend, account, container, object, expected_expires_at)
+            .await
+    }
+
+    async fn delete_expired_object_with_backend<B>(
+        backend: &B,
+        account: &str,
+        container: &str,
+        object: &str,
+        expected_expires_at: u64,
+    ) -> SwiftResult<bool>
+    where
+        B: ExpirationObjectBackend + ?Sized,
+    {
+        debug!(
+            event = EVENT_SWIFT_EXPIRATION_DELETE_STATE,
+            component = LOG_COMPONENT_PROTOCOLS,
+            subsystem = LOG_SUBSYSTEM_SWIFT_EXPIRATION,
+            state = "delete_candidate",
+            account = %account,
+            container = %container,
+            object = %object,
+            expires_at = expected_expires_at,
+            "swift expiration delete state changed"
+        );
+
+        let Some(metadata) = backend.object_metadata(account, container, object).await? else {
+            return Ok(false);
+        };
+
+        let Some(delete_at) = metadata
+            .get(SWIFT_DELETE_AT_METADATA)
+            .and_then(|value| value.parse::<u64>().ok())
+        else {
+            return Ok(false);
+        };
+
+        if delete_at != expected_expires_at || !super::expiration::is_expired(delete_at) {
+            return Ok(false);
+        }
+
+        backend.delete_object(account, container, object).await?;
+        Ok(true)
+    }
+
+    /// Scan all objects and add those with expiration to tracking
+    ///
+    /// This is used for initial population or recovery after restart.
+    /// In production, objects should be tracked incrementally via track_object().
+    pub async fn scan_all_objects(&self) -> SwiftResult<()> {
+        self.scan_all_objects_with_backend(&SwiftStorageExpirationBackend).await?;
+        Ok(())
+    }
+
+    async fn scan_all_objects_with_backend<B>(&self, backend: &B) -> SwiftResult<usize>
+    where
+        B: ExpirationObjectBackend + ?Sized,
+    {
+        info!(
+            event = EVENT_SWIFT_EXPIRATION_SCAN_STATE,
+            component = LOG_COMPONENT_PROTOCOLS,
+            subsystem = LOG_SUBSYSTEM_SWIFT_EXPIRATION,
+            state = "started",
+            worker_id = self.config.worker_id,
+            max_workers = self.config.max_workers,
+            "swift expiration scan state changed"
+        );
+
+        let mut tracked_count = 0;
+        for candidate in backend.expiring_objects().await? {
+            let path = format!("{}/{}/{}", candidate.account, candidate.container, candidate.object);
+            if !self.should_handle_object(&path) {
+                continue;
+            }
+
+            self.track_object(&candidate.account, &candidate.container, &candidate.object, candidate.expires_at)
+                .await;
+            tracked_count += 1;
+        }
+
+        let queue_size = self.priority_queue.read().await.len();
+        self.metrics.write().await.queue_size = queue_size;
+
+        info!(
+            event = EVENT_SWIFT_EXPIRATION_SCAN_STATE,
+            component = LOG_COMPONENT_PROTOCOLS,
+            subsystem = LOG_SUBSYSTEM_SWIFT_EXPIRATION,
+            state = "completed",
+            worker_id = self.config.worker_id,
+            tracked_count,
+            queue_size,
+            "swift expiration scan state changed"
+        );
+
+        Ok(tracked_count)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::VecDeque;
+    use std::sync::Mutex;
+
+    type MetadataResult = SwiftResult<Option<HashMap<String, String>>>;
+    type ResultQueue<T> = Mutex<VecDeque<T>>;
+
+    #[derive(Default)]
+    struct MockExpirationObjectBackend {
+        expiring_objects: Mutex<Vec<ExpirationCandidate>>,
+        metadata_results: ResultQueue<MetadataResult>,
+        delete_results: ResultQueue<SwiftResult<()>>,
+        deleted_objects: Mutex<Vec<(String, String, String)>>,
+    }
+
+    impl MockExpirationObjectBackend {
+        fn with_metadata_result(result: MetadataResult) -> Self {
+            Self {
+                metadata_results: Mutex::new(VecDeque::from([result])),
+                ..Default::default()
+            }
+        }
+
+        fn with_expiring_objects(objects: Vec<ExpirationCandidate>) -> Self {
+            Self {
+                expiring_objects: Mutex::new(objects),
+                ..Default::default()
+            }
+        }
+
+        fn with_delete_result(self, result: SwiftResult<()>) -> Self {
+            self.delete_results
+                .lock()
+                .expect("delete results mutex should not be poisoned")
+                .push_back(result);
+            self
+        }
+
+        fn deleted_objects(&self) -> Vec<(String, String, String)> {
+            self.deleted_objects
+                .lock()
+                .expect("deleted objects mutex should not be poisoned")
+                .clone()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl ExpirationObjectBackend for MockExpirationObjectBackend {
+        async fn expiring_objects(&self) -> SwiftResult<Vec<ExpirationCandidate>> {
+            let objects = match self.expiring_objects.lock() {
+                Ok(objects) => objects,
+                Err(err) => err.into_inner(),
+            };
+            Ok(objects.clone())
+        }
+
+        async fn object_metadata(
+            &self,
+            _account: &str,
+            _container: &str,
+            _object: &str,
+        ) -> SwiftResult<Option<HashMap<String, String>>> {
+            self.metadata_results
+                .lock()
+                .expect("metadata results mutex should not be poisoned")
+                .pop_front()
+                .expect("metadata result should be queued")
+        }
+
+        async fn delete_object(&self, account: &str, container: &str, object: &str) -> SwiftResult<()> {
+            self.deleted_objects
+                .lock()
+                .expect("deleted objects mutex should not be poisoned")
+                .push((account.to_string(), container.to_string(), object.to_string()));
+
+            self.delete_results
+                .lock()
+                .expect("delete results mutex should not be poisoned")
+                .pop_front()
+                .unwrap_or(Ok(()))
+        }
+    }
+
+    fn now_secs() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_secs()
+    }
+
+    fn metadata_with_delete_at(delete_at: u64) -> HashMap<String, String> {
+        HashMap::from([(SWIFT_DELETE_AT_METADATA.to_string(), delete_at.to_string())])
+    }
+
+    #[test]
+    fn test_expiration_entry_ordering() {
+        let entry1 = ExpirationEntry {
+            expires_at: 1000,
+            path: "account/container/obj1".to_string(),
+        };
+
+        let entry2 = ExpirationEntry {
+            expires_at: 2000,
+            path: "account/container/obj2".to_string(),
+        };
+
+        // Earlier expiration should be "less than" for min-heap
+        assert!(entry1 < entry2);
+    }
+
+    #[test]
+    fn test_priority_queue_ordering() {
+        let mut heap = BinaryHeap::new();
+
+        heap.push(Reverse(ExpirationEntry {
+            expires_at: 2000,
+            path: "obj2".to_string(),
+        }));
+
+        heap.push(Reverse(ExpirationEntry {
+            expires_at: 1000,
+            path: "obj1".to_string(),
+        }));
+
+        heap.push(Reverse(ExpirationEntry {
+            expires_at: 3000,
+            path: "obj3".to_string(),
+        }));
+
+        // Should pop in order: 1000, 2000, 3000
+        assert_eq!(heap.pop().expect("operation should succeed").0.expires_at, 1000);
+        assert_eq!(heap.pop().expect("operation should succeed").0.expires_at, 2000);
+        assert_eq!(heap.pop().expect("operation should succeed").0.expires_at, 3000);
+    }
+
+    #[test]
+    fn test_should_handle_object_single_worker() {
+        let config = ExpirationWorkerConfig {
+            max_workers: 1,
+            worker_id: 0,
+            ..Default::default()
+        };
+
+        let worker = ExpirationWorker::new(config);
+
+        // Single worker handles everything
+        assert!(worker.should_handle_object("account/container/obj1"));
+        assert!(worker.should_handle_object("account/container/obj2"));
+    }
+
+    #[test]
+    fn test_should_handle_object_distributed() {
+        let config1 = ExpirationWorkerConfig {
+            max_workers: 4,
+            worker_id: 0,
+            ..Default::default()
+        };
+
+        let config2 = ExpirationWorkerConfig {
+            max_workers: 4,
+            worker_id: 1,
+            ..Default::default()
+        };
+
+        let worker1 = ExpirationWorker::new(config1);
+        let worker2 = ExpirationWorker::new(config2);
+
+        // Each worker handles a subset based on consistent hashing
+        let path = "account/container/obj1";
+
+        let handled_by_1 = worker1.should_handle_object(path);
+        let handled_by_2 = worker2.should_handle_object(path);
+
+        // Exactly one worker should handle this path
+        assert!(handled_by_1 ^ handled_by_2); // XOR: one true, one false
+    }
+
+    #[test]
+    fn test_hash_path_deterministic() {
+        let path = "account/container/object";
+
+        let hash1 = ExpirationWorker::hash_path(path);
+        let hash2 = ExpirationWorker::hash_path(path);
+
+        // Same path should produce same hash
+        assert_eq!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_hash_path_distribution() {
+        let paths = [
+            "account/container/obj1",
+            "account/container/obj2",
+            "account/container/obj3",
+            "account/container/obj4",
+        ];
+
+        let hashes: Vec<u64> = paths.iter().map(|p| ExpirationWorker::hash_path(p)).collect();
+
+        // Different paths should produce different hashes
+        for i in 0..hashes.len() {
+            for j in (i + 1)..hashes.len() {
+                assert_ne!(hashes[i], hashes[j]);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_worker_lifecycle() {
+        let config = ExpirationWorkerConfig {
+            scan_interval_secs: 1, // Fast for testing
+            ..Default::default()
+        };
+
+        let worker = ExpirationWorker::new(config);
+
+        // Start worker
+        worker.start().await;
+
+        // Should be running
+        assert!(*worker.running.read().await);
+
+        // Stop worker
+        worker.stop().await;
+
+        // Should be stopped
+        assert!(!*worker.running.read().await);
+    }
+
+    #[tokio::test]
+    async fn test_track_and_metrics() {
+        let worker = ExpirationWorker::new(ExpirationWorkerConfig::default());
+
+        // Track some objects
+        worker.track_object("account1", "container1", "obj1", 2000).await;
+        worker.track_object("account1", "container1", "obj2", 3000).await;
+
+        // Check queue size directly
+        assert_eq!(worker.priority_queue.read().await.len(), 2);
+
+        // Update metrics to reflect current queue size
+        {
+            let mut m = worker.metrics.write().await;
+            m.queue_size = worker.priority_queue.read().await.len();
+        }
+
+        // Check metrics
+        let metrics = worker.get_metrics().await;
+        assert_eq!(metrics.queue_size, 2);
+    }
+
+    #[tokio::test]
+    async fn test_scan_all_objects_tracks_backend_candidates() {
+        let worker = ExpirationWorker::new(ExpirationWorkerConfig::default());
+        let backend = MockExpirationObjectBackend::with_expiring_objects(vec![
+            ExpirationCandidate {
+                account: "AUTH_test".to_string(),
+                container: "container".to_string(),
+                object: "object-a".to_string(),
+                expires_at: 1000,
+            },
+            ExpirationCandidate {
+                account: "AUTH_test".to_string(),
+                container: "container".to_string(),
+                object: "object-b".to_string(),
+                expires_at: 2000,
+            },
+        ]);
+
+        let tracked = match worker.scan_all_objects_with_backend(&backend).await {
+            Ok(tracked) => tracked,
+            Err(err) => panic!("scan candidates should be tracked: {err}"),
+        };
+
+        assert_eq!(tracked, 2);
+        assert_eq!(worker.priority_queue.read().await.len(), 2);
+        assert_eq!(worker.get_metrics().await.queue_size, 2);
+    }
+
+    #[tokio::test]
+    async fn test_delete_expired_object_deletes_when_expired_metadata_matches() {
+        let expires_at = now_secs().saturating_sub(1);
+        let backend = MockExpirationObjectBackend::with_metadata_result(Ok(Some(metadata_with_delete_at(expires_at))));
+
+        let deleted =
+            ExpirationWorker::delete_expired_object_with_backend(&backend, "AUTH_test", "container", "object", expires_at)
+                .await
+                .expect("matching expired object should delete successfully");
+
+        assert!(deleted);
+        assert_eq!(
+            backend.deleted_objects(),
+            vec![("AUTH_test".to_string(), "container".to_string(), "object".to_string())]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_delete_expired_object_skips_when_metadata_changed() {
+        let expires_at = now_secs().saturating_sub(1);
+        let backend =
+            MockExpirationObjectBackend::with_metadata_result(Ok(Some(metadata_with_delete_at(expires_at.saturating_sub(1)))));
+
+        let deleted =
+            ExpirationWorker::delete_expired_object_with_backend(&backend, "AUTH_test", "container", "object", expires_at)
+                .await
+                .expect("changed expiration metadata should skip deletion");
+
+        assert!(!deleted);
+        assert!(backend.deleted_objects().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_delete_expired_object_skips_when_not_expired() {
+        let expires_at = now_secs() + 3600;
+        let backend = MockExpirationObjectBackend::with_metadata_result(Ok(Some(metadata_with_delete_at(expires_at))));
+
+        let deleted =
+            ExpirationWorker::delete_expired_object_with_backend(&backend, "AUTH_test", "container", "object", expires_at)
+                .await
+                .expect("future expiration should skip deletion");
+
+        assert!(!deleted);
+        assert!(backend.deleted_objects().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_delete_expired_object_skips_when_object_missing() {
+        let expires_at = now_secs().saturating_sub(1);
+        let backend = MockExpirationObjectBackend::with_metadata_result(Ok(None));
+
+        let deleted =
+            ExpirationWorker::delete_expired_object_with_backend(&backend, "AUTH_test", "container", "object", expires_at)
+                .await
+                .expect("missing object should skip deletion");
+
+        assert!(!deleted);
+        assert!(backend.deleted_objects().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_delete_expired_object_returns_error_when_delete_fails() {
+        let expires_at = now_secs().saturating_sub(1);
+        let backend = MockExpirationObjectBackend::with_metadata_result(Ok(Some(metadata_with_delete_at(expires_at))))
+            .with_delete_result(Err(SwiftError::InternalServerError("delete failed".to_string())));
+
+        let result =
+            ExpirationWorker::delete_expired_object_with_backend(&backend, "AUTH_test", "container", "object", expires_at).await;
+
+        assert!(matches!(result, Err(SwiftError::InternalServerError(_))));
+        assert_eq!(
+            backend.deleted_objects(),
+            vec![("AUTH_test".to_string(), "container".to_string(), "object".to_string())]
+        );
+    }
+}

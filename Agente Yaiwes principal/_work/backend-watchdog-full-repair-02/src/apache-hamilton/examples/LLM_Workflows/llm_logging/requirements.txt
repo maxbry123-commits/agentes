@@ -1,0 +1,7 @@
+apache-hamilton[visualization]
+
+fastapi
+fastui
+openai
+pypdf
+tiktoken

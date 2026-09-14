@@ -1,0 +1,26 @@
+[package]
+name = "restate-errors"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+default = []
+include_doc = []
+
+[dependencies]
+restate-workspace-hack = { workspace = true }
+
+codederror = { workspace = true }
+paste = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+thiserror = { workspace = true }
+test-log = { workspace = true }
+
+[lints]
+workspace = true

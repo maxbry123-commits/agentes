@@ -1,0 +1,123 @@
+# Copyright 2024 RustFS Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+[package]
+name = "rustfs-notify"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+homepage.workspace = true
+description = "File system notification service for RustFS, providing real-time updates on file changes and events."
+keywords = ["file-system", "notification", "real-time", "rustfs", "Minio"]
+categories = ["web-programming", "development-tools", "filesystem"]
+documentation = "https://docs.rs/rustfs-notify/latest/rustfs_notify/"
+
+[features]
+hotpath = [
+    "hotpath/hotpath",
+    "hotpath/tokio",
+    "rustfs-config/hotpath",
+    "rustfs-ecstore/hotpath",
+    "rustfs-s3-ops/hotpath",
+    "rustfs-s3-types/hotpath",
+    "rustfs-targets/hotpath",
+    "rustfs-utils/hotpath",
+]
+hotpath-alloc = [
+    "hotpath",
+    "hotpath/hotpath-alloc",
+    "rustfs-config/hotpath-alloc",
+    "rustfs-ecstore/hotpath-alloc",
+    "rustfs-s3-ops/hotpath-alloc",
+    "rustfs-s3-types/hotpath-alloc",
+    "rustfs-targets/hotpath-alloc",
+    "rustfs-utils/hotpath-alloc",
+]
+hotpath-cpu = [
+    "hotpath",
+    "hotpath/hotpath-cpu",
+    "rustfs-config/hotpath-cpu",
+    "rustfs-ecstore/hotpath-cpu",
+    "rustfs-s3-ops/hotpath-cpu",
+    "rustfs-s3-types/hotpath-cpu",
+    "rustfs-targets/hotpath-cpu",
+    "rustfs-utils/hotpath-cpu",
+]
+demo-examples = []
+
+[dependencies]
+hotpath.workspace = true
+rustfs-config = { workspace = true, features = ["notify", "server-config-model"] }
+rustfs-ecstore = { workspace = true }
+rustfs-s3-types = { workspace = true }
+rustfs-s3-ops = { workspace = true }
+rustfs-targets = { workspace = true }
+rustfs-utils = { workspace = true }
+arc-swap = { workspace = true }
+async-trait = { workspace = true }
+form_urlencoded = { workspace = true }
+hashbrown = { workspace = true, features = ["serde", "rayon"] }
+jiff = { workspace = true, features = ["serde"] }
+percent-encoding = { workspace = true }
+rayon = { workspace = true }
+rustc-hash = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+starshard = { workspace = true, features = ["rayon", "async", "serde"] }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "sync", "time", "fs"] }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+url = { workspace = true }
+metrics = { workspace = true }
+
+# quick-xml dependencies for custom S3KeyFilter XML deserialization
+# Custom deserializer implemented for S3KeyFilter to handle both XML structures:
+# - Direct FilterRule elements under S3Key (AWS S3 format)
+# - FilterRuleList wrapper format
+# This makes quick-xml 0.39.2 work correctly with Filter elements
+quick-xml = { workspace = true, features = ["serialize", "serde-types", "encoding"] }
+
+[dev-dependencies]
+rustfs-targets = { workspace = true, features = ["test-support"] }
+tokio = { workspace = true, features = ["test-util", "fs", "rt-multi-thread"] }
+tracing-subscriber = { workspace = true, features = ["env-filter", "time"] }
+axum = { workspace = true }
+rustfs-utils = { workspace = true, features = ["path"] }
+serde_json = { workspace = true, features = ["raw_value"] }
+criterion = { workspace = true, features = ["html_reports"] }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[[example]]
+name = "full_demo"
+required-features = ["demo-examples"]
+
+[[example]]
+name = "full_demo_one"
+required-features = ["demo-examples"]
+
+[[example]]
+name = "webhook"
+required-features = ["demo-examples"]
+
+[[bench]]
+name = "snapshot_mode_scan"
+harness = false

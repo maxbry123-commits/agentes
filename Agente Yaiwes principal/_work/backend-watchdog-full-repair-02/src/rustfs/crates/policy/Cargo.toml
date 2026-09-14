@@ -1,0 +1,85 @@
+# Copyright 2024 RustFS Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+[package]
+name = "rustfs-policy"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+homepage.workspace = true
+description = "Policy management for RustFS, providing a framework for defining and enforcing policies across the system."
+keywords = ["policy", "management", "enforcement", "rustfs", "Minio"]
+categories = ["web-programming", "development-tools", "accessibility"]
+documentation = "https://docs.rs/rustfs-policy/latest/rustfs_policy/"
+
+[lints]
+workspace = true
+
+[features]
+default = []
+hotpath = [
+    "hotpath/hotpath",
+    "rustfs-config/hotpath",
+    "rustfs-credentials/hotpath",
+    "rustfs-crypto/hotpath",
+]
+hotpath-alloc = [
+    "hotpath",
+    "hotpath/hotpath-alloc",
+    "rustfs-config/hotpath-alloc",
+    "rustfs-credentials/hotpath-alloc",
+    "rustfs-crypto/hotpath-alloc",
+]
+hotpath-cpu = [
+    "hotpath",
+    "hotpath/hotpath-cpu",
+    "rustfs-config/hotpath-cpu",
+    "rustfs-credentials/hotpath-cpu",
+    "rustfs-crypto/hotpath-cpu",
+]
+
+[dependencies]
+rustfs-credentials = { workspace = true }
+rustfs-config = { workspace = true, features = ["opa"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+time = { workspace = true, features = ["serde", "parsing", "formatting", "macros"] }
+serde = { workspace = true, features = ["derive", "rc"] }
+serde_json = { workspace = true, features = ["raw_value"] }
+thiserror.workspace = true
+strum = { workspace = true, features = ["derive"] }
+rustfs-crypto = { workspace = true }
+ipnetwork = { workspace = true, features = ["serde"] }
+base64-simd = { workspace = true }
+jsonwebtoken = { workspace = true, features = ["aws_lc_rs"] }
+regex = { workspace = true }
+reqwest = { workspace = true, features = ["json"] }
+jiff = { workspace = true }
+tracing.workspace = true
+moka = { workspace = true, features = ["future"] }
+async-trait.workspace = true
+futures.workspace = true
+pollster.workspace = true
+hotpath.workspace = true
+
+[dev-dependencies]
+pollster.workspace = true
+proptest = "1"
+test-case.workspace = true
+temp-env = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["fmt"] }
+
+[lib]
+doctest = false

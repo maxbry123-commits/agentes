@@ -1,0 +1,42 @@
+from hamilton import dataflows, driver
+{%- if use_executor %}
+from hamilton.execution import executors
+{% endif -%}
+{%- if dynamic_import %}
+# downloads into ~/.hamilton/dataflows and loads the module -- WARNING: ensure you know what code you're importing!
+  {%- if is_user %}
+{{ MODULE_NAME }} = dataflows.import_module("{{MODULE_NAME}}", "{{USER}}")
+  {%- else %}
+{{ MODULE_NAME }} = dataflows.import_module("{{MODULE_NAME}}")
+  {%- endif %}
+{%- else %}
+  {%- if is_user %}
+# Make sure you've done - `pip install apache-hamilton-contrib --upgrade`
+from hamilton.contrib.user.{{USER}} import {{MODULE_NAME}}
+  {%- else %}
+# Make sure you've done - `pip install apache-hamilton-contrib --upgrade`
+from hamilton.contrib.dagworks import {{MODULE_NAME}}
+  {%- endif %}
+{%- endif %}
+{%- if use_executor %}
+# Switch this out for ray, dask, etc. See docs for more info.
+remote_executor = executors.MultiThreadingExecutor(max_tasks=20)
+{% endif %}
+dr = (
+    driver.Builder()
+    {%- if use_executor %}
+    .enable_dynamic_execution(allow_experimental_mode=True)
+    .with_remote_executor(remote_executor)
+    {%- endif %}
+    .with_config({})  # replace with configuration as appropriate
+    .with_modules({{MODULE_NAME}})
+    .build()
+)
+# If you have apache-hamilton[visualization] installed, you can see the dataflow graph
+# In a notebook this will show an image, else pass in arguments to save to a file
+# dr.display_all_functions()
+# Execute the dataflow, specifying what you want back. Will return a dictionary.
+result = dr.execute(
+    [{{MODULE_NAME}}.CHANGE_ME, ...],  # this specifies what you want back
+    inputs={...}  # pass in inputs as appropriate
+)

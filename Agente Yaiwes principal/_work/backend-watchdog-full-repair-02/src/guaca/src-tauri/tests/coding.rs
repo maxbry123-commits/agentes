@@ -1,0 +1,1966 @@
+//! Which program writes the code, end to end.
+//!
+//! Everything else about a coding job is covered where it lives: the two
+//! parsers have unit tests beside them, and the store has one for the column.
+//! What none of those can see is the seam this suite exists for, which is that
+//! the harness named on a *repository* is the program that actually gets
+//! started in it. Read the column, drop the value, and every suite in this repo
+//! still passes while every job in every workspace runs the harness the
+//! operator moved away from.
+//!
+//! ## Why there is a program on `PATH` here and not a mock
+//!
+//! Because the thing being tested is a process. `coding::run` spawns a binary
+//! by name, reads its stdout as one JSON object per line, and folds those into
+//! an outcome; a fake in front of that would be a test of the fold, which
+//! already has one. So the stand-ins below are real executables, found on
+//! `PATH` the way the real ones are, and each records the argument vector it
+//! was handed. The one thing that cannot be checked this way is whether the
+//! real CLI still accepts that vector, and that is what the `#[ignore]`d tests
+//! at the bottom are for: the same failure shape `subscription.rs` and
+//! `plugins.rs` keep a live half for.
+
+mod harness;
+
+use std::io::Write;
+use std::path::{Path, PathBuf};
+
+use guac_lib::coding::{self, Progress};
+use guac_lib::domain::approval::Decision;
+use guac_lib::domain::repository::{Bench, CleanRepository, Gate, Harness as Which};
+use guac_lib::runtime::events::UiEvent;
+use guac_lib::runtime::guard::GuardLimits;
+
+use harness::*;
+
+/// Where a stand-in records what it was called with. Inside the repository it
+/// was run in, which is what makes it per-test: two tests run concurrently in
+/// one binary and share one `PATH`.
+const ARGV: &str = ".argv";
+
+/// What a stand-in prints, if the test wrote one. Otherwise it answers with the
+/// canned success below.
+const SAY: &str = ".say";
+
+/// What it exits with. A file rather than an environment variable, because the
+/// environment is process-wide and these tests run concurrently: a test asking
+/// for a non-zero exit would be asking it of whatever else was running.
+const EXIT: &str = ".exit";
+
+/// How long the stand-in waits before it answers.
+///
+/// Everything else here is about a job that has finished. A job that can be
+/// *reached* has to still be running when the test reaches it, and the only
+/// honest way to arrange that against a real process is to make it slow.
+const LINGER: &str = ".linger";
+
+/// A directory holding both stand-ins, put on `PATH` exactly once.
+///
+/// Once, because `PATH` is process-wide and these tests run concurrently:
+/// writing it per test is a read racing a write in another thread. Written
+/// before any test body runs anything that looks it up, and never again.
+fn stand_ins() -> &'static Path {
+    static DIR: std::sync::OnceLock<tempfile::TempDir> = std::sync::OnceLock::new();
+    let dir = DIR.get_or_init(|| {
+        let dir = tempfile::tempdir().unwrap();
+        write_stand_in(dir.path(), "pi", PI_SUCCESS);
+        write_stand_in(dir.path(), "claude", CLAUDE_SUCCESS);
+        let codex = dir.path().join("codex");
+        std::fs::write(&codex, include_str!("fixtures/codex.py")).unwrap();
+        std::fs::set_permissions(&codex, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+        let path = std::env::var("PATH").unwrap_or_default();
+        std::env::set_var("PATH", format!("{}:{path}", dir.path().display()));
+        dir
+    });
+    dir.path()
+}
+
+/// A stand-in: records its arguments, then prints a stream.
+///
+/// One argument per line in the recording, because a brief and a system prompt
+/// both contain spaces and newlines and a flat join could not be read back.
+fn write_stand_in(dir: &Path, name: &str, canned: &str) {
+    let script = format!(
+        "#!/bin/sh\n\
+         if [ \"$1\" = '--version' ]; then echo 'stand-in'; exit 0; fi\n\
+         : > {ARGV}\n\
+         for arg in \"$@\"; do printf '%s\\n<<>>\\n' \"$arg\" >> {ARGV}; done\n\
+         if [ -f .secret_probe ]; then python3 -c 'import os,json; v=os.environ[\"CLOUDFLARE_API_TOKEN\"]; print(json.dumps({{\"type\":\"message_end\",\"message\":{{\"role\":\"assistant\",\"content\":[{{\"type\":\"text\",\"text\":v}}]}}}})); print(json.dumps({{\"type\":\"result\",\"subtype\":\"success\",\"result\":v}}))'; exit; fi\n\
+         if [ -f .noisy ]; then dd if=/dev/zero bs=1024 count=256 >&2 2>/dev/null; fi\n\
+         if [ -f {LINGER} ]; then sleep \"$(cat {LINGER})\"; fi\n\
+         if [ -f {SAY} ]; then cat {SAY}; fi\n\
+         if [ -f {EXIT} ]; then exit \"$(cat {EXIT})\"; fi\n\
+         if [ -f {SAY} ]; then exit 0; fi\n\
+         cat <<'STREAM'\n{canned}\nSTREAM\n"
+    );
+    let at = dir.join(name);
+    let mut file = std::fs::File::create(&at).unwrap();
+    file.write_all(script.as_bytes()).unwrap();
+    drop(file);
+    std::fs::set_permissions(&at, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+}
+
+#[tokio::test]
+async fn a_noisy_harness_cannot_fill_stderr_and_deadlock() {
+    stand_ins();
+    let repo = a_repository("noisy");
+    std::fs::write(repo.join(".noisy"), "").unwrap();
+    let done = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        coding::run(Which::Codex, repo.to_str().unwrap(), "work", None, |_| {}),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert!(done.failed.is_none());
+    let _ = std::fs::remove_dir_all(repo);
+}
+
+const PI_SUCCESS: &str = concat!(
+    r#"{"type":"tool_execution_start","toolName":"bash","args":{"command":"npm test"}}"#,
+    "\n",
+    r#"{"type":"message_end","message":{"role":"assistant","model":"gpt-5.6","content":[{"type":"text","text":"Fixed the flaky test and pushed."}],"stopReason":"stop"}}"#,
+);
+
+#[tokio::test]
+async fn codex_runs_in_the_repository_and_retains_its_own_session() {
+    stand_ins();
+    let repo = a_repository("codex");
+    let mut progress = Vec::new();
+    let outcome =
+        coding::run(Which::Codex, repo.to_str().unwrap(), "fix it", None, |p| progress.push(p))
+            .await
+            .unwrap();
+    assert_eq!(outcome.said, "Fixed the flaky test and pushed.");
+    assert_eq!(outcome.tool_calls, 1);
+    assert_eq!(outcome.session_id, "codex-session");
+    assert!(outcome.failed.is_none());
+    assert!(outcome.cost.is_none());
+    let argv = argv_at(&repo);
+    assert_eq!(argv[0], "app-server");
+    let requests = std::fs::read_to_string(repo.join(".rpc.jsonl")).unwrap();
+    assert!(requests.contains("Commit early and often"));
+    assert!(requests.contains("fix it"));
+    assert!(!argv.contains(&"--model".into()));
+    assert_eq!(progress.len(), 2);
+    let _ = std::fs::remove_dir_all(repo);
+}
+
+#[tokio::test]
+async fn codex_without_auth_refuses_before_starting_a_thread_or_spending_a_model_call() {
+    stand_ins();
+    let repo = a_repository("codex-signed-out");
+    std::fs::write(repo.join(".codex_signed_out"), "").unwrap();
+    let error = coding::run(Which::Codex, repo.to_str().unwrap(), "work", None, |_| {})
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("Codex is not signed in on this backend"), "{error}");
+    assert!(error.contains("codex login --device-auth"), "{error}");
+    let requests = std::fs::read_to_string(repo.join(".rpc.jsonl")).unwrap();
+    assert!(requests.contains("account/read"));
+    assert!(!requests.contains("thread/start"));
+    assert!(!requests.contains("turn/start"));
+    let _ = std::fs::remove_dir_all(repo);
+}
+
+#[tokio::test]
+async fn codex_custom_provider_does_not_require_an_openai_account() {
+    stand_ins();
+    let repo = a_repository("codex-custom-provider");
+    std::fs::write(repo.join(".codex_custom_provider"), "").unwrap();
+    let outcome =
+        coding::run(Which::Codex, repo.to_str().unwrap(), "work", None, |_| {}).await.unwrap();
+    assert!(outcome.failed.is_none());
+    assert_eq!(outcome.tool_calls, 1);
+    let _ = std::fs::remove_dir_all(repo);
+}
+
+const CLAUDE_SUCCESS: &str = concat!(
+    r#"{"type":"system","subtype":"init","model":"claude-opus-5"}"#,
+    "\n",
+    r#"{"type":"assistant","message":{"model":"claude-opus-5","content":[{"type":"tool_use","name":"Bash","input":{"command":"npm test"}}]}}"#,
+    "\n",
+    r#"{"type":"result","subtype":"success","is_error":false,"result":"Fixed the flaky test and pushed.","total_cost_usd":0.12}"#,
+);
+
+/// A real git repository, because that is what a linked one has to be, and
+/// because the stand-in records into it.
+fn a_repository(name: &str) -> PathBuf {
+    let root = std::env::temp_dir().join(format!("guac-coding-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let done = std::process::Command::new("git").arg("-C").arg(&root).arg("init").output().unwrap();
+    assert!(done.status.success(), "git has to be installed to run this suite");
+    std::fs::canonicalize(&root).unwrap()
+}
+
+/// Git with an identity of its own, so the suite does not depend on what the
+/// machine running it has configured and does not try to sign.
+fn git(root: &Path, args: &[&str]) {
+    let done = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args([
+            "-c",
+            "user.name=guac",
+            "-c",
+            "user.email=guac@example.com",
+            "-c",
+            "commit.gpgsign=false",
+        ])
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(done.status.success(), "git {args:?} failed: {done:?}");
+}
+
+/// A repository sitting where the last job left it: on a branch whose work is
+/// already in `main`. The state an operator finds weeks later and the reason
+/// a job is told its footing at all.
+fn a_repository_on_a_landed_branch(name: &str) -> PathBuf {
+    let root = a_repository(name);
+    git(&root, &["checkout", "-b", "main"]);
+    std::fs::write(root.join("a.txt"), "one").unwrap();
+    git(&root, &["add", "."]);
+    git(&root, &["commit", "-m", "one"]);
+    git(&root, &["checkout", "-b", "landed"]);
+    root
+}
+
+/// Every argument the stand-in in this repository was handed.
+fn argv_at(repository: &Path) -> Vec<String> {
+    let raw = std::fs::read_to_string(repository.join(ARGV)).expect("the stand-in never ran");
+    raw.split("\n<<>>\n").map(|arg| arg.to_string()).filter(|arg| !arg.is_empty()).collect()
+}
+
+// ---- the seam ------------------------------------------------------------
+
+#[tokio::test]
+async fn a_repository_set_to_claude_starts_claude_and_not_the_other_one() {
+    stand_ins();
+    let repo = a_repository("claude");
+
+    let outcome =
+        coding::run(Which::Claude, repo.to_str().unwrap(), "fix the flaky test", None, |_| {})
+            .await
+            .unwrap();
+
+    let argv = argv_at(&repo);
+    // The brief reaches the program as an argument, not as something it has to
+    // go and find: the harness cannot see the conversation it came from.
+    assert!(argv.contains(&"fix the flaky test".to_string()), "{argv:?}");
+    // Claude Code's own vector, and this is the half no unit test can check:
+    // the CLI refuses `stream-json` without `--verbose`, which is a job that
+    // never starts rather than a job that fails.
+    assert!(argv.contains(&"stream-json".to_string()), "{argv:?}");
+    assert!(argv.contains(&"--verbose".to_string()), "{argv:?}");
+    assert!(argv.contains(&"bypassPermissions".to_string()), "{argv:?}");
+    // And pi's, which would mean nothing to it.
+    assert!(!argv.contains(&"--mode".to_string()), "{argv:?}");
+
+    assert_eq!(outcome.said, "Fixed the flaky test and pushed.");
+    assert_eq!(outcome.tool_calls, 1);
+    assert_eq!(outcome.model, "claude-opus-5");
+    assert_eq!(outcome.cost, Some(0.12));
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+#[tokio::test]
+async fn a_repository_set_to_pi_starts_pi() {
+    stand_ins();
+    let repo = a_repository("pi");
+
+    let mut seen = Vec::new();
+    let outcome = coding::run(Which::Pi, repo.to_str().unwrap(), "fix the flaky test", None, |p| {
+        seen.push(p)
+    })
+    .await
+    .unwrap();
+
+    let argv = argv_at(&repo);
+    assert!(argv.contains(&"--mode".to_string()), "{argv:?}");
+    assert!(argv.contains(&"json".to_string()), "{argv:?}");
+    assert!(!argv.contains(&"stream-json".to_string()), "{argv:?}");
+    assert_eq!(outcome.said, "Fixed the flaky test and pushed.");
+    assert_eq!(outcome.model, "gpt-5.6");
+    // The watcher is the panel in the channel, and it is fed from the stream
+    // rather than from the outcome: a job that says nothing for twenty minutes
+    // is what this exists to prevent.
+    assert_eq!(
+        seen.first(),
+        Some(&Progress::Using { tool: "bash".into(), detail: "npm test".into() })
+    );
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+#[tokio::test]
+async fn both_harnesses_are_given_the_same_standing_instruction() {
+    // The prompt that says nobody will answer and commits are the only undo is
+    // not one harness's. Appended to whichever runs, or a job started on the
+    // other one silently loses every checkpoint the operator has.
+    stand_ins();
+    for (which, name) in [(Which::Pi, "prompt-pi"), (Which::Claude, "prompt-claude")] {
+        let repo = a_repository(name);
+        coding::run(which, repo.to_str().unwrap(), "do the thing", None, |_| {}).await.unwrap();
+        let argv = argv_at(&repo);
+        assert!(argv.contains(&"--append-system-prompt".to_string()), "{which:?}: {argv:?}");
+        assert!(
+            argv.iter().any(|arg| arg.contains("Commit early and often")),
+            "{which:?}: {argv:?}"
+        );
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+}
+
+#[tokio::test]
+async fn a_harness_that_reports_a_failed_turn_is_not_a_job_with_nothing_to_do() {
+    // The afternoon this cost, from both ends. Each program reports a spent
+    // credential inside its own stream and exits zero about it, so a job that
+    // never ran arrives looking exactly like a job that found nothing to change.
+    stand_ins();
+    for (which, name, stream, exit) in [
+        // `pi` reports it and exits zero, which is the shape that cost the
+        // afternoon.
+        (
+            Which::Pi,
+            "spent-pi",
+            r#"{"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"error","errorMessage":"You're out of extra usage."}}"#,
+            "0",
+        ),
+        // Claude Code reports it and exits non-zero, which is the shape that
+        // would otherwise be reported as `exit 1` with the reason thrown away:
+        // a stream that said why beats an exit code that did not.
+        (
+            Which::Claude,
+            "spent-claude",
+            r#"{"type":"result","subtype":"error_during_execution","is_error":true,"result":"You're out of extra usage."}"#,
+            "1",
+        ),
+    ] {
+        let repo = a_repository(name);
+        std::fs::write(repo.join(SAY), format!("{stream}\n")).unwrap();
+        std::fs::write(repo.join(EXIT), exit).unwrap();
+
+        let outcome = coding::run(which, repo.to_str().unwrap(), "do the thing", None, |_| {})
+            .await
+            .expect("a stream that reports its own failure is not a dead process");
+        let why = outcome.failed.unwrap_or_else(|| panic!("{which:?} reported a silent no-op"));
+        assert!(why.contains("out of extra usage"), "{which:?}: {why}");
+        assert!(outcome.said.is_empty(), "{which:?}: an errored run carries no answer");
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+}
+
+#[tokio::test]
+async fn a_harness_that_dies_without_answering_says_so_rather_than_reporting_success() {
+    stand_ins();
+    let repo = a_repository("dead");
+    std::fs::write(repo.join(SAY), "not json at all\n").unwrap();
+    std::fs::write(repo.join(EXIT), "3").unwrap();
+
+    let err = coding::run(Which::Pi, repo.to_str().unwrap(), "do the thing", None, |_| {})
+        .await
+        .expect_err("nothing was said and the process failed");
+    assert!(err.to_string().contains("exit 3"), "{err}");
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+/// Both are found by name on `PATH`, which is what the panel offering the
+/// choice asks before it draws it.
+///
+/// Only the positive half. The negative is a missing binary, which means a
+/// different `PATH`, and `PATH` is process-wide while these run concurrently.
+/// It is covered where it is cheap and where it matters: `RepositoryList`'s
+/// suite draws the choice disabled with the install command under it.
+#[tokio::test]
+async fn a_harness_on_this_machine_is_found_by_name() {
+    stand_ins();
+    assert!(coding::presence(Which::Pi).await.installed());
+    assert!(coding::presence(Which::Claude).await.installed());
+}
+
+/// A harness too old for the bridge is still a harness.
+///
+/// The stand-ins print `stand-in` for `--version`, which carries no number at
+/// all, so this is also the unreadable case: both have to leave the program
+/// usable and turn only the bridge off. The other direction would wire a job to
+/// a contract nothing has ever checked, on the strength of a version string
+/// nobody could parse.
+#[tokio::test]
+async fn a_version_nothing_can_read_runs_the_job_without_a_bridge() {
+    stand_ins();
+    match coding::presence(Which::Claude).await {
+        coding::Presence::Installed { bridged, version } => {
+            assert!(!bridged, "an unreadable version cannot claim the contract holds");
+            assert_eq!(version, "stand-in", "the program's own answer, not a parse of it");
+        }
+        other => panic!("{other:?}"),
+    }
+    // `pi` has no second interface at all, so it is never bridged whatever it
+    // says its version is.
+    assert!(matches!(
+        coding::presence(Which::Pi).await,
+        coding::Presence::Installed { bridged: false, .. }
+    ));
+}
+
+#[tokio::test]
+async fn codex_acknowledges_steering_and_rejects_completion_races() {
+    use guac_lib::coding::codex::{Control, Steer};
+    stand_ins();
+    for (mode, accepted) in
+        [("", true), (".codex_reject_steer", false), (".codex_finish_before_ack", false)]
+    {
+        let repo = a_repository(&format!("steer{mode}"));
+        std::fs::write(repo.join(".codex_hold"), "").unwrap();
+        if !mode.is_empty() {
+            std::fs::write(repo.join(mode), "").unwrap();
+        }
+        let path = repo.to_string_lossy().to_string();
+        let (sender, steering) = tokio::sync::mpsc::channel(8);
+        let (signals, _) = tokio::sync::mpsc::channel(8);
+        let job = tokio::spawn(async move {
+            coding::run_with_control(
+                Which::Codex,
+                &path,
+                "work",
+                None,
+                Some(Control { gate: Gate::Open, steering, signals }),
+                |_| {},
+            )
+            .await
+        });
+        let (reply, answer) = tokio::sync::oneshot::channel();
+        sender.send(Steer { message: "Fix the tests first".into(), reply }).await.unwrap();
+        let result =
+            tokio::time::timeout(std::time::Duration::from_secs(5), answer).await.unwrap().unwrap();
+        assert_eq!(result.is_ok(), accepted, "{result:?}");
+        if mode == ".codex_reject_steer" {
+            assert!(!job.is_finished(), "a rejected correction must not stop an active job");
+            job.abort();
+            let _ = job.await;
+        } else {
+            let out = job.await.unwrap().unwrap();
+            assert!(out.failed.is_none());
+        }
+        let log = std::fs::read_to_string(repo.join(".rpc.jsonl")).unwrap();
+        let messages: Vec<serde_json::Value> =
+            log.lines().map(|line| serde_json::from_str(line).unwrap()).collect();
+        assert_eq!(
+            messages.iter().filter(|m| m["method"] == "turn/start").count(),
+            1,
+            "steering never starts a replacement turn"
+        );
+        let request = messages.iter().find(|m| m["method"] == "turn/steer").unwrap();
+        assert_eq!(request["params"]["expectedTurnId"], "codex-turn");
+        assert_eq!(request["params"]["threadId"], "codex-session");
+        let _ = std::fs::remove_dir_all(repo);
+    }
+}
+
+#[tokio::test]
+async fn codex_keeps_steering_while_the_repository_gate_is_waiting() {
+    use guac_lib::coding::codex::{Control, Steer};
+    stand_ins();
+    for allow in [true, false] {
+        let repo = a_repository(&format!("codex-gate-{allow}"));
+        std::fs::write(repo.join(".codex_gate"), "").unwrap();
+        std::fs::write(repo.join(".codex_command"), "./ship.sh").unwrap();
+        std::fs::write(repo.join("ship.sh"), "#!/bin/sh\ngit push origin HEAD\n").unwrap();
+        let path = repo.to_string_lossy().to_string();
+        let (sender, steering) = tokio::sync::mpsc::channel(8);
+        let (signals, mut heard) = tokio::sync::mpsc::channel(8);
+        let job = tokio::spawn(async move {
+            coding::run_with_control(
+                Which::Codex,
+                &path,
+                "work",
+                None,
+                Some(Control { gate: Gate::AskBeforePushing, steering, signals }),
+                |_| {},
+            )
+            .await
+        });
+        let signal = tokio::time::timeout(std::time::Duration::from_secs(5), heard.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        let coding::Signal::Permission { line, reply: decision, .. } = signal else {
+            panic!("wrong signal")
+        };
+        assert_eq!(line, "./ship.sh");
+        assert!(!job.is_finished());
+        assert!(!repo.join(".pushed").exists());
+        let (reply, answer) = tokio::sync::oneshot::channel();
+        sender
+            .send(Steer { message: "Check the tests before pushing".into(), reply })
+            .await
+            .unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(5), answer)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert!(!repo.join(".pushed").exists(), "steering must not answer a pending approval");
+        decision.send(allow).unwrap();
+        job.await.unwrap().unwrap();
+        assert_eq!(repo.join(".pushed").exists(), allow);
+        assert_eq!(
+            std::fs::read_to_string(repo.join(".verdict")).unwrap(),
+            if allow { "accept" } else { "decline" }
+        );
+        let _ = std::fs::remove_dir_all(repo);
+    }
+}
+
+#[tokio::test]
+async fn codex_requires_its_selected_policy_and_reports_truncated_or_failed_turns() {
+    use guac_lib::coding::codex::Control;
+    stand_ins();
+    for mode in [".codex_bad_policy", ".codex_early", ".codex_failure"] {
+        let repo = a_repository(mode);
+        std::fs::write(repo.join(mode), "").unwrap();
+        let (_, steering) = tokio::sync::mpsc::channel(8);
+        let (signals, _) = tokio::sync::mpsc::channel(8);
+        let result = coding::run_with_control(
+            Which::Codex,
+            repo.to_str().unwrap(),
+            "work",
+            None,
+            Some(Control { gate: Gate::AskBeforePushing, steering, signals }),
+            |_| {},
+        )
+        .await;
+        if mode == ".codex_failure" {
+            assert_eq!(result.unwrap().failed.as_deref(), Some("fixture failed after editing"));
+        } else {
+            assert!(result.is_err(), "{result:?}");
+        }
+        if mode == ".codex_bad_policy" {
+            assert!(!std::fs::read_to_string(repo.join(".rpc.jsonl"))
+                .unwrap()
+                .contains("turn/start"));
+        }
+        let _ = std::fs::remove_dir_all(repo);
+    }
+}
+
+// ---- the whole path ------------------------------------------------------
+
+/// The public correction call reaches a Codex job while its push is parked
+/// on the operator's desk. A denied card settles the CLI request and job.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_operator_can_steer_codex_while_its_push_waits_for_a_decision() {
+    stand_ins();
+    let repo = a_repository("codex-runtime-steering");
+    std::fs::write(repo.join(".codex_gate"), "").unwrap();
+    let stub = serve(|body| {
+        if anyone_said(body, "has finished") {
+            Script::Say("The coding job returned.".into())
+        } else {
+            Script::Code("fix the flaky test".into())
+        }
+    })
+    .await;
+    let h = harness(&stub, &["Engineer"], GuardLimits::default());
+    let engineer = h.agent_named("Engineer").unwrap();
+    let linked = h
+        .runtime
+        .store()
+        .create_repository(&CleanRepository {
+            group_id: engineer.group_id,
+            name: "guaca".into(),
+            path: repo.to_string_lossy().into(),
+            note: String::new(),
+            harness: Which::Codex,
+            gate: Gate::AskBeforePushing,
+            remote: None,
+            bench: Bench::Shared,
+        })
+        .unwrap();
+    h.runtime.store().set_agent_repository(engineer.id, Some(linked.id)).unwrap();
+    let run = h.runtime.send_from_human(engineer.id, "fix the flaky test").unwrap();
+    h.settle(run).await;
+    let request = h.awaited_request().await;
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        h.runtime.message_job(engineer.id, "use staging"),
+    )
+    .await
+    .expect("steering must not wait for the approval")
+    .unwrap();
+    h.wait_until("the correction is read", |_| repo.join(".steered").exists()).await;
+    assert_eq!(std::fs::read_to_string(repo.join(".steered")).unwrap(), "use staging");
+    assert!(!repo.join(".verdict").exists());
+    h.runtime.decide_approval(request, Decision::Deny).unwrap();
+    h.wait_until("the coding job returns", |h| {
+        h.channel_texts("Engineer").iter().any(|line| line.contains("coding job returned"))
+    })
+    .await;
+    assert_eq!(std::fs::read_to_string(repo.join(".verdict")).unwrap(), "decline");
+    assert!(!repo.join(".pushed").exists());
+    assert!(h.runtime.store().pending_approvals(10).unwrap().is_empty());
+    assert!(h.runtime.message_job(engineer.id, "too late").await.is_err());
+    let _ = std::fs::remove_dir_all(repo);
+}
+
+/// The agent that asked is told what the harness said, in its own channel.
+///
+/// This is the test that reads the column. A `code` call in a repository set to
+/// Claude Code has to start `claude`, and the answer has to come back to the
+/// agent as a message on a fresh run, minutes after the turn that asked for it
+/// ended.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_agent_is_told_what_the_harness_it_was_given_said() {
+    stand_ins();
+    for which in Which::ALL {
+        let repo = a_repository(&format!("end-to-end-{}", which.as_str()));
+
+        // The second call is the agent reading the finished job back. Branching on
+        // what it was sent rather than on a counter: a turn can take more than one
+        // call, and a counter would make this depend on how many.
+        let stub = serve(|body| {
+            if anyone_said(body, "has finished") {
+                Script::Say("The coding agent fixed the flaky test and pushed.".into())
+            } else {
+                Script::Code("fix the flaky test".into())
+            }
+        })
+        .await;
+        let h = harness(&stub, &["Engineer"], GuardLimits::default());
+
+        let engineer = h.agent_named("Engineer").unwrap();
+        let linked = h
+            .runtime
+            .store()
+            .create_repository(&CleanRepository {
+                group_id: engineer.group_id,
+                name: "guaca".into(),
+                path: repo.to_string_lossy().to_string(),
+                note: String::new(),
+                harness: which,
+                gate: Gate::Open,
+                // Pinned rather than defaulted. These tests are about the argument
+                // vector a harness is started with and the directory it is started
+                // in, and a worktree would put that directory somewhere the
+                // stand-in's recording is not. What the default does instead is
+                // `a_job_runs_in_a_work_tree_of_the_agents_own` below.
+                remote: None,
+                bench: Bench::Shared,
+            })
+            .unwrap();
+        h.runtime.store().set_agent_repository(engineer.id, Some(linked.id)).unwrap();
+
+        let run = h.runtime.send_from_human(h.id("Engineer"), "fix the flaky test").unwrap();
+        h.settle(run).await;
+
+        // The job outlives the turn that started it, which is the whole shape of
+        // this feature: the tool returns as soon as the process is up.
+        h.wait_until("the coding job is reported back", |h| {
+            h.channel_texts("Engineer").iter().any(|line| line.contains("fixed the flaky test"))
+        })
+        .await;
+
+        let argv = argv_at(&repo);
+        match which {
+            Which::Claude => assert!(argv.contains(&"stream-json".to_string())),
+            Which::Codex => assert_eq!(argv[0], "app-server"),
+            Which::Pi => assert!(argv.contains(&"--mode".to_string())),
+        }
+        // Contained rather than equal: the brief a job is started with carries the
+        // footing in front of it, which the test below is the test of.
+        if which == Which::Codex {
+            assert!(std::fs::read_to_string(repo.join(".rpc.jsonl"))
+                .unwrap()
+                .contains("fix the flaky test"));
+        } else {
+            assert!(argv.iter().any(|arg| arg.contains("fix the flaky test")), "{argv:?}");
+        }
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_claude_login_failure_names_claude_and_the_next_job_uses_the_saved_switch() {
+    stand_ins();
+    let repo = a_repository("switch-after-login-failure");
+    std::fs::write(repo.join(SAY),
+        r#"{"type":"result","subtype":"success","is_error":true,"result":"Not logged in. Please run /login"}"#,
+    ).unwrap();
+    let start = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let kickoff = start.clone();
+    let stub = serve(move |_| {
+        if kickoff.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            Script::Code("inspect the repository".into())
+        } else {
+            Script::Say("Received the result.".into())
+        }
+    })
+    .await;
+    let h = harness(&stub, &["Content Marketer"], GuardLimits::default());
+    let agent = h.agent_named("Content Marketer").unwrap();
+    let linked = h
+        .runtime
+        .store()
+        .create_repository(&CleanRepository {
+            group_id: agent.group_id,
+            name: "site".into(),
+            path: repo.to_string_lossy().to_string(),
+            note: String::new(),
+            harness: Which::Claude,
+            gate: Gate::Open,
+            remote: None,
+            bench: Bench::Shared,
+        })
+        .unwrap();
+    h.runtime.store().set_agent_repository(agent.id, Some(linked.id)).unwrap();
+
+    let run = h.runtime.send_from_human(agent.id, "inspect the repository").unwrap();
+    h.settle(run).await;
+    h.wait_until("the failed job's reply settles", |h| {
+        h.channel_texts("Content Marketer").iter().any(|text| text.contains("could not finish"))
+    })
+    .await;
+    let reported = h
+        .runtime
+        .store()
+        .channel_messages(agent.id, 200)
+        .unwrap()
+        .into_iter()
+        .find(|e| e.plain_text().contains("could not finish"))
+        .unwrap();
+    h.settle(reported.run_id).await;
+    let failure = h
+        .channel_texts("Content Marketer")
+        .into_iter()
+        .find(|text| text.contains("could not finish"))
+        .unwrap();
+    assert!(failure.contains("Claude Code"), "the agent must know which sign-in failed: {failure}");
+    assert!(failure.contains("/login"));
+
+    h.runtime
+        .store()
+        .update_repository(
+            linked.id,
+            &linked.name,
+            &linked.note,
+            Which::Codex,
+            linked.gate,
+            linked.bench,
+        )
+        .unwrap();
+    start.store(true, std::sync::atomic::Ordering::SeqCst);
+    let run = h.runtime.send_from_human(agent.id, "retry with the saved harness").unwrap();
+    h.settle(run).await;
+    h.wait_until("Codex finishes in the same runtime", |h| {
+        h.channel_texts("Content Marketer").iter().any(|text| text.contains("has finished"))
+    })
+    .await;
+    assert_eq!(argv_at(&repo)[0], "app-server");
+    let completion = h
+        .channel_texts("Content Marketer")
+        .into_iter()
+        .find(|text| text.contains("has finished"))
+        .unwrap();
+    assert!(completion.contains("Codex"), "{completion}");
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+/// The one announcement this app asks for, and the one thing that outlives the
+/// message announcing it.
+///
+/// A turn that closes on work it has not done is given its round back, because
+/// nothing of an agent's runs after its message. A started `code` job is the
+/// exception and has to be: the job is already running on a process of its own
+/// and comes back as its own envelope, so "started it, checking back" is a
+/// report of a call that has already been made. Without the exemption the
+/// nudge fires on exactly the shape `## Your repository` tells an agent to
+/// write, and every coding job in the app buys a wasted model call.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_started_job_is_not_an_unbacked_promise() {
+    stand_ins();
+    let repo = a_repository("announced");
+
+    let stub = serve(|body| {
+        if anyone_said(body, "has finished") {
+            Script::Say("The coding agent fixed the flaky test.".into())
+        } else if has_tool_result(body) {
+            Script::Say("Started it. Checking back on it shortly.".into())
+        } else {
+            Script::Code("fix the flaky test".into())
+        }
+    })
+    .await;
+    let h = harness(&stub, &["Engineer"], GuardLimits::default());
+
+    let engineer = h.agent_named("Engineer").unwrap();
+    let linked = h
+        .runtime
+        .store()
+        .create_repository(&CleanRepository {
+            group_id: engineer.group_id,
+            name: "guaca".into(),
+            path: repo.to_string_lossy().to_string(),
+            note: String::new(),
+            harness: Which::Claude,
+            gate: Gate::Open,
+            remote: None,
+            bench: Bench::Shared,
+        })
+        .unwrap();
+    h.runtime.store().set_agent_repository(engineer.id, Some(linked.id)).unwrap();
+
+    let run = h.runtime.send_from_human(h.id("Engineer"), "fix the flaky test").unwrap();
+    h.settle(run).await;
+
+    assert!(
+        h.channel_texts("Engineer").iter().any(|line| line.contains("Started it")),
+        "the announcement is the answer to that turn: {:?}",
+        h.channel_texts("Engineer")
+    );
+    assert!(
+        !stub
+            .transcript
+            .lock()
+            .iter()
+            .any(|body| anyone_said(body, "You ended your message with work you had not done")),
+        "a job that is genuinely running backs the sentence that announces it"
+    );
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+/// A job is told where the tree is standing before it is told what to do.
+///
+/// This is the other seam nothing else in the repo can see. Drop the
+/// `repo::footing` read in `Runtime::start_job` and every suite still passes,
+/// while every job in every workspace goes on starting wherever the last one
+/// left the tree: a branch that was merged a month ago, silently, on top of
+/// work that has already landed.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_job_is_told_which_branch_it_is_standing_on() {
+    stand_ins();
+    let repo = a_repository_on_a_landed_branch("footing");
+
+    let stub = serve(|body| {
+        if anyone_said(body, "has finished") {
+            Script::Say("The coding agent did the work.".into())
+        } else {
+            Script::Code("fix the flaky test".into())
+        }
+    })
+    .await;
+    let h = harness(&stub, &["Engineer"], GuardLimits::default());
+
+    let engineer = h.agent_named("Engineer").unwrap();
+    let linked = h
+        .runtime
+        .store()
+        .create_repository(&CleanRepository {
+            group_id: engineer.group_id,
+            name: "guaca".into(),
+            path: repo.to_string_lossy().to_string(),
+            note: "run ./scripts/ci.sh before you finish".into(),
+            harness: Which::Pi,
+            gate: Gate::Open,
+            remote: None,
+            bench: Bench::Shared,
+        })
+        .unwrap();
+    h.runtime.store().set_agent_repository(engineer.id, Some(linked.id)).unwrap();
+
+    let run = h.runtime.send_from_human(h.id("Engineer"), "fix the flaky test").unwrap();
+    h.settle(run).await;
+    h.wait_until("the coding job is reported back", |h| {
+        h.channel_texts("Engineer").iter().any(|line| line.contains("did the work"))
+    })
+    .await;
+
+    let argv = argv_at(&repo);
+    let brief = argv
+        .iter()
+        .find(|arg| arg.contains("fix the flaky test"))
+        .unwrap_or_else(|| panic!("the brief never reached the program: {argv:?}"));
+
+    // The state, the rule it resolves to, the work, and the operator's note, in
+    // that order. The footing leads because it is read before the first edit or
+    // it is not read at all.
+    assert!(brief.contains("On branch `landed`"), "{brief}");
+    assert!(brief.contains("already contained in `main`"), "{brief}");
+    assert!(brief.contains("start from `main`"), "{brief}");
+    let state = brief.find("Where you are starting from").expect("no footing: {brief}");
+    let work = brief.find("fix the flaky test").unwrap();
+    let note = brief.find("Standing instruction").expect("the note still rides along");
+    assert!(state < work && work < note, "the three parts are out of order: {brief}");
+
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+// ---- the other door ------------------------------------------------------
+
+/// Links a repository to an agent and answers with where it is on disk.
+fn put_in_a_repository(h: &Harness, agent: &str, repo: &Path, gate: Gate) {
+    let card = h.agent_named(agent).unwrap();
+    let linked = h
+        .runtime
+        .store()
+        .create_repository(&CleanRepository {
+            group_id: card.group_id,
+            name: "guaca".into(),
+            path: repo.to_string_lossy().to_string(),
+            note: String::new(),
+            harness: Which::Claude,
+            gate,
+            // `shell` runs where `code` runs, so these read the linked
+            // directory only because the bench is pinned to it. The pair that
+            // proves the two doors agree in a worktree is
+            // `both_doors_into_a_repository_open_on_the_same_work_tree`.
+            remote: None,
+            bench: Bench::Shared,
+        })
+        .unwrap();
+    h.runtime.store().set_agent_repository(card.id, Some(linked.id)).unwrap();
+}
+
+/// The small door, end to end: a real shell, in the operator's own repository,
+/// answering inside the turn that asked.
+///
+/// This is the seam nothing else can see. `shell` is offered on the same
+/// condition as `code` and reads the same column, and the failure it exists to
+/// stop is not a crash: it is an agent that has to spend a coding job, minutes
+/// and somebody's plan on `git status`, and that reports having no shell at all
+/// when the harness will not start.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_agent_in_a_repository_runs_a_line_there_and_is_answered_in_the_same_turn() {
+    let repo = a_repository("shell-here");
+    let here = repo.to_string_lossy().to_string();
+
+    // Branched on the tool result rather than on a counter, because a turn can
+    // take more than one call. The needle is the repository's own path, which
+    // is the whole assertion: a shell that ran somewhere else answers with
+    // somewhere else.
+    let stub = serve(move |body| {
+        if anyone_said(body, &here) {
+            Script::Say("I am standing in the repository.".into())
+        } else {
+            Script::InRepository("git rev-parse --show-toplevel".into())
+        }
+    })
+    .await;
+    let h = harness(&stub, &["Engineer"], GuardLimits::default());
+    put_in_a_repository(&h, "Engineer", &repo, Gate::Open);
+
+    let run = h.runtime.send_from_human(h.id("Engineer"), "which directory are you in?").unwrap();
+    h.settle(run).await;
+
+    let told = tool_results(&stub).join("\n");
+    assert!(
+        told.contains(&repo.to_string_lossy().to_string()),
+        "the line did not run in the repository:\n{told}"
+    );
+    assert!(
+        h.channel_texts("Engineer").iter().any(|t| t.contains("standing in the repository")),
+        "and the turn finished on it:\n{}",
+        h.transcript()
+    );
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+/// The gate is a fact about the repository, so it cannot mean one thing through
+/// `code` and another through `shell`.
+///
+/// Both doors ask `coding::bridge::outward` about the same shell line, from the
+/// same function. A gate that read only the harness's calls would be a gate an
+/// agent walks around by picking the other tool, which is worse than no gate:
+/// the operator switched it on and would be told it was holding.
+///
+/// The line is deliberately two commands. A `deny` refuses the *call*, exactly
+/// as the `PreToolUse` hook does, so the harmless half must not have happened
+/// either — a refusal that ran the first half and stopped at the push is a
+/// tree in a state nobody asked for.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_line_that_reaches_outside_a_gated_repository_asks_first_and_a_no_runs_nothing() {
+    let repo = a_repository("shell-gated");
+
+    let stub = serve(|body| {
+        if has_tool_result(body) {
+            Script::Say("The operator did not allow the push.".into())
+        } else {
+            Script::InRepository("touch pushed.txt && git push origin main".into())
+        }
+    })
+    .await;
+    let h = harness(&stub, &["Engineer"], GuardLimits::default());
+    put_in_a_repository(&h, "Engineer", &repo, Gate::AskBeforePushing);
+
+    let run = h.runtime.send_from_human(h.id("Engineer"), "ship it").unwrap();
+
+    let request = h.awaited_request().await;
+    h.runtime.decide_approval(request, Decision::Deny).unwrap();
+    h.settle(run).await;
+
+    let told = tool_results(&stub).join("\n");
+    assert!(told.contains("Refused"), "the model was not told it was refused:\n{told}");
+    assert!(told.contains("waiting on them"), "a refusal needs a way forward:\n{told}");
+    assert!(
+        !repo.join("pushed.txt").exists(),
+        "the call was refused, so no part of the line may have run"
+    );
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+/// And the gate stops nothing else.
+///
+/// Everything that is not outward-facing is what the directory and git already
+/// cover, in both doors. A gate that parked `git status` would be one the
+/// operator switches off within the hour, which is the behavior they turned it
+/// on to get.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_ordinary_line_in_a_gated_repository_runs_without_asking_anybody() {
+    let repo = a_repository("shell-ungated");
+
+    let stub = serve(|body| {
+        if has_tool_result(body) {
+            Script::Say("Nothing is staged.".into())
+        } else {
+            Script::InRepository("git status --porcelain; echo read-the-tree".into())
+        }
+    })
+    .await;
+    let h = harness(&stub, &["Engineer"], GuardLimits::default());
+    put_in_a_repository(&h, "Engineer", &repo, Gate::AskBeforePushing);
+
+    let run = h.runtime.send_from_human(h.id("Engineer"), "anything uncommitted?").unwrap();
+    h.settle(run).await;
+
+    let told = tool_results(&stub).join("\n");
+    assert!(told.contains("read-the-tree"), "the line did not run:\n{told}");
+    assert!(
+        h.runtime.store().pending_approvals(10).unwrap().is_empty(),
+        "nobody should have been asked about reading the tree"
+    );
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+/// The gate reads what the line runs, not only what it says.
+///
+/// `./scripts/ship.sh` is not `git push` and no amount of reading the words
+/// would ever make it one. So a repository whose release lives in a script had
+/// a gate that was switched on, said it was holding, and stopped nothing —
+/// which is worse than no gate, because the operator was told it was working.
+///
+/// The card has to carry both halves. `./scripts/ship.sh` is what the agent
+/// asked for and says nothing about what it does; `git push` is what the
+/// operator is actually being asked to allow.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_push_kept_in_one_of_the_operators_own_scripts_still_asks_first() {
+    let repo = a_repository("shell-scripted");
+    std::fs::create_dir_all(repo.join("scripts")).unwrap();
+    std::fs::write(
+        repo.join("scripts/ship.sh"),
+        "#!/bin/sh\nset -e\ntouch shipped.txt\ngit push origin main\n",
+    )
+    .unwrap();
+
+    let stub = serve(|body| {
+        if has_tool_result(body) {
+            Script::Say("The operator did not allow the release.".into())
+        } else {
+            Script::InRepository("./scripts/ship.sh".into())
+        }
+    })
+    .await;
+    let h = harness(&stub, &["Engineer"], GuardLimits::default());
+    put_in_a_repository(&h, "Engineer", &repo, Gate::AskBeforePushing);
+
+    let run = h.runtime.send_from_human(h.id("Engineer"), "cut the release").unwrap();
+
+    let request = h.awaited_request().await;
+    let card = h
+        .runtime
+        .store()
+        .pending_approvals(10)
+        .unwrap()
+        .into_iter()
+        .find(|approval| approval.id == request)
+        .expect("the request the operator is looking at");
+    assert!(card.summary.contains("./scripts/ship.sh"), "{}", card.summary);
+    assert!(card.summary.contains("git push"), "{}", card.summary);
+    // The label says Command, so the field holds the line rather than what
+    // this made of it.
+    assert_eq!(
+        card.detail.iter().find(|field| field.label == "Command").map(|field| &field.value),
+        Some(&"./scripts/ship.sh".to_string()),
+        "{:?}",
+        card.detail
+    );
+
+    h.runtime.decide_approval(request, Decision::Deny).unwrap();
+    h.settle(run).await;
+
+    assert!(
+        !repo.join("shipped.txt").exists(),
+        "the call was refused, so no part of the script may have run"
+    );
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+/// One no settles the question for the rest of the run.
+///
+/// A model that has just been refused a push tries the push. That is ordinary
+/// rather than confused: what it reads back says the operator did not allow it,
+/// not that they never will. The operator is the one who pays for it, in a
+/// second card and a third, for a question they are sitting there answering.
+///
+/// The second line is deliberately spelled differently. What was refused is the
+/// push, and a memory that told `git push origin main` from `git push --force`
+/// would remember nothing a retry could not walk around.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_refusal_is_not_put_to_the_operator_twice_in_one_run() {
+    let repo = a_repository("shell-refused-twice");
+
+    let stub = serve(|body| {
+        let acted = body["messages"]
+            .as_array()
+            .map(|messages| messages.iter().filter(|m| m["role"] == "tool").count())
+            .unwrap_or(0);
+        match acted {
+            0 => Script::InRepository("git push origin main".into()),
+            1 => Script::InRepository("git push --force-with-lease origin main".into()),
+            _ => Script::Say("Both attempts were refused.".into()),
+        }
+    })
+    .await;
+    let h = harness(&stub, &["Engineer"], GuardLimits::default());
+    put_in_a_repository(&h, "Engineer", &repo, Gate::AskBeforePushing);
+
+    let run = h.runtime.send_from_human(h.id("Engineer"), "push it").unwrap();
+
+    let request = h.awaited_request().await;
+    h.runtime.decide_approval(request, Decision::Deny).unwrap();
+    h.settle(run).await;
+
+    assert_eq!(
+        h.sink.count_of(|event| matches!(event, UiEvent::ApprovalRequested { .. })),
+        1,
+        "the operator answered this once and was asked once"
+    );
+    // And the second attempt was still refused, rather than quietly allowed by
+    // a gate that had stopped asking. Every result the model was handed is a
+    // refusal, so neither line reached the shell.
+    let told = tool_results(&stub);
+    assert!(told.len() >= 2, "both lines have to have been tried: {told:?}");
+    assert!(told.iter().all(|result| result.contains("Refused")), "{told:?}");
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+/// The door that stays open when the other one will not.
+///
+/// A work tree with a job already in it refuses `code`, on purpose: two
+/// harnesses in one directory interleave their edits. One line is not that, and
+/// refusing it here would take away the read an agent most wants while a job
+/// runs, which is what the job is doing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_line_still_runs_in_a_work_tree_a_coding_job_is_already_in() {
+    stand_ins();
+    let repo = a_repository("shell-alongside");
+    // Slow enough that the job is genuinely still running when the line does.
+    std::fs::write(repo.join(LINGER), "3").unwrap();
+
+    let stub = serve(|body| {
+        if anyone_said(body, "alongside-the-job") {
+            Script::Say("The job is still going.".into())
+        } else if has_tool_result(body) {
+            Script::InRepository("echo alongside-the-job".into())
+        } else {
+            Script::Code("something long".into())
+        }
+    })
+    .await;
+    let h = harness(&stub, &["Engineer"], GuardLimits::default());
+    put_in_a_repository(&h, "Engineer", &repo, Gate::Open);
+
+    let run =
+        h.runtime.send_from_human(h.id("Engineer"), "start it and tell me where we are").unwrap();
+    h.settle(run).await;
+
+    let told = tool_results(&stub).join("\n");
+    assert!(told.contains("A coding agent is working"), "the job did not start:\n{told}");
+    assert!(told.contains("alongside-the-job"), "the line was refused or never ran:\n{told}");
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+// ---- the half no offline test can see ------------------------------------
+
+/// Whether the real `claude` still accepts the vector this build sends.
+///
+/// Everything above is this app agreeing with itself about a protocol. The
+/// failure worth catching is that belief going stale: a flag renamed, a mode
+/// that now needs another flag, a stream whose events changed shape. It makes
+/// one real model call against the operator's own Claude sign-in.
+#[tokio::test]
+#[ignore = "live: spends the operator's own Claude plan"]
+async fn the_real_claude_still_answers_the_way_this_build_reads() {
+    let repo = a_repository("live-claude");
+    std::fs::write(repo.join("a.txt"), "banana").unwrap();
+
+    let outcome = coding::run(
+        Which::Claude,
+        repo.to_str().unwrap(),
+        "Read a.txt and say what one word it contains. Change nothing and commit nothing.",
+        None,
+        |_| {},
+    )
+    .await
+    .expect("the harness has to start and answer");
+
+    assert_eq!(outcome.failed, None, "the sign-in is spent or the vector is stale");
+    assert!(outcome.said.to_lowercase().contains("banana"), "{}", outcome.said);
+    assert!(outcome.tool_calls > 0, "it has to have read the file rather than guessed");
+    assert!(!outcome.model.is_empty(), "the stream still names the model");
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+/// A job can be ended, and what it committed is not taken back with it.
+///
+/// The gap this closes is that there was no way to end one at all. A job runs
+/// for up to forty-five minutes, `code` returns the moment the process is up,
+/// and stopping the conversation that started it does not touch the job:
+/// that run settled minutes earlier. The ceiling was the only thing that ever
+/// ended one that was going wrong.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_job_going_the_wrong_way_can_be_stopped_and_the_agent_is_told() {
+    stand_ins();
+    let repo = a_repository("stopped");
+    // Long enough that the test reaches it while it is still running, and
+    // short enough that a broken stop fails the test rather than hanging it.
+    std::fs::write(repo.join(LINGER), "30").unwrap();
+
+    let stub = serve(|body| {
+        if anyone_said(body, "stopped the coding agent") {
+            Script::Say("I have stopped it.".into())
+        } else {
+            Script::Code("fix the flaky test".into())
+        }
+    })
+    .await;
+    let h = harness(&stub, &["Engineer"], GuardLimits::default());
+    let engineer = h.agent_named("Engineer").unwrap();
+    let linked = h
+        .runtime
+        .store()
+        .create_repository(&CleanRepository {
+            group_id: engineer.group_id,
+            name: "guaca".into(),
+            path: repo.to_string_lossy().to_string(),
+            note: String::new(),
+            harness: Which::Claude,
+            gate: Gate::Open,
+            // Pinned rather than defaulted. These tests are about the argument
+            // vector a harness is started with and the directory it is started
+            // in, and a worktree would put that directory somewhere the
+            // stand-in's recording is not. What the default does instead is
+            // `a_job_runs_in_a_work_tree_of_the_agents_own` below.
+            remote: None,
+            bench: Bench::Shared,
+        })
+        .unwrap();
+    h.runtime.store().set_agent_repository(engineer.id, Some(linked.id)).unwrap();
+
+    let run = h.runtime.send_from_human(h.id("Engineer"), "fix the flaky test").unwrap();
+    h.settle(run).await;
+    h.wait_until("the harness is up", |_| repo.join(ARGV).exists()).await;
+
+    h.runtime.stop_job(engineer.id).expect("a running job has to be stoppable");
+
+    // Told, rather than left waiting for a message that is not coming. An agent
+    // that is never told answers "I started that and have not heard back",
+    // which is true and useless.
+    h.wait_until("the agent is told it was stopped", |h| {
+        h.channel_texts("Engineer").iter().any(|line| line.contains("stopped the coding agent"))
+    })
+    .await;
+
+    // And the lane is free, so the next brief does not come back busy about a
+    // job that is over.
+    h.runtime
+        .message_job(engineer.id, "anything")
+        .await
+        .expect_err("a stopped job is not a running one");
+
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+/// Pressing stop twice is not an error, and neither is pressing it late.
+///
+/// Both are the ordinary case rather than a confused caller: a job that has
+/// been running for forty minutes is one an operator presses a button on at
+/// exactly the moment it ends.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn stopping_a_job_that_is_already_over_says_so_rather_than_failing() {
+    let h = harness(
+        &serve(|_| Script::Say("hello".into())).await,
+        &["Engineer"],
+        GuardLimits::default(),
+    );
+    let engineer = h.agent_named("Engineer").unwrap();
+    let repo = a_repository("stop-twice");
+    let _linked = h
+        .runtime
+        .store()
+        .create_repository(&CleanRepository {
+            group_id: engineer.group_id,
+            name: "guaca".into(),
+            path: repo.to_string_lossy().to_string(),
+            note: String::new(),
+            harness: Which::Pi,
+            gate: Gate::Open,
+            remote: None,
+            bench: Bench::Shared,
+        })
+        .unwrap();
+
+    let why = h.runtime.stop_job(engineer.id).unwrap_err().to_string();
+    assert!(why.contains("already finished"), "{why}");
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+/// A `pi` job says why it cannot be reached, rather than accepting a message
+/// nothing will read.
+///
+/// The two ways of being unreachable have opposite answers for the operator,
+/// which is why they are different sentences: one is worth waiting a moment
+/// for and the other is a fact about the repository.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_harness_with_no_second_interface_says_so_instead_of_swallowing_it() {
+    stand_ins();
+    let repo = a_repository("unreachable");
+    std::fs::write(repo.join(LINGER), "30").unwrap();
+
+    let stub = serve(|body| {
+        if anyone_said(body, "has finished") {
+            Script::Say("done".into())
+        } else {
+            Script::Code("fix the flaky test".into())
+        }
+    })
+    .await;
+    let h = harness(&stub, &["Engineer"], GuardLimits::default());
+    let engineer = h.agent_named("Engineer").unwrap();
+    let linked = h
+        .runtime
+        .store()
+        .create_repository(&CleanRepository {
+            group_id: engineer.group_id,
+            name: "guaca".into(),
+            path: repo.to_string_lossy().to_string(),
+            note: String::new(),
+            harness: Which::Pi,
+            gate: Gate::Open,
+            remote: None,
+            bench: Bench::Shared,
+        })
+        .unwrap();
+    h.runtime.store().set_agent_repository(engineer.id, Some(linked.id)).unwrap();
+
+    let run = h.runtime.send_from_human(h.id("Engineer"), "fix the flaky test").unwrap();
+    h.settle(run).await;
+    h.wait_until("the harness is up", |_| repo.join(ARGV).exists()).await;
+
+    let why =
+        h.runtime.message_job(engineer.id, "use the other endpoint").await.unwrap_err().to_string();
+    assert!(why.contains("pi"), "{why}");
+    // The way out is named, because an operator cannot guess it from a message
+    // about a harness.
+    assert!(why.contains("Claude Code"), "{why}");
+
+    h.runtime.stop_job(engineer.id).unwrap();
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+/// The three promises the bridge is built on, asked of the real program.
+///
+/// Not one of them is a flag, which is why this cannot be an offline test. Each
+/// is a promise about how `claude` *behaves* when it is handed a hook, and the
+/// offline suite can only check that Guaca said the right thing into a socket:
+///
+/// - a `PreToolUse` hook answering `deny` overrides `--permission-mode
+///   bypassPermissions`, which is the mode every job here runs in, so the gate
+///   is a gate rather than a suggestion;
+/// - `additionalContext` from a `PostToolUse` hook, or a `Stop` hook's own
+///   `reason`, is put in front of the model, so a correction typed into a
+///   running job actually reaches it;
+/// - an MCP server named on `--mcp-config` is reachable and its tools are
+///   callable, so a job can report what it produced.
+///
+/// One model call covers all three: the brief asks for a push, which the gate
+/// stops, and the staged message asks for a note, which only the bridge could
+/// have delivered and only the MCP server could receive.
+#[tokio::test]
+#[ignore = "live: spends the operator's own Claude plan"]
+async fn the_real_claude_still_honors_what_the_bridge_asks_of_it() {
+    let repo = a_repository("live-bridge");
+    std::fs::write(repo.join("a.txt"), "banana").unwrap();
+
+    let bridge = coding::Bridge::new();
+    let (signals, mut heard) = tokio::sync::mpsc::channel(32);
+    let session = bridge
+        .open(signals, Gate::AskBeforePushing, repo.clone())
+        .await
+        .expect("the bridge has to start before anything else here means anything");
+    let named = session.session_id().to_string();
+
+    // Staged before the job starts, so the first boundary it reaches has it.
+    assert!(bridge.post(
+        session.session_id(),
+        "Before you do anything else, call the guaca note_progress tool with the note \
+         `the mailbox works`.",
+    ));
+
+    let watching = tokio::spawn(async move {
+        let (mut asked, mut noted) = (None, None);
+        while let Some(signal) = heard.recv().await {
+            match signal {
+                // Answered `false`, which is the half that proves the override:
+                // the run's own permission mode would have allowed this.
+                coding::Signal::Permission { reach, reply, .. } => {
+                    asked = Some(reach.what);
+                    let _ = reply.send(false);
+                }
+                coding::Signal::Note(note) => noted = Some(note),
+                coding::Signal::PullRequest { .. } => {}
+            }
+        }
+        (asked, noted)
+    });
+
+    let outcome = coding::run(
+        Which::Claude,
+        repo.to_str().unwrap(),
+        "Use the Bash tool to run: git push. Then use the Bash tool to run: echo hello. \
+         Then say in one sentence what happened.",
+        Some(session.wiring()),
+        |_| {},
+    )
+    .await
+    .expect("the harness has to start and answer");
+
+    drop(session);
+    let (asked, noted) = watching.await.unwrap();
+
+    assert_eq!(outcome.failed, None, "the sign-in is spent or the vector is stale");
+    // Chosen rather than read back off the stream, which is what makes it the
+    // thing an operator can hand to `claude --resume` whatever the run did.
+    assert_eq!(outcome.session_id, named);
+
+    let asked = asked.expect(
+        "a PreToolUse deny has to reach the desk. If this is None the program stopped \
+         calling the hook, or stopped letting it refuse under bypassPermissions",
+    );
+    assert!(asked.contains("push"), "{asked}");
+
+    let noted = noted.expect(
+        "the staged message never reached the model, or the MCP server was not \
+         reachable. Either way a job can no longer be corrected while it runs",
+    );
+    assert!(noted.to_lowercase().contains("mailbox"), "{noted}");
+
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+/// A bridged job carries three more flags and keeps everything the operator has.
+///
+/// The offline half of the above, and it is the seam nothing else can see: drop
+/// the wiring in `Runtime::start_job` and every other suite in this repo still
+/// passes while no job in any workspace can be reached again.
+#[tokio::test]
+async fn a_bridged_job_is_started_with_its_own_session_hooks_and_server() {
+    let repo = a_repository("bridged-argv");
+    stand_ins();
+
+    let bridge = coding::Bridge::new();
+    let (signals, _heard) = tokio::sync::mpsc::channel(8);
+    let session = bridge.open(signals, Gate::AskBeforePushing, repo.clone()).await.unwrap();
+
+    coding::run(
+        Which::Claude,
+        repo.to_str().unwrap(),
+        "do the thing",
+        Some(session.wiring()),
+        |_| {},
+    )
+    .await
+    .unwrap();
+
+    let argv = argv_at(&repo);
+    let after = |flag: &str| {
+        argv.iter().position(|arg| arg == flag).and_then(|at| argv.get(at + 1)).cloned()
+    };
+
+    // Chosen rather than read back, which is what makes `claude --resume` open
+    // *this* job rather than whatever ran last in the directory.
+    assert_eq!(after("--session-id").as_deref(), Some(session.session_id()));
+
+    // The hooks are a real file on disk with this job's own address in them,
+    // and the script has to be executable or the program cannot run it.
+    let settings = after("--settings").expect("a bridged job carries its hooks");
+    let written: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+    for event in ["PostToolUse", "Stop", "PreToolUse"] {
+        assert!(written["hooks"][event].is_array(), "{event}");
+    }
+    let script = written["hooks"]["Stop"][0]["hooks"][0]["command"].as_str().unwrap();
+    let mode =
+        std::os::unix::fs::PermissionsExt::mode(&std::fs::metadata(script).unwrap().permissions());
+    assert_eq!(mode & 0o111, 0o100, "the hook has to be runnable, and by nobody else");
+    assert!(std::fs::read_to_string(script).unwrap().contains(session.session_id()));
+
+    // Added to the operator's own setup rather than replacing it. A coding job
+    // in their repository wants their rules file and their servers, which is
+    // the opposite of what a turn wants and right for the opposite reason.
+    assert!(after("--mcp-config").unwrap().contains("guaca"));
+    assert!(!argv.contains(&"--strict-mcp-config".to_string()));
+    assert!(!argv.contains(&"--setting-sources".to_string()));
+
+    // And the scratch goes when the job does, so a token that reached a running
+    // job cannot be read off the disk afterward.
+    let dir = std::path::PathBuf::from(&settings).parent().unwrap().to_path_buf();
+    drop(session);
+    assert!(!dir.exists());
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+/// The same question of `pi`.
+#[tokio::test]
+#[ignore = "live: spends whatever pi is signed in to"]
+async fn the_real_pi_still_answers_the_way_this_build_reads() {
+    let repo = a_repository("live-pi");
+    std::fs::write(repo.join("a.txt"), "banana").unwrap();
+
+    let outcome = coding::run(
+        Which::Pi,
+        repo.to_str().unwrap(),
+        "Read a.txt and say what one word it contains. Change nothing and commit nothing.",
+        None,
+        |_| {},
+    )
+    .await
+    .expect("the harness has to start and answer");
+
+    assert_eq!(outcome.failed, None, "the sign-in is spent or the vector is stale");
+    assert!(outcome.said.to_lowercase().contains("banana"), "{}", outcome.said);
+    assert!(outcome.tool_calls > 0, "it has to have read the file rather than guessed");
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+// ---- a work tree of the agent's own --------------------------------------
+
+/// Where git says this repository's work trees are, other than the linked one.
+fn worktrees_under(root: &Path) -> Vec<PathBuf> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["worktree", "list", "--porcelain"])
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|line| line.strip_prefix("worktree "))
+        .map(PathBuf::from)
+        .filter(|at| at != root)
+        .collect()
+}
+
+/// Links a repository that gives every agent a work tree of its own, and puts
+/// the named agents in it.
+///
+/// One call for the whole crew rather than one per agent, because the store's
+/// unique index is on the path: linking the same directory twice is refused,
+/// which is the point of the index and the thing this test needs to work
+/// around rather than around.
+fn put_in_a_bench(h: &Harness, agents: &[&str], repo: &Path) {
+    let first = h.agent_named(agents[0]).unwrap();
+    let linked = h
+        .runtime
+        .store()
+        .create_repository(&CleanRepository {
+            group_id: first.group_id,
+            name: "guaca".into(),
+            path: repo.to_string_lossy().to_string(),
+            note: String::new(),
+            harness: Which::Claude,
+            gate: Gate::Open,
+            remote: None,
+            bench: Bench::Own,
+        })
+        .unwrap();
+    for agent in agents {
+        let card = h.agent_named(agent).unwrap();
+        h.runtime.store().set_agent_repository(card.id, Some(linked.id)).unwrap();
+    }
+}
+
+/// A job works in a tree of its own, and the operator's checkout is not touched.
+///
+/// The whole reason the setting exists. Before it, a harness ran in the
+/// directory the operator was working in: it switched their branch, it left the
+/// tree standing on whatever branch it made, and the next job started there.
+/// The assertion is deliberately about the *operator's* directory rather than
+/// about the worktree, because that is the promise: the stand-in records its
+/// argument vector into whatever directory it was started in, and after this
+/// job there is no recording in the linked one.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_job_runs_in_a_work_tree_of_the_agents_own() {
+    stand_ins();
+    let repo = a_repository_on_a_landed_branch("bench-job");
+    // Back on the default branch, so the tree the operator left behind is an
+    // ordinary one and the assertion below is about the bench rather than about
+    // a reset.
+    git(&repo, &["checkout", "main"]);
+
+    let stub = serve(|body| match anyone_said(body, "Fixed the flaky test") {
+        true => Script::Say("It is done.".into()),
+        false => Script::Code("fix the flaky test".into()),
+    })
+    .await;
+    let h = harness(&stub, &["Engineer"], GuardLimits::default());
+    put_in_a_bench(&h, &["Engineer"], &repo);
+
+    let run = h.runtime.send_from_human(h.id("Engineer"), "fix the flaky test").unwrap();
+    h.settle(run).await;
+    h.wait_until("the job comes back", |h| {
+        h.channel_texts("Engineer").iter().any(|line| line.contains("It is done"))
+    })
+    .await;
+
+    assert!(
+        !repo.join(ARGV).exists(),
+        "the harness ran in the operator's own checkout, which is the thing this prevents"
+    );
+    let trees = worktrees_under(&repo);
+    assert_eq!(trees.len(), 1, "one agent, one tree: {trees:?}");
+    assert!(trees[0].join(ARGV).exists(), "and that is where it ran: {trees:?}");
+    // Every assertion below is `any(contains)` rather than an element match:
+    // the preamble, the footing and the task are one `-p` argument, which is
+    // what the harness is actually handed.
+    let argv = argv_at(&trees[0]);
+    assert!(argv.iter().any(|arg| arg.contains("fix the flaky test")), "{argv:?}");
+    assert!(
+        argv.iter().any(|arg| arg.contains("worktree of your own")),
+        "the job has to be told where it is standing: {argv:?}"
+    );
+    assert!(
+        argv.iter().any(|arg| arg.contains("Do not use `git stash`")),
+        "and the one thing about a worktree it cannot work out from inside it: {argv:?}"
+    );
+
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+/// Two agents in one codebase work at the same time.
+///
+/// Refused before this, and not by accident: `start_job` took its lock per
+/// repository, because a repository had exactly one work tree and two harnesses
+/// in it would interleave their edits. With a tree each that collision cannot
+/// happen, so the lock moved to the directory, which is what it was always
+/// about. A lock still on the repository would refuse the second agent for a
+/// collision that no longer exists.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn two_agents_in_one_repository_both_get_a_job() {
+    stand_ins();
+    let repo = a_repository_on_a_landed_branch("bench-both");
+    git(&repo, &["checkout", "main"]);
+    // Committed rather than written into the linked directory, because each
+    // agent works in a checkout of its own and an untracked file is in none of
+    // them. Long enough that both jobs are genuinely in flight together.
+    std::fs::write(repo.join(LINGER), "30").unwrap();
+    git(&repo, &["add", "."]);
+    git(&repo, &["commit", "-m", "linger"]);
+
+    // One job each. A stub that answered `code` unconditionally would have each
+    // agent call it until the guard stopped the turn, and every call after the
+    // first is that agent colliding with its own lock, which is a different
+    // fact and the one the assertion below has to be able to see past.
+    let stub = serve(|body| match anyone_said(body, "started work in guaca") {
+        true => Script::Say("It is under way.".into()),
+        false => Script::Code("fix the flaky test".into()),
+    })
+    .await;
+    let h = harness(&stub, &["Engineer", "Reviewer"], GuardLimits::default());
+    put_in_a_bench(&h, &["Engineer", "Reviewer"], &repo);
+
+    let first = h.runtime.send_from_human(h.id("Engineer"), "fix the flaky test").unwrap();
+    h.settle(first).await;
+    let second = h.runtime.send_from_human(h.id("Reviewer"), "fix the other one").unwrap();
+    h.settle(second).await;
+
+    h.wait_until("both harnesses are up", |_| {
+        worktrees_under(&repo).iter().filter(|at| at.join(ARGV).exists()).count() == 2
+    })
+    .await;
+
+    let trees = worktrees_under(&repo);
+    assert_eq!(trees.len(), 2, "one tree each: {trees:?}");
+    // The refusal that used to arrive here, named by who it blames. An agent
+    // colliding with its own lock still says "started by you" and is a
+    // different fact; what must not happen is one agent being held out of the
+    // repository by the other.
+    let transcript = h.transcript();
+    for who in ["started by Engineer", "started by Reviewer"] {
+        assert!(!transcript.contains(who), "one agent was held out by the other:\n{transcript}");
+    }
+
+    for card in ["Engineer", "Reviewer"] {
+        let _ = h.runtime.stop_job(h.agent_named(card).unwrap().id);
+    }
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+/// Both doors into a repository open on the same tree.
+///
+/// `shell` runs one line and `code` runs a harness, and an agent whose job works
+/// in a worktree while its `git status` reads the operator's checkout is being
+/// told about a tree it is not working in. That read is the one an agent most
+/// wants while a job is going, and it is the one that would be wrong.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn both_doors_into_a_repository_open_on_the_same_work_tree() {
+    stand_ins();
+    let repo = a_repository_on_a_landed_branch("bench-doors");
+    git(&repo, &["checkout", "main"]);
+    let linked = repo.to_string_lossy().to_string();
+
+    let stub = serve(move |body| match anyone_said(body, "/worktrees/") {
+        true => Script::Say("I am in my own tree.".into()),
+        false => Script::InRepository("git rev-parse --show-toplevel".into()),
+    })
+    .await;
+    let h = harness(&stub, &["Engineer"], GuardLimits::default());
+    put_in_a_bench(&h, &["Engineer"], &repo);
+
+    let run = h.runtime.send_from_human(h.id("Engineer"), "which directory are you in?").unwrap();
+    h.settle(run).await;
+
+    let told = tool_results(&stub).join("\n");
+    let trees = worktrees_under(&repo);
+    assert_eq!(trees.len(), 1, "asking a question makes the tree if it is not there: {trees:?}");
+    assert!(
+        told.contains(&trees[0].to_string_lossy().to_string()),
+        "the line ran somewhere other than the job's tree:\n{told}"
+    );
+    assert!(
+        !told.lines().any(|line| line.trim() == linked),
+        "and specifically not in the operator's own checkout:\n{told}"
+    );
+
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+/// The bug this was reported for: a tree left on a branch whose work has landed.
+///
+/// A job opens a pull request, the operator merges it, and the branch is still
+/// checked out weeks later. `Footing` already told the *next* job to start
+/// somewhere else, which is why nothing was ever built on top of it, but the
+/// tree itself never moved and the rail went on naming a branch that was over.
+/// On a bench Guaca owns it, so it puts it back.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_landed_branch_is_left_behind_before_the_next_job_starts() {
+    stand_ins();
+    let repo = a_repository_on_a_landed_branch("bench-reset");
+
+    let stub = serve(|body| match anyone_said(body, "Fixed the flaky test") {
+        true => Script::Say("It is done.".into()),
+        false => Script::Code("fix the flaky test".into()),
+    })
+    .await;
+    let h = harness(&stub, &["Engineer"], GuardLimits::default());
+    put_in_a_bench(&h, &["Engineer"], &repo);
+
+    let run = h.runtime.send_from_human(h.id("Engineer"), "fix the flaky test").unwrap();
+    h.settle(run).await;
+    h.wait_until("the job comes back", |h| {
+        h.channel_texts("Engineer").iter().any(|line| line.contains("It is done"))
+    })
+    .await;
+
+    // The tree was cut from `landed`, which is where the operator's checkout was
+    // standing, and the job was told to go back to `main` before it started.
+    let bench = worktrees_under(&repo).pop().expect("the agent has a tree");
+    let argv = argv_at(&bench);
+    let brief = argv
+        .iter()
+        .find(|arg| arg.contains("Where you are starting from"))
+        .unwrap_or_else(|| panic!("the job has to be told its footing: {argv:?}"));
+    assert!(brief.contains("`main`"), "and where the work belongs: {brief}");
+
+    // And the operator's own directory is exactly where they left it.
+    let theirs = guac_lib::repo::status(&repo.to_string_lossy()).await.unwrap();
+    assert_eq!(theirs.branch, "landed", "their checkout is not this app's to move");
+
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn repository_commands_receive_only_granted_secrets_and_refresh_after_rotation() {
+    use guac_lib::domain::connector::CleanConnector;
+    let repo = a_repository("secret-runtime");
+    let stub = serve(|body| {
+        if body["messages"].as_array().unwrap().iter().rev().take_while(|m| m["role"] != "user").any(|m| m["role"] == "tool") {
+            Script::Say("Checked.".into())
+        } else {
+            Script::InRepository(
+                "printf '%s\\n' \"${CLOUDFLARE_API_TOKEN:-missing}\"; printf '%s' \"${CLOUDFLARE_API_TOKEN:-missing}\" | shasum -a 256".into(),
+            )
+        }
+    })
+    .await;
+    let h = harness(&stub, &["Deployer", "Researcher"], GuardLimits::default());
+    put_in_a_repository(&h, "Deployer", &repo, Gate::Open);
+    let repository = h.runtime.store().agent_repository(h.id("Deployer")).unwrap().unwrap();
+    h.runtime.store().set_agent_repository(h.id("Researcher"), Some(repository.id)).unwrap();
+    let agent = h.runtime.store().get_agent(h.id("Deployer")).unwrap().unwrap();
+    let saved = h
+        .runtime
+        .store()
+        .create_connector(&CleanConnector {
+            group_id: agent.group_id,
+            service: "Cloudflare".into(),
+            account: String::new(),
+            env_var: "CLOUDFLARE_API_TOKEN".into(),
+            note: String::new(),
+            secret: "private-cloudflare-fixture".into(),
+            agents: vec![agent.id],
+        })
+        .unwrap();
+    let run = h.runtime.send_from_human(agent.id, "Check access").unwrap();
+    h.settle(run).await;
+    let results = tool_results(&stub).join("\n");
+    assert!(results.contains("[REDACTED]"), "{results}");
+    assert!(!results.contains("private-cloudflare-fixture"));
+    let run = h.runtime.send_from_human(h.id("Researcher"), "Check access").unwrap();
+    h.settle(run).await;
+    assert!(tool_results(&stub).join("\n").contains("missing"));
+    h.runtime.store().update_connector(saved.id, &[agent.id], Some("new-private-value")).unwrap();
+    let run = h.runtime.send_from_human(agent.id, "Check rotated access").unwrap();
+    h.settle(run).await;
+    use sha2::{Digest, Sha256};
+    let expected = format!("{:x}", Sha256::digest(b"new-private-value"));
+    assert!(tool_results(&stub).last().unwrap().contains(&expected));
+    h.runtime.store().update_connector(saved.id, &[], None).unwrap();
+    let run = h.runtime.send_from_human(agent.id, "Check revoked access").unwrap();
+    h.settle(run).await;
+    assert!(tool_results(&stub).last().unwrap().contains("missing"));
+    assert!(h.runtime.store().connector_env(agent.id).unwrap().is_empty());
+    assert!(!h.transcript().contains("private-cloudflare-fixture"));
+    let _ = std::fs::remove_dir_all(repo);
+}
+
+#[tokio::test]
+async fn every_coding_harness_receives_secrets_without_putting_values_in_guaca_output() {
+    stand_ins();
+    for (which, name) in
+        [(Which::Pi, "secret-pi"), (Which::Claude, "secret-claude"), (Which::Codex, "secret-codex")]
+    {
+        let repo = a_repository(name);
+        std::fs::write(repo.join(".secret_probe"), "").unwrap();
+        let env = guac_lib::secrets::Environment {
+            names: vec!["CLOUDFLARE_API_TOKEN".into()],
+            values: std::collections::BTreeMap::from([(
+                "CLOUDFLARE_API_TOKEN".into(),
+                "private-harness-fixture".into(),
+            )]),
+        };
+        let mut progress = Vec::new();
+        let done =
+            coding::run_with_env(which, repo.to_str().unwrap(), "check", None, None, &env, |p| {
+                progress.push(p)
+            })
+            .await
+            .unwrap();
+        assert!(done.failed.is_none(), "{which:?}");
+        assert!(done.said.contains("[REDACTED]"), "{which:?}: {}", done.said);
+        assert!(!format!("{progress:?} {done:?}").contains("private-harness-fixture"));
+        let recorded = if which == Which::Codex {
+            std::fs::read_to_string(repo.join(".rpc.jsonl")).unwrap()
+        } else {
+            argv_at(&repo).join("\n")
+        };
+        assert!(recorded.contains("CLOUDFLARE_API_TOKEN"));
+        assert!(!recorded.contains("private-harness-fixture"));
+        let _ = std::fs::remove_dir_all(repo);
+    }
+}
+
+#[tokio::test]
+#[ignore = "live: checks all three signed-in harnesses with synthetic credentials"]
+async fn real_harness_shells_receive_the_granted_environment() {
+    use sha2::{Digest, Sha256};
+    let mut failures = Vec::new();
+    for which in Which::ALL {
+        let repo = a_repository(&format!("live-secret-{}", which.as_str()));
+        std::fs::write(repo.join("check-secret.py"),
+            "import hashlib, os\nfrom pathlib import Path\nPath('secret-result.txt').write_text(hashlib.sha256(os.environ.get('CLOUDFLARE_API_TOKEN', '').encode()).hexdigest())\n").unwrap();
+        let value = format!("synthetic-{}", uuid::Uuid::new_v4());
+        let expected = format!("{:x}", Sha256::digest(value.as_bytes()));
+        let env = guac_lib::secrets::Environment {
+            names: vec!["CLOUDFLARE_API_TOKEN".into()],
+            values: std::collections::BTreeMap::from([("CLOUDFLARE_API_TOKEN".into(), value)]),
+        };
+        let result = tokio::time::timeout(std::time::Duration::from_secs(180), coding::run_with_env(
+            which, repo.to_str().unwrap(),
+            "Run python3 check-secret.py once using your shell tool. Do not edit the script or inspect environment values. Do not commit, use other tools, or delegate. Then say done.",
+            None, None, &env, |_| {},
+        )).await;
+        let passed = matches!(result, Ok(Ok(_)))
+            && std::fs::read_to_string(repo.join("secret-result.txt")).ok().as_deref()
+                == Some(&expected);
+        if !passed {
+            failures.push(format!("{}: {result:?}", which.as_str()));
+        }
+        let _ = std::fs::remove_dir_all(repo);
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_runtime_coding_job_uses_the_agents_secret_grant() {
+    stand_ins();
+    let repo = a_repository("secret-runtime-job");
+    std::fs::write(repo.join(".secret_probe"), "").unwrap();
+    let stub = serve(|body| {
+        if anyone_said(body, "has finished") {
+            Script::Say("Secret job complete.".into())
+        } else if anyone_said(body, "could not finish") {
+            Script::Say("Secret job failed.".into())
+        } else {
+            Script::Code("Check deployment access".into())
+        }
+    })
+    .await;
+    let h = harness(&stub, &["Deployer"], GuardLimits::default());
+    put_in_a_repository(&h, "Deployer", &repo, Gate::Open);
+    let agent = h.agent_named("Deployer").unwrap();
+    h.runtime
+        .store()
+        .create_connector(&guac_lib::domain::connector::CleanConnector {
+            group_id: agent.group_id,
+            service: "Cloudflare".into(),
+            account: String::new(),
+            env_var: "CLOUDFLARE_API_TOKEN".into(),
+            note: String::new(),
+            secret: "private-runtime-fixture".into(),
+            agents: vec![agent.id],
+        })
+        .unwrap();
+    let run = h.runtime.send_from_human(agent.id, "Check deployment access").unwrap();
+    h.settle(run).await;
+    h.wait_until("the job answers", |h| {
+        h.channel_texts("Deployer").iter().any(|line| line.contains("Secret job"))
+    })
+    .await;
+    let text = h.transcript();
+    assert!(text.contains("Secret job complete."), "{text}");
+    assert!(text.contains("[REDACTED]"), "{text}");
+    assert!(!text.contains("private-runtime-fixture"));
+    let _ = std::fs::remove_dir_all(repo);
+}

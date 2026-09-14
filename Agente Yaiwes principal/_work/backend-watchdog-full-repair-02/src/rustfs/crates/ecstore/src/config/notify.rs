@@ -1,0 +1,202 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use super::target_defaults::{amqp_kvs, kafka_kvs, mysql_kvs, nats_kvs, postgres_kvs, pulsar_kvs, redis_kvs};
+use rustfs_config::notify::NOTIFY_REDIS_DEFAULT_CHANNEL;
+use rustfs_config::server_config::{KV, KVS};
+use rustfs_config::{
+    COMMENT_KEY, DEFAULT_LIMIT, ENABLE_KEY, EVENT_DEFAULT_DIR, EnableState, MQTT_BROKER, MQTT_KEEP_ALIVE_INTERVAL, MQTT_PASSWORD,
+    MQTT_QOS, MQTT_QUEUE_DIR, MQTT_QUEUE_LIMIT, MQTT_RECONNECT_INTERVAL, MQTT_TLS_CA, MQTT_TLS_CLIENT_CERT, MQTT_TLS_CLIENT_KEY,
+    MQTT_TLS_POLICY, MQTT_TLS_TRUST_LEAF_AS_CA, MQTT_TOPIC, MQTT_USERNAME, MQTT_WS_PATH_ALLOWLIST, WEBHOOK_AUTH_TOKEN,
+    WEBHOOK_CLIENT_CA, WEBHOOK_CLIENT_CERT, WEBHOOK_CLIENT_KEY, WEBHOOK_ENDPOINT, WEBHOOK_QUEUE_DIR, WEBHOOK_QUEUE_LIMIT,
+    WEBHOOK_SKIP_TLS_VERIFY,
+};
+use std::sync::LazyLock;
+
+/// The default configuration collection of webhooks，
+/// Initialized only once during the program life cycle, enabling high-performance lazy loading.
+///
+/// This table has no `batch_size`/`max_retry`/`retry_interval`/`http_timeout` keys, unlike
+/// [`crate::config::audit::DEFAULT_AUDIT_WEBHOOK_KVS`] — matching MinIO upstream, whose
+/// `internal/config/notify/parse.go` `DefaultWebhookKVS` (bucket event notifications) also
+/// omits them while `internal/logger/config.go`'s `DefaultAuditWebhookKVS` carries them.
+/// Intentional, not a copy/paste gap (backlog#2054).
+pub static DEFAULT_NOTIFY_WEBHOOK_KVS: LazyLock<KVS> = LazyLock::new(|| {
+    KVS(vec![
+        KV {
+            key: ENABLE_KEY.to_owned(),
+            value: EnableState::Off.to_string(),
+            hidden_if_empty: false,
+        },
+        KV {
+            key: WEBHOOK_ENDPOINT.to_owned(),
+            value: "".to_owned(),
+            hidden_if_empty: false,
+        },
+        // Sensitive information such as authentication tokens is hidden when the value is empty, enhancing security
+        KV {
+            key: WEBHOOK_AUTH_TOKEN.to_owned(),
+            value: "".to_owned(),
+            hidden_if_empty: true,
+        },
+        KV {
+            key: WEBHOOK_QUEUE_LIMIT.to_owned(),
+            value: DEFAULT_LIMIT.to_string(),
+            hidden_if_empty: false,
+        },
+        KV {
+            key: WEBHOOK_QUEUE_DIR.to_owned(),
+            value: EVENT_DEFAULT_DIR.to_owned(),
+            hidden_if_empty: false,
+        },
+        KV {
+            key: WEBHOOK_CLIENT_CERT.to_owned(),
+            value: "".to_owned(),
+            hidden_if_empty: false,
+        },
+        KV {
+            key: WEBHOOK_CLIENT_KEY.to_owned(),
+            value: "".to_owned(),
+            hidden_if_empty: false,
+        },
+        KV {
+            key: WEBHOOK_CLIENT_CA.to_owned(),
+            value: "".to_owned(),
+            hidden_if_empty: false,
+        },
+        KV {
+            key: WEBHOOK_SKIP_TLS_VERIFY.to_owned(),
+            value: EnableState::Off.to_string(),
+            hidden_if_empty: false,
+        },
+        KV {
+            key: COMMENT_KEY.to_owned(),
+            value: "".to_owned(),
+            hidden_if_empty: false,
+        },
+    ])
+});
+
+/// MQTT's default configuration collection
+///
+/// `MQTT_QOS`/`MQTT_KEEP_ALIVE_INTERVAL`/`MQTT_RECONNECT_INTERVAL` default to `"0"`/`"0s"`/`"0s"`
+/// here, matching MinIO's `DefaultMQTTKVS` in `internal/config/notify/parse.go`
+/// byte-for-byte — this table is a faithful port. [`crate::config::audit::DEFAULT_AUDIT_MQTT_KVS`]
+/// uses stronger, RustFS-original defaults instead (MinIO has no MQTT audit target to compare
+/// against); that divergence is intentional, not a copy/paste gap (backlog#2054).
+pub static DEFAULT_NOTIFY_MQTT_KVS: LazyLock<KVS> = LazyLock::new(|| {
+    KVS(vec![
+        KV {
+            key: ENABLE_KEY.to_owned(),
+            value: EnableState::Off.to_string(),
+            hidden_if_empty: false,
+        },
+        KV {
+            key: MQTT_BROKER.to_owned(),
+            value: "".to_owned(),
+            hidden_if_empty: false,
+        },
+        KV {
+            key: MQTT_TOPIC.to_owned(),
+            value: "".to_owned(),
+            hidden_if_empty: false,
+        },
+        // Sensitive information such as passwords are hidden when the value is empty
+        KV {
+            key: MQTT_PASSWORD.to_owned(),
+            value: "".to_owned(),
+            hidden_if_empty: true,
+        },
+        KV {
+            key: MQTT_USERNAME.to_owned(),
+            value: "".to_owned(),
+            hidden_if_empty: false,
+        },
+        KV {
+            key: MQTT_QOS.to_owned(),
+            value: "0".to_owned(),
+            hidden_if_empty: false,
+        },
+        KV {
+            key: MQTT_KEEP_ALIVE_INTERVAL.to_owned(),
+            value: "0s".to_owned(),
+            hidden_if_empty: false,
+        },
+        KV {
+            key: MQTT_RECONNECT_INTERVAL.to_owned(),
+            value: "0s".to_owned(),
+            hidden_if_empty: false,
+        },
+        KV {
+            key: MQTT_QUEUE_DIR.to_owned(),
+            value: EVENT_DEFAULT_DIR.to_owned(),
+            hidden_if_empty: false,
+        },
+        KV {
+            key: MQTT_QUEUE_LIMIT.to_owned(),
+            value: DEFAULT_LIMIT.to_string(),
+            hidden_if_empty: false,
+        },
+        KV {
+            key: MQTT_TLS_POLICY.to_owned(),
+            value: "".to_owned(),
+            hidden_if_empty: true,
+        },
+        KV {
+            key: MQTT_TLS_CA.to_owned(),
+            value: "".to_owned(),
+            hidden_if_empty: true,
+        },
+        KV {
+            key: MQTT_TLS_CLIENT_CERT.to_owned(),
+            value: "".to_owned(),
+            hidden_if_empty: true,
+        },
+        KV {
+            key: MQTT_TLS_CLIENT_KEY.to_owned(),
+            value: "".to_owned(),
+            hidden_if_empty: true,
+        },
+        KV {
+            key: MQTT_TLS_TRUST_LEAF_AS_CA.to_owned(),
+            value: "".to_owned(),
+            hidden_if_empty: true,
+        },
+        KV {
+            key: MQTT_WS_PATH_ALLOWLIST.to_owned(),
+            value: "".to_owned(),
+            hidden_if_empty: true,
+        },
+        KV {
+            key: COMMENT_KEY.to_owned(),
+            value: "".to_owned(),
+            hidden_if_empty: false,
+        },
+    ])
+});
+
+pub static DEFAULT_NOTIFY_AMQP_KVS: LazyLock<KVS> = LazyLock::new(amqp_kvs);
+
+pub static DEFAULT_NOTIFY_NATS_KVS: LazyLock<KVS> = LazyLock::new(nats_kvs);
+
+pub static DEFAULT_NOTIFY_PULSAR_KVS: LazyLock<KVS> = LazyLock::new(pulsar_kvs);
+
+pub static DEFAULT_NOTIFY_REDIS_KVS: LazyLock<KVS> = LazyLock::new(|| redis_kvs(NOTIFY_REDIS_DEFAULT_CHANNEL));
+
+pub static DEFAULT_NOTIFY_POSTGRES_KVS: LazyLock<KVS> = LazyLock::new(postgres_kvs);
+
+pub static DEFAULT_NOTIFY_KAFKA_KVS: LazyLock<KVS> = LazyLock::new(kafka_kvs);
+
+/// MySQL notification target default configuration
+pub static DEFAULT_NOTIFY_MYSQL_KVS: LazyLock<KVS> = LazyLock::new(|| mysql_kvs("rustfs_events"));

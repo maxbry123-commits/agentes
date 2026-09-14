@@ -1,0 +1,4969 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Programmable in-process S3 target for replication failure-path tests and
+//! on-demand-migration source scenarios.
+//!
+//! See [`README.md`](README.md) for the supported protocol and fault surface.
+
+use async_trait::async_trait;
+use base64_simd::STANDARD as BASE64_STANDARD;
+use bytes::{Bytes, BytesMut};
+use futures::StreamExt;
+use http::header::{CONTENT_LENGTH, ETAG, LAST_MODIFIED, RANGE, USER_AGENT};
+use http::{HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri};
+use hyper::body::Incoming;
+use hyper::server::conn::http1;
+use hyper::service::service_fn;
+use hyper_util::rt::{TokioIo, TokioTimer};
+use md5::{Digest as Md5Digest, Md5};
+use s3s::access::{S3Access, S3AccessContext};
+use s3s::auth::SimpleAuth;
+use s3s::dto::{
+    AbortMultipartUploadInput, AbortMultipartUploadOutput, CommonPrefix, CompleteMultipartUploadInput,
+    CompleteMultipartUploadOutput, CreateMultipartUploadInput, CreateMultipartUploadOutput, DeleteMarkerEntry, DeleteObjectInput,
+    DeleteObjectOutput, DeleteObjectTaggingInput, DeleteObjectTaggingOutput, ETag, GetBucketVersioningInput,
+    GetBucketVersioningOutput, GetObjectInput, GetObjectLegalHoldInput, GetObjectLegalHoldOutput,
+    GetObjectLockConfigurationInput, GetObjectLockConfigurationOutput, GetObjectOutput, GetObjectRetentionInput,
+    GetObjectRetentionOutput, GetObjectTaggingInput, GetObjectTaggingOutput, HeadBucketInput, HeadBucketOutput, HeadObjectInput,
+    HeadObjectOutput, ListObjectVersionsInput, ListObjectVersionsOutput, ListObjectsV2Input, ListObjectsV2Output, Object,
+    ObjectLockConfiguration, ObjectLockEnabled, ObjectLockLegalHold, ObjectLockLegalHoldStatus, ObjectLockMode,
+    ObjectLockRetention, ObjectLockRetentionMode, ObjectStorageClass, ObjectVersionId, PutObjectInput, PutObjectLegalHoldInput,
+    PutObjectLegalHoldOutput, PutObjectOutput, PutObjectRetentionInput, PutObjectRetentionOutput, PutObjectTaggingInput,
+    PutObjectTaggingOutput, Range, StreamingBlob, Tag, TagSet, Timestamp, TimestampFormat, UploadPartInput, UploadPartOutput,
+};
+use s3s::service::{S3Service, S3ServiceBuilder};
+use s3s::validation::{AwsNameValidation, NameValidation};
+use s3s::{Body, S3, S3Request, S3Response, S3Result};
+use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::error::Error;
+use std::io;
+use std::net::SocketAddr;
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{Duration, SystemTime};
+use tokio::net::TcpListener;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, watch};
+use tokio::task::JoinHandle;
+use tokio::time::{sleep, timeout};
+use uuid::Uuid;
+
+type BoxError = Box<dyn Error + Send + Sync>;
+
+const MAX_BUFFERED_BODY_BYTES: usize = 64 * 1024 * 1024;
+/// Hard ceiling for [`FakeS3TargetOptions::max_object_bytes`].
+const MAX_CONFIGURABLE_OBJECT_BYTES: usize = 256 * 1024 * 1024;
+const MAX_TOTAL_STORED_BYTES: usize = 128 * 1024 * 1024;
+const MAX_OBJECT_VERSIONS: usize = 4096;
+const MAX_MULTIPART_UPLOADS: usize = 256;
+const MAX_MULTIPART_PARTS: usize = 10_000;
+const MAX_BUCKETS: usize = 256;
+const MIN_MULTIPART_PART_BYTES: usize = 5 * 1024 * 1024;
+const MAX_REQUEST_RECORDS: usize = 4096;
+const MAX_SCRIPTED_FAULTS: usize = 4096;
+const MAX_RETAINED_IDENTIFIER_BYTES: usize = 1024;
+const MAX_STORED_METADATA_BYTES: usize = 2 * 1024;
+const MAX_CONTENT_TYPE_BYTES: usize = 1024;
+const MAX_CONNECTIONS: usize = 64;
+const MAX_CONCURRENT_BODY_REQUESTS: usize = MAX_TOTAL_STORED_BYTES / MAX_BUFFERED_BODY_BYTES;
+const MAX_FAULT_DURATION: Duration = Duration::from_secs(30);
+const MAX_REQUEST_DURATION: Duration = Duration::from_secs(65);
+const MAX_CONNECTION_DURATION: Duration = Duration::from_secs(100);
+const DISCONNECT_HEADER: &str = "x-rustfs-fake-target-disconnect";
+const STALL_HEADER: &str = "x-rustfs-fake-target-stall-ms";
+const WRONG_ETAG: &str = "\"fake-target-wrong-etag\"";
+/// Version id stored for objects in unversioned buckets. It is the only id a
+/// versioned request may address there, and it is never echoed on the wire.
+const NULL_VERSION_ID: &str = "null";
+const MAX_LIST_KEYS: i32 = 1000;
+const SOURCE_VERSION_ID_HEADERS: [&str; 2] = ["x-rustfs-source-version-id", "x-minio-source-version-id"];
+const SOURCE_MTIME_HEADERS: [&str; 2] = ["x-rustfs-source-mtime", "x-minio-source-mtime"];
+const SOURCE_REPLICATION_REQUEST_HEADERS: [&str; 2] =
+    ["x-rustfs-source-replication-request", "x-minio-source-replication-request"];
+const SOURCE_ETAG_HEADERS: [&str; 2] = ["x-rustfs-source-etag", "x-minio-source-etag"];
+const SOURCE_TAGGING_TIMESTAMP_HEADERS: [&str; 2] = [
+    "x-rustfs-source-replication-tagging-timestamp",
+    "x-minio-source-replication-tagging-timestamp",
+];
+const SOURCE_RETENTION_TIMESTAMP_HEADERS: [&str; 2] = [
+    "x-rustfs-source-replication-retention-timestamp",
+    "x-minio-source-replication-retention-timestamp",
+];
+const SOURCE_LEGALHOLD_TIMESTAMP_HEADERS: [&str; 2] = [
+    "x-rustfs-source-replication-legalhold-timestamp",
+    "x-minio-source-replication-legalhold-timestamp",
+];
+/// Wire prefix of the SSE-C passthrough replication transport headers
+/// (`X-Rustfs-Replication-*`). In the default mode the fake stores them like a
+/// RustFS target and echoes SSE-C evidence back on HEAD/GET; with
+/// [`FakeS3Target::drop_unlisted_replication_headers`] it models MinIO /
+/// generic S3, which silently discard unknown x-* headers.
+const REPLICATION_SSE_TRANSPORT_PREFIX: &str = "x-rustfs-replication-";
+const REPLICATION_SSEC_ALGORITHM_TRANSPORT_HEADER: &str = "x-rustfs-replication-ssec-algorithm";
+const RESERVED_BUCKET_PREFIXES: [&str; 3] = ["xn--", "sthree-", "amzn-s3-demo-"];
+const RESERVED_BUCKET_SUFFIXES: [&str; 6] = ["-s3alias", "--ol-s3", ".mrap", "--x-s3", "--table-s3", "-an"];
+
+pub const FAKE_ACCESS_KEY: &str = "fake-access";
+pub const FAKE_SECRET_KEY: &str = "fake-secret";
+
+/// S3 operations understood by the target and its request journal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Operation {
+    HeadBucket,
+    GetBucketVersioning,
+    GetObjectLockConfiguration,
+    PutObject,
+    GetObject,
+    HeadObject,
+    DeleteObject,
+    GetObjectTagging,
+    PutObjectTagging,
+    DeleteObjectTagging,
+    GetObjectRetention,
+    PutObjectRetention,
+    GetObjectLegalHold,
+    PutObjectLegalHold,
+    ListObjectVersions,
+    ListObjectsV2,
+    CreateMultipartUpload,
+    UploadPart,
+    CompleteMultipartUpload,
+    AbortMultipartUpload,
+    #[default]
+    Unknown,
+}
+
+/// Versioning mode chosen at bucket creation; it never changes afterwards.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BucketMode {
+    /// PUT appends a version, DELETE writes a delete marker (the replication
+    /// target model and the `create_bucket` default).
+    Versioned,
+    /// PUT overwrites in place, DELETE removes the key, and no
+    /// `x-amz-version-id` is ever returned (a plain migration source).
+    Unversioned,
+}
+
+/// Per-instance knobs for [`FakeS3Target::start_with_options`]. The default
+/// keeps every limit documented in the README.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FakeS3TargetOptions {
+    /// Largest single PUT body, uploaded part, and stored object. Raising it
+    /// above the 64 MiB default also raises the total storage budget to twice
+    /// this value so one object of that size can still be stored; 256 MiB is
+    /// the hard ceiling.
+    pub max_object_bytes: usize,
+}
+
+impl Default for FakeS3TargetOptions {
+    fn default() -> Self {
+        Self {
+            max_object_bytes: MAX_BUFFERED_BODY_BYTES,
+        }
+    }
+}
+
+/// Metadata attached to an object stored through
+/// [`FakeS3Target::put_seed_object`]. User metadata names are stored
+/// lowercased, exactly as they would arrive as `x-amz-meta-*` headers.
+#[derive(Clone, Default)]
+pub struct SeedMetadata {
+    content_type: Option<String>,
+    metadata: Vec<(String, String)>,
+    standard_headers: StandardHeaders,
+    last_modified: Option<Timestamp>,
+}
+
+impl SeedMetadata {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn content_type(mut self, value: impl Into<String>) -> Self {
+        self.content_type = Some(value.into());
+        self
+    }
+
+    /// Add one `x-amz-meta-<name>` entry (name given without the prefix).
+    pub fn user_metadata(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.metadata.push((name.into(), value.into()));
+        self
+    }
+
+    pub fn cache_control(mut self, value: impl Into<String>) -> Self {
+        self.standard_headers.cache_control = Some(value.into());
+        self
+    }
+
+    pub fn content_disposition(mut self, value: impl Into<String>) -> Self {
+        self.standard_headers.content_disposition = Some(value.into());
+        self
+    }
+
+    pub fn content_encoding(mut self, value: impl Into<String>) -> Self {
+        self.standard_headers.content_encoding = Some(value.into());
+        self
+    }
+
+    pub fn content_language(mut self, value: impl Into<String>) -> Self {
+        self.standard_headers.content_language = Some(value.into());
+        self
+    }
+
+    /// Verbatim `Expires` header value.
+    pub fn expires(mut self, value: impl Into<String>) -> Self {
+        self.standard_headers.expires = Some(value.into());
+        self
+    }
+
+    /// Fixed `Last-Modified` instead of the seeding time.
+    pub fn last_modified(mut self, value: SystemTime) -> Self {
+        self.last_modified = Some(Timestamp::from(value));
+        self
+    }
+}
+
+/// Resolved storage limits derived from [`FakeS3TargetOptions`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct StoreLimits {
+    max_object_bytes: usize,
+    max_total_bytes: usize,
+}
+
+impl Default for StoreLimits {
+    fn default() -> Self {
+        Self::from_options(&FakeS3TargetOptions::default())
+    }
+}
+
+impl StoreLimits {
+    fn from_options(options: &FakeS3TargetOptions) -> Self {
+        assert!(
+            (1..=MAX_CONFIGURABLE_OBJECT_BYTES).contains(&options.max_object_bytes),
+            "fake target object cap must be between 1 byte and 256 MiB"
+        );
+        Self {
+            max_object_bytes: options.max_object_bytes,
+            max_total_bytes: MAX_TOTAL_STORED_BYTES.max(options.max_object_bytes.saturating_mul(2)),
+        }
+    }
+}
+
+/// One fault consumed by the next matching operation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FaultAction {
+    /// Return the exact HTTP status without entering the S3 backend.
+    Status(StatusCode),
+    /// Return an arbitrary 4xx/5xx status without entering the S3 backend,
+    /// with the S3 error code a real service would pair with it (404
+    /// `NoSuchKey`, 429 `SlowDown`, 500 `InternalError`, ...).
+    ResponseStatus(u16),
+    /// GetObject only: announce the full `Content-Length`, send the first N
+    /// body bytes, then abort the connection so the client observes a short
+    /// read. Ignored by every other operation.
+    TruncateBodyAt(usize),
+    /// GetObject only: deliver the response body in `chunk_bytes` slices,
+    /// sleeping `delay` between them. The head and the first slice leave
+    /// immediately, so this is a mid-body stall rather than a first-byte one;
+    /// a `delay` above the reader's idle budget is what a source that stops
+    /// pushing bytes looks like. Ignored by every other operation.
+    SlowSendBody { chunk_bytes: usize, delay: Duration },
+    /// Apply the request normally, then hold the complete response (status
+    /// line included) for the duration before the first byte is written —
+    /// the first-byte-timeout scenario. Error responses are not held.
+    Stall(Duration),
+    /// Wait before dispatching the request normally.
+    Delay(Duration),
+    /// Close once the body stream reaches this logical byte threshold. Hyper may
+    /// already have buffered the rest of the current frame; the journal reports
+    /// the threshold, and the backend never receives or stores the request.
+    DisconnectAfterBytes(usize),
+    /// Apply the request, then close the connection before returning its response.
+    DisconnectAfterResponse,
+    /// Drain a request body in fixed-size slices, sleeping after every slice.
+    SlowDrain { chunk_bytes: usize, delay: Duration },
+    /// Store the request normally but replace the response ETag.
+    WrongEtag,
+}
+
+/// Replication LWW timestamp headers observed on a request, journaled so
+/// sender-side tests can assert what a real target would receive.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ReplicationTimestampHeaders {
+    pub tagging: Option<String>,
+    pub retention: Option<String>,
+    pub legalhold: Option<String>,
+}
+
+impl ReplicationTimestampHeaders {
+    fn from_headers(headers: &HeaderMap) -> Self {
+        Self {
+            tagging: header_value(headers, &SOURCE_TAGGING_TIMESTAMP_HEADERS).map(bounded_journal_value),
+            retention: header_value(headers, &SOURCE_RETENTION_TIMESTAMP_HEADERS).map(bounded_journal_value),
+            legalhold: header_value(headers, &SOURCE_LEGALHOLD_TIMESTAMP_HEADERS).map(bounded_journal_value),
+        }
+    }
+}
+
+/// Read-proxy related headers observed on a request, journaled so proxy
+/// tests can assert the exact wire contract: the anti-loop marker present,
+/// the replication-check exemption absent, and the client SSE-C key family
+/// forwarded verbatim. The SSE-C key value itself is never retained — only
+/// its presence.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ProxyHeaderSnapshot {
+    pub source_proxy_request: Option<String>,
+    pub replication_check: Option<String>,
+    pub ssec_algorithm: Option<String>,
+    pub ssec_key_present: bool,
+    pub ssec_key_md5: Option<String>,
+    /// Whether the request carried any `X-Rustfs-Replication-*` SSE-C
+    /// passthrough transport header, so fail-closed tests can assert the
+    /// sender really shipped the material a dropping target discarded.
+    pub ssec_transport_present: bool,
+}
+
+impl ProxyHeaderSnapshot {
+    fn from_headers(headers: &HeaderMap) -> Self {
+        Self {
+            source_proxy_request: header_value(headers, &["x-rustfs-source-proxy-request", "x-minio-source-proxy-request"])
+                .map(bounded_journal_value),
+            replication_check: header_value(headers, &["x-rustfs-source-replication-check", "x-minio-source-replication-check"])
+                .map(bounded_journal_value),
+            ssec_algorithm: header_value(headers, &["x-amz-server-side-encryption-customer-algorithm"])
+                .map(bounded_journal_value),
+            ssec_key_present: headers.contains_key("x-amz-server-side-encryption-customer-key"),
+            ssec_key_md5: header_value(headers, &["x-amz-server-side-encryption-customer-key-md5"]).map(bounded_journal_value),
+            ssec_transport_present: headers
+                .keys()
+                .any(|name| name.as_str().starts_with(REPLICATION_SSE_TRANSPORT_PREFIX)),
+        }
+    }
+}
+
+/// Credential-free request metadata retained for deterministic assertions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequestRecord {
+    pub sequence: u64,
+    pub operation: Operation,
+    pub method: Method,
+    pub bucket: String,
+    pub key: Option<String>,
+    pub version_id: Option<String>,
+    pub upload_id: Option<String>,
+    pub part_number: Option<i32>,
+    pub content_length: Option<u64>,
+    pub consumed_bytes: Option<usize>,
+    pub replication_timestamps: ReplicationTimestampHeaders,
+    pub proxy_headers: ProxyHeaderSnapshot,
+    /// Integrity and framing headers of the request, so outbound-transport
+    /// tests can pin what the sender actually put on the wire.
+    pub transport: TransportSnapshot,
+    /// Verbatim `Range` request header, so range-forwarding tests can pin the
+    /// exact wire syntax a migrating server sent to its source.
+    pub range: Option<String>,
+    pub user_agent: Option<String>,
+    /// ListObjectsV2 `prefix` query value.
+    pub prefix: Option<String>,
+    /// ListObjectsV2 `continuation-token` query value, journaled so resumed
+    /// listings can be told apart from restarted ones.
+    pub continuation_token: Option<String>,
+    pub fault: Option<FaultAction>,
+}
+
+/// Integrity and framing headers of an upload. A remote target's acceptance
+/// rules key off exactly these (rustfs#6853: `aws-chunked` framing stored
+/// verbatim; rustfs#7082: Object Lock PUTs need `Content-MD5` or
+/// `x-amz-checksum-*`), so the journal records them for every request.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TransportSnapshot {
+    /// The body was announced as `aws-chunked`: `Content-Encoding` names it,
+    /// an `x-amz-trailer` is declared, or the payload hash is `STREAMING-*`.
+    pub aws_chunked: bool,
+    /// Verbatim `Content-MD5` request header.
+    pub content_md5: Option<String>,
+    /// Sorted names of every `x-amz-checksum-*` header, plus
+    /// `x-amz-sdk-checksum-algorithm` when present (the header a trailer
+    /// checksum announces itself with).
+    pub checksum_headers: Vec<String>,
+    /// Any `x-amz-object-lock-*` header was present.
+    pub object_lock_params: bool,
+}
+
+impl TransportSnapshot {
+    fn from_headers(headers: &HeaderMap) -> Self {
+        let content_encoding_chunked = headers.get_all("content-encoding").iter().any(|value| {
+            value
+                .to_str()
+                .is_ok_and(|value| value.split(',').any(|token| token.trim().eq_ignore_ascii_case("aws-chunked")))
+        });
+        let streaming_payload_hash = header_value(headers, &["x-amz-content-sha256"])
+            .is_some_and(|value| value.to_ascii_uppercase().starts_with("STREAMING-"));
+        let mut checksum_headers: Vec<String> = headers
+            .keys()
+            .map(|name| name.as_str().to_string())
+            .filter(|name| name.starts_with("x-amz-checksum-") || name == "x-amz-sdk-checksum-algorithm")
+            .collect();
+        checksum_headers.sort();
+        checksum_headers.dedup();
+        Self {
+            aws_chunked: content_encoding_chunked || streaming_payload_hash || headers.contains_key("x-amz-trailer"),
+            content_md5: header_value(headers, &["content-md5"]).map(bounded_journal_value),
+            checksum_headers,
+            object_lock_params: headers.keys().any(|name| name.as_str().starts_with("x-amz-object-lock-")),
+        }
+    }
+}
+
+/// Request headers journaled with every record, captured before the fault
+/// script is consulted.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct JournaledHeaders {
+    content_length: Option<u64>,
+    replication_timestamps: ReplicationTimestampHeaders,
+    proxy_headers: ProxyHeaderSnapshot,
+    transport: TransportSnapshot,
+    range: Option<String>,
+    user_agent: Option<String>,
+}
+
+impl JournaledHeaders {
+    fn from_headers(headers: &HeaderMap) -> Self {
+        Self {
+            content_length: headers
+                .get(CONTENT_LENGTH)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse().ok()),
+            replication_timestamps: ReplicationTimestampHeaders::from_headers(headers),
+            proxy_headers: ProxyHeaderSnapshot::from_headers(headers),
+            transport: TransportSnapshot::from_headers(headers),
+            range: header_value(headers, &[RANGE.as_str()]).map(bounded_journal_value),
+            user_agent: header_value(headers, &[USER_AGENT.as_str()]).map(bounded_journal_value),
+        }
+    }
+}
+
+#[derive(Default)]
+struct ControlState {
+    scripts: HashMap<Operation, VecDeque<FaultAction>>,
+    keyed_scripts: HashMap<(Operation, String), VecDeque<FaultAction>>,
+    held_get: Option<HeldGetObject>,
+    requests: VecDeque<RequestRecord>,
+    next_sequence: u64,
+}
+
+#[derive(Clone)]
+struct HeldGetObject {
+    bucket: String,
+    key: String,
+    entered: watch::Sender<usize>,
+    released: watch::Receiver<bool>,
+}
+
+/// Holds every GET of one object, including retries, until this guard is dropped.
+#[must_use = "dropping the guard releases the held GET requests"]
+pub struct GetObjectGate {
+    control: Arc<Mutex<ControlState>>,
+    entered: watch::Receiver<usize>,
+    released: watch::Sender<bool>,
+}
+
+impl GetObjectGate {
+    pub async fn wait_until_entered(&mut self) -> Result<(), watch::error::RecvError> {
+        self.entered.wait_for(|count| *count > 0).await.map(|_| ())
+    }
+}
+
+impl Drop for GetObjectGate {
+    fn drop(&mut self) {
+        lock(&self.control).held_get = None;
+        self.released.send_replace(true);
+    }
+}
+
+#[derive(Default)]
+struct StoreState {
+    assign_own_version_ids: bool,
+    assign_own_multipart_version_ids: bool,
+    /// MinIO-like mode: silently discard non-whitelisted replication
+    /// transport headers instead of storing them (see
+    /// [`REPLICATION_SSE_TRANSPORT_PREFIX`]).
+    drop_unlisted_replication_headers: bool,
+    /// Models a target that cannot decode `aws-chunked` request bodies
+    /// (SeaweedFS 3.97, rustfs#6853): a PutObject or UploadPart announcing that
+    /// framing is refused with `InvalidRequest` before its body is read.
+    reject_aws_chunked_uploads: bool,
+    /// Models AWS S3 / MinIO / most compatible stores (rustfs#7082): a
+    /// PutObject carrying any `x-amz-object-lock-*` header must also carry
+    /// `Content-MD5` or an `x-amz-checksum-*` header.
+    require_checksum_for_object_lock: bool,
+    /// Models Wasabi (rustfs/backlog#2340): a version-addressed DELETE of a
+    /// version id the target never had answers 404 `NoSuchVersion` instead of
+    /// the idempotent 204 RustFS/MinIO give.
+    reject_unknown_version_deletes: bool,
+    limits: StoreLimits,
+    buckets: HashMap<String, BucketState>,
+    uploads: HashMap<String, MultipartState>,
+    total_bytes: usize,
+    total_versions: usize,
+    total_parts: usize,
+}
+
+struct BucketState {
+    versioned: bool,
+    /// Object Lock enabled at creation; reported by GetObjectLockConfiguration.
+    object_lock: bool,
+    /// Versions per key, newest first (see `upsert_version`); an unversioned
+    /// bucket holds exactly one version per key.
+    objects: HashMap<String, Vec<ObjectVersion>>,
+}
+
+/// Standard HTTP object metadata accepted on PUT / CreateMultipartUpload and
+/// replayed verbatim on HEAD / GET.
+#[derive(Clone, Default)]
+struct StandardHeaders {
+    cache_control: Option<String>,
+    content_disposition: Option<String>,
+    content_encoding: Option<String>,
+    content_language: Option<String>,
+    expires: Option<String>,
+}
+
+impl StandardHeaders {
+    fn validate(&self) -> S3Result {
+        let too_long = [
+            &self.cache_control,
+            &self.content_disposition,
+            &self.content_encoding,
+            &self.content_language,
+            &self.expires,
+        ]
+        .into_iter()
+        .flatten()
+        .any(|value| value.len() > MAX_CONTENT_TYPE_BYTES);
+        if too_long {
+            Err(s3s::s3_error!(InvalidArgument, "standard object headers exceed 1024 bytes"))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+#[derive(Clone)]
+struct ObjectVersion {
+    version_id: String,
+    body: Bytes,
+    e_tag: String,
+    last_modified: Timestamp,
+    delete_marker: bool,
+    content_type: Option<String>,
+    metadata: Option<HashMap<String, String>>,
+    standard_headers: StandardHeaders,
+    /// Object tags as ordered key/value pairs (PutObjectTagging replaces the
+    /// whole set, DeleteObjectTagging clears it).
+    tags: Vec<(String, String)>,
+    /// SSE-C passthrough transport headers stored with the version (RustFS
+    /// target behavior); empty when the drop mode discarded them.
+    replication_sse_headers: Vec<(String, String)>,
+    /// Object Lock state of the version: retention (mode, retain-until) from
+    /// the PUT / CreateMultipartUpload headers or PutObjectRetention, and the
+    /// legal hold flag; replayed on HEAD.
+    lock: VersionLock,
+}
+
+#[derive(Clone, Default)]
+struct VersionLock {
+    retention: Option<(String, Timestamp)>,
+    /// `None` until a legal hold status was ever set; like S3, HEAD then
+    /// reports nothing, while an explicit OFF is reported as `OFF`.
+    legal_hold: Option<bool>,
+}
+
+impl VersionLock {
+    fn from_headers(
+        mode: Option<ObjectLockMode>,
+        retain_until: Option<Timestamp>,
+        legal_hold: Option<ObjectLockLegalHoldStatus>,
+    ) -> Self {
+        Self {
+            retention: mode.zip(retain_until).map(|(mode, until)| (mode.as_str().to_string(), until)),
+            legal_hold: legal_hold.map(|status| status.as_str().eq_ignore_ascii_case("ON")),
+        }
+    }
+
+    fn legal_hold_status(&self) -> Option<ObjectLockLegalHoldStatus> {
+        self.legal_hold.map(|on| {
+            ObjectLockLegalHoldStatus::from_static(if on {
+                ObjectLockLegalHoldStatus::ON
+            } else {
+                ObjectLockLegalHoldStatus::OFF
+            })
+        })
+    }
+}
+
+#[derive(Clone)]
+struct MultipartState {
+    bucket: String,
+    key: String,
+    version_id: String,
+    content_type: Option<String>,
+    metadata: Option<HashMap<String, String>>,
+    standard_headers: StandardHeaders,
+    replication_sse_headers: Vec<(String, String)>,
+    lock: VersionLock,
+    parts: BTreeMap<i32, MultipartPart>,
+}
+
+#[derive(Clone)]
+struct MultipartPart {
+    body: Bytes,
+    e_tag: String,
+    digest: [u8; 16],
+    /// Plaintext length declared by an SSE-C passthrough sender
+    /// (`x-rustfs-replication-part-actual-size`); RustFS validates the 5 MiB
+    /// minimum against it rather than against the stored bytes.
+    actual_size: Option<usize>,
+}
+
+#[derive(Clone)]
+struct FakeBackend {
+    store: Arc<Mutex<StoreState>>,
+    control: Arc<Mutex<ControlState>>,
+    body_limit: Arc<Semaphore>,
+}
+
+#[derive(Clone)]
+struct FaultAccess {
+    control: Arc<Mutex<ControlState>>,
+    body_limit: Arc<Semaphore>,
+    store: Arc<Mutex<StoreState>>,
+}
+
+#[derive(Debug, Clone)]
+struct RequestFault {
+    sequence: u64,
+    action: FaultAction,
+}
+
+#[derive(Clone)]
+struct PrebodyPermit(Arc<Mutex<Option<OwnedSemaphorePermit>>>);
+
+impl PrebodyPermit {
+    fn new(permit: OwnedSemaphorePermit) -> Self {
+        Self(Arc::new(Mutex::new(Some(permit))))
+    }
+
+    fn take(self) -> Option<OwnedSemaphorePermit> {
+        lock(&self.0).take()
+    }
+}
+
+struct ConnectionPermit {
+    permit: Option<OwnedSemaphorePermit>,
+    active_connections: watch::Sender<usize>,
+}
+
+impl Drop for ConnectionPermit {
+    fn drop(&mut self) {
+        drop(self.permit.take());
+        self.active_connections.send_modify(|count| {
+            *count = count.checked_sub(1).expect("active connection count underflow");
+        });
+    }
+}
+
+/// Running target plus its fault controls and request journal.
+pub struct FakeS3Target {
+    endpoint: String,
+    address: SocketAddr,
+    control: Arc<Mutex<ControlState>>,
+    backend: FakeBackend,
+    connection_limit: Arc<Semaphore>,
+    active_connections: watch::Receiver<usize>,
+    shutdown: watch::Sender<bool>,
+    task: Option<JoinHandle<()>>,
+}
+
+impl FakeS3Target {
+    /// Bind a new target on a random loopback port with the default limits.
+    pub async fn start() -> Result<Self, BoxError> {
+        Self::start_with_options(FakeS3TargetOptions::default()).await
+    }
+
+    /// Bind a new target with explicit limits (see [`FakeS3TargetOptions`]).
+    pub async fn start_with_options(options: FakeS3TargetOptions) -> Result<Self, BoxError> {
+        Self::start_with_connection_gate(StoreLimits::from_options(&options), MAX_CONNECTION_DURATION, None).await
+    }
+
+    async fn start_with_connection_gate(
+        limits: StoreLimits,
+        connection_duration: Duration,
+        connection_gate: Option<watch::Receiver<bool>>,
+    ) -> Result<Self, BoxError> {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let address = listener.local_addr()?;
+        let endpoint = format!("http://{address}");
+        let control = Arc::new(Mutex::new(ControlState::default()));
+        let body_limit = Arc::new(Semaphore::new(MAX_CONCURRENT_BODY_REQUESTS));
+        let backend = FakeBackend {
+            store: Arc::new(Mutex::new(StoreState {
+                limits,
+                ..Default::default()
+            })),
+            control: Arc::clone(&control),
+            body_limit: Arc::clone(&body_limit),
+        };
+        let service = {
+            let mut builder = S3ServiceBuilder::new(backend.clone());
+            builder.set_auth(SimpleAuth::from_single(FAKE_ACCESS_KEY, FAKE_SECRET_KEY));
+            builder.set_access(FaultAccess {
+                control: Arc::clone(&control),
+                body_limit,
+                store: Arc::clone(&backend.store),
+            });
+            builder.build()
+        };
+        let (shutdown, mut shutdown_rx) = watch::channel(false);
+        let connection_limit = Arc::new(Semaphore::new(MAX_CONNECTIONS));
+        let (active_connections_tx, active_connections) = watch::channel(0usize);
+        let task_connection_limit = Arc::clone(&connection_limit);
+
+        let task = tokio::spawn(async move {
+            let mut connections = tokio::task::JoinSet::new();
+            loop {
+                tokio::select! {
+                    accepted = listener.accept() => {
+                        let Ok((stream, _)) = accepted else { break };
+                        let Ok(permit) = Arc::clone(&task_connection_limit).try_acquire_owned() else {
+                            drop(stream);
+                            continue;
+                        };
+                        active_connections_tx.send_modify(|count| *count += 1);
+                        let service = service.clone();
+                        let active_connections = active_connections_tx.clone();
+                        let mut connection_gate = connection_gate.clone();
+                        connections.spawn(async move {
+                            let _permit = ConnectionPermit {
+                                permit: Some(permit),
+                                active_connections,
+                            };
+                            if let Some(gate) = &mut connection_gate
+                                && !*gate.borrow_and_update()
+                                && gate.changed().await.is_err()
+                            {
+                                return;
+                            }
+                            let handler = service_fn(move |request| handle_request(request, service.clone()));
+                            let mut connection = http1::Builder::new();
+                            connection
+                                .keep_alive(false)
+                                .timer(TokioTimer::new())
+                                .header_read_timeout(MAX_FAULT_DURATION);
+                            let served = connection.serve_connection(TokioIo::new(stream), handler);
+                            let _ = timeout(connection_duration, served).await;
+                        });
+                    }
+                    changed = shutdown_rx.changed() => {
+                        if changed.is_err() || *shutdown_rx.borrow() {
+                            break;
+                        }
+                    }
+                    _ = connections.join_next(), if !connections.is_empty() => {}
+                }
+            }
+            connections.abort_all();
+            while connections.join_next().await.is_some() {}
+        });
+
+        Ok(Self {
+            endpoint,
+            address,
+            control,
+            backend,
+            connection_limit,
+            active_connections,
+            shutdown,
+            task: Some(task),
+        })
+    }
+
+    pub fn endpoint(&self) -> &str {
+        &self.endpoint
+    }
+
+    /// Host and port format expected by RustFS remote-target configuration.
+    pub fn address(&self) -> String {
+        self.address.to_string()
+    }
+
+    /// Pre-create a versioned general-purpose bucket in the shared global
+    /// namespace. Account-regional namespace buckets are intentionally not
+    /// modeled.
+    pub fn create_bucket(&self, bucket: impl Into<String>) {
+        self.create_bucket_with_mode(bucket, BucketMode::Versioned);
+    }
+
+    /// Pre-create a bucket with an explicit versioning mode. Re-creating an
+    /// existing bucket is a no-op, but its mode must match: the mode decides
+    /// how retained versions are addressed and cannot change afterwards.
+    pub fn create_bucket_with_mode(&self, bucket: impl Into<String>, mode: BucketMode) {
+        let bucket = bucket.into();
+        assert!(valid_bucket_name(&bucket), "fake target bucket name must be S3-valid");
+        let versioned = mode == BucketMode::Versioned;
+        let mut state = lock(&self.backend.store);
+        match state.buckets.get(&bucket) {
+            Some(existing) => {
+                assert_eq!(existing.versioned, versioned, "fake target bucket mode cannot change: {bucket}");
+            }
+            None => {
+                assert!(state.buckets.len() < MAX_BUCKETS, "fake target retains at most 256 buckets");
+                state.buckets.insert(
+                    bucket,
+                    BucketState {
+                        versioned,
+                        object_lock: false,
+                        objects: HashMap::new(),
+                    },
+                );
+            }
+        }
+    }
+
+    /// Pre-create a versioned bucket with Object Lock enabled, the shape a
+    /// RustFS source with Object Lock requires of its replication target
+    /// (`replication-check` probes GetObjectLockConfiguration for it).
+    pub fn create_bucket_with_object_lock(&self, bucket: impl Into<String>) {
+        let bucket = bucket.into();
+        self.create_bucket_with_mode(bucket.clone(), BucketMode::Versioned);
+        lock(&self.backend.store)
+            .buckets
+            .get_mut(&bucket)
+            .expect("bucket was just created")
+            .object_lock = true;
+    }
+
+    /// Store an object directly, bypassing the wire, the fault script, and
+    /// the request journal. Seeds a migration source without polluting the
+    /// journal that the scenario under test later asserts on. Returns the
+    /// ETag (hex MD5) the object will report. Same caps as a PUT.
+    pub fn put_seed_object(&self, bucket: &str, key: impl Into<String>, body: impl Into<Bytes>, seed: &SeedMetadata) -> String {
+        let body = body.into();
+        let e_tag = md5_hex(&body);
+        let mut state = lock(&self.backend.store);
+        assert!(
+            body.len() <= state.limits.max_object_bytes,
+            "seed object exceeds the fake target object cap"
+        );
+        let content_type = seed.content_type.clone();
+        let metadata = (!seed.metadata.is_empty()).then(|| {
+            seed.metadata
+                .iter()
+                .map(|(name, value)| (name.to_ascii_lowercase(), value.clone()))
+                .collect()
+        });
+        validate_stored_metadata(&content_type, &metadata).expect("seed metadata must fit the retained caps");
+        seed.standard_headers
+            .validate()
+            .expect("seed standard headers must fit the retained caps");
+        let versioned = state.buckets.get(bucket).expect("fake target bucket must exist").versioned;
+        let version = ObjectVersion {
+            version_id: if versioned {
+                Uuid::new_v4().to_string()
+            } else {
+                NULL_VERSION_ID.to_string()
+            },
+            body,
+            e_tag: e_tag.clone(),
+            last_modified: seed
+                .last_modified
+                .clone()
+                .unwrap_or_else(|| Timestamp::from(SystemTime::now())),
+            delete_marker: false,
+            content_type,
+            metadata,
+            standard_headers: seed.standard_headers.clone(),
+            tags: Vec::new(),
+            replication_sse_headers: Vec::new(),
+            lock: VersionLock::default(),
+        };
+        upsert_version(&mut state, bucket, key.into(), version).expect("seed object must fit the storage budget");
+        e_tag
+    }
+
+    /// Number of journaled requests for one operation on one exact key.
+    pub fn count_requests(&self, operation: Operation, key: &str) -> usize {
+        lock(&self.control)
+            .requests
+            .iter()
+            .filter(|record| record.operation == operation && record.key.as_deref() == Some(key))
+            .count()
+    }
+
+    /// Remove all retained object versions while preserving the bucket.
+    pub fn clear_bucket_objects(&self, bucket: &str) {
+        let mut state = lock(&self.backend.store);
+        let (removed_versions, removed_bytes) = state
+            .buckets
+            .get_mut(bucket)
+            .expect("fake target bucket must exist")
+            .objects
+            .drain()
+            .flat_map(|(_, versions)| versions)
+            .fold((0usize, 0usize), |(count, bytes), version| (count + 1, bytes + version.body.len()));
+        state.total_versions = state
+            .total_versions
+            .checked_sub(removed_versions)
+            .expect("fake target version accounting must not underflow");
+        state.total_bytes = state
+            .total_bytes
+            .checked_sub(removed_bytes)
+            .expect("fake target byte accounting must not underflow");
+    }
+
+    pub fn has_object(&self, bucket: &str, key: &str) -> bool {
+        lock(&self.backend.store)
+            .buckets
+            .get(bucket)
+            .and_then(|bucket| bucket.objects.get(key))
+            .and_then(|versions| versions.last())
+            .is_some_and(|version| !version.delete_marker)
+    }
+
+    /// Make the target mint its own version ids instead of mirroring the
+    /// forwarded source version id — models a generic S3 service.
+    pub fn assign_own_version_ids(&self, enabled: bool) {
+        lock(&self.backend.store).assign_own_version_ids = enabled;
+    }
+
+    /// Mint own version ids for the multipart path only — models a target
+    /// that adopts PutObject version ids but not CreateMultipartUpload ones.
+    /// MinIO-like mode: silently drop every `X-Rustfs-Replication-*` SSE-C
+    /// passthrough transport header instead of storing it. The default (off)
+    /// models a RustFS target, which preserves the headers and echoes SSE-C
+    /// evidence (`x-amz-server-side-encryption-customer-algorithm`) on
+    /// HEAD/GET of the replica.
+    pub fn drop_unlisted_replication_headers(&self, enabled: bool) {
+        lock(&self.backend.store).drop_unlisted_replication_headers = enabled;
+    }
+
+    /// Refuse every PutObject / UploadPart whose body is announced as
+    /// `aws-chunked` (SeaweedFS-like target, rustfs#6853). The refusal is an
+    /// `InvalidRequest` issued before the body is read, so a sender that
+    /// frames its uploads sees a hard failure instead of a corrupted replica.
+    pub fn reject_aws_chunked_uploads(&self, enabled: bool) {
+        lock(&self.backend.store).reject_aws_chunked_uploads = enabled;
+    }
+
+    /// Require `Content-MD5` or an `x-amz-checksum-*` header on every
+    /// PutObject that carries Object Lock parameters (AWS S3 / MinIO rule,
+    /// rustfs#7082). `Content-MD5`, when present, is always verified against
+    /// the body regardless of this mode.
+    /// Wasabi-like mode: DELETE of an unknown version id answers 404
+    /// `NoSuchVersion` (the default 204 models RustFS/MinIO).
+    pub fn reject_unknown_version_deletes(&self, enabled: bool) {
+        lock(&self.backend.store).reject_unknown_version_deletes = enabled;
+    }
+
+    pub fn require_checksum_for_object_lock(&self, enabled: bool) {
+        lock(&self.backend.store).require_checksum_for_object_lock = enabled;
+    }
+
+    pub fn assign_own_multipart_version_ids(&self, enabled: bool) {
+        lock(&self.backend.store).assign_own_multipart_version_ids = enabled;
+    }
+
+    pub fn active_multipart_upload_count(&self) -> usize {
+        lock(&self.backend.store).uploads.len()
+    }
+
+    /// Queue `times` copies of a fault for one operation.
+    pub fn inject(&self, operation: Operation, action: FaultAction, times: usize) {
+        if times == 0 {
+            return;
+        }
+        validate_fault_action(&action);
+        let mut state = lock(&self.control);
+        let queued = queued_fault_count(&state);
+        if queued.checked_add(times).is_none_or(|total| total > MAX_SCRIPTED_FAULTS) {
+            panic!("fake target queues at most 4096 scripted faults");
+        }
+        state
+            .scripts
+            .entry(operation)
+            .or_default()
+            .extend(std::iter::repeat_n(action, times));
+    }
+
+    /// Queue faults for one exact object key without affecting concurrent requests.
+    pub fn inject_for_key(&self, operation: Operation, key: impl Into<String>, action: FaultAction, times: usize) {
+        if times == 0 {
+            return;
+        }
+        validate_fault_action(&action);
+        let mut state = lock(&self.control);
+        let queued = queued_fault_count(&state);
+        if queued.checked_add(times).is_none_or(|total| total > MAX_SCRIPTED_FAULTS) {
+            panic!("fake target queues at most 4096 scripted faults");
+        }
+        state
+            .keyed_scripts
+            .entry((operation, key.into()))
+            .or_default()
+            .extend(std::iter::repeat_n(action, times));
+    }
+
+    /// Hold one exact bucket/key before any GET response can reach the client.
+    /// The fixture supports one live gate; request and connection deadlines still apply.
+    pub fn hold_get_object(&self, bucket: &str, key: &str) -> GetObjectGate {
+        assert!(
+            bucket.len() <= MAX_RETAINED_IDENTIFIER_BYTES && key.len() <= MAX_RETAINED_IDENTIFIER_BYTES,
+            "held GET identifiers exceed the fixture limit"
+        );
+        let mut state = lock(&self.control);
+        assert!(state.held_get.is_none(), "fake target already holds a GET gate");
+        let (entered, entered_rx) = watch::channel(0);
+        let (released, released_rx) = watch::channel(false);
+        state.held_get = Some(HeldGetObject {
+            bucket: bucket.to_string(),
+            key: key.to_string(),
+            entered,
+            released: released_rx,
+        });
+        GetObjectGate {
+            control: Arc::clone(&self.control),
+            entered: entered_rx,
+            released,
+        }
+    }
+
+    pub fn clear_faults(&self) {
+        let mut state = lock(&self.control);
+        state.scripts.clear();
+        state.keyed_scripts.clear();
+    }
+
+    pub fn requests(&self) -> Vec<RequestRecord> {
+        lock(&self.control).requests.iter().cloned().collect()
+    }
+
+    pub fn take_requests(&self) -> Vec<RequestRecord> {
+        lock(&self.control).requests.drain(..).collect()
+    }
+
+    /// Stored versions for one key as `(version_id, is_delete_marker)`, oldest
+    /// first. Empty when the bucket or key does not exist. Lets purge tests
+    /// assert on the target's actual state instead of inferring it from the
+    /// request journal (a versioned DELETE is a silent no-op for missing ids).
+    pub fn stored_versions(&self, bucket: &str, key: &str) -> Vec<(String, bool)> {
+        let state = lock(&self.backend.store);
+        state
+            .buckets
+            .get(bucket)
+            .and_then(|bucket_state| bucket_state.objects.get(key))
+            .map(|versions| {
+                versions
+                    .iter()
+                    .map(|version| (version.version_id.clone(), version.delete_marker))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub async fn shutdown(mut self) {
+        let _ = self.shutdown.send(true);
+        if let Some(task) = self.task.take() {
+            let _ = task.await;
+        }
+    }
+}
+
+fn valid_bucket_name(bucket: &str) -> bool {
+    AwsNameValidation::new().validate_bucket_name(bucket)
+        && !RESERVED_BUCKET_PREFIXES.iter().any(|prefix| bucket.starts_with(prefix))
+        && !RESERVED_BUCKET_SUFFIXES.iter().any(|suffix| bucket.ends_with(suffix))
+}
+
+impl Drop for FakeS3Target {
+    fn drop(&mut self) {
+        let _ = self.shutdown.send(true);
+        if let Some(task) = self.task.take() {
+            task.abort();
+        }
+    }
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn validate_fault_action(action: &FaultAction) {
+    if let FaultAction::SlowDrain { chunk_bytes: 0, .. } = action {
+        panic!("slow-drain chunk size must be non-zero");
+    }
+    if let FaultAction::SlowSendBody { chunk_bytes: 0, .. } = action {
+        panic!("slow-send chunk size must be non-zero");
+    }
+    match action {
+        FaultAction::Delay(duration) if *duration > MAX_FAULT_DURATION => {
+            panic!("fault delay must not exceed 30 seconds");
+        }
+        FaultAction::Stall(duration) if *duration > MAX_FAULT_DURATION => {
+            panic!("fault stall must not exceed 30 seconds");
+        }
+        FaultAction::SlowDrain { delay, .. } if *delay >= MAX_FAULT_DURATION => {
+            panic!("slow-drain slice delay must be below 30 seconds");
+        }
+        FaultAction::SlowSendBody { delay, .. } if *delay >= MAX_FAULT_DURATION => {
+            panic!("slow-send slice delay must be below 30 seconds");
+        }
+        FaultAction::ResponseStatus(code) if !(400..=599).contains(code) => {
+            panic!("scripted response status must be a 4xx or 5xx code");
+        }
+        _ => {}
+    }
+}
+
+/// The HTTP status a pre-dispatch status fault answers with, if any.
+fn scripted_status(action: &FaultAction) -> Option<StatusCode> {
+    match action {
+        FaultAction::Status(status) => Some(*status),
+        FaultAction::ResponseStatus(code) => StatusCode::from_u16(*code).ok(),
+        _ => None,
+    }
+}
+
+fn queued_fault_count(state: &ControlState) -> usize {
+    state.scripts.values().map(VecDeque::len).sum::<usize>() + state.keyed_scripts.values().map(VecDeque::len).sum::<usize>()
+}
+
+#[async_trait]
+impl S3Access for FaultAccess {
+    async fn check(&self, context: &mut S3AccessContext<'_>) -> S3Result<()> {
+        if context
+            .credentials()
+            .is_none_or(|credentials| credentials.access_key != FAKE_ACCESS_KEY)
+        {
+            return Err(s3s::s3_error!(AccessDenied, "valid fixture credentials are required"));
+        }
+
+        let parsed = parse_request(context.method(), context.uri());
+        let operation = operation_from_s3_name(context.s3_op().name());
+        let journaled = JournaledHeaders::from_headers(context.headers());
+        let aws_chunked = journaled.transport.aws_chunked;
+        let fault = record_request(&self.control, operation, context.method().clone(), parsed, journaled);
+        if let Some(status) = fault.as_ref().and_then(|fault| scripted_status(&fault.action)) {
+            return Err(scripted_status_error(status));
+        }
+        if aws_chunked
+            && matches!(operation, Operation::PutObject | Operation::UploadPart)
+            && lock(&self.store).reject_aws_chunked_uploads
+        {
+            return Err(s3s::s3_error!(
+                InvalidRequest,
+                "this target does not decode aws-chunked request bodies; send a plain signed payload with an exact Content-Length"
+            ));
+        }
+        let prebody_permit = if operation == Operation::CompleteMultipartUpload {
+            Some(
+                timeout(
+                    MAX_FAULT_DURATION,
+                    Arc::clone(&self.body_limit).acquire_many_owned(MAX_CONCURRENT_BODY_REQUESTS as u32),
+                )
+                .await
+                .map_err(|_| s3s::s3_error!(RequestTimeout, "fake target body limiter wait exceeded 30 seconds"))?
+                .map_err(|_| s3s::s3_error!(ServiceUnavailable, "fake target body limiter closed"))?,
+            )
+        } else {
+            None
+        };
+        if let Some(fault) = fault {
+            context.extensions_mut().insert(fault);
+        }
+        if let Some(permit) = prebody_permit {
+            context.extensions_mut().insert(PrebodyPermit::new(permit));
+        }
+        Ok(())
+    }
+}
+
+fn operation_from_s3_name(name: &str) -> Operation {
+    match name {
+        "HeadBucket" => Operation::HeadBucket,
+        "GetBucketVersioning" => Operation::GetBucketVersioning,
+        "GetObjectLockConfiguration" => Operation::GetObjectLockConfiguration,
+        "PutObject" => Operation::PutObject,
+        "GetObject" => Operation::GetObject,
+        "HeadObject" => Operation::HeadObject,
+        "DeleteObject" => Operation::DeleteObject,
+        "GetObjectTagging" => Operation::GetObjectTagging,
+        "PutObjectTagging" => Operation::PutObjectTagging,
+        "DeleteObjectTagging" => Operation::DeleteObjectTagging,
+        "GetObjectRetention" => Operation::GetObjectRetention,
+        "PutObjectRetention" => Operation::PutObjectRetention,
+        "GetObjectLegalHold" => Operation::GetObjectLegalHold,
+        "PutObjectLegalHold" => Operation::PutObjectLegalHold,
+        "ListObjectsV2" => Operation::ListObjectsV2,
+        "CreateMultipartUpload" => Operation::CreateMultipartUpload,
+        "UploadPart" => Operation::UploadPart,
+        "CompleteMultipartUpload" => Operation::CompleteMultipartUpload,
+        "AbortMultipartUpload" => Operation::AbortMultipartUpload,
+        _ => Operation::Unknown,
+    }
+}
+
+fn record_request(
+    control: &Mutex<ControlState>,
+    operation: Operation,
+    method: Method,
+    parsed: ParsedRequest,
+    headers: JournaledHeaders,
+) -> Option<RequestFault> {
+    let mut state = lock(control);
+    let action = parsed
+        .key
+        .as_ref()
+        .and_then(|key| state.keyed_scripts.get_mut(&(operation, key.clone())))
+        .and_then(VecDeque::pop_front)
+        .or_else(|| state.scripts.get_mut(&operation).and_then(VecDeque::pop_front));
+    state.next_sequence += 1;
+    let sequence = state.next_sequence;
+    if state.requests.len() == MAX_REQUEST_RECORDS {
+        state.requests.pop_front();
+    }
+    state.requests.push_back(RequestRecord {
+        sequence,
+        operation,
+        method,
+        bucket: bounded_journal_value(parsed.bucket),
+        key: parsed.key.map(bounded_journal_value),
+        version_id: parsed.version_id.map(bounded_journal_value),
+        upload_id: parsed.upload_id.map(bounded_journal_value),
+        part_number: parsed.part_number,
+        content_length: headers.content_length,
+        consumed_bytes: None,
+        replication_timestamps: headers.replication_timestamps,
+        proxy_headers: headers.proxy_headers,
+        transport: headers.transport,
+        range: headers.range,
+        user_agent: headers.user_agent,
+        prefix: parsed.prefix.map(bounded_journal_value),
+        continuation_token: parsed.continuation_token.map(bounded_journal_value),
+        fault: action.clone(),
+    });
+    action.map(|action| RequestFault { sequence, action })
+}
+
+fn bounded_journal_value(mut value: String) -> String {
+    let mut end = value.len().min(MAX_RETAINED_IDENTIFIER_BYTES);
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    value.truncate(end);
+    value
+}
+
+async fn handle_request(request: Request<Incoming>, service: S3Service) -> Result<Response<Body>, BoxError> {
+    let mut response = timeout(MAX_REQUEST_DURATION, call_s3(service, request.map(Body::from)))
+        .await
+        .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "fake target request exceeded 65 seconds"))??;
+    if response.headers_mut().remove(DISCONNECT_HEADER).is_some() {
+        return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "fake target scripted disconnect").into());
+    }
+    if let Some(stall_ms) = response
+        .headers_mut()
+        .remove(STALL_HEADER)
+        .and_then(|value| value.to_str().ok()?.parse::<u64>().ok())
+    {
+        // The response is fully computed; nothing reaches the socket until
+        // the stall elapses, so the client sees no first byte at all.
+        sleep(Duration::from_millis(stall_ms)).await;
+    }
+    Ok(response)
+}
+
+async fn call_s3(service: S3Service, request: Request<Body>) -> Result<Response<Body>, BoxError> {
+    service.call(request).await.map_err(Into::into)
+}
+
+#[derive(Default)]
+struct ParsedRequest {
+    operation: Operation,
+    bucket: String,
+    key: Option<String>,
+    version_id: Option<String>,
+    upload_id: Option<String>,
+    part_number: Option<i32>,
+    prefix: Option<String>,
+    continuation_token: Option<String>,
+}
+
+fn parse_request(method: &Method, uri: &Uri) -> ParsedRequest {
+    let path = uri.path().trim_start_matches('/');
+    let (bucket, key) = match path.split_once('/') {
+        Some((bucket, "")) => (decode(bucket), None),
+        Some((bucket, key)) => (decode(bucket), Some(decode(key))),
+        None => (decode(path), None),
+    };
+    let query = query_values(uri.query());
+    let version_id = query.get("versionId").cloned().flatten();
+    let upload_id = query.get("uploadId").cloned().flatten();
+    let prefix = query.get("prefix").cloned().flatten();
+    let continuation_token = query.get("continuation-token").cloned().flatten();
+    let part_number = query
+        .get("partNumber")
+        .and_then(Clone::clone)
+        .and_then(|value| value.parse().ok());
+    let only_query_keys = |allowed: &[&str]| {
+        query
+            .keys()
+            .filter(|name| name.as_str() != "x-id")
+            .all(|name| allowed.contains(&name.as_str()))
+    };
+    let list_type_v2 = query.get("list-type").is_some_and(|value| value.as_deref() == Some("2"));
+    let operation = match (method, key.is_some()) {
+        (&Method::HEAD, false) => Operation::HeadBucket,
+        (&Method::GET, false) if query.contains_key("versioning") => Operation::GetBucketVersioning,
+        (&Method::GET, false) if query.contains_key("versions") => Operation::ListObjectVersions,
+        (&Method::GET, false) if list_type_v2 => Operation::ListObjectsV2,
+        (&Method::PUT, true) if upload_id.is_some() && part_number.is_some() => Operation::UploadPart,
+        (&Method::PUT, true) if upload_id.is_some() || query.contains_key("partNumber") => Operation::Unknown,
+        (&Method::POST, true) if query.contains_key("uploads") => Operation::CreateMultipartUpload,
+        (&Method::POST, true) if upload_id.is_some() => Operation::CompleteMultipartUpload,
+        (&Method::DELETE, true) if upload_id.is_some() => Operation::AbortMultipartUpload,
+        (&Method::GET, true) if query.contains_key("tagging") && only_query_keys(&["tagging", "versionId"]) => {
+            Operation::GetObjectTagging
+        }
+        (&Method::PUT, true) if query.contains_key("tagging") && only_query_keys(&["tagging", "versionId"]) => {
+            Operation::PutObjectTagging
+        }
+        (&Method::DELETE, true) if query.contains_key("tagging") && only_query_keys(&["tagging", "versionId"]) => {
+            Operation::DeleteObjectTagging
+        }
+        (&Method::GET, true) if query.contains_key("retention") && only_query_keys(&["retention", "versionId"]) => {
+            Operation::GetObjectRetention
+        }
+        (&Method::PUT, true) if query.contains_key("retention") && only_query_keys(&["retention", "versionId"]) => {
+            Operation::PutObjectRetention
+        }
+        (&Method::GET, true) if query.contains_key("legal-hold") && only_query_keys(&["legal-hold", "versionId"]) => {
+            Operation::GetObjectLegalHold
+        }
+        (&Method::PUT, true) if query.contains_key("legal-hold") && only_query_keys(&["legal-hold", "versionId"]) => {
+            Operation::PutObjectLegalHold
+        }
+        // A replication PUT addresses the source version via `?versionId=`.
+        (&Method::PUT, true) if only_query_keys(&["versionId"]) => Operation::PutObject,
+        (&Method::GET, true) if only_query_keys(&["versionId"]) => Operation::GetObject,
+        (&Method::HEAD, true) if only_query_keys(&["versionId"]) => Operation::HeadObject,
+        (&Method::DELETE, true) if only_query_keys(&["versionId"]) => Operation::DeleteObject,
+        _ => Operation::Unknown,
+    };
+    ParsedRequest {
+        operation,
+        bucket,
+        key,
+        version_id,
+        upload_id,
+        part_number,
+        prefix,
+        continuation_token,
+    }
+}
+
+fn query_values(query: Option<&str>) -> HashMap<String, Option<String>> {
+    query
+        .unwrap_or_default()
+        .split('&')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let (name, value) = part
+                .split_once('=')
+                .map_or((part, None), |(name, value)| (name, Some(decode(value))));
+            (decode(name), value)
+        })
+        .collect()
+}
+
+fn decode(value: &str) -> String {
+    urlencoding::decode(value).map_or_else(|_| value.to_string(), |value| value.into_owned())
+}
+
+fn header_value(headers: &HeaderMap, names: &[&str]) -> Option<String> {
+    names
+        .iter()
+        .find_map(|name| headers.get(*name))
+        .and_then(|value| value.to_str().ok())
+        .map(ToOwned::to_owned)
+}
+
+fn validate_retained_identifier(value: String, field: &str) -> S3Result<String> {
+    if value.len() > MAX_RETAINED_IDENTIFIER_BYTES {
+        Err(s3s::s3_error!(InvalidArgument, "{field} exceeds 1024 bytes"))
+    } else {
+        Ok(value)
+    }
+}
+
+/// `assign_own` models a target that mints its own version ids (a generic S3
+/// service): the forwarded source-version-id header is validated but NOT
+/// mirrored into the stored version.
+fn new_version_id(headers: &HeaderMap, assign_own: bool) -> S3Result<String> {
+    let Some(value) = header_value(headers, &SOURCE_VERSION_ID_HEADERS) else {
+        return Ok(Uuid::new_v4().to_string());
+    };
+    if assign_own {
+        validate_retained_identifier(value.trim().to_owned(), "source version ID")?;
+        return Ok(Uuid::new_v4().to_string());
+    }
+    let value = validate_retained_identifier(value.trim().to_owned(), "source version ID")?;
+    let version_id = Uuid::parse_str(&value).map_err(|_| s3s::s3_error!(InvalidArgument, "source version ID must be a UUID"))?;
+    Ok(version_id.to_string())
+}
+
+/// Capture the SSE-C passthrough transport headers a replication PUT carried.
+/// Returns an empty set in the MinIO-like drop mode.
+fn captured_replication_sse_headers(headers: &HeaderMap, drop_unlisted: bool) -> Vec<(String, String)> {
+    if drop_unlisted {
+        return Vec::new();
+    }
+    headers
+        .iter()
+        .filter(|(name, _)| name.as_str().starts_with(REPLICATION_SSE_TRANSPORT_PREFIX))
+        .filter_map(|(name, value)| Some((name.as_str().to_string(), value.to_str().ok()?.to_string())))
+        .collect()
+}
+
+/// SSE-C evidence a RustFS-like target echoes for a stored passthrough
+/// replica: the customer algorithm restored from the transport headers.
+fn stored_sse_customer_algorithm(version: &ObjectVersion) -> Option<String> {
+    version
+        .replication_sse_headers
+        .iter()
+        .find(|(name, _)| name == REPLICATION_SSEC_ALGORITHM_TRANSPORT_HEADER)
+        .map(|(_, value)| value.clone())
+}
+
+fn source_etag(headers: &HeaderMap) -> S3Result<Option<String>> {
+    header_value(headers, &SOURCE_ETAG_HEADERS)
+        .map(|value| validate_retained_identifier(value, "source ETag").map(|value| normalize_etag(&value)))
+        .transpose()
+}
+
+fn validate_stored_metadata(content_type: &Option<String>, metadata: &Option<HashMap<String, String>>) -> S3Result {
+    let content_type_bytes = content_type.as_ref().map_or(0, String::len);
+    if content_type_bytes > MAX_CONTENT_TYPE_BYTES {
+        return Err(s3s::s3_error!(InvalidArgument, "content type exceeds 1024 bytes"));
+    }
+    let metadata_bytes = metadata
+        .iter()
+        .flat_map(|metadata| metadata.iter())
+        .try_fold(0usize, |total, (key, value)| {
+            total.checked_add(key.len()).and_then(|total| total.checked_add(value.len()))
+        })
+        .ok_or_else(|| s3s::s3_error!(InvalidArgument, "object metadata size overflow"))?;
+    if metadata_bytes > MAX_STORED_METADATA_BYTES {
+        Err(s3s::s3_error!(InvalidArgument, "fake target retains at most 2 KiB of user metadata"))
+    } else {
+        Ok(())
+    }
+}
+
+fn source_mtime(headers: &HeaderMap) -> Timestamp {
+    if header_value(headers, &SOURCE_REPLICATION_REQUEST_HEADERS).is_none_or(|value| value != "true") {
+        return Timestamp::from(SystemTime::now());
+    }
+    header_value(headers, &SOURCE_MTIME_HEADERS)
+        .and_then(|value| time::OffsetDateTime::parse(value.trim(), &time::format_description::well_known::Rfc3339).ok())
+        .map(Timestamp::from)
+        .unwrap_or_else(|| Timestamp::from(SystemTime::now()))
+}
+
+fn normalize_etag(value: &str) -> String {
+    value.trim().trim_matches('"').to_string()
+}
+
+fn request_fault<T>(request: &S3Request<T>) -> Option<RequestFault> {
+    request.extensions.get::<RequestFault>().cloned()
+}
+
+/// Pair a scripted HTTP status with the S3 error code a real service would
+/// send, so SDK-side error classification matches production sources.
+fn scripted_status_error(status: StatusCode) -> s3s::S3Error {
+    let mut error = match status {
+        StatusCode::BAD_REQUEST => s3s::s3_error!(InvalidRequest, "scripted fake target fault"),
+        StatusCode::UNAUTHORIZED => s3s::s3_error!(UnauthorizedAccess, "scripted fake target fault"),
+        StatusCode::FORBIDDEN => s3s::s3_error!(AccessDenied, "scripted fake target fault"),
+        StatusCode::NOT_FOUND => s3s::s3_error!(NoSuchKey, "scripted fake target fault"),
+        StatusCode::METHOD_NOT_ALLOWED => s3s::s3_error!(MethodNotAllowed, "scripted fake target fault"),
+        StatusCode::REQUEST_TIMEOUT => s3s::s3_error!(RequestTimeout, "scripted fake target fault"),
+        StatusCode::RANGE_NOT_SATISFIABLE => s3s::s3_error!(InvalidRange, "scripted fake target fault"),
+        StatusCode::TOO_MANY_REQUESTS => s3s::s3_error!(SlowDown, "scripted fake target fault"),
+        StatusCode::NOT_IMPLEMENTED => s3s::s3_error!(NotImplemented, "scripted fake target fault"),
+        StatusCode::SERVICE_UNAVAILABLE => s3s::s3_error!(ServiceUnavailable, "scripted fake target fault"),
+        _ => s3s::s3_error!(InternalError, "scripted fake target fault"),
+    };
+    error.set_status_code(status);
+    error
+}
+
+fn scripted_disconnect_error() -> s3s::S3Error {
+    let mut error = s3s::s3_error!(InternalError, "scripted fake target disconnect");
+    let mut headers = HeaderMap::new();
+    headers.insert(DISCONNECT_HEADER, HeaderValue::from_static("true"));
+    error.set_headers(headers);
+    error
+}
+
+fn update_consumed(control: &Mutex<ControlState>, sequence: u64, consumed: usize) {
+    if let Some(record) = lock(control).requests.iter_mut().find(|record| record.sequence == sequence) {
+        record.consumed_bytes = Some(consumed);
+    }
+}
+
+async fn apply_non_body_fault(fault: Option<&RequestFault>, control: &Mutex<ControlState>) -> S3Result<()> {
+    match fault.map(|fault| &fault.action) {
+        Some(action @ (FaultAction::Status(_) | FaultAction::ResponseStatus(_))) => {
+            Err(scripted_status_error(scripted_status(action).expect("status faults carry a valid code")))
+        }
+        Some(FaultAction::Delay(duration)) => {
+            sleep(*duration).await;
+            Ok(())
+        }
+        Some(FaultAction::DisconnectAfterBytes(_)) => {
+            update_consumed(control, fault.expect("matched fault").sequence, 0);
+            Err(scripted_disconnect_error())
+        }
+        Some(FaultAction::SlowDrain { .. })
+        | Some(FaultAction::WrongEtag)
+        | Some(FaultAction::DisconnectAfterResponse)
+        | Some(FaultAction::TruncateBodyAt(_))
+        | Some(FaultAction::SlowSendBody { .. })
+        | Some(FaultAction::Stall(_))
+        | None => Ok(()),
+    }
+}
+
+async fn collect_stream(
+    body: Option<StreamingBlob>,
+    content_length: Option<i64>,
+    fault: Option<&RequestFault>,
+    control: &Mutex<ControlState>,
+    max_body_bytes: usize,
+) -> S3Result<Bytes> {
+    let mut body = body.unwrap_or_else(|| StreamingBlob::new(Body::empty()));
+    let capacity = content_length
+        .and_then(|length| usize::try_from(length).ok())
+        .unwrap_or_default();
+    if capacity > max_body_bytes {
+        return Err(body_too_large(max_body_bytes));
+    }
+    if let Some(RequestFault {
+        action: FaultAction::Delay(duration),
+        ..
+    }) = fault
+    {
+        sleep(*duration).await;
+    }
+    timeout(MAX_FAULT_DURATION, async {
+        match fault.map(|fault| &fault.action) {
+            Some(action @ (FaultAction::Status(_) | FaultAction::ResponseStatus(_))) => {
+                return Err(scripted_status_error(scripted_status(action).expect("status faults carry a valid code")));
+            }
+            Some(FaultAction::Delay(_)) => {}
+            Some(FaultAction::DisconnectAfterBytes(limit)) => {
+                let mut consumed = 0usize;
+                while consumed < *limit {
+                    let Some(chunk) = body.next().await else { break };
+                    let chunk = chunk.map_err(|error| s3s::s3_error!(InternalError, "request body failed: {error}"))?;
+                    consumed = consumed.saturating_add(chunk.len().min(*limit - consumed));
+                }
+                update_consumed(control, fault.expect("matched fault").sequence, consumed);
+                return Err(scripted_disconnect_error());
+            }
+            Some(FaultAction::SlowDrain { chunk_bytes, delay }) => {
+                return collect_stream_slow(body, capacity, *chunk_bytes, *delay, max_body_bytes).await;
+            }
+            Some(FaultAction::WrongEtag)
+            | Some(FaultAction::DisconnectAfterResponse)
+            | Some(FaultAction::TruncateBodyAt(_))
+            | Some(FaultAction::SlowSendBody { .. })
+            | Some(FaultAction::Stall(_))
+            | None => {}
+        }
+
+        let mut output = BytesMut::with_capacity(capacity);
+        while let Some(chunk) = body.next().await {
+            let chunk = chunk.map_err(|error| s3s::s3_error!(InternalError, "request body failed: {error}"))?;
+            ensure_body_growth(output.len(), chunk.len(), max_body_bytes)?;
+            output.extend_from_slice(&chunk);
+        }
+        Ok(output.freeze())
+    })
+    .await
+    .map_err(|_| s3s::s3_error!(RequestTimeout, "fake target body drain exceeded 30 seconds"))?
+}
+
+async fn collect_stream_slow(
+    mut body: StreamingBlob,
+    capacity: usize,
+    chunk_bytes: usize,
+    delay: Duration,
+    max_body_bytes: usize,
+) -> S3Result<Bytes> {
+    let mut output = BytesMut::with_capacity(capacity);
+    while let Some(chunk) = body.next().await {
+        let chunk = chunk.map_err(|error| s3s::s3_error!(InternalError, "request body failed: {error}"))?;
+        for slice in chunk.chunks(chunk_bytes) {
+            ensure_body_growth(output.len(), slice.len(), max_body_bytes)?;
+            output.extend_from_slice(slice);
+            sleep(delay).await;
+        }
+    }
+    Ok(output.freeze())
+}
+
+fn body_too_large(max_body_bytes: usize) -> s3s::S3Error {
+    s3s::s3_error!(EntityTooLarge, "fake target buffers at most {max_body_bytes} bytes")
+}
+
+/// GetObject body that announces `content_length` bytes but delivers only the
+/// first `truncate_at`, then fails the stream so hyper aborts the connection
+/// mid-body: the client observes a short read against the declared length.
+fn truncated_body(body: Bytes, truncate_at: usize) -> StreamingBlob {
+    enum Step {
+        Prefix(Bytes),
+        Abort,
+        Done,
+    }
+    let prefix = body.slice(..truncate_at.min(body.len()));
+    // The error is delayed one tick so hyper flushes the head and the prefix
+    // before it sees the failure; an immediately-ready error aborts the
+    // connection before any byte reaches the client.
+    StreamingBlob::wrap(futures::stream::unfold(Step::Prefix(prefix), |step| async move {
+        match step {
+            Step::Prefix(prefix) => Some((Ok(prefix), Step::Abort)),
+            Step::Abort => {
+                sleep(Duration::from_millis(20)).await;
+                Some((
+                    Err(io::Error::new(io::ErrorKind::ConnectionAborted, "fake target scripted body truncation")),
+                    Step::Done,
+                ))
+            }
+            Step::Done => None,
+        }
+    }))
+}
+
+/// GetObject body delivered in `chunk_bytes` slices with `delay` between
+/// them. The head and the first slice are written immediately, so the client
+/// starts reading and then observes the source going quiet mid-body.
+fn slow_sent_body(body: Bytes, chunk_bytes: usize, delay: Duration) -> StreamingBlob {
+    StreamingBlob::wrap(futures::stream::unfold((body, true), move |(mut rest, first)| async move {
+        if rest.is_empty() {
+            return None;
+        }
+        if !first {
+            sleep(delay).await;
+        }
+        let chunk = rest.split_to(chunk_bytes.min(rest.len()));
+        Some((Ok::<Bytes, io::Error>(chunk), (rest, false)))
+    }))
+}
+
+async fn assemble_multipart(
+    parts: Vec<(Bytes, [u8; 16])>,
+    total_len: usize,
+    permit: OwnedSemaphorePermit,
+) -> S3Result<(Bytes, Vec<u8>, OwnedSemaphorePermit)> {
+    let assemble = move || {
+        let mut body = BytesMut::with_capacity(total_len);
+        let mut digests = Vec::with_capacity(parts.len() * 16);
+        for (part, digest) in parts {
+            body.extend_from_slice(&part);
+            digests.extend_from_slice(&digest);
+        }
+        (body.freeze(), digests, permit)
+    };
+    if total_len < 1024 * 1024 {
+        return Ok(assemble());
+    }
+    tokio::task::spawn_blocking(assemble)
+        .await
+        .map_err(|error| s3s::s3_error!(InternalError, "multipart assembly worker failed: {error}"))
+}
+
+fn maybe_wrong_etag(fault: Option<&RequestFault>, e_tag: String) -> String {
+    if fault.is_some_and(|fault| fault.action == FaultAction::WrongEtag) {
+        normalize_etag(WRONG_ETAG)
+    } else {
+        e_tag
+    }
+}
+
+fn apply_response_fault<T>(mut response: S3Response<T>, fault: Option<&RequestFault>) -> S3Response<T> {
+    if fault.is_some_and(|fault| fault.action == FaultAction::WrongEtag) {
+        response.headers.insert(ETAG, HeaderValue::from_static(WRONG_ETAG));
+    }
+    if fault.is_some_and(|fault| fault.action == FaultAction::DisconnectAfterResponse) {
+        response.headers.insert(DISCONNECT_HEADER, HeaderValue::from_static("true"));
+    }
+    if let Some(FaultAction::Stall(duration)) = fault.map(|fault| &fault.action)
+        && let Ok(value) = HeaderValue::from_str(&duration.as_millis().to_string())
+    {
+        response.headers.insert(STALL_HEADER, value);
+    }
+    response
+}
+
+fn ensure_body_growth(current: usize, added: usize, max_body_bytes: usize) -> S3Result {
+    if current.checked_add(added).is_none_or(|total| total > max_body_bytes) {
+        Err(body_too_large(max_body_bytes))
+    } else {
+        Ok(())
+    }
+}
+
+async fn md5_digest(body: Bytes, permit: OwnedSemaphorePermit) -> S3Result<([u8; 16], OwnedSemaphorePermit)> {
+    if body.len() < 1024 * 1024 {
+        return Ok((md5_bytes(body), permit));
+    }
+    tokio::task::spawn_blocking(move || (md5_bytes(body), permit))
+        .await
+        .map_err(|error| s3s::s3_error!(InternalError, "MD5 worker failed: {error}"))
+}
+
+fn md5_bytes(input: impl AsRef<[u8]>) -> [u8; 16] {
+    let mut hasher = Md5::new();
+    hasher.update(input.as_ref());
+    hasher.finalize().into()
+}
+
+fn md5_hex(input: impl AsRef<[u8]>) -> String {
+    let mut hasher = Md5::new();
+    hasher.update(input.as_ref());
+    hex_simd::encode_to_string(hasher.finalize(), hex_simd::AsciiCase::Lower)
+}
+
+fn ensure_store_budget(state: &StoreState, removed_bytes: usize, added_bytes: usize, adds_version: bool) -> S3Result {
+    let total_bytes = state
+        .total_bytes
+        .checked_sub(removed_bytes)
+        .and_then(|total| total.checked_add(added_bytes))
+        .ok_or_else(|| s3s::s3_error!(InternalError, "fake target storage accounting overflow"))?;
+    if total_bytes > state.limits.max_total_bytes {
+        return Err(s3s::s3_error!(ServiceUnavailable, "fake target storage budget exhausted"));
+    }
+    if adds_version && state.total_versions >= MAX_OBJECT_VERSIONS {
+        return Err(s3s::s3_error!(ServiceUnavailable, "fake target version budget exhausted"));
+    }
+    Ok(())
+}
+
+fn ensure_part_budget(state: &StoreState, adds_part: bool) -> S3Result {
+    if adds_part && state.total_parts >= MAX_MULTIPART_PARTS {
+        Err(s3s::s3_error!(ServiceUnavailable, "fake target multipart part budget exhausted"))
+    } else {
+        Ok(())
+    }
+}
+
+fn ensure_upload_budget(state: &StoreState) -> S3Result {
+    if state.uploads.len() >= MAX_MULTIPART_UPLOADS {
+        Err(s3s::s3_error!(ServiceUnavailable, "fake target multipart budget exhausted"))
+    } else {
+        Ok(())
+    }
+}
+
+/// Insert a version newest-first. In a versioned bucket a version id is
+/// idempotent (a replayed replication PUT replaces its own copy); in an
+/// unversioned bucket the new version replaces whatever the key held.
+fn upsert_version(state: &mut StoreState, bucket: &str, key: String, version: ObjectVersion) -> S3Result {
+    let bucket_state = state
+        .buckets
+        .get(bucket)
+        .ok_or_else(|| s3s::s3_error!(NoSuchBucket, "bucket does not exist"))?;
+    let versioned = bucket_state.versioned;
+    let versions = bucket_state.objects.get(&key);
+    let existing = versions.and_then(|versions| {
+        versions
+            .iter()
+            .position(|candidate| candidate.version_id == version.version_id)
+            .map(|position| (position, versions[position].body.len()))
+    });
+    // An unversioned bucket holds one version per key, so a replacement
+    // always matches the stored `null` id and `existing` covers it.
+    debug_assert!(versioned || versions.is_none_or(|versions| versions.len() <= 1));
+    ensure_store_budget(state, existing.map_or(0, |(_, bytes)| bytes), version.body.len(), existing.is_none())?;
+    state.total_bytes = state.total_bytes - existing.map_or(0, |(_, bytes)| bytes) + version.body.len();
+    if existing.is_none() {
+        state.total_versions += 1;
+    }
+    let versions = state
+        .buckets
+        .get_mut(bucket)
+        .expect("bucket existence checked above")
+        .objects
+        .entry(key)
+        .or_default();
+    if let Some((position, _)) = existing {
+        versions.remove(position);
+    }
+    let insert_at = versions
+        .binary_search_by(|candidate| {
+            version
+                .last_modified
+                .cmp(&candidate.last_modified)
+                .then_with(|| candidate.delete_marker.cmp(&version.delete_marker))
+                .then_with(|| version.version_id.cmp(&candidate.version_id))
+        })
+        .unwrap_or_else(|position| position);
+    versions.insert(insert_at, version);
+    Ok(())
+}
+
+fn marker_error(version: &ObjectVersion, explicit_version: bool) -> s3s::S3Error {
+    let mut error = if explicit_version {
+        s3s::s3_error!(MethodNotAllowed, "requested version is a delete marker")
+    } else {
+        s3s::s3_error!(NoSuchKey, "current version is a delete marker")
+    };
+    let mut headers = HeaderMap::new();
+    headers.insert("x-amz-delete-marker", HeaderValue::from_static("true"));
+    if let Ok(value) = HeaderValue::from_str(&version.version_id) {
+        headers.insert("x-amz-version-id", value);
+    }
+    if explicit_version {
+        let mut formatted = Vec::new();
+        if version
+            .last_modified
+            .format(TimestampFormat::HttpDate, &mut formatted)
+            .is_ok()
+            && let Ok(value) = HeaderValue::from_bytes(&formatted)
+        {
+            headers.insert(LAST_MODIFIED, value);
+        }
+    }
+    error.set_headers(headers);
+    error
+}
+
+fn find_version(state: &StoreState, bucket: &str, key: &str, version_id: Option<&str>) -> S3Result<ObjectVersion> {
+    let bucket = state
+        .buckets
+        .get(bucket)
+        .ok_or_else(|| s3s::s3_error!(NoSuchBucket, "bucket does not exist"))?;
+    let versions = bucket.objects.get(key).ok_or_else(|| {
+        if version_id.is_some() {
+            s3s::s3_error!(NoSuchVersion, "object version does not exist")
+        } else {
+            s3s::s3_error!(NoSuchKey, "object does not exist")
+        }
+    })?;
+    let version = match version_id {
+        Some(version_id) => versions.iter().find(|version| version.version_id == version_id),
+        None => versions.first(),
+    }
+    .ok_or_else(|| {
+        if version_id.is_some() {
+            s3s::s3_error!(NoSuchVersion, "object version does not exist")
+        } else {
+            s3s::s3_error!(NoSuchKey, "object does not exist")
+        }
+    })?;
+    if version.delete_marker {
+        return Err(marker_error(version, version_id.is_some()));
+    }
+    Ok(version.clone())
+}
+
+/// Replace (or clear, with an empty vec) the tag set of the addressed
+/// version, returning its version id. Mirrors `find_version` addressing:
+/// explicit version id or the latest version, delete markers rejected.
+fn set_version_tags(
+    state: &mut StoreState,
+    bucket: &str,
+    key: &str,
+    version_id: Option<&str>,
+    tags: Vec<(String, String)>,
+) -> S3Result<String> {
+    // Resolve first (immutable) so the error paths match find_version.
+    let resolved = find_version(state, bucket, key, version_id)?.version_id;
+    let versions = state
+        .buckets
+        .get_mut(bucket)
+        .expect("bucket existence checked by find_version")
+        .objects
+        .get_mut(key)
+        .expect("key existence checked by find_version");
+    let version = versions
+        .iter_mut()
+        .find(|version| version.version_id == resolved)
+        .expect("version existence checked by find_version");
+    version.tags = tags;
+    Ok(resolved)
+}
+
+fn update_version_lock(
+    state: &mut StoreState,
+    bucket: &str,
+    key: &str,
+    version_id: Option<&str>,
+    update: impl FnOnce(&mut VersionLock),
+) -> S3Result<String> {
+    let resolved = find_version(state, bucket, key, version_id)?.version_id;
+    let version = state
+        .buckets
+        .get_mut(bucket)
+        .expect("bucket existence checked by find_version")
+        .objects
+        .get_mut(key)
+        .expect("key existence checked by find_version")
+        .iter_mut()
+        .find(|version| version.version_id == resolved)
+        .expect("version existence checked by find_version");
+    update(&mut version.lock);
+    Ok(resolved)
+}
+
+/// Whether version ids are surfaced for this bucket. Unknown buckets report
+/// `true`; the caller's lookup raises `NoSuchBucket` first.
+fn bucket_versioned(state: &StoreState, bucket: &str) -> bool {
+    state.buckets.get(bucket).is_none_or(|bucket| bucket.versioned)
+}
+
+/// Bytes of the stored body a GET/HEAD answers with, plus the `Content-Range`
+/// header and 206 status when a `Range` was applied.
+struct ServedRange {
+    range: std::ops::Range<usize>,
+    content_range: Option<String>,
+    status: Option<StatusCode>,
+}
+
+impl ServedRange {
+    fn len(&self) -> usize {
+        self.range.end - self.range.start
+    }
+}
+
+/// Resolve a `Range` request header against the object length following RFC
+/// 9110 byte ranges as S3 applies them: `first-last` (last clamped to the
+/// object), `first-`, and `-suffix`; unsatisfiable ranges (first beyond the
+/// end, zero suffix, empty object) answer 416 with `Content-Range: bytes */len`.
+fn resolve_range(range: Option<&Range>, len: usize) -> S3Result<ServedRange> {
+    let Some(range) = range else {
+        return Ok(ServedRange {
+            range: 0..len,
+            content_range: None,
+            status: None,
+        });
+    };
+    let unsatisfiable = || {
+        let mut error = s3s::s3_error!(InvalidRange, "the requested range is not satisfiable");
+        let mut headers = HeaderMap::new();
+        if let Ok(value) = HeaderValue::from_str(&format!("bytes */{len}")) {
+            headers.insert("content-range", value);
+        }
+        error.set_headers(headers);
+        error
+    };
+    if len == 0 {
+        return Err(unsatisfiable());
+    }
+    let served = range.check(len as u64).map_err(|_| unsatisfiable())?;
+    let start = served.start as usize;
+    let end = served.end as usize;
+    Ok(ServedRange {
+        range: start..end,
+        content_range: Some(format!("bytes {start}-{}/{len}", end - 1)),
+        status: Some(StatusCode::PARTIAL_CONTENT),
+    })
+}
+
+/// One ListObjectsV2 result entry in listing order.
+enum ListEntry {
+    Object {
+        key: String,
+        e_tag: String,
+        last_modified: Timestamp,
+        size: usize,
+    },
+    CommonPrefix(String),
+}
+
+impl ListEntry {
+    fn name(&self) -> &str {
+        match self {
+            ListEntry::Object { key, .. } => key,
+            ListEntry::CommonPrefix(prefix) => prefix,
+        }
+    }
+}
+
+struct ListPage {
+    entries: Vec<ListEntry>,
+    truncated: bool,
+}
+
+/// Listing cursor decoded from `start-after` / `continuation-token`.
+struct ListCursor<'a> {
+    /// Keys at or before this name are skipped.
+    after: &'a str,
+    /// The name was a folded common prefix: every key under it is skipped
+    /// too, so the next page resumes after the whole group.
+    skips_group: bool,
+}
+
+fn list_page(
+    bucket: &BucketState,
+    prefix: &str,
+    delimiter: Option<&str>,
+    cursors: &[ListCursor<'_>],
+    max_keys: usize,
+) -> ListPage {
+    if max_keys == 0 {
+        // An empty page cannot carry a resume position, so it is never
+        // reported as truncated.
+        return ListPage {
+            entries: Vec::new(),
+            truncated: false,
+        };
+    }
+    let mut current: Vec<(&String, &ObjectVersion)> = bucket
+        .objects
+        .iter()
+        .filter_map(|(key, versions)| {
+            versions
+                .first()
+                .filter(|version| !version.delete_marker)
+                .map(|version| (key, version))
+        })
+        .filter(|(key, _)| key.starts_with(prefix))
+        .filter(|(key, _)| {
+            cursors
+                .iter()
+                .all(|cursor| key.as_str() > cursor.after && !(cursor.skips_group && key.starts_with(cursor.after)))
+        })
+        .collect();
+    current.sort_by(|left, right| left.0.as_bytes().cmp(right.0.as_bytes()));
+
+    let mut entries: Vec<ListEntry> = Vec::new();
+    let mut truncated = false;
+    for (key, version) in current {
+        let folded = delimiter.and_then(|delimiter| {
+            key[prefix.len()..]
+                .find(delimiter)
+                .map(|position| key[..prefix.len() + position + delimiter.len()].to_string())
+        });
+        if let Some(common) = &folded
+            && entries.last().is_some_and(|entry| entry.name() == common)
+        {
+            continue;
+        }
+        if entries.len() >= max_keys {
+            truncated = true;
+            break;
+        }
+        entries.push(match folded {
+            Some(common) => ListEntry::CommonPrefix(common),
+            None => ListEntry::Object {
+                key: key.clone(),
+                e_tag: version.e_tag.clone(),
+                last_modified: version.last_modified.clone(),
+                size: version.body.len(),
+            },
+        });
+    }
+    ListPage { entries, truncated }
+}
+
+/// Continuation tokens are opaque on the wire (hex of the last listed name)
+/// so a client that inspects or edits them gets no positional hint.
+fn encode_continuation_token(name: &str) -> String {
+    hex_simd::encode_to_string(name.as_bytes(), hex_simd::AsciiCase::Lower)
+}
+
+fn decode_continuation_token(token: &str) -> S3Result<String> {
+    hex_simd::decode_to_vec(token.as_bytes())
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .ok_or_else(|| s3s::s3_error!(InvalidArgument, "the continuation token provided is incorrect"))
+}
+
+#[async_trait]
+impl S3 for FakeBackend {
+    async fn head_bucket(&self, req: S3Request<HeadBucketInput>) -> S3Result<S3Response<HeadBucketOutput>> {
+        let fault = request_fault(&req);
+        apply_non_body_fault(fault.as_ref(), &self.control).await?;
+        if !lock(&self.store).buckets.contains_key(&req.input.bucket) {
+            return Err(s3s::s3_error!(NoSuchBucket, "bucket does not exist"));
+        }
+        Ok(apply_response_fault(S3Response::new(HeadBucketOutput::default()), fault.as_ref()))
+    }
+
+    async fn get_bucket_versioning(
+        &self,
+        req: S3Request<GetBucketVersioningInput>,
+    ) -> S3Result<S3Response<GetBucketVersioningOutput>> {
+        let fault = request_fault(&req);
+        apply_non_body_fault(fault.as_ref(), &self.control).await?;
+        let versioned = lock(&self.store)
+            .buckets
+            .get(&req.input.bucket)
+            .map(|bucket| bucket.versioned)
+            .ok_or_else(|| s3s::s3_error!(NoSuchBucket, "bucket does not exist"))?;
+        Ok(apply_response_fault(
+            S3Response::new(GetBucketVersioningOutput {
+                status: versioned.then(|| "Enabled".to_string().into()),
+                ..Default::default()
+            }),
+            fault.as_ref(),
+        ))
+    }
+
+    async fn get_object_lock_configuration(
+        &self,
+        req: S3Request<GetObjectLockConfigurationInput>,
+    ) -> S3Result<S3Response<GetObjectLockConfigurationOutput>> {
+        let fault = request_fault(&req);
+        apply_non_body_fault(fault.as_ref(), &self.control).await?;
+        let object_lock = lock(&self.store)
+            .buckets
+            .get(&req.input.bucket)
+            .map(|bucket| bucket.object_lock)
+            .ok_or_else(|| s3s::s3_error!(NoSuchBucket, "bucket does not exist"))?;
+        if !object_lock {
+            return Err(s3s::s3_error!(
+                ObjectLockConfigurationNotFoundError,
+                "Object Lock configuration does not exist for this bucket"
+            ));
+        }
+        Ok(apply_response_fault(
+            S3Response::new(GetObjectLockConfigurationOutput {
+                object_lock_configuration: Some(ObjectLockConfiguration {
+                    object_lock_enabled: Some(ObjectLockEnabled::from_static(ObjectLockEnabled::ENABLED)),
+                    ..Default::default()
+                }),
+            }),
+            fault.as_ref(),
+        ))
+    }
+
+    /// Current versions only (a key whose newest version is a delete marker
+    /// is hidden), keys in byte order, `delimiter` folding into common
+    /// prefixes that count toward `max-keys`, and `start-after` /
+    /// `continuation-token` cursors. `encoding-type` and `fetch-owner` are
+    /// accepted but ignored.
+    async fn list_objects_v2(&self, req: S3Request<ListObjectsV2Input>) -> S3Result<S3Response<ListObjectsV2Output>> {
+        let fault = request_fault(&req);
+        apply_non_body_fault(fault.as_ref(), &self.control).await?;
+        let input = req.input;
+        let prefix = input.prefix.clone().unwrap_or_default();
+        let delimiter = input.delimiter.clone().filter(|delimiter| !delimiter.is_empty());
+        let max_keys = input.max_keys.unwrap_or(MAX_LIST_KEYS).clamp(0, MAX_LIST_KEYS);
+        let resume_after = input
+            .continuation_token
+            .as_deref()
+            .map(decode_continuation_token)
+            .transpose()?;
+        let mut cursors = Vec::with_capacity(2);
+        if let Some(start_after) = input.start_after.as_deref() {
+            cursors.push(ListCursor {
+                after: start_after,
+                skips_group: false,
+            });
+        }
+        if let Some(resume_after) = resume_after.as_deref() {
+            cursors.push(ListCursor {
+                after: resume_after,
+                skips_group: delimiter
+                    .as_deref()
+                    .is_some_and(|delimiter| resume_after.ends_with(delimiter)),
+            });
+        }
+        let page = {
+            let state = lock(&self.store);
+            let bucket_state = state
+                .buckets
+                .get(&input.bucket)
+                .ok_or_else(|| s3s::s3_error!(NoSuchBucket, "bucket does not exist"))?;
+            list_page(bucket_state, &prefix, delimiter.as_deref(), &cursors, max_keys as usize)
+        };
+        let next_continuation_token = page
+            .truncated
+            .then(|| page.entries.last().map(|entry| encode_continuation_token(entry.name())))
+            .flatten();
+        let key_count = page.entries.len() as i32;
+        let mut contents = Vec::new();
+        let mut common_prefixes = Vec::new();
+        for entry in page.entries {
+            match entry {
+                ListEntry::Object {
+                    key,
+                    e_tag,
+                    last_modified,
+                    size,
+                } => contents.push(Object {
+                    key: Some(key),
+                    e_tag: Some(ETag::Strong(e_tag)),
+                    last_modified: Some(last_modified),
+                    size: Some(size as i64),
+                    storage_class: Some(ObjectStorageClass::STANDARD.to_string().into()),
+                    ..Default::default()
+                }),
+                ListEntry::CommonPrefix(prefix) => common_prefixes.push(CommonPrefix { prefix: Some(prefix) }),
+            }
+        }
+        Ok(apply_response_fault(
+            S3Response::new(ListObjectsV2Output {
+                name: Some(input.bucket),
+                prefix: input.prefix,
+                delimiter: input.delimiter,
+                max_keys: Some(max_keys),
+                key_count: Some(key_count),
+                continuation_token: input.continuation_token,
+                start_after: input.start_after,
+                encoding_type: input.encoding_type,
+                is_truncated: Some(page.truncated),
+                next_continuation_token,
+                contents: (!contents.is_empty()).then_some(contents),
+                common_prefixes: (!common_prefixes.is_empty()).then_some(common_prefixes),
+                ..Default::default()
+            }),
+            fault.as_ref(),
+        ))
+    }
+
+    /// Prefix + max-keys subset only — enough for the replication-check probe
+    /// key allocation. No pagination markers or delimiter folding.
+    async fn list_object_versions(
+        &self,
+        req: S3Request<ListObjectVersionsInput>,
+    ) -> S3Result<S3Response<ListObjectVersionsOutput>> {
+        let fault = request_fault(&req);
+        apply_non_body_fault(fault.as_ref(), &self.control).await?;
+        let state = lock(&self.store);
+        let Some(bucket_state) = state.buckets.get(&req.input.bucket) else {
+            return Err(s3s::s3_error!(NoSuchBucket, "bucket does not exist"));
+        };
+        let prefix = req.input.prefix.as_deref().unwrap_or_default();
+        let max_keys = req.input.max_keys.unwrap_or(1000).max(0) as usize;
+
+        let mut keys: Vec<&String> = bucket_state.objects.keys().filter(|key| key.starts_with(prefix)).collect();
+        keys.sort();
+
+        let mut versions = Vec::new();
+        let mut delete_markers = Vec::new();
+        'keys: for key in keys {
+            for version in bucket_state.objects[key].iter().rev() {
+                if versions.len() + delete_markers.len() >= max_keys {
+                    break 'keys;
+                }
+                if version.delete_marker {
+                    delete_markers.push(DeleteMarkerEntry {
+                        key: Some(key.clone()),
+                        version_id: Some(ObjectVersionId::from(version.version_id.clone())),
+                        last_modified: Some(version.last_modified.clone()),
+                        ..Default::default()
+                    });
+                } else {
+                    versions.push(s3s::dto::ObjectVersion {
+                        key: Some(key.clone()),
+                        version_id: Some(ObjectVersionId::from(version.version_id.clone())),
+                        last_modified: Some(version.last_modified.clone()),
+                        e_tag: Some(ETag::Strong(version.e_tag.clone())),
+                        size: Some(version.body.len() as i64),
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+        drop(state);
+
+        Ok(apply_response_fault(
+            S3Response::new(ListObjectVersionsOutput {
+                name: Some(req.input.bucket),
+                versions: Some(versions),
+                delete_markers: Some(delete_markers),
+                ..Default::default()
+            }),
+            fault.as_ref(),
+        ))
+    }
+
+    async fn put_object(&self, req: S3Request<PutObjectInput>) -> S3Result<S3Response<PutObjectOutput>> {
+        let fault = request_fault(&req);
+        let _body_permit = timeout(MAX_FAULT_DURATION, Arc::clone(&self.body_limit).acquire_owned())
+            .await
+            .map_err(|_| s3s::s3_error!(RequestTimeout, "fake target body limiter wait exceeded 30 seconds"))?
+            .map_err(|_| s3s::s3_error!(ServiceUnavailable, "fake target body limiter closed"))?;
+        let headers = req.headers;
+        let input = req.input;
+        let (assign_own, drop_unlisted, require_checksum, limits, versioned) = {
+            let state = lock(&self.store);
+            (
+                state.assign_own_version_ids,
+                state.drop_unlisted_replication_headers,
+                state.require_checksum_for_object_lock,
+                state.limits,
+                bucket_versioned(&state, &input.bucket),
+            )
+        };
+        let transport = TransportSnapshot::from_headers(&headers);
+        if require_checksum
+            && transport.object_lock_params
+            && transport.content_md5.is_none()
+            && transport.checksum_headers.is_empty()
+        {
+            return Err(s3s::s3_error!(
+                InvalidRequest,
+                "Content-MD5 OR x-amz-checksum- HTTP header is required for Put Object requests with Object Lock parameters"
+            ));
+        }
+        let body =
+            collect_stream(input.body, input.content_length, fault.as_ref(), &self.control, limits.max_object_bytes).await?;
+        let mut body_permit = _body_permit;
+        if let Some(expected) = &transport.content_md5 {
+            let (digest, permit) = md5_digest(body.clone(), body_permit).await?;
+            body_permit = permit;
+            if BASE64_STANDARD.encode_to_string(digest) != expected.trim() {
+                return Err(s3s::s3_error!(BadDigest, "The Content-MD5 you specified did not match what we received."));
+            }
+        }
+        validate_stored_metadata(&input.content_type, &input.metadata)?;
+        let standard_headers = StandardHeaders {
+            cache_control: input.cache_control,
+            content_disposition: input.content_disposition,
+            content_encoding: input.content_encoding,
+            content_language: input.content_language,
+            expires: input.expires,
+        };
+        standard_headers.validate()?;
+        let version_id = if versioned {
+            new_version_id(&headers, assign_own)?
+        } else {
+            NULL_VERSION_ID.to_string()
+        };
+        let e_tag = match source_etag(&headers)? {
+            Some(value) => value,
+            None => {
+                let (digest, permit) = md5_digest(body.clone(), body_permit).await?;
+                body_permit = permit;
+                hex_simd::encode_to_string(digest, hex_simd::AsciiCase::Lower)
+            }
+        };
+        // Held until the version is stored, like every other body-bearing op.
+        let _body_permit = body_permit;
+        let version = ObjectVersion {
+            version_id: version_id.clone(),
+            body,
+            e_tag: e_tag.clone(),
+            last_modified: source_mtime(&headers),
+            delete_marker: false,
+            content_type: input.content_type,
+            metadata: input.metadata,
+            standard_headers,
+            tags: Vec::new(),
+            replication_sse_headers: captured_replication_sse_headers(&headers, drop_unlisted),
+            lock: VersionLock::from_headers(
+                input.object_lock_mode,
+                input.object_lock_retain_until_date,
+                input.object_lock_legal_hold_status,
+            ),
+        };
+        upsert_version(&mut lock(&self.store), &input.bucket, input.key, version)?;
+        Ok(apply_response_fault(
+            S3Response::new(PutObjectOutput {
+                e_tag: Some(ETag::Strong(maybe_wrong_etag(fault.as_ref(), e_tag))),
+                version_id: versioned.then_some(version_id),
+                ..Default::default()
+            }),
+            fault.as_ref(),
+        ))
+    }
+
+    async fn get_object(&self, req: S3Request<GetObjectInput>) -> S3Result<S3Response<GetObjectOutput>> {
+        let fault = request_fault(&req);
+        apply_non_body_fault(fault.as_ref(), &self.control).await?;
+        let input = req.input;
+        let held_get = lock(&self.control)
+            .held_get
+            .as_ref()
+            .filter(|held| held.bucket == input.bucket && held.key == input.key)
+            .cloned();
+        if let Some(mut held) = held_get {
+            held.entered.send_modify(|count| *count += 1);
+            // Keep the gate installed when a request is cancelled or times out:
+            // a retry must cross the same boundary before returning any bytes.
+            let _ = held.released.wait_for(|released| *released).await;
+        }
+        let (version, versioned) = {
+            let state = lock(&self.store);
+            (
+                find_version(&state, &input.bucket, &input.key, input.version_id.as_deref())?,
+                bucket_versioned(&state, &input.bucket),
+            )
+        };
+        let sse_customer_algorithm = stored_sse_customer_algorithm(&version);
+        let served = resolve_range(input.range.as_ref(), version.body.len())?;
+        let body = version.body.slice(served.range.clone());
+        let body = match fault.as_ref().map(|fault| &fault.action) {
+            Some(FaultAction::TruncateBodyAt(truncate_at)) => truncated_body(body, *truncate_at),
+            Some(FaultAction::SlowSendBody { chunk_bytes, delay }) => slow_sent_body(body, *chunk_bytes, *delay),
+            _ => StreamingBlob::from(body),
+        };
+        let mut response = S3Response::new(GetObjectOutput {
+            body: Some(body),
+            content_length: Some(served.len() as i64),
+            content_range: served.content_range,
+            accept_ranges: Some("bytes".to_string()),
+            content_type: version.content_type,
+            metadata: version.metadata,
+            cache_control: version.standard_headers.cache_control,
+            content_disposition: version.standard_headers.content_disposition,
+            content_encoding: version.standard_headers.content_encoding,
+            content_language: version.standard_headers.content_language,
+            expires: version.standard_headers.expires,
+            e_tag: Some(ETag::Strong(version.e_tag)),
+            last_modified: Some(version.last_modified.clone()),
+            version_id: versioned.then_some(version.version_id),
+            sse_customer_algorithm,
+            object_lock_mode: version
+                .lock
+                .retention
+                .as_ref()
+                .map(|(mode, _)| ObjectLockMode::from(mode.clone())),
+            object_lock_retain_until_date: version.lock.retention.as_ref().map(|(_, until)| until.clone()),
+            object_lock_legal_hold_status: version.lock.legal_hold_status(),
+            ..Default::default()
+        });
+        response.status = served.status;
+        Ok(apply_response_fault(response, fault.as_ref()))
+    }
+
+    async fn head_object(&self, req: S3Request<HeadObjectInput>) -> S3Result<S3Response<HeadObjectOutput>> {
+        let fault = request_fault(&req);
+        apply_non_body_fault(fault.as_ref(), &self.control).await?;
+        let input = req.input;
+        let (version, versioned) = {
+            let state = lock(&self.store);
+            (
+                find_version(&state, &input.bucket, &input.key, input.version_id.as_deref())?,
+                bucket_versioned(&state, &input.bucket),
+            )
+        };
+        let sse_customer_algorithm = stored_sse_customer_algorithm(&version);
+        let served = resolve_range(input.range.as_ref(), version.body.len())?;
+        let mut response = S3Response::new(HeadObjectOutput {
+            content_length: Some(served.len() as i64),
+            content_range: served.content_range,
+            accept_ranges: Some("bytes".to_string()),
+            content_type: version.content_type,
+            metadata: version.metadata,
+            cache_control: version.standard_headers.cache_control,
+            content_disposition: version.standard_headers.content_disposition,
+            content_encoding: version.standard_headers.content_encoding,
+            content_language: version.standard_headers.content_language,
+            expires: version.standard_headers.expires,
+            e_tag: Some(ETag::Strong(version.e_tag)),
+            last_modified: Some(version.last_modified.clone()),
+            version_id: versioned.then_some(version.version_id),
+            sse_customer_algorithm,
+            object_lock_mode: version
+                .lock
+                .retention
+                .as_ref()
+                .map(|(mode, _)| ObjectLockMode::from(mode.clone())),
+            object_lock_retain_until_date: version.lock.retention.as_ref().map(|(_, until)| until.clone()),
+            object_lock_legal_hold_status: version.lock.legal_hold_status(),
+            ..Default::default()
+        });
+        response.status = served.status;
+        Ok(apply_response_fault(response, fault.as_ref()))
+    }
+
+    async fn get_object_tagging(&self, req: S3Request<GetObjectTaggingInput>) -> S3Result<S3Response<GetObjectTaggingOutput>> {
+        let fault = request_fault(&req);
+        apply_non_body_fault(fault.as_ref(), &self.control).await?;
+        let input = req.input;
+        let (version, versioned) = {
+            let state = lock(&self.store);
+            (
+                find_version(&state, &input.bucket, &input.key, input.version_id.as_deref())?,
+                bucket_versioned(&state, &input.bucket),
+            )
+        };
+        let tag_set: TagSet = version
+            .tags
+            .into_iter()
+            .map(|(key, value)| Tag {
+                key: Some(key),
+                value: Some(value),
+            })
+            .collect();
+        Ok(apply_response_fault(
+            S3Response::new(GetObjectTaggingOutput {
+                tag_set,
+                version_id: versioned.then(|| ObjectVersionId::from(version.version_id)),
+            }),
+            fault.as_ref(),
+        ))
+    }
+
+    async fn put_object_tagging(&self, req: S3Request<PutObjectTaggingInput>) -> S3Result<S3Response<PutObjectTaggingOutput>> {
+        let fault = request_fault(&req);
+        apply_non_body_fault(fault.as_ref(), &self.control).await?;
+        let input = req.input;
+        let tags = input
+            .tagging
+            .tag_set
+            .into_iter()
+            .map(|tag| (tag.key.unwrap_or_default(), tag.value.unwrap_or_default()))
+            .collect();
+        let (version_id, versioned) = {
+            let mut state = lock(&self.store);
+            (
+                set_version_tags(&mut state, &input.bucket, &input.key, input.version_id.as_deref(), tags)?,
+                bucket_versioned(&state, &input.bucket),
+            )
+        };
+        Ok(apply_response_fault(
+            S3Response::new(PutObjectTaggingOutput {
+                version_id: versioned.then(|| ObjectVersionId::from(version_id)),
+            }),
+            fault.as_ref(),
+        ))
+    }
+
+    async fn get_object_retention(
+        &self,
+        req: S3Request<GetObjectRetentionInput>,
+    ) -> S3Result<S3Response<GetObjectRetentionOutput>> {
+        let fault = request_fault(&req);
+        apply_non_body_fault(fault.as_ref(), &self.control).await?;
+        let input = req.input;
+        let version = find_version(&lock(&self.store), &input.bucket, &input.key, input.version_id.as_deref())?;
+        Ok(apply_response_fault(
+            S3Response::new(GetObjectRetentionOutput {
+                retention: version.lock.retention.map(|(mode, until)| ObjectLockRetention {
+                    mode: Some(ObjectLockRetentionMode::from(mode)),
+                    retain_until_date: Some(until),
+                }),
+            }),
+            fault.as_ref(),
+        ))
+    }
+
+    async fn put_object_retention(
+        &self,
+        req: S3Request<PutObjectRetentionInput>,
+    ) -> S3Result<S3Response<PutObjectRetentionOutput>> {
+        let fault = request_fault(&req);
+        apply_non_body_fault(fault.as_ref(), &self.control).await?;
+        let input = req.input;
+        let retention = input
+            .retention
+            .and_then(|retention| retention.mode.zip(retention.retain_until_date))
+            .map(|(mode, until)| (mode.as_str().to_string(), until));
+        update_version_lock(&mut lock(&self.store), &input.bucket, &input.key, input.version_id.as_deref(), |lock| {
+            lock.retention = retention;
+        })?;
+        Ok(apply_response_fault(S3Response::new(PutObjectRetentionOutput::default()), fault.as_ref()))
+    }
+
+    async fn get_object_legal_hold(
+        &self,
+        req: S3Request<GetObjectLegalHoldInput>,
+    ) -> S3Result<S3Response<GetObjectLegalHoldOutput>> {
+        let fault = request_fault(&req);
+        apply_non_body_fault(fault.as_ref(), &self.control).await?;
+        let input = req.input;
+        let version = find_version(&lock(&self.store), &input.bucket, &input.key, input.version_id.as_deref())?;
+        Ok(apply_response_fault(
+            S3Response::new(GetObjectLegalHoldOutput {
+                legal_hold: Some(ObjectLockLegalHold {
+                    status: Some(
+                        version
+                            .lock
+                            .legal_hold_status()
+                            .unwrap_or_else(|| ObjectLockLegalHoldStatus::from_static(ObjectLockLegalHoldStatus::OFF)),
+                    ),
+                }),
+            }),
+            fault.as_ref(),
+        ))
+    }
+
+    async fn put_object_legal_hold(
+        &self,
+        req: S3Request<PutObjectLegalHoldInput>,
+    ) -> S3Result<S3Response<PutObjectLegalHoldOutput>> {
+        let fault = request_fault(&req);
+        apply_non_body_fault(fault.as_ref(), &self.control).await?;
+        let input = req.input;
+        let legal_hold_on = input
+            .legal_hold
+            .and_then(|hold| hold.status)
+            .is_some_and(|status| status.as_str().eq_ignore_ascii_case("ON"));
+        update_version_lock(&mut lock(&self.store), &input.bucket, &input.key, input.version_id.as_deref(), |lock| {
+            lock.legal_hold = Some(legal_hold_on);
+        })?;
+        Ok(apply_response_fault(S3Response::new(PutObjectLegalHoldOutput::default()), fault.as_ref()))
+    }
+
+    async fn delete_object_tagging(
+        &self,
+        req: S3Request<DeleteObjectTaggingInput>,
+    ) -> S3Result<S3Response<DeleteObjectTaggingOutput>> {
+        let fault = request_fault(&req);
+        apply_non_body_fault(fault.as_ref(), &self.control).await?;
+        let input = req.input;
+        let (version_id, versioned) = {
+            let mut state = lock(&self.store);
+            (
+                set_version_tags(&mut state, &input.bucket, &input.key, input.version_id.as_deref(), Vec::new())?,
+                bucket_versioned(&state, &input.bucket),
+            )
+        };
+        Ok(apply_response_fault(
+            S3Response::new(DeleteObjectTaggingOutput {
+                version_id: versioned.then(|| ObjectVersionId::from(version_id)),
+            }),
+            fault.as_ref(),
+        ))
+    }
+
+    async fn delete_object(&self, req: S3Request<DeleteObjectInput>) -> S3Result<S3Response<DeleteObjectOutput>> {
+        let fault = request_fault(&req);
+        apply_non_body_fault(fault.as_ref(), &self.control).await?;
+        let headers = req.headers;
+        let input = req.input;
+        let mut state = lock(&self.store);
+        let Some(versioned) = state.buckets.get(&input.bucket).map(|bucket| bucket.versioned) else {
+            return Err(s3s::s3_error!(NoSuchBucket, "bucket does not exist"));
+        };
+        if !versioned {
+            // Unversioned buckets know only the `null` version: DELETE removes
+            // the key outright and never writes a delete marker.
+            if input
+                .version_id
+                .as_deref()
+                .is_some_and(|version_id| version_id != NULL_VERSION_ID)
+            {
+                return Err(s3s::s3_error!(InvalidArgument, "invalid version id specified"));
+            }
+            let removed = state
+                .buckets
+                .get_mut(&input.bucket)
+                .expect("bucket existence checked above")
+                .objects
+                .remove(&input.key)
+                .unwrap_or_default();
+            state.total_bytes -= removed.iter().map(|version| version.body.len()).sum::<usize>();
+            state.total_versions -= removed.len();
+            return Ok(apply_response_fault(S3Response::new(DeleteObjectOutput::default()), fault.as_ref()));
+        }
+        if let Some(version_id) = input.version_id {
+            let reject_unknown = state.reject_unknown_version_deletes;
+            let (removed_bytes, removed_versions, delete_marker, remove_key) = {
+                let Some(versions) = state
+                    .buckets
+                    .get_mut(&input.bucket)
+                    .expect("bucket existence checked above")
+                    .objects
+                    .get_mut(&input.key)
+                else {
+                    if reject_unknown {
+                        return Err(s3s::s3_error!(NoSuchVersion, "The specified version does not exist."));
+                    }
+                    return Ok(apply_response_fault(
+                        S3Response::new(DeleteObjectOutput {
+                            version_id: Some(version_id),
+                            ..Default::default()
+                        }),
+                        fault.as_ref(),
+                    ));
+                };
+                if reject_unknown && !versions.iter().any(|version| version.version_id == version_id) {
+                    return Err(s3s::s3_error!(NoSuchVersion, "The specified version does not exist."));
+                }
+                let mut removed_bytes = 0usize;
+                let mut removed_versions = 0usize;
+                let mut delete_marker = None;
+                versions.retain(|version| {
+                    if version.version_id == version_id {
+                        removed_bytes += version.body.len();
+                        removed_versions += 1;
+                        delete_marker.get_or_insert(version.delete_marker);
+                        false
+                    } else {
+                        true
+                    }
+                });
+                (removed_bytes, removed_versions, delete_marker, versions.is_empty())
+            };
+            if remove_key {
+                state
+                    .buckets
+                    .get_mut(&input.bucket)
+                    .expect("bucket existence checked above")
+                    .objects
+                    .remove(&input.key);
+            }
+            state.total_bytes -= removed_bytes;
+            state.total_versions -= removed_versions;
+            return Ok(apply_response_fault(
+                S3Response::new(DeleteObjectOutput {
+                    delete_marker,
+                    version_id: Some(version_id),
+                    ..Default::default()
+                }),
+                fault.as_ref(),
+            ));
+        }
+
+        // `state` is the live store guard: read the flag from it. Re-locking
+        // would self-deadlock (the store mutex is not reentrant).
+        let version_id = new_version_id(&headers, state.assign_own_version_ids)?;
+        upsert_version(
+            &mut state,
+            &input.bucket,
+            input.key,
+            ObjectVersion {
+                version_id: version_id.clone(),
+                body: Bytes::new(),
+                e_tag: String::new(),
+                last_modified: source_mtime(&headers),
+                delete_marker: true,
+                content_type: None,
+                metadata: None,
+                standard_headers: StandardHeaders::default(),
+                tags: Vec::new(),
+                replication_sse_headers: Vec::new(),
+                lock: VersionLock::default(),
+            },
+        )?;
+        Ok(apply_response_fault(
+            S3Response::new(DeleteObjectOutput {
+                delete_marker: Some(true),
+                version_id: Some(version_id),
+                ..Default::default()
+            }),
+            fault.as_ref(),
+        ))
+    }
+
+    async fn create_multipart_upload(
+        &self,
+        req: S3Request<CreateMultipartUploadInput>,
+    ) -> S3Result<S3Response<CreateMultipartUploadOutput>> {
+        let fault = request_fault(&req);
+        apply_non_body_fault(fault.as_ref(), &self.control).await?;
+        let headers = req.headers;
+        let input = req.input;
+        let mut state = lock(&self.store);
+        if !state.buckets.contains_key(&input.bucket) {
+            return Err(s3s::s3_error!(NoSuchBucket, "bucket does not exist"));
+        }
+        ensure_upload_budget(&state)?;
+        validate_stored_metadata(&input.content_type, &input.metadata)?;
+        let standard_headers = StandardHeaders {
+            cache_control: input.cache_control,
+            content_disposition: input.content_disposition,
+            content_encoding: input.content_encoding,
+            content_language: input.content_language,
+            expires: input.expires,
+        };
+        standard_headers.validate()?;
+        let upload_id = Uuid::new_v4().to_string();
+        // Read the flags before the mutable borrow of `state.uploads` below
+        // (and never re-lock the store: the mutex is not reentrant).
+        let mint_own = state.assign_own_version_ids || state.assign_own_multipart_version_ids;
+        let drop_unlisted = state.drop_unlisted_replication_headers;
+        let version_id = if bucket_versioned(&state, &input.bucket) {
+            new_version_id(&headers, mint_own)?
+        } else {
+            NULL_VERSION_ID.to_string()
+        };
+        state.uploads.insert(
+            upload_id.clone(),
+            MultipartState {
+                bucket: input.bucket.clone(),
+                key: input.key.clone(),
+                version_id,
+                content_type: input.content_type,
+                metadata: input.metadata,
+                standard_headers,
+                replication_sse_headers: captured_replication_sse_headers(&headers, drop_unlisted),
+                lock: VersionLock::from_headers(
+                    input.object_lock_mode,
+                    input.object_lock_retain_until_date,
+                    input.object_lock_legal_hold_status,
+                ),
+                parts: BTreeMap::new(),
+            },
+        );
+        Ok(apply_response_fault(
+            S3Response::new(CreateMultipartUploadOutput {
+                bucket: Some(input.bucket),
+                key: Some(input.key),
+                upload_id: Some(upload_id),
+                ..Default::default()
+            }),
+            fault.as_ref(),
+        ))
+    }
+
+    async fn upload_part(&self, req: S3Request<UploadPartInput>) -> S3Result<S3Response<UploadPartOutput>> {
+        let fault = request_fault(&req);
+        let declared_actual_size = req
+            .headers
+            .get("x-rustfs-replication-part-actual-size")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<usize>().ok());
+        let _body_permit = timeout(MAX_FAULT_DURATION, Arc::clone(&self.body_limit).acquire_owned())
+            .await
+            .map_err(|_| s3s::s3_error!(RequestTimeout, "fake target body limiter wait exceeded 30 seconds"))?
+            .map_err(|_| s3s::s3_error!(ServiceUnavailable, "fake target body limiter closed"))?;
+        let input = req.input;
+        if !(1..=10_000).contains(&input.part_number) {
+            return Err(s3s::s3_error!(InvalidArgument, "part number must be in 1..=10000"));
+        }
+        let max_object_bytes = lock(&self.store).limits.max_object_bytes;
+        let body = collect_stream(input.body, input.content_length, fault.as_ref(), &self.control, max_object_bytes).await?;
+        let (digest, _body_permit) = md5_digest(body.clone(), _body_permit).await?;
+        let e_tag = hex_simd::encode_to_string(digest, hex_simd::AsciiCase::Lower);
+        let mut state = lock(&self.store);
+        let existing_bytes = state
+            .uploads
+            .get(&input.upload_id)
+            .filter(|upload| upload.bucket == input.bucket && upload.key == input.key)
+            .ok_or_else(|| s3s::s3_error!(NoSuchUpload, "multipart upload does not exist"))?
+            .parts
+            .get(&input.part_number)
+            .map_or(0, |part| part.body.len());
+        let adds_part = state
+            .uploads
+            .get(&input.upload_id)
+            .is_some_and(|upload| !upload.parts.contains_key(&input.part_number));
+        ensure_part_budget(&state, adds_part)?;
+        ensure_store_budget(&state, existing_bytes, body.len(), false)?;
+        state.total_bytes = state.total_bytes - existing_bytes + body.len();
+        if adds_part {
+            state.total_parts += 1;
+        }
+        let upload = state
+            .uploads
+            .get_mut(&input.upload_id)
+            .expect("upload existence checked above");
+        upload.parts.insert(
+            input.part_number,
+            MultipartPart {
+                body,
+                e_tag: e_tag.clone(),
+                digest,
+                actual_size: declared_actual_size,
+            },
+        );
+        Ok(apply_response_fault(
+            S3Response::new(UploadPartOutput {
+                e_tag: Some(ETag::Strong(maybe_wrong_etag(fault.as_ref(), e_tag))),
+                ..Default::default()
+            }),
+            fault.as_ref(),
+        ))
+    }
+
+    async fn complete_multipart_upload(
+        &self,
+        mut req: S3Request<CompleteMultipartUploadInput>,
+    ) -> S3Result<S3Response<CompleteMultipartUploadOutput>> {
+        let fault = request_fault(&req);
+        apply_non_body_fault(fault.as_ref(), &self.control).await?;
+        let _body_permits = match req.extensions.remove::<PrebodyPermit>().and_then(PrebodyPermit::take) {
+            Some(permit) => permit,
+            None => timeout(
+                MAX_FAULT_DURATION,
+                Arc::clone(&self.body_limit).acquire_many_owned(MAX_CONCURRENT_BODY_REQUESTS as u32),
+            )
+            .await
+            .map_err(|_| s3s::s3_error!(RequestTimeout, "fake target body limiter wait exceeded 30 seconds"))?
+            .map_err(|_| s3s::s3_error!(ServiceUnavailable, "fake target body limiter closed"))?,
+        };
+        let headers = req.headers;
+        let input = req.input;
+        let requested = input
+            .multipart_upload
+            .and_then(|upload| upload.parts)
+            .ok_or_else(|| s3s::s3_error!(InvalidPart, "completion omitted parts"))?;
+        if requested.is_empty() {
+            return Err(s3s::s3_error!(InvalidPart, "completion omitted parts"));
+        }
+        let mut requested_parts = Vec::with_capacity(requested.len());
+        let mut previous = 0;
+        for part in &requested {
+            let number = part
+                .part_number
+                .ok_or_else(|| s3s::s3_error!(InvalidPart, "part number is missing"))?;
+            if number <= previous {
+                return Err(s3s::s3_error!(InvalidPartOrder, "parts are not strictly ordered"));
+            }
+            previous = number;
+            let requested_etag = part
+                .e_tag
+                .as_ref()
+                .ok_or_else(|| s3s::s3_error!(InvalidPart, "part ETag is missing"))?;
+            requested_parts.push((number, normalize_etag(requested_etag.value())));
+        }
+
+        let (upload, selected_parts) = {
+            let state = lock(&self.store);
+            let upload = state
+                .uploads
+                .get(&input.upload_id)
+                .filter(|upload| upload.bucket == input.bucket && upload.key == input.key)
+                .ok_or_else(|| s3s::s3_error!(NoSuchUpload, "multipart upload does not exist"))?;
+            let mut selected = Vec::with_capacity(requested_parts.len());
+            for (index, (number, requested_etag)) in requested_parts.iter().enumerate() {
+                let stored = upload
+                    .parts
+                    .get(number)
+                    .ok_or_else(|| s3s::s3_error!(InvalidPart, "part was not uploaded"))?;
+                if requested_etag != &stored.e_tag {
+                    return Err(s3s::s3_error!(InvalidPart, "part ETag does not match"));
+                }
+                if index + 1 != requested_parts.len()
+                    && stored.actual_size.unwrap_or(stored.body.len()) < MIN_MULTIPART_PART_BYTES
+                {
+                    return Err(s3s::s3_error!(EntityTooSmall, "non-final multipart part is smaller than 5 MiB"));
+                }
+                selected.push((*number, stored.clone()));
+            }
+            (
+                MultipartState {
+                    bucket: upload.bucket.clone(),
+                    key: upload.key.clone(),
+                    version_id: upload.version_id.clone(),
+                    content_type: upload.content_type.clone(),
+                    metadata: upload.metadata.clone(),
+                    standard_headers: upload.standard_headers.clone(),
+                    replication_sse_headers: upload.replication_sse_headers.clone(),
+                    lock: upload.lock.clone(),
+                    parts: BTreeMap::new(),
+                },
+                selected,
+            )
+        };
+        let max_total_bytes = lock(&self.store).limits.max_total_bytes;
+        let total_len = selected_parts.iter().try_fold(0usize, |total, (_, part)| {
+            total
+                .checked_add(part.body.len())
+                .filter(|total| *total <= max_total_bytes)
+                .ok_or_else(|| s3s::s3_error!(EntityTooLarge, "multipart object exceeds {max_total_bytes} bytes"))
+        })?;
+        let assembly_parts = selected_parts
+            .iter()
+            .map(|(_, stored)| (stored.body.clone(), stored.digest))
+            .collect();
+        let (body, digests, _body_permits) = assemble_multipart(assembly_parts, total_len, _body_permits).await?;
+        let part_count = requested.len();
+        let e_tag = source_etag(&headers)?.unwrap_or_else(|| format!("{}-{part_count}", md5_hex(digests)));
+        let version = ObjectVersion {
+            version_id: upload.version_id.clone(),
+            body,
+            e_tag: e_tag.clone(),
+            last_modified: Timestamp::from(SystemTime::now()),
+            delete_marker: false,
+            content_type: upload.content_type,
+            metadata: upload.metadata,
+            standard_headers: upload.standard_headers,
+            tags: Vec::new(),
+            replication_sse_headers: upload.replication_sse_headers,
+            lock: upload.lock,
+        };
+        let mut state = lock(&self.store);
+        let versioned = bucket_versioned(&state, &input.bucket);
+        let current = state
+            .uploads
+            .get(&input.upload_id)
+            .filter(|current| current.bucket == input.bucket && current.key == input.key)
+            .ok_or_else(|| s3s::s3_error!(NoSuchUpload, "multipart upload does not exist"))?;
+        for (part, (selected_number, selected_part)) in requested.iter().zip(&selected_parts) {
+            let number = part.part_number.expect("validated above");
+            debug_assert_eq!(number, *selected_number);
+            let current_part = current
+                .parts
+                .get(&number)
+                .ok_or_else(|| s3s::s3_error!(InvalidPart, "part changed during completion"))?;
+            if current_part.e_tag != selected_part.e_tag {
+                return Err(s3s::s3_error!(InvalidPart, "part changed during completion"));
+            }
+        }
+        let upload_bytes = current.parts.values().map(|part| part.body.len()).sum::<usize>();
+        let upload_part_count = current.parts.len();
+        let existing = state
+            .buckets
+            .get(&input.bucket)
+            .ok_or_else(|| s3s::s3_error!(NoSuchBucket, "bucket does not exist"))?
+            .objects
+            .get(&input.key)
+            .and_then(|versions| versions.iter().find(|candidate| candidate.version_id == version.version_id))
+            .map(|version| version.body.len());
+        ensure_store_budget(
+            &state,
+            upload_bytes + existing.unwrap_or_default(),
+            version.body.len(),
+            existing.is_none(),
+        )?;
+        state.total_bytes -= upload_bytes;
+        state.total_parts -= upload_part_count;
+        state.uploads.remove(&input.upload_id);
+        upsert_version(&mut state, &input.bucket, input.key.clone(), version)?;
+        Ok(apply_response_fault(
+            S3Response::new(CompleteMultipartUploadOutput {
+                bucket: Some(input.bucket),
+                key: Some(input.key),
+                e_tag: Some(ETag::Strong(maybe_wrong_etag(fault.as_ref(), e_tag))),
+                version_id: versioned.then_some(upload.version_id),
+                ..Default::default()
+            }),
+            fault.as_ref(),
+        ))
+    }
+
+    async fn abort_multipart_upload(
+        &self,
+        req: S3Request<AbortMultipartUploadInput>,
+    ) -> S3Result<S3Response<AbortMultipartUploadOutput>> {
+        let fault = request_fault(&req);
+        apply_non_body_fault(fault.as_ref(), &self.control).await?;
+        let input = req.input;
+        let mut state = lock(&self.store);
+        let matches = state
+            .uploads
+            .get(&input.upload_id)
+            .is_some_and(|upload| upload.bucket == input.bucket && upload.key == input.key);
+        if !matches {
+            return Err(s3s::s3_error!(NoSuchUpload, "multipart upload does not exist"));
+        }
+        let removed = state
+            .uploads
+            .remove(&input.upload_id)
+            .expect("upload existence checked above");
+        state.total_bytes -= removed.parts.values().map(|part| part.body.len()).sum::<usize>();
+        state.total_parts -= removed.parts.len();
+        Ok(apply_response_fault(
+            S3Response::new(AbortMultipartUploadOutput::default()),
+            fault.as_ref(),
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aws_config::retry::RetryConfig;
+    use aws_sdk_s3::Client;
+    use aws_sdk_s3::config::{Credentials, Region};
+    use aws_sdk_s3::primitives::ByteStream;
+    use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
+    use aws_smithy_http_client::Builder as SmithyHttpClientBuilder;
+    use std::time::Instant;
+
+    fn client(target: &FakeS3Target) -> Client {
+        client_with_credentials(target, FAKE_ACCESS_KEY, FAKE_SECRET_KEY)
+    }
+
+    fn client_with_credentials(target: &FakeS3Target, access_key: &'static str, secret_key: &'static str) -> Client {
+        let credentials = Credentials::new(access_key, secret_key, None, None, "fake-target");
+        Client::from_conf(
+            aws_sdk_s3::Config::builder()
+                .credentials_provider(credentials)
+                .region(Region::new("us-east-1"))
+                .endpoint_url(target.endpoint())
+                .force_path_style(true)
+                .behavior_version_latest()
+                .retry_config(RetryConfig::standard().with_max_attempts(1))
+                .http_client(SmithyHttpClientBuilder::new().build_http())
+                .build(),
+        )
+    }
+
+    async fn get_bytes(client: &Client, bucket: &str, key: &str, version_id: Option<String>) -> Result<Bytes, BoxError> {
+        let output = client
+            .get_object()
+            .bucket(bucket)
+            .key(key)
+            .set_version_id(version_id)
+            .send()
+            .await?;
+        Ok(output.body.collect().await?.into_bytes())
+    }
+
+    async fn wait_for_active_connections(target: &FakeS3Target, expected: usize) {
+        let mut active_connections = target.active_connections.clone();
+        timeout(Duration::from_secs(2), active_connections.wait_for(|count| *count == expected))
+            .await
+            .expect("active connection count did not converge")
+            .expect("active connection counter closed unexpectedly");
+        assert_eq!(MAX_CONNECTIONS - target.connection_limit.available_permits(), expected);
+    }
+
+    async fn put_source_version(
+        client: &Client,
+        bucket: &str,
+        key: &str,
+        source_version: &str,
+        source_mtime: Option<&str>,
+        body: &'static [u8],
+    ) -> Result<aws_sdk_s3::operation::put_object::PutObjectOutput, BoxError> {
+        let source_version = source_version.to_string();
+        let source_mtime = source_mtime.map(ToOwned::to_owned);
+        Ok(client
+            .put_object()
+            .bucket(bucket)
+            .key(key)
+            .body(ByteStream::from_static(body))
+            .customize()
+            .map_request(move |mut request| {
+                request
+                    .headers_mut()
+                    .insert("x-rustfs-source-version-id", source_version.clone());
+                if let Some(source_mtime) = &source_mtime {
+                    request.headers_mut().insert("x-rustfs-source-mtime", source_mtime.clone());
+                    request.headers_mut().insert("x-rustfs-source-replication-request", "true");
+                }
+                Ok::<_, std::convert::Infallible>(request)
+            })
+            .send()
+            .await?)
+    }
+
+    /// A client that sends no SDK-computed checksum, the shape RustFS's
+    /// replication client has had since rustfs#6895.
+    fn client_without_sdk_checksums(target: &FakeS3Target) -> Client {
+        let credentials = Credentials::new(FAKE_ACCESS_KEY, FAKE_SECRET_KEY, None, None, "fake-target");
+        Client::from_conf(
+            aws_sdk_s3::Config::builder()
+                .credentials_provider(credentials)
+                .region(Region::new("us-east-1"))
+                .endpoint_url(target.endpoint())
+                .force_path_style(true)
+                .behavior_version_latest()
+                .request_checksum_calculation(aws_sdk_s3::config::RequestChecksumCalculation::WhenRequired)
+                .retry_config(RetryConfig::standard().with_max_attempts(1))
+                .http_client(SmithyHttpClientBuilder::new().build_http())
+                .build(),
+        )
+    }
+
+    fn retain_until() -> aws_sdk_s3::primitives::DateTime {
+        aws_sdk_s3::primitives::DateTime::from_secs(4_102_444_800)
+    }
+
+    #[tokio::test]
+    async fn get_object_gate_holds_retries_and_releases_on_drop() -> Result<(), BoxError> {
+        let target = FakeS3Target::start().await?;
+        let bucket = "gated-target";
+        target.create_bucket(bucket);
+        for key in ["held", "unrelated"] {
+            target.put_seed_object(bucket, key, Bytes::from_static(b"payload"), &SeedMetadata::default());
+        }
+        {
+            let gate = target.hold_get_object(bucket, "held");
+            let request = || S3Request {
+                input: GetObjectInput {
+                    bucket: bucket.to_string(),
+                    key: "held".to_string(),
+                    ..Default::default()
+                },
+                method: Method::GET,
+                uri: Uri::from_static("/gated-target/held"),
+                headers: HeaderMap::new(),
+                extensions: http::Extensions::new(),
+                credentials: None,
+                region: None,
+                service: None,
+                trailing_headers: None,
+            };
+            // Without a fault, only the gate can suspend this backend method.
+            let mut first = target.backend.get_object(request());
+            assert!(futures::poll!(first.as_mut()).is_pending(), "the first GET must wait at the gate");
+            drop(first);
+            let mut retry = target.backend.get_object(request());
+            assert!(futures::poll!(retry.as_mut()).is_pending(), "a cancelled GET must not consume the gate");
+            drop(gate);
+            let std::task::Poll::Ready(response) = futures::poll!(retry.as_mut()) else {
+                panic!("dropping the gate must release the waiting GET");
+            };
+            let mut body = response?.output.body.expect("released GET body");
+            assert_eq!(body.next().await.transpose()?, Some(Bytes::from_static(b"payload")));
+            assert!(body.next().await.is_none(), "released GET body must be complete");
+        }
+        let client = client(&target);
+        let mut gate = target.hold_get_object(bucket, "held");
+        let mut requests = tokio::task::JoinSet::new();
+        let first = client.clone();
+        requests.spawn(async move { get_bytes(&first, bucket, "held", None).await });
+        timeout(Duration::from_secs(2), gate.wait_until_entered()).await??;
+        requests.abort_all();
+        assert!(
+            requests
+                .join_next()
+                .await
+                .expect("first GET task")
+                .expect_err("cancel the first GET attempt")
+                .is_cancelled()
+        );
+
+        let retry = client.clone();
+        requests.spawn(async move { get_bytes(&retry, bucket, "held", None).await });
+        timeout(Duration::from_secs(2), gate.entered.wait_for(|count| *count == 2)).await??;
+        assert_eq!(
+            timeout(Duration::from_secs(2), get_bytes(&client, bucket, "unrelated", None)).await??,
+            Bytes::from_static(b"payload")
+        );
+        assert!(requests.try_join_next().is_none(), "the retry must remain behind the gate");
+        drop(gate);
+        assert_eq!(
+            timeout(Duration::from_secs(2), requests.join_next())
+                .await?
+                .expect("retried GET task")??,
+            Bytes::from_static(b"payload")
+        );
+        assert_eq!(get_bytes(&client, bucket, "held", None).await?, Bytes::from_static(b"payload"));
+        assert_eq!(target.count_requests(Operation::GetObject, "held"), 3);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn object_lock_target_requires_a_checksum_on_locked_puts() -> Result<(), BoxError> {
+        use aws_sdk_s3::error::ProvideErrorMetadata;
+        use aws_sdk_s3::types::ObjectLockMode;
+
+        let target = FakeS3Target::start().await?;
+        target.create_bucket_with_object_lock("locked");
+        target.require_checksum_for_object_lock(true);
+        let client = client_without_sdk_checksums(&target);
+        let locked_put = |key: &'static str| {
+            client
+                .put_object()
+                .bucket("locked")
+                .key(key)
+                .body(ByteStream::from_static(b"locked payload"))
+                .object_lock_mode(ObjectLockMode::Governance)
+                .object_lock_retain_until_date(retain_until())
+        };
+
+        // The rustfs#7082 shape: lock headers, no integrity header.
+        let err = locked_put("no-checksum")
+            .send()
+            .await
+            .expect_err("a locked PUT without Content-MD5 / x-amz-checksum-* must be rejected")
+            .into_service_error();
+        assert_eq!(err.code(), Some("InvalidRequest"));
+        assert!(
+            err.message().unwrap_or_default().contains("Object Lock parameters"),
+            "unexpected message: {:?}",
+            err.message()
+        );
+        assert!(!target.has_object("locked", "no-checksum"));
+
+        // A wrong Content-MD5 is caught even though the header is present.
+        let err = locked_put("wrong-md5")
+            .customize()
+            .map_request(|mut request| {
+                request
+                    .headers_mut()
+                    .insert("content-md5", BASE64_STANDARD.encode_to_string(md5_bytes(b"other payload")));
+                Ok::<_, std::convert::Infallible>(request)
+            })
+            .send()
+            .await
+            .expect_err("a mismatching Content-MD5 must be rejected")
+            .into_service_error();
+        assert_eq!(err.code(), Some("BadDigest"));
+
+        // The correct Content-MD5 is accepted and the body is stored intact.
+        locked_put("good-md5")
+            .customize()
+            .map_request(|mut request| {
+                request
+                    .headers_mut()
+                    .insert("content-md5", BASE64_STANDARD.encode_to_string(md5_bytes(b"locked payload")));
+                Ok::<_, std::convert::Infallible>(request)
+            })
+            .send()
+            .await?;
+        assert_eq!(
+            get_bytes(&client, "locked", "good-md5", None).await?,
+            Bytes::from_static(b"locked payload")
+        );
+
+        // The rule is scoped to Object Lock parameters: an unlocked PUT
+        // without any checksum still lands.
+        client
+            .put_object()
+            .bucket("locked")
+            .key("unlocked")
+            .body(ByteStream::from_static(b"plain payload"))
+            .send()
+            .await?;
+        assert!(target.has_object("locked", "unlocked"));
+
+        let journal = target.requests();
+        let rejected = journal
+            .iter()
+            .find(|record| record.operation == Operation::PutObject && record.key.as_deref() == Some("no-checksum"))
+            .expect("the rejected PUT is journaled");
+        assert!(rejected.transport.object_lock_params);
+        assert!(rejected.transport.checksum_headers.is_empty());
+        assert_eq!(rejected.transport.content_md5, None);
+        assert!(!rejected.transport.aws_chunked);
+        let accepted = journal
+            .iter()
+            .find(|record| record.operation == Operation::PutObject && record.key.as_deref() == Some("good-md5"))
+            .expect("the accepted PUT is journaled");
+        assert_eq!(
+            accepted.transport.content_md5.as_deref(),
+            Some(BASE64_STANDARD.encode_to_string(md5_bytes(b"locked payload")).as_str())
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn aws_chunked_rejecting_target_refuses_framed_uploads() -> Result<(), BoxError> {
+        use aws_sdk_s3::error::ProvideErrorMetadata;
+
+        let target = FakeS3Target::start().await?;
+        target.create_bucket("plain");
+        target.reject_aws_chunked_uploads(true);
+        let client = client_without_sdk_checksums(&target);
+
+        // An upload announcing a trailer is refused before its body is read.
+        let err = client
+            .put_object()
+            .bucket("plain")
+            .key("framed")
+            .body(ByteStream::from_static(b"framed payload"))
+            .customize()
+            .map_request(|mut request| {
+                request.headers_mut().insert("x-amz-trailer", "x-amz-checksum-crc32");
+                Ok::<_, std::convert::Infallible>(request)
+            })
+            .send()
+            .await
+            .expect_err("an aws-chunked upload must be refused")
+            .into_service_error();
+        assert_eq!(err.code(), Some("InvalidRequest"));
+        assert!(
+            err.message().unwrap_or_default().contains("aws-chunked"),
+            "unexpected message: {:?}",
+            err.message()
+        );
+        assert!(!target.has_object("plain", "framed"));
+
+        // A plain signed payload still lands.
+        client
+            .put_object()
+            .bucket("plain")
+            .key("unframed")
+            .body(ByteStream::from_static(b"plain payload"))
+            .send()
+            .await?;
+        assert!(target.has_object("plain", "unframed"));
+
+        let journal = target.requests();
+        let framed = journal
+            .iter()
+            .find(|record| record.key.as_deref() == Some("framed"))
+            .expect("the refused upload is journaled");
+        assert!(framed.transport.aws_chunked);
+        let unframed = journal
+            .iter()
+            .find(|record| record.key.as_deref() == Some("unframed"))
+            .expect("the accepted upload is journaled");
+        assert!(!unframed.transport.aws_chunked);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn object_lock_configuration_reports_bucket_mode() -> Result<(), BoxError> {
+        use aws_sdk_s3::error::ProvideErrorMetadata;
+
+        let target = FakeS3Target::start().await?;
+        target.create_bucket_with_object_lock("locked");
+        target.create_bucket("plain");
+        let client = client(&target);
+
+        let locked = client.get_object_lock_configuration().bucket("locked").send().await?;
+        assert_eq!(
+            locked
+                .object_lock_configuration()
+                .and_then(|config| config.object_lock_enabled())
+                .map(|state| state.as_str()),
+            Some("Enabled")
+        );
+
+        // The code RustFS's replication-check classifies as "not enabled".
+        let err = client
+            .get_object_lock_configuration()
+            .bucket("plain")
+            .send()
+            .await
+            .expect_err("a bucket without Object Lock has no configuration")
+            .into_service_error();
+        assert_eq!(err.code(), Some("ObjectLockConfigurationNotFoundError"));
+        assert_eq!(
+            target
+                .requests()
+                .iter()
+                .filter(|record| record.operation == Operation::GetObjectLockConfiguration)
+                .count(),
+            2
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn journals_replication_timestamp_headers() -> Result<(), BoxError> {
+        let target = FakeS3Target::start().await?;
+        target.create_bucket("target-bucket");
+        let client = client(&target);
+
+        client
+            .put_object()
+            .bucket("target-bucket")
+            .key("plain")
+            .body(ByteStream::from_static(b"plain"))
+            .send()
+            .await?;
+        client
+            .put_object()
+            .bucket("target-bucket")
+            .key("stamped")
+            .body(ByteStream::from_static(b"stamped"))
+            .customize()
+            .map_request(move |mut request| {
+                let headers = request.headers_mut();
+                headers.insert("x-rustfs-source-replication-tagging-timestamp", "2026-01-02T03:04:05Z");
+                headers.insert("x-minio-source-replication-retention-timestamp", "2026-01-02T03:04:06Z");
+                headers.insert("x-rustfs-source-replication-legalhold-timestamp", "2026-01-02T03:04:07Z");
+                Ok::<_, std::convert::Infallible>(request)
+            })
+            .send()
+            .await?;
+
+        let requests = target.requests();
+        let plain = requests
+            .iter()
+            .find(|record| record.operation == Operation::PutObject && record.key.as_deref() == Some("plain"))
+            .expect("plain PUT must be journaled");
+        assert_eq!(plain.replication_timestamps, ReplicationTimestampHeaders::default());
+
+        let stamped = requests
+            .iter()
+            .find(|record| record.operation == Operation::PutObject && record.key.as_deref() == Some("stamped"))
+            .expect("stamped PUT must be journaled");
+        assert_eq!(stamped.replication_timestamps.tagging.as_deref(), Some("2026-01-02T03:04:05Z"));
+        assert_eq!(stamped.replication_timestamps.retention.as_deref(), Some("2026-01-02T03:04:06Z"));
+        assert_eq!(stamped.replication_timestamps.legalhold.as_deref(), Some("2026-01-02T03:04:07Z"));
+        Ok(())
+    }
+
+    /// Default mode is RustFS-like: SSE-C passthrough transport headers are
+    /// stored and the customer algorithm is echoed on HEAD/GET. Drop mode is
+    /// MinIO-like: the headers are silently discarded, so no evidence comes
+    /// back — the exact difference the N2 fail-closed audit keys on. Both
+    /// modes journal that the sender shipped the transport headers.
+    #[tokio::test]
+    async fn ssec_passthrough_headers_echo_and_drop_modes() -> Result<(), BoxError> {
+        let target = FakeS3Target::start().await?;
+        target.create_bucket("target-bucket");
+        let client = client(&target);
+
+        let put_with_transport_headers = |key: &'static str| {
+            client
+                .put_object()
+                .bucket("target-bucket")
+                .key(key)
+                .body(ByteStream::from_static(b"ciphertext"))
+                .customize()
+                .map_request(move |mut request| {
+                    let headers = request.headers_mut();
+                    headers.insert("x-rustfs-replication-ssec-algorithm", "AES256");
+                    headers.insert("x-rustfs-replication-ssec-key-md5", "AAAAAAAAAAAAAAAAAAAAAA==");
+                    Ok::<_, std::convert::Infallible>(request)
+                })
+                .send()
+        };
+
+        put_with_transport_headers("kept").await?;
+        let head = client.head_object().bucket("target-bucket").key("kept").send().await?;
+        assert_eq!(head.sse_customer_algorithm(), Some("AES256"));
+        let get = client.get_object().bucket("target-bucket").key("kept").send().await?;
+        assert_eq!(get.sse_customer_algorithm(), Some("AES256"));
+
+        target.drop_unlisted_replication_headers(true);
+        put_with_transport_headers("dropped").await?;
+        let head = client.head_object().bucket("target-bucket").key("dropped").send().await?;
+        assert_eq!(head.sse_customer_algorithm(), None, "drop mode must discard SSE-C evidence");
+
+        let requests = target.requests();
+        for key in ["kept", "dropped"] {
+            let record = requests
+                .iter()
+                .find(|record| record.operation == Operation::PutObject && record.key.as_deref() == Some(key))
+                .expect("PUT must be journaled");
+            assert!(
+                record.proxy_headers.ssec_transport_present,
+                "the journal must prove the sender shipped the transport headers for {key}"
+            );
+        }
+        let plain_head = requests
+            .iter()
+            .find(|record| record.operation == Operation::HeadObject)
+            .expect("HEAD must be journaled");
+        assert!(!plain_head.proxy_headers.ssec_transport_present);
+
+        target.shutdown().await;
+        Ok(())
+    }
+
+    macro_rules! assert_sdk_error {
+        ($error:expr, $status:expr, $code:expr) => {{
+            let error = &$error;
+            assert_eq!(error.raw_response().map(|response| response.status().as_u16()), Some($status));
+            assert_eq!(error.as_service_error().and_then(|error| error.meta().code()), Some($code));
+        }};
+    }
+
+    #[tokio::test]
+    async fn versions_delete_markers_and_request_journal() -> Result<(), BoxError> {
+        let target = FakeS3Target::start().await?;
+        target.create_bucket("target-bucket");
+        let client = client(&target);
+
+        client.head_bucket().bucket("target-bucket").send().await?;
+        let versioning = client.get_bucket_versioning().bucket("target-bucket").send().await?;
+        assert_eq!(versioning.status.map(|status| status.as_str().to_string()).as_deref(), Some("Enabled"));
+
+        let first = client
+            .put_object()
+            .bucket("target-bucket")
+            .key("nested/key")
+            .body(ByteStream::from_static(b"first"))
+            .send()
+            .await?;
+        let second = client
+            .put_object()
+            .bucket("target-bucket")
+            .key("nested/key")
+            .body(ByteStream::from_static(b"second"))
+            .send()
+            .await?;
+        let second_head = client.head_object().bucket("target-bucket").key("nested/key").send().await?;
+        assert_eq!(second_head.content_length(), Some(6));
+        assert_eq!(second_head.version_id(), second.version_id.as_deref());
+        assert_eq!(second_head.e_tag(), second.e_tag.as_deref());
+        let first_head = client
+            .head_object()
+            .bucket("target-bucket")
+            .key("nested/key")
+            .version_id(first.version_id.as_deref().expect("PUT must return a version"))
+            .send()
+            .await?;
+        assert_eq!(first_head.content_length(), Some(5));
+        assert_eq!(first_head.version_id(), first.version_id.as_deref());
+        assert_eq!(
+            get_bytes(&client, "target-bucket", "nested/key", None).await?,
+            Bytes::from_static(b"second")
+        );
+        assert_eq!(
+            get_bytes(&client, "target-bucket", "nested/key", first.version_id.clone()).await?,
+            Bytes::from_static(b"first")
+        );
+
+        client
+            .delete_object()
+            .bucket("target-bucket")
+            .key("nested/key")
+            .version_id(first.version_id.as_deref().expect("PUT must return a version"))
+            .send()
+            .await?;
+        let deleted = client
+            .get_object()
+            .bucket("target-bucket")
+            .key("nested/key")
+            .version_id(first.version_id.as_deref().expect("PUT must return a version"))
+            .send()
+            .await
+            .expect_err("deleted version must not remain readable");
+        assert_sdk_error!(deleted, 404, "NoSuchVersion");
+        let marker = client
+            .delete_object()
+            .bucket("target-bucket")
+            .key("nested/key")
+            .send()
+            .await?;
+        assert_eq!(marker.delete_marker, Some(true));
+        let current_marker = client
+            .get_object()
+            .bucket("target-bucket")
+            .key("nested/key")
+            .send()
+            .await
+            .expect_err("current delete marker must hide the object");
+        assert_sdk_error!(current_marker, 404, "NoSuchKey");
+        let current_marker_head = client
+            .head_object()
+            .bucket("target-bucket")
+            .key("nested/key")
+            .send()
+            .await
+            .expect_err("current delete marker must hide HEAD");
+        let current_marker_head_response = current_marker_head.raw_response().expect("HEAD error must retain response");
+        assert_eq!(current_marker_head_response.status().as_u16(), 404);
+        assert_eq!(current_marker_head_response.headers().get("x-amz-delete-marker"), Some("true"));
+        let marker_version = marker.version_id.as_deref().expect("DELETE must return marker version");
+        let explicit_marker = client
+            .head_object()
+            .bucket("target-bucket")
+            .key("nested/key")
+            .version_id(marker_version)
+            .send()
+            .await
+            .expect_err("explicit delete marker HEAD must fail");
+        let marker_response = explicit_marker.raw_response().expect("HEAD error must retain raw response");
+        assert_eq!(marker_response.status().as_u16(), 405);
+        assert_eq!(marker_response.headers().get("x-amz-delete-marker"), Some("true"));
+        assert_eq!(marker_response.headers().get("x-amz-version-id"), Some(marker_version));
+        assert!(marker_response.headers().get("last-modified").is_some());
+        let explicit_marker_get = client
+            .get_object()
+            .bucket("target-bucket")
+            .key("nested/key")
+            .version_id(marker_version)
+            .send()
+            .await
+            .expect_err("explicit delete marker GET must fail");
+        let explicit_marker_get_response = explicit_marker_get.raw_response().expect("GET error must retain response");
+        assert_eq!(explicit_marker_get_response.status().as_u16(), 405);
+        assert_eq!(explicit_marker_get_response.headers().get("x-amz-delete-marker"), Some("true"));
+        assert_eq!(explicit_marker_get_response.headers().get("x-amz-version-id"), Some(marker_version));
+        let purged_marker = client
+            .delete_object()
+            .bucket("target-bucket")
+            .key("nested/key")
+            .version_id(marker_version)
+            .send()
+            .await?;
+        assert_eq!(purged_marker.delete_marker, Some(true));
+        assert_eq!(purged_marker.version_id(), Some(marker_version));
+        assert_eq!(
+            get_bytes(&client, "target-bucket", "nested/key", None).await?,
+            Bytes::from_static(b"second")
+        );
+
+        let operations = target
+            .requests()
+            .into_iter()
+            .map(|request| request.operation)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            operations,
+            [
+                Operation::HeadBucket,
+                Operation::GetBucketVersioning,
+                Operation::PutObject,
+                Operation::PutObject,
+                Operation::HeadObject,
+                Operation::HeadObject,
+                Operation::GetObject,
+                Operation::GetObject,
+                Operation::DeleteObject,
+                Operation::GetObject,
+                Operation::DeleteObject,
+                Operation::GetObject,
+                Operation::HeadObject,
+                Operation::HeadObject,
+                Operation::GetObject,
+                Operation::DeleteObject,
+                Operation::GetObject,
+            ]
+        );
+        assert!(
+            target
+                .requests()
+                .windows(2)
+                .all(|pair| pair[0].sequence + 1 == pair[1].sequence)
+        );
+        let version_delete = target
+            .requests()
+            .into_iter()
+            .find(|request| request.operation == Operation::DeleteObject && request.version_id.is_some())
+            .expect("journal must retain version delete");
+        assert_eq!(version_delete.key.as_deref(), Some("nested/key"));
+        assert_eq!(version_delete.content_length, None);
+
+        let source_version = Uuid::from_u128(0xabcdef01_2345_6789_abcd_ef0123456789).to_string();
+        let equivalent_source_version = source_version.to_uppercase();
+        for supplied_version in [&equivalent_source_version, &source_version] {
+            let output = put_source_version(
+                &client,
+                "target-bucket",
+                "idempotent",
+                supplied_version,
+                Some("2025-01-02T00:00:00Z"),
+                b"same-body",
+            )
+            .await?;
+            assert_eq!(output.version_id(), Some(source_version.as_str()));
+        }
+        client
+            .delete_object()
+            .bucket("target-bucket")
+            .key("idempotent")
+            .version_id(&source_version)
+            .send()
+            .await?;
+        let purged = client
+            .get_object()
+            .bucket("target-bucket")
+            .key("idempotent")
+            .version_id(&source_version)
+            .send()
+            .await
+            .expect_err("idempotent retry must not leave a duplicate version");
+        assert_sdk_error!(purged, 404, "NoSuchVersion");
+        assert!(
+            !lock(&target.backend.store)
+                .buckets
+                .get("target-bucket")
+                .expect("bucket must exist")
+                .objects
+                .contains_key("idempotent"),
+            "deleting the final version must remove the retained object key"
+        );
+
+        let invalid_source_version = "not-a-uuid".to_string();
+        let invalid_source = client
+            .put_object()
+            .bucket("target-bucket")
+            .key("invalid-source-version")
+            .body(ByteStream::from_static(b"body"))
+            .customize()
+            .map_request(move |mut request| {
+                request
+                    .headers_mut()
+                    .insert("x-rustfs-source-version-id", invalid_source_version.clone());
+                Ok::<_, std::convert::Infallible>(request)
+            })
+            .send()
+            .await
+            .expect_err("source version IDs must be UUIDs");
+        assert_sdk_error!(invalid_source, 400, "InvalidArgument");
+
+        let fallback_base_version = Uuid::from_u128(9).to_string();
+        put_source_version(
+            &client,
+            "target-bucket",
+            "invalid-source-mtime",
+            &fallback_base_version,
+            Some("1970-01-02T00:00:00Z"),
+            b"base",
+        )
+        .await?;
+        let invalid_source_mtime = "not-rfc3339".to_string();
+        let invalid_before = time::OffsetDateTime::from(SystemTime::now());
+        client
+            .put_object()
+            .bucket("target-bucket")
+            .key("invalid-source-mtime")
+            .body(ByteStream::from_static(b"body"))
+            .customize()
+            .map_request(move |mut request| {
+                request
+                    .headers_mut()
+                    .insert("x-rustfs-source-mtime", invalid_source_mtime.clone());
+                request.headers_mut().insert("x-rustfs-source-replication-request", "true");
+                Ok::<_, std::convert::Infallible>(request)
+            })
+            .send()
+            .await?;
+        let invalid_after = time::OffsetDateTime::from(SystemTime::now());
+        let invalid_last_modified = {
+            lock(&target.backend.store)
+                .buckets
+                .get("target-bucket")
+                .expect("bucket")
+                .objects
+                .get("invalid-source-mtime")
+                .expect("object")
+                .first()
+                .expect("version")
+                .last_modified
+                .clone()
+        };
+        let invalid_last_modified: time::OffsetDateTime = invalid_last_modified.into();
+        assert!((invalid_before..=invalid_after).contains(&invalid_last_modified));
+        assert_eq!(
+            get_bytes(&client, "target-bucket", "invalid-source-mtime", None).await?,
+            Bytes::from_static(b"body"),
+            "invalid replication mtime must fall back to receipt time"
+        );
+
+        let unmarked_base_version = Uuid::from_u128(10).to_string();
+        put_source_version(
+            &client,
+            "target-bucket",
+            "unmarked-source-mtime",
+            &unmarked_base_version,
+            Some("1970-01-02T00:00:00Z"),
+            b"base",
+        )
+        .await?;
+        let unmarked_mtime = "1970-01-01T00:00:00Z".to_string();
+        let unmarked_before = time::OffsetDateTime::from(SystemTime::now());
+        client
+            .put_object()
+            .bucket("target-bucket")
+            .key("unmarked-source-mtime")
+            .body(ByteStream::from_static(b"body"))
+            .customize()
+            .map_request(move |mut request| {
+                request.headers_mut().insert("x-rustfs-source-mtime", unmarked_mtime.clone());
+                Ok::<_, std::convert::Infallible>(request)
+            })
+            .send()
+            .await?;
+        let unmarked_after = time::OffsetDateTime::from(SystemTime::now());
+        let unmarked_last_modified = {
+            lock(&target.backend.store)
+                .buckets
+                .get("target-bucket")
+                .expect("bucket")
+                .objects
+                .get("unmarked-source-mtime")
+                .expect("object")
+                .first()
+                .expect("version")
+                .last_modified
+                .clone()
+        };
+        let unmarked_last_modified: time::OffsetDateTime = unmarked_last_modified.into();
+        assert!((unmarked_before..=unmarked_after).contains(&unmarked_last_modified));
+        assert_eq!(
+            get_bytes(&client, "target-bucket", "unmarked-source-mtime", None).await?,
+            Bytes::from_static(b"body"),
+            "source mtime without a replication marker must be ignored"
+        );
+
+        let newer_version = Uuid::from_u128(3).to_string();
+        let older_version = Uuid::from_u128(2).to_string();
+        put_source_version(
+            &client,
+            "target-bucket",
+            "out-of-order",
+            &newer_version,
+            Some("2025-01-03T00:00:00Z"),
+            b"newer",
+        )
+        .await?;
+        put_source_version(
+            &client,
+            "target-bucket",
+            "out-of-order",
+            &older_version,
+            Some("2025-01-01T00:00:00Z"),
+            b"older",
+        )
+        .await?;
+        assert_eq!(
+            get_bytes(&client, "target-bucket", "out-of-order", None).await?,
+            Bytes::from_static(b"newer")
+        );
+        assert_eq!(
+            get_bytes(&client, "target-bucket", "out-of-order", Some(older_version)).await?,
+            Bytes::from_static(b"older")
+        );
+        let old_marker_version = Uuid::from_u128(4).to_string();
+        let old_marker_mtime = "2024-12-31T00:00:00Z".to_string();
+        client
+            .delete_object()
+            .bucket("target-bucket")
+            .key("out-of-order")
+            .customize()
+            .map_request(move |mut request| {
+                request
+                    .headers_mut()
+                    .insert("x-rustfs-source-version-id", old_marker_version.clone());
+                request
+                    .headers_mut()
+                    .insert("x-rustfs-source-mtime", old_marker_mtime.clone());
+                request.headers_mut().insert("x-rustfs-source-replication-request", "true");
+                Ok::<_, std::convert::Infallible>(request)
+            })
+            .send()
+            .await?;
+        assert_eq!(
+            get_bytes(&client, "target-bucket", "out-of-order", None).await?,
+            Bytes::from_static(b"newer"),
+            "a late old delete marker must not hide a newer replica"
+        );
+
+        let equal_mtime = "2025-01-04T00:00:00Z";
+        let lower_version = Uuid::from_u128(5).to_string();
+        let higher_version = Uuid::from_u128(6).to_string();
+        put_source_version(
+            &client,
+            "target-bucket",
+            "equal-mtime-objects",
+            &higher_version,
+            Some(equal_mtime),
+            b"higher",
+        )
+        .await?;
+        put_source_version(
+            &client,
+            "target-bucket",
+            "equal-mtime-objects",
+            &lower_version,
+            Some(equal_mtime),
+            b"lower",
+        )
+        .await?;
+        assert_eq!(
+            get_bytes(&client, "target-bucket", "equal-mtime-objects", None).await?,
+            Bytes::from_static(b"higher")
+        );
+
+        let equal_object_version = Uuid::from_u128(7).to_string();
+        put_source_version(
+            &client,
+            "target-bucket",
+            "equal-mtime-marker",
+            &equal_object_version,
+            Some(equal_mtime),
+            b"object",
+        )
+        .await?;
+        let equal_marker_version = Uuid::from_u128(8).to_string();
+        let equal_marker_mtime = equal_mtime.to_string();
+        client
+            .delete_object()
+            .bucket("target-bucket")
+            .key("equal-mtime-marker")
+            .customize()
+            .map_request(move |mut request| {
+                request
+                    .headers_mut()
+                    .insert("x-rustfs-source-version-id", equal_marker_version.clone());
+                request
+                    .headers_mut()
+                    .insert("x-rustfs-source-mtime", equal_marker_mtime.clone());
+                request.headers_mut().insert("x-rustfs-source-replication-request", "true");
+                Ok::<_, std::convert::Infallible>(request)
+            })
+            .send()
+            .await?;
+        assert_eq!(
+            get_bytes(&client, "target-bucket", "equal-mtime-marker", None).await?,
+            Bytes::from_static(b"object"),
+            "an equal-mtime delete marker must sort after an object"
+        );
+        target.shutdown().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn multipart_complete_and_abort() -> Result<(), BoxError> {
+        let target = FakeS3Target::start().await?;
+        target.create_bucket("target-bucket");
+        let client = client(&target);
+        let created = client
+            .create_multipart_upload()
+            .bucket("target-bucket")
+            .key("multipart")
+            .send()
+            .await?;
+        let upload_id = created.upload_id.expect("create must return upload id");
+        let first_body = Bytes::from(vec![b'a'; MIN_MULTIPART_PART_BYTES]);
+        let first = client
+            .upload_part()
+            .bucket("target-bucket")
+            .key("multipart")
+            .upload_id(&upload_id)
+            .part_number(1)
+            .body(ByteStream::from(first_body.clone()))
+            .send()
+            .await?;
+        let second = client
+            .upload_part()
+            .bucket("target-bucket")
+            .key("multipart")
+            .upload_id(&upload_id)
+            .part_number(2)
+            .body(ByteStream::from_static(b"world"))
+            .send()
+            .await?;
+        let parts = [first.e_tag, second.e_tag]
+            .into_iter()
+            .enumerate()
+            .map(|(index, e_tag)| {
+                CompletedPart::builder()
+                    .part_number(index as i32 + 1)
+                    .set_e_tag(e_tag)
+                    .build()
+            })
+            .collect::<Vec<_>>();
+        let invalid_parts = vec![
+            CompletedPart::builder().part_number(1).e_tag("\"wrong\"").build(),
+            parts[1].clone(),
+        ];
+        let invalid_complete = client
+            .complete_multipart_upload()
+            .bucket("target-bucket")
+            .key("multipart")
+            .upload_id(&upload_id)
+            .multipart_upload(CompletedMultipartUpload::builder().set_parts(Some(invalid_parts)).build())
+            .send()
+            .await
+            .expect_err("wrong part ETag must fail without consuming the upload");
+        assert_sdk_error!(invalid_complete, 400, "InvalidPart");
+        client
+            .complete_multipart_upload()
+            .bucket("target-bucket")
+            .key("multipart")
+            .upload_id(&upload_id)
+            .multipart_upload(CompletedMultipartUpload::builder().set_parts(Some(parts)).build())
+            .send()
+            .await?;
+        let completed = get_bytes(&client, "target-bucket", "multipart", None).await?;
+        assert_eq!(completed.len(), MIN_MULTIPART_PART_BYTES + 5);
+        assert_eq!(&completed[..MIN_MULTIPART_PART_BYTES], first_body.as_ref());
+        assert_eq!(&completed[MIN_MULTIPART_PART_BYTES..], b"world");
+
+        let missing_etag_upload = client
+            .create_multipart_upload()
+            .bucket("target-bucket")
+            .key("missing-etag")
+            .send()
+            .await?
+            .upload_id
+            .expect("create must return upload id");
+        client
+            .upload_part()
+            .bucket("target-bucket")
+            .key("missing-etag")
+            .upload_id(&missing_etag_upload)
+            .part_number(1)
+            .body(ByteStream::from_static(b"part"))
+            .send()
+            .await?;
+        let missing_etag = client
+            .complete_multipart_upload()
+            .bucket("target-bucket")
+            .key("missing-etag")
+            .upload_id(&missing_etag_upload)
+            .multipart_upload(
+                CompletedMultipartUpload::builder()
+                    .parts(CompletedPart::builder().part_number(1).build())
+                    .build(),
+            )
+            .send()
+            .await
+            .expect_err("completion must require every part ETag");
+        assert_sdk_error!(missing_etag, 400, "InvalidPart");
+        client
+            .abort_multipart_upload()
+            .bucket("target-bucket")
+            .key("missing-etag")
+            .upload_id(&missing_etag_upload)
+            .send()
+            .await?;
+
+        let invalid_upload = client
+            .create_multipart_upload()
+            .bucket("target-bucket")
+            .key("invalid-parts")
+            .send()
+            .await?
+            .upload_id
+            .expect("create must return upload id");
+        let invalid_one = client
+            .upload_part()
+            .bucket("target-bucket")
+            .key("invalid-parts")
+            .upload_id(&invalid_upload)
+            .part_number(1)
+            .body(ByteStream::from_static(b"one"))
+            .send()
+            .await?;
+        let invalid_two = client
+            .upload_part()
+            .bucket("target-bucket")
+            .key("invalid-parts")
+            .upload_id(&invalid_upload)
+            .part_number(2)
+            .body(ByteStream::from_static(b"two"))
+            .send()
+            .await?;
+        let zero_part = client
+            .upload_part()
+            .bucket("target-bucket")
+            .key("invalid-parts")
+            .upload_id(&invalid_upload)
+            .part_number(0)
+            .body(ByteStream::from_static(b"part"))
+            .send()
+            .await
+            .expect_err("part number zero must fail");
+        assert_sdk_error!(zero_part, 400, "InvalidArgument");
+        client
+            .upload_part()
+            .bucket("target-bucket")
+            .key("invalid-parts")
+            .upload_id(&invalid_upload)
+            .part_number(10_000)
+            .body(ByteStream::from_static(b"part"))
+            .send()
+            .await?;
+        let out_of_range = client
+            .upload_part()
+            .bucket("target-bucket")
+            .key("invalid-parts")
+            .upload_id(&invalid_upload)
+            .part_number(10_001)
+            .body(ByteStream::from_static(b"part"))
+            .send()
+            .await
+            .expect_err("part number above 10000 must fail");
+        assert_sdk_error!(out_of_range, 400, "InvalidArgument");
+        let empty = client
+            .complete_multipart_upload()
+            .bucket("target-bucket")
+            .key("invalid-parts")
+            .upload_id(&invalid_upload)
+            .multipart_upload(CompletedMultipartUpload::builder().build())
+            .send()
+            .await
+            .expect_err("empty completion must fail");
+        assert_sdk_error!(empty, 400, "InvalidPart");
+        let missing_part = client
+            .complete_multipart_upload()
+            .bucket("target-bucket")
+            .key("invalid-parts")
+            .upload_id(&invalid_upload)
+            .multipart_upload(
+                CompletedMultipartUpload::builder()
+                    .parts(CompletedPart::builder().part_number(3).e_tag("\"missing\"").build())
+                    .build(),
+            )
+            .send()
+            .await
+            .expect_err("unuploaded part must fail");
+        assert_sdk_error!(missing_part, 400, "InvalidPart");
+        let missing_number = client
+            .complete_multipart_upload()
+            .bucket("target-bucket")
+            .key("invalid-parts")
+            .upload_id(&invalid_upload)
+            .multipart_upload(
+                CompletedMultipartUpload::builder()
+                    .parts(CompletedPart::builder().set_e_tag(invalid_one.e_tag.clone()).build())
+                    .build(),
+            )
+            .send()
+            .await
+            .expect_err("missing part number must fail");
+        assert_sdk_error!(missing_number, 400, "InvalidPart");
+        let duplicate = client
+            .complete_multipart_upload()
+            .bucket("target-bucket")
+            .key("invalid-parts")
+            .upload_id(&invalid_upload)
+            .multipart_upload(
+                CompletedMultipartUpload::builder()
+                    .parts(
+                        CompletedPart::builder()
+                            .part_number(1)
+                            .set_e_tag(invalid_one.e_tag.clone())
+                            .build(),
+                    )
+                    .parts(
+                        CompletedPart::builder()
+                            .part_number(1)
+                            .set_e_tag(invalid_one.e_tag.clone())
+                            .build(),
+                    )
+                    .build(),
+            )
+            .send()
+            .await
+            .expect_err("duplicate completion part must fail");
+        assert_sdk_error!(duplicate, 400, "InvalidPartOrder");
+        let out_of_order = client
+            .complete_multipart_upload()
+            .bucket("target-bucket")
+            .key("invalid-parts")
+            .upload_id(&invalid_upload)
+            .multipart_upload(
+                CompletedMultipartUpload::builder()
+                    .parts(
+                        CompletedPart::builder()
+                            .part_number(2)
+                            .set_e_tag(invalid_two.e_tag.clone())
+                            .build(),
+                    )
+                    .parts(
+                        CompletedPart::builder()
+                            .part_number(1)
+                            .set_e_tag(invalid_one.e_tag.clone())
+                            .build(),
+                    )
+                    .build(),
+            )
+            .send()
+            .await
+            .expect_err("out-of-order completion must fail");
+        assert_sdk_error!(out_of_order, 400, "InvalidPartOrder");
+        let too_small = client
+            .complete_multipart_upload()
+            .bucket("target-bucket")
+            .key("invalid-parts")
+            .upload_id(&invalid_upload)
+            .multipart_upload(
+                CompletedMultipartUpload::builder()
+                    .parts(CompletedPart::builder().part_number(1).set_e_tag(invalid_one.e_tag).build())
+                    .parts(CompletedPart::builder().part_number(2).set_e_tag(invalid_two.e_tag).build())
+                    .build(),
+            )
+            .send()
+            .await
+            .expect_err("non-final small part must fail");
+        assert_sdk_error!(too_small, 400, "EntityTooSmall");
+        client
+            .abort_multipart_upload()
+            .bucket("target-bucket")
+            .key("invalid-parts")
+            .upload_id(&invalid_upload)
+            .send()
+            .await?;
+
+        let sparse_upload = client
+            .create_multipart_upload()
+            .bucket("target-bucket")
+            .key("sparse")
+            .send()
+            .await?
+            .upload_id
+            .expect("create must return upload id");
+        let sparse_first_body = Bytes::from(vec![b'b'; MIN_MULTIPART_PART_BYTES]);
+        let sparse_first = client
+            .upload_part()
+            .bucket("target-bucket")
+            .key("sparse")
+            .upload_id(&sparse_upload)
+            .part_number(1)
+            .body(ByteStream::from(sparse_first_body.clone()))
+            .send()
+            .await?;
+        let sparse_third = client
+            .upload_part()
+            .bucket("target-bucket")
+            .key("sparse")
+            .upload_id(&sparse_upload)
+            .part_number(3)
+            .body(ByteStream::from_static(b"three"))
+            .send()
+            .await?;
+        let sparse = client
+            .complete_multipart_upload()
+            .bucket("target-bucket")
+            .key("sparse")
+            .upload_id(&sparse_upload)
+            .multipart_upload(
+                CompletedMultipartUpload::builder()
+                    .parts(CompletedPart::builder().part_number(1).set_e_tag(sparse_first.e_tag).build())
+                    .parts(CompletedPart::builder().part_number(3).set_e_tag(sparse_third.e_tag).build())
+                    .build(),
+            )
+            .send()
+            .await?;
+        assert!(
+            sparse.e_tag().is_some_and(|e_tag| e_tag.trim_matches('"').ends_with("-2")),
+            "multipart ETag must use the number of completed parts"
+        );
+        let sparse_body = get_bytes(&client, "target-bucket", "sparse", None).await?;
+        assert_eq!(sparse_body.len(), MIN_MULTIPART_PART_BYTES + 5);
+        assert_eq!(&sparse_body[..MIN_MULTIPART_PART_BYTES], sparse_first_body.as_ref());
+        assert_eq!(&sparse_body[MIN_MULTIPART_PART_BYTES..], b"three");
+
+        let wrong_etag_upload = client
+            .create_multipart_upload()
+            .bucket("target-bucket")
+            .key("wrong-complete-etag")
+            .send()
+            .await?
+            .upload_id
+            .expect("create must return upload id");
+        let wrong_etag_part = client
+            .upload_part()
+            .bucket("target-bucket")
+            .key("wrong-complete-etag")
+            .upload_id(&wrong_etag_upload)
+            .part_number(1)
+            .body(ByteStream::from_static(b"part"))
+            .send()
+            .await?;
+        target.inject(
+            Operation::CompleteMultipartUpload,
+            FaultAction::Status(StatusCode::SERVICE_UNAVAILABLE),
+            1,
+        );
+        let complete_status = client
+            .complete_multipart_upload()
+            .bucket("target-bucket")
+            .key("wrong-complete-etag")
+            .upload_id(&wrong_etag_upload)
+            .multipart_upload(
+                CompletedMultipartUpload::builder()
+                    .parts(
+                        CompletedPart::builder()
+                            .part_number(1)
+                            .set_e_tag(wrong_etag_part.e_tag.clone())
+                            .build(),
+                    )
+                    .build(),
+            )
+            .send()
+            .await
+            .expect_err("scripted complete status must fail before consuming the upload");
+        assert_sdk_error!(complete_status, 503, "ServiceUnavailable");
+        target.inject(Operation::CompleteMultipartUpload, FaultAction::WrongEtag, 1);
+        let wrong_etag_complete = client
+            .complete_multipart_upload()
+            .bucket("target-bucket")
+            .key("wrong-complete-etag")
+            .upload_id(&wrong_etag_upload)
+            .multipart_upload(
+                CompletedMultipartUpload::builder()
+                    .parts(
+                        CompletedPart::builder()
+                            .part_number(1)
+                            .set_e_tag(wrong_etag_part.e_tag)
+                            .build(),
+                    )
+                    .build(),
+            )
+            .send()
+            .await?;
+        assert_eq!(wrong_etag_complete.e_tag(), Some(WRONG_ETAG));
+
+        let base_version = Uuid::from_u128(11).to_string();
+        put_source_version(
+            &client,
+            "target-bucket",
+            "multipart-receipt-time",
+            &base_version,
+            Some("1970-01-02T00:00:00Z"),
+            b"base",
+        )
+        .await?;
+        let completed_version = Uuid::from_u128(12).to_string();
+        let source_version = completed_version.clone();
+        let receipt_upload = client
+            .create_multipart_upload()
+            .bucket("target-bucket")
+            .key("multipart-receipt-time")
+            .customize()
+            .map_request(move |mut request| {
+                request
+                    .headers_mut()
+                    .insert("x-rustfs-source-version-id", source_version.clone());
+                Ok::<_, std::convert::Infallible>(request)
+            })
+            .send()
+            .await?
+            .upload_id
+            .expect("create must return upload id");
+        let receipt_part = client
+            .upload_part()
+            .bucket("target-bucket")
+            .key("multipart-receipt-time")
+            .upload_id(&receipt_upload)
+            .part_number(1)
+            .body(ByteStream::from_static(b"completed"))
+            .send()
+            .await?;
+        let forged_old_mtime = "1970-01-01T00:00:00Z".to_string();
+        let completed = client
+            .complete_multipart_upload()
+            .bucket("target-bucket")
+            .key("multipart-receipt-time")
+            .upload_id(&receipt_upload)
+            .multipart_upload(
+                CompletedMultipartUpload::builder()
+                    .parts(CompletedPart::builder().part_number(1).set_e_tag(receipt_part.e_tag).build())
+                    .build(),
+            )
+            .customize()
+            .map_request(move |mut request| {
+                request
+                    .headers_mut()
+                    .insert("x-rustfs-source-mtime", forged_old_mtime.clone());
+                request.headers_mut().insert("x-rustfs-source-replication-request", "true");
+                Ok::<_, std::convert::Infallible>(request)
+            })
+            .send()
+            .await?;
+        assert_eq!(completed.version_id(), Some(completed_version.as_str()));
+        assert_eq!(
+            get_bytes(&client, "target-bucket", "multipart-receipt-time", None).await?,
+            Bytes::from_static(b"completed"),
+            "multipart completion must ignore a forged old source mtime"
+        );
+
+        let aborted = client
+            .create_multipart_upload()
+            .bucket("target-bucket")
+            .key("aborted")
+            .send()
+            .await?
+            .upload_id
+            .expect("create must return upload id");
+        let wrong_owner_abort = client
+            .abort_multipart_upload()
+            .bucket("target-bucket")
+            .key("other-key")
+            .upload_id(&aborted)
+            .send()
+            .await
+            .expect_err("wrong key must not abort another upload");
+        assert_sdk_error!(wrong_owner_abort, 404, "NoSuchUpload");
+        let wrong_bucket_abort = client
+            .abort_multipart_upload()
+            .bucket("other-bucket")
+            .key("aborted")
+            .upload_id(&aborted)
+            .send()
+            .await
+            .expect_err("wrong bucket must not abort another upload");
+        assert_sdk_error!(wrong_bucket_abort, 404, "NoSuchUpload");
+        client
+            .abort_multipart_upload()
+            .bucket("target-bucket")
+            .key("aborted")
+            .upload_id(&aborted)
+            .send()
+            .await?;
+        let after_abort = client
+            .upload_part()
+            .bucket("target-bucket")
+            .key("aborted")
+            .upload_id(&aborted)
+            .part_number(1)
+            .body(ByteStream::from_static(b"part"))
+            .send()
+            .await
+            .expect_err("aborted upload must no longer accept parts");
+        assert_sdk_error!(after_abort, 404, "NoSuchUpload");
+        assert!(
+            target
+                .requests()
+                .iter()
+                .any(|request| request.operation == Operation::AbortMultipartUpload)
+        );
+        let upload_record = target
+            .requests()
+            .into_iter()
+            .find(|request| request.operation == Operation::UploadPart)
+            .expect("journal must retain upload part");
+        assert_eq!(upload_record.upload_id.as_deref(), Some(upload_id.as_str()));
+        assert_eq!(upload_record.part_number, Some(1));
+        assert_eq!(upload_record.content_length, Some(MIN_MULTIPART_PART_BYTES as u64));
+        target.shutdown().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn scripted_faults_are_consumed_per_operation() -> Result<(), BoxError> {
+        let target = FakeS3Target::start().await?;
+        target.create_bucket("target-bucket");
+        let client = client(&target);
+
+        target.inject(Operation::PutObject, FaultAction::Status(StatusCode::SERVICE_UNAVAILABLE), 3);
+        let unsigned = crate::common::local_http_client()
+            .put(format!("{}/target-bucket/unsigned", target.endpoint()))
+            .body("unsigned")
+            .send()
+            .await?;
+        assert!(unsigned.status().is_client_error());
+        assert!(target.requests().is_empty(), "unauthenticated request consumed the fault script");
+        let wrong_access = client_with_credentials(&target, "other-access", "other-secret")
+            .put_object()
+            .bucket("target-bucket")
+            .key("wrong-access")
+            .body(ByteStream::from_static(b"body"))
+            .send()
+            .await
+            .expect_err("other access key must fail authentication");
+        assert!(wrong_access.raw_response().is_some());
+        let wrong_secret = client_with_credentials(&target, FAKE_ACCESS_KEY, "wrong-secret")
+            .put_object()
+            .bucket("target-bucket")
+            .key("wrong-secret")
+            .body(ByteStream::from_static(b"body"))
+            .send()
+            .await
+            .expect_err("wrong signature must fail authentication");
+        assert!(wrong_secret.raw_response().is_some());
+        assert!(target.requests().is_empty(), "invalid signatures consumed the fault script");
+        for key in ["fail-1", "fail-2", "fail-3"] {
+            client.head_bucket().bucket("target-bucket").send().await?;
+            let error = client
+                .put_object()
+                .bucket("target-bucket")
+                .key(key)
+                .body(ByteStream::from_static(b"body"))
+                .send()
+                .await
+                .expect_err("scripted 503 must fail");
+            assert_sdk_error!(error, 503, "ServiceUnavailable");
+        }
+        client
+            .put_object()
+            .bucket("target-bucket")
+            .key("recovered")
+            .body(ByteStream::from_static(b"body"))
+            .send()
+            .await?;
+        assert_eq!(get_bytes(&client, "target-bucket", "recovered", None).await?, Bytes::from_static(b"body"));
+
+        target.inject(Operation::PutObject, FaultAction::Delay(Duration::from_millis(40)), 1);
+        target.inject(Operation::PutObject, FaultAction::Status(StatusCode::SERVICE_UNAVAILABLE), 1);
+        let started = Instant::now();
+        client
+            .put_object()
+            .bucket("target-bucket")
+            .key("delayed")
+            .body(ByteStream::from_static(b"body"))
+            .send()
+            .await?;
+        assert!(started.elapsed() >= Duration::from_millis(35));
+        let fifo_status = client
+            .put_object()
+            .bucket("target-bucket")
+            .key("fifo-status")
+            .body(ByteStream::from_static(b"body"))
+            .send()
+            .await
+            .expect_err("second queued fault must run after the delay");
+        assert_sdk_error!(fifo_status, 503, "ServiceUnavailable");
+        target.inject(Operation::PutObject, FaultAction::Status(StatusCode::SERVICE_UNAVAILABLE), 1);
+        target.clear_faults();
+        client
+            .put_object()
+            .bucket("target-bucket")
+            .key("cleared")
+            .body(ByteStream::from_static(b"body"))
+            .send()
+            .await?;
+
+        target.inject(
+            Operation::PutObject,
+            FaultAction::SlowDrain {
+                chunk_bytes: 2,
+                delay: Duration::from_millis(10),
+            },
+            1,
+        );
+        let started = Instant::now();
+        client
+            .put_object()
+            .bucket("target-bucket")
+            .key("slow")
+            .body(ByteStream::from_static(b"123456"))
+            .send()
+            .await?;
+        assert!(started.elapsed() >= Duration::from_millis(25));
+        assert_eq!(get_bytes(&client, "target-bucket", "slow", None).await?, Bytes::from_static(b"123456"));
+
+        target.inject(Operation::PutObject, FaultAction::WrongEtag, 1);
+        let wrong = client
+            .put_object()
+            .bucket("target-bucket")
+            .key("wrong-etag")
+            .body(ByteStream::from_static(b"body"))
+            .send()
+            .await?;
+        assert_eq!(wrong.e_tag.as_deref(), Some(WRONG_ETAG));
+
+        target.inject(Operation::GetObject, FaultAction::Status(StatusCode::UNAUTHORIZED), 1);
+        let unauthorized = client
+            .get_object()
+            .bucket("target-bucket")
+            .key("credential-fault")
+            .send()
+            .await
+            .expect_err("scripted 401 must fail");
+        assert_sdk_error!(unauthorized, 401, "UnauthorizedAccess");
+        target.inject(Operation::GetObject, FaultAction::Status(StatusCode::FORBIDDEN), 1);
+        let forbidden = client
+            .get_object()
+            .bucket("target-bucket")
+            .key("credential-fault")
+            .send()
+            .await
+            .expect_err("scripted 403 must fail");
+        assert_sdk_error!(forbidden, 403, "AccessDenied");
+
+        target.inject(Operation::PutObject, FaultAction::DisconnectAfterBytes(1), 1);
+        client
+            .put_object()
+            .bucket("target-bucket")
+            .key("disconnected")
+            .body(ByteStream::from_static(b"body"))
+            .send()
+            .await
+            .expect_err("scripted disconnect must fail");
+        let disconnected = client
+            .head_object()
+            .bucket("target-bucket")
+            .key("disconnected")
+            .send()
+            .await
+            .expect_err("disconnected request must not store an object");
+        assert_sdk_error!(disconnected, 404, "NotFound");
+
+        assert_eq!(
+            parse_request(&Method::PUT, &"/target-bucket/key?uploadId=upload&partNumber=bad".parse::<Uri>()?).operation,
+            Operation::Unknown
+        );
+
+        let requests = target.take_requests();
+        assert_eq!(
+            requests
+                .iter()
+                .filter(|request| request.fault == Some(FaultAction::Status(StatusCode::SERVICE_UNAVAILABLE)))
+                .count(),
+            4
+        );
+        assert!(
+            requests
+                .iter()
+                .any(|request| request.fault == Some(FaultAction::DisconnectAfterBytes(1)) && request.consumed_bytes == Some(1))
+        );
+        assert_eq!(
+            requests
+                .iter()
+                .filter(|request| request.operation == Operation::PutObject && request.fault.is_none())
+                .filter(|request| request.key.as_deref() == Some("recovered"))
+                .count(),
+            1
+        );
+        assert!(target.requests().is_empty(), "take_requests must drain the journal");
+        target.shutdown().await;
+
+        let connection_duration = Duration::from_millis(200);
+        let (connection_gate, gate_rx) = watch::channel(false);
+        let bounded_target =
+            FakeS3Target::start_with_connection_gate(StoreLimits::default(), connection_duration, Some(gate_rx)).await?;
+        bounded_target.create_bucket("target-bucket");
+        let bounded_client = client_with_credentials(&bounded_target, FAKE_ACCESS_KEY, FAKE_SECRET_KEY);
+        let mut stalled_connections = Vec::with_capacity(MAX_CONNECTIONS);
+        for _ in 0..MAX_CONNECTIONS {
+            stalled_connections.push(tokio::net::TcpStream::connect(bounded_target.address()).await?);
+        }
+        wait_for_active_connections(&bounded_target, MAX_CONNECTIONS).await;
+        bounded_client
+            .head_bucket()
+            .bucket("target-bucket")
+            .send()
+            .await
+            .expect_err("idle connections must exhaust the bounded connection pool");
+        let released_at = Instant::now();
+        connection_gate.send(true)?;
+        wait_for_active_connections(&bounded_target, 0).await;
+        assert!(released_at.elapsed() >= Duration::from_millis(150));
+        bounded_client.head_bucket().bucket("target-bucket").send().await?;
+        drop(stalled_connections);
+        bounded_target.shutdown().await;
+        Ok(())
+    }
+
+    #[test]
+    #[should_panic(expected = "slow-drain chunk size must be non-zero")]
+    fn slow_drain_rejects_zero_chunk_size() {
+        let runtime = tokio::runtime::Runtime::new().expect("runtime");
+        runtime.block_on(async {
+            assert!(ensure_body_growth(MAX_BUFFERED_BODY_BYTES, 0, MAX_BUFFERED_BODY_BYTES).is_ok());
+            let too_large =
+                ensure_body_growth(MAX_BUFFERED_BODY_BYTES, 1, MAX_BUFFERED_BODY_BYTES).expect_err("64 MiB + 1 must be rejected");
+            assert_eq!(too_large.code().as_str(), "EntityTooLarge");
+            assert!(validate_retained_identifier("v".repeat(MAX_RETAINED_IDENTIFIER_BYTES), "version").is_ok());
+            let identifier_overflow = validate_retained_identifier("v".repeat(MAX_RETAINED_IDENTIFIER_BYTES + 1), "version")
+                .expect_err("retained identifiers must be bounded");
+            assert_eq!(identifier_overflow.code().as_str(), "InvalidArgument");
+            let exact_metadata = HashMap::from([("k".to_string(), "v".repeat(MAX_STORED_METADATA_BYTES - 1))]);
+            assert!(validate_stored_metadata(&None, &Some(exact_metadata)).is_ok());
+            let oversized_metadata = HashMap::from([("k".to_string(), "v".repeat(MAX_STORED_METADATA_BYTES))]);
+            let metadata_overflow =
+                validate_stored_metadata(&None, &Some(oversized_metadata)).expect_err("stored metadata must be bounded");
+            assert_eq!(metadata_overflow.code().as_str(), "InvalidArgument");
+            assert!(validate_stored_metadata(&Some("c".repeat(MAX_CONTENT_TYPE_BYTES)), &None).is_ok());
+            let content_type_overflow = validate_stored_metadata(&Some("c".repeat(MAX_CONTENT_TYPE_BYTES + 1)), &None)
+                .expect_err("content type must be bounded");
+            assert_eq!(content_type_overflow.code().as_str(), "InvalidArgument");
+            let split_metadata = HashMap::from([
+                ("a".to_string(), "x".repeat(1000)),
+                ("b".to_string(), "y".repeat(MAX_STORED_METADATA_BYTES - 1002)),
+            ]);
+            assert!(validate_stored_metadata(&None, &Some(split_metadata)).is_ok());
+            let split_metadata_overflow = HashMap::from([
+                ("a".to_string(), "x".repeat(1000)),
+                ("b".to_string(), "y".repeat(MAX_STORED_METADATA_BYTES - 1001)),
+            ]);
+            let split_overflow = validate_stored_metadata(&None, &Some(split_metadata_overflow))
+                .expect_err("metadata field totals must be bounded");
+            assert_eq!(split_overflow.code().as_str(), "InvalidArgument");
+            let body_control = Mutex::new(ControlState::default());
+            let max_body = Bytes::from(vec![0; MAX_BUFFERED_BODY_BYTES]);
+            let collected = collect_stream(
+                Some(StreamingBlob::new(Body::from(max_body))),
+                Some(MAX_BUFFERED_BODY_BYTES as i64),
+                None,
+                &body_control,
+                MAX_BUFFERED_BODY_BYTES,
+            )
+            .await
+            .expect("exact body cap must be accepted");
+            assert_eq!(collected.len(), MAX_BUFFERED_BODY_BYTES);
+            drop(collected);
+            let over_body = Bytes::from(vec![0; MAX_BUFFERED_BODY_BYTES + 1]);
+            let normal_overflow = collect_stream(
+                Some(StreamingBlob::new(Body::from(over_body.clone()))),
+                None,
+                None,
+                &body_control,
+                MAX_BUFFERED_BODY_BYTES,
+            )
+            .await
+            .expect_err("normal drain must enforce the body cap");
+            assert_eq!(normal_overflow.code().as_str(), "EntityTooLarge");
+            let slow_overflow = collect_stream_slow(
+                StreamingBlob::new(Body::from(over_body)),
+                0,
+                1024 * 1024,
+                Duration::ZERO,
+                MAX_BUFFERED_BODY_BYTES,
+            )
+            .await
+            .expect_err("slow drain must enforce the body cap");
+            assert_eq!(slow_overflow.code().as_str(), "EntityTooLarge");
+            let full = StoreState {
+                total_bytes: MAX_TOTAL_STORED_BYTES,
+                ..Default::default()
+            };
+            let exhausted = ensure_store_budget(&full, 0, 1, false).expect_err("global byte budget must be enforced");
+            assert_eq!(exhausted.code().as_str(), "ServiceUnavailable");
+            assert!(ensure_store_budget(&StoreState::default(), 0, MAX_TOTAL_STORED_BYTES, false).is_ok());
+            let almost_full_versions = StoreState {
+                total_versions: MAX_OBJECT_VERSIONS - 1,
+                ..Default::default()
+            };
+            assert!(ensure_store_budget(&almost_full_versions, 0, 0, true).is_ok());
+            let full_versions = StoreState {
+                total_versions: MAX_OBJECT_VERSIONS,
+                ..Default::default()
+            };
+            let versions_exhausted =
+                ensure_store_budget(&full_versions, 0, 0, true).expect_err("version cap must reject one more version");
+            assert_eq!(versions_exhausted.code().as_str(), "ServiceUnavailable");
+            let almost_full_parts = StoreState {
+                total_parts: MAX_MULTIPART_PARTS - 1,
+                ..Default::default()
+            };
+            assert!(ensure_part_budget(&almost_full_parts, true).is_ok());
+            let full_parts = StoreState {
+                total_parts: MAX_MULTIPART_PARTS,
+                ..Default::default()
+            };
+            let parts_exhausted = ensure_part_budget(&full_parts, true).expect_err("global part budget must be enforced");
+            assert_eq!(parts_exhausted.code().as_str(), "ServiceUnavailable");
+            assert!(
+                ensure_part_budget(&full_parts, false).is_ok(),
+                "replacing a part must remain allowed at cap"
+            );
+            let mut full_uploads = StoreState::default();
+            for index in 0..MAX_MULTIPART_UPLOADS {
+                if index + 1 == MAX_MULTIPART_UPLOADS {
+                    assert!(ensure_upload_budget(&full_uploads).is_ok());
+                }
+                full_uploads.uploads.insert(
+                    index.to_string(),
+                    MultipartState {
+                        bucket: "bucket".to_string(),
+                        key: "key".to_string(),
+                        version_id: index.to_string(),
+                        content_type: None,
+                        metadata: None,
+                        standard_headers: StandardHeaders::default(),
+                        replication_sse_headers: Vec::new(),
+                        lock: VersionLock::default(),
+                        parts: BTreeMap::new(),
+                    },
+                );
+            }
+            let uploads_exhausted = ensure_upload_budget(&full_uploads).expect_err("upload cap must reject one more upload");
+            assert_eq!(uploads_exhausted.code().as_str(), "ServiceUnavailable");
+            let control = Mutex::new(ControlState::default());
+            for index in 0..=MAX_REQUEST_RECORDS {
+                record_request(
+                    &control,
+                    Operation::PutObject,
+                    Method::PUT,
+                    ParsedRequest {
+                        operation: Operation::PutObject,
+                        bucket: "bucket".to_string(),
+                        key: Some(format!("key-{index}")),
+                        ..Default::default()
+                    },
+                    JournaledHeaders {
+                        content_length: Some(0),
+                        ..Default::default()
+                    },
+                );
+            }
+            let records = lock(&control).requests.clone();
+            assert_eq!(records.len(), MAX_REQUEST_RECORDS);
+            assert_eq!(records.front().map(|record| record.sequence), Some(2));
+            assert_eq!(records.back().map(|record| record.sequence), Some((MAX_REQUEST_RECORDS + 1) as u64));
+            let bounded_control = Mutex::new(ControlState::default());
+            let utf8_boundary = format!("{}é", "a".repeat(MAX_RETAINED_IDENTIFIER_BYTES - 1));
+            record_request(
+                &bounded_control,
+                Operation::GetObject,
+                Method::GET,
+                ParsedRequest {
+                    operation: Operation::GetObject,
+                    bucket: "b".repeat(MAX_RETAINED_IDENTIFIER_BYTES + 1),
+                    key: Some(utf8_boundary),
+                    version_id: Some("v".repeat(MAX_RETAINED_IDENTIFIER_BYTES + 1)),
+                    upload_id: Some("u".repeat(MAX_RETAINED_IDENTIFIER_BYTES + 1)),
+                    ..Default::default()
+                },
+                JournaledHeaders::default(),
+            );
+            {
+                let bounded_records = lock(&bounded_control);
+                let bounded = &bounded_records.requests[0];
+                assert_eq!(bounded.bucket.len(), MAX_RETAINED_IDENTIFIER_BYTES);
+                assert_eq!(bounded.key.as_ref().map(String::len), Some(MAX_RETAINED_IDENTIFIER_BYTES - 1));
+                assert_eq!(bounded.version_id.as_ref().map(String::len), Some(MAX_RETAINED_IDENTIFIER_BYTES));
+                assert_eq!(bounded.upload_id.as_ref().map(String::len), Some(MAX_RETAINED_IDENTIFIER_BYTES));
+            }
+            let target = FakeS3Target::start().await.expect("target");
+            target.create_bucket("b".repeat(63));
+            let empty_bucket = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                target.create_bucket("");
+            }));
+            assert!(empty_bucket.is_err());
+            let short_bucket = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                target.create_bucket("ab");
+            }));
+            assert!(short_bucket.is_err());
+            let malformed_bucket = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                target.create_bucket("Invalid_Bucket");
+            }));
+            assert!(malformed_bucket.is_err());
+            for reserved in [
+                "xn--bucket",
+                "sthree-bucket",
+                "amzn-s3-demo-bucket",
+                "bucket-s3alias",
+                "bucket--ol-s3",
+                "bucket.mrap",
+                "bucket--x-s3",
+                "bucket--table-s3",
+                "bucket-an",
+            ] {
+                let reserved_bucket = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    target.create_bucket(reserved);
+                }));
+                assert!(reserved_bucket.is_err(), "reserved bucket name was accepted: {reserved}");
+            }
+            let long_bucket = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                target.create_bucket("b".repeat(64));
+            }));
+            assert!(long_bucket.is_err());
+            for index in 0..MAX_BUCKETS - 1 {
+                target.create_bucket(format!("bucket-{index}"));
+            }
+            target.create_bucket("bucket-0");
+            let bucket_overflow = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                target.create_bucket("one-bucket-too-many");
+            }));
+            assert!(bucket_overflow.is_err());
+            target.inject(
+                Operation::PutObject,
+                FaultAction::Status(StatusCode::SERVICE_UNAVAILABLE),
+                MAX_SCRIPTED_FAULTS,
+            );
+            target.clear_faults();
+            target.inject(Operation::PutObject, FaultAction::Delay(MAX_FAULT_DURATION), 1);
+            target.inject(
+                Operation::PutObject,
+                FaultAction::SlowDrain {
+                    chunk_bytes: 1,
+                    delay: MAX_FAULT_DURATION - Duration::from_millis(1),
+                },
+                1,
+            );
+            target.clear_faults();
+            let fault_overflow = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                target.inject(
+                    Operation::PutObject,
+                    FaultAction::Status(StatusCode::SERVICE_UNAVAILABLE),
+                    MAX_SCRIPTED_FAULTS + 1,
+                );
+            }));
+            assert!(fault_overflow.is_err());
+            let duration_overflow = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                target.inject(Operation::PutObject, FaultAction::Delay(MAX_FAULT_DURATION + Duration::from_millis(1)), 1);
+            }));
+            assert!(duration_overflow.is_err());
+            let slow_duration_overflow = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                target.inject(
+                    Operation::PutObject,
+                    FaultAction::SlowDrain {
+                        chunk_bytes: 1,
+                        delay: MAX_FAULT_DURATION,
+                    },
+                    1,
+                );
+            }));
+            assert!(slow_duration_overflow.is_err());
+            target.inject(
+                Operation::PutObject,
+                FaultAction::SlowDrain {
+                    chunk_bytes: 0,
+                    delay: Duration::ZERO,
+                },
+                1,
+            );
+        });
+    }
+}

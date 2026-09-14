@@ -1,0 +1,101 @@
+## —— Code quality and Formatting ------------------------------------------------------------------
+
+.NOTPARALLEL: fix
+
+.PHONY: fmt
+fmt: core-deps fmt-deps ## Format code
+	@echo "🔧 Formatting code..."
+	cargo fmt --all
+
+.PHONY: fmt-check
+fmt-check: core-deps fmt-deps ## Check code formatting
+	@echo "📝 Checking code formatting..."
+	cargo fmt --all --check
+
+.PHONY: clippy-check
+clippy-check: core-deps ## Run clippy checks
+	@echo "🔍 Running clippy checks..."
+	cargo clippy --all-targets -- -D warnings
+
+.PHONY: clippy-fix
+clippy-fix: core-deps ## Apply clippy fixes
+	@echo "🔧 Applying clippy fixes..."
+	cargo clippy --fix --allow-dirty
+
+.PHONY: fix
+fix: fmt clippy-fix ## Format code and apply clippy fixes
+
+.PHONY: quick-check
+quick-check: core-deps ## Run fast workspace compilation check
+	@echo "🔨 Running fast compilation check..."
+	cargo check --workspace --exclude e2e_test
+
+.PHONY: unsafe-code-check
+unsafe-code-check: ## Check unsafe_code allowances have SAFETY comments
+	@echo "🔒 Checking unsafe_code allowances..."
+	./scripts/check_unsafe_code_allowances.sh
+
+.PHONY: architecture-migration-check
+architecture-migration-check: ## Check architecture migration guardrails
+	@echo "🏗️ Checking architecture migration guardrails..."
+	./scripts/check_architecture_migration_rules.sh
+
+.PHONY: logging-guardrails-check
+logging-guardrails-check: ## Check logging guardrails for redaction and noise regressions
+	@echo "🪵 Checking logging guardrails..."
+	./scripts/check_logging_guardrails.sh
+
+.PHONY: error-other-ratchet-check
+error-other-ratchet-check: ## Check the ecstore ::other(format!) quorum-bucketing ratchet stays shrink-only
+	@echo "🪣 Checking error other(format!) ratchet..."
+	./scripts/check_error_other_format_ratchet.sh
+
+.PHONY: tokio-io-uring-check
+tokio-io-uring-check: ## Check tokio io-uring runtime feature stays removed
+	@echo "🚫 Checking tokio io-uring feature guard..."
+	./scripts/check_no_tokio_io_uring.sh
+
+.PHONY: extension-schema-check
+extension-schema-check: ## Check extension-schema stays a lightweight contract crate
+	@echo "🧩 Checking extension schema boundaries..."
+	./scripts/check_extension_schema_boundaries.sh
+
+.PHONY: body-cache-whitelist-check
+body-cache-whitelist-check: ## Check the body-cache eligibility gate stays a fail-closed allow-list
+	@echo "🧱 Checking body-cache whitelist guard..."
+	./scripts/check_body_cache_whitelist.sh
+
+.PHONY: s3s-footprint-check
+s3s-footprint-check: ## Check the s3s dependency footprint ratchet stays frozen
+	@echo "📦 Checking s3s footprint ratchet..."
+	./scripts/check_s3s_footprint.sh
+
+.PHONY: fips-wording-check
+fips-wording-check: ## Check docs and crates/kms do not over-claim crypto capabilities
+	@echo "📣 Checking cryptographic capability wording guard..."
+	./scripts/check_fips_wording.sh
+
+.PHONY: embedded-secrets-check
+embedded-secrets-check: ## Check no private key material or credential literal is committed
+	@echo "🔑 Checking embedded secret material guard..."
+	./scripts/check_embedded_secrets.sh
+
+.PHONY: offline-enrollment-e2e-check
+offline-enrollment-e2e-check: core-deps ## Build and exercise the dedicated offline enrollment E2E root
+	@echo "🔐 Checking the offline enrollment E2E root boundary..."
+	./scripts/check_offline_enrollment_e2e.sh
+
+.PHONY: test-wiring-check
+test-wiring-check: ## Check tests stay registered and selected by their intended runners
+	@echo "🧪 Checking test wiring..."
+	$(RUSTFS_PYTHON_BIN) ./scripts/check_test_wiring.py
+
+.PHONY: log-analyzer-rules-check
+log-analyzer-rules-check: core-deps ## Check log-analyzer rule anchors still exist verbatim in source
+	@echo "🩺 Checking log-analyzer rule anchors..."
+	./scripts/check_log_analyzer_rules.sh
+
+.PHONY: compilation-check
+compilation-check: core-deps ## Run compilation check
+	@echo "🔨 Running compilation check..."
+	cargo check --all-targets

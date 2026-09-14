@@ -1,0 +1,111 @@
+name: Test NPM Publish Workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to test (e.g., 1.16.4)'
+        required: true
+        type: string
+        default: '1.16.4'
+
+# Read-only: this workflow only tests logic and never publishes anything.
+permissions:
+  contents: read
+
+env:
+  VERSION: ${{ inputs.version }}
+
+jobs:
+  test-workflow-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Test version handling
+        env:
+          # Pass user input via env so the shell receives a plain string.
+          # Writing ${{ inputs.version }} directly inside `run:` would let a crafted
+          # value execute arbitrary shell commands when the expression is interpolated.
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          echo "Input version: ${INPUT_VERSION}"
+          # $VERSION is the top-level env var — reference it directly in the shell
+          # rather than re-interpolating ${{ env.VERSION }}, which re-opens the
+          # injection window.
+          echo "ENV version: ${VERSION}"
+
+          # Test version stripping
+          PKG_VERSION="${VERSION#v}"
+          echo "Stripped version: ${PKG_VERSION}"
+
+      - name: Test matrix values
+        run: |
+          # Test asset name generation using the shell env var, not the template expression.
+          echo "Testing asset names..."
+          echo "Linux x64: dagu_${VERSION}_Linux_x86_64.tar.gz"
+          echo "Darwin arm64: dagu_${VERSION}_Darwin_arm64.tar.gz"
+          echo "Windows x64: dagu_${VERSION}_Windows_x86_64.zip"
+
+      - name: Test Node.js script
+        run: |
+          cd /tmp
+
+          # Create test package.json
+          cat > package.json << 'EOF'
+          {
+            "name": "test-package",
+            "version": "1.0.0",
+            "optionalDependencies": {
+              "@dagucloud/dagu-linux-x64": "1.0.0",
+              "@dagucloud/dagu-darwin-arm64": "1.0.0"
+            }
+          }
+          EOF
+
+          # Create update script
+          cat > update-deps.js << 'EOF'
+          const fs = require('fs');
+          const pkg = require('./package.json');
+          const version = process.argv[2];
+
+          Object.keys(pkg.optionalDependencies || {}).forEach(dep => {
+            pkg.optionalDependencies[dep] = version;
+          });
+
+          fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
+          console.log('Updated:', JSON.stringify(pkg.optionalDependencies, null, 2));
+          EOF
+
+          # Test the script using the shell env var directly.
+          PKG_VERSION="${VERSION#v}"
+          node update-deps.js "${PKG_VERSION}"
+
+          # Verify result
+          cat package.json
+
+  test-platform-matrix:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            arch: x64
+            package: dagu-linux-x64
+          - platform: darwin
+            arch: arm64
+            package: dagu-darwin-arm64
+    steps:
+      - name: Test matrix variables
+        env:
+          # Matrix values passed via env for the same injection-prevention reason.
+          MATRIX_PLATFORM: ${{ matrix.platform }}
+          MATRIX_ARCH: ${{ matrix.arch }}
+          MATRIX_PACKAGE: ${{ matrix.package }}
+        run: |
+          echo "Platform: ${MATRIX_PLATFORM}"
+          echo "Arch: ${MATRIX_ARCH}"
+          echo "Package: ${MATRIX_PACKAGE}"
+          echo "Asset would be: dagu_${VERSION}_${MATRIX_PLATFORM}_${MATRIX_ARCH}.tar.gz"

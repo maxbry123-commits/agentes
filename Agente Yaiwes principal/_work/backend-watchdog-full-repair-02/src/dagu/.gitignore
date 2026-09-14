@@ -1,0 +1,53 @@
+# frontend assets
+internal/service/frontend/assets/fonts/*
+internal/service/frontend/assets/*
+!internal/service/frontend/assets/.gitkeep
+
+# copied schema
+ui/src/assets/dag.schema.json
+
+# frontend test artifacts
+ui/test-results/
+ui/playwright-report/
+
+# NVM
+.nvmrc
+
+# tmp files
+tmp/*
+
+# MacOS
+.DS_Store
+
+# Goland
+.idea
+
+# Directory for local development
+.local/
+
+# Coverage files
+coverage.*
+
+# Debug files
+__debug_bin*
+
+# Misc files
+.aider*
+.serena
+
+# Local configuration files
+*.local.md
+*.local.json
+
+# Profile files
+*.prof
+
+# Go cache
+.gocache
+.gomodcache
+
+# Ralph PRD file
+prd.json
+
+# Compiled integration test binary
+intg.test

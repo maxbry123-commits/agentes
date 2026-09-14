@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: docker-in-gvisor
+spec:
+  runtimeClassName: gvisor
+  containers:
+  - name: docker-in-gvisor
+    image: us-central1-docker.pkg.dev/gvisor-presubmit/gvisor-presubmit-images/basic/docker_x86_64:latest
+    securityContext:
+      capabilities:
+        add: ["all"]
+    volumeMounts:
+      - name: docker
+        mountPath: /var/lib/docker
+  volumes:
+  - name: docker
+    emptyDir: {}

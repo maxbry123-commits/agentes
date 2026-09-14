@@ -1,0 +1,286 @@
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { useStore } from "../lib/store";
+import type { AgentCard, Envelope, MessageId, UiEvent } from "../lib/types";
+import { ChannelView } from "./ChannelView";
+
+/**
+ * What streaming costs the operator's window.
+ *
+ * The report this exists for: five agents working at once and the app stops
+ * responding, with their answers landing in one lump at the end instead of
+ * arriving as they are written. Both are the same fault. The main thread never
+ * gets far enough ahead to paint, so the text is there and nobody can see it.
+ *
+ * Counted rather than timed. A wall clock in a test on this machine says
+ * nothing about that machine, but "one token re-rendered ninety messages" is
+ * the same number everywhere.
+ */
+
+let rendersOfMessages = 0;
+let rendersOfBubbles = 0;
+let rendersOfTrail = 0;
+let latestBubble = "";
+
+vi.mock("./MessageItem", () => ({
+  MessageItem: () => {
+    rendersOfMessages += 1;
+    return <div />;
+  },
+  StreamingMessage: ({ text }: { text: string }) => {
+    rendersOfBubbles += 1;
+    latestBubble = text;
+    return <div>{text}</div>;
+  },
+}));
+
+vi.mock("./Trail", () => ({
+  TrailRow: () => {
+    rendersOfTrail += 1;
+    return <div />;
+  },
+}));
+
+vi.mock("../lib/ipc", () => ({
+  api: {
+    channel: async () => [],
+    clearChannel: async () => {},
+    sendMessage: async () => "run",
+  },
+  onFileDrop: async () => () => {},
+}));
+
+const AGENT = "00000000-0000-4000-8000-0000000000a1";
+const OTHER = "00000000-0000-4000-8000-0000000000a2";
+
+function agent(id: string, name: string): AgentCard {
+  return {
+    id,
+    groupId: "00000000-0000-4000-8000-0000000000b1",
+    name,
+    avatar: "plain",
+    color: "#c7d96b",
+    model: "",
+    systemPrompt: "",
+    skills: [],
+    lifecycle: "active",
+    pinned: false,
+    railOrder: 0,
+    createdAt: 0,
+    updatedAt: 0,
+    discardedAt: null,
+    sandboxId: null,
+    browserId: null,
+    hasComputer: false,
+    hasBrowser: false,
+    browserConsent: "open",
+    repositoryId: null,
+    version: 1,
+  };
+}
+
+function message(index: number): Envelope {
+  return {
+    id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}` as MessageId,
+    runId: "00000000-0000-4000-8000-0000000000c1",
+    channelId: AGENT,
+    from: { kind: "agent", id: AGENT },
+    to: { kind: "human" },
+    parts: [{ type: "text", text: `message ${index}` }],
+    trust: "peer",
+    hop: 0,
+    expectsReply: false,
+    intent: "courtesy",
+    cause: null,
+    createdAt: index,
+  };
+}
+
+/** One agent's stream, opened and then fed `tokens` deltas. */
+function stream(messageId: string, channelId: string, agentId: string, tokens: number): UiEvent[] {
+  const events: UiEvent[] = [
+    {
+      type: "streamStarted",
+      messageId: messageId as MessageId,
+      channelId,
+      agentId,
+      runId: "00000000-0000-4000-8000-0000000000c1",
+      to: { kind: "human" },
+    },
+  ];
+  for (let i = 0; i < tokens; i += 1) {
+    events.push({
+      type: "streamDelta",
+      messageId: messageId as MessageId,
+      channelId,
+      text: "tok ",
+    });
+  }
+  return events;
+}
+
+describe("ChannelView under streaming load", () => {
+  beforeEach(() => {
+    rendersOfMessages = 0;
+    rendersOfBubbles = 0;
+    rendersOfTrail = 0;
+    latestBubble = "";
+    useStore.setState({
+      agents: [agent(AGENT, "Manager"), agent(OTHER, "Chef")],
+      messages: { [AGENT]: Array.from({ length: 30 }, (_, i) => message(i)) },
+      streams: {},
+      reasoning: {},
+      trail: {},
+      activity: { [AGENT]: { state: "thinking" } },
+    });
+  });
+
+  function draw() {
+    render(<ChannelView channel={AGENT} onOpenMenu={() => {}} />);
+    rendersOfMessages = 0;
+  }
+
+  /**
+   * One event per turn of the event loop, which is how they actually arrive:
+   * each is its own IPC callback from the runtime. Firing them in one block
+   * lets React batch the lot into a single render and measures nothing.
+   */
+  async function feed(events: UiEvent[]) {
+    const apply = useStore.getState().applyEvent;
+    for (const event of events) {
+      await act(async () => {
+        apply(event);
+      });
+    }
+  }
+
+  it("does not re-render the transcript for every token", async () => {
+    draw();
+    await feed(stream("00000000-0000-4000-8000-0000000000d1", AGENT, AGENT, 200));
+
+    // The transcript above a streaming bubble does not change while text
+    // arrives. Before this it re-rendered every message on every token: six
+    // thousand renders for one reply, and that is before a second agent starts.
+    expect(rendersOfMessages).toBe(0);
+
+    // And the bubble itself still filled in, which is the point of the whole
+    // arrangement: cheap is no good if the operator stops seeing the text.
+    expect(latestBubble).toBe("tok ".repeat(200));
+  });
+
+  it("does not re-render this channel for another channel's tokens", async () => {
+    // The report was about several agents at once. A token written to Chef's
+    // channel has nothing to do with the window showing Manager.
+    draw();
+    await feed(stream("00000000-0000-4000-8000-0000000000d2", OTHER, OTHER, 200));
+
+    expect(rendersOfMessages).toBe(0);
+  });
+
+  it("does not re-render the transcript or a bubble for a thought", async () => {
+    // Reasoning arrives as fast as text and is drawn in one line above the
+    // composer. Held in the stream buffer it would re-render, and re-parse the
+    // markdown of, every bubble on screen for text that is in none of them.
+    const id = "00000000-0000-4000-8000-0000000000d3";
+    draw();
+    await feed(stream(id, AGENT, AGENT, 1));
+    const bubbles = rendersOfBubbles;
+
+    await feed(
+      Array.from({ length: 200 }, () => ({
+        type: "reasoningDelta" as const,
+        messageId: id as MessageId,
+        text: "thinking ",
+      })),
+    );
+
+    expect(rendersOfMessages).toBe(0);
+    expect(rendersOfBubbles).toBe(bubbles);
+
+    // And the line itself kept up, which is the point of drawing it at all.
+    expect(useStore.getState().reasoning[AGENT]?.endsWith("thinking ")).toBe(true);
+  });
+
+  it("does not re-render the turn's chips for a thought", async () => {
+    // The reason the line and the chips are two components. They sit next to
+    // each other and change at wildly different rates: the line sixty times a
+    // second, the chips a few times a minute. Written as one, every token
+    // re-rendered every chip the turn had made. The chips are behind the count
+    // on the line now, which makes the closed case free and leaves this one:
+    // an operator holding the panel open through a ten-minute turn.
+    const id = "00000000-0000-4000-8000-0000000000d4";
+    draw();
+    await feed([
+      ...stream(id, AGENT, AGENT, 1),
+      {
+        type: "toolStarted",
+        messageId: id as MessageId,
+        callId: "call_1",
+        name: "run_command",
+        arguments: { command: "ls" },
+      },
+      {
+        type: "toolFinished",
+        messageId: id as MessageId,
+        callId: "call_1",
+        part: {
+          type: "toolCall",
+          name: "run_command",
+          arguments: { command: "ls" },
+          outcome: { status: "ok", summary: "exit 0" },
+        },
+      },
+    ]);
+    // Nothing to re-render until somebody asks for it.
+    expect(rendersOfTrail).toBe(0);
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: /1 step/ }));
+    });
+    const chips = rendersOfTrail;
+    expect(chips).toBeGreaterThan(0);
+
+    await feed(
+      Array.from({ length: 200 }, () => ({
+        type: "reasoningDelta" as const,
+        messageId: id as MessageId,
+        text: "thinking ",
+      })),
+    );
+
+    expect(rendersOfTrail).toBe(chips);
+  });
+
+  it("does not re-render the transcript for a tool call", async () => {
+    // A turn's own work is drawn above the composer while it happens and in
+    // the transcript once it lands. The transcript has nothing to say about it
+    // until then.
+    const id = "00000000-0000-4000-8000-0000000000d5";
+    draw();
+    await feed(stream(id, AGENT, AGENT, 1));
+    rendersOfMessages = 0;
+
+    await feed([
+      {
+        type: "toolStarted",
+        messageId: id as MessageId,
+        callId: "call_1",
+        name: "browse",
+        arguments: { action: "open", url: "https://cnn.com" },
+      },
+      {
+        type: "toolFinished",
+        messageId: id as MessageId,
+        callId: "call_1",
+        part: {
+          type: "toolCall",
+          name: "browse",
+          arguments: { action: "open", url: "https://cnn.com" },
+          outcome: { status: "ok", summary: "read cnn.com" },
+        },
+      },
+    ]);
+
+    expect(rendersOfMessages).toBe(0);
+  });
+});

@@ -1,0 +1,101 @@
+# Copyright 2026 RustFS Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: CLA Check
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, closed]
+  merge_group:
+    types: [checks_requested]
+  issue_comment:
+    types: [created, edited]
+
+# Least privilege at the top, widened per job below. This workflow runs on
+# pull_request_target and issue_comment, so it holds full secrets on every fork
+# PR and on any comment anyone writes — the one place in this repository where a
+# compromised action would be handed a repo-write token. It does not check out
+# or execute PR code, so there is no pwn-request path today, but the blast
+# radius should not depend on that staying true.
+#
+# contents: write in particular was never used: the signature records are
+# written to rustfs/cla through the scoped app token created below, and nothing
+# here writes to this repository's contents.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cancel-closed-pr-runs:
+    name: Cancel Closed PR Runs
+    if: github.event_name == 'pull_request_target' && github.event.action == 'closed'
+    # Echoes one line; the run exists only so the concurrency group cancels the
+    # in-flight run of a closed PR.
+    permissions: {}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Explain cancellation run
+        run: echo "PR closed; this run only cancels older runs in the same concurrency group."
+
+  cla:
+    if: ${{ (github.event_name != 'issue_comment' || github.event.issue.pull_request) && (github.event_name != 'pull_request_target' || github.event.action != 'closed') }}
+    # checks: write reports the merge-queue check run; pull-requests and issues
+    # let cla-bot comment and label. contents stays read — see the note above.
+    permissions:
+      contents: read
+      checks: write
+      issues: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Report CLA result for merge queue
+        if: github.event_name == 'merge_group'
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'CLA Check',
+              head_sha: context.sha,
+              status: 'completed',
+              conclusion: 'success',
+              output: {
+                title: 'CLA requirements satisfied for merge queue',
+                summary: 'Queued pull requests must satisfy the required CLA check before they enter the merge queue. This reports the existing CLA result on the merge-group SHA.'
+              }
+            });
+
+      - name: Create token for rustfs/cla
+        if: github.event_name != 'merge_group'
+        id: registry-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ vars.CLA_BOT_APP_ID }}
+          private-key: ${{ secrets.CLA_BOT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: cla
+          permission-contents: write
+
+      - name: Run CLA Bot
+        if: github.event_name != 'merge_group'
+        uses: overtrue/cla-bot@5e5929846a60cfb42b16d0d38e135ef67d94fc88 # v0.0.9
+        with:
+          github-token: ${{ github.token }}
+          registry-token: ${{ steps.registry-token.outputs.token }}

@@ -1,0 +1,111 @@
+[package]
+name = "rustfs-targets"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+homepage.workspace = true
+description = "Notification target abstraction and implementations for RustFS"
+keywords = ["file-system", "notification", "target", "rustfs", "Minio"]
+categories = ["web-programming", "development-tools", "filesystem"]
+documentation = "https://docs.rs/rustfs-targets/latest/rustfs_targets/"
+
+[features]
+default = []
+# Exposes the builder-style `testkit::MockTarget` to downstream test suites. Never enable this
+# from a production `[dependencies]` entry; in-crate unit tests get the module via cfg(test).
+test-support = []
+hotpath = [
+    "hotpath/hotpath",
+    "hotpath/tokio",
+    "hotpath/futures",
+    "hotpath/parking_lot",
+    "hotpath/reqwest-0-13",
+    "rustfs-config/hotpath",
+    "rustfs-extension-schema/hotpath",
+    "rustfs-s3-types/hotpath",
+    "rustfs-tls-runtime/hotpath",
+    "rustfs-utils/hotpath",
+]
+hotpath-alloc = [
+    "hotpath",
+    "hotpath/hotpath-alloc",
+    "rustfs-config/hotpath-alloc",
+    "rustfs-extension-schema/hotpath-alloc",
+    "rustfs-s3-types/hotpath-alloc",
+    "rustfs-tls-runtime/hotpath-alloc",
+    "rustfs-utils/hotpath-alloc",
+]
+hotpath-cpu = [
+    "hotpath",
+    "hotpath/hotpath-cpu",
+    "rustfs-config/hotpath-cpu",
+    "rustfs-extension-schema/hotpath-cpu",
+    "rustfs-s3-types/hotpath-cpu",
+    "rustfs-tls-runtime/hotpath-cpu",
+    "rustfs-utils/hotpath-cpu",
+]
+
+[dependencies]
+hotpath.workspace = true
+rustfs-config = { workspace = true, features = ["notify", "audit", "server-config-model"] }
+rustfs-extension-schema = { workspace = true }
+rustfs-tls-runtime = { workspace = true }
+rustfs-s3-types = { workspace = true }
+rustfs-utils = { workspace = true, features = ["egress"] }
+async-trait = { workspace = true }
+futures-util = { workspace = true }
+async-nats = { workspace = true, features = ["server_2_10", "server_2_11", "server_2_12", "server_2_14", "service", "aws-lc-rs", "nkeys", "object-store", "kv", "websockets", "nuid"] }
+deadpool-postgres = { workspace = true }
+hyper = { workspace = true, features = ["http2", "http1", "server"] }
+hyper-rustls = { workspace = true, default-features = false, features = ["native-tokio", "tls12", "logging", "aws-lc-rs"] }
+lapin = { workspace = true, default-features = false, features = ["tokio", "rustls", "rustls--aws_lc_rs"] }
+libc = { workspace = true }
+# pulsar regenerates its protobuf bindings from `PulsarApi.proto` in build.rs on every
+# build, which needs `protoc`. Keep this dependency lean and install a system
+# protobuf compiler on platforms where it is not provided by the base image.
+# See https://github.com/rustfs/rustfs/issues/3195.
+pulsar = { workspace = true, default-features = false, features = ["tokio-rustls-runtime", "telemetry"] }
+regex = { workspace = true }
+rayon = { workspace = true }
+reqwest = { workspace = true }
+rumqttc = { workspace = true, features = ["websocket"] }
+redis = { workspace = true, features = ["connection-manager", "tokio-rustls-comp", "tls-rustls-insecure"] }
+rustls = { workspace = true, default-features = false, features = ["aws-lc-rs", "logging", "tls12", "prefer-post-quantum", "std"] }
+rustls-native-certs = { workspace = true }
+s3s = { workspace = true, features = ["minio"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["raw_value"] }
+sha2 = { workspace = true }
+snap = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["fs", "rt-multi-thread", "sync", "time"] }
+tokio-util = { workspace = true }
+tokio-postgres = { workspace = true, default-features = false, features = ["runtime", "with-serde_json-1"] }
+tokio-postgres-rustls = { workspace = true }
+tracing = { workspace = true }
+url = { workspace = true }
+urlencoding = { workspace = true }
+uuid = { workspace = true, features = ["v4", "v7", "serde", "fast-rng", "macro-diagnostics"] }
+sysinfo = { workspace = true, features = ["multithread"] }
+rustfs-kafka-async = { workspace = true }
+mysql_async = { workspace = true, default-features = false, features = ["default-rustls", "tracing"] }
+jiff = { workspace = true }
+parking_lot = { workspace = true }
+hashbrown = { workspace = true, features = ["serde", "rayon"] }
+arc-swap = { workspace = true }
+metrics = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true, features = ["html_reports"] }
+tempfile = { workspace = true }
+rcgen = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "time"] }
+
+[[bench]]
+name = "queue_store_benchmark"
+harness = false
+
+[lints]
+workspace = true

@@ -1,0 +1,68 @@
+# deps
+node_modules/
+
+# next build output
+.next/
+
+# backend per-run isolated workdirs
+backend/.runs/
+
+# build artifacts
+dist/
+build/
+t3-dist/
+*.tsbuildinfo
+
+# python bytecode
+__pycache__/
+*.py[cod]
+
+# env / secrets
+.env
+.env.*
+.kamal/secrets*
+!.kamal/secrets.example
+
+# terraform local state / operator inputs
+infra/terraform/**/.terraform/
+infra/terraform/**/terraform.tfstate
+infra/terraform/**/terraform.tfstate.*
+infra/terraform/**/*.tfvars
+!infra/terraform/**/*.tfvars.example
+
+# logs
+*.log
+
+# editor / os
+.DS_Store
+.idea/
+.vscode/
+*.local
+
+# local agent-harness state (tmux hooks, HUD, turn logs) — never commit
+.omx/
+
+# agent session/workspace metadata
+.entire/
+.claude/
+
+# local memory-core config (holds an API key)
+memory/tdai-gateway.local.yaml
+memory/docker-compose.local.yml
+
+# Local working ledgers - personal/operator notes, never tracked
+TASKS.md
+tasks.md
+qa.md
+ux_bugs.md
+ux_bugs.mx
+self_improving.md
+docs/internal/
+CLAUDE.local.md
+progress/
+/plans/
+.worktrees/
+
+# Internal ops (kept local, not public)
+/deploy/hetzner/
+/infra/terraform/prod/

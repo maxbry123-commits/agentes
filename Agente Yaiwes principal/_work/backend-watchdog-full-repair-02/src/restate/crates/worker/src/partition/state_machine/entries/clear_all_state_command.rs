@@ -1,0 +1,101 @@
+// Copyright (c) 2023 - 2026 Restate Software, Inc., Restate GmbH.
+// All rights reserved.
+//
+// Use of this software is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date specified in that file, in accordance with
+// the Business Source License, use of this software will be governed
+// by the Apache License, Version 2.0.
+
+use tracing::warn;
+
+use restate_storage_api::state_table::WriteStateTable;
+use restate_types::journal_v2::{ClearAllStateCommand, EntryMetadata};
+
+use crate::debug_if_leader;
+use crate::partition::processor::Processor;
+use crate::partition::state_machine::entries::ApplyJournalCommandEffect;
+use crate::partition::state_machine::{CommandHandler, Error, StateMachineApplyContext};
+
+pub(super) type ApplyClearAllStateCommand<'e> = ApplyJournalCommandEffect<'e, ClearAllStateCommand>;
+
+impl<'e, 'ctx: 'e, 's: 'ctx, S, P> CommandHandler<&'ctx mut StateMachineApplyContext<'s, S, P>>
+    for ApplyClearAllStateCommand<'e>
+where
+    S: WriteStateTable,
+    P: Processor,
+{
+    async fn apply(self, ctx: &'ctx mut StateMachineApplyContext<'s, S, P>) -> Result<(), Error> {
+        let invocation_metadata = self
+            .invocation_status
+            .get_invocation_metadata()
+            .expect("In-Flight invocation metadata must be present");
+
+        if let Some(service_id) = invocation_metadata.invocation_target.as_keyed_service_id() {
+            debug_if_leader!(ctx.is_leader, "Clear all state");
+
+            ctx.storage.delete_all_user_state(&service_id)?;
+        } else {
+            warn!(
+                "Trying to process entry {} for a target that has no state",
+                self.entry.ty()
+            );
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::partition::state_machine::tests::fixtures::invoker_entry_effect;
+    use crate::partition::state_machine::tests::{TestEnv, fixtures};
+    use bytes::Bytes;
+    use futures::StreamExt;
+    use googletest::matchers::empty;
+    use googletest::prelude::assert_that;
+    use restate_storage_api::Transaction;
+    use restate_storage_api::state_table::{ReadStateTable, WriteStateTable};
+    use restate_types::identifiers::ServiceId;
+    use restate_types::journal_v2::ClearAllStateCommand;
+
+    #[restate_core::test]
+    async fn clear_all_user_states() {
+        let mut test_env = TestEnv::create().await;
+        let service_id = ServiceId::new(None, "MySvc", "my-key");
+
+        // Fill with some state the service K/V store
+        let mut txn = test_env.storage.transaction();
+        txn.put_user_state(&service_id, &Bytes::from_static(b"my-key-1"), b"my-val-1")
+            .unwrap();
+        txn.put_user_state(&service_id, &Bytes::from_static(b"my-key-2"), b"my-val-2")
+            .unwrap();
+        txn.commit().await.unwrap();
+        drop(txn);
+
+        let invocation_id =
+            fixtures::mock_start_invocation_with_service_id(&mut test_env, service_id.clone())
+                .await;
+        fixtures::mock_pinned_deployment_v5(&mut test_env, invocation_id).await;
+
+        test_env
+            .apply(invoker_entry_effect(
+                invocation_id,
+                ClearAllStateCommand {
+                    name: Default::default(),
+                },
+            ))
+            .await;
+
+        let states: Vec<restate_storage_api::Result<(Bytes, Bytes)>> = test_env
+            .storage
+            .get_all_user_states_for_service(&service_id)
+            .unwrap()
+            .collect()
+            .await;
+        assert_that!(states, empty());
+
+        test_env.shutdown().await;
+    }
+}

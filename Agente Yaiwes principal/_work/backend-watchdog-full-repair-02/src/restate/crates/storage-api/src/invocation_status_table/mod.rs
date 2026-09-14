@@ -1,0 +1,1109 @@
+// Copyright (c) 2023 - 2026 Restate Software, Inc., Restate GmbH.
+// All rights reserved.
+//
+// Use of this software is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date specified in that file, in accordance with
+// the Business Source License, use of this software will be governed
+// by the Apache License, Version 2.0.
+
+use std::collections::{BTreeSet, HashSet};
+use std::future::Future;
+use std::ops::{ControlFlow, RangeInclusive};
+use std::time::Duration;
+
+use bytes::Bytes;
+use bytestring::ByteString;
+use futures::Stream;
+
+use restate_types::deployment::PinnedDeployment;
+use restate_types::identifiers::InvocationId;
+use restate_types::invocation::{
+    Header, InvocationInput, InvocationTarget, ResponseResult, ServiceInvocation,
+    ServiceInvocationResponseSink, ServiceInvocationSpanContext, Source,
+};
+use restate_types::journal_v2::UnresolvedFuture;
+use restate_types::sharding::KeyRange;
+use restate_types::time::MillisSinceEpoch;
+use restate_types::vqueues::VQueueId;
+use restate_types::{LimitKey, RestateVersion};
+use restate_util_string::ReString;
+
+use crate::Result;
+use crate::protobuf_types::PartitionStoreProtobufValue;
+use crate::protobuf_types::v1::lazy::InvocationStatusV2Lazy;
+
+/// Holds timestamps of the [`InvocationStatus`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct StatusTimestamps {
+    creation_time: MillisSinceEpoch,
+    modification_time: MillisSinceEpoch,
+
+    inboxed_transition_time: Option<MillisSinceEpoch>,
+    scheduled_transition_time: Option<MillisSinceEpoch>,
+    running_transition_time: Option<MillisSinceEpoch>,
+    completed_transition_time: Option<MillisSinceEpoch>,
+}
+
+impl StatusTimestamps {
+    /// Create a new StatusTimestamps data structure using the system time.
+    pub fn init(created_at: MillisSinceEpoch) -> Self {
+        // typically, created_at is the timestamp of the command entry in bifrost that
+        // creates this invocation.
+        Self {
+            creation_time: created_at,
+            modification_time: created_at,
+            inboxed_transition_time: None,
+            scheduled_transition_time: None,
+            running_transition_time: None,
+            completed_transition_time: None,
+        }
+    }
+
+    pub fn new(
+        creation_time: MillisSinceEpoch,
+        modification_time: MillisSinceEpoch,
+        inboxed_transition_time: Option<MillisSinceEpoch>,
+        scheduled_transition_time: Option<MillisSinceEpoch>,
+        running_transition_time: Option<MillisSinceEpoch>,
+        completed_transition_time: Option<MillisSinceEpoch>,
+    ) -> Self {
+        Self {
+            creation_time,
+            modification_time,
+            inboxed_transition_time,
+            scheduled_transition_time,
+            running_transition_time,
+            completed_transition_time,
+        }
+    }
+
+    /// Update the statistics with an updated [`Self::modification_time()`].
+    pub fn update(&mut self, timestamp: MillisSinceEpoch) {
+        self.modification_time = self.modification_time.max(timestamp);
+    }
+
+    /// Update the statistics with an updated [`Self::inboxed_transition_time()`].
+    fn record_inboxed_transition_time(&mut self, timestamp: MillisSinceEpoch) {
+        self.update(timestamp);
+        self.inboxed_transition_time = Some(self.modification_time)
+    }
+
+    /// Update the statistics with an updated [`Self::scheduled_transition_time()`].
+    fn record_scheduled_transition_time(&mut self, timestamp: MillisSinceEpoch) {
+        self.update(timestamp);
+        self.scheduled_transition_time = Some(self.modification_time)
+    }
+
+    /// Update the statistics with an updated [`Self::running_transition_time()`].
+    fn record_running_transition_time(&mut self, timestamp: MillisSinceEpoch) {
+        self.update(timestamp);
+        self.running_transition_time = Some(self.modification_time)
+    }
+
+    /// Update the statistics with an updated [`Self::completed_transition_time()`].
+    fn record_completed_transition_time(&mut self, timestamp: MillisSinceEpoch) {
+        self.update(timestamp);
+        self.completed_transition_time = Some(self.modification_time)
+    }
+
+    /// Creation time of the [`InvocationStatus`].
+    pub fn creation_time(&self) -> MillisSinceEpoch {
+        self.creation_time
+    }
+
+    /// Modification time of the [`InvocationStatus`].
+    pub fn modification_time(&self) -> MillisSinceEpoch {
+        self.modification_time
+    }
+
+    /// Inboxed transition time of the [`InvocationStatus`], if any.
+    pub fn inboxed_transition_time(&self) -> Option<MillisSinceEpoch> {
+        self.inboxed_transition_time
+    }
+
+    /// Scheduled transition time of the [`InvocationStatus`], if any.
+    pub fn scheduled_transition_time(&self) -> Option<MillisSinceEpoch> {
+        self.scheduled_transition_time
+    }
+
+    /// First transition to Running time of the [`InvocationStatus`], if any.
+    pub fn running_transition_time(&self) -> Option<MillisSinceEpoch> {
+        self.running_transition_time
+    }
+
+    /// Completed transition time of the [`InvocationStatus`], if any.
+    pub fn completed_transition_time(&self) -> Option<MillisSinceEpoch> {
+        self.completed_transition_time
+    }
+}
+
+/// Status of an invocation.
+#[derive(Debug, Default, Clone, PartialEq, strum::EnumTryAs)]
+pub enum InvocationStatus {
+    Scheduled(ScheduledInvocation),
+    Inboxed(InboxedInvocation),
+    Invoked(InFlightInvocationMetadata),
+    Suspended {
+        metadata: InFlightInvocationMetadata,
+        awaiting_on: UnresolvedFuture,
+    },
+    Paused(InFlightInvocationMetadata),
+    Completed(CompletedInvocation),
+    /// Service instance is currently not invoked
+    #[default]
+    Free,
+}
+
+impl PartitionStoreProtobufValue for InvocationStatus {
+    type ProtobufType = crate::protobuf_types::v1::InvocationStatusV2;
+}
+
+impl InvocationStatus {
+    #[inline]
+    pub fn invocation_target(&self) -> Option<&InvocationTarget> {
+        match self {
+            InvocationStatus::Scheduled(metadata) => Some(&metadata.metadata.invocation_target),
+            InvocationStatus::Inboxed(metadata) => Some(&metadata.metadata.invocation_target),
+            InvocationStatus::Invoked(metadata)
+            | InvocationStatus::Suspended { metadata, .. }
+            | InvocationStatus::Paused(metadata) => Some(&metadata.invocation_target),
+            InvocationStatus::Completed(completed) => Some(&completed.invocation_target),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn source(&self) -> Option<&Source> {
+        match self {
+            InvocationStatus::Scheduled(metadata) => Some(&metadata.metadata.source),
+            InvocationStatus::Inboxed(metadata) => Some(&metadata.metadata.source),
+            InvocationStatus::Invoked(metadata)
+            | InvocationStatus::Suspended { metadata, .. }
+            | InvocationStatus::Paused(metadata) => Some(&metadata.source),
+            InvocationStatus::Completed(completed) => Some(&completed.source),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn execution_time(&self) -> Option<MillisSinceEpoch> {
+        match self {
+            InvocationStatus::Scheduled(metadata) => metadata.metadata.execution_time,
+            InvocationStatus::Inboxed(metadata) => metadata.metadata.execution_time,
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn idempotency_key(&self) -> Option<&ByteString> {
+        match self {
+            InvocationStatus::Scheduled(metadata) => metadata.metadata.idempotency_key.as_ref(),
+            InvocationStatus::Inboxed(metadata) => metadata.metadata.idempotency_key.as_ref(),
+            InvocationStatus::Invoked(metadata)
+            | InvocationStatus::Suspended { metadata, .. }
+            | InvocationStatus::Paused(metadata) => metadata.idempotency_key.as_ref(),
+            InvocationStatus::Completed(completed) => completed.idempotency_key.as_ref(),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn into_journal_metadata(self) -> Option<JournalMetadata> {
+        match self {
+            InvocationStatus::Invoked(InFlightInvocationMetadata {
+                journal_metadata, ..
+            })
+            | InvocationStatus::Suspended {
+                metadata:
+                    InFlightInvocationMetadata {
+                        journal_metadata, ..
+                    },
+                ..
+            }
+            | InvocationStatus::Paused(InFlightInvocationMetadata {
+                journal_metadata, ..
+            })
+            | InvocationStatus::Completed(CompletedInvocation {
+                journal_metadata, ..
+            }) => Some(journal_metadata),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn get_journal_metadata(&self) -> Option<&JournalMetadata> {
+        match self {
+            InvocationStatus::Invoked(InFlightInvocationMetadata {
+                journal_metadata, ..
+            })
+            | InvocationStatus::Suspended {
+                metadata:
+                    InFlightInvocationMetadata {
+                        journal_metadata, ..
+                    },
+                ..
+            }
+            | InvocationStatus::Paused(InFlightInvocationMetadata {
+                journal_metadata, ..
+            })
+            | InvocationStatus::Completed(CompletedInvocation {
+                journal_metadata, ..
+            }) => Some(journal_metadata),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn get_journal_metadata_mut(&mut self) -> Option<&mut JournalMetadata> {
+        match self {
+            InvocationStatus::Invoked(InFlightInvocationMetadata {
+                journal_metadata, ..
+            })
+            | InvocationStatus::Suspended {
+                metadata:
+                    InFlightInvocationMetadata {
+                        journal_metadata, ..
+                    },
+                ..
+            }
+            | InvocationStatus::Paused(InFlightInvocationMetadata {
+                journal_metadata, ..
+            })
+            | InvocationStatus::Completed(CompletedInvocation {
+                journal_metadata, ..
+            }) => Some(journal_metadata),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn into_invocation_metadata(self) -> Option<InFlightInvocationMetadata> {
+        match self {
+            InvocationStatus::Invoked(metadata)
+            | InvocationStatus::Suspended { metadata, .. }
+            | InvocationStatus::Paused(metadata) => Some(metadata),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn get_invocation_metadata(&self) -> Option<&InFlightInvocationMetadata> {
+        match self {
+            InvocationStatus::Invoked(metadata)
+            | InvocationStatus::Suspended { metadata, .. }
+            | InvocationStatus::Paused(metadata) => Some(metadata),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn get_invocation_metadata_mut(&mut self) -> Option<&mut InFlightInvocationMetadata> {
+        match self {
+            InvocationStatus::Invoked(metadata)
+            | InvocationStatus::Suspended { metadata, .. }
+            | InvocationStatus::Paused(metadata) => Some(metadata),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn get_response_sinks_mut(
+        &mut self,
+    ) -> Option<&mut HashSet<ServiceInvocationResponseSink>> {
+        match self {
+            InvocationStatus::Scheduled(metadata) => Some(&mut metadata.metadata.response_sinks),
+            InvocationStatus::Inboxed(metadata) => Some(&mut metadata.metadata.response_sinks),
+            InvocationStatus::Invoked(metadata)
+            | InvocationStatus::Suspended { metadata, .. }
+            | InvocationStatus::Paused(metadata) => Some(&mut metadata.response_sinks),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn get_response_sinks(&self) -> Option<&HashSet<ServiceInvocationResponseSink>> {
+        match self {
+            InvocationStatus::Scheduled(metadata) => Some(&metadata.metadata.response_sinks),
+            InvocationStatus::Inboxed(metadata) => Some(&metadata.metadata.response_sinks),
+            InvocationStatus::Invoked(metadata)
+            | InvocationStatus::Suspended { metadata, .. }
+            | InvocationStatus::Paused(metadata) => Some(&metadata.response_sinks),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn get_timestamps(&self) -> Option<&StatusTimestamps> {
+        match self {
+            InvocationStatus::Scheduled(metadata) => Some(&metadata.metadata.timestamps),
+            InvocationStatus::Inboxed(metadata) => Some(&metadata.metadata.timestamps),
+            InvocationStatus::Invoked(metadata)
+            | InvocationStatus::Suspended { metadata, .. }
+            | InvocationStatus::Paused(metadata) => Some(&metadata.timestamps),
+            InvocationStatus::Completed(completed) => Some(&completed.timestamps),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn get_timestamps_mut(&mut self) -> Option<&mut StatusTimestamps> {
+        match self {
+            InvocationStatus::Scheduled(metadata) => Some(&mut metadata.metadata.timestamps),
+            InvocationStatus::Inboxed(metadata) => Some(&mut metadata.metadata.timestamps),
+            InvocationStatus::Invoked(metadata)
+            | InvocationStatus::Suspended { metadata, .. }
+            | InvocationStatus::Paused(metadata) => Some(&mut metadata.timestamps),
+            InvocationStatus::Completed(completed) => Some(&mut completed.timestamps),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn get_random_seed(&self) -> Option<u64> {
+        match self {
+            InvocationStatus::Scheduled(metadata) => metadata.metadata.random_seed,
+            InvocationStatus::Inboxed(metadata) => metadata.metadata.random_seed,
+            InvocationStatus::Invoked(metadata)
+            | InvocationStatus::Suspended { metadata, .. }
+            | InvocationStatus::Paused(metadata) => metadata.random_seed,
+            InvocationStatus::Completed(completed) => completed.random_seed,
+            InvocationStatus::Free => None,
+        }
+    }
+
+    #[inline]
+    pub fn discriminant(&self) -> Option<InvocationStatusDiscriminants> {
+        match self {
+            InvocationStatus::Scheduled(_) => Some(InvocationStatusDiscriminants::Scheduled),
+            InvocationStatus::Inboxed(_) => Some(InvocationStatusDiscriminants::Inboxed),
+            InvocationStatus::Invoked(_) => Some(InvocationStatusDiscriminants::Invoked),
+            InvocationStatus::Suspended { .. } => Some(InvocationStatusDiscriminants::Suspended),
+            InvocationStatus::Paused(_) => Some(InvocationStatusDiscriminants::Paused),
+            InvocationStatus::Completed(_) => Some(InvocationStatusDiscriminants::Completed),
+            InvocationStatus::Free => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InvocationStatusDiscriminants {
+    Scheduled,
+    Inboxed,
+    Invoked,
+    Suspended,
+    Paused,
+    Killed,
+    Completed,
+}
+
+/// Metadata associated with a journal
+#[derive(Debug, Clone, PartialEq)]
+pub struct JournalMetadata {
+    pub length: u32,
+    /// Number of commands stored in the current journal
+    pub commands: u32,
+    pub span_context: ServiceInvocationSpanContext,
+}
+
+impl JournalMetadata {
+    pub fn new(length: u32, commands: u32, span_context: ServiceInvocationSpanContext) -> Self {
+        Self {
+            span_context,
+            length,
+            commands,
+        }
+    }
+
+    pub fn initialize(span_context: ServiceInvocationSpanContext) -> Self {
+        Self::new(0, 0, span_context)
+    }
+
+    pub fn empty() -> Self {
+        Self::initialize(ServiceInvocationSpanContext::empty())
+    }
+}
+
+/// Depending on the source, the pre-flight invocation metadata might either have a journal already initialized,
+/// or the request arguments stored directly in invocation status.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PreFlightInvocationArgument {
+    /// The preflight status contains directly argument and headers, not yet a journal
+    // todo: Remove once we drop support for the old journal v1
+    Input(PreFlightInvocationInput),
+    /// A journal has already been initialized for this preflight request
+    Journal(PreFlightInvocationJournal),
+}
+
+impl PreFlightInvocationArgument {
+    pub fn span_context(&self) -> &ServiceInvocationSpanContext {
+        match self {
+            PreFlightInvocationArgument::Input(PreFlightInvocationInput {
+                span_context, ..
+            }) => span_context,
+            PreFlightInvocationArgument::Journal(PreFlightInvocationJournal {
+                journal_metadata,
+                ..
+            }) => &journal_metadata.span_context,
+        }
+    }
+
+    pub fn pinned_deployment(&self) -> Option<&PinnedDeployment> {
+        match self {
+            PreFlightInvocationArgument::Input(_) => None,
+            PreFlightInvocationArgument::Journal(journal) => journal.pinned_deployment.as_ref(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreFlightInvocationInput {
+    pub argument: Bytes,
+    pub headers: Vec<Header>,
+    pub span_context: ServiceInvocationSpanContext,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreFlightInvocationJournal {
+    pub journal_metadata: JournalMetadata,
+    pub pinned_deployment: Option<PinnedDeployment>,
+}
+
+/// This is similar to [ServiceInvocation].
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreFlightInvocationMetadata {
+    pub response_sinks: HashSet<ServiceInvocationResponseSink>,
+    pub timestamps: StatusTimestamps,
+    pub vqueue_id: Option<VQueueId>,
+    pub limit_key: LimitKey<ReString>,
+
+    // --- From ServiceInvocation
+    pub invocation_target: InvocationTarget,
+    /// Restate version the invocation was created with.
+    ///
+    /// This is agreed among replicas, but be aware **it might come from the future**.
+    /// No, this ain't a Marty McFly adventure, the problem is that the PP leader proposing the request to Bifrost
+    /// might be on a newer version than the replicas, or the subsequent leader in the next leader epoch.
+    pub created_using_restate_version: RestateVersion,
+
+    pub input: PreFlightInvocationArgument,
+
+    pub source: Source,
+    /// Time when the request should be executed
+    pub execution_time: Option<MillisSinceEpoch>,
+
+    /// If zero, the invocation completion will not be retained.
+    pub completion_retention_duration: Duration,
+
+    /// If zero, the journal will not be retained.
+    pub journal_retention_duration: Duration,
+
+    pub idempotency_key: Option<ByteString>,
+
+    /// The random seed is sent to the SDK to feed the RNG exposed in ctx.rand
+    ///
+    /// When None, infer the seed from the invocation id.
+    pub random_seed: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScheduledInvocation {
+    pub metadata: PreFlightInvocationMetadata,
+}
+
+impl ScheduledInvocation {
+    pub fn from_pre_flight_invocation_metadata(
+        mut metadata: PreFlightInvocationMetadata,
+        timestamp: MillisSinceEpoch,
+    ) -> Self {
+        metadata
+            .timestamps
+            .record_scheduled_transition_time(timestamp);
+
+        Self { metadata }
+    }
+}
+
+impl PreFlightInvocationMetadata {
+    pub fn from_service_invocation(
+        created_at: MillisSinceEpoch,
+        service_invocation: ServiceInvocation,
+        vqueue_id: Option<VQueueId>,
+        random_seed: Option<u64>,
+    ) -> Self {
+        Self {
+            vqueue_id,
+            limit_key: service_invocation.limit_key,
+            response_sinks: service_invocation.response_sink.into_iter().collect(),
+            timestamps: StatusTimestamps::init(created_at),
+            invocation_target: service_invocation.invocation_target,
+            source: service_invocation.source,
+            execution_time: service_invocation.execution_time,
+            completion_retention_duration: service_invocation.completion_retention_duration,
+            journal_retention_duration: service_invocation.journal_retention_duration,
+            idempotency_key: service_invocation.idempotency_key,
+            created_using_restate_version: service_invocation.restate_version,
+            random_seed,
+            input: PreFlightInvocationArgument::Input(PreFlightInvocationInput {
+                argument: service_invocation.argument,
+                headers: service_invocation.headers,
+                span_context: service_invocation.span_context,
+            }),
+        }
+    }
+
+    pub fn span_context(&self) -> &ServiceInvocationSpanContext {
+        self.input.span_context()
+    }
+}
+
+/// This is similar to [ServiceInvocation], but allows many response sinks,
+/// plus holds some inbox metadata.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InboxedInvocation {
+    pub inbox_sequence_number: u64,
+    pub metadata: PreFlightInvocationMetadata,
+}
+
+impl InboxedInvocation {
+    pub fn from_pre_flight_invocation_metadata(
+        mut metadata: PreFlightInvocationMetadata,
+        inbox_sequence_number: u64,
+        timestamp: MillisSinceEpoch,
+    ) -> Self {
+        metadata
+            .timestamps
+            .record_inboxed_transition_time(timestamp);
+
+        Self {
+            inbox_sequence_number,
+            metadata,
+        }
+    }
+
+    pub fn from_scheduled_invocation(
+        scheduled_invocation: ScheduledInvocation,
+        inbox_sequence_number: u64,
+        timestamp: MillisSinceEpoch,
+    ) -> Self {
+        Self::from_pre_flight_invocation_metadata(
+            scheduled_invocation.metadata,
+            inbox_sequence_number,
+            timestamp,
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct InFlightInvocationMetadata {
+    pub invocation_target: InvocationTarget,
+    pub vqueue_id: Option<VQueueId>,
+    pub limit_key: LimitKey<ReString>,
+    /// Restate version the invocation was created with.
+    ///
+    /// This is agreed among replicas, but be aware **it might come from the future**.
+    /// No, this ain't a Marty McFly adventure, the problem is that the PP leader proposing the request to Bifrost
+    /// might be on a newer version than the replicas, or the subsequent leader in the next leader epoch.
+    pub created_using_restate_version: RestateVersion,
+    pub journal_metadata: JournalMetadata,
+    pub pinned_deployment: Option<PinnedDeployment>,
+    pub response_sinks: HashSet<ServiceInvocationResponseSink>,
+    pub timestamps: StatusTimestamps,
+    pub source: Source,
+    /// For invocations that were originally scheduled, retains the time when the request was originally scheduled to execute
+    pub execution_time: Option<MillisSinceEpoch>,
+
+    /// If zero, the invocation completion will not be retained.
+    pub completion_retention_duration: Duration,
+
+    /// If zero, the journal will not be retained.
+    pub journal_retention_duration: Duration,
+
+    pub idempotency_key: Option<ByteString>,
+    // TODO remove this when we remove protocol <= v3
+    pub hotfix_apply_cancellation_after_deployment_is_pinned: bool,
+
+    /// The random seed is sent to the SDK to feed the RNG exposed in ctx.rand
+    ///
+    /// When None, infer the seed from the invocation id.
+    pub random_seed: Option<u64>,
+}
+
+impl InFlightInvocationMetadata {
+    pub fn from_pre_flight_invocation_metadata(
+        mut pre_flight_invocation_metadata: PreFlightInvocationMetadata,
+        timestamp: MillisSinceEpoch,
+    ) -> (Self, Option<InvocationInput>) {
+        pre_flight_invocation_metadata
+            .timestamps
+            .record_running_transition_time(timestamp);
+
+        match pre_flight_invocation_metadata.input {
+            PreFlightInvocationArgument::Input(PreFlightInvocationInput {
+                argument,
+                headers,
+                span_context,
+            }) => (
+                Self {
+                    invocation_target: pre_flight_invocation_metadata.invocation_target,
+                    vqueue_id: pre_flight_invocation_metadata.vqueue_id,
+                    limit_key: pre_flight_invocation_metadata.limit_key,
+                    created_using_restate_version: pre_flight_invocation_metadata
+                        .created_using_restate_version,
+                    journal_metadata: JournalMetadata::initialize(span_context),
+                    pinned_deployment: None,
+                    response_sinks: pre_flight_invocation_metadata.response_sinks,
+                    timestamps: pre_flight_invocation_metadata.timestamps,
+                    source: pre_flight_invocation_metadata.source,
+                    execution_time: pre_flight_invocation_metadata.execution_time,
+                    completion_retention_duration: pre_flight_invocation_metadata
+                        .completion_retention_duration,
+                    journal_retention_duration: pre_flight_invocation_metadata
+                        .journal_retention_duration,
+                    idempotency_key: pre_flight_invocation_metadata.idempotency_key,
+                    hotfix_apply_cancellation_after_deployment_is_pinned: false,
+                    random_seed: pre_flight_invocation_metadata.random_seed,
+                },
+                Some(InvocationInput { argument, headers }),
+            ),
+            PreFlightInvocationArgument::Journal(PreFlightInvocationJournal {
+                journal_metadata,
+                pinned_deployment,
+            }) => (
+                Self {
+                    invocation_target: pre_flight_invocation_metadata.invocation_target,
+                    vqueue_id: pre_flight_invocation_metadata.vqueue_id,
+                    limit_key: pre_flight_invocation_metadata.limit_key,
+                    created_using_restate_version: pre_flight_invocation_metadata
+                        .created_using_restate_version,
+                    journal_metadata,
+                    pinned_deployment,
+                    response_sinks: pre_flight_invocation_metadata.response_sinks,
+                    timestamps: pre_flight_invocation_metadata.timestamps,
+                    source: pre_flight_invocation_metadata.source,
+                    execution_time: pre_flight_invocation_metadata.execution_time,
+                    completion_retention_duration: pre_flight_invocation_metadata
+                        .completion_retention_duration,
+                    journal_retention_duration: pre_flight_invocation_metadata
+                        .journal_retention_duration,
+                    idempotency_key: pre_flight_invocation_metadata.idempotency_key,
+                    hotfix_apply_cancellation_after_deployment_is_pinned: false,
+                    random_seed: pre_flight_invocation_metadata.random_seed,
+                },
+                None,
+            ),
+        }
+    }
+
+    pub fn from_inboxed_invocation(
+        inboxed_invocation: InboxedInvocation,
+        timestamp: MillisSinceEpoch,
+    ) -> (Self, Option<InvocationInput>) {
+        Self::from_pre_flight_invocation_metadata(inboxed_invocation.metadata, timestamp)
+    }
+
+    pub fn set_pinned_deployment(
+        &mut self,
+        pinned_deployment: PinnedDeployment,
+        timestamp: MillisSinceEpoch,
+    ) {
+        debug_assert_eq!(
+            self.pinned_deployment, None,
+            "No deployment should be chosen for the current invocation"
+        );
+        self.pinned_deployment = Some(pinned_deployment);
+        self.timestamps.update(timestamp);
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CompletedInvocation {
+    pub vqueue_id: Option<VQueueId>,
+    pub invocation_target: InvocationTarget,
+    pub limit_key: LimitKey<ReString>,
+    /// Restate version the invocation was created with.
+    ///
+    /// This is agreed among replicas, but be aware **it might come from the future**.
+    /// No, this ain't a Marty McFly adventure, the problem is that the PP leader proposing the request to Bifrost
+    /// might be on a newer version than the replicas, or the subsequent leader in the next leader epoch.
+    pub created_using_restate_version: RestateVersion,
+    pub source: Source,
+    /// For invocations that were originally scheduled, retains the time when the request was originally scheduled to execute
+    pub execution_time: Option<MillisSinceEpoch>,
+    pub idempotency_key: Option<ByteString>,
+    pub timestamps: StatusTimestamps,
+    pub response_result: ResponseResult,
+
+    pub completion_retention_duration: Duration,
+    pub journal_retention_duration: Duration,
+
+    pub journal_metadata: JournalMetadata,
+    pub pinned_deployment: Option<PinnedDeployment>,
+
+    /// The random seed is sent to the SDK to feed the RNG exposed in ctx.rand
+    ///
+    /// In case of a restart from prefix, the random_seed should be copied over.
+    ///
+    /// When None, infer the seed from the invocation id.
+    pub random_seed: Option<u64>,
+}
+
+#[derive(PartialEq, Eq)]
+pub enum JournalRetentionPolicy {
+    Retain,
+    Drop,
+}
+
+impl CompletedInvocation {
+    pub fn from_pre_flight_invocation_metadata(
+        mut metadata: PreFlightInvocationMetadata,
+        journal_retention_policy: JournalRetentionPolicy,
+        response_result: ResponseResult,
+        timestamp: MillisSinceEpoch,
+    ) -> Self {
+        metadata
+            .timestamps
+            .record_completed_transition_time(timestamp);
+
+        let (journal_metadata, pinned_deployment) = match metadata.input {
+            PreFlightInvocationArgument::Input(_) => (JournalMetadata::empty(), None),
+            PreFlightInvocationArgument::Journal(PreFlightInvocationJournal {
+                journal_metadata,
+                pinned_deployment,
+            }) => (
+                if journal_retention_policy == JournalRetentionPolicy::Retain {
+                    journal_metadata
+                } else {
+                    JournalMetadata::empty()
+                },
+                pinned_deployment,
+            ),
+        };
+
+        Self {
+            invocation_target: metadata.invocation_target,
+            vqueue_id: metadata.vqueue_id,
+            limit_key: metadata.limit_key,
+            created_using_restate_version: metadata.created_using_restate_version,
+            source: metadata.source,
+            execution_time: metadata.execution_time,
+            idempotency_key: metadata.idempotency_key,
+            timestamps: metadata.timestamps,
+            response_result,
+            completion_retention_duration: metadata.completion_retention_duration,
+            journal_retention_duration: metadata.journal_retention_duration,
+            journal_metadata,
+            pinned_deployment,
+            random_seed: metadata.random_seed,
+        }
+    }
+
+    pub fn from_in_flight_invocation_metadata(
+        mut in_flight_invocation_metadata: InFlightInvocationMetadata,
+        journal_retention_policy: JournalRetentionPolicy,
+        response_result: ResponseResult,
+        timestamp: MillisSinceEpoch,
+    ) -> Self {
+        in_flight_invocation_metadata
+            .timestamps
+            .record_completed_transition_time(timestamp);
+
+        Self {
+            invocation_target: in_flight_invocation_metadata.invocation_target,
+            vqueue_id: in_flight_invocation_metadata.vqueue_id,
+            limit_key: in_flight_invocation_metadata.limit_key,
+            created_using_restate_version: in_flight_invocation_metadata
+                .created_using_restate_version,
+            source: in_flight_invocation_metadata.source,
+            execution_time: in_flight_invocation_metadata.execution_time,
+            idempotency_key: in_flight_invocation_metadata.idempotency_key,
+            timestamps: in_flight_invocation_metadata.timestamps,
+            response_result,
+            completion_retention_duration: in_flight_invocation_metadata
+                .completion_retention_duration,
+            journal_retention_duration: in_flight_invocation_metadata.journal_retention_duration,
+            journal_metadata: if journal_retention_policy == JournalRetentionPolicy::Retain {
+                in_flight_invocation_metadata.journal_metadata
+            } else {
+                JournalMetadata::empty()
+            },
+            pinned_deployment: in_flight_invocation_metadata.pinned_deployment,
+            random_seed: in_flight_invocation_metadata.random_seed,
+        }
+    }
+
+    /// Expiration time of the [`InvocationStatus::Completed`], if any.
+    pub fn completion_expiry_time(&self) -> Option<MillisSinceEpoch> {
+        self.timestamps
+            .completed_transition_time()
+            .map(|base| base + self.completion_retention_duration)
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct InvokedInvocationStatusLite {
+    pub invocation_id: InvocationId,
+    pub invocation_target: InvocationTarget,
+}
+
+pub trait ReadInvocationStatusTable {
+    fn get_invocation_status(
+        &mut self,
+        invocation_id: &InvocationId,
+    ) -> impl Future<Output = Result<InvocationStatus>> + Send;
+
+    /// Returns `true` as soon as an [`InvocationStatus`] that is not
+    /// [`InvocationStatus::Completed`] is found in `range`. The iterator walks
+    /// entries decoding only the variant discriminator and early-exits on the
+    /// first non-`Completed` hit.
+    fn any_non_completed_invocation_in_range(
+        &mut self,
+        range: KeyRange,
+    ) -> impl Future<Output = Result<bool>> + Send;
+}
+
+#[derive(Debug, Clone)]
+pub enum ScanInvocationStatusTableRange {
+    PartitionKey(KeyRange),
+    InvocationId(RangeInclusive<InvocationId>),
+    InvocationIdSet(BTreeSet<InvocationId>),
+}
+
+pub trait ScanInvocationStatusTable {
+    fn for_each_invocation_status_lazy<
+        E: Into<anyhow::Error> + 'static,
+        F: for<'a> FnMut(
+                (InvocationId, &'a InvocationStatusV2Lazy<'a>),
+            ) -> ControlFlow<std::result::Result<(), E>>
+            + Send
+            + Sync
+            + 'static,
+    >(
+        &self,
+        range: ScanInvocationStatusTableRange,
+        f: F,
+    ) -> Result<impl Future<Output = Result<()>> + Send>;
+
+    fn filter_map_invocation_status_lazy<
+        O: Send + 'static,
+        E: Into<anyhow::Error>,
+        F: for<'a> FnMut(
+                (InvocationId, &'a InvocationStatusV2Lazy<'a>),
+            ) -> std::result::Result<Option<O>, E>
+            + Send
+            + Sync
+            + 'static,
+    >(
+        &self,
+        f: F,
+    ) -> Result<impl Stream<Item = Result<O>> + Send>;
+
+    /// Legacy invoked invocations are those that have not been migrated to vqueues
+    fn scan_legacy_invoked_invocations(
+        &self,
+    ) -> Result<impl Stream<Item = Result<InvokedInvocationStatusLite>> + Send>;
+}
+
+pub trait WriteInvocationStatusTable {
+    fn put_invocation_status(
+        &mut self,
+        invocation_id: &InvocationId,
+        status: &InvocationStatus,
+    ) -> Result<()>;
+
+    fn delete_invocation_status(&mut self, invocation_id: &InvocationId) -> Result<()>;
+}
+
+#[cfg(any(test, feature = "test-util"))]
+mod test_util {
+    use super::*;
+    use restate_sharding::PartitionKey;
+    use restate_types::identifiers::PartitionProcessorRpcRequestId;
+
+    use restate_types::invocation::VirtualObjectHandlerType;
+
+    impl StatusTimestamps {
+        pub fn mock() -> Self {
+            Self::init(MillisSinceEpoch::now())
+        }
+    }
+
+    impl PreFlightInvocationMetadata {
+        pub fn mock_with_vqueue(partition_key: PartitionKey) -> Self {
+            PreFlightInvocationMetadata {
+                invocation_target: InvocationTarget::virtual_object(
+                    "MyService",
+                    "MyKey",
+                    "mock",
+                    VirtualObjectHandlerType::Exclusive,
+                ),
+                vqueue_id: Some(VQueueId::custom(partition_key, "MyKey")),
+                limit_key: LimitKey::None,
+                created_using_restate_version: RestateVersion::current(),
+                response_sinks: HashSet::new(),
+                timestamps: StatusTimestamps::mock(),
+                source: Source::Ingress(PartitionProcessorRpcRequestId::default()),
+                execution_time: None,
+                completion_retention_duration: Duration::ZERO,
+                journal_retention_duration: Duration::ZERO,
+                idempotency_key: None,
+                input: PreFlightInvocationArgument::Input(PreFlightInvocationInput {
+                    argument: Default::default(),
+                    headers: vec![],
+                    span_context: Default::default(),
+                }),
+                random_seed: None,
+            }
+        }
+
+        pub fn mock() -> Self {
+            PreFlightInvocationMetadata {
+                invocation_target: InvocationTarget::virtual_object(
+                    "MyService",
+                    "MyKey",
+                    "mock",
+                    VirtualObjectHandlerType::Exclusive,
+                ),
+                vqueue_id: None,
+                limit_key: LimitKey::None,
+                created_using_restate_version: RestateVersion::current(),
+                response_sinks: HashSet::new(),
+                timestamps: StatusTimestamps::mock(),
+                source: Source::Ingress(PartitionProcessorRpcRequestId::default()),
+                execution_time: None,
+                completion_retention_duration: Duration::ZERO,
+                journal_retention_duration: Duration::ZERO,
+                idempotency_key: None,
+                input: PreFlightInvocationArgument::Input(PreFlightInvocationInput {
+                    argument: Default::default(),
+                    headers: vec![],
+                    span_context: Default::default(),
+                }),
+                random_seed: None,
+            }
+        }
+    }
+
+    impl InFlightInvocationMetadata {
+        pub fn mock_with_vqueue(partition_key: PartitionKey) -> Self {
+            InFlightInvocationMetadata {
+                invocation_target: InvocationTarget::virtual_object(
+                    "MyService",
+                    "MyKey",
+                    "mock",
+                    VirtualObjectHandlerType::Exclusive,
+                ),
+                vqueue_id: Some(VQueueId::custom(partition_key, "MyKey")),
+                limit_key: LimitKey::None,
+                created_using_restate_version: RestateVersion::current(),
+                journal_metadata: JournalMetadata::initialize(ServiceInvocationSpanContext::empty()),
+                pinned_deployment: None,
+                response_sinks: HashSet::new(),
+                timestamps: StatusTimestamps::mock(),
+                source: Source::Ingress(PartitionProcessorRpcRequestId::default()),
+                execution_time: None,
+                completion_retention_duration: Duration::ZERO,
+                journal_retention_duration: Duration::ZERO,
+                idempotency_key: None,
+                hotfix_apply_cancellation_after_deployment_is_pinned: false,
+                random_seed: None,
+            }
+        }
+        pub fn mock() -> Self {
+            InFlightInvocationMetadata {
+                invocation_target: InvocationTarget::virtual_object(
+                    "MyService",
+                    "MyKey",
+                    "mock",
+                    VirtualObjectHandlerType::Exclusive,
+                ),
+                vqueue_id: None,
+                limit_key: LimitKey::None,
+                created_using_restate_version: RestateVersion::current(),
+                journal_metadata: JournalMetadata::initialize(ServiceInvocationSpanContext::empty()),
+                pinned_deployment: None,
+                response_sinks: HashSet::new(),
+                timestamps: StatusTimestamps::mock(),
+                source: Source::Ingress(PartitionProcessorRpcRequestId::default()),
+                execution_time: None,
+                completion_retention_duration: Duration::ZERO,
+                journal_retention_duration: Duration::ZERO,
+                idempotency_key: None,
+                hotfix_apply_cancellation_after_deployment_is_pinned: false,
+                random_seed: None,
+            }
+        }
+    }
+
+    impl CompletedInvocation {
+        pub fn mock_neo_with_vqueue(partition_key: PartitionKey) -> Self {
+            let mut timestamps = StatusTimestamps::mock();
+            let now = MillisSinceEpoch::now();
+            timestamps.record_running_transition_time(now);
+            timestamps.record_completed_transition_time(now);
+
+            CompletedInvocation {
+                invocation_target: InvocationTarget::virtual_object(
+                    "MyService",
+                    "MyKey",
+                    "mock",
+                    VirtualObjectHandlerType::Exclusive,
+                ),
+                vqueue_id: Some(VQueueId::custom(partition_key, "MyKey")),
+                limit_key: LimitKey::None,
+                created_using_restate_version: RestateVersion::current(),
+                source: Source::Ingress(PartitionProcessorRpcRequestId::default()),
+                execution_time: None,
+                idempotency_key: None,
+                timestamps,
+                response_result: ResponseResult::Success(Bytes::from_static(b"123")),
+                completion_retention_duration: Duration::from_secs(60 * 60),
+                journal_retention_duration: Duration::ZERO,
+                journal_metadata: JournalMetadata::empty(),
+                pinned_deployment: None,
+                random_seed: None,
+            }
+        }
+        pub fn mock_neo() -> Self {
+            let mut timestamps = StatusTimestamps::mock();
+            let now = MillisSinceEpoch::now();
+            timestamps.record_running_transition_time(now);
+            timestamps.record_completed_transition_time(now);
+
+            CompletedInvocation {
+                invocation_target: InvocationTarget::virtual_object(
+                    "MyService",
+                    "MyKey",
+                    "mock",
+                    VirtualObjectHandlerType::Exclusive,
+                ),
+                vqueue_id: None,
+                limit_key: LimitKey::None,
+                created_using_restate_version: RestateVersion::current(),
+                source: Source::Ingress(PartitionProcessorRpcRequestId::default()),
+                execution_time: None,
+                idempotency_key: None,
+                timestamps,
+                response_result: ResponseResult::Success(Bytes::from_static(b"123")),
+                completion_retention_duration: Duration::from_secs(60 * 60),
+                journal_retention_duration: Duration::ZERO,
+                journal_metadata: JournalMetadata::empty(),
+                pinned_deployment: None,
+                random_seed: None,
+            }
+        }
+    }
+}
+
+/// Lite status of an invocation.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct InvocationLite {
+    pub status: InvocationStatusDiscriminants,
+    pub invocation_target: InvocationTarget,
+    pub vqueue_id: Option<VQueueId>,
+}
+
+impl PartitionStoreProtobufValue for InvocationLite {
+    type ProtobufType = crate::protobuf_types::v1::InvocationV2Lite;
+}

@@ -1,0 +1,48 @@
+---
+description: How to edit SDK code examples and regenerate snippets
+globs: sdks/python/examples/**/*,sdks/typescript/src/v1/examples/**/*,sdks/go/examples/**/*,sdks/ruby/examples/**/*,examples/**/*
+alwaysApply: false
+---
+
+# Docs Snippet Workflow
+
+## Source of truth
+
+SDK example code lives in the SDK trees:
+
+- `sdks/python/examples/`
+- `sdks/typescript/src/v1/examples/`
+- `sdks/go/examples/`
+- `sdks/ruby/examples/`
+
+The mirrors under `examples/{lang}/` are **generated** from those trees. Never
+edit generated mirrors directly; edit the SDK copy and regenerate.
+
+Exception: `examples/*/guides/` is not generated (the old `sdks/guides/`
+source tree no longer exists). Guide files are hand-maintained — edit them in
+place.
+
+## Snippet markers
+
+Use `# > Step Title` (or `// >` for TS/Go) to open a snippet and `# !!`
+(or `// !!`) to close it. The generator converts the title to snake_case for
+the snippet key (e.g. `# > Simple Step Retries` → `simple_step_retries`).
+Markers are stripped from the generated mirrors.
+
+## Regenerating
+
+After editing any example under `sdks/`, run from the repo root:
+
+```
+task generate-docs
+```
+
+(or directly: `cd frontend/snippets && python -X utf8 generate.py`, using the
+repo `.venv`). This regenerates the `examples/{lang}/` mirrors and
+`frontend/docs/lib/generated/snippets/index.ts`, then formats the output.
+
+## Referencing snippets in MDX
+
+```
+snippets.{lang}.{example_dir}.{file_stem}.{snippet_key}
+```

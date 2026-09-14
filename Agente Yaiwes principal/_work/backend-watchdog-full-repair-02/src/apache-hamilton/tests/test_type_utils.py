@@ -1,0 +1,463 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+import collections
+import sys
+import typing
+from typing import Annotated, Any, Union
+
+import pandas as pd
+import pytest
+
+from hamilton import htypes
+from hamilton.htypes import check_instance
+
+
+class X:
+    pass
+
+
+class Y(X):
+    pass
+
+
+custom_type = typing.TypeVar("FOOBAR")
+
+
+@pytest.mark.parametrize(
+    ("param_type", "requested_type", "expected"),
+    [
+        (custom_type, custom_type, True),
+        (custom_type, typing.TypeVar("FOO"), False),
+        (typing.Any, typing.TypeVar("FOO"), True),
+        (typing.Any, custom_type, True),
+        (int, int, True),
+        (int, float, False),
+        (list[int], list, True),
+        (list, list[float], True),
+        (list, list, True),
+        (dict, dict, True),
+        (dict, dict, True),
+        (list, list, True),
+        (list, list, True),
+        (list[int], list[float], False),
+        (dict, list, False),
+        (typing.Mapping, dict, True),
+        (typing.Mapping, dict, True),
+        (dict, typing.Mapping, False),
+        (dict, typing.Mapping, False),
+        (typing.Iterable, list, True),
+        (tuple[str, str], tuple[str, str], True),
+        (tuple[str, str], tuple[str], False),
+        (tuple[str, str], tuple, True),
+        (tuple, tuple[str, str], True),
+        (typing.Union[str, str], typing.Union[str, str], True),
+        (X, X, True),
+        (X, Y, True),
+        (Y, X, False),
+        (typing.Any, Y, True),
+        (Y, typing.Any, False),
+        (typing.Union[X, int], X, True),
+        (typing.Union[str, X], str, True),
+        (typing.Union[custom_type, X], Y, True),
+        (typing.Union[float, str], int, False),
+        (typing.Union[int, float], X, False),
+        (collections.Counter, collections.Counter, True),
+        (dict, collections.Counter, True),
+        (dict, collections.Counter, True),
+        # These are not subclasses of each other, see issue 42
+        (frozenset[int], set[int], False),
+        (htypes.column[pd.Series, int], pd.Series, True),
+        (htypes.column[pd.Series, int], int, False),
+        (typing.Any, pd.DataFrame, True),
+        (pd.DataFrame, typing.Any, False),
+    ],
+)
+def test_custom_subclass_check(param_type, requested_type, expected):
+    """Tests the custom_subclass_check"""
+    actual = htypes.custom_subclass_check(requested_type, param_type)
+    assert actual == expected
+
+
+@pytest.mark.parametrize(
+    ("param_type", "required_type", "expected"),
+    [
+        (typing.TypeVar("FOO"), typing.TypeVar("BAR"), False),
+        (custom_type, custom_type, True),
+        (int, int, True),
+        (int, float, False),
+        (dict, typing.Any, True),
+        (X, X, True),
+        (X, Y, True),
+        (pd.Series, pd.Series, True),
+        (list, pd.Series, False),
+        (dict, pd.Series, False),
+    ],
+)
+def test_types_match(param_type, required_type, expected):
+    """Tests the types_match function"""
+    actual = htypes.types_match(param_type, required_type)
+    assert actual == expected
+
+
+@pytest.mark.parametrize(
+    "type_",
+    [
+        int,
+        bool,
+        float,
+        pd.Series,
+        pd.DataFrame,
+        htypes.column[pd.Series, int],
+        htypes.column[pd.Series, float],
+        htypes.column[pd.Series, bool],
+        htypes.column[pd.Series, str],
+    ],
+)
+def test_validate_types_happy(type_):
+    """Tests that validate_types works when the type is valid"""
+    htypes.validate_type_annotation(type_)
+
+
+@pytest.mark.parametrize(
+    "type_",
+    [
+        htypes.column[pd.DataFrame, int],
+        htypes.column[pd.DataFrame, float],
+        htypes.column[pd.Series, dict[str, typing.Any]],
+    ],
+)
+def test_validate_types_sad(type_):
+    """Tests that validate_types works when the type is valid"""
+    with pytest.raises(htypes.InvalidTypeException):
+        htypes.validate_type_annotation(type_)
+
+
+@pytest.mark.parametrize(
+    ("candidate", "type_", "expected"),
+    [
+        (int, int, True),  # a class is always a subclass of itself.
+        (int, float, False),
+        # Not safe so we return false
+        (list[int], list, False),
+        (frozenset[int], set[int], False),
+    ],
+)
+def test__safe_subclass(candidate, type_, expected):
+    assert htypes._safe_subclass(candidate, type_) == expected
+
+
+@pytest.mark.parametrize(
+    "type_",
+    [
+        (custom_type),
+        (typing.TypeVar("FOO")),
+        (typing.Any),
+        (int),
+        (float),
+        (list[int]),
+        (list),
+        (list),
+        (typing.Iterable),
+        (dict),
+        (dict),
+        (typing.Mapping),
+        (collections.Counter),
+        (tuple[str, str]),
+        (tuple[str]),
+        (tuple),
+        (typing.Union[str, str]),
+        (X),
+        (Y),
+        (typing.Any),
+        (typing.Union[X, int]),
+        (typing.Union[str, X]),
+        (typing.Union[custom_type, X]),
+        (typing.Union[float, str]),
+        (typing.Union[int, float]),
+        (frozenset[int]),
+        (set[int]),
+        (pd.Series),
+        (htypes.column[pd.Series, int]),
+        (pd.DataFrame),
+        (Annotated[int, "metadata"]),
+    ],
+)
+def test_get_type_as_string(type_):
+    """Tests the custom_subclass_check"""
+    try:
+        type_string = htypes.get_type_as_string(type_)  # noqa: F841
+    except Exception as e:
+        pytest.fail(f"test get_type_as_string raised: {e}")
+
+
+def test_type_as_string_with_annotated_type():
+    """Tests the custom_subclass_check"""
+    type_string = htypes.get_type_as_string(Annotated[int, "metadata"])  # type: ignore
+    assert type_string == "int"
+
+
+@pytest.mark.parametrize(
+    ("node_type", "input_value"),
+    [
+        (pd.DataFrame, pd.Series([1, 2, 3])),
+        (list, {}),
+        (dict, []),
+        (dict, []),
+        (list, {}),
+        (int, 1.0),
+        (float, 1),
+        (str, 0),
+        (typing.Union[int, pd.Series], pd.DataFrame({"a": [1, 2, 3]})),
+        (typing.Union[int, pd.Series], 1.0),
+        (typing.Sequence, {"a", "b"}),
+    ],
+    ids=[
+        "test-subclass",
+        "test-generic-list",
+        "test-generic-dict",
+        "test-type-match-dict",
+        "test-type-match-list",
+        "test-type-match-int",
+        "test-type-match-float",
+        "test-type-match-str",
+        "test-union-mismatch-dataframe",
+        "test-union-mismatch-float",
+        "test-sequence-set-mismatch",
+    ],
+)
+def test_check_input_type_mismatch(node_type, input_value):
+    """Tests check_input_type of SimplePythonDataFrameGraphAdapter"""
+    actual = htypes.check_input_type(node_type, input_value)
+    assert actual is False
+
+
+T = typing.TypeVar("T")
+
+
+@pytest.mark.parametrize(
+    ("node_type", "input_value"),
+    [
+        (typing.Any, None),
+        (pd.Series, pd.Series([1, 2, 3])),
+        (T, None),
+        (list, []),
+        (dict, {}),
+        (dict, {}),
+        (list, []),
+        (int, 1),
+        (float, 1.0),
+        (str, "abc"),
+        (typing.Union[int, pd.Series], pd.Series([1, 2, 3])),
+        (typing.Union[int, pd.Series], 1),
+        (typing.Literal["csv", "prq"], "csv"),
+        (typing.Sequence[str], ("a", "b")),
+        (typing.Sequence, ("a", "b")),
+        (typing.Iterable, ("a", "b")),
+        (typing.Iterable[str], ["a", "b"]),
+        (typing.Iterable[str], {"a", "b"}),
+        (typing.Iterable[int], range(0, 10)),
+        (typing.Sequence[int], range(0, 10)),
+    ],
+    ids=[
+        "test-any",
+        "test-subclass",
+        "test-typevar",
+        "test-generic-list",
+        "test-generic-dict",
+        "test-type-match-dict",
+        "test-type-match-list",
+        "test-type-match-int",
+        "test-type-match-float",
+        "test-type-match-str",
+        "test-union-match-series",
+        "test-union-match-int",
+        "test-literal-match-str",
+        "test-sequence-str-match-tuple-str",
+        "test-sequence-match-tuple-str",
+        "test-iterable-str-match-tuple-str",
+        "test-iterable-str-match-list-str",
+        "test-iterable-str-match-set-str",
+        "test-iterable-int-match-range",
+        "test-sequence-int-match-range",
+    ],
+)
+def test_check_input_type_match(node_type, input_value):
+    """Tests check_input_type of SimplePythonDataFrameGraphAdapter"""
+    actual = htypes.check_input_type(node_type, input_value)
+    assert actual is True
+
+
+def test_check_input_types_subscripted_generics_dict_str_Any():
+    """Tests check_input_type of SimplePythonDataFrameGraphAdapter"""
+    actual = htypes.check_input_type(dict[str, typing.Any], {})
+    assert actual is True
+
+
+def test_check_input_types_subscripted_generics_list_Any():
+    """Tests check_input_type of SimplePythonDataFrameGraphAdapter"""
+    actual = htypes.check_input_type(list[typing.Any], [])
+    assert actual is True
+
+
+def test_check_input_type_parameterized_tuple_match():
+    assert htypes.check_input_type(tuple[float, float, float, float], (1.0, 2.0, 3.0, 4.0))
+    assert htypes.check_input_type(tuple[int, str], (1, "a"))
+
+
+def test_check_input_type_parameterized_tuple_legacy_form():
+    assert htypes.check_input_type(tuple[float, float], (1.0, 2.0))
+
+
+def test_check_input_type_parameterized_tuple_wrong_length():
+    assert htypes.check_input_type(tuple[int, str], (1,)) is False
+    assert htypes.check_input_type(tuple[int, str], (1, "a", 2)) is False
+
+
+def test_check_input_type_parameterized_tuple_wrong_element_type():
+    assert htypes.check_input_type(tuple[int, str], (1, 2)) is False
+
+
+def test_check_input_type_variable_length_tuple():
+    assert htypes.check_input_type(tuple[int, ...], (1, 2, 3))
+    assert htypes.check_input_type(tuple[int, ...], ())
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 12), reason="PEP 695 `type X = ...` syntax requires Python 3.12+"
+)
+def test_check_input_type_pep695_type_alias():
+    namespace: dict = {}
+    exec("type Bbox = tuple[float, float, float, float]", namespace)
+    Bbox = namespace["Bbox"]
+    assert htypes.check_input_type(Bbox, (1.0, 2.0, 3.0, 4.0))
+    assert htypes.check_input_type(Bbox, (1, 2, 3)) is False
+
+
+def test_check_instance_with_non_generic_type():
+    assert check_instance(5, int)
+    assert not check_instance("5", int)
+
+
+def test_check_instance_with_generic_list_type():
+    assert check_instance([1, 2, 3], list[int])
+    assert not check_instance([1, 2, "3"], list[int])
+    assert check_instance([1, 2, 3], list)
+    assert check_instance([1, 2, "3"], list)
+
+
+def test_check_instance_with_list_type():
+    assert check_instance([1, 2, 3], list)
+    assert check_instance([1, 2, "3"], list)
+
+
+def test_check_instance_with_generic_dict_type():
+    assert check_instance({"key1": 1, "key2": 2}, dict[str, int])
+    assert not check_instance({"key1": 1, "key2": "2"}, dict[str, int])
+    assert check_instance({"key1": 1, "key2": 2}, dict)
+    assert check_instance({"key1": 1, "key2": "2"}, dict)
+
+
+def test_check_instance_with_dict_type():
+    assert check_instance({"key1": 1, "key2": 2}, dict)
+    assert check_instance({"key1": 1, "key2": "2"}, dict)
+
+
+def test_check_instance_with_nested_generic_type():
+    assert check_instance([{"key1": 1, "key2": 2}, {"key3": 3, "key4": 4}], list[dict[str, int]])
+    assert not check_instance(
+        [{"key1": 1, "key2": 2}, {"key3": 3, "key4": "4"}], list[dict[str, int]]
+    )
+
+
+def test_check_instance_with_none_type():
+    assert check_instance(None, type(None))
+    assert not check_instance(5, type(None))
+
+
+def test_check_instance_with_any_type():
+    assert check_instance(5, Any)
+    assert check_instance("5", Any)
+    assert check_instance([1, 2, 3], Any)
+    assert check_instance({"key1": 1, "key2": 2}, Any)
+
+
+def test_check_instance_with_union_type():
+    assert check_instance(5, Union[int, str])
+    assert check_instance("5", Union[int, str])
+    assert not check_instance([1, 2, 3], Union[int, str])
+    assert not check_instance({"key1": 1, "key2": 2}, Union[int, str])
+
+
+def test_check_instance_with_union_type_and_literal():
+    from typing import Literal
+
+    assert check_instance("a", Union[Literal["a"], Literal["b"]])
+    assert check_instance("b", Union[Literal["a"], Literal["b"]])
+    assert not check_instance("c", Union[Literal["a"], Literal["b"]])
+
+
+def test_non_generic_dict_and_list():
+    assert check_instance([1, 2, 3], list[int])
+    assert not check_instance([1, 2, "3"], list[int])
+    assert check_instance({"key1": 1, "key2": 2}, dict[str, int])
+    assert not check_instance({"key1": 1, "key2": "2"}, dict[str, int])
+
+
+def test_with_random_object():
+    class RandomObject:
+        pass
+
+    assert check_instance(RandomObject(), RandomObject)
+    assert not check_instance(RandomObject(), int)
+    assert not check_instance(RandomObject(), list)
+    assert not check_instance(RandomObject(), dict)
+    assert check_instance(RandomObject(), Any)
+    assert check_instance(RandomObject(), Union[RandomObject, int])
+    assert check_instance(RandomObject(), Union[RandomObject, int, str])
+    assert not check_instance(RandomObject(), Union[int, str])
+    assert not check_instance(RandomObject(), Union[int, str, list])
+    assert not check_instance(RandomObject(), Union[int, str, dict])
+    assert not check_instance(RandomObject(), Union[int, str, list, dict])
+    assert not check_instance(RandomObject(), Union[int, str, list, dict, None])
+    assert check_instance(RandomObject(), Union[int, str, list, dict, RandomObject])
+    assert not check_instance(RandomObject(), Union[int, str, list, dict, None, float])
+    assert check_instance(RandomObject(), Union[int, str, list, dict, None, RandomObject])
+    assert check_instance(RandomObject(), Union[int, str, list, dict, None, RandomObject, float])
+    assert not check_instance(RandomObject(), Union[int, str, list, dict, None, float, bool])
+    assert check_instance(
+        RandomObject(), Union[int, str, list, dict, None, RandomObject, float, bool]
+    )
+    assert not check_instance(RandomObject(), Union[int, str, list, dict, None, float, bool, bytes])
+    assert check_instance(
+        RandomObject(), Union[int, str, list, dict, None, RandomObject, float, bool, bytes]
+    )
+    assert not check_instance(
+        RandomObject(), Union[int, str, list, dict, None, float, bool, bytes, complex]
+    )
+    assert check_instance(
+        RandomObject(), Union[int, str, list, dict, None, RandomObject, float, bool, bytes, complex]
+    )
+    assert not check_instance(
+        RandomObject(), Union[int, str, list, dict, None, float, bool, bytes, complex]
+    )
+    assert check_instance(
+        RandomObject(), Union[int, str, list, dict, None, RandomObject, float, bool, bytes, complex]
+    )
+    assert not check_instance(
+        RandomObject(), Union[int, str, list, dict, None, float, bool, bytes, complex, type(None)]
+    )

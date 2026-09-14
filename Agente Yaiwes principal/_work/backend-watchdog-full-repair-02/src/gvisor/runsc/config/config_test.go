@@ -1,0 +1,968 @@
+// Copyright 2020 The gVisor Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package config
+
+import (
+	"fmt"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/google/go-cmp/cmp"
+	"gvisor.dev/gvisor/runsc/flag"
+)
+
+func TestDefault(t *testing.T) {
+	testFlags := flag.NewFlagSet("test", flag.ContinueOnError)
+	RegisterFlags(testFlags)
+	c, err := NewFromFlags(testFlags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// "--root" is always set to something different than the default. Reset it
+	// to make it easier to test that default values do not generate flags.
+	c.RootDir = ""
+	if c.GoferNetworkNamespace != GoferNetworkNamespaceNull {
+		t.Errorf("GoferNetworkNamespace=%q, want null", c.GoferNetworkNamespace)
+	}
+
+	// All defaults doesn't require setting flags.
+	flags := c.ToFlags()
+	if len(flags) > 0 {
+		t.Errorf("default flags not set correctly for: %s", flags)
+	}
+}
+
+func TestFromFlags(t *testing.T) {
+	testFlags := flag.NewFlagSet("test", flag.ContinueOnError)
+	RegisterFlags(testFlags)
+	if err := testFlags.Lookup("root").Value.Set("some-path"); err != nil {
+		t.Errorf("Flag set: %v", err)
+	}
+	if err := testFlags.Lookup("debug").Value.Set("true"); err != nil {
+		t.Errorf("Flag set: %v", err)
+	}
+	if err := testFlags.Lookup("num-network-channels").Value.Set("123"); err != nil {
+		t.Errorf("Flag set: %v", err)
+	}
+	if err := testFlags.Lookup("network").Value.Set("none"); err != nil {
+		t.Errorf("Flag set: %v", err)
+	}
+	if err := testFlags.Lookup("gofer-network-namespace").Value.Set("host"); err != nil {
+		t.Errorf("Flag set: %v", err)
+	}
+
+	c, err := NewFromFlags(testFlags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "some-path"; c.RootDir != want {
+		t.Errorf("RootDir=%v, want: %v", c.RootDir, want)
+	}
+	if want := true; c.Debug != want {
+		t.Errorf("Debug=%v, want: %v", c.Debug, want)
+	}
+	if want := 123; c.NumNetworkChannels != want {
+		t.Errorf("NumNetworkChannels=%v, want: %v", c.NumNetworkChannels, want)
+	}
+	if want := NetworkNone; c.Network != want {
+		t.Errorf("Network=%v, want: %v", c.Network, want)
+	}
+	if want := GoferNetworkNamespaceHost; c.GoferNetworkNamespace != want {
+		t.Errorf("GoferNetworkNamespace=%v, want: %v", c.GoferNetworkNamespace, want)
+	}
+}
+
+func TestToFlagsFromFlags(t *testing.T) {
+	testFlags := flag.NewFlagSet("test", flag.ContinueOnError)
+	RegisterFlags(testFlags)
+	testFlags.Set("root", "some-path")
+	testFlags.Set("debug", "true")
+	testFlags.Set("profile", "false") // Matches default value.
+	testFlags.Set("num-network-channels", "123")
+	testFlags.Set("network", "none")
+	testFlags.Set("gofer-network-namespace", "host")
+	c, err := NewFromFlags(testFlags)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	flags := c.ToFlags()
+	if len(flags) != 6 {
+		t.Errorf("wrong number of flags set, want: 6, got: %d: %s", len(flags), flags)
+	}
+	t.Logf("Flags: %s", flags)
+	fm := map[string]string{}
+	for _, f := range flags {
+		kv := strings.Split(f, "=")
+		fm[kv[0]] = kv[1]
+	}
+	for name, want := range map[string]string{
+		"--root":                    "some-path",
+		"--debug":                   "true",
+		"--profile":                 "false",
+		"--num-network-channels":    "123",
+		"--network":                 "none",
+		"--gofer-network-namespace": "host",
+	} {
+		if got, ok := fm[name]; ok {
+			if got != want {
+				t.Errorf("flag %q, want: %q, got: %q", name, want, got)
+			}
+		} else {
+			t.Errorf("flag %q not set", name)
+		}
+	}
+}
+
+func TestToFlagsFromManual(t *testing.T) {
+	c := &Config{
+		RootDir:               "some-path",
+		Debug:                 true,
+		ProfileEnable:         false, // Matches default flag value.
+		NumNetworkChannels:    123,
+		Network:               NetworkNone,
+		GoferNetworkNamespace: GoferNetworkNamespaceHost,
+	}
+
+	// Create a second config with flag-default values that we'll copy from.
+	testFlags := flag.NewFlagSet("test", flag.ContinueOnError)
+	RegisterFlags(testFlags)
+	cfgDefault, err := NewFromFlags(testFlags)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set all the unset fields of c to their flag-default value from cfgDefault.
+	cfgReflect := reflect.ValueOf(c).Elem()
+	cfgDefaultReflect := reflect.ValueOf(cfgDefault).Elem()
+	cfgType := cfgReflect.Type()
+	for i := 0; i < cfgType.NumField(); i++ {
+		f := cfgType.Field(i)
+		name, ok := f.Tag.Lookup("flag")
+		if !ok {
+			// No flag set for this field.
+			continue
+		}
+		if name == "root" || name == "debug" || name == "profile" || name == "num-network-channels" || name == "network" || name == "gofer-network-namespace" {
+			continue
+		}
+		cfgReflect.Field(i).Set(cfgDefaultReflect.Field(i))
+	}
+
+	flags := c.ToFlags()
+	if len(flags) != 5 {
+		t.Errorf("wrong number of flags set, want: 5, got: %d: %s", len(flags), flags)
+	}
+	t.Logf("Flags: %s", flags)
+	fm := map[string]string{}
+	for _, f := range flags {
+		kv := strings.Split(f, "=")
+		fm[kv[0]] = kv[1]
+	}
+	for name, want := range map[string]string{
+		"--root":                    "some-path",
+		"--debug":                   "true",
+		"--num-network-channels":    "123",
+		"--network":                 "none",
+		"--gofer-network-namespace": "host",
+	} {
+		if got, ok := fm[name]; ok {
+			if got != want {
+				t.Errorf("flag %q, want: %q, got: %q", name, want, got)
+			}
+		} else {
+			t.Errorf("flag %q not set", name)
+		}
+	}
+	if _, hasProfile := fm["--profile"]; hasProfile {
+		t.Error("--profile flag unexpectedly set")
+	}
+}
+
+// TestInvalidFlags checks that enum flags fail when value is not in enum set.
+func TestInvalidFlags(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		value string
+		error string
+	}{
+		{
+			name:  "file-access",
+			value: "invalid",
+			error: "invalid file access type",
+		},
+		{
+			name:  "network",
+			value: "invalid",
+			error: "invalid network type",
+		},
+		{
+			name:  "gofer-network-namespace",
+			value: "invalid",
+			error: "invalid gofer network namespace",
+		},
+		{
+			name:  "qdisc",
+			value: "invalid",
+			error: "invalid qdisc",
+		},
+		{
+			name:  "ref-leak-mode",
+			value: "invalid",
+			error: "invalid ref leak mode",
+		},
+		{
+			name:  "host-uds",
+			value: "invalid",
+			error: "invalid host UDS",
+		},
+		{
+			name:  "host-fifo",
+			value: "invalid",
+			error: "invalid host fifo",
+		},
+		{
+			name:  "overlay2",
+			value: "root:/tmp",
+			error: "unexpected medium: \"/tmp\"",
+		},
+		{
+			name:  "overlay2",
+			value: "root:dir=tmp",
+			error: "overlay host file directory should be an absolute path, got \"tmp\"",
+		},
+		{
+			name:  "overlay2",
+			value: "root:memory,sz=sdg",
+			error: "expected format is --overlay2",
+		},
+		{
+			name:  "sidecar-usage-policy",
+			value: "invalid",
+			error: "invalid value \"invalid\"; must be DEFAULT, STRICT, or LEGACY_DEPRECATED_SLOW_EMBEDDED_FALLBACK",
+		},
+		{
+			name:  "sidecar-release-enforcement-policy",
+			value: "invalid",
+			error: "invalid value \"invalid\"; must be NEVER, ALWAYS, or IF_RELEASE_BUILD",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testFlags := flag.NewFlagSet("test", flag.ContinueOnError)
+			RegisterFlags(testFlags)
+			if err := testFlags.Lookup(tc.name).Value.Set(tc.value); err == nil || !strings.Contains(err.Error(), tc.error) {
+				t.Errorf("flag.Value.Set(invalid) wrong error reported: %v", err)
+			}
+		})
+	}
+}
+
+func TestValidationFail(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		flags map[string]string
+		error string
+	}{
+		{
+			name: "shared+overlay",
+			flags: map[string]string{
+				"file-access": "shared",
+				"overlay2":    "root:self",
+			},
+			error: "overlay flag is incompatible",
+		},
+		{
+			name: "network-channels",
+			flags: map[string]string{
+				"num-network-channels": "-1",
+			},
+			error: "num_network_channels must be > 0",
+		},
+		{
+			name: "qdisc-tbf-burst-overflow",
+			flags: map[string]string{
+				"qdisc-tbf-burst": "4294967296",
+			},
+			error: "qdisc-tbf-burst must be <=",
+		},
+		{
+			name: "qdisc-tbf-without-rate",
+			flags: map[string]string{
+				"qdisc":           "tbf",
+				"qdisc-tbf-burst": "524288",
+			},
+			error: "qdisc=tbf requires setting qdisc-tbf-rate",
+		},
+		{
+			name: "qdisc-tbf-without-burst",
+			flags: map[string]string{
+				"qdisc":          "tbf",
+				"qdisc-tbf-rate": "12500000",
+			},
+			error: "qdisc=tbf requires setting qdisc-tbf-burst",
+		},
+		{
+			name: "fsgofer-host-uds+host-uds:open",
+			flags: map[string]string{
+				"fsgofer-host-uds": "true",
+				"host-uds":         "open",
+			},
+			error: "fsgofer-host-uds has been replaced with host-uds flag",
+		},
+		{
+			name: "fsgofer-host-uds+host-uds:create",
+			flags: map[string]string{
+				"fsgofer-host-uds": "true",
+				"host-uds":         "create",
+			},
+			error: "fsgofer-host-uds has been replaced with host-uds flag",
+		},
+		{
+			name: "fsgofer-host-uds+host-uds:all",
+			flags: map[string]string{
+				"fsgofer-host-uds": "true",
+				"host-uds":         "all",
+			},
+			error: "fsgofer-host-uds has been replaced with host-uds flag",
+		},
+		{
+			name: "overlay+overlay2:root",
+			flags: map[string]string{
+				"overlay":  "true",
+				"overlay2": "root:memory",
+			},
+			error: "overlay flag has been replaced with overlay2 flag",
+		},
+		{
+			name: "overlay+overlay2:all",
+			flags: map[string]string{
+				"overlay":  "true",
+				"overlay2": "all:memory",
+			},
+			error: "overlay flag has been replaced with overlay2 flag",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testFlags := flag.NewFlagSet("test", flag.ContinueOnError)
+			RegisterFlags(testFlags)
+			for name, val := range tc.flags {
+				if err := testFlags.Lookup(name).Value.Set(val); err != nil {
+					t.Errorf("%s=%q: %v", name, val, err)
+				}
+			}
+			if _, err := NewFromFlags(testFlags); err == nil || !strings.Contains(err.Error(), tc.error) {
+				t.Errorf("NewFromFlags() wrong error reported: %v", err)
+			}
+		})
+	}
+}
+
+func TestOverride(t *testing.T) {
+	testFlags := flag.NewFlagSet("test", flag.ContinueOnError)
+	RegisterFlags(testFlags)
+	c, err := NewFromFlags(testFlags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.AllowFlagOverride = true
+
+	t.Run("string", func(t *testing.T) {
+		c.RootDir = "foobar"
+		if err := c.Override(testFlags, "root", "bar", false); err != nil {
+			t.Fatalf("Override(root, bar) failed: %v", err)
+		}
+		if c.RootDir != "bar" {
+			t.Errorf("Override(root, bar) didn't work: %+v", c)
+		}
+	})
+
+	t.Run("bool", func(t *testing.T) {
+		c.Debug = true
+		if err := c.Override(testFlags, "debug", "false", false); err != nil {
+			t.Fatalf("Override(debug, false) failed: %v", err)
+		}
+		if c.Debug {
+			t.Errorf("Override(debug, false) didn't work: %+v", c)
+		}
+	})
+
+	t.Run("enum", func(t *testing.T) {
+		c.FileAccess = FileAccessShared
+		if err := c.Override(testFlags, "file-access", "exclusive", false); err != nil {
+			t.Fatalf("Override(file-access, exclusive) failed: %v", err)
+		}
+		if c.FileAccess != FileAccessExclusive {
+			t.Errorf("Override(file-access, exclusive) didn't work: %+v", c)
+		}
+	})
+}
+
+func TestOverrideDisabled(t *testing.T) {
+	testFlags := flag.NewFlagSet("test", flag.ContinueOnError)
+	RegisterFlags(testFlags)
+	c, err := NewFromFlags(testFlags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const errMsg = "flag override disabled"
+	if err := c.Override(testFlags, "root", "path", false); err == nil || !strings.Contains(err.Error(), errMsg) {
+		t.Errorf("Override() wrong error: %v", err)
+	}
+}
+
+func TestOverrideError(t *testing.T) {
+	testFlags := flag.NewFlagSet("test", flag.ContinueOnError)
+	RegisterFlags(testFlags)
+	c, err := NewFromFlags(testFlags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.AllowFlagOverride = true
+	for _, tc := range []struct {
+		name  string
+		value string
+		error string
+	}{
+		{
+			name:  "invalid",
+			value: "valid",
+			error: `flag "invalid" not found`,
+		},
+		{
+			name:  "debug",
+			value: "invalid",
+			error: "error setting flag debug",
+		},
+		{
+			name:  "file-access",
+			value: "invalid",
+			error: "invalid file access type",
+		},
+		{
+			name:  "in-sandbox-cgroup",
+			value: "invalid",
+			error: "invalid in-sandbox-cgroup",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := c.Override(testFlags, tc.name, tc.value, false); err == nil || !strings.Contains(err.Error(), tc.error) {
+				t.Errorf("Override(%q, %q) wrong error: %v", tc.name, tc.value, err)
+			}
+		})
+	}
+}
+
+func TestOverrideAllowlist(t *testing.T) {
+	testFlags := flag.NewFlagSet("test", flag.ContinueOnError)
+	RegisterFlags(testFlags)
+	c, err := NewFromFlags(testFlags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		flag  string
+		value string
+		force bool
+		error string
+	}{
+		{
+			flag:  "debug",
+			value: "true",
+		},
+		{
+			flag:  "debug",
+			value: "123",
+			error: "error setting flag",
+		},
+		{
+			flag:  "in-sandbox-cgroup",
+			value: "v1",
+		},
+		{
+			flag:  "in-sandbox-cgroup",
+			value: "v2",
+		},
+		{
+			flag:  "oci-seccomp",
+			value: "true",
+		},
+		{
+			flag:  "oci-seccomp",
+			value: "false",
+			error: `disabling "oci-seccomp" requires flag`,
+		},
+		{
+			flag:  "oci-seccomp",
+			value: "123",
+			error: "invalid syntax",
+		},
+		{
+			flag:  "profile",
+			value: "true",
+			error: "flag override disabled",
+		},
+		{
+			flag:  "profile",
+			value: "true",
+			force: true,
+		},
+		{
+			flag:  "profile",
+			value: "123",
+			error: "flag override disabled",
+		},
+		{
+			flag:  "qdisc",
+			value: "fifo",
+			error: `requires flag "allow-flag-override"`,
+		},
+		{
+			flag:  "qdisc",
+			value: "none",
+			error: `requires flag "allow-flag-override"`,
+		},
+		{
+			flag:  "qdisc",
+			value: "invalid",
+			error: "invalid qdisc",
+		},
+		// Order matters: a successful override mutates the Config ceiling for
+		// later subtests.
+		{
+			flag:  "qdisc-tbf-rate",
+			value: fmt.Sprint(defaultQDiscTBFRate),
+		},
+		{
+			flag:  "qdisc-tbf-rate",
+			value: "18446744073709551616", // > max uint64
+			error: "invalid",
+		},
+		{
+			flag:  "qdisc-tbf-rate",
+			value: "abc",
+			error: "invalid",
+		},
+		{
+			flag:  "qdisc-tbf-rate",
+			value: "1000000",
+		},
+		{
+			flag:  "qdisc-tbf-rate",
+			value: "2000000", // attempts to raise above the 1M ceiling without force
+			error: "raising the limit requires",
+		},
+		{
+			flag:  "qdisc-tbf-burst",
+			value: fmt.Sprint(defaultQDiscTBFBurst),
+		},
+		{
+			flag:  "qdisc-tbf-burst",
+			value: "65536",
+		},
+		{
+			flag:  "qdisc-tbf-burst",
+			value: "131072", // attempts to raise above the 65536 ceiling without force
+			error: "raising the limit requires",
+		},
+		{
+			flag:  "qdisc",
+			value: "tbf",
+		},
+		{
+			flag:  "qdisc-tbf-rate",
+			value: "2147483648",
+			force: true, // admin escape hatch bypasses the check
+		},
+		{
+			flag:  "qdisc-tbf-burst",
+			value: "4294967296", // > max uint32; rejected by Validate below
+			force: true,
+		},
+	} {
+		t.Run(tc.flag, func(t *testing.T) {
+			err := c.Override(testFlags, tc.flag, tc.value, tc.force)
+			if len(tc.error) == 0 {
+				if err != nil {
+					t.Errorf("Unexpected error: %v", err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tc.error) {
+				t.Errorf("Override(%q, %q) wrong error: %v", tc.flag, tc.value, err)
+			}
+		})
+	}
+
+	// Override does not validate, so even force=true cannot bypass Validate:
+	// the out-of-range burst applied above must fail validation.
+	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "qdisc-tbf-burst must be <=") {
+		t.Errorf("Validate() wrong error: %v", err)
+	}
+}
+
+func TestOverrideAllowlistQDiscTBF(t *testing.T) {
+	testFlags := flag.NewFlagSet("test", flag.ContinueOnError)
+	RegisterFlags(testFlags)
+	c, err := NewFromFlags(testFlags)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := c.QDisc, QDiscFIFO; got != want {
+		t.Fatalf("default QDisc = %v, want %v", got, want)
+	}
+	if err := c.Override(testFlags, "qdisc-tbf-rate", "12500000", false); err != nil {
+		t.Fatalf("Override(qdisc-tbf-rate, 12500000) failed: %v", err)
+	}
+	if err := c.Override(testFlags, "qdisc-tbf-burst", "524288", false); err != nil {
+		t.Fatalf("Override(qdisc-tbf-burst, 524288) failed: %v", err)
+	}
+	if err := c.Override(testFlags, "qdisc", "tbf", false); err != nil {
+		t.Fatalf("Override(qdisc, tbf) failed: %v", err)
+	}
+
+	if got, want := c.QDisc, QDiscTBF; got != want {
+		t.Errorf("QDisc = %v, want %v", got, want)
+	}
+	if got, want := c.TBFRate, uint64(12500000); got != want {
+		t.Errorf("TBFRate = %d, want %d", got, want)
+	}
+	if got, want := c.TBFBurst, uint64(524288); got != want {
+		t.Errorf("TBFBurst = %d, want %d", got, want)
+	}
+}
+
+func TestOverrideDeferredValidation(t *testing.T) {
+	// qdisc=tbf is rejected by Validate while rate or burst is still zero.
+	// Override does not validate, so interdependent flags can be applied in
+	// any order (e.g. from randomly-iterated annotation maps), as long as the
+	// final state passes Validate.
+	testFlags := flag.NewFlagSet("test", flag.ContinueOnError)
+	RegisterFlags(testFlags)
+	c, err := NewFromFlags(testFlags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Worst-case order: qdisc=tbf is applied while rate and burst are zero.
+	for _, o := range []struct{ name, value string }{
+		{"qdisc", "tbf"},
+		{"qdisc-tbf-rate", "12500000"},
+		{"qdisc-tbf-burst", "524288"},
+	} {
+		if err := c.Override(testFlags, o.name, o.value, false); err != nil {
+			t.Fatalf("Override(%s, %s) failed: %v", o.name, o.value, err)
+		}
+	}
+	if err := c.Validate(); err != nil {
+		t.Errorf("Validate() failed: %v", err)
+	}
+	if got, want := c.QDisc, QDiscTBF; got != want {
+		t.Errorf("QDisc = %v, want %v", got, want)
+	}
+	if got, want := c.TBFRate, uint64(12500000); got != want {
+		t.Errorf("TBFRate = %d, want %d", got, want)
+	}
+	if got, want := c.TBFBurst, uint64(524288); got != want {
+		t.Errorf("TBFBurst = %d, want %d", got, want)
+	}
+
+	// Validation is deferred, not skipped: an inconsistent final state must
+	// still fail.
+	testFlags = flag.NewFlagSet("test", flag.ContinueOnError)
+	RegisterFlags(testFlags)
+	c, err = NewFromFlags(testFlags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Override(testFlags, "qdisc", "tbf", false); err != nil {
+		t.Fatalf("Override(qdisc, tbf) failed: %v", err)
+	}
+	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "qdisc=tbf requires setting qdisc-tbf-rate") {
+		t.Errorf("Validate() wrong error: %v", err)
+	}
+}
+
+func TestBundles(t *testing.T) {
+	noChange := func(t *testing.T, old, new *Config) {
+		t.Helper()
+		if diff := cmp.Diff(old, new, cmp.AllowUnexported(Config{}, Overlay2{})); diff != "" {
+			t.Errorf("different configs:\n%+v\nvs\n%+v\nDiff:\n%s", old, new, diff)
+		}
+	}
+	for _, test := range []struct {
+		// Name of the test.
+		Name string
+
+		// List of bundles that exist for the purpose of this test.
+		BundleConfig map[BundleName]Bundle
+
+		// Command-line arguments passed as explicit flags.
+		CommandLine []string
+
+		// Names of the bundles to apply.
+		Bundles []BundleName
+
+		// Whether we expect applying bundles to fail.
+		WantErr bool
+
+		// If bundles were successfully applied, this function is called to compare
+		// pre-bundle-application and post-bundle-application configs.
+		Verify func(t *testing.T, old, new *Config)
+	}{
+		{
+			Name:         "empty bundle",
+			BundleConfig: map[BundleName]Bundle{"empty": {}},
+			Bundles:      []BundleName{"empty"},
+			Verify:       noChange,
+		},
+		{
+			Name: "no-op bundle",
+			BundleConfig: map[BundleName]Bundle{
+				"no-debug": {
+					"debug": "false",
+				},
+			},
+			Bundles: []BundleName{"no-debug"},
+			Verify:  noChange,
+		},
+		{
+			Name: "invalid flag",
+			BundleConfig: map[BundleName]Bundle{
+				"invalid-flag": {
+					"not-a-real-flag": "nope.avi",
+				},
+			},
+			Bundles: []BundleName{"invalid-flag"},
+			WantErr: true,
+		},
+		{
+			Name: "duplicate no-op bundles",
+			BundleConfig: map[BundleName]Bundle{
+				"empty": {},
+				"no-debug": {
+					"debug": "false",
+				},
+			},
+			Bundles: []BundleName{"no-debug", "no-debug"},
+			Verify:  noChange,
+		},
+		{
+			Name: "simple bundle",
+			BundleConfig: map[BundleName]Bundle{
+				"empty": {},
+				"debug": {
+					"debug": "true",
+				},
+				"no-debug": {
+					"debug": "false",
+				},
+			},
+			Bundles: []BundleName{"debug"},
+			Verify: func(t *testing.T, old, new *Config) {
+				t.Helper()
+				if old.Debug {
+					t.Error("debug was previously set to true")
+				}
+				if !new.Debug {
+					t.Error("debug was not set to true")
+				}
+			},
+		},
+		{
+			Name: "incompatible bundles",
+			BundleConfig: map[BundleName]Bundle{
+				"debug": {
+					"debug": "true",
+				},
+				"no-debug": {
+					"debug": "false",
+				},
+			},
+			Bundles: []BundleName{"debug", "no-debug"},
+			WantErr: true,
+		},
+		{
+			Name: "compatible bundles",
+			BundleConfig: map[BundleName]Bundle{
+				"debug": {
+					"debug": "true",
+				},
+				"debug-and-profile": {
+					"debug":   "true",
+					"profile": "true",
+				},
+			},
+			Bundles: []BundleName{"debug", "debug-and-profile"},
+			Verify: func(t *testing.T, old, new *Config) {
+				t.Helper()
+				if old.Debug || old.ProfileEnable {
+					t.Error("debug/profiling was previously set to true")
+				}
+				if !new.Debug {
+					t.Error("debug was not set to true")
+				}
+				if !new.ProfileEnable {
+					t.Error("profiling was not set to true")
+				}
+			},
+		},
+		{
+			Name: "bundle takes precedence over command-line value",
+			BundleConfig: map[BundleName]Bundle{
+				"no-debug": {
+					"debug": "false",
+				},
+			},
+			CommandLine: []string{"-debug=true"},
+			Bundles:     []BundleName{"no-debug"},
+			Verify: func(t *testing.T, old, new *Config) {
+				t.Helper()
+				if new.Debug {
+					t.Error("debug is still true")
+				}
+			},
+		},
+		{
+			Name: "command line matching bundle value",
+			BundleConfig: map[BundleName]Bundle{
+				"debug": {
+					"debug": "true",
+				},
+			},
+			CommandLine: []string{"-debug=true"},
+			Bundles:     []BundleName{"debug"},
+			Verify: func(t *testing.T, old, new *Config) {
+				t.Helper()
+				noChange(t, old, new)
+				if !new.Debug {
+					t.Error("debug was set to false")
+				}
+			},
+		},
+	} {
+		t.Run(test.Name, func(t *testing.T) {
+			oldBundles := Bundles
+			defer func() {
+				Bundles = oldBundles
+			}()
+			Bundles = test.BundleConfig
+			flagSet := flag.NewFlagSet(test.Name, flag.ContinueOnError)
+			RegisterFlags(flagSet)
+			if err := flagSet.Parse(test.CommandLine); err != nil {
+				t.Fatalf("cannot parse command line %q: %v", test.CommandLine, err)
+			}
+			cfg, err := NewFromFlags(flagSet)
+			if err != nil {
+				t.Fatalf("cannot generate config from flags: %v", err)
+			}
+			oldCfg := *cfg
+			err = cfg.ApplyBundles(flagSet, test.Bundles...)
+			if test.WantErr && err == nil {
+				t.Error("got no error, but expected one")
+			}
+			if !test.WantErr && err != nil {
+				t.Errorf("got unexpected error: %v", err)
+			}
+			if t.Failed() {
+				return
+			}
+			if err != nil && test.Verify != nil {
+				t.Error("cannot specify Verify function for erroring tests")
+			}
+			if err == nil && test.Verify != nil {
+				test.Verify(t, &oldCfg, cfg)
+			}
+		})
+	}
+}
+
+func TestBundleValidate(t *testing.T) {
+	defaultVerify := func(err error) error { return err }
+	for _, tc := range []struct {
+		name   string
+		bundle Bundle
+		verify func(err error) error
+	}{
+		{
+			name:   "empty bundle",
+			bundle: Bundle(map[string]string{}),
+			verify: defaultVerify,
+		},
+		{
+			name:   "invalid flag bundle",
+			bundle: Bundle(map[string]string{"not-a-real-flag": "true"}),
+			verify: func(err error) error {
+				want := `unknown flag "not-a-real-flag"`
+				if !strings.Contains(err.Error(), want) {
+					return fmt.Errorf("mismatch error: got: %q want: %q", err.Error(), want)
+				}
+				return nil
+			},
+		},
+		{
+			name:   "invalid value",
+			bundle: Bundle(map[string]string{"debug": "invalid"}),
+			verify: func(err error) error {
+				// Error differs in open-source version, and internally at Google
+				// https://github.com/google/gvisor/pull/11722#issuecomment-2877847616
+				wantOss := "parse error"
+				wantInternal := `parsing "invalid": invalid syntax`
+				if !strings.Contains(err.Error(), wantOss) && !strings.Contains(err.Error(), wantInternal) {
+					return fmt.Errorf("mismatch error: got: %q want: %q or %s", err.Error(), wantOss, wantInternal)
+				}
+				return nil
+			},
+		},
+		{
+			name:   "valid flag bundle",
+			bundle: Bundle(map[string]string{"debug": "true"}),
+			verify: defaultVerify,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.verify(tc.bundle.Validate()); err != nil {
+				t.Fatalf("Validate failed: %v", err)
+			}
+		})
+	}
+}
+
+func TestParseSerializeOverlay2(t *testing.T) {
+	t.Run("Without size", func(t *testing.T) {
+		o := Overlay2{}
+		err := o.Set("all:memory")
+		if err != nil {
+			t.Fatalf("Set failed: %v", err)
+		}
+		if o.RootOverlaySize() != "" || o.SubMountOverlaySize() != "" {
+			t.Fatalf("Size mismatch, expecting empty, got %q, %q", o.RootOverlaySize(), o.SubMountOverlaySize())
+		}
+		if o.String() != "all:memory" {
+			t.Fatalf("String mismatch, expecting all:memory, got %q", o.String())
+		}
+	})
+	t.Run("With size", func(t *testing.T) {
+		o := Overlay2{}
+		err := o.Set("root:memory,size=1g")
+		if err != nil {
+			t.Fatalf("Set failed: %v", err)
+		}
+		if o.RootOverlaySize() != "1g" || o.SubMountOverlaySize() != "" {
+			t.Fatalf("Size mismatch, expecting 1g, empty, got %q, %q", o.RootOverlaySize(), o.SubMountOverlaySize())
+		}
+		if o.String() != "root:memory,size=1g" {
+			t.Fatalf("String mismatch, expecting ll:memory,size=1g, got %q", o.String())
+		}
+	})
+}

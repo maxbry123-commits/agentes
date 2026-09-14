@@ -1,0 +1,409 @@
+[![RustFS](https://repository-images.githubusercontent.com/722597620/0fa936a2-8164-4f53-867f-def4beb64b21)](https://rustfs.com)
+
+<p align="center">RustFS is a high-performance, distributed object storage system built in Rust.</p>
+
+<p align="center">
+  <a href="https://github.com/rustfs/rustfs/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/rustfs/rustfs/actions/workflows/ci.yml/badge.svg" /></a>
+  <a href="https://github.com/rustfs/rustfs/actions/workflows/docker.yml"><img alt="Build and Push Docker Images" src="https://github.com/rustfs/rustfs/actions/workflows/docker.yml/badge.svg" /></a>
+  <img alt="GitHub commit activity" src="https://img.shields.io/github/commit-activity/m/rustfs/rustfs"/>
+  <img alt="Github Last Commit" src="https://img.shields.io/github/last-commit/rustfs/rustfs"/>
+  <a href="https://discord.gg/NcKBCEJp6P"><img alt="Discord" src="https://img.shields.io/badge/Discord-Join%20Chat-5865F2?logo=discord&logoColor=white" /></a>
+  <a href="https://hellogithub.com/repository/rustfs/rustfs" target="_blank"><img src="https://abroad.hellogithub.com/v1/widgets/recommend.svg?rid=b95bcb72bdc340b68f16fdf6790b7d5b&claim_uid=MsbvjYeLDKAH457&theme=small" alt="Featured｜HelloGitHub" /></a>
+</p>
+
+<p align="center">
+<a href="https://trendshift.io/repositories/14181" target="_blank"><img src="https://trendshift.io/api/badge/repositories/14181" alt="rustfs%2Frustfs | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+</p>
+
+<p align="center">
+  <a href="https://docs.rustfs.com/en/installation">Getting Started</a>
+  · <a href="https://docs.rustfs.com/">Docs</a>
+  · <a href="https://github.com/rustfs/rustfs/issues">Bug reports</a>
+  · <a href="https://github.com/rustfs/rustfs/discussions">Discussions</a>
+</p>
+
+<p align="center">
+English | <a href="https://github.com/rustfs/rustfs/blob/main/README_ZH.md">简体中文</a> |
+  <a href="https://readme-i18n.com/rustfs/rustfs?lang=de">Deutsch</a> |
+  <a href="https://readme-i18n.com/rustfs/rustfs?lang=es">Español</a> |
+  <a href="https://readme-i18n.com/rustfs/rustfs?lang=fr">français</a> |
+  <a href="https://readme-i18n.com/rustfs/rustfs?lang=ja">日本語</a> |
+  <a href="https://readme-i18n.com/rustfs/rustfs?lang=ko">한국어</a> |
+  <a href="https://readme-i18n.com/rustfs/rustfs?lang=pt">Portuguese</a> |
+  <a href="https://readme-i18n.com/rustfs/rustfs?lang=ru">Русский</a>
+</p>
+
+RustFS is a high-performance, distributed object storage system built in Rust—one of the most loved programming languages worldwide. RustFS combines the simplicity of MinIO with the memory safety and raw performance of Rust. It offers broad S3 API compatibility for supported features, is completely open-source, and is optimized for data lakes, AI, and big data workloads.
+
+Unlike other storage systems, RustFS is released under the permissible Apache 2.0 license, avoiding the restrictions of AGPL. With Rust as its foundation, RustFS delivers superior speed and secure distributed features for next-generation object storage.
+
+## Feature & Status
+
+- **High Performance**: Built with Rust to ensure maximum speed and resource efficiency.
+- **Distributed Architecture**: Scalable and fault-tolerant design suitable for large-scale deployments.
+- **S3 Compatibility**: Seamless integration with common S3-compatible applications and tools; current coverage is tracked in the [S3 compatibility matrix](docs/architecture/s3-compatibility-matrix.md).
+- **OpenStack Swift API**: Native support for Swift protocol with Keystone authentication.
+- **OpenStack Keystone Integration**: Native support for OpenStack Keystone authentication with X-Auth-Token headers.
+- **Data Lake Support**: Optimized for high-throughput big data and AI workloads.
+- **Open Source**: Licensed under Apache 2.0, encouraging unrestricted community contributions and commercial usage.
+- **User-Friendly**: Designed with simplicity in mind for easy deployment and management.
+
+Status legend: ✅ Available — shipped and covered by CI gates; 🧪 Preview — shipped behind an opt-in flag or with a bounded compatibility claim.
+
+| Feature                          | Status       | Feature                            | Status       |
+| :------------------------------- | :----------- | :--------------------------------- | :----------- |
+| **S3 Core Features**             | ✅ Available | **Distributed Mode**               | ✅ Available |
+| **Upload / Download**            | ✅ Available | **Single Node Mode**               | ✅ Available |
+| **Versioning**                   | ✅ Available | **Bitrot Protection**              | ✅ Available |
+| **Object Lock (WORM)**           | ✅ Available | **Healing & Scanner**              | ✅ Available |
+| **Server-Side Encryption**       | ✅ Available | **Pool Expansion / Decommission**  | ✅ Available |
+| **RustFS KMS**                   | ✅ Available | **Bucket Replication**             | ✅ Available |
+| **Lifecycle Management (ILM)**   | ✅ Available | **Site Replication**               | ✅ Available |
+| **ILM Tiering (Remote S3)**      | ✅ Available | **Bucket Quota**                   | ✅ Available |
+| **S3 Select**                    | ✅ Available | **Event Notifications**            | ✅ Available |
+| **S3 Tables (Iceberg REST)**     | 🧪 Preview   | **Audit Logging**                  | ✅ Available |
+| **IAM / Policies**               | ✅ Available | **Logging & Observability**        | ✅ Available |
+| **OIDC / SSO**                   | ✅ Available | **Web Console**                    | ✅ Available |
+| **Keystone Auth**                | ✅ Available | **K8s Helm Charts**                | ✅ Available |
+| **Swift API**                    | ✅ Available | **FTPS / WebDAV**                  | ✅ Available |
+| **Multi-Tenancy**                | ✅ Available | **SFTP**                           | ✅ Available |
+| **MinIO On-Disk Compatibility**  | 🧪 Preview   |                                    |              |
+
+Notes:
+
+- **RustFS KMS**: Vault (KV2 / Transit) and AWS KMS backends are supported for production. The `Local` and `Static` backends are for development and testing only. See [KMS backend security properties](docs/operations/kms-backend-security.md).
+- **Swift API / SFTP**: opt-in cargo features (`--features swift`, `--features sftp`, or `full`). FTPS and WebDAV are enabled in the default build.
+- **S3 Tables**: ships as an Iceberg REST Catalog with automated PyIceberg and DuckDB coverage; other engines and vendor profiles carry bounded claims listed in the [S3 Tables support matrix](docs/architecture/s3-tables-support-matrix.md).
+- **MinIO On-Disk Compatibility**: gated behind the `rio-v2` feature and not part of the default build. Objects MinIO encrypted are not readable by RustFS. See [MinIO file-format interoperability](docs/architecture/minio-file-format-compat.md).
+
+## RustFS vs MinIO Performance
+
+**Stress Test Environment:**
+
+| Type    | Parameter | Remark                                                   |
+| ------- | --------- | -------------------------------------------------------- |
+| CPU     | 2 Core    | Intel Xeon (Sapphire Rapids) Platinum 8475B, 2.7/3.2 GHz |
+| Memory  | 4GB       |                                                          |
+| Network | 15Gbps    |                                                          |
+| Drive   | 40GB x 4  | IOPS 3800 / Drive                                        |
+
+<https://github.com/user-attachments/assets/2e4979b5-260c-4f2c-ac12-c87fd558072a>
+
+### RustFS vs Other Object Storage
+
+| Feature                | RustFS                                                                                                                                                | Other Object Storage                                                                     |
+| :--------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------- |
+| **Console Experience** | **Powerful Console**<br>Comprehensive management interface.                                                                                           | **Basic / Limited Console**<br>Often overly simple or lacking critical features.         |
+| **Language & Safety**  | **Rust-based**<br>Memory safety by design.                                                                                                            | **Go or C-based**<br>Potential for memory GC pauses or leaks.                            |
+| **Data Sovereignty**   | **No Telemetry / Full Compliance**<br>Guards against unauthorized cross-border data egress. Compliant with GDPR (EU/UK), CCPA (US), and APPI (Japan). | **Potential Risk**<br>Possible legal exposure and unwanted data telemetry.               |
+| **Licensing**          | **Permissive Apache 2.0**<br>Business-friendly, no "poison pill" clauses.                                                                             | **Restrictive AGPL v3**<br>Risk of license traps and intellectual property pollution.    |
+| **Compatibility**      | **S3-Compatible Core**<br>Works with common S3-compatible clients, with coverage tracked in the compatibility matrix.                                  | **Variable Compatibility**<br>May lack support for local cloud vendors or specific APIs. |
+| **Edge & IoT**         | **Strong Edge Support**<br>Ideal for secure, innovative edge devices.                                                                                 | **Weak Edge Support**<br>Often too heavy for edge gateways.                              |
+| **Risk Profile**       | **Enterprise Risk Mitigation**<br>Clear IP rights and safe for commercial use.                                                                        | **Legal Risks**<br>Intellectual property ambiguity and usage restrictions.               |
+
+## Staying ahead
+
+Star RustFS on GitHub and be instantly notified of new releases.
+
+<img src="https://github.com/user-attachments/assets/7ee40bb4-3e46-4eac-b0d0-5fbeb85ff8f3" />
+
+## Quickstart
+
+> [!IMPORTANT]
+> **Pool expansion notice:**
+>
+> - A single-node single-drive (SNSD) deployment is supported only as a standalone local path. It cannot expand in place or be added as a Pool. To move to a multi-drive topology, create a new deployment and migrate data through S3.
+> - Keep an existing multi-drive Pool's endpoints and Erasure Set width unchanged; expand by appending a new Pool. With ellipsis-based expansion, every Pool argument must contain an ellipsis expression and expand to at least two drive endpoints.
+> - Single-node multi-drive Pools and multi-node Pools with one drive per node are allowed, subject to valid Erasure Set geometry and EC settings; acceptance does not guarantee host-failure tolerance.
+>
+> These topology rules follow MinIO, but automatic parity selection differs between the projects. See the [Pool layout compatibility and regression tests](docs/testing/pool-layout-compatibility.md) before expanding a deployment.
+
+To get started with RustFS, follow these steps:
+
+### 1. One-click Installation (Option 1)
+
+```bash
+curl -O https://rustfs.com/install_rustfs.sh && bash install_rustfs.sh
+```
+
+### 2. Docker Quick Start (Option 2)
+
+The RustFS container runs as a non-root user `rustfs` (UID/GID `10001:10001`). If you bind-mount host directories with Docker or Compose, every mounted path must be writable by that user, otherwise startup may fail with permission denied errors. This applies to data directories, log directories, and TLS certificate directories when `RUSTFS_TLS_PATH` is enabled.
+
+```bash
+# Create data and logs directories
+mkdir -p data logs
+
+# Change the owner of these directories
+chown -R 10001:10001 data logs
+
+# Using latest version
+docker run -d -p 9000:9000 -p 9001:9001 -v $(pwd)/data:/data -v $(pwd)/logs:/logs rustfs/rustfs:latest
+
+# Using specific version
+docker run -d -p 9000:9000 -p 9001:9001 -v $(pwd)/data:/data -v $(pwd)/logs:/logs rustfs/rustfs:1.0.0-rc.5
+```
+
+If you use [podman](https://github.com/containers/podman) instead of docker, you can install the RustFS with the below command
+
+```bash
+# Create data and logs directories
+mkdir -p data logs
+
+# Run the container (podman will automatically set the folders ownership)
+podman run -d -p 9000:9000 -p 9001:9001 -v $(pwd)/data:/data:Z,U -v $(pwd)/logs:/logs:Z,U rustfs/rustfs:latest
+```
+
+If you enable TLS with a bind-mounted certificate directory, prepare that mount the same way:
+
+```bash
+mkdir -p certs
+chown -R 10001:10001 certs
+```
+
+You can also use Docker Compose. Using the `docker-compose-simple.yml` file in the root directory:
+
+```bash
+docker compose -f docker-compose-simple.yml up -d
+```
+
+Before running Compose with host bind mounts:
+
+- Ensure every mounted host path is writable by `10001:10001`.
+- If you enable TLS, ensure the certificate mount for `/opt/tls` is also readable by `10001:10001`.
+- If matching host ownership is not practical, run the `rustfs` service with `user: "<host-uid>:<host-gid>"` instead.
+- `docker-compose-simple.yml` includes a `volume-permission-helper` service for named volumes. `docker-compose-simple.yml` relies on you to prepare bind-mounted host paths in advance.
+
+Similarly, you can run the command with podman
+
+```bash
+podman compose -f docker-compose-simple.yml up -d
+```
+
+Webhook notification quick start (Docker):
+
+```bash
+docker run -d --name rustfs -p 9000:9000 \
+  -e RUSTFS_NOTIFY_ENABLE=true \
+  -e RUSTFS_NOTIFY_WEBHOOK_ENABLE_PRIMARY=on \
+  -e RUSTFS_NOTIFY_WEBHOOK_ENDPOINT_PRIMARY=http://<host-ip>:3020/webhook \
+  -e RUSTFS_NOTIFY_WEBHOOK_QUEUE_DIR_PRIMARY=/tmp/rustfs-events \
+  -e RUSTFS_OUTBOUND_ALLOW_ORIGINS=http://<host-ip>:3020 \
+  rustfs/rustfs:latest
+```
+
+Notes:
+- `RUSTFS_NOTIFY_ENABLE=true` enables the global notify module switch.
+- For ARN `arn:rustfs:sqs::primary:webhook`, use instance-scoped env vars with `_PRIMARY`.
+- If queue dir is omitted, default is `/opt/rustfs/events`; ensure it is writable by the container runtime user.
+- `RUSTFS_NOTIFY_WEBHOOK_SKIP_TLS_VERIFY_PRIMARY` defaults to `false`; enabling it skips webhook TLS certificate verification, allows MITM attacks, and emits a startup warning. Prefer `RUSTFS_NOTIFY_WEBHOOK_CLIENT_CA_PRIMARY` for private CAs.
+- Since `1.0.0-beta.11`, webhook endpoints on private or container networks
+  (`Docker Compose service names`, `host.docker.internal`, RFC 1918 addresses) are
+  blocked unless their exact `scheme://host:port` origin is listed in
+  `RUSTFS_OUTBOUND_ALLOW_ORIGINS` (the origin only, without the path). See
+  [Outbound Connection Policy](docs/operations/outbound-connection-policy.md).
+
+**NOTE**: We recommend reviewing the `docker-compose.yml` file before running. It defines several services including Grafana, Prometheus, and Jaeger, which are helpful for RustFS observability. If you wish to start Redis or Nginx containers, you can specify the corresponding profiles.
+
+### 3\. Build from Source (Option 3) - Advanced Users
+
+For developers who want to build RustFS Docker images from source with multi-architecture support:
+
+```bash
+# Build multi-architecture images locally
+./docker-buildx.sh --build-arg RELEASE=latest
+
+# Build and push to registry
+./docker-buildx.sh --push
+
+# Build specific version
+./docker-buildx.sh --release v1.0.0 --push
+
+# Build for custom registry
+./docker-buildx.sh --registry your-registry.com --namespace yourname --push
+```
+
+The `docker-buildx.sh` script supports:
+
+- **Multi-architecture builds**: `linux/amd64`, `linux/arm64`
+- **Automatic version detection**: Uses git tags or commit hashes
+- **Registry flexibility**: Supports Docker Hub, GitHub Container Registry, etc.
+- **Build optimization**: Includes caching and parallel builds
+
+You can also use Make targets for convenience:
+
+```bash
+make docker-buildx                    # Build locally
+make docker-buildx-push               # Build and push
+make docker-buildx-version VERSION=v1.0.0  # Build specific version
+make help-docker                      # Show all Docker-related commands
+```
+
+> **Heads-up (macOS cross-compilation)**: macOS keeps the default `ulimit -n` at 256, so `cargo zigbuild` or `./build-rustfs.sh --platform ...` may fail with `ProcessFdQuotaExceeded` when targeting Linux. The build script attempts to raise the limit automatically, but if you still see the warning, run `ulimit -n 4096` (or higher) in your shell before building.
+
+### 4\. Build with Helm Chart (Option 4) - Cloud Native
+
+Follow the instructions in the [Helm Chart README](https://charts.rustfs.com/) to install RustFS on a Kubernetes cluster.
+
+For scanner pacing, cycle budgets, bitrot cadence, lifecycle transition status,
+and single-node single-disk idle CPU tuning, see
+[Scanner Runtime Controls](docs/operations/scanner-runtime-controls.md). For
+repeatable scanner-pressure validation, see
+[Scanner Benchmark Runbook](docs/operations/scanner-benchmark-runbook.md). For
+drive timeout knobs on slow storage — including the walk stall budget that
+governs `ListObjects` on large prefixes — see
+[Drive Timeout Tuning](docs/operations/drive-timeout-tuning.md).
+
+### 5\. Nix Flake (Option 5)
+
+If you have [Nix with flakes enabled](https://nixos.wiki/wiki/Flakes#Enable_flakes):
+
+```bash
+# Run directly without installing
+nix run github:rustfs/rustfs
+
+# Build the binary
+nix build github:rustfs/rustfs
+./result/bin/rustfs --help
+
+# Or from a local checkout
+nix build
+nix run
+```
+
+The flake also exports a NixOS module and the RustFS `rc` client. Add the
+module to your system and provide credentials through runtime files (for
+example, sops-nix or agenix) so secrets are never stored in the Nix store:
+
+```nix
+imports = [ inputs.rustfs.nixosModules.rustfs ];
+
+services.rustfs = {
+  enable = true;
+  accessKeyFile = "/run/secrets/rustfs-access-key";
+  secretKeyFile = "/run/secrets/rustfs-secret-key";
+  volumes = [ "/var/lib/rustfs" ];
+};
+```
+
+Install the S3-compatible client with
+`nix profile install github:rustfs/rustfs#rustfs-client` (the executable is named
+`rc`), or use `inputs.rustfs.packages.${pkgs.system}.rustfs-client` in a system
+configuration.
+
+### 6\. X-CMD (Option 6)
+
+If you are an [x-cmd](https://www.x-cmd.com/install/rustfs) user:
+
+```bash
+# Run directly without installing
+x rustfs
+
+# Download the binary and install it to the global environment
+x env use rustfs
+rustfs --help
+```
+
+---
+
+### Accessing RustFS
+
+1. **Access the Console**: Open your web browser and navigate to `http://localhost:9001` to access the RustFS console.
+    - Default credentials: `rustfsadmin` / `rustfsadmin`
+2. **Create a Bucket**: Use the console to create a new bucket for your objects.
+3. **Upload Objects**: You can upload files directly through the console or use S3-compatible APIs/clients to interact with your RustFS instance.
+
+**NOTE**: To access the RustFS instance via `https`, please refer to the [TLS Configuration Docs](https://docs.rustfs.com/integration/tls-configured).
+
+### OIDC Roles Claim (Microsoft Entra ID)
+
+RustFS supports mapping an OIDC claim containing role values into the existing
+authorization pipeline. The `roles_claim` setting is **optional**: when unset or
+empty, only the `groups` claim contributes to authorization (same as older
+RustFS releases). For Microsoft Entra ID app roles, set `roles_claim=roles` so
+both console admin checks and bucket IAM policies can evaluate those roles.
+
+Example environment configuration (opt-in roles claim):
+
+```bash
+RUSTFS_IDENTITY_OPENID_ENABLE=on
+RUSTFS_IDENTITY_OPENID_CONFIG_URL="https://login.microsoftonline.com/<tenant-id>/v2.0/.well-known/openid-configuration"
+RUSTFS_IDENTITY_OPENID_CLIENT_ID="<client-id>"
+RUSTFS_IDENTITY_OPENID_CLIENT_SECRET="<client-secret>"
+RUSTFS_IDENTITY_OPENID_SCOPES="openid,profile,email"
+RUSTFS_IDENTITY_OPENID_GROUPS_CLAIM="groups"
+RUSTFS_IDENTITY_OPENID_ROLES_CLAIM="roles"
+```
+
+Policy condition example (evaluate app roles directly with `jwt:roles`; when
+`roles_claim` is configured, RustFS also merges those values into `jwt:groups`
+for backward compatibility with older policies):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["admin:*"],
+      "Resource": ["arn:aws:s3:::*"],
+      "Condition": {
+        "ForAnyValue:StringEquals": {
+          "jwt:roles": ["RustFS.ConsoleAdmin"]
+        }
+      }
+    }
+  ]
+}
+```
+
+## Documentation
+
+For detailed documentation, including configuration options, API references, and advanced usage, please visit our [Documentation](https://docs.rustfs.com).
+
+## Getting Help
+
+If you have any questions or need assistance:
+
+- Check the [FAQ](https://github.com/rustfs/rustfs/discussions/categories/q-a) for common issues and solutions.
+- Join our [GitHub Discussions](https://github.com/rustfs/rustfs/discussions) to ask questions and share your experiences.
+- Open an issue on our [GitHub Issues](https://github.com/rustfs/rustfs/issues) page for bug reports or feature requests.
+
+## Links
+
+- [Documentation](https://docs.rustfs.com) - The manual you should read
+- [Changelog](https://github.com/rustfs/rustfs/releases) - What we broke and fixed
+- [GitHub Discussions](https://github.com/rustfs/rustfs/discussions) - Where the community lives
+- [Discord](https://discord.gg/NcKBCEJp6P) - Chat with the RustFS community
+
+## Contact
+
+- **Bugs**: [GitHub Issues](https://github.com/rustfs/rustfs/issues)
+- **Business**: [hello@rustfs.com](mailto:hello@rustfs.com)
+- **Jobs**: [jobs@rustfs.com](mailto:jobs@rustfs.com)
+- **General Discussion**: [GitHub Discussions](https://github.com/rustfs/rustfs/discussions)
+- **Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md)
+
+## Contributors
+
+RustFS is a community-driven project, and we appreciate all contributions. Check out the [Contributors](https://github.com/rustfs/rustfs/graphs/contributors) page to see the amazing people who have helped make RustFS better.
+
+<a href="https://github.com/rustfs/rustfs/graphs/contributors">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/rustfs/rustfs/star-history/contributors-dark.svg">
+  <img src="https://raw.githubusercontent.com/rustfs/rustfs/star-history/contributors-light.svg" alt="RustFS contributors">
+</picture>
+</a>
+
+## Star History
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/rustfs/rustfs/star-history/star-history-dark.svg">
+  <img src="https://raw.githubusercontent.com/rustfs/rustfs/star-history/star-history-light.svg" alt="RustFS star history chart">
+</picture>
+
+## License
+
+[Apache 2.0](https://opensource.org/licenses/Apache-2.0)
+
+**RustFS** is a trademark of RustFS, Inc. All other trademarks are the property of their respective owners.

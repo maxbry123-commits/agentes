@@ -1,0 +1,401 @@
+// Copyright (C) 2026 Yota Hamada
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package value_test
+
+import (
+	"context"
+	"runtime"
+	"testing"
+
+	"github.com/dagucloud/dagu/v2/internal/cmn/value"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestScanReferencesClassifiesReservedAndEvalRefs(t *testing.T) {
+	t.Parallel()
+
+	refs := value.ScanReferencesForTest("${consts.service} $consts.service $env.FOO $params.foo $steps.build ${DATA.image} $DATA.tag")
+
+	require.Len(t, refs, 7)
+	assert.Equal(t, value.ReferenceStrictForTest, refs[0].Kind)
+	assert.Equal(t, "consts", refs[0].Namespace)
+	assert.True(t, refs[0].Braced)
+	assert.Equal(t, value.ReferenceEvalForTest, refs[1].Kind)
+	assert.False(t, refs[1].Braced)
+	assert.Equal(t, value.ReferenceEvalForTest, refs[2].Kind)
+	assert.False(t, refs[2].Braced)
+	assert.Equal(t, value.ReferenceEvalForTest, refs[3].Kind)
+	assert.False(t, refs[3].Braced)
+	assert.Equal(t, value.ReferenceEvalForTest, refs[4].Kind)
+	assert.False(t, refs[4].Braced)
+	assert.Equal(t, value.ReferenceEvalForTest, refs[5].Kind)
+	assert.True(t, refs[5].Braced)
+	assert.Equal(t, value.ReferenceEvalForTest, refs[6].Kind)
+	assert.False(t, refs[6].Braced)
+}
+
+func TestScanReferencesMarksExactStepOutputRefs(t *testing.T) {
+	t.Parallel()
+
+	refs := value.ScanReferencesForTest("${extract.output.user} ${steps.extract.outputs.user} ${steps.extract.outputs.user.id} $extract.output.user ${extract.output.bad-name}")
+
+	require.Len(t, refs, 5)
+	assert.Nil(t, refs[0].StepOutput)
+	require.NotNil(t, refs[1].StepOutput)
+	assert.Equal(t, "extract", refs[1].StepOutput.StepName)
+	assert.Equal(t, []string{"user"}, refs[1].StepOutput.Path)
+	assert.Nil(t, refs[2].StepOutput)
+	assert.Nil(t, refs[3].StepOutput)
+	assert.Nil(t, refs[4].StepOutput)
+
+	var outputRefs []value.StepOutputReference
+	for _, ref := range refs {
+		if ref.StepOutput != nil {
+			outputRefs = append(outputRefs, *ref.StepOutput)
+		}
+	}
+	require.Len(t, outputRefs, 1)
+	assert.Equal(t, "${steps.extract.outputs.user}", outputRefs[0].Expression)
+}
+
+func TestIsExactRef(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		token string
+		want  bool
+	}{
+		{token: "${consts.template}", want: true},
+		{token: "${params.template}", want: true},
+		{token: "${env.TEMPLATE}", want: true},
+		{token: "${steps.fetch.outputs.template}", want: true},
+		{token: "${foreach.item}", want: true},
+		{token: "${foreach.item.template}", want: true},
+		{token: "${context.run.id}", want: true},
+		{token: "${params}", want: false},
+		{token: "${run.id}", want: false},
+		{token: "${TEMPLATE}", want: false},
+		{token: "$env.TEMPLATE", want: false},
+		{token: "${ env.TEMPLATE }", want: false},
+		{token: "prefix-${env.TEMPLATE}", want: false},
+		{token: "${env.TEMPLATE}-${params.suffix}", want: false},
+		{token: `\${env.TEMPLATE}`, want: false},
+	}
+
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, value.IsExactRef(tt.token), tt.token)
+	}
+}
+
+func TestHasStepRuntimeOutputReference(t *testing.T) {
+	t.Parallel()
+
+	for _, input := range []string{
+		"${build.stdout}",
+		"${build.stderr:1:2}",
+		"${build.exitCode}",
+		"${build.exit_code}",
+		"${build.output}",
+		"${build.output.result}",
+		"${build.outputs}",
+		"$build.outputs.result",
+	} {
+		assert.True(t, value.HasStepRuntimeOutputReference(input, "build"), input)
+	}
+
+	for _, input := range []string{
+		"${steps.build.outputs.artifact}",
+		"${other.stdout}",
+		"${build.status}",
+		"${build.stdout:-1}",
+	} {
+		assert.False(t, value.HasStepRuntimeOutputReference(input, "build"), input)
+	}
+}
+
+func TestHasReferenceToNamespace(t *testing.T) {
+	t.Parallel()
+
+	for _, input := range []string{
+		"${inputs.source}",
+		"$inputs.source",
+		"prefix ${outputs.artifact}",
+		"prefix $outputs.artifact",
+	} {
+		assert.True(t, value.HasReferenceToNamespace(input, "inputs", "outputs"), input)
+	}
+
+	for _, input := range []string{
+		"${params.source}",
+		"$build.output",
+		`\${inputs.source}`,
+	} {
+		assert.False(t, value.HasReferenceToNamespace(input, "inputs", "outputs"), input)
+	}
+}
+
+func TestResolverStringResolvesParamsAndPreservesOtherNamespaces(t *testing.T) {
+	t.Parallel()
+
+	outputs := `{"image":"repo/api:v1"}`
+	resolver := value.NewResolver(
+		value.StaticScope{
+			Consts: value.Values{"service": "api"},
+			Params: value.Values{"environment": nil},
+		},
+		value.RuntimeScope{
+			Consts: value.Values{"service": "api"},
+			Params: value.Values{"environment": "prod"},
+			Env:    testEnvScope(map[string]string{"HOME": "/workspace"}),
+			Steps: map[string]value.StepInfo{
+				"build": {DeclaredOutputs: &outputs},
+			},
+		},
+	)
+	got, err := resolver.String(
+		context.Background(),
+		"${consts.service}:${params.environment}:${env.HOME}:${steps.build.outputs.image}",
+		value.WorkflowField("run"),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "api:prod:/workspace:repo/api:v1", got)
+}
+
+func TestResolverStringResolvesRootParamsPayload(t *testing.T) {
+	t.Parallel()
+
+	const paramsJSON = `{"environment":"prod","tag":"v1"}`
+	resolver := value.NewResolver(
+		value.StaticScope{
+			Params: value.Values{"environment": nil, "tag": nil},
+		},
+		value.RuntimeScope{
+			Params:     value.Values{"environment": "prod", "tag": "v1"},
+			ParamsJSON: paramsJSON,
+		},
+	)
+
+	got, err := resolver.String(context.Background(), "${params}", value.WorkflowField("run"))
+	require.NoError(t, err)
+	assert.Equal(t, paramsJSON, got)
+}
+
+func TestResolverStringResolvesRootParamsPayloadWithStaticConsts(t *testing.T) {
+	t.Parallel()
+
+	resolver := value.NewResolver(
+		value.StaticScope{
+			Consts: value.Values{"service": "api"},
+		},
+		value.RuntimeScope{
+			ParamsJSON: `{"environment":"prod"}`,
+		},
+	)
+
+	got, err := resolver.String(context.Background(), "${consts.service}:${params}", value.WorkflowField("run"))
+	require.NoError(t, err)
+	assert.Equal(t, `api:{"environment":"prod"}`, got)
+}
+
+func TestResolverWorkflowFieldPreservesCommandSubstitution(t *testing.T) {
+	t.Parallel()
+
+	resolver := value.NewResolver(value.StaticScope{}, value.RuntimeScope{})
+	got, err := resolver.String(context.Background(), "`echo resolved`", value.WorkflowField("env.VALUE"))
+	require.NoError(t, err)
+	assert.Equal(t, "`echo resolved`", got)
+}
+
+func TestResolverDynamicParamEvalRunsCommandSubstitution(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping backtick command substitution test on Windows")
+	}
+
+	resolver := value.NewResolver(value.StaticScope{}, value.RuntimeScope{})
+	got, err := resolver.String(context.Background(), "`echo resolved`", value.DynamicParamEvalField("params"))
+	require.NoError(t, err)
+	assert.Equal(t, "resolved", got)
+}
+
+func TestResolverDynamicParamEvalRunsShellCommandSubstitution(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping shell command substitution test on Windows")
+	}
+
+	resolver := value.NewResolver(
+		value.StaticScope{Params: value.Values{"environment": ""}},
+		value.RuntimeScope{Params: value.Values{"environment": "prod"}},
+	)
+	got, err := resolver.String(
+		context.Background(),
+		"$(printf '%s-api' ${params.environment})",
+		value.DynamicParamEvalField("params"),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "prod-api", got)
+}
+
+func TestResolverWorkflowFieldPreservesShellCommandSubstitution(t *testing.T) {
+	t.Parallel()
+
+	resolver := value.NewResolver(value.StaticScope{}, value.RuntimeScope{})
+	got, err := resolver.String(context.Background(), "$(echo resolved)", value.WorkflowField("run"))
+	require.NoError(t, err)
+	assert.Equal(t, "$(echo resolved)", got)
+}
+
+func TestResolverStringResolvesConstRefsAndKeepsEvalRefs(t *testing.T) {
+	t.Parallel()
+
+	output := `{"image":"repo/api:v1"}`
+	resolver := value.NewResolver(
+		value.StaticScope{
+			Consts: value.Values{"service": "api"},
+			Params: value.Values{"environment": nil},
+		},
+		value.RuntimeScope{
+			Consts: value.Values{"service": "api"},
+			Params: value.Values{"environment": "prod"},
+			Env:    testEnvScope(map[string]string{"HOME": "/workspace"}),
+			Steps: map[string]value.StepInfo{
+				"build": {DeclaredOutputs: &output},
+			},
+		},
+	)
+	got, err := resolver.String(
+		context.Background(),
+		"${consts.service}:${params.environment}:${env.HOME}:${steps.build.outputs.image}:${DATA.image}:$DATA.tag",
+		value.WorkflowField("run"),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "api:prod:/workspace:repo/api:v1:${DATA.image}:$DATA.tag", got)
+}
+
+func TestResolverObjectResolvesConstRefsAcrossNestedValues(t *testing.T) {
+	t.Parallel()
+
+	output := `{"digest":"sha256:abc"}`
+	obj := map[string]any{
+		"image": "${consts.repo}:${params.tag}",
+		"env": []any{
+			"${env.TOKEN}",
+			"${steps.build.outputs.digest}",
+		},
+		"evalRef": "${DATA.image}",
+	}
+
+	resolver := value.NewResolver(
+		value.StaticScope{
+			Consts: value.Values{"repo": "repo/api"},
+			Params: value.Values{"tag": nil},
+		},
+		value.RuntimeScope{
+			Consts: value.Values{"repo": "repo/api"},
+			Params: value.Values{"tag": "v1"},
+			Env:    testEnvScope(map[string]string{"TOKEN": "secret"}),
+			Steps: map[string]value.StepInfo{
+				"build": {DeclaredOutputs: &output},
+			},
+		},
+	)
+	gotAny, err := resolver.Object(context.Background(), obj, value.WorkflowObjectField("with"))
+	require.NoError(t, err)
+	got, ok := gotAny.(map[string]any)
+	require.True(t, ok)
+
+	assert.Equal(t, "repo/api:v1", got["image"])
+	assert.Equal(t, []any{"secret", "sha256:abc"}, got["env"])
+	assert.Equal(t, "${DATA.image}", got["evalRef"])
+}
+
+func TestResolverObjectPreservesConstShorthand(t *testing.T) {
+	t.Parallel()
+
+	resolver := value.NewResolver(
+		value.StaticScope{},
+		value.RuntimeScope{Consts: value.Values{"service": "api"}},
+	)
+	gotAny, err := resolver.Object(
+		context.Background(),
+		map[string]any{"service": "$consts.service"},
+		value.WorkflowObjectField("with.service"),
+	)
+	require.NoError(t, err)
+	got, ok := gotAny.(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "$consts.service", got["service"])
+}
+
+func TestResolverSemanticFieldsApplyOwnerSemantics(t *testing.T) {
+	t.Setenv("DAGU_VALUE_MODE_DIRECT", "from-os")
+	resolver := value.NewResolver(
+		value.StaticScope{},
+		value.RuntimeScope{
+			Consts: value.Values{"service": "api"},
+			Env:    testEnvScope(map[string]string{"TOKEN": "secret"}),
+		},
+	)
+	ctx := context.Background()
+
+	tests := []struct {
+		name  string
+		raw   string
+		field value.Field
+		want  string
+	}{
+		{
+			name:  "ConstLoad",
+			raw:   "${consts.service}",
+			field: value.ConstLoadField("run"),
+			want:  "api",
+		},
+		{
+			name:  "StaticValidation",
+			raw:   "${consts.service}",
+			field: value.StaticValidationField("run"),
+			want:  "api",
+		},
+		{
+			name:  "WorkflowValueExpandsScopedEnv",
+			raw:   "$TOKEN",
+			field: value.WorkflowField("run"),
+			want:  "secret",
+		},
+		{
+			name:  "ShellCommandExpandsScopedEnv",
+			raw:   "$TOKEN",
+			field: value.ShellCommandField("run", value.CommandContext{}),
+			want:  "secret",
+		},
+		{
+			name:  "DirectCommandExpandsScopedEnv",
+			raw:   "$TOKEN",
+			field: value.DirectCommandField("run", value.CommandContext{}),
+			want:  "secret",
+		},
+		{
+			name:  "DirectCommandUsesHostOnlyEnvFallback",
+			raw:   "$DAGU_VALUE_MODE_DIRECT",
+			field: value.DirectCommandField("run", value.CommandContext{}),
+			want:  "from-os",
+		},
+		{
+			name:  "DynamicEvalUsesDefaultExpansion",
+			raw:   "$TOKEN",
+			field: value.DynamicParamEvalField("params"),
+			want:  "secret",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := resolver.String(ctx, tt.raw, tt.field)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

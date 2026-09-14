@@ -1,0 +1,642 @@
+// Copyright 2024 The gVisor Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package testcluster
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"reflect"
+	"strings"
+	"time"
+
+	cspb "google.golang.org/genproto/googleapis/container/v1"
+	"google.golang.org/protobuf/proto"
+	v13 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+const (
+	pod   = "Pod"
+	apiV1 = "v1"
+)
+
+// Namespace represents a Kubernetes object namespace.
+// It can contain pods or services or other Kubernetes objects.
+// It is useful in tests that create multiple objects and want to ensure
+// their mutual destruction, as well as for re-running tests and ensuring
+// that the objects from past runs are cleaned up properly on the next run.
+type Namespace struct {
+	testCluster *TestCluster
+	Namespace   string
+}
+
+// Namespace returns a new namespace in this cluster.
+func (t *TestCluster) Namespace(namespace string) *Namespace {
+	return &Namespace{
+		testCluster: t,
+		Namespace:   namespace,
+	}
+}
+
+// Reset deletes this namespace if it exists, and unconditionally
+// creates a new namespace of this name.
+// This should be used in the beginning of tests, such that the namespace
+// is empty and ready to be used.
+func (n *Namespace) Reset(ctx context.Context) error {
+	if err := n.Cleanup(ctx); err != nil {
+		return fmt.Errorf("failed to clean up namespace %q: %w", n.Namespace, err)
+	}
+	_, err := n.testCluster.createNamespace(ctx, &v13.Namespace{
+		TypeMeta: v1.TypeMeta{
+			Kind:       "namespace",
+			APIVersion: apiV1,
+		},
+		ObjectMeta: v1.ObjectMeta{
+			Name: n.Namespace,
+		},
+	})
+	return err
+}
+
+// Cleanup deletes this namespace if it exists.
+func (n *Namespace) Cleanup(ctx context.Context) error {
+	namespaceExists := func() (*v13.Namespace, bool, error) {
+		ns, err := n.testCluster.getNamespace(ctx, n.Namespace)
+		switch {
+		case err == nil:
+			return ns, true, nil
+		case strings.Contains(err.Error(), "not found"):
+			return nil, false, nil
+		default:
+			return nil, false, err
+		}
+	}
+	_, exists, err := namespaceExists()
+	if err != nil {
+		return fmt.Errorf("failed to check if namespace %q exists: %w", n.Namespace, err)
+	}
+	if !exists {
+		return nil
+	}
+	if err := n.testCluster.deleteNamespace(ctx, n.Namespace); err != nil && !strings.Contains(err.Error(), "object is being deleted") {
+		return fmt.Errorf("failed to delete namespace %q: %w", n.Namespace, err)
+	}
+	var ns *v13.Namespace
+	for ctx.Err() == nil {
+		ns, exists, err = namespaceExists()
+		if err != nil {
+			return fmt.Errorf("failed to check if namespace %q exists: %w", n.Namespace, err)
+		}
+		if !exists {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(pollInterval):
+		}
+	}
+	return fmt.Errorf("failed to delete namespace %q (context: %w); last namespace status: %v", n.Namespace, ctx.Err(), ns)
+}
+
+// NewAlpinePod returns an alpine pod template.
+func (n *Namespace) NewAlpinePod(name, image string, cmd []string) *v13.Pod {
+	container := v13.Container{Name: name, Image: image, Command: cmd}
+	pod := n.NewPod(name)
+	pod.Spec.Containers = []v13.Container{container}
+	return pod
+}
+
+// NewPod returns a pod template.
+func (n *Namespace) NewPod(name string) *v13.Pod {
+	return &v13.Pod{
+		TypeMeta: v1.TypeMeta{
+			Kind:       pod,
+			APIVersion: apiV1,
+		},
+		ObjectMeta: v1.ObjectMeta{
+			Name:      name,
+			Namespace: n.Namespace,
+		},
+		Spec: v13.PodSpec{
+			RestartPolicy: v13.RestartPolicyNever,
+		},
+	}
+}
+
+// GetPersistentVolume gets a persistent volume spec for benchmarks.
+func (n *Namespace) GetPersistentVolume(name, size string) *v13.PersistentVolumeClaim {
+	storageClass := "standard-rwo"
+	pvc := &v13.PersistentVolumeClaim{
+		TypeMeta: v1.TypeMeta{
+			Kind:       "PersistentVolumeClaim",
+			APIVersion: apiV1,
+		},
+		ObjectMeta: v1.ObjectMeta{
+			Name:      name,
+			Namespace: n.Namespace,
+		},
+		Spec: v13.PersistentVolumeClaimSpec{
+			StorageClassName: &storageClass,
+			AccessModes:      []v13.PersistentVolumeAccessMode{v13.ReadWriteOnce},
+		},
+	}
+
+	// Use reflection to set Spec.Resources.Requests in a compatible way for
+	// both k8s.io/api v0.23 (ResourceRequirements) and v0.32+
+	// (VolumeResourceRequirements).
+	vSpec := reflect.ValueOf(&pvc.Spec).Elem()
+	vResources := vSpec.FieldByName("Resources")
+	if vResources.IsValid() {
+		vRequests := vResources.FieldByName("Requests")
+		if vRequests.IsValid() && vRequests.CanSet() {
+			reqs := v13.ResourceList{
+				v13.ResourceStorage: resource.MustParse(size),
+			}
+			vRequests.Set(reflect.ValueOf(reqs))
+		}
+	}
+	return pvc
+}
+
+// GetService gets a service spec for benchmarks.
+func (n *Namespace) GetService(name string, spec v13.ServiceSpec) *v13.Service {
+	return &v13.Service{
+		TypeMeta: v1.TypeMeta{
+			Kind:       "Service",
+			APIVersion: apiV1,
+		},
+		ObjectMeta: v1.ObjectMeta{
+			Name:      name,
+			Namespace: n.Namespace,
+		},
+		Spec: spec,
+	}
+}
+
+// ContainerResourcesRequest holds arguments to set requested resource on a container.
+type ContainerResourcesRequest struct {
+	GPU bool
+	TPU bool
+}
+
+// String returns a string representation of the `ContainerResourcesRequest`.
+func (crr ContainerResourcesRequest) String() string {
+	return fmt.Sprintf("gpu=%v tpu=%v", crr.GPU, crr.TPU)
+}
+
+// SetContainerResources sets container resources.
+// `containerName` is optional if the pod has exactly one container.
+func SetContainerResources(pod *v13.Pod, containerName string, requests ContainerResourcesRequest) (*v13.Pod, error) {
+	var containerToChange *v13.Container
+	if containerName == "" {
+		switch len(pod.Spec.Containers) {
+		case 0:
+			return nil, fmt.Errorf("no containers found in pod")
+		case 1:
+			containerToChange = &pod.Spec.Containers[0]
+		default:
+			return nil, fmt.Errorf("multiple containers found in pod %v, please specify a container name", pod)
+		}
+	} else {
+		for i := range pod.Spec.Containers {
+			if pod.Spec.Containers[i].Name == containerName {
+				containerToChange = &pod.Spec.Containers[i]
+			}
+		}
+	}
+	if containerToChange == nil {
+		return nil, fmt.Errorf("container %q not found", containerName)
+	}
+	if containerToChange.Resources.Limits == nil {
+		containerToChange.Resources.Limits = make(v13.ResourceList)
+	}
+	if containerToChange.Resources.Requests == nil {
+		containerToChange.Resources.Requests = make(v13.ResourceList)
+	}
+	for _, resourceList := range []v13.ResourceList{
+		containerToChange.Resources.Limits,
+		containerToChange.Resources.Requests,
+	} {
+		if requests.GPU {
+			acceleratorCount, ok := pod.Spec.NodeSelector[NodepoolNumAcceleratorsKey]
+			if !ok {
+				return nil, fmt.Errorf("cannot determine number of accelerators that the pod should use, make sure to call ConfigurePodForRuntimeTestNodepool first")
+			}
+			resourceList[v13.ResourceName("nvidia.com/gpu")] = resource.MustParse(acceleratorCount)
+		}
+		if requests.TPU {
+			acceleratorCount, ok := pod.Spec.NodeSelector[NodepoolTPUNumAcceleratorKey]
+			if !ok {
+				return nil, fmt.Errorf("cannot determine number of accelerators that the pod should use, make sure to call ConfigurePodForRuntimeTestNodepool first")
+			}
+			resourceList[v13.ResourceName("google.com/tpu")] = resource.MustParse(acceleratorCount)
+		}
+	}
+	return pod, nil
+}
+
+// ProbeResources verifies that a pod requesting the given resources can be
+// scheduled.
+func (n *Namespace) ProbeResources(ctx context.Context, requests ContainerResourcesRequest) error {
+	// Configure the pod.
+	probe := n.NewAlpinePod("resource-probe", "alpine", []string{"/bin/true"})
+	probe, err := n.testCluster.ConfigurePodForRuntimeTestNodepool(ctx, probe)
+	if err != nil {
+		return fmt.Errorf("failed to configure pod for runtime test nodepool: %w", err)
+	}
+	if probe, err = SetContainerResources(probe, "", requests); err != nil {
+		return fmt.Errorf("failed to set container resources: %w", err)
+	}
+	resources := probe.Spec.Containers[0].Resources
+
+	// If a pod already exists (e.g. from a past probe), best-effort attempt to delete it:
+	deleteCtx, deleteCancel := context.WithTimeout(ctx, 20*time.Second)
+	_ = n.testCluster.DeletePod(deleteCtx, probe)
+	deleteCancel()
+
+	// Create the pod.
+	if _, err := n.testCluster.CreatePod(ctx, probe); err != nil {
+		return fmt.Errorf("failed to create probe pod with resources %v: %w", resources, err)
+	}
+
+	// Wait up to (ctx - 30 seconds) for the pod to run.
+	waitCtx := ctx
+	if ctxDeadline, hasDeadline := waitCtx.Deadline(); hasDeadline {
+		var waitCancel context.CancelFunc
+		waitCtx, waitCancel = context.WithDeadline(ctx, ctxDeadline.Add(-30*time.Second))
+		defer waitCancel()
+	}
+	if err := n.testCluster.WaitForPodRunning(waitCtx, probe); err != nil {
+		// Best-effort time-limited deletion.
+		deleteCtx, deleteCancel := context.WithTimeout(ctx, 30*time.Second)
+		_ = n.testCluster.DeletePod(deleteCtx, probe)
+		deleteCancel()
+
+		return fmt.Errorf("probe pod with resources %v did not run: %w", resources, err)
+	}
+
+	// Delete the pod.
+	if err := n.testCluster.DeletePod(ctx, probe); err != nil {
+		return fmt.Errorf("failed to delete probe pod: %w", err)
+	}
+	return nil
+}
+
+// WaitForResources checks that a pod requesting the given resources can be
+// scheduled. If they cannot, it will loop until the given context expire or
+// the resources become available.
+func (n *Namespace) WaitForResources(ctx context.Context, requests ContainerResourcesRequest) error {
+	var lastErr error
+	for {
+		probeCtx, probeCancel := context.WithTimeout(ctx, 90*time.Second)
+		err := n.ProbeResources(probeCtx, requests)
+		probeCtxErr := probeCtx.Err()
+		probeCancel()
+		if err == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			if lastErr != nil {
+				return fmt.Errorf("context expired while waiting for resources %v to be available; last error: %w", requests, lastErr)
+			}
+			return fmt.Errorf("context expired before ever checking that resources %v are available: %w", requests, err)
+		case <-time.After(pollInterval):
+			if lastErr == nil || !errors.Is(probeCtxErr, context.DeadlineExceeded) {
+				lastErr = err
+			}
+		}
+	}
+}
+
+// SanityCheck ensures that the cluster is working.
+// It does so by creating sanity-check pod in the sanity namespace and ensure
+// it runs successfully.
+func (t *TestCluster) SanityCheck(ctx context.Context) error {
+	sanityNS := t.Namespace(NamespaceSanity)
+	resetCtx, resetCancel := context.WithTimeout(ctx, 6*time.Minute)
+	defer resetCancel()
+	defer sanityNS.Cleanup(resetCtx)
+	sanityCtx, sanityCancel := context.WithTimeout(resetCtx, 5*time.Minute)
+	defer sanityCancel()
+	var lastErr error
+	for sanityCtx.Err() == nil {
+		err := func() error {
+			if err := sanityNS.Reset(sanityCtx); err != nil {
+				return fmt.Errorf("cannot reset %v namespace: %w", NamespaceSanity, err)
+			}
+			defer sanityNS.Cleanup(sanityCtx)
+			sanityPod := sanityNS.NewAlpinePod("check", "alpine", []string{"/bin/sh", "-c", "echo", "hello"})
+			sanityPod, err := t.CreatePod(sanityCtx, sanityPod)
+			if err != nil {
+				return fmt.Errorf("cannot create sanity check pod: %w", err)
+			}
+			if err := t.WaitForPodCompleted(sanityCtx, sanityPod); err != nil {
+				_ = t.DeletePod(resetCtx, sanityPod)
+				return fmt.Errorf("failed waiting for sanity check pod to complete: %w", err)
+			}
+			if err := t.DeletePod(sanityCtx, sanityPod); err != nil {
+				return fmt.Errorf("cannot delete sanity check pod: %w", err)
+			}
+			return nil
+		}()
+		if err == nil {
+			return nil
+		}
+		if sanityCtx.Err() == nil {
+			lastErr = err
+		}
+	}
+	return fmt.Errorf("cannot ensure cluster %v is working: %w", t.GetName(), lastErr)
+}
+
+// RuntimeType is a supported runtime for the test nodepool.
+type RuntimeType string
+
+// List of known runtime types.
+const (
+	RuntimeTypeGVisor              = RuntimeType("gvisor")
+	RuntimeTypeGVisorCapped        = RuntimeType("gvisor-capped")
+	RuntimeTypeUnsandboxed         = RuntimeType("runc")
+	RuntimeTypeUnsandboxedCapped   = RuntimeType("runc-capped")
+	RuntimeTypeGVisorTPU           = RuntimeType("gvisor-tpu")
+	RuntimeTypeUnsandboxedTPU      = RuntimeType("runc-tpu")
+	RuntimeTypeKataQEMU            = RuntimeType("kata-qemu")
+	RuntimeTypeKataCloudHypervisor = RuntimeType("kata-cloudhypervisor")
+	RuntimeTypeKataFirecracker     = RuntimeType("kata-firecracker")
+	RuntimeTypeMicroVM             = RuntimeType("microvm")
+)
+
+// AllRuntimes is the list of all runtime types.
+var AllRuntimes = []RuntimeType{
+	RuntimeTypeGVisor,
+	RuntimeTypeGVisorCapped,
+	RuntimeTypeUnsandboxed,
+	RuntimeTypeUnsandboxedCapped,
+	RuntimeTypeGVisorTPU,
+	RuntimeTypeUnsandboxedTPU,
+	RuntimeTypeKataQEMU,
+	RuntimeTypeKataCloudHypervisor,
+	RuntimeTypeKataFirecracker,
+	RuntimeTypeMicroVM,
+}
+
+// IsValid returns true if the runtime type is valid.
+func (t RuntimeType) IsValid() bool {
+	switch t {
+	case RuntimeTypeGVisor, RuntimeTypeGVisorCapped, RuntimeTypeUnsandboxed, RuntimeTypeUnsandboxedCapped, RuntimeTypeGVisorTPU, RuntimeTypeUnsandboxedTPU, RuntimeTypeKataQEMU, RuntimeTypeKataCloudHypervisor, RuntimeTypeKataFirecracker, RuntimeTypeMicroVM:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsGVisor returns true if the runtime is a gVisor-based runtime.
+func (t RuntimeType) IsGVisor() bool {
+	return t == RuntimeTypeGVisor || t == RuntimeTypeGVisorCapped || t == RuntimeTypeGVisorTPU
+}
+
+// IsKata returns true if the runtime is a Kata-based runtime.
+func (t RuntimeType) IsKata() bool {
+	return t == RuntimeTypeKataQEMU || t == RuntimeTypeKataCloudHypervisor || t == RuntimeTypeKataFirecracker
+}
+
+// IsMicroVM returns true if the runtime is a GKE Sandbox MicroVM runtime.
+func (t RuntimeType) IsMicroVM() bool {
+	return t == RuntimeTypeMicroVM
+}
+
+// KataShimName returns the Kata shim name for the runtime type.
+func (t RuntimeType) KataShimName() (string, error) {
+	switch t {
+	case RuntimeTypeKataQEMU:
+		return "kata-qemu", nil
+	case RuntimeTypeKataCloudHypervisor:
+		return "kata-clh", nil
+	case RuntimeTypeKataFirecracker:
+		return "kata-fc", nil
+	default:
+		return "", fmt.Errorf("not a Kata runtime: %q", t)
+	}
+}
+
+// RequiresExplicitResourceLimits returns true if the runtime requires
+// explicit resource limits on pods in order to function correctly.
+func (t RuntimeType) RequiresExplicitResourceLimits() bool {
+	// Kata containers and MicroVM require VMs which require explicit sizing.
+	if t.IsKata() || t.IsMicroVM() {
+		return true
+	}
+	// Capped runtimes require explicit sizing.
+	if t == RuntimeTypeGVisorCapped || t == RuntimeTypeUnsandboxedCapped {
+		return true
+	}
+	return false
+}
+
+// MaxCores returns the maximum number of cores that can be used by a pod using this runtime.
+// Returns 0 if there is no pod core limit.
+func (t RuntimeType) maxCores() int {
+	switch t {
+	case RuntimeTypeKataFirecracker:
+		// Firecracker only supports up to 32 vCPUs:
+		// https://github.com/firecracker-microvm/firecracker/blob/e865b9c5fad47384c15a6c57c6c6e628210f2282/src/vmm/src/vmm_config/machine_config.rs#L11-L13
+		// Experimentally, using 32 still fails, but 31 works.
+		return 31
+	default:
+		return 0
+	}
+}
+
+// MaxSupportedCoresAcrossRuntimes returns the maximum number of cores that all runtimes
+// can support. Returns 0 if there is no limit across all runtimes.
+func MaxSupportedCoresAcrossRuntimes() int {
+	maxSeen := 0
+	for _, runtime := range AllRuntimes {
+		if maxCores := runtime.maxCores(); maxCores != 0 && (maxSeen == 0 || maxSeen > maxCores) {
+			maxSeen = maxCores
+		}
+	}
+	return maxSeen
+}
+
+const (
+	microvmNodepoolKey  = "sandbox.gke.io/runtime"
+	microvmRuntimeClass = "microvm"
+	// sandboxConfigMicroVM corresponds to cspb.SandboxConfig_MICROVM (value 3),
+	// which is restricted to internal proto releases and not yet exposed in public genproto.
+	sandboxConfigMicroVM = cspb.SandboxConfig_Type(3)
+)
+
+// ApplyNodepool modifies the nodepool to configure it to use the runtime.
+func (t RuntimeType) ApplyNodepool(nodepool *cspb.NodePool) {
+	if nodepool.GetConfig().GetLabels() == nil {
+		nodepool.GetConfig().Labels = map[string]string{}
+	}
+
+	switch t {
+	case RuntimeTypeGVisor, RuntimeTypeGVisorCapped:
+		nodepool.Config.SandboxConfig = &cspb.SandboxConfig{
+			Type: cspb.SandboxConfig_GVISOR,
+		}
+		nodepool.GetConfig().Labels[NodepoolRuntimeKey] = string(t)
+	case RuntimeTypeMicroVM:
+		nodepool.Config.SandboxConfig = &cspb.SandboxConfig{
+			Type: sandboxConfigMicroVM,
+		}
+		nodepool.GetConfig().Labels[NodepoolRuntimeKey] = string(RuntimeTypeMicroVM)
+	case RuntimeTypeUnsandboxed, RuntimeTypeUnsandboxedCapped:
+		nodepool.GetConfig().Labels[NodepoolRuntimeKey] = string(t)
+		// Do nothing.
+	case RuntimeTypeGVisorTPU:
+		nodepool.Config.Labels[gvisorNodepoolKey] = gvisorRuntimeClass
+		nodepool.Config.Labels[NodepoolRuntimeKey] = string(RuntimeTypeGVisorTPU)
+		nodepool.Config.Taints = append(nodepool.Config.Taints, &cspb.NodeTaint{
+			Key:    gvisorNodepoolKey,
+			Value:  gvisorRuntimeClass,
+			Effect: cspb.NodeTaint_NO_SCHEDULE,
+		})
+	case RuntimeTypeUnsandboxedTPU:
+		nodepool.Config.Labels[NodepoolRuntimeKey] = string(RuntimeTypeUnsandboxedTPU)
+	case RuntimeTypeKataQEMU:
+		nodepool.Config.Labels[NodepoolRuntimeKey] = string(RuntimeTypeKataQEMU)
+	case RuntimeTypeKataCloudHypervisor:
+		nodepool.Config.Labels[NodepoolRuntimeKey] = string(RuntimeTypeKataCloudHypervisor)
+	case RuntimeTypeKataFirecracker:
+		nodepool.Config.Labels[NodepoolRuntimeKey] = string(RuntimeTypeKataFirecracker)
+	default:
+		panic(fmt.Sprintf("unsupported runtime %q", t))
+	}
+}
+
+// SetNodePlacementPolicyCompact sets the node placement policy to COMPACT
+// and with the given TPU topology.
+// This is done by reflection because the NodePool_PlacementPolicy proto
+// message isn't available in the latest exported version of the genproto API.
+// This is only used for TPU nodepools so not critical for most benchmarks.
+func SetNodePlacementPolicyCompact(nodepool *cspb.NodePool, tpuTopology string) error {
+	placementPolicyField := reflect.ValueOf(nodepool).Elem().FieldByName("PlacementPolicy")
+	if !placementPolicyField.IsValid() {
+		return errors.New("nodepool does not have a PlacementPolicy field")
+	}
+	nodePlacementPolicy := reflect.New(placementPolicyField.Type().Elem()).Elem()
+	tpuTopologyField := nodePlacementPolicy.FieldByName("TpuTopology")
+	if !tpuTopologyField.IsValid() {
+		return errors.New("nodepool.PlacementPolicy does not have a TpuTopology field")
+	}
+	tpuTopologyField.SetString(tpuTopology)
+	typeField := nodePlacementPolicy.FieldByName("Type")
+	if !typeField.IsValid() {
+		return errors.New("nodepool.PlacementPolicy does not have a Type field")
+	}
+	typeField.SetInt(1 /* cspb.NodePool_PlacementPolicy_COMPACT */)
+	// Done.
+	placementPolicyField.Set(nodePlacementPolicy.Addr())
+	return nil
+}
+
+// addToleration adds a toleration to the pod if it doesn't already exist.
+func addToleration(podSpec *v13.PodSpec, toleration v13.Toleration) {
+	for _, t := range podSpec.Tolerations {
+		if t == toleration {
+			return
+		}
+	}
+	podSpec.Tolerations = append(podSpec.Tolerations, toleration)
+}
+
+// ApplyPodSpec modifies a PodSpec to use this runtime.
+func (t RuntimeType) ApplyPodSpec(podSpec *v13.PodSpec) {
+	if podSpec.NodeSelector == nil {
+		podSpec.NodeSelector = map[string]string{}
+	}
+	switch t {
+	case RuntimeTypeGVisor, RuntimeTypeGVisorCapped:
+		podSpec.RuntimeClassName = proto.String(gvisorRuntimeClass)
+		podSpec.NodeSelector[NodepoolRuntimeKey] = string(t)
+		addToleration(podSpec, v13.Toleration{
+			Key:      "nvidia.com/gpu",
+			Operator: v13.TolerationOpExists,
+		})
+	case RuntimeTypeMicroVM:
+		podSpec.RuntimeClassName = proto.String(microvmRuntimeClass)
+		podSpec.NodeSelector[NodepoolRuntimeKey] = string(t)
+		addToleration(podSpec, v13.Toleration{
+			Effect:   v13.TaintEffectNoSchedule,
+			Key:      microvmNodepoolKey,
+			Operator: v13.TolerationOpEqual,
+			Value:    microvmRuntimeClass,
+		})
+	case RuntimeTypeUnsandboxed, RuntimeTypeUnsandboxedCapped:
+		podSpec.RuntimeClassName = nil
+		podSpec.Tolerations = append(podSpec.Tolerations, v13.Toleration{
+			Key:      "nvidia.com/gpu",
+			Operator: v13.TolerationOpExists,
+		})
+		// Allow the pod to schedule on gVisor nodes as well.
+		// This enables the use of `--test-nodepool-runtime=runc` to run
+		// unsandboxed benchmarks on gVisor test clusters.
+		addToleration(podSpec, v13.Toleration{
+			Effect:   v13.TaintEffectNoSchedule,
+			Key:      gvisorNodepoolKey,
+			Operator: v13.TolerationOpEqual,
+			Value:    gvisorRuntimeClass,
+		})
+		// Also allow the pod to schedule on MicroVM nodes.
+		addToleration(podSpec, v13.Toleration{
+			Effect:   v13.TaintEffectNoSchedule,
+			Key:      microvmNodepoolKey,
+			Operator: v13.TolerationOpEqual,
+			Value:    microvmRuntimeClass,
+		})
+	case RuntimeTypeGVisorTPU:
+		podSpec.RuntimeClassName = proto.String(gvisorRuntimeClass)
+		podSpec.NodeSelector[NodepoolRuntimeKey] = string(RuntimeTypeGVisorTPU)
+		addToleration(podSpec, v13.Toleration{
+			Key:      "google.com/tpu",
+			Operator: v13.TolerationOpExists,
+		})
+	case RuntimeTypeUnsandboxedTPU:
+		addToleration(podSpec, v13.Toleration{
+			Key:      "google.com/tpu",
+			Operator: v13.TolerationOpExists,
+		})
+		addToleration(podSpec, v13.Toleration{
+			Effect:   v13.TaintEffectNoSchedule,
+			Key:      gvisorNodepoolKey,
+			Operator: v13.TolerationOpEqual,
+			Value:    gvisorRuntimeClass,
+		})
+		addToleration(podSpec, v13.Toleration{
+			Effect:   v13.TaintEffectNoSchedule,
+			Key:      microvmNodepoolKey,
+			Operator: v13.TolerationOpEqual,
+			Value:    microvmRuntimeClass,
+		})
+	case RuntimeTypeKataQEMU, RuntimeTypeKataCloudHypervisor, RuntimeTypeKataFirecracker:
+		shimName, err := t.KataShimName()
+		if err != nil {
+			// Logically impossible since we already checked that t is a Kata runtime, so panic is appropriate.
+			panic(fmt.Sprintf("failed to get Kata shim name for runtime %q: %v", t, err))
+		}
+		podSpec.RuntimeClassName = proto.String(shimName)
+		podSpec.NodeSelector["katacontainers.io/kata-runtime"] = "true"
+		podSpec.NodeSelector[NodepoolRuntimeKey] = string(t)
+	default:
+		panic(fmt.Sprintf("unsupported runtime %q", t))
+	}
+}

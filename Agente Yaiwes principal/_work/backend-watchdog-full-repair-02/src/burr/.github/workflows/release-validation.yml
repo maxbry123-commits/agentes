@@ -1,0 +1,351 @@
+#<!--
+#     Licensed to the Apache Software Foundation (ASF) under one
+#     or more contributor license agreements.  See the NOTICE file
+#     distributed with this work for additional information
+#     regarding copyright ownership.  The ASF licenses this file
+#     to you under the Apache License, Version 2.0 (the
+#     "License"); you may not use this file except in compliance
+#     with the License.  You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#     Unless required by applicable law or agreed to in writing,
+#     software distributed under the License is distributed on an
+#     "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+#     KIND, either express or implied.  See the License for the
+#     specific language governing permissions and limitations
+#     under the License.
+#-->
+# Validates the Apache release pipeline on every PR: builds the real release
+# artifacts (git archive, sdist, wheel) using the release script with
+# --skip-signing, runs Apache RAT on the source tarball, checks that
+# LICENSE-wheel still covers the npm packages bundled into the compiled UI,
+# then installs the wheel into a fresh venv outside the source tree and
+# smoke-tests the server.
+#
+# This is designed to catch the class of bugs that have broken recent RCs:
+# license/header issues (RAT), a LICENSE-wheel that no longer matches the
+# bundled UI dependencies, examples missing from the wheel (smoke test),
+# and general "voter tries to install this and it breaks" failures.
+
+name: Release Validation
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*-incubating-RC*'
+  pull_request:
+    types: [opened, synchronize, reopened]
+  schedule:
+    # Weekly run against main: catches dependency breakage between releases.
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: release-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check-paths:
+    name: "Release Validation / check-paths"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: check
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          # If any changed file is outside docs/ and website/, run the full validation
+          if echo "$CHANGED" | grep -qvE '^(docs/|website/)'; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-artifacts:
+    name: "Release Validation / build-artifacts"
+    needs: check-paths
+    if: needs.check-paths.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: telemetry/ui/package-lock.json
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install system deps
+        run: sudo apt-get install -y --no-install-recommends graphviz
+
+      - name: Install Python build deps
+        run: pip install flit twine jinja2
+
+      - name: Cache Apache RAT
+        id: cache-rat
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/apache-rat
+          key: apache-rat-0.18
+
+      - name: Download Apache RAT if not cached
+        if: steps.cache-rat.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/.cache/apache-rat
+          JAR="$HOME/.cache/apache-rat/apache-rat-0.18.jar"
+          curl -fL -o "$JAR" \
+            https://repo1.maven.org/maven2/org/apache/rat/apache-rat/0.18/apache-rat-0.18.jar
+          # Verify integrity: SHA256 computed from the official Maven Central download
+          # and cross-checked against Maven Central's published SHA1.
+          echo "fe513ddd10cdc07e965ba430f2c093d8745ff24a0fb54efe0933653752c53301  $JAR" \
+            | sha256sum --check
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=$(python -c 'import re; print(re.search(r"version\s*=\s*\"([^\"]+)\"", open("pyproject.toml").read()).group(1))')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "BURR_VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Build release artifacts (no signing, no upload)
+        run: |
+          python scripts/apache_release.py all "$BURR_VERSION" 0 ci-runner \
+            --skip-signing --no-upload
+
+      - name: Verify all 3 artifacts exist
+        run: |
+          test -f "dist/apache-burr-${BURR_VERSION}-incubating-src.tar.gz"
+          test -f "dist/apache-burr-${BURR_VERSION}-incubating-sdist.tar.gz"
+          test -f "dist/apache_burr-${BURR_VERSION}-py3-none-any.whl"
+
+      # RAT excludes burr/tracking/server/build/**, so it never inspects the
+      # compiled UI -- the only content the wheel adds over the sdist. This
+      # step covers that gap: it re-derives the bundled npm packages from a
+      # sourcemap build and fails if LICENSE-wheel no longer matches, which
+      # is what silently drifts on a dependency bump.
+      - name: Check LICENSE-wheel covers the bundled UI dependencies
+        run: python scripts/generate_wheel_license.py --check
+
+      - name: Run Apache RAT on source and sdist tarballs
+        run: |
+          python scripts/verify_apache_artifacts.py licenses \
+            --rat-jar ~/.cache/apache-rat/apache-rat-0.18.jar \
+            --artifacts-dir dist
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-artifacts
+          path: |
+            dist/*.tar.gz
+            dist/*.whl
+            dist/*.sha512
+            dist/rat-report-*.xml
+            dist/rat-report-*.txt
+          retention-days: 14
+
+  install-and-smoke:
+    name: "Release Validation / install-and-smoke"
+    needs: [check-paths, build-artifacts]
+    if: needs.check-paths.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.9 is skipped because burr/cli/__main__.py uses PEP 604 union syntax
+        # (dict | None) which requires Python 3.10+. Tracked separately.
+        python-version: ['3.10', '3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: release-artifacts
+          path: dist
+
+      - name: Run smoke test
+        env:
+          BURR_VERSION: ${{ needs.build-artifacts.outputs.version }}
+        run: |
+          python scripts/ci_smoke_server.py \
+            --wheel "dist/apache_burr-${BURR_VERSION}-py3-none-any.whl"
+
+      - name: Upload smoke workspace on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-workspace-${{ matrix.python-version }}
+          path: /tmp/burr-smoke-*
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Installs the wheel without any optional extras ([learn], etc.) and imports
+  # core symbols. Catches accidental leakage of optional dependencies into core
+  # code — a bare `pip install apache-burr` user would hit an ImportError that
+  # the [learn] smoke test would never see.
+  bare-install:
+    name: "Release Validation / bare-install"
+    needs: [check-paths, build-artifacts]
+    if: needs.check-paths.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: release-artifacts
+          path: dist
+
+      - name: Install wheel without optional extras
+        env:
+          BURR_VERSION: ${{ needs.build-artifacts.outputs.version }}
+        run: |
+          pip install "dist/apache_burr-${BURR_VERSION}-py3-none-any.whl"
+
+      - name: Verify core imports succeed without optional dependencies
+        run: |
+          python -c "
+          import burr
+          from burr.core import ApplicationBuilder, State
+          from burr.core.action import action
+          print('Core imports OK')
+          "
+
+  # Extracts the sdist tarball, rebuilds the wheel from it (including the
+  # frontend npm build), then compares the resulting wheel's file contents
+  # against the release wheel using content hashes. Catches cases where the
+  # sdist is missing files that the direct wheel build includes.
+  sdist-wheel-equivalence:
+    name: "Release Validation / sdist-wheel-equivalence"
+    needs: [check-paths, build-artifacts]
+    if: needs.check-paths.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: telemetry/ui/package-lock.json
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install system deps
+        run: sudo apt-get install -y --no-install-recommends graphviz
+
+      - name: Install Python build deps
+        run: pip install flit twine jinja2
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: release-artifacts
+          path: dist
+
+      - name: Extract sdist and build wheel from it
+        env:
+          BURR_VERSION: ${{ needs.build-artifacts.outputs.version }}
+        run: |
+          mkdir -p /tmp/sdist-extract /tmp/sdist-wheel
+          tar -xzf "dist/apache-burr-${BURR_VERSION}-incubating-sdist.tar.gz" \
+            -C /tmp/sdist-extract
+          # Find the single top-level directory the tarball extracted into
+          SDIST_ROOT=$(find /tmp/sdist-extract -maxdepth 1 -mindepth 1 -type d | head -1)
+          cd "$SDIST_ROOT"
+          # Build wheel from within the extracted sdist. The sdist contains the
+          # React frontend source (telemetry/ui/) but not the compiled output,
+          # so the full npm build runs here — same as the original build.
+          python scripts/apache_release.py wheel "$BURR_VERSION" 0 \
+            --skip-signing --output-dir /tmp/sdist-wheel
+
+      - name: Compare sdist-built wheel against release wheel
+        env:
+          BURR_VERSION: ${{ needs.build-artifacts.outputs.version }}
+        run: |
+          python scripts/verify_apache_artifacts.py compare-wheels \
+            "dist/apache_burr-${BURR_VERSION}-py3-none-any.whl" \
+            "/tmp/sdist-wheel/apache_burr-${BURR_VERSION}-py3-none-any.whl"
+
+  # Single stable required-check name. Always runs (if: always()) so it produces
+  # a definite SUCCESS or FAILURE — never SKIPPED. Branch protection in
+  # .asf.yaml requires this context, not the underlying jobs, so path-filtered
+  # docs/website PRs (where the upstream jobs are skipped) still go green here.
+  summary:
+    name: "Release Validation / summary"
+    needs: [check-paths, build-artifacts, install-and-smoke, bare-install, sdist-wheel-equivalence]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Verdict
+        env:
+          CHECK_PATHS: ${{ needs.check-paths.result }}
+          BUILD_ARTIFACTS: ${{ needs.build-artifacts.result }}
+          INSTALL_AND_SMOKE: ${{ needs.install-and-smoke.result }}
+          BARE_INSTALL: ${{ needs.bare-install.result }}
+          SDIST_WHEEL_EQUIV: ${{ needs.sdist-wheel-equivalence.result }}
+        run: |
+          echo "check-paths:             $CHECK_PATHS"
+          echo "build-artifacts:         $BUILD_ARTIFACTS"
+          echo "install-and-smoke:       $INSTALL_AND_SMOKE"
+          echo "bare-install:            $BARE_INSTALL"
+          echo "sdist-wheel-equivalence: $SDIST_WHEEL_EQUIV"
+          # Pass if every needed job is success or skipped; fail if any
+          # failed or was cancelled.
+          for r in "$CHECK_PATHS" "$BUILD_ARTIFACTS" "$INSTALL_AND_SMOKE" "$BARE_INSTALL" "$SDIST_WHEEL_EQUIV"; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "::error::Release Validation failed (one or more jobs not success/skipped)"; exit 1 ;;
+            esac
+          done
+          echo "Release Validation: all upstream jobs success or skipped."

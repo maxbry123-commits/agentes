@@ -1,0 +1,531 @@
+// Copyright (c) 2023 - 2026 Restate Software, Inc., Restate GmbH.
+// All rights reserved.
+//
+// Use of this software is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date specified in that file, in accordance with
+// the Business Source License, use of this software will be governed
+// by the Apache License, Version 2.0.
+
+use std::sync::Arc;
+use std::time::{Duration, Instant, SystemTime};
+
+use bytes::Bytes;
+use bytestring::ByteString;
+use http::{HeaderMap, HeaderName, Method, Request, Response, StatusCode, header};
+use http_body_util::{BodyExt, Full};
+use metrics::{counter, histogram};
+use serde::de::IntoDeserializer;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+use tracing::{Instrument, debug, trace, trace_span};
+use ulid::Ulid;
+
+use restate_types::Scope;
+use restate_types::config::Configuration;
+use restate_types::errors::GenericError;
+use restate_types::identifiers::{InvocationId, WithInvocationId};
+use restate_types::invocation::{
+    Header, InvocationRequest, InvocationRequestHeader, InvocationTarget, InvocationTargetType,
+    SpanRelation, WorkflowHandlerType,
+};
+use restate_types::limit_key::LimitKey;
+use restate_types::nodes_config::ClusterFeature;
+use restate_types::schema::invocation_target::{
+    DeploymentStatus, InvocationTargetMetadata, InvocationTargetResolver,
+};
+use restate_types::time::MillisSinceEpoch;
+use restate_util_string::{ReString, RestateString};
+
+use super::HandlerError;
+use super::path_parsing::{InvokeType, ServiceRequestType, TargetType};
+use super::tracing::prepare_tracing_span;
+use super::{APPLICATION_JSON, Handler};
+use crate::RequestDispatcher;
+use crate::handler::responses::{IDEMPOTENCY_EXPIRES, X_RESTATE_ID};
+use crate::metric_definitions::{
+    INGRESS_REQUEST_DURATION, INGRESS_REQUESTS, REQUEST_COMPLETED, REQUEST_ERROR,
+    REQUEST_INGRESS_ERROR, REQUEST_INVOCATION_ERROR,
+};
+
+pub(crate) const IDEMPOTENCY_KEY: HeaderName = HeaderName::from_static("idempotency-key");
+const LIMIT_KEY_HEADER: HeaderName = HeaderName::from_static("x-restate-limit-key");
+const LIMIT_KEY_QUERY_PARAM: &str = "limit-key";
+const DELAY_QUERY_PARAM: &str = "delay";
+const X_RESTATE_INGRESS_PATH: ByteString = ByteString::from_static("x-restate-ingress-path");
+
+#[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(serde::Deserialize))]
+pub(crate) enum SendStatus {
+    Accepted,
+    PreviouslyAccepted,
+}
+
+// IMPORTANT! If you touch this, please update crates/types/src/schema/openapi.rs too
+#[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(serde::Deserialize))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SendResponse {
+    pub(crate) invocation_id: InvocationId,
+    #[serde(
+        with = "serde_with::As::<Option<serde_with::DisplayFromStr>>",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    execution_time: Option<humantime::Timestamp>,
+    status: SendStatus,
+}
+
+fn request_metric_status(result: &Result<Response<Full<Bytes>>, HandlerError>) -> &'static str {
+    match result {
+        Ok(response)
+            if response.status().is_client_error() || response.status().is_server_error() =>
+        {
+            REQUEST_INVOCATION_ERROR
+        }
+        Ok(_) => REQUEST_COMPLETED,
+        Err(HandlerError::Invocation(_)) => REQUEST_INVOCATION_ERROR,
+        Err(error) if error.status_code().is_client_error() => REQUEST_ERROR,
+        Err(_) => REQUEST_INGRESS_ERROR,
+    }
+}
+
+impl<Schemas, Dispatcher> Handler<Schemas, Dispatcher>
+where
+    Schemas: InvocationTargetResolver + Clone + Send + Sync + 'static,
+    Dispatcher: RequestDispatcher + Clone + Send + Sync + 'static,
+{
+    pub(crate) async fn handle_service_request<B: http_body::Body>(
+        self,
+        req: Request<B>,
+        service_request: ServiceRequestType,
+    ) -> Result<Response<Full<Bytes>>, HandlerError>
+    where
+        <B as http_body::Body>::Error: Into<GenericError>,
+    {
+        let start_time = Instant::now();
+        let service_name_label = service_request.name.to_string();
+        let invoke_ty_label = service_request.invoke_ty.as_static_str();
+
+        let result = self.process_service_request(req, service_request).await;
+
+        histogram!(
+            INGRESS_REQUEST_DURATION,
+            "rpc.service" => service_name_label.clone(),
+            "rpc.type" => invoke_ty_label,
+        )
+        .record(start_time.elapsed());
+
+        counter!(
+            INGRESS_REQUESTS,
+            "status" => request_metric_status(&result),
+            "rpc.service" => service_name_label,
+            "rpc.type" => invoke_ty_label,
+        )
+        .increment(1);
+        result
+    }
+
+    async fn process_service_request<B: http_body::Body>(
+        self,
+        req: Request<B>,
+        service_request: ServiceRequestType,
+    ) -> Result<Response<Full<Bytes>>, HandlerError>
+    where
+        <B as http_body::Body>::Error: Into<GenericError>,
+    {
+        let ServiceRequestType {
+            name: service_name,
+            handler: handler_name,
+            target,
+            invoke_ty,
+            scope,
+        } = service_request;
+
+        let invocation_target_meta = if let Some(invocation_target) = self
+            .schemas
+            .pinned()
+            .resolve_latest_invocation_target(service_name.as_str(), &handler_name)
+        {
+            if !invocation_target.public {
+                return Err(HandlerError::PrivateService);
+            }
+            invocation_target
+        } else {
+            return Err(HandlerError::ServiceHandlerNotFound(
+                service_name.to_string(),
+                handler_name.clone(),
+            ));
+        };
+        if let DeploymentStatus::Deprecated(dp_id) = invocation_target_meta.deployment_status {
+            return Err(HandlerError::DeploymentDeprecated(
+                service_name.to_string(),
+                dp_id,
+            ));
+        }
+
+        // Check if Idempotency-Key is available
+        let mut idempotency_key = parse_idempotency(req.headers())?;
+        if idempotency_key.is_some()
+            && invocation_target_meta.target_ty
+                == InvocationTargetType::Workflow(WorkflowHandlerType::Workflow)
+        {
+            return Err(HandlerError::UnsupportedIdempotencyKey);
+        }
+
+        // Inject a new random idempotency key for
+        // calls that have no idempotency keys only
+        // if the `controlled-idempotent-sharding` is enabled.
+        if self
+            .cluster_features
+            .contains(ClusterFeature::ControlledIdempotentSharding)
+            && matches!(
+                invocation_target_meta.target_ty,
+                InvocationTargetType::Service | InvocationTargetType::VirtualObject(_)
+            )
+            && idempotency_key.is_none()
+        {
+            idempotency_key = Some(Ulid::new().to_string().into());
+        }
+
+        // Compute retention values
+        let invocation_retention =
+            invocation_target_meta.compute_retention(idempotency_key.is_some());
+
+        // Parse scope from path
+        let scope = if let Some(scope) = scope {
+            Some(Scope::try_from_restring(scope).map_err(HandlerError::BadScopeValue)?)
+        } else {
+            None
+        };
+
+        // Scoped invocations require vqueues to be enabled
+        if scope.is_some()
+            && !Configuration::pinned()
+                .common
+                .experimental
+                .is_vqueues_enabled()
+        {
+            return Err(HandlerError::ScopeRequiresVQueues);
+        }
+
+        // Scoped Virtual Objects are gated behind an experimental flag
+        if scope.is_some()
+            && matches!(
+                invocation_target_meta.target_ty,
+                InvocationTargetType::VirtualObject(_)
+            )
+            && !Configuration::pinned()
+                .common
+                .experimental
+                .is_scoped_virtual_objects_enabled()
+        {
+            return Err(HandlerError::ScopedVirtualObjectNotSupported);
+        }
+
+        // Craft Invocation Target and Id
+        let invocation_target = if let TargetType::Keyed { key } = target {
+            match invocation_target_meta.target_ty {
+                InvocationTargetType::VirtualObject(handler_ty) => {
+                    InvocationTarget::virtual_object(
+                        service_name.as_str(),
+                        key,
+                        &*handler_name,
+                        handler_ty,
+                    )
+                }
+                InvocationTargetType::Workflow(handler_ty) => {
+                    InvocationTarget::workflow(service_name.as_str(), key, &*handler_name, handler_ty)
+                }
+                InvocationTargetType::Service => {
+                    panic!(
+                        "Unexpected keyed target, this should have been checked before in the path parsing."
+                    )
+                }
+            }
+        } else {
+            InvocationTarget::service(service_name.as_str(), &*handler_name)
+        }
+        .with_scope(scope);
+
+        let invocation_id = InvocationId::generate(&invocation_target, idempotency_key.as_deref());
+
+        async move {
+            let ingress_span_context =
+                prepare_tracing_span(&invocation_id, &invocation_target, &req);
+
+            debug!(
+                restate.invocation.id = %invocation_id,
+                restate.invocation.target = %invocation_target.short(),
+                "Processing invocation request"
+            );
+
+            let (parts, body) = req.into_parts();
+
+            // Check HTTP Method
+            if parts.method != Method::GET && parts.method != Method::POST {
+                return Err(HandlerError::MethodNotAllowed);
+            }
+
+            // Collect body
+            let body = body
+                .collect()
+                .await
+                .map_err(|e| HandlerError::Body(e.into()))?
+                .to_bytes();
+            trace!(rpc.request = ?body);
+
+            // Validate content-type and body
+            invocation_target_meta.input_rules.validate(
+                parts
+                    .headers
+                    .get(header::CONTENT_TYPE)
+                    .map(|h| {
+                        h.to_str()
+                            .map_err(|e| HandlerError::BadHeader(header::CONTENT_TYPE, e))
+                    })
+                    .transpose()?,
+                &body,
+            )?;
+
+            // Parse delay query parameter
+            let delay = parse_delay(parts.uri.query())?;
+
+            // Parse limit-key from header or query param (header takes precedence)
+            let limit_key = parse_limit_key(&parts.headers, parts.uri.query())?;
+
+            // Validate invariant: limit-key requires scope
+            if !limit_key.is_empty() && invocation_target.scope().is_none() {
+                return Err(HandlerError::LimitKeyWithoutScope);
+            }
+
+            // Get headers
+            let headers = parse_headers(parts)?;
+
+            // Prepare service invocation
+            let mut invocation_request_header =
+                InvocationRequestHeader::initialize(invocation_id, invocation_target);
+            invocation_request_header.with_related_span(SpanRelation::parent(ingress_span_context));
+            invocation_request_header.with_retention(invocation_retention);
+            if let Some(key) = idempotency_key {
+                invocation_request_header.idempotency_key = Some(key);
+            }
+            invocation_request_header.limit_key = limit_key;
+            invocation_request_header.headers = headers;
+
+            match invoke_ty {
+                InvokeType::Call => {
+                    if delay.is_some() {
+                        return Err(HandlerError::UnsupportedDelay);
+                    }
+                    Self::handle_service_call(
+                        Arc::new(InvocationRequest::new(invocation_request_header, body)),
+                        invocation_target_meta,
+                        self.dispatcher,
+                    )
+                    .await
+                }
+                InvokeType::Send => {
+                    invocation_request_header.execution_time =
+                        delay.map(|d| SystemTime::now() + d).map(Into::into);
+
+                    Self::handle_service_send(
+                        Arc::new(InvocationRequest::new(invocation_request_header, body)),
+                        self.dispatcher,
+                    )
+                    .await
+                }
+            }
+        }
+        .await
+    }
+
+    async fn handle_service_call(
+        invocation_request: Arc<InvocationRequest>,
+        invocation_target_metadata: InvocationTargetMetadata,
+        dispatcher: Dispatcher,
+    ) -> Result<Response<Full<Bytes>>, HandlerError> {
+        let response = dispatcher
+            .call(invocation_request)
+            .instrument(trace_span!("Waiting for response"))
+            .await
+            .map_err(HandlerError::InvocationDispatcherError)?;
+
+        Self::reply_with_invocation_response(response, move |_| Ok(invocation_target_metadata))
+    }
+
+    async fn handle_service_send(
+        invocation_request: Arc<InvocationRequest>,
+        dispatcher: Dispatcher,
+    ) -> Result<Response<Full<Bytes>>, HandlerError> {
+        let invocation_id = invocation_request.invocation_id();
+
+        // Send the service invocation, wait for the submit notification
+        let response = dispatcher
+            .send(invocation_request)
+            .await
+            .map_err(HandlerError::InvocationDispatcherError)?;
+
+        trace!("Complete external HTTP send request successfully");
+        Ok(Response::builder()
+            .status(StatusCode::ACCEPTED)
+            .header(header::CONTENT_TYPE, APPLICATION_JSON)
+            .header(X_RESTATE_ID, invocation_id.to_string())
+            .body(Full::new(
+                serde_json::to_vec(&SendResponse {
+                    invocation_id,
+                    execution_time: response
+                        .execution_time
+                        .and_then(|m| {
+                            if m == MillisSinceEpoch::UNIX_EPOCH {
+                                // Ignore
+                                None
+                            } else {
+                                Some(m)
+                            }
+                        })
+                        .map(SystemTime::from)
+                        .map(Into::into),
+                    status: if response.is_new_invocation {
+                        SendStatus::Accepted
+                    } else {
+                        SendStatus::PreviouslyAccepted
+                    },
+                })
+                .unwrap()
+                .into(),
+            ))
+            .unwrap())
+    }
+}
+
+fn parse_headers(parts: http::request::Parts) -> Result<Vec<Header>, HandlerError> {
+    let mut headers = Vec::with_capacity(1 + parts.headers.keys_len());
+
+    if let Some(path_and_query) = parts.uri.path_and_query() {
+        headers.push(Header::new(X_RESTATE_INGRESS_PATH, path_and_query.as_str()));
+    }
+
+    for (k, v) in parts.headers {
+        let Some(k) = k else {
+            continue;
+        };
+
+        if k == header::CONNECTION
+            || k == header::HOST
+            || k == IDEMPOTENCY_KEY
+            || k == IDEMPOTENCY_EXPIRES
+        {
+            continue;
+        }
+
+        let value = v
+            .to_str()
+            .map_err(|e| HandlerError::BadHeader(k.clone(), e))?;
+        headers.push(Header::new(k.as_str(), value))
+    }
+
+    Ok(headers)
+}
+
+#[serde_as]
+#[derive(Deserialize)]
+#[serde(transparent)]
+struct DurationQueryParam(#[serde_as(as = "restate_util_time::FriendlyDuration")] Duration);
+
+fn parse_delay(query: Option<&str>) -> Result<Option<Duration>, HandlerError> {
+    if query.is_none() {
+        return Ok(None);
+    }
+
+    for (k, v) in url::form_urlencoded::parse(query.unwrap().as_bytes()) {
+        if k.eq_ignore_ascii_case(DELAY_QUERY_PARAM) {
+            return Ok(Some(
+                DurationQueryParam::deserialize(v.as_ref().into_deserializer())
+                    .map_err(|e: serde::de::value::Error| {
+                        HandlerError::BadDelayDuration(e.to_string())
+                    })?
+                    .0,
+            ));
+        }
+    }
+
+    Ok(None)
+}
+
+fn parse_idempotency(headers: &HeaderMap) -> Result<Option<ByteString>, HandlerError> {
+    let idempotency_key = if let Some(idempotency_key) = headers.get(IDEMPOTENCY_KEY) {
+        ByteString::from(
+            idempotency_key
+                .to_str()
+                .map_err(|e| HandlerError::BadHeader(IDEMPOTENCY_KEY, e))?,
+        )
+    } else {
+        return Ok(None);
+    };
+
+    Ok(Some(idempotency_key))
+}
+
+/// Parse limit-key from header or query parameter. Header takes precedence.
+fn parse_limit_key(
+    headers: &HeaderMap,
+    query: Option<&str>,
+) -> Result<LimitKey<ReString>, HandlerError> {
+    // Try header first
+    if let Some(header_value) = headers.get(LIMIT_KEY_HEADER) {
+        let s = header_value
+            .to_str()
+            .map_err(|e| HandlerError::BadHeader(LIMIT_KEY_HEADER, e))?;
+        return s
+            .parse()
+            .map_err(|e: restate_types::limit_key::ParseError| {
+                HandlerError::InvalidLimitKey(e.to_string())
+            });
+    }
+
+    // Fall back to query parameter
+    if let Some(query) = query {
+        for (k, v) in url::form_urlencoded::parse(query.as_bytes()) {
+            if k.eq_ignore_ascii_case(LIMIT_KEY_QUERY_PARAM) {
+                return v
+                    .parse()
+                    .map_err(|e: restate_types::limit_key::ParseError| {
+                        HandlerError::InvalidLimitKey(e.to_string())
+                    });
+            }
+        }
+    }
+
+    Ok(LimitKey::None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn delay() {
+        assert_eq!(
+            parse_delay(Some("delay=PT60S")).unwrap().unwrap(),
+            Duration::from_secs(60),
+        );
+        assert_eq!(
+            parse_delay(Some("delay=60+sec")).unwrap().unwrap(),
+            Duration::from_secs(60),
+        );
+        assert_eq!(
+            parse_delay(Some("delay=60sec")).unwrap().unwrap(),
+            Duration::from_secs(60),
+        );
+        assert_eq!(
+            parse_delay(Some("delay=60ms")).unwrap().unwrap(),
+            Duration::from_millis(60),
+        );
+        assert_eq!(
+            parse_delay(Some("delay=60000ms")).unwrap().unwrap(),
+            Duration::from_millis(60000),
+        );
+    }
+}

@@ -1,0 +1,19 @@
+params:
+  - name: environment
+    description: Runtime environment.
+working_dir: .
+preconditions:
+  - condition: |
+      value='${params.environment}'
+      if [ "$value" = prod ]; then
+        exit 0
+      fi
+      if [ "$value" = '${params.environment}' ]; then
+        printf '%s\n' literal > root-precondition-literal.txt
+        exit 0
+      fi
+      exit 1
+steps:
+  - name: write
+    run: |
+      printf '%s\n' prod > root-precondition.txt

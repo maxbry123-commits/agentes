@@ -1,0 +1,12 @@
+working_dir: .
+env:
+  - SERVICE=api
+steps:
+  - name: write
+    action: file.write
+    with:
+      path: single-quoted.txt
+      content: |
+        '$SERVICE'
+        '${SERVICE}'
+        '${env.SERVICE}'

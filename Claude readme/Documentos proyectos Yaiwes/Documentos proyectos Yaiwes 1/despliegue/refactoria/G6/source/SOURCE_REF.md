@@ -1,0 +1,1 @@
+G6 canonical sources: extensions/wordflow_kernel/gateway/intelligence.py blob 678bcaaf60e1afc39f046dd735eab862d139cd6a; router_http.py blob fd82a594f0d4ba791156077e64a725b94051c7d5. No provider adapter body exists in verified source set.

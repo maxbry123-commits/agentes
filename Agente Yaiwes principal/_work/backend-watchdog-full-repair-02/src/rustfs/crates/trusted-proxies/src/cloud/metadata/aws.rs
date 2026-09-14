@@ -1,0 +1,164 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! AWS metadata fetching implementation for identifying trusted proxy ranges.
+
+use async_trait::async_trait;
+use reqwest::Client;
+use std::str::FromStr;
+use std::time::Duration;
+use tracing::{debug, info};
+
+use crate::AppError;
+use crate::CloudMetadataFetcher;
+
+/// Fetcher for AWS-specific metadata.
+#[derive(Debug, Clone)]
+pub struct AwsMetadataFetcher {
+    client: Client,
+    #[allow(
+        dead_code,
+        reason = "IMDS endpoint retained beside the client it configures; requests build their own URLs (backlog#1823)"
+    )]
+    metadata_endpoint: String,
+}
+
+impl AwsMetadataFetcher {
+    /// Creates a new `AwsMetadataFetcher`.
+    ///
+    /// # Arguments
+    ///
+    /// * `timeout` - Duration to use for HTTP request timeouts.
+    ///
+    /// Returns a new instance of `AwsMetadataFetcher`.
+    pub fn new(timeout: Duration) -> Self {
+        let client = super::metadata_http_client(timeout);
+
+        Self {
+            client,
+            metadata_endpoint: "http://169.254.169.254".to_string(),
+        }
+    }
+}
+
+#[async_trait]
+impl CloudMetadataFetcher for AwsMetadataFetcher {
+    fn provider_name(&self) -> &str {
+        "aws"
+    }
+
+    async fn fetch_network_cidrs(&self) -> Result<Vec<ipnetwork::IpNetwork>, AppError> {
+        // Simplified implementation: returns standard AWS VPC private ranges.
+        let default_ranges = vec![
+            "10.0.0.0/8",     // Large VPCs
+            "172.16.0.0/12",  // Medium VPCs
+            "192.168.0.0/16", // Small VPCs
+        ];
+
+        let networks: Result<Vec<_>, _> = default_ranges.into_iter().map(ipnetwork::IpNetwork::from_str).collect();
+
+        match networks {
+            Ok(networks) => {
+                debug!(
+                    event = "trusted_proxies.cloud_metadata",
+                    component = "trusted_proxies",
+                    subsystem = "aws_metadata",
+                    provider = "aws",
+                    operation = "network_cidrs",
+                    result = "fallback",
+                    source = "default_ranges",
+                    range_count = networks.len(),
+                    "trusted proxy cloud metadata fallback applied"
+                );
+                Ok(networks)
+            }
+            Err(e) => Err(AppError::cloud(format!("Failed to parse default AWS ranges: {}", e))),
+        }
+    }
+
+    async fn fetch_public_ip_ranges(&self) -> Result<Vec<ipnetwork::IpNetwork>, AppError> {
+        let url = "https://ip-ranges.amazonaws.com/ip-ranges.json";
+
+        #[derive(Debug, serde::Deserialize)]
+        struct AwsIpRanges {
+            prefixes: Vec<AwsPrefix>,
+        }
+
+        #[derive(Debug, serde::Deserialize)]
+        struct AwsPrefix {
+            ip_prefix: String,
+            service: String,
+        }
+
+        match self.client.get(url).timeout(Duration::from_secs(5)).send().await {
+            Ok(response) => {
+                if response.status().is_success() {
+                    let ip_ranges: AwsIpRanges = response
+                        .json()
+                        .await
+                        .map_err(|e| AppError::cloud(format!("Failed to parse AWS IP ranges JSON: {}", e)))?;
+
+                    let mut networks = Vec::new();
+
+                    for prefix in ip_ranges.prefixes {
+                        // Include EC2 and CloudFront ranges as potential trusted proxies.
+                        if (prefix.service == "EC2" || prefix.service == "CLOUDFRONT")
+                            && let Ok(network) = ipnetwork::IpNetwork::from_str(&prefix.ip_prefix)
+                        {
+                            networks.push(network);
+                        }
+                    }
+
+                    info!(
+                        event = "trusted_proxies.cloud_metadata",
+                        component = "trusted_proxies",
+                        subsystem = "aws_metadata",
+                        provider = "aws",
+                        operation = "public_ip_ranges",
+                        result = "loaded",
+                        source = "api",
+                        range_count = networks.len(),
+                        "trusted proxy cloud metadata loaded"
+                    );
+                    Ok(networks)
+                } else {
+                    debug!(
+                        event = "trusted_proxies.cloud_metadata",
+                        component = "trusted_proxies",
+                        subsystem = "aws_metadata",
+                        provider = "aws",
+                        operation = "public_ip_ranges",
+                        result = "http_error",
+                        status = %response.status(),
+                        "trusted proxy cloud metadata request failed"
+                    );
+                    Ok(Vec::new())
+                }
+            }
+            Err(e) => {
+                debug!(
+                    event = "trusted_proxies.cloud_metadata",
+                    component = "trusted_proxies",
+                    subsystem = "aws_metadata",
+                    provider = "aws",
+                    operation = "public_ip_ranges",
+                    result = "request_failed",
+                    error = %e,
+                    "trusted proxy cloud metadata request failed"
+                );
+                Ok(Vec::new())
+            }
+        }
+    }
+}

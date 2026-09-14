@@ -1,0 +1,9 @@
+schema_version: "1.0"
+plan_ref: PIPELINE/PLAN_YAIWES_AGENTE_WORDFLOW.md
+total_salidas: 12
+status: IN_PROGRESS
+completed:
+  - S1_estructura_raiz
+  - S2_despliegue1_base
+next: S3_ORIGIN_MAP_COPY_MANIFEST
+updated_at: "2026-08-26T05:45:00Z"

@@ -1,0 +1,465 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Proxy validator for verifying proxy chains and extracting client information.
+
+use axum::http::HeaderMap;
+use std::net::{IpAddr, SocketAddr};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tracing::{debug, trace, warn};
+
+use crate::{
+    CacheConfig, CacheStats, IpValidationCache, ProxyChainAnalyzer, ProxyError, ProxyMetrics, TrustedProxyConfig, ValidationMode,
+};
+
+/// Information about the client extracted from the request and proxy headers.
+#[derive(Debug, Clone)]
+pub struct ClientInfo {
+    /// The verified real IP address of the client.
+    pub real_ip: IpAddr,
+    /// The original host requested by the client (if provided by a trusted proxy).
+    pub forwarded_host: Option<String>,
+    /// The original protocol (http/https) used by the client (if provided by a trusted proxy).
+    pub forwarded_proto: Option<String>,
+    /// Whether the request was received from a trusted proxy.
+    pub is_from_trusted_proxy: bool,
+    /// The IP address of the proxy that directly connected to this server.
+    pub proxy_ip: Option<IpAddr>,
+    /// The number of proxy hops identified in the chain.
+    pub proxy_hops: usize,
+    /// The validation mode used for this request.
+    pub validation_mode: ValidationMode,
+    /// Any warnings generated during the validation process.
+    pub warnings: Vec<String>,
+}
+
+impl ClientInfo {
+    /// Creates a `ClientInfo` for a direct connection without any proxies.
+    pub fn direct(addr: SocketAddr) -> Self {
+        Self {
+            real_ip: addr.ip(),
+            forwarded_host: None,
+            forwarded_proto: None,
+            is_from_trusted_proxy: false,
+            proxy_ip: None,
+            proxy_hops: 0,
+            validation_mode: ValidationMode::Lenient,
+            warnings: Vec::new(),
+        }
+    }
+
+    /// Creates a `ClientInfo` for a request received through a trusted proxy.
+    pub fn from_trusted_proxy(
+        real_ip: IpAddr,
+        forwarded_host: Option<String>,
+        forwarded_proto: Option<String>,
+        proxy_ip: IpAddr,
+        proxy_hops: usize,
+        validation_mode: ValidationMode,
+        warnings: Vec<String>,
+    ) -> Self {
+        Self {
+            real_ip,
+            forwarded_host,
+            forwarded_proto,
+            is_from_trusted_proxy: true,
+            proxy_ip: Some(proxy_ip),
+            proxy_hops,
+            validation_mode,
+            warnings,
+        }
+    }
+}
+
+/// Core validator that processes incoming requests to verify proxy chains.
+#[derive(Debug, Clone)]
+pub struct ProxyValidator {
+    /// Configuration for trusted proxies.
+    config: TrustedProxyConfig,
+    /// Analyzer for verifying the integrity of the proxy chain.
+    chain_analyzer: ProxyChainAnalyzer,
+    /// Cache for repeated direct-peer trusted proxy decisions.
+    validation_cache: Arc<IpValidationCache>,
+    /// Metrics collector for observability.
+    metrics: Option<ProxyMetrics>,
+}
+
+impl ProxyValidator {
+    /// Creates a new `ProxyValidator` with the given configuration and metrics.
+    pub fn new(config: TrustedProxyConfig, metrics: Option<ProxyMetrics>) -> Self {
+        Self::with_cache_config(config, CacheConfig::default(), metrics)
+    }
+
+    /// Creates a new `ProxyValidator` with explicit cache configuration.
+    pub fn with_cache_config(config: TrustedProxyConfig, cache_config: CacheConfig, metrics: Option<ProxyMetrics>) -> Self {
+        let chain_analyzer = ProxyChainAnalyzer::new(config.clone());
+        let cache_enabled = cache_config.capacity > 0 && cache_config.ttl_seconds > 0;
+        let validation_cache = Arc::new(IpValidationCache::new(
+            cache_config.capacity,
+            cache_config.ttl_duration(),
+            cache_enabled,
+            metrics.clone(),
+        ));
+
+        Self {
+            config,
+            chain_analyzer,
+            validation_cache,
+            metrics,
+        }
+    }
+
+    /// Validates an incoming request and extracts client information.
+    pub fn validate_request(&self, peer_addr: Option<SocketAddr>, headers: &HeaderMap) -> Result<ClientInfo, ProxyError> {
+        let start_time = Instant::now();
+
+        // Record the start of the validation attempt.
+        self.record_metric_start();
+
+        // Perform the internal validation logic.
+        let result = self.validate_request_internal(peer_addr, headers);
+
+        // Record the result and duration.
+        let duration = start_time.elapsed();
+        self.record_metric_result(&result, duration);
+
+        result
+    }
+
+    /// Internal logic for request validation.
+    fn validate_request_internal(&self, peer_addr: Option<SocketAddr>, headers: &HeaderMap) -> Result<ClientInfo, ProxyError> {
+        let Some(peer_addr) = peer_addr else {
+            debug!(
+                event = "proxy_validation.evaluate",
+                component = "trusted_proxies",
+                subsystem = "validator",
+                result = "direct",
+                reason = "missing_peer_addr",
+                "trusted proxy evaluation skipped"
+            );
+            return Ok(ClientInfo::direct(SocketAddr::new(IpAddr::from([0, 0, 0, 0]), 0)));
+        };
+
+        let peer_ip = peer_addr.ip();
+        if peer_ip.is_unspecified() {
+            debug!(
+                event = "proxy_validation.evaluate",
+                component = "trusted_proxies",
+                subsystem = "validator",
+                result = "direct",
+                reason = "unspecified_peer_addr",
+                peer_ip = %peer_ip,
+                "trusted proxy evaluation skipped"
+            );
+            return Ok(ClientInfo::direct(peer_addr));
+        }
+
+        let is_trusted_proxy = self
+            .validation_cache
+            .is_trusted(&peer_ip, |ip| self.chain_analyzer.is_ip_trusted(ip));
+
+        // Check if the direct peer is a trusted proxy.
+        if is_trusted_proxy {
+            trace!(
+                event = "proxy_validation.peer",
+                component = "trusted_proxies",
+                subsystem = "validator",
+                result = "trusted_proxy",
+                peer_ip = %peer_ip,
+                validation_mode = self.config.validation_mode.as_str(),
+                "trusted proxy peer accepted"
+            );
+
+            // Parse and validate headers from the trusted proxy.
+            self.validate_trusted_proxy_request(&peer_addr, headers)
+        } else {
+            // Log a warning if the request is from a private network but not trusted.
+            if self.config.is_private_network(&peer_ip) {
+                warn!(
+                    event = "proxy_validation.peer",
+                    component = "trusted_proxies",
+                    subsystem = "validator",
+                    result = "direct",
+                    fallback = "socket_peer",
+                    reason = "private_network_untrusted",
+                    peer_ip = %peer_ip,
+                    "trusted proxy validation downgraded to direct peer"
+                );
+            } else {
+                trace!(
+                    event = "proxy_validation.peer",
+                    component = "trusted_proxies",
+                    subsystem = "validator",
+                    result = "direct",
+                    fallback = "socket_peer",
+                    reason = "peer_not_trusted",
+                    peer_ip = %peer_ip,
+                    "trusted proxy validation resolved direct peer"
+                );
+            }
+
+            // Treat as a direct connection if the peer is not trusted.
+            Ok(ClientInfo::direct(peer_addr))
+        }
+    }
+
+    /// Returns cache statistics for direct-peer validation decisions.
+    pub fn cache_stats(&self) -> CacheStats {
+        self.validation_cache.stats()
+    }
+
+    pub(crate) fn spawn_cache_maintenance_task(self: &Arc<Self>, cleanup_interval: Duration) {
+        if cleanup_interval.is_zero() || !self.validation_cache.is_enabled() {
+            return;
+        }
+
+        let Ok(handle) = tokio::runtime::Handle::try_current() else {
+            tracing::debug!(
+                event = "proxy_validation.cache_maintenance",
+                component = "trusted_proxies",
+                subsystem = "validator",
+                state = "disabled",
+                reason = "missing_tokio_runtime",
+                "trusted proxy cache maintenance unavailable"
+            );
+            return;
+        };
+
+        let cache = self.validation_cache.clone();
+        handle.spawn(async move {
+            let mut interval = tokio::time::interval(cleanup_interval);
+            loop {
+                interval.tick().await;
+                cache.run_maintenance();
+            }
+        });
+    }
+
+    /// Validates a request that originated from a trusted proxy.
+    fn validate_trusted_proxy_request(&self, proxy_addr: &SocketAddr, headers: &HeaderMap) -> Result<ClientInfo, ProxyError> {
+        let proxy_ip = proxy_addr.ip();
+
+        // Prefer RFC 7239 "Forwarded" header if enabled, otherwise fallback to legacy headers.
+        let client_info = if self.config.enable_rfc7239 {
+            self.try_parse_rfc7239_headers(headers, proxy_ip)
+                .unwrap_or_else(|| self.parse_legacy_headers(headers))
+        } else {
+            self.parse_legacy_headers(headers)
+        };
+
+        // Analyze the integrity and continuity of the proxy chain.
+        let chain_analysis = self
+            .chain_analyzer
+            .analyze_chain(&client_info.proxy_chain, proxy_ip, headers)?;
+
+        // Enforce maximum hop limit.
+        if chain_analysis.hops > self.config.max_hops {
+            return Err(ProxyError::ChainTooLong(chain_analysis.hops, self.config.max_hops));
+        }
+
+        // Enforce chain continuity if enabled.
+        if self.config.enable_chain_continuity_check && !chain_analysis.is_continuous {
+            return Err(ProxyError::ChainNotContinuous);
+        }
+
+        trace!(
+            event = "proxy_validation.chain",
+            component = "trusted_proxies",
+            subsystem = "validator",
+            result = "accepted",
+            proxy_ip = %proxy_ip,
+            client_ip = %chain_analysis.client_ip,
+            proxy_hops = chain_analysis.hops,
+            warning_count = chain_analysis.warnings.len(),
+            validation_mode = chain_analysis.validation_mode.as_str(),
+            trusted_proxy_count = chain_analysis.trusted_chain.len(),
+            "trusted proxy chain accepted"
+        );
+
+        Ok(ClientInfo::from_trusted_proxy(
+            chain_analysis.client_ip,
+            client_info.forwarded_host,
+            client_info.forwarded_proto,
+            proxy_ip,
+            chain_analysis.hops,
+            self.config.validation_mode,
+            chain_analysis.warnings,
+        ))
+    }
+
+    /// Attempts to parse the RFC 7239 "Forwarded" header.
+    fn try_parse_rfc7239_headers(&self, headers: &HeaderMap, proxy_ip: IpAddr) -> Option<ParsedHeaders> {
+        headers
+            .get("forwarded")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| Self::parse_forwarded_header(s, proxy_ip))
+    }
+
+    /// Parses legacy proxy headers (X-Forwarded-For, X-Forwarded-Host, X-Forwarded-Proto).
+    fn parse_legacy_headers(&self, headers: &HeaderMap) -> ParsedHeaders {
+        let forwarded_host = headers
+            .get("x-forwarded-host")
+            .and_then(|h| h.to_str().ok())
+            .map(String::from);
+
+        let forwarded_proto = headers
+            .get("x-forwarded-proto")
+            .and_then(|h| h.to_str().ok())
+            .map(String::from);
+
+        let proxy_chain = headers
+            .get("x-forwarded-for")
+            .and_then(|h| h.to_str().ok())
+            .map(Self::parse_x_forwarded_for)
+            .unwrap_or_default();
+
+        ParsedHeaders {
+            proxy_chain,
+            forwarded_host,
+            forwarded_proto,
+        }
+    }
+
+    /// Parses the RFC 7239 "Forwarded" header value.
+    ///
+    /// Every comma-separated element is parsed in wire order (client-closest
+    /// first, each proxy appends its node to the right) so that the resulting
+    /// `proxy_chain` can be validated by the same right-to-left chain analysis
+    /// used for `X-Forwarded-For`. This prevents a client from spoofing the
+    /// real IP by supplying only the leftmost element.
+    ///
+    /// `host`/`proto` are taken solely from the last (most recent) element,
+    /// which is appended by the directly connected trusted proxy — mirroring
+    /// how the legacy path reads proxy-set `X-Forwarded-Host`/`Proto` headers.
+    /// Values injected by the client in earlier elements are ignored.
+    fn parse_forwarded_header(header_value: &str, proxy_ip: IpAddr) -> Option<ParsedHeaders> {
+        let elements: Vec<&str> = header_value
+            .split(',')
+            .map(|element| element.trim())
+            .filter(|element| !element.is_empty())
+            .collect();
+
+        let mut proxy_chain = Vec::new();
+        let mut forwarded_host = None;
+        let mut forwarded_proto = None;
+
+        let last_index = elements.len().saturating_sub(1);
+        for (index, element) in elements.iter().enumerate() {
+            let is_last = index == last_index;
+            for part in element.split(';') {
+                let part = part.trim();
+                if let Some((key, value)) = part.split_once('=') {
+                    let key = key.trim().to_lowercase();
+                    let value = value.trim().trim_matches('"');
+
+                    match key.as_str() {
+                        "for" => {
+                            if let Some(ip) = Self::parse_forwarded_node(value) {
+                                proxy_chain.push(ip);
+                            }
+                        }
+                        // Only honor host/proto from the trusted proxy-appended node.
+                        "host" if is_last => {
+                            forwarded_host = Some(value.to_string());
+                        }
+                        "proto" if is_last => {
+                            forwarded_proto = Some(value.to_string());
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        // Fallback to the proxy IP if no client IP was found in the header.
+        if proxy_chain.is_empty() {
+            proxy_chain.push(proxy_ip);
+        }
+
+        Some(ParsedHeaders {
+            proxy_chain,
+            forwarded_host,
+            forwarded_proto,
+        })
+    }
+
+    /// Parses the X-Forwarded-For header into a list of IP addresses.
+    pub fn parse_x_forwarded_for(header_value: &str) -> Vec<IpAddr> {
+        header_value
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .filter_map(Self::parse_forwarded_node)
+            .collect()
+    }
+
+    /// Parses a single forwarded node token into an `IpAddr`.
+    ///
+    /// Handles bracketed IPv6 (`[2001:db8::1]` and `[2001:db8::1]:443`),
+    /// IPv4 with an optional `:port`, and BARE IPv6 addresses. A trailing
+    /// `:port` is only stripped when the token is not itself a valid bare
+    /// address, so `2001:db8::1` is no longer truncated to `2001`.
+    fn parse_forwarded_node(token: &str) -> Option<IpAddr> {
+        let token = token.trim();
+        if token.is_empty() {
+            return None;
+        }
+
+        let ip_str = if let Some(rest) = token.strip_prefix('[') {
+            // Bracketed IPv6, optionally followed by ":port".
+            rest.split(']').next()?
+        } else if token.parse::<IpAddr>().is_ok() {
+            // Bare address (IPv4 or IPv6) with no port; parse the whole token.
+            token
+        } else {
+            // Not a bare address: strip a trailing ":port" (IPv4 host:port).
+            token.rsplit_once(':').map(|(host, _)| host).unwrap_or(token)
+        };
+
+        ip_str.parse::<IpAddr>().ok()
+    }
+
+    /// Records the start of a validation attempt in metrics.
+    fn record_metric_start(&self) {
+        if let Some(metrics) = &self.metrics {
+            metrics.increment_validation_attempts();
+        }
+    }
+
+    /// Records the result of a validation attempt in metrics.
+    fn record_metric_result(&self, result: &Result<ClientInfo, ProxyError>, duration: std::time::Duration) {
+        if let Some(metrics) = &self.metrics {
+            match result {
+                Ok(client_info) => {
+                    metrics.record_validation_success(client_info.is_from_trusted_proxy, client_info.proxy_hops, duration);
+                }
+                Err(err) => {
+                    metrics.record_validation_failure(err, duration);
+                }
+            }
+        }
+    }
+}
+
+/// Internal structure for holding parsed header information.
+#[derive(Debug, Clone)]
+struct ParsedHeaders {
+    /// The chain of proxy IPs (client IP is typically the first).
+    proxy_chain: Vec<IpAddr>,
+    /// The original host requested.
+    forwarded_host: Option<String>,
+    /// The original protocol used.
+    forwarded_proto: Option<String>,
+}

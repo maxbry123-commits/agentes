@@ -1,0 +1,54 @@
+# Copyright 2024 RustFS Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+[package]
+name = "rustfs-signer"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+homepage.workspace = true
+description = "Digital signature generation and verification for RustFS, ensuring data integrity and authenticity."
+keywords = ["digital-signature", "verification", "integrity", "rustfs", "Minio"]
+categories = ["web-programming", "development-tools", "cryptography"]
+documentation = "https://docs.rs/rustfs-signer/latest/rustfs_signer/"
+
+[features]
+default = []
+hotpath = ["hotpath/hotpath", "rustfs-utils/hotpath"]
+hotpath-alloc = ["hotpath", "hotpath/hotpath-alloc", "rustfs-utils/hotpath-alloc"]
+hotpath-cpu = ["hotpath", "hotpath/hotpath-cpu", "rustfs-utils/hotpath-cpu"]
+
+[dependencies]
+hotpath.workspace = true
+tracing.workspace = true
+bytes = { workspace = true, features = ["serde"] }
+http.workspace = true
+time = { workspace = true, features = ["parsing", "formatting", "macros", "serde"] }
+hyper = { workspace = true, features = ["http2", "http1", "server"] }
+serde_urlencoded.workspace = true
+rustfs-utils = { workspace = true, features = ["full"] }
+s3s = { workspace = true, features = ["minio"] }
+base64-simd.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true, features = ["fmt"] }
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false

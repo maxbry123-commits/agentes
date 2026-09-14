@@ -1,0 +1,383 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # Fail rather than skip if the browser is missing. The browser suite skips
+  # politely on a laptop without Chromium, which on a bare runner would mean a
+  # green badge over ~15 unexercised tests: including every assertion about
+  # synthetic clicks and keystrokes. A skip that reads as a pass is worse than
+  # a failure.
+  BOTROSTER_REQUIRE_BROWSER: "1"
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    env:
+      # Chrome's own renderer sandbox is on by default now, and it cannot
+      # initialise on the Ubuntu runner: Chrome refuses to start there and the
+      # whole page suite fails with "the browser never published a debugging
+      # port". This is the container-as-root case the flag exists for, and a CI
+      # runner is a disposable machine that browses only its own fixtures.
+      #
+      # Linux only, deliberately. macOS and Windows can sandbox, so leaving it
+      # off there means CI still exercises the shipped default on two of three
+      # platforms rather than testing an arrangement no user has.
+      BOTROSTER_BROWSER_NO_SANDBOX: ${{ matrix.os == 'ubuntu-latest' && '1' || '0' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Linux is where a guest actually runs; macOS catches the
+        # unix-permissions path that Windows development never exercises.
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      # BOTROSTER is a Tauri app, and its webview backend links against
+      # webkit2gtk on Linux: the guest crate is pure Rust, the window is
+      # not. Without these, every job below fails at the first `tauri`
+      # compile with pkg-config errors, so install them once per job.
+      - name: install tauri linux dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          # The Ubuntu runners' apt mirrors stall often enough to matter: an
+          # unguarded install hung this job three times, holding a leg of the
+          # matrix for hours instead of failing. Each attempt is bounded so a
+          # stalled mirror fails fast, and retried because the next try
+          # usually reaches a different one.
+          pkgs="libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev
+                libssl-dev libayatana-appindicator3-dev librsvg2-dev"
+          for attempt in 1 2 3; do
+            if timeout 300 sudo apt-get update -o Acquire::Retries=3 &&
+               timeout 600 sudo apt-get install -y -o Acquire::Retries=3 $pkgs; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt stalled or failed; retrying"
+            sleep 20
+          done
+          echo "::error::apt did not succeed in three attempts"
+          exit 1
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      # The desktop client bundles the runtime as a Tauri sidecar, and Tauri's
+      # build script requires that file to exist before botroster-app compiles.
+      # Stage it the same way the bundle job does, or a build of the workspace
+      # fails at the build script on a fresh checkout.
+      - name: stage the runtime as a sidecar
+        run: sh scripts/sidecar.sh
+
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+        # Ubuntu images ship no browser, so Linux downloads Chromium. macOS
+        # gets nothing: the hosted image already has real Google Chrome, and
+        # the Chromium-for-Testing arm64 build setup-chrome installs there
+        # never answers Page.enable over CDP: every headless/GPU flag
+        # combination hangs (probed 2026-08-14), while real Chrome answers
+        # every one. Real Chrome is also the browser a Mac user actually has.
+        if: runner.os == 'Linux'
+        with:
+          chrome-version: stable
+
+      # The guest finds a browser by looking in the usual install locations,
+      # which a runner-provided browser is not in.
+      - name: point the guest at a browser
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            echo "BOTROSTER_BROWSER=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" >> "$GITHUB_ENV"
+          else
+            echo "BOTROSTER_BROWSER=${{ steps.chrome.outputs.chrome-path }}" >> "$GITHUB_ENV"
+          fi
+
+      - name: fmt
+        run: cargo fmt --all -- --check
+
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: test
+        run: cargo test --workspace
+
+  # A separate job so a broken build on Windows is visible without holding up
+  # the real suite. Development happens here, so it must at least compile.
+  windows-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # The desktop client bundles the runtime as a Tauri sidecar, and Tauri's
+      # build script requires that file to exist before botroster-app compiles.
+      # Stage it the same way the bundle job does, or a build of the workspace
+      # fails at the build script on a fresh checkout.
+      - name: stage the runtime as a sidecar
+        run: sh scripts/sidecar.sh
+      - run: cargo build --workspace --all-targets
+
+  # `rust-version` in Cargo.toml is a promise to anyone on an older toolchain,
+  # and nothing was keeping it. It said 1.82 while the code needed 1.89 for
+  # `File::try_lock`: a claim that had quietly become false, which is exactly
+  # what an unchecked claim does. Pin the floor and build against it.
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install tauri linux dependencies
+        shell: bash
+        run: |
+          set -eu
+          # The Ubuntu runners' apt mirrors stall often enough to matter: an
+          # unguarded install hung this job three times, holding a leg of the
+          # matrix for hours instead of failing. Each attempt is bounded so a
+          # stalled mirror fails fast, and retried because the next try
+          # usually reaches a different one.
+          pkgs="libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev
+                libssl-dev libayatana-appindicator3-dev librsvg2-dev"
+          for attempt in 1 2 3; do
+            if timeout 300 sudo apt-get update -o Acquire::Retries=3 &&
+               timeout 600 sudo apt-get install -y -o Acquire::Retries=3 $pkgs; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt stalled or failed; retrying"
+            sleep 20
+          done
+          echo "::error::apt did not succeed in three attempts"
+          exit 1
+      - uses: dtolnay/rust-toolchain@1.89
+      - uses: Swatinem/rust-cache@v2
+      # The desktop client bundles the runtime as a Tauri sidecar, and Tauri's
+      # build script requires that file to exist before botroster-app compiles.
+      # Stage it the same way the bundle job does, or a build of the workspace
+      # fails at the build script on a fresh checkout.
+      - name: stage the runtime as a sidecar
+        run: sh scripts/sidecar.sh
+      - run: cargo check --workspace --all-targets
+
+  # Packaging, on tags only. A full bundle on three platforms takes about ten
+  # minutes each, and running that on every push would buy one bit of
+  # information: "the installer still builds": for most of the CI budget.
+  # `windows-build` above already catches anything that breaks compilation.
+  #
+  # **Unsigned.** Signing needs a certificate and an identity, which is a
+  # decision for whoever ships this rather than a setting this file can
+  # default. Windows will show SmartScreen and macOS will refuse to open it
+  # without a right-click → Open; `README.md` says so where a person
+  # downloading one would read it.
+  bundle:
+    if: startsWith(github.ref, 'refs/tags/v')
+    name: bundle (${{ matrix.os }})
+    # An installer built from code whose tests failed is worse than no
+    # installer: it is a download that carries a known-broken build to
+    # somebody who will not be reading the CI log.
+    needs: [test, msrv]
+    permissions:
+      contents: write
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install tauri linux dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          # The Ubuntu runners' apt mirrors stall often enough to matter: an
+          # unguarded install hung this job three times, holding a leg of the
+          # matrix for hours instead of failing. Each attempt is bounded so a
+          # stalled mirror fails fast, and retried because the next try
+          # usually reaches a different one.
+          pkgs="libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev
+                libssl-dev libayatana-appindicator3-dev librsvg2-dev"
+          for attempt in 1 2 3; do
+            if timeout 300 sudo apt-get update -o Acquire::Retries=3 &&
+               timeout 600 sudo apt-get install -y -o Acquire::Retries=3 $pkgs; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt stalled or failed; retrying"
+            sleep 20
+          done
+          echo "::error::apt did not succeed in three attempts"
+          exit 1
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: install the tauri cli
+        run: cargo install tauri-cli --version "^2" --locked
+
+      # The runtime goes into the bundle with the app. An installer shipping
+      # only the client leaves whoever runs it with nothing to connect to,
+      # which is what shipped before anybody tried installing it.
+      # The credential the shipped binary carries, injected here and nowhere
+      # else. It is deliberately not in the repository: this one is public and
+      # Apache-2.0, so a literal in the source would be readable by anybody
+      # browsing GitHub and would stay in the history after a rotation.
+      #
+      # This does not make the key secret in the released installer. Anyone who
+      # downloads one recovers it with `grep -a` — verified, not assumed. What it
+      # buys is that rotating it is a rebuild rather than a rewrite of history,
+      # and that the source stays publishable. Treat a build as the unit of
+      # rotation.
+      #
+      # A fork without the secret set builds a working BOTROSTER with no shipped
+      # model, which is the correct outcome rather than a failure: `option_env!`
+      # yields `None` and the ordinary "configure a model" path applies.
+      - name: stage the runtime as a sidecar
+        env:
+          # Either name. The product was renamed after this secret was set, and
+          # a repository secret cannot be renamed in place — only deleted and
+          # recreated, which needs the value, which nobody can read back. Taking
+          # both means the rename does not quietly take the shipped model down
+          # with it, and the day the new name is set it wins.
+          BOTROSTER_BUILTIN_KEY: ${{ secrets.BOTROSTER_BUILTIN_KEY || secrets.OPENBOT_BUILTIN_KEY }}
+        run: sh scripts/sidecar.sh
+
+      # The failure this exists to prevent is silent. A secret that is unset,
+      # misnamed, or set to an empty string makes `option_env!` yield nothing;
+      # the build then succeeds, all five installers are produced and attached,
+      # and every one of them ships with no model. It is indistinguishable from
+      # a good release on the Actions page, and the first person to discover it
+      # is somebody who downloaded one.
+      #
+      # The length is printed and the value never is. That is enough to tell
+      # "empty" from "set to something implausible", which is the distinction
+      # worth having when a key was pasted into the wrong box.
+      - name: the shipped credential is present
+        shell: bash
+        env:
+          BOTROSTER_BUILTIN_KEY: ${{ secrets.BOTROSTER_BUILTIN_KEY || secrets.OPENBOT_BUILTIN_KEY }}
+        run: |
+          set -eu
+          if [ -z "${BOTROSTER_BUILTIN_KEY:-}" ]; then
+            echo "BOTROSTER_BUILTIN_KEY is unset or empty."
+            echo
+            echo "Installers built from this would carry no model, and would ask"
+            echo "whoever downloads them to configure one - which is the thing a"
+            echo "shipped model exists to avoid. Failing here rather than"
+            echo "publishing that quietly."
+            echo
+            echo "Set it at Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          echo "a credential is present (${#BOTROSTER_BUILTIN_KEY} characters)"
+
+      - name: bundle
+        working-directory: crates/botroster-app
+        env:
+          BOTROSTER_BUILTIN_KEY: ${{ secrets.BOTROSTER_BUILTIN_KEY || secrets.OPENBOT_BUILTIN_KEY }}
+        run: cargo tauri build
+
+      # And it actually reached the binary. The step above proves the secret
+      # arrived at the runner; this proves it survived compilation, which is a
+      # different claim - a stale cached object file would break it silently,
+      # which is what `build.rs` guards and this confirms.
+      #
+      # `grep -c` prints a count and never the match. GitHub masks the value in
+      # logs regardless, but not relying on that is cheaper than checking it.
+      - name: the credential reached the shipped runtime
+        shell: bash
+        env:
+          BOTROSTER_BUILTIN_KEY: ${{ secrets.BOTROSTER_BUILTIN_KEY || secrets.OPENBOT_BUILTIN_KEY }}
+        run: |
+          set -eu
+          # This runner's own binary, by name, not "whichever file is first".
+          #
+          # `crates/botroster-app/binaries/` is not empty at checkout: the Windows
+          # sidecar is committed, so on Linux and macOS there are two files here
+          # after staging and `find | head -1` returns an arbitrary one. It
+          # returned the committed Windows binary - built on a laptop long
+          # before this key existed - and reported a correct build as broken.
+          # Windows passed only because `sidecar.sh` overwrites that same file
+          # there.
+          triple=$(rustc -vV | sed -n 's/^host: //p')
+          ext=""
+          case "$triple" in *windows*) ext=".exe" ;; esac
+          staged="crates/botroster-app/binaries/botroster-$triple$ext"
+          test -f "$staged" || { echo "no sidecar was staged at $staged"; exit 1; }
+          echo "checking $staged"
+          if grep -qa -- "$BOTROSTER_BUILTIN_KEY" "$staged"; then
+            echo "the shipped runtime carries the credential"
+          else
+            echo "the staged runtime does NOT contain the credential."
+            echo "The secret reached the runner but not the binary: a cached"
+            echo "object file, or option_env! not being re-evaluated."
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: botroster-${{ matrix.os }}
+          path: |
+            target/release/bundle/**/*.msi
+            target/release/bundle/**/*.exe
+            target/release/bundle/**/*.dmg
+            target/release/bundle/**/*.deb
+            target/release/bundle/**/*.AppImage
+            target/release/bundle/**/*.sha256
+            target/release/bundle/**/*.sha256
+          if-no-files-found: error
+
+      # An unsigned installer asks a person to click past a warning, so give
+      # them something to check it against. One `.sha256` beside each file,
+      # written by the job that built it.
+      # An unsigned installer asks a person to click past a warning, so give
+      # them something to check it against: one `.sha256` beside each file,
+      # written by the job that built it.
+      #
+      # macOS ships `shasum` and not `sha256sum`, so pick whichever is here
+      # rather than assuming the GNU name and failing on one leg of the matrix.
+      - name: checksum every installer
+        shell: bash
+        run: |
+          set -eu
+          if command -v sha256sum >/dev/null; then
+            sum() { sha256sum "$1"; }
+          else
+            sum() { shasum -a 256 "$1"; }
+          fi
+          found=0
+          while IFS= read -r f; do
+            found=1
+            dir=$(dirname "$f")
+            base=$(basename "$f")
+            (cd "$dir" && sum "$base" > "$base.sha256")
+            echo "checksummed $base"
+          done < <(find target/release/bundle -type f                      \( -name '*.msi' -o -name '*.exe' -o -name '*.dmg'                         -o -name '*.deb' -o -name '*.AppImage' \))
+          test "$found" = 1 || { echo "the bundler produced no installer"; exit 1; }
+
+      # A workflow artifact is a zip behind a login that expires in 90 days,
+      # which is not a download link. The installers go on the release itself.
+      - name: attach the installers to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          # Each runner produces only its own formats, so most of the patterns
+          # below match nothing on any given leg: macOS has no `.msi`, Windows
+          # no `.dmg`. Failing on that would fail every leg. The guard that
+          # matters is in the checksum step above, which fails when the
+          # bundler produced no installer at all on THIS runner.
+          fail_on_unmatched_files: false
+          files: |
+            target/release/bundle/**/*.msi
+            target/release/bundle/**/*.exe
+            target/release/bundle/**/*.dmg
+            target/release/bundle/**/*.deb
+            target/release/bundle/**/*.AppImage
+            target/release/bundle/**/*.sha256
