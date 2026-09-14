@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 8544043,
+  "bundle_sha256": "fa9e2ae601afd536874dd97fd9c6b6721c6d37fe23815178c87eeac47028ee34",
+  "extracted_tree": {
+    "bytes": 16025085,
+    "files": 1090,
+    "sha256": "888a33e93679f7eaae0d8b0b4964bafc1656c9e6a2def5655ae2b5b65e3855ae"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 8544043,
+      "name": "AgentScope.bundle.zip.part-0001",
+      "sha256": "fa9e2ae601afd536874dd97fd9c6b6721c6d37fe23815178c87eeac47028ee34"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "AgentScope",
+  "source_bytes": 16025085,
+  "source_commit": "07f881e7f9283ea22fab840365610ab874270bd0",
+  "source_files": 1090,
+  "source_ref": "HEAD",
+  "source_repo": "agentscope-ai/agentscope",
+  "source_tree": {
+    "bytes": 16025085,
+    "files": 1090,
+    "sha256": "888a33e93679f7eaae0d8b0b4964bafc1656c9e6a2def5655ae2b5b65e3855ae"
+  }
+}
