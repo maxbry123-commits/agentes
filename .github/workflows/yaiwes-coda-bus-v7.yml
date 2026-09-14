@@ -1,24 +1,25 @@
-name: YAIWES CODA Bus V7
+name: YAIWES CODA Bus V8.1
 
 on:
   push:
     branches:
       - yaiwes-coda-v7
       - yaiwes-coda-v7-research-adapter
+      - yaiwes-coda-v81-canonical-entry
     paths:
-      - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_coda_bus_v7.py'
-      - '📂coda workflow persistencias/Fables enchufe universal/test_yaiwes_coda_bus_v7.py'
-      - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_coda_research_gate_v71.py'
-      - '📂coda workflow persistencias/Fables enchufe universal/test_yaiwes_coda_research_gate_v71.py'
+      - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_coda_*.py'
+      - '📂coda workflow persistencias/Fables enchufe universal/test_yaiwes_coda_*.py'
+      - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_internal_swarm_chain_v5.py'
+      - '📂coda workflow persistencias/Fables enchufe universal/test_yaiwes_internal_swarm_chain_v5.py'
       - '.github/workflows/yaiwes-coda-bus-v7.yml'
   pull_request:
     branches:
       - main
     paths:
-      - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_coda_bus_v7.py'
-      - '📂coda workflow persistencias/Fables enchufe universal/test_yaiwes_coda_bus_v7.py'
-      - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_coda_research_gate_v71.py'
-      - '📂coda workflow persistencias/Fables enchufe universal/test_yaiwes_coda_research_gate_v71.py'
+      - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_coda_*.py'
+      - '📂coda workflow persistencias/Fables enchufe universal/test_yaiwes_coda_*.py'
+      - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_internal_swarm_chain_v5.py'
+      - '📂coda workflow persistencias/Fables enchufe universal/test_yaiwes_internal_swarm_chain_v5.py'
       - '.github/workflows/yaiwes-coda-bus-v7.yml'
   workflow_dispatch:
 
@@ -38,17 +39,27 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Compile CODA bus and research gate
+      - name: Compile CODA canonical stack
         working-directory: '📂coda workflow persistencias/Fables enchufe universal'
         run: >-
           python -m py_compile
           yaiwes_coda_bus_v7.py
-          test_yaiwes_coda_bus_v7.py
           yaiwes_coda_research_gate_v71.py
+          yaiwes_coda_persistence_v8.py
+          yaiwes_coda_bus_v8.py
+          yaiwes_coda_research_gate_v81.py
+          yaiwes_internal_swarm_chain_v5.py
+          test_yaiwes_coda_bus_v7.py
           test_yaiwes_coda_research_gate_v71.py
-      - name: Run CODA bus and research gate unit tests
+          test_yaiwes_coda_bus_v8.py
+          test_yaiwes_coda_research_gate_v81.py
+          test_yaiwes_internal_swarm_chain_v5.py
+      - name: Run CODA V7 V8 V8.1 and canonical entry tests
         working-directory: '📂coda workflow persistencias/Fables enchufe universal'
         run: >-
           python -m unittest -v
           test_yaiwes_coda_bus_v7.py
           test_yaiwes_coda_research_gate_v71.py
+          test_yaiwes_coda_bus_v8.py
+          test_yaiwes_coda_research_gate_v81.py
+          test_yaiwes_internal_swarm_chain_v5.py
