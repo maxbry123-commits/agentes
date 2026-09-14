@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 69978,
+  "bundle_sha256": "eca2099dc42325ad5f6e8525e2ba15db48f17f8093a13038222a514b929cd951",
+  "extracted_tree": {
+    "bytes": 273529,
+    "files": 21,
+    "sha256": "72097f1b0f48b777f2ddb4a9840c84b7e419cd659a39caf7901ee4d3f08db197"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 69978,
+      "name": "EVOLVE-MEM.bundle.zip.part-0001",
+      "sha256": "eca2099dc42325ad5f6e8525e2ba15db48f17f8093a13038222a514b929cd951"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "EVOLVE-MEM",
+  "source_bytes": 273529,
+  "source_commit": "3ac9b1deb1ade7cca6c7e4efd7e3492535646ce2",
+  "source_files": 21,
+  "source_ref": "HEAD",
+  "source_repo": "RS-010806/EVOLVE-MEM",
+  "source_tree": {
+    "bytes": 273529,
+    "files": 21,
+    "sha256": "72097f1b0f48b777f2ddb4a9840c84b7e419cd659a39caf7901ee4d3f08db197"
+  }
+}
