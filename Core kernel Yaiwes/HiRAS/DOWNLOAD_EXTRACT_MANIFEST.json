@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 134584,
+  "bundle_sha256": "49e5887001aba35c15b77b4d7dd201e6e418c2dd19949861044e4a90495f9eb4",
+  "extracted_tree": {
+    "bytes": 457886,
+    "files": 47,
+    "sha256": "4713f995be643f6b66dcfca10e687b40c20abe0d3312e914c2607f5893e72938"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 134584,
+      "name": "HiRAS.bundle.zip.part-0001",
+      "sha256": "49e5887001aba35c15b77b4d7dd201e6e418c2dd19949861044e4a90495f9eb4"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "HiRAS",
+  "source_bytes": 457886,
+  "source_commit": "38210c4cc7363564cac88eeb6b62e1c0b1347b1b",
+  "source_files": 47,
+  "source_ref": "HEAD",
+  "source_repo": "KOU-199024/HiRAS",
+  "source_tree": {
+    "bytes": 457886,
+    "files": 47,
+    "sha256": "4713f995be643f6b66dcfca10e687b40c20abe0d3312e914c2607f5893e72938"
+  }
+}
