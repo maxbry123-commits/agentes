@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - '.github/workflows/yaiwes-coda-mesh-v21-fast.yml'
+      - '.github/scripts/yaiwes_coda_mesh_v21.py'
   workflow_dispatch:
 
 permissions:
