@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 1487073,
+  "bundle_sha256": "19561f35e217bfecf2278e2c222b0c478b714e6afdbcb1ee2214eb3d47c40022",
+  "extracted_tree": {
+    "bytes": 2179305,
+    "files": 135,
+    "sha256": "ec943398b405d43e851195df3db20c6da2b0a3187acbdc3927ffa635b18d69aa"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 1487073,
+      "name": "A2A-Protocol.bundle.zip.part-0001",
+      "sha256": "19561f35e217bfecf2278e2c222b0c478b714e6afdbcb1ee2214eb3d47c40022"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "A2A-Protocol",
+  "source_bytes": 2179305,
+  "source_commit": "6d6640c29b102f7a8d23784901351b5d2454fe71",
+  "source_files": 135,
+  "source_ref": "HEAD",
+  "source_repo": "a2aproject/A2A",
+  "source_tree": {
+    "bytes": 2179305,
+    "files": 135,
+    "sha256": "ec943398b405d43e851195df3db20c6da2b0a3187acbdc3927ffa635b18d69aa"
+  }
+}

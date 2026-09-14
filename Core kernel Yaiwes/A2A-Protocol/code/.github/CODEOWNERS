@@ -1,0 +1,19 @@
+# Code owners file.
+# This file controls who is tagged for review for any given pull request.
+#
+# For syntax help see:
+# https://help.github.com/en/github/creating-cloning-and-archiving-repositories/about-code-owners#codeowners-syntax
+
+# Fallback owner for everything in the repository
+*                       @a2aproject/a2a-tsc @a2aproject/tech-writing @a2aproject/google-a2a-eng @a2aproject/a2a-project-maintainers
+
+# Core Specification Maintainers and TSC ownership
+adrs/                   @a2aproject/a2a-tsc @a2aproject/a2a-project-maintainers
+specification/          @a2aproject/a2a-tsc @a2aproject/a2a-project-maintainers
+docs/specification.md   @a2aproject/a2a-tsc @a2aproject/a2a-project-maintainers
+
+# Governance/License and this file exclusive TSC ownership
+GOVERNANCE.md           @a2aproject/a2a-tsc
+.gitvote.yml            @a2aproject/a2a-tsc
+LICENSE                 @a2aproject/a2a-tsc
+.github/CODEOWNERS      @a2aproject/a2a-tsc
