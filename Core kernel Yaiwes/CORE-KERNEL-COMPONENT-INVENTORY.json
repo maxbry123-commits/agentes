@@ -1,11 +1,67 @@
 {
   "schema": "yaiwes.core-component-inventory/v1",
-  "generated_at": "2026-09-14T06:52:43.739801+00:00",
+  "generated_at": "2026-09-14T15:13:50.761971+00:00",
   "repository": "maxbry123-commits/agentes",
   "root": "Core kernel Yaiwes",
-  "component_count": 179,
+  "component_count": 224,
   "kernel_signal_count": 4,
   "components": [
+    {
+      "name": "A2A-Protocol",
+      "path": "Core kernel Yaiwes/A2A-Protocol",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 36,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "Agent-xpu-LLM-xpu",
+      "path": "Core kernel Yaiwes/Agent-xpu-LLM-xpu",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 37,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "AgentCgroup",
+      "path": "Core kernel Yaiwes/AgentCgroup",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 38,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "AgentGuard",
+      "path": "Core kernel Yaiwes/AgentGuard",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 39,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
     {
       "name": "AgentScope",
       "path": "Core kernel Yaiwes/AgentScope",
@@ -15,9 +71,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 40,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -29,9 +85,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 151,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "AIOS",
+      "path": "Core kernel Yaiwes/AIOS",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 41,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -43,9 +113,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 152,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -58,8 +128,8 @@
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
       "wall_node_id": 5,
-      "wall_status": "PASS_STEP3",
-      "wall_current_step": 3,
+      "wall_status": "IN_PROGRESS_STEP2_PROVENANCE",
+      "wall_current_step": 2,
       "wall_target": "Agente Yaiwes principal/execution-orchestration/dag-executor/apache-airflow/"
     },
     {
@@ -72,8 +142,8 @@
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
       "wall_node_id": 1,
-      "wall_status": "PASS_STEP3",
-      "wall_current_step": 3,
+      "wall_status": "IN_PROGRESS_STEP2_PROVENANCE",
+      "wall_current_step": 2,
       "wall_target": "Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler/"
     },
     {
@@ -85,9 +155,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 48,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -99,9 +169,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 42,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -113,9 +183,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 153,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "Bayesian-Agent",
+      "path": "Core kernel Yaiwes/Bayesian-Agent",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 43,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -127,9 +211,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 49,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -141,9 +225,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 154,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -155,9 +239,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 44,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -170,9 +254,23 @@
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
       "wall_node_id": 13,
-      "wall_status": "PASS_STEP3",
-      "wall_current_step": 3,
+      "wall_status": "IN_PROGRESS_STEP2_PROVENANCE",
+      "wall_current_step": 2,
       "wall_target": "Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery/"
+    },
+    {
+      "name": "Claude-Code",
+      "path": "Core kernel Yaiwes/Claude-Code",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 45,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
     },
     {
       "name": "Click",
@@ -183,9 +281,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 155,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -197,9 +295,51 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 50,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "Cognithor",
+      "path": "Core kernel Yaiwes/Cognithor",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 46,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "CognitiveKernel-Pro",
+      "path": "Core kernel Yaiwes/CognitiveKernel-Pro",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 47,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "Continual-Harness",
+      "path": "Core kernel Yaiwes/Continual-Harness",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 212,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -211,9 +351,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 156,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -225,9 +365,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 157,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -239,9 +379,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 158,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -253,9 +393,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 159,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -267,9 +407,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 160,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -281,9 +421,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 52,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -296,8 +436,8 @@
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
       "wall_node_id": 21,
-      "wall_status": "PASS",
-      "wall_current_step": 3,
+      "wall_status": "IN_PROGRESS_STEP2_PROVENANCE",
+      "wall_current_step": 2,
       "wall_target": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/dagu/"
     },
     {
@@ -309,9 +449,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 53,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -323,9 +463,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 213,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -337,9 +477,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 161,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -351,9 +491,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 54,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "DR-WELL",
+      "path": "Core kernel Yaiwes/DR-WELL",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 214,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -365,9 +519,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 55,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -379,9 +533,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 162,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -393,9 +547,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 163,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -407,9 +561,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 57,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -421,9 +575,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 58,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "ERC-8004-Contracts",
+      "path": "Core kernel Yaiwes/ERC-8004-Contracts",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 215,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -435,9 +603,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 164,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -449,9 +617,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 165,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "EVOLVE-MEM",
+      "path": "Core kernel Yaiwes/EVOLVE-MEM",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 216,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -463,9 +645,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 59,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -477,9 +659,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 166,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -491,9 +673,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 60,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -505,9 +687,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 61,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -519,9 +701,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 62,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "Godel-Agent",
+      "path": "Core kernel Yaiwes/Godel-Agent",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 217,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -533,9 +729,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 63,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "Graph-of-Agents-GoA",
+      "path": "Core kernel Yaiwes/Graph-of-Agents-GoA",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 218,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -547,9 +757,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 64,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -561,9 +771,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 65,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "GrayMatter",
+      "path": "Core kernel Yaiwes/GrayMatter",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 219,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -575,9 +799,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 167,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -589,9 +813,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 66,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -603,9 +827,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 67,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -621,8 +845,8 @@
       ],
       "kernel_policy": "HOLD_KERNEL_MATERIAL_ONLY_INTEGRATE_NON_KERNEL_REMAINDER",
       "wall_node_id": 26,
-      "wall_status": "PASS",
-      "wall_current_step": 3,
+      "wall_status": "IN_PROGRESS_STEP2_PROVENANCE",
+      "wall_current_step": 2,
       "wall_target": "Agente Yaiwes principal/execution-orchestration/container-pod-isolation/gvisor/"
     },
     {
@@ -634,9 +858,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 220,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -649,8 +873,8 @@
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
       "wall_node_id": 22,
-      "wall_status": "PASS",
-      "wall_current_step": 3,
+      "wall_status": "IN_PROGRESS_STEP2_PROVENANCE",
+      "wall_current_step": 2,
       "wall_target": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/hatchet/"
     },
     {
@@ -662,9 +886,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 68,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -676,9 +900,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 168,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -690,23 +914,37 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 69,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
       "name": "Hermes-Agent",
-      "path": "Core kernel Yaiwes/Componentes recuperados B/Hermes-Agent",
-      "bucket": "Componentes recuperados B",
-      "readme": "Core kernel Yaiwes/Componentes recuperados B/Hermes-Agent/README.md",
-      "function_source": "**The self-improving AI agent built by Nous Research.** It's the only agent with a built-in learning loop — it creates skills from experience, improves them during use, nudges itself to persist knowledge, searches its own past conversations, and builds a deepening model of who you are across sessions. Run it on a $5 VPS, a GPU cluster, or serverless infrastructure that costs nearly nothing when idle. It's not tied to",
+      "path": "Core kernel Yaiwes/Hermes-Agent",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 169,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "HiRAS",
+      "path": "Core kernel Yaiwes/HiRAS",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 221,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -718,9 +956,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 70,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -732,9 +970,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 71,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -746,9 +984,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 72,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -760,9 +998,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 73,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -774,9 +1012,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 74,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -788,9 +1026,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 75,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -802,9 +1040,37 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 76,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "Interlat",
+      "path": "Core kernel Yaiwes/Interlat",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 222,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "ISEK",
+      "path": "Core kernel Yaiwes/ISEK",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 223,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -816,9 +1082,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 77,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -830,9 +1096,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 170,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -844,9 +1110,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 171,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -858,9 +1124,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 78,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -872,9 +1138,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 172,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "Kimi-K2.5",
+      "path": "Core kernel Yaiwes/Kimi-K2.5",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 224,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -886,9 +1166,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 79,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -900,9 +1180,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 173,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -914,9 +1194,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 80,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -928,9 +1208,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 81,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -942,9 +1222,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 82,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "LatentMAS",
+      "path": "Core kernel Yaiwes/LatentMAS",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 225,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -956,14 +1250,28 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 83,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
       "name": "Letta",
       "path": "Core kernel Yaiwes/Letta",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 84,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "Life-Harness",
+      "path": "Core kernel Yaiwes/Life-Harness",
       "bucket": "ROOT",
       "readme": null,
       "function_source": "README_FUNCTION_NOT_FOUND",
@@ -984,6 +1292,20 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 85,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "LlamaFirewall",
+      "path": "Core kernel Yaiwes/LlamaFirewall",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
       "wall_node_id": null,
       "wall_status": null,
       "wall_current_step": null,
@@ -998,9 +1320,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 86,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1012,9 +1334,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 87,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1026,9 +1348,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 174,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1040,9 +1362,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 88,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1054,9 +1376,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 89,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1068,9 +1390,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 90,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1082,9 +1404,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 175,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1096,9 +1418,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 91,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1110,9 +1432,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 92,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1124,9 +1446,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 176,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1138,9 +1460,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 177,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1152,9 +1474,51 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 93,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "MemForge",
+      "path": "Core kernel Yaiwes/MemForge",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 226,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "MemOS",
+      "path": "Core kernel Yaiwes/MemOS",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 227,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "MemRL",
+      "path": "Core kernel Yaiwes/MemRL",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 228,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1166,9 +1530,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 229,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1180,9 +1544,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 230,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1194,9 +1558,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 231,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1208,9 +1572,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 232,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1222,9 +1586,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 94,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1236,9 +1600,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 178,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1250,9 +1614,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 179,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1266,9 +1630,9 @@
         "EXPLICIT_KERNEL_COMPONENT"
       ],
       "kernel_policy": "HOLD_KERNEL_MATERIAL_ONLY_INTEGRATE_NON_KERNEL_REMAINDER",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 180,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1280,9 +1644,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 181,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1294,9 +1658,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 182,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1308,9 +1672,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 183,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1322,9 +1686,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 95,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1336,9 +1700,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 233,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1350,9 +1714,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 184,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1364,9 +1728,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 96,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1378,9 +1742,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 97,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1392,9 +1756,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 98,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "OpenAgentd",
+      "path": "Core kernel Yaiwes/OpenAgentd",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 234,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1406,9 +1784,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 99,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1420,9 +1798,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 185,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1434,23 +1812,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 100,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
       "name": "OpenClaw",
-      "path": "Core kernel Yaiwes/Componentes recuperados A/OpenClaw",
-      "bucket": "Componentes recuperados A",
-      "readme": "Core kernel Yaiwes/Componentes recuperados A/OpenClaw/README.md",
-      "function_source": "OpenClaw is an AI assistant that runs on your devices and meets you in the channels you already use. It connects models, tools, messaging channels, and optional companion apps through one Gateway, for a single operator or for a team whose members trust each other: the same gateway runs as a personal assistant on one laptop or as a shared team deployment, and configuration is the only difference. The architecture case",
+      "path": "Core kernel Yaiwes/OpenClaw",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 101,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1462,9 +1840,51 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 102,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "OpenCognit",
+      "path": "Core kernel Yaiwes/OpenCognit",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 235,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "OpenFang",
+      "path": "Core kernel Yaiwes/OpenFang",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 236,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "OpenGuardrails",
+      "path": "Core kernel Yaiwes/OpenGuardrails",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 237,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1476,9 +1896,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 103,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1490,9 +1910,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 104,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1504,9 +1924,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 105,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1518,9 +1938,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 106,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "OpenSwarm",
+      "path": "Core kernel Yaiwes/OpenSwarm",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 238,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1532,9 +1966,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 107,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1546,9 +1980,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 186,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1560,9 +1994,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 108,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1574,9 +2008,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 109,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1588,9 +2022,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 110,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1602,9 +2036,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 111,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "Oxios",
+      "path": "Core kernel Yaiwes/Oxios",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 239,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1616,9 +2064,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 187,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1630,9 +2078,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 188,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1644,9 +2092,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 240,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1658,9 +2106,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 112,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1672,9 +2120,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 113,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1686,9 +2134,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 114,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1700,9 +2148,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 115,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "PRISM",
+      "path": "Core kernel Yaiwes/PRISM",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 241,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1714,9 +2176,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 116,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1728,9 +2190,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 117,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1742,9 +2204,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 118,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1756,9 +2218,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 189,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1770,9 +2232,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 190,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1784,9 +2246,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 119,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "Provability-Fabric",
+      "path": "Core kernel Yaiwes/Provability-Fabric",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 242,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1798,9 +2274,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 191,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1812,9 +2288,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 120,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1826,9 +2302,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 192,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1840,9 +2316,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 193,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1854,9 +2330,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 194,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1868,9 +2344,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 195,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1882,9 +2358,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 196,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "Qualixar-OS",
+      "path": "Core kernel Yaiwes/Qualixar-OS",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 243,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1896,9 +2386,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 197,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1910,9 +2400,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 198,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "RecursiveMAS",
+      "path": "Core kernel Yaiwes/RecursiveMAS",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 244,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1924,9 +2428,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 199,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "ReMe",
+      "path": "Core kernel Yaiwes/ReMe",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 246,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1938,9 +2456,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 122,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1952,9 +2470,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 123,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1966,9 +2484,37 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 124,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "SafeDB-MCP",
+      "path": "Core kernel Yaiwes/SafeDB-MCP",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 247,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "SafeHarbor",
+      "path": "Core kernel Yaiwes/SafeHarbor",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 248,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1980,9 +2526,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 200,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "SCOPE",
+      "path": "Core kernel Yaiwes/SCOPE",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 249,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -1996,9 +2556,9 @@
         "EXPLICIT_KERNEL_COMPONENT"
       ],
       "kernel_policy": "HOLD_KERNEL_MATERIAL_ONLY_INTEGRATE_NON_KERNEL_REMAINDER",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 201,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2010,9 +2570,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 125,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2026,9 +2586,9 @@
         "EXPLICIT_KERNEL_COMPONENT"
       ],
       "kernel_policy": "HOLD_KERNEL_MATERIAL_ONLY_INTEGRATE_NON_KERNEL_REMAINDER",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 126,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2040,9 +2600,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 127,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2054,9 +2614,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 128,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2068,9 +2628,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 202,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2082,9 +2642,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 129,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2096,9 +2656,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 203,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2110,9 +2670,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 130,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "SPIRAL",
+      "path": "Core kernel Yaiwes/SPIRAL",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 250,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2124,9 +2698,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 204,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2138,9 +2712,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 131,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2152,9 +2726,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 205,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2166,9 +2740,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 132,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2180,9 +2754,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 206,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2194,9 +2768,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 133,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2208,9 +2782,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 134,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2222,9 +2796,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 207,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2236,9 +2810,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 135,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "TencentDB-Agent-Memory",
+      "path": "Core kernel Yaiwes/TencentDB-Agent-Memory",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 251,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2250,9 +2838,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 252,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2264,9 +2852,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 136,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2278,9 +2866,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 208,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2292,9 +2880,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 137,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2306,9 +2894,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 138,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2320,9 +2908,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 139,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2334,9 +2922,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 140,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2348,9 +2936,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 141,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2362,9 +2950,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 209,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2376,9 +2964,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 142,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2390,9 +2978,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 143,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2404,9 +2992,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 144,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "Visa-Trusted-Agent-Protocol",
+      "path": "Core kernel Yaiwes/Visa-Trusted-Agent-Protocol",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 253,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2418,9 +3020,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 145,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2432,9 +3034,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 146,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2446,9 +3048,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 210,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "WooAgent-OS",
+      "path": "Core kernel Yaiwes/WooAgent-OS",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 254,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2460,9 +3076,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 211,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2474,9 +3090,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 147,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2488,9 +3104,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 148,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2502,9 +3118,23 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 149,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "ZERA",
+      "path": "Core kernel Yaiwes/ZERA",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": 255,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     },
     {
@@ -2516,9 +3146,9 @@
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
-      "wall_node_id": null,
-      "wall_status": null,
-      "wall_current_step": null,
+      "wall_node_id": 150,
+      "wall_status": "PENDING_STEP1",
+      "wall_current_step": 1,
       "wall_target": null
     }
   ]
