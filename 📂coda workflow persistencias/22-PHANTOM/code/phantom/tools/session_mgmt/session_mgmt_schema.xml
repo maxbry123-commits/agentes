@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tools>
+  <tool name="create_session">
+    <description>Create session for authenticated testing.</description>
+    <parameters>
+      <parameter name="session_name" type="string" required="true">
+        <description>Session name.</description>
+      </parameter>
+      <parameter name="base_url" type="string" required="false">
+        <description>Base URL.</description>
+      </parameter>
+      <parameter name="cookies" type="object" required="false">
+        <description>Cookies dict.</description>
+      </parameter>
+      <parameter name="headers" type="object" required="false">
+        <description>Headers dict.</description>
+      </parameter>
+      <parameter name="auth_token" type="string" required="false">
+        <description>JWT, API key, or credentials.</description>
+      </parameter>
+      <parameter name="auth_type" type="string" required="false">
+        <description>bearer, basic, api_key, custom.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>session_id, success, cookie_count, header_count.</description>
+    </returns>
+    <examples>
+      <function=create_session>
+        <parameter=session_name>admin</parameter>
+        <parameter=auth_token>eyJhbG...</parameter>
+        <parameter=auth_type>bearer</parameter>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="update_session">
+    <description>Update session with new cookies, headers, or CSRF.</description>
+    <parameters>
+      <parameter name="session_id" type="string" required="true">
+        <description>Session ID.</description>
+      </parameter>
+      <parameter name="cookies" type="object" required="false">
+        <description>Cookies to add/update.</description>
+      </parameter>
+      <parameter name="headers" type="object" required="false">
+        <description>Headers to add/update.</description>
+      </parameter>
+      <parameter name="csrf_token" type="string" required="false">
+        <description>CSRF token.</description>
+      </parameter>
+      <parameter name="merge" type="boolean" required="false">
+        <description>true=merge (default), false=replace.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>success, session_id, cookie_count, header_count.</description>
+    </returns>
+    <examples>
+      <function=update_session>
+        <parameter=session_id>abc123</parameter>
+        <parameter=cookies>{"auth_token": "new"}</parameter>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="extract_csrf_token">
+    <description>Extract CSRF token from HTML.</description>
+    <parameters>
+      <parameter name="content" type="string" required="true">
+        <description>HTML content.</description>
+      </parameter>
+      <parameter name="token_name" type="string" required="false">
+        <description>Specific token name.</description>
+      </parameter>
+      <parameter name="session_id" type="string" required="false">
+        <description>Session to store token in.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>found tokens, primary token, stored session.</description>
+    </returns>
+    <examples>
+      <function=extract_csrf_token>
+        <parameter=content>&lt;html&gt;...&lt;input name='csrf' value='abc'&gt;...&lt;/html&gt;</parameter>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="manage_cookies">
+    <description>Parse, analyze, or export cookies.</description>
+    <parameters>
+      <parameter name="action" type="string" required="true">
+        <description>parse, analyze, or export.</description>
+      </parameter>
+      <parameter name="cookies" type="string" required="false">
+        <description>Cookies string or dict.</description>
+      </parameter>
+      <parameter name="session_id" type="string" required="false">
+        <description>Session ID (for export).</description>
+      </parameter>
+      <parameter name="cookie_header" type="string" required="false">
+        <description>Set-Cookie or Cookie header.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>Parsed cookies, security analysis, or exported header.</description>
+    </returns>
+    <examples>
+      <function=manage_cookies>
+        <parameter=action>parse</parameter>
+        <parameter=cookie_header>session=abc; Path=/; HttpOnly</parameter>
+      </function>
+    </examples>
+  </tool>
+</tools>

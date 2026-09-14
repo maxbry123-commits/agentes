@@ -1,0 +1,30 @@
+<tools>
+  <tool name="finish_scan">
+    <description>Complete scan. Root agent ONLY. Report all vulns first. Formal, objective, third-person tone.</description>
+    <parameters>
+      <parameter name="executive_summary" type="string" required="true">
+        <description>Risk posture, key findings, business impact.</description>
+      </parameter>
+      <parameter name="methodology" type="string" required="true">
+        <description>Frameworks, scope, activities, validation.</description>
+      </parameter>
+      <parameter name="technical_analysis" type="string" required="true">
+        <description>Findings summary, root causes, references.</description>
+      </parameter>
+      <parameter name="recommendations" type="string" required="true">
+        <description>Prioritized remediation steps.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>success, vuln_count, completion message.</description>
+    </returns>
+    <examples>
+      <function=finish_scan>
+        <parameter=executive_summary>Critical SQLi in login. Unauthenticated DB access.</parameter>
+        <parameter=methodology>OWASP WSTG black-box pentest.</parameter>
+        <parameter=technical_analysis>SQLi via unsanitized username input.</parameter>
+        <parameter=recommendations>Parameterized queries. Input validation. Code review.</parameter>
+      </function>
+    </examples>
+  </tool>
+</tools>

@@ -1,0 +1,55 @@
+<tools>
+  <tool name="parse_openapi_schema">
+    <description>Parse OpenAPI/Swagger schema.</description>
+    <parameters>
+      <parameter name="schema_url_or_data" type="string" required="true">
+        <description>URL or direct content (JSON/YAML).</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>endpoints, parameters, security.</description>
+    </returns>
+    <examples>
+      <function=parse_openapi_schema>
+        <parameter=schema_url_or_data>https://example.com/openapi.json</parameter>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="extract_api_endpoints">
+    <description>Extract endpoints from OpenAPI schema.</description>
+    <parameters>
+      <parameter name="schema_url_or_data" type="string" required="true">
+        <description>URL or direct content.</description>
+      </parameter>
+      <parameter name="filter_by_tag" type="string" required="false">
+        <description>Tag filter.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>paths, methods, parameters, security.</description>
+    </returns>
+    <examples>
+      <function=extract_api_endpoints>
+        <parameter=schema_url_or_data>https://example.com/openapi.json</parameter>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="analyze_security_requirements">
+    <description>Analyze auth requirements from OpenAPI.</description>
+    <parameters>
+      <parameter name="schema_url_or_data" type="string" required="true">
+        <description>URL or direct content.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>auth schemes, insecure endpoints.</description>
+    </returns>
+    <examples>
+      <function=analyze_security_requirements>
+        <parameter=schema_url_or_data>https://example.com/openapi.json</parameter>
+      </function>
+    </examples>
+  </tool>
+</tools>

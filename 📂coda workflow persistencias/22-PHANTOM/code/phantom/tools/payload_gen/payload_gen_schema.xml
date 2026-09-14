@@ -1,0 +1,47 @@
+<tools>
+  <tool name="generate_smart_payloads">
+    <description>Generate context-aware payloads. Adapts to tech stack and WAF.</description>
+    <parameters>
+      <parameter name="vuln_class" type="string" required="true">
+        <description>xss, sqli, xxe, ssti, cmd_injection.</description>
+      </parameter>
+      <parameter name="url" type="string" required="false">
+        <description>Target URL.</description>
+      </parameter>
+      <parameter name="parameter" type="string" required="false">
+        <description>Param name.</description>
+      </parameter>
+      <parameter name="framework" type="string" required="false">
+        <description>django, laravel, spring, flask, etc.</description>
+      </parameter>
+      <parameter name="database" type="string" required="false">
+        <description>mysql, postgresql, mssql, oracle.</description>
+      </parameter>
+      <parameter name="os" type="string" required="false">
+        <description>linux, windows.</description>
+      </parameter>
+      <parameter name="waf_type" type="string" required="false">
+        <description>cloudflare, akamai, modsecurity, etc.</description>
+      </parameter>
+      <parameter name="injection_context" type="string" required="false">
+        <description>html, attribute, javascript, sql, template, shell.</description>
+      </parameter>
+      <parameter name="hypothesis_id" type="string" required="false">
+        <description>Hypothesis ID for learning.</description>
+      </parameter>
+      <parameter name="max_payloads" type="integer" required="false">
+        <description>Max to return.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>payloads, priority, context.</description>
+    </returns>
+    <examples>
+      <function=generate_smart_payloads>
+        <parameter=vuln_class>xss</parameter>
+        <parameter=framework>django</parameter>
+        <parameter=waf_type>cloudflare</parameter>
+      </function>
+    </examples>
+  </tool>
+</tools>

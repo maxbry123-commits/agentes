@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tools>
+  <tool name="detect_waf">
+    <description>Detect Web Application Firewall (WAF) presence by fingerprinting HTTP responses. Analyzes headers, cookies, and body content to identify WAF vendors. Makes HTTP requests but does NOT send malicious payloads.</description>
+    <parameters>
+      <parameter name="url" type="string" required="true">
+        <description>Target URL to analyze (e.g., "https://example.com").</description>
+      </parameter>
+      <parameter name="test_payload" type="boolean" required="false">
+        <description>Send benign test strings to trigger WAF responses.</description>
+      </parameter>
+      <parameter name="verbose" type="boolean" required="false">
+        <description>Include detailed match information.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>Success status, detected WAFs, confidence scores, headers analyzed, and recommendations.</description>
+    </returns>
+    <examples>
+      <function=detect_waf>
+        <parameter=url>https://example.com</parameter>
+      </function>
+    </examples>
+  </tool>
+</tools>

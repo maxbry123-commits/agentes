@@ -1,0 +1,82 @@
+<tools>
+  <tool name="list_files">
+    <description>List files in directory.</description>
+    <parameters>
+      <parameter name="path" type="string" required="true">
+        <description>Directory path.</description>
+      </parameter>
+      <parameter name="recursive" type="boolean" required="false">
+        <description>List recursively.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>files, total_files, total_dirs.</description>
+    </returns>
+    <examples>
+      <function=list_files>
+        <parameter=path>/project/src</parameter>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="search_files">
+    <description>Regex search across files.</description>
+    <parameters>
+      <parameter name="path" type="string" required="true">
+        <description>Directory path.</description>
+      </parameter>
+      <parameter name="regex" type="string" required="true">
+        <description>Regex pattern.</description>
+      </parameter>
+      <parameter name="file_pattern" type="string" required="false">
+        <description>Filter pattern e.g. *.py.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>Search results.</description>
+    </returns>
+    <examples>
+      <function=search_files>
+        <parameter=path>/project/src</parameter>
+        <parameter=regex>def\s+process</parameter>
+        <parameter=file_pattern>*.py</parameter>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="str_replace_editor">
+    <description>View, create, edit files.</description>
+    <parameters>
+      <parameter name="command" type="string" required="true">
+        <description>view, create, str_replace, insert, undo_edit.</description>
+      </parameter>
+      <parameter name="path" type="string" required="true">
+        <description>File path.</description>
+      </parameter>
+      <parameter name="file_text" type="string" required="false">
+        <description>Content for create.</description>
+      </parameter>
+      <parameter name="view_range" type="list" required="false">
+        <description>Line range [start, end].</description>
+      </parameter>
+      <parameter name="old_str" type="string" required="false">
+        <description>String to replace.</description>
+      </parameter>
+      <parameter name="new_str" type="string" required="false">
+        <description>Replacement string.</description>
+      </parameter>
+      <parameter name="insert_line" type="integer" required="false">
+        <description>Line number to insert after.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>Operation result.</description>
+    </returns>
+    <examples>
+      <function=str_replace_editor>
+        <parameter=command>view</parameter>
+        <parameter=path>/project/file.py</parameter>
+      </function>
+    </examples>
+  </tool>
+</tools>

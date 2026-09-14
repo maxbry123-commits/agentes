@@ -1,0 +1,33 @@
+<tools>
+  <tool name="terminal_execute">
+    <description>Execute a bash command in a persistent terminal session. Maintains state (environment variables, current directory, running processes) between commands.</description>
+    <parameters>
+      <parameter name="command" type="string" required="true">
+        <description>Bash command to execute. Can be empty to check output of running commands.</description>
+      </parameter>
+      <parameter name="is_input" type="boolean" required="false">
+        <description>If true, send as input to a running process. If false (default), execute as new command.</description>
+      </parameter>
+      <parameter name="timeout" type="number" required="false">
+        <description>Timeout in seconds (max 60). Default: 30. On timeout, command keeps running and returns status 'running'.</description>
+      </parameter>
+      <parameter name="terminal_id" type="string" required="false">
+        <description>Terminal session identifier. Default: "default". Use different IDs for multiple concurrent sessions.</description>
+      </parameter>
+      <parameter name="no_enter" type="boolean" required="false">
+        <description>If true, do not add Enter after the command. Useful for interactive prompts or Vim.</description>
+      </parameter>
+      <parameter name="trusted_command" type="boolean" required="false">
+        <description>If true, bypass command safety checks. Default false.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>Content (output), exit_code, command, terminal_id, status (completed or running), and working_dir.</description>
+    </returns>
+    <examples>
+      <function=terminal_execute>
+        <parameter=command>ls -la</parameter>
+      </function>
+    </examples>
+  </tool>
+</tools>

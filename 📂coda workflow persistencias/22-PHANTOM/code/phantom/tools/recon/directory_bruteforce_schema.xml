@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tool_schemas>
+  <tool name="comprehensive_dir_enum">
+    <description>Perform comprehensive directory enumeration combining smart path generation, brute-forcing, and optional recursive scanning.</description>
+    <parameters>
+      <parameter name="url" type="string" required="true">
+        <description>Target URL (e.g., "https://example.com").</description>
+      </parameter>
+      <parameter name="tech_stack" type="array" required="false">
+        <description>Detected technologies for smart path generation.</description>
+      </parameter>
+      <parameter name="cms" type="string" required="false">
+        <description>Detected CMS platform.</description>
+      </parameter>
+      <parameter name="stealth" type="boolean" required="false">
+        <description>Enable stealth mode.</description>
+      </parameter>
+      <parameter name="include_recursive" type="boolean" required="false">
+        <description>Recursively scan discovered directories.</description>
+      </parameter>
+      <parameter name="max_depth" type="integer" required="false">
+        <description>Max recursion depth (if recursive enabled).</description>
+      </parameter>
+      <parameter name="wordlist_size" type="string" required="false">
+        <description>Base wordlist size: small, medium, large.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>Findings, priority_findings, by_category, categories, and statistics.</description>
+    </returns>
+    <examples>
+      <function=comprehensive_dir_enum>
+        <parameter=url>https://banking-app.example.com</parameter>
+        <parameter=tech_stack>["java", "spring"]</parameter>
+        <parameter=include_recursive>true</parameter>
+      </function>
+    </examples>
+  </tool>
+</tool_schemas>

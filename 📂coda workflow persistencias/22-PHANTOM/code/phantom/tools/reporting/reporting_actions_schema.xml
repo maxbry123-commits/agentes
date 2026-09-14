@@ -1,0 +1,76 @@
+<tools>
+  <tool name="create_vulnerability_report">
+    <description>Report a discovered vulnerability. One per finding. Stop retrying after 3 failures.</description>
+    <parameters>
+      <parameter name="title" type="string" required="true">
+        <description>Vulnerability title.</description>
+      </parameter>
+      <parameter name="description" type="string" required="true">
+        <description>How it was discovered.</description>
+      </parameter>
+      <parameter name="impact" type="string" required="true">
+        <description>Business impact and attacker capability.</description>
+      </parameter>
+      <parameter name="target" type="string" required="true">
+        <description>Affected URL, domain, or repo.</description>
+      </parameter>
+      <parameter name="technical_analysis" type="string" required="true">
+        <description>Technical mechanism and root cause.</description>
+      </parameter>
+      <parameter name="poc_description" type="string" required="false">
+        <description>Reproduction steps.</description>
+      </parameter>
+      <parameter name="poc_script_code" type="string" required="false">
+        <description>PoC code.</description>
+      </parameter>
+      <parameter name="remediation_steps" type="string" required="false">
+        <description>How to fix.</description>
+      </parameter>
+      <parameter name="cvss_breakdown" type="string" required="false">
+        <description>CVSS vector. Auto from severity.</description>
+      </parameter>
+      <parameter name="severity" type="string" required="false">
+        <description>CRITICAL, HIGH, MEDIUM, LOW, INFO.</description>
+      </parameter>
+      <parameter name="endpoint" type="string" required="false">
+        <description>Vulnerable endpoint path.</description>
+      </parameter>
+      <parameter name="method" type="string" required="false">
+        <description>HTTP method.</description>
+      </parameter>
+      <parameter name="parameter" type="string" required="false">
+        <description>Vulnerable param, header, or query.</description>
+      </parameter>
+      <parameter name="cve" type="string" required="false">
+        <description>CVE ID only. Do NOT guess.</description>
+      </parameter>
+      <parameter name="cwe" type="string" required="false">
+        <description>CWE ID only. No name.</description>
+      </parameter>
+      <parameter name="code_locations" type="string" required="false">
+        <description>Code locations. Omit for black-box.</description>
+      </parameter>
+      <parameter name="confidence" type="string" required="false">
+        <description>SUSPECTED, LIKELY, VERIFIED.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>success, report_id, severity, cvss_score, duplicate info.</description>
+    </returns>
+    <examples>
+      <function=create_vulnerability_report>
+        <parameter=title>SQL Injection in Login</parameter>
+        <parameter=description>Username field accepts SQL payload.</parameter>
+        <parameter=impact>Auth bypass.</parameter>
+        <parameter=target>https://example.com</parameter>
+        <parameter=technical_analysis>POST /login with "' OR 1=1 --" returned 200 + token.</parameter>
+        <parameter=endpoint>/login</parameter>
+        <parameter=method>POST</parameter>
+        <parameter=parameter>username</parameter>
+        <parameter=cwe>CWE-89</parameter>
+        <parameter=severity>HIGH</parameter>
+        <parameter=confidence>SUSPECTED</parameter>
+      </function>
+    </examples>
+  </tool>
+</tools>
