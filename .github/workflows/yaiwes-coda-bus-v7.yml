@@ -1,0 +1,30 @@
+name: YAIWES CODA Bus V7
+
+on:
+  push:
+    branches:
+      - yaiwes-coda-v7
+    paths:
+      - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_coda_bus_v7.py'
+      - '📂coda workflow persistencias/Fables enchufe universal/test_yaiwes_coda_bus_v7.py'
+      - '.github/workflows/yaiwes-coda-bus-v7.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coda-bus-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile bus
+        working-directory: '📂coda workflow persistencias/Fables enchufe universal'
+        run: python -m py_compile yaiwes_coda_bus_v7.py test_yaiwes_coda_bus_v7.py
+      - name: Run CODA bus unit tests
+        working-directory: '📂coda workflow persistencias/Fables enchufe universal'
+        run: python -m unittest -v test_yaiwes_coda_bus_v7.py
