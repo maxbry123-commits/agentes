@@ -1,0 +1,224 @@
+package agents
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os/exec"
+	"strings"
+	"time"
+
+	"github.com/Armur-Ai/Pentest-Swarm-AI/internal/agent/exploit"
+	"github.com/Armur-Ai/Pentest-Swarm-AI/internal/pipeline"
+	"github.com/Armur-Ai/Pentest-Swarm-AI/internal/scope"
+	"github.com/Armur-Ai/Pentest-Swarm-AI/internal/swarm/blackboard"
+	"github.com/google/uuid"
+)
+
+// ConfirmationAgent re-runs a finding's Reproduction to verify the vuln
+// still triggers. This is the signal-vs-noise gate that makes the swarm's
+// bug-bounty output credible.
+//
+// Flow:
+//  1. Trigger on CVE_MATCH / MISCONFIGURATION findings with a Reproduce block
+//  2. Re-run Reproduce.Command (shell-safe split) OR Reproduce.HTTPRequest
+//  3. If ExpectedIndicator appears in the output → leave the finding alone
+//  4. If it doesn't → write a superseding finding with pheromone 0.1
+//     (effectively hidden from downstream consumers + the final report)
+type ConfirmationAgent struct {
+	scopeDef   *scope.ScopeDefinition
+	campaignID uuid.UUID
+	parallel   int
+	// http client is plumbed so tests can swap in a fake.
+	httpClient *http.Client
+}
+
+// NewConfirmationAgent builds a new confirmation agent.
+func NewConfirmationAgent(scopeDef *scope.ScopeDefinition, campaignID uuid.UUID, parallel int) *ConfirmationAgent {
+	if parallel <= 0 {
+		parallel = 2
+	}
+	return &ConfirmationAgent{
+		scopeDef:   scopeDef,
+		campaignID: campaignID,
+		parallel:   parallel,
+		httpClient: &http.Client{Timeout: 20 * time.Second},
+	}
+}
+
+// Name implements swarm.Agent.
+func (a *ConfirmationAgent) Name() string { return "confirm" }
+
+// Trigger implements swarm.Agent.
+func (a *ConfirmationAgent) Trigger() blackboard.Predicate {
+	return blackboard.Predicate{
+		Types:        []blackboard.FindingType{blackboard.TypeCVEMatch, blackboard.TypeMisconfig},
+		MinPheromone: 0.5,
+	}
+}
+
+// MaxConcurrency implements swarm.Agent.
+func (a *ConfirmationAgent) MaxConcurrency() int { return a.parallel }
+
+// Handle re-runs the reproduction. No reproduction → no action (we can't
+// confirm what isn't confirmable; it's up to the exploit agent to attach
+// one). Found-but-not-reproducible → supersede with a pheromone-0.1 finding.
+func (a *ConfirmationAgent) Handle(ctx context.Context, f blackboard.Finding, board blackboard.Board) error {
+	var cf pipeline.ClassifiedFinding
+	if err := json.Unmarshal(f.Data, &cf); err != nil {
+		return fmt.Errorf("decode finding: %w", err)
+	}
+	if cf.Reproduce == nil {
+		// No reproduction attached — not our problem to confirm. This is
+		// where Phase 4.3.6 'safe mode' would downgrade the finding; for
+		// now we just leave it alone.
+		return nil
+	}
+
+	ok, output, err := a.reproduce(ctx, cf.Reproduce)
+	if err != nil {
+		// Re-run error is not the same as 'not reproducible' — leave the
+		// finding alone, surface the error to the board.
+		return fmt.Errorf("reproduce: %w", err)
+	}
+
+	if ok {
+		return nil
+	}
+
+	// Publish a superseding finding that effectively hides this one.
+	cf.Description = "Confirmation re-run did NOT trigger the indicator. " +
+		"Likely a false positive; original output: " + truncate(output, 400)
+	cf.FalsePositiveProbability = 0.9
+	cf.Confidence = pipeline.ConfidenceLow
+	data, _ := json.Marshal(cf)
+	_, _ = board.Write(ctx, blackboard.Finding{
+		CampaignID:    a.campaignID,
+		AgentName:     a.Name(),
+		Type:          f.Type,
+		Target:        f.Target,
+		Data:          data,
+		PheromoneBase: 0.1,
+		HalfLifeSec:   600,
+	}, blackboard.Supersedes(f.ID))
+	return nil
+}
+
+// reproduce dispatches Command or HTTPRequest and checks for the indicator.
+// Returns (passed, output, fatalErr) — fatalErr is only for transport-level
+// problems (canceled ctx, unreachable host). A non-matching indicator is
+// (false, output, nil) — a "did not repro" signal, not an error.
+func (a *ConfirmationAgent) reproduce(ctx context.Context, r *pipeline.Reproduction) (bool, string, error) {
+	if r.Command != "" {
+		return a.reproduceCommand(ctx, r)
+	}
+	if r.HTTPRequest != "" {
+		return a.reproduceHTTP(ctx, r)
+	}
+	// Nothing to re-run; treat as pass (can't prove it doesn't repro).
+	return true, "", nil
+}
+
+func (a *ConfirmationAgent) reproduceCommand(ctx context.Context, r *pipeline.Reproduction) (bool, string, error) {
+	parts, err := exploit.ParseCommand(r.Command)
+	if err != nil {
+		return false, "", fmt.Errorf("unsafe reproduce command: %w", err)
+	}
+	runCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(runCtx, parts[0], parts[1:]...)
+	out, _ := cmd.CombinedOutput() // exit code non-zero != confirmation failure
+	return indicatorMatches(r.ExpectedIndicator, string(out)), string(out), nil
+}
+
+func (a *ConfirmationAgent) reproduceHTTP(ctx context.Context, r *pipeline.Reproduction) (bool, string, error) {
+	// Minimal raw-request parser: first line is request-line, then headers,
+	// then blank line, then body. Enough for the common Burp-Repeater form.
+	method, url, headers, body, err := parseRawHTTP(r.HTTPRequest)
+	if err != nil {
+		return false, "", err
+	}
+	if a.scopeDef != nil {
+		if err := scope.ValidateAndLog("confirm", url, *a.scopeDef); err != nil {
+			return false, "", fmt.Errorf("confirmation would exit scope: %w", err)
+		}
+	}
+	runCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(runCtx, method, url, bytes.NewReader([]byte(body)))
+	if err != nil {
+		return false, "", err
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return false, "", err
+	}
+	defer resp.Body.Close()
+	buf := new(bytes.Buffer)
+	_, _ = buf.ReadFrom(resp.Body)
+	return indicatorMatches(r.ExpectedIndicator, buf.String()), buf.String(), nil
+}
+
+// indicatorMatches returns true when the expected substring is present
+// (case-insensitive) or when no indicator was set (caller said any
+// successful re-run counts).
+func indicatorMatches(indicator, output string) bool {
+	if indicator == "" {
+		return true
+	}
+	return strings.Contains(strings.ToLower(output), strings.ToLower(indicator))
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
+}
+
+// parseRawHTTP is a best-effort parser for Burp-Repeater style requests.
+// Returns (method, url, headers, body, err). URL is assembled from
+// method line + Host header.
+func parseRawHTTP(raw string) (string, string, map[string]string, string, error) {
+	lines := strings.Split(strings.ReplaceAll(raw, "\r\n", "\n"), "\n")
+	if len(lines) == 0 || lines[0] == "" {
+		return "", "", nil, "", fmt.Errorf("empty request")
+	}
+	// "GET /path HTTP/1.1"
+	parts := strings.Fields(lines[0])
+	if len(parts) < 2 {
+		return "", "", nil, "", fmt.Errorf("malformed request line: %q", lines[0])
+	}
+	method, path := parts[0], parts[1]
+
+	headers := map[string]string{}
+	var body string
+	inBody := false
+	for _, l := range lines[1:] {
+		if inBody {
+			body += l + "\n"
+			continue
+		}
+		if l == "" {
+			inBody = true
+			continue
+		}
+		if idx := strings.Index(l, ":"); idx > 0 {
+			headers[strings.TrimSpace(l[:idx])] = strings.TrimSpace(l[idx+1:])
+		}
+	}
+	host := headers["Host"]
+	if host == "" {
+		return "", "", nil, "", fmt.Errorf("missing Host header")
+	}
+	scheme := "https"
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		return method, path, headers, strings.TrimRight(body, "\n"), nil
+	}
+	return method, scheme + "://" + host + path, headers, strings.TrimRight(body, "\n"), nil
+}

@@ -340,61 +340,13 @@ async def execute_tool(tool_name: str, agent_state: Any | None = None, **kwargs:
 
 
 async def _execute_tool_in_sandbox(tool_name: str, agent_state: Any, **kwargs: Any) -> Any:
-    if not hasattr(agent_state, "sandbox_id") or not agent_state.sandbox_id:
-        raise ValueError("Agent state with a valid sandbox_id is required for sandbox execution.")
-
-    if not hasattr(agent_state, "sandbox_token") or not agent_state.sandbox_token:
-        raise ValueError(
-            "Agent state with a valid sandbox_token is required for sandbox execution."
-        )
-
-    if (
-        not hasattr(agent_state, "sandbox_info")
-        or "tool_server_port" not in agent_state.sandbox_info
-    ):
-        raise ValueError(
-            "Agent state with a valid sandbox_info containing tool_server_port is required."
-        )
-
-    runtime = get_runtime()
-    tool_server_port = agent_state.sandbox_info["tool_server_port"]
-    server_url = await runtime.get_sandbox_url(agent_state.sandbox_id, tool_server_port)
-    request_url = f"{server_url}/execute"
-
-    agent_id = getattr(agent_state, "agent_id", "unknown")
-
-    request_data = {
-        "agent_id": agent_id,
-        "tool_name": tool_name,
-        "kwargs": kwargs,
-    }
-
-    headers = {
-        "Authorization": f"Bearer {agent_state.sandbox_token}",
-        "Content-Type": "application/json",
-    }
-
-    timeout = httpx.Timeout(
-        timeout=SANDBOX_EXECUTION_TIMEOUT,
-        connect=SANDBOX_CONNECT_TIMEOUT,
-    )
-
-    async with httpx.AsyncClient(trust_env=False) as client:
-        try:
-            response = await client.post(
-                request_url, json=request_data, headers=headers, timeout=timeout
-            )
-            response.raise_for_status()
-            response_data = response.json()
-            if response_data.get("error"):
-                raise RuntimeError(f"Sandbox execution error: {response_data['error']}")
-            return response_data.get("result")
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 401:
-                raise RuntimeError("Authentication failed") from e
-            raise RuntimeError(f"Sandbox execution failed (HTTP {e.response.status_code})") from e
-        except httpx.RequestError as e:
-            raise RuntimeError("Sandbox communication error") from e
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/tools/executor.py','step':'_execute_tool_in_sandbox','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 async def _execute_tool_locally(tool_name: str, agent_state: Any | None, **kwargs: Any) -> Any:

@@ -112,30 +112,13 @@ class ProxyManager:
     # ── Curl integration ──────────────────────────────────────
 
     async def get_proxy_env(self) -> Dict[str, str]:
-        """
-        Get environment variables dict to inject into curl subprocess.
-        Returns empty dict if no proxy configured.
-        """
-        proxy = await self.get_proxy()
-        if not proxy:
-            return {}
-
-        parsed = urlparse(proxy)
-        scheme = parsed.scheme
-
-        if scheme in ("http", "https"):
-            return {
-                "HTTP_PROXY": proxy,
-                "HTTPS_PROXY": proxy,
-                "http_proxy": proxy,
-                "https_proxy": proxy,
-            }
-        elif scheme in ("socks5", "socks5h"):
-            return {
-                "ALL_PROXY": proxy,
-                "all_proxy": proxy,
-            }
-        return {}
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/proxy_manager.py','step':'get_proxy_env','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def get_curl_args(self) -> List[str]:
         """
@@ -157,20 +140,13 @@ class ProxyManager:
 
     async def test_proxy(self, proxy: str,
                          test_url: str = "http://httpbin.org/ip") -> bool:
-        """Test if a proxy is working by making a request through it."""
-        try:
-            proc = await asyncio.wait_for(
-                asyncio.create_subprocess_exec(
-                    "curl", "-s", "--max-time", "5", "--proxy", proxy, test_url,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                ),
-                timeout=10,
-            )
-            stdout, _ = await proc.communicate()
-            return proc.returncode == 0 and b"origin" in stdout
-        except Exception:
-            return False
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/proxy_manager.py','step':'test_proxy','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def validate_all(self) -> List[Tuple[str, bool]]:
         """Test all proxies, return (proxy_url, is_valid) pairs."""

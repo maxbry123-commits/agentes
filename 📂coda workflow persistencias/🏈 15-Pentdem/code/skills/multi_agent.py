@@ -166,173 +166,31 @@ class MultiAgentOrchestrator:
                 return {"findings": [], "status": "error", "error": str(e)}
 
     async def _recon_agent(self, target: str, urls: List[str]) -> Dict:
-        """Recon agent: subdomain enum, port scan, tech detection."""
-        findings = []
-
-        # Use real tools if available
-        try:
-            from skills.real_tools import RealToolRunner
-            runner = RealToolRunner()
-
-            # Subdomain enumeration
-            subfinder_result = await runner.run_subfinder(target)
-            for f in subfinder_result.parsed_findings:
-                findings.append(f)
-
-            # Port scan
-            nmap_result = await runner.run_nmap(target)
-            for f in nmap_result.parsed_findings:
-                findings.append(f)
-
-        except Exception:
-            # Fallback to basic DNS checks
-            import asyncio
-            try:
-                proc = await asyncio.create_subprocess_exec(
-                    "dig", "+short", target,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                stdout, _ = await proc.communicate()
-                ip = stdout.decode().strip()
-                if ip:
-                    findings.append({
-                        "type": "dns_resolution",
-                        "target": target,
-                        "ip": ip,
-                        "severity": "info",
-                        "description": f"DNS resolution: {target} → {ip}",
-                    })
-            except Exception:
-                pass
-
-        # Tech fingerprint via HTTP headers
-        for url in urls[:3]:
-            try:
-                proc = await asyncio.create_subprocess_exec(
-                    "curl", "-s", "-I", "--max-time", "10", url,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                stdout, _ = await proc.communicate()
-                headers = stdout.decode(errors="ignore")
-
-                # Extract tech info
-                import re
-                server = re.search(r'Server:\s*(.+)', headers, re.IGNORECASE)
-                powered_by = re.search(r'X-Powered-By:\s*(.+)', headers, re.IGNORECASE)
-
-                if server:
-                    findings.append({
-                        "type": "tech_fingerprint",
-                        "url": url,
-                        "header": "Server",
-                        "value": server.group(1).strip(),
-                        "severity": "info",
-                    })
-                if powered_by:
-                    findings.append({
-                        "type": "tech_fingerprint",
-                        "url": url,
-                        "header": "X-Powered-By",
-                        "value": powered_by.group(1).strip(),
-                        "severity": "info",
-                    })
-            except Exception:
-                continue
-
-        return {"findings": findings, "status": "complete"}
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/multi_agent.py','step':'_recon_agent','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _explore_agent(self, target: str, urls: List[str]) -> Dict:
-        """Explore agent: endpoint discovery, parameter analysis."""
-        findings = []
-
-        # Analyze URL patterns for vuln classes
-        from concurrent_hunt import URL_KEYWORDS, score_url_for_class
-
-        for url in urls:
-            for vuln_class, keywords in URL_KEYWORDS.items():
-                score = score_url_for_class(url, vuln_class)
-                if score > 30:
-                    findings.append({
-                        "type": "attack_surface",
-                        "url": url,
-                        "vuln_class": vuln_class,
-                        "score": score,
-                        "severity": "info",
-                        "description": f"URL scored {score}/100 for {vuln_class}",
-                    })
-
-        # Discover common endpoints
-        common_endpoints = [
-            "/api", "/admin", "/login", "/register", "/graphql",
-            "/.env", "/robots.txt", "/sitemap.xml", "/.git/config",
-            "/wp-admin", "/phpmyadmin", "/swagger", "/docs",
-        ]
-
-        for url in urls[:3]:
-            base = url.rstrip("/")
-            for endpoint in common_endpoints:
-                try:
-                    proc = await asyncio.create_subprocess_exec(
-                        "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-                        "--max-time", "5", f"{base}{endpoint}",
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                    )
-                    stdout, _ = await proc.communicate()
-                    status = stdout.decode().strip()
-
-                    if status not in ("404", "000", "502", "503"):
-                        findings.append({
-                            "type": "endpoint_discovery",
-                            "url": f"{base}{endpoint}",
-                            "status": int(status) if status.isdigit() else 0,
-                            "severity": "info" if status != "200" else "medium",
-                            "description": f"Discovered {endpoint} (HTTP {status})",
-                        })
-                except Exception:
-                    continue
-
-        return {"findings": findings, "status": "complete"}
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/multi_agent.py','step':'_explore_agent','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _validate_agent(self, target: str, urls: List[str], findings: List[Dict]) -> Dict:
-        """Validate agent: confirm findings with PoC."""
-        validated = []
-
-        for finding in findings:
-            # Simple validation: re-request and check if vulnerability is consistent
-            url = finding.get("url", "")
-            if not url:
-                continue
-
-            ftype = finding.get("type", "")
-
-            if ftype in ("sqli", "xss", "ssrf", "idor"):
-                # For injection types, check if the endpoint responds
-                try:
-                    proc = await asyncio.create_subprocess_exec(
-                        "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-                        "--max-time", "10", url,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                    )
-                    stdout, _ = await proc.communicate()
-                    status = stdout.decode().strip()
-
-                    if status and status != "000":
-                        finding["validated"] = True
-                        finding["validation_method"] = "re-request"
-                        validated.append(finding)
-                except Exception:
-                    finding["validated"] = False
-                    validated.append(finding)
-            else:
-                finding["validated"] = True
-                finding["validation_method"] = "heuristic"
-                validated.append(finding)
-
-        return {"findings": validated, "status": "complete"}
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/multi_agent.py','step':'_validate_agent','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _exploit_agent(self, target: str, urls: List[str], findings: List[Dict]) -> Dict:
         """Exploit agent: build kill chains from findings."""

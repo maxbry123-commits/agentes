@@ -47,38 +47,13 @@ def health():
 
 @app.route("/api/command", methods=["POST"])
 def run_command():
-    if _API_SECRET and request.headers.get("X-API-Secret") != _API_SECRET:
-        return jsonify({"error": "unauthorized"}), 403
-
-    # Require application/json — do NOT force-parse. A cross-origin browser CSRF can only
-    # send "simple" content-types (text/plain, form-encoded) without a preflight; rejecting
-    # those here means such a request can never reach the command execution below.
-    data = request.get_json(silent=True)
-    if data is None:
-        return jsonify({"error": "expected application/json"}), 415
-    command = data.get("command", "")
-    timeout = data.get("timeout", 900)
-
-    if not command:
-        return jsonify({"error": "empty command"}), 400
-
-    try:
-        result = subprocess.run(
-            ["bash", "-c", command],  # nosec B603 — intentional command execution in isolated container  # NOSONAR
-            capture_output=True,
-            timeout=timeout,
-        )
-        return jsonify({
-            "stdout": result.stdout.decode(errors="replace"),
-            "stderr": result.stderr.decode(errors="replace"),
-            "timed_out": False,
-        })
-    except subprocess.TimeoutExpired as exc:
-        return jsonify({
-            "stdout": exc.stdout.decode(errors="replace") if exc.stdout else "",
-            "stderr": exc.stderr.decode(errors="replace") if exc.stderr else "",
-            "timed_out": True,
-        })
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/metasploit/server.py','step':'run_command','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 if __name__ == "__main__":

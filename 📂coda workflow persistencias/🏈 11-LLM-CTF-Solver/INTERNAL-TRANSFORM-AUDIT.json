@@ -1,0 +1,101 @@
+{
+  "schema": "yaiwes.internal.transform/v1",
+  "component": "🏈 11-LLM-CTF-Solver",
+  "mode": "TRANSFORM",
+  "source_files": 138,
+  "candidates": 13,
+  "changed": 13,
+  "findings": [
+    {
+      "path": "test_llm.py",
+      "sha256": "9f839ebaeb09e24895b6c855be3f869ae5935ab30b2aede8bea3928e70afb580",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/test_llm.py.original"
+    },
+    {
+      "path": "backend/test_e2e.py",
+      "sha256": "9dcc10d89b771c2bf2aa21dc2760d5e9f892c22a77cbcff2a7f57fcba4dbc73c",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/test_e2e.py.original"
+    },
+    {
+      "path": "ctf_tool/forensics_tools.py",
+      "sha256": "053186046813fe5c7347a66a7c4c7ce38b3108d1907de738764b14fa6447466c",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/ctf_tool/forensics_tools.py.original"
+    },
+    {
+      "path": "ctf_tool/mcp_adapter.py",
+      "sha256": "13b7ecdb5d65a64689e63d9d85b47ee1d29b397ee614c0413a6b1a5f3f9795fc",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/ctf_tool/mcp_adapter.py.original"
+    },
+    {
+      "path": "ctf_tool/python.py",
+      "sha256": "2fd78ba5625cfda40a47d9052ab4c3d03cac64523016215e03b82a22d2513406",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:3",
+      "quarantine": "_yaiwes_upstream_quarantine/ctf_tool/python.py.original"
+    },
+    {
+      "path": "ctf_tool/android_tools.py",
+      "sha256": "11a32a1a33a389423fefdd9d52cc2232d15f45c1508798d66b56002ca3d7660e",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/ctf_tool/android_tools.py.original"
+    },
+    {
+      "path": "ctf_tool/exploit_templates.py",
+      "sha256": "ecece249744845fade49b47736f04479dcdf853b89d070895c236be0088b8bbf",
+      "changed": true,
+      "kind": "PY_FILE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/ctf_tool/exploit_templates.py.original"
+    },
+    {
+      "path": "ctf_tool/network.py",
+      "sha256": "f71061c73a70ae53ffc3504c472b95424491071d931c48119afec7963836af9d",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:4",
+      "quarantine": "_yaiwes_upstream_quarantine/ctf_tool/network.py.original"
+    },
+    {
+      "path": "ctf_tool/reverse_tools.py",
+      "sha256": "7700c806adfb4b984086f46819ae8a93810ed837f607e3835724d1b75e691691",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/ctf_tool/reverse_tools.py.original"
+    },
+    {
+      "path": "ctf_tool/web_tools.py",
+      "sha256": "71f006bbd2eb001c88574147a6328be8ae38cc27199c487a06720a260e97c4c7",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/ctf_tool/web_tools.py.original"
+    },
+    {
+      "path": "backend/app/services/ws_manager.py",
+      "sha256": "182df7dcec26e89f166250f799a2a380fa9e82d47ff2b94b3225cae60962f2c8",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:3",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/ws_manager.py.original"
+    },
+    {
+      "path": "backend/app/routers/ws_router.py",
+      "sha256": "ef87a1513b7cdb454fc34be2fcb86fdcd9df1c0a762be1bb4f5a4912180845dd",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/routers/ws_router.py.original"
+    },
+    {
+      "path": "frontend/src/utils/websocket.ts",
+      "sha256": "a23db9d1e7dcb3644b51ee18ecd171c65c9ab8c960ed892b995fff85f22f6614",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/frontend/src/utils/websocket.ts.original"
+    }
+  ]
+}

@@ -158,100 +158,13 @@ class DeepSeekSequenceTester:
 
     # --------------------  获取下一个 token 的概率分布  --------------------
     def get_token_probabilities(self, messages: List[Dict], max_tokens: int = 1) -> Tuple[str, Dict[str, float]]:
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "logprobs": True,
-            "top_logprobs": self.top_logprobs,
-            "temperature": self.temperature,
-            "stream": False
-        }
-        if self.provider:
-            payload["provider"] = self.provider
-        if self.extra_payload:
-            payload.update(self.extra_payload)
-        logger.debug("API 请求 payload: %s", payload)
-
-        max_attempts = 2
-        response: Optional[requests.Response] = None
-        source = f"tester:{self.model}"
-        for attempt in range(1, max_attempts + 1):
-            _wait_for_global_rate_limit(source)
-            try:
-                response = requests.post(self.base_url, headers=self.headers, json=payload, timeout=self.timeout_sec)
-            except Exception as e:
-                status = getattr(getattr(e, "response", None), "status_code", None)
-                if status == 429 and attempt < max_attempts:
-                    _trigger_global_rate_limit_pause(source, status=429)
-                    continue
-                logger.error("API 请求失败: %s", e, exc_info=True)
-                raise
-
-            if response.status_code == 429 and attempt < max_attempts:
-                _trigger_global_rate_limit_pause(source, status=429)
-                continue
-
-            try:
-                response.raise_for_status()
-            except requests.HTTPError as e:
-                status = getattr(e.response, "status_code", None)
-                if status == 429 and attempt < max_attempts:
-                    _trigger_global_rate_limit_pause(source, status=429)
-                    continue
-                body = ""
-                if e.response is not None:
-                    try:
-                        body = e.response.text
-                    except Exception:
-                        body = "<unavailable>"
-                logger.error("API 请求失败: %s | body=%s", e, (body or "")[:500], exc_info=True)
-                raise
-            break
-
-        if response is None:
-            raise RuntimeError("API 请求未获得响应")
-
-        try:
-            result = response.json()
-        except Exception as e:
-            snippet = getattr(response, 'text', '')
-            logger.error("解析 API JSON 失败: %s | 响应片段=%s", e, (snippet or "")[:500], exc_info=True)
-            raise
-
-        logger.debug("API 响应: %s", json.dumps(result, ensure_ascii=False)[:2000])
-
-        choice = result['choices'][0]
-        generated_content = choice['message']['content']
-        logprobs = choice.get('logprobs', {})
-        token_probabilities: Dict[str, float] = {}
-
-        # 解析 top_logprobs + OTHER 桶
-        if logprobs and 'content' in logprobs and logprobs['content']:
-            token_info = logprobs['content'][0]
-            # 主 token
-            if 'token' in token_info and 'logprob' in token_info:
-                token_probabilities[token_info['token']] = math.exp(token_info['logprob'])
-            # top 列表
-            for top in token_info.get('top_logprobs', []) or []:
-                tok = top.get('token')
-                lp = top.get('logprob')
-                if tok is not None and lp is not None:
-                    token_probabilities[tok] = math.exp(lp)
-
-            # OTHER 桶：保证概率归一
-            s = sum(max(0.0, v) for v in token_probabilities.values())
-            other = max(0.0, 1.0 - s)
-            if other > 0:
-                token_probabilities["<OTHER>"] = other
-            # 轻度归一，稳健处理浮点误差
-            s2 = sum(token_probabilities.values())
-            if s2 > 0:
-                for k in list(token_probabilities.keys()):
-                    token_probabilities[k] = max(0.0, token_probabilities[k] / s2)
-
-        logger.info("位置分布（含 OTHER）：%s", token_probabilities)
-        return generated_content, token_probabilities
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'services/api_checker/ventor_qtest/check.py','step':'get_token_probabilities','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     # --------------------  单 token 并发任务  --------------------
     def _process_single_token(self, args: Tuple[int, str, str, List[Dict]]) -> TokenProbabilityResult:

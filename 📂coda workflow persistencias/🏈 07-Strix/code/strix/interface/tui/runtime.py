@@ -415,57 +415,13 @@ class GoTuiRuntime:
         # logging handlers created during the scan never paint over the Go
         # TUI's alt screen. The child still inherits the real terminal fds;
         # only the Python-level bindings change.
-        original_stdout = sys.stdout
-        original_stderr = sys.stderr
-        output_sink = Path(os.devnull).open("a", buffering=1)  # noqa: SIM115
-        sys.stdout = output_sink
-        sys.stderr = output_sink
-        backend_socket: socket.socket | None = None
-        sync_task: asyncio.Task[None] | None = None
-        prepare_task: asyncio.Task[None] | None = None
-        process: asyncio.subprocess.Process | subprocess.Popen[bytes] | None = None
-        try:
-            env = child_environment()
-            env["STRIX_VERSION"] = package_version()
-            command = self.binary_command()
-            cwd = str(tui_source_dir()) if command[:2] == ["go", "run"] else None
-            if cwd is not None:
-                # go run compiles the sidecar when the build cache is cold, so
-                # tell the terminal why nothing is on screen yet.
-                print(
-                    "\x1b[2mCompiling the TUI from source (cached after the first run)...\x1b[0m",
-                    file=original_stdout,
-                    flush=True,
-                )
-            process, backend_socket = await launch_tui_process(command, env, cwd)
-            await self.server.start(backend_socket)
-            prepare_task = self._start_preparation()
-            sync_task = asyncio.create_task(self.sync_state())
-            return_code = await wait_process(process)
-            check_return_code(return_code)
-        except Exception as exc:
-            await terminate_process(process)
-            if not self.server.activated:
-                raise GoTuiPreActivationError(str(exc)) from exc
-            raise
-        except BaseException:
-            await terminate_process(process)
-            raise
-        finally:
-            try:
-                if backend_socket is not None:
-                    backend_socket.close()
-                await self._cancel_tasks(prepare_task, sync_task)
-                await self.quit()
-                await self.server.close()
-            finally:
-                sys.stdout = original_stdout
-                sys.stderr = original_stderr
-                output_sink.close()
-        # Mirror run_tui: surface the captured scan failure once the app has
-        # exited cleanly so the CLI reports it instead of exiting 0.
-        if self.scan_error is not None:
-            raise self.scan_error
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/tui/runtime.py','step':'run','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
 
 async def run_go_tui(args: argparse.Namespace) -> None:

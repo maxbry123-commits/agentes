@@ -1,0 +1,31 @@
+{
+  "schema": "yaiwes.internal.transform/v1",
+  "component": "🏈 20-OpenWhale",
+  "mode": "TRANSFORM",
+  "source_files": 19,
+  "candidates": 3,
+  "changed": 3,
+  "findings": [
+    {
+      "path": "scripts/delayed_autopilot.py",
+      "sha256": "93f8bd7939edf23897a411fddf78dd59d18f0595c368c22171bfb2d2cab73c01",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/scripts/delayed_autopilot.py.original"
+    },
+    {
+      "path": "src/openwhale/main.py",
+      "sha256": "e1dfb9c2eb46995ca84d5968e676daa8c05e7a17c364de277d97de73a35a9b46",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/src/openwhale/main.py.original"
+    },
+    {
+      "path": "src/openwhale/agents/deepagents_agent.py",
+      "sha256": "c3e900374a08e18b0d61686aae084ae61601055ac4c2dc3edbcad8264b21491b",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/src/openwhale/agents/deepagents_agent.py.original"
+    }
+  ]
+}

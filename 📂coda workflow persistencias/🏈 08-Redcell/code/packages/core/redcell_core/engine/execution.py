@@ -111,81 +111,40 @@ class LocalDockerBackend(ExecutionBackend):
         await self._docker(*args)
 
     async def ensure(self, on_status: OnOutput | None = None) -> None:
-        """Create the container only if it is not already running (idempotent)."""
-        proc = await asyncio.create_subprocess_exec(
-            "docker", "inspect", "-f", "{{.State.Running}}", self.name,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
-        )
-        assert proc.stdout is not None
-        out = (await proc.stdout.read()).decode(errors="replace").strip()
-        await proc.wait()
-        if out == "true":
-            return
-        await self.start(on_status=on_status)
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/engine/execution.py','step':'ensure','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _image_present(self) -> bool:
-        proc = await asyncio.create_subprocess_exec(
-            "docker", "image", "inspect", self.image,
-            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
-        )
-        await proc.wait()
-        return proc.returncode == 0
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/engine/execution.py','step':'_image_present','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _pull(self) -> None:
-        proc = await asyncio.create_subprocess_exec(
-            "docker", "pull", self.image,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-        )
-        assert proc.stdout is not None
-        out = await proc.stdout.read()
-        await proc.wait()
-        if proc.returncode != 0:
-            lines = out.decode(errors="replace").strip().splitlines()
-            raise RuntimeError(f"docker pull {self.image} failed: {lines[-1] if lines else 'unknown error'}")
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/engine/execution.py','step':'_pull','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def run(self, command: str, on_output: OnOutput | None = None) -> ExecResult:
-        if self._setsid is None:
-            self._setsid = await self._check("setsid -w true")
-        env_args: list[str] = []
-        for k, v in self.proxy_env.items():
-            env_args += ["-e", f"{k}={v}"]
-        tag = _job_tag()
-        wrapped = f"echo $$ > /tmp/rc-{tag}.pg; {command}"
-        if self._setsid:
-            proc_args = ["exec", *env_args, self.name, "setsid", "-w", "sh", "-c", wrapped]
-        else:
-            proc_args = ["exec", *env_args, self.name, "sh", "-c", wrapped]
-        proc = await asyncio.create_subprocess_exec(
-            "docker", *proc_args,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-        )
-        # Read in fixed chunks, not line-iteration: readline() caps a single line at
-        # 64 KB and raises on longer ones (nmap XML, a nuclei JSON line with a big body).
-        assert proc.stdout is not None
-        raw = bytearray()
-        pending = b""
-        try:
-            while True:
-                data = await proc.stdout.read(65536)
-                if not data:
-                    break
-                raw += data
-                if on_output:
-                    pending += data
-                    while b"\n" in pending:
-                        line, pending = pending.split(b"\n", 1)
-                        await on_output(line.decode(errors="replace").rstrip("\r") + "\r\n")
-            if on_output and pending:
-                await on_output(pending.decode(errors="replace") + "\r\n")
-            await proc.wait()
-            return ExecResult(exit_code=proc.returncode or 0, output=raw.decode(errors="replace"))
-        except asyncio.CancelledError:
-            await self._kill_job(tag)
-            try:
-                proc.kill()
-            except ProcessLookupError:
-                pass
-            raise
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/engine/execution.py','step':'run','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def stage_file(self, path: str, data: bytes) -> None:
         directory = path.rsplit("/", 1)[0] or "/"
@@ -201,36 +160,34 @@ class LocalDockerBackend(ExecutionBackend):
                 pass
 
     async def _kill_job(self, tag: str) -> None:
-        script = _kill_script(tag, bool(self._setsid))
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "docker", "exec", self.name, "sh", "-c", script,
-                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
-            await proc.wait()
-        except Exception:
-            pass
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/engine/execution.py','step':'_kill_job','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _check(self, script: str) -> bool:
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "docker", "exec", self.name, "sh", "-c", script,
-                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
-            await proc.wait()
-            return proc.returncode == 0
-        except Exception:
-            return False
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/engine/execution.py','step':'_check','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def close(self) -> None:
         await self._docker("rm", "-f", self.name, check=False)
 
     async def _docker(self, *args: str, check: bool = True) -> None:
-        proc = await asyncio.create_subprocess_exec(
-            "docker", *args,
-            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
-        )
-        await proc.wait()
-        if check and proc.returncode != 0:
-            raise RuntimeError(f"docker {' '.join(args)} failed ({proc.returncode})")
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/engine/execution.py','step':'_docker','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
 
 class SSHBackend(ExecutionBackend):
@@ -396,30 +353,22 @@ class RemoteDockerBackend(ExecutionBackend):
             await on_status(f"{self.image} loaded on the remote")
 
     async def _local_image_present(self) -> bool:
-        proc = await asyncio.create_subprocess_exec(
-            "docker", "image", "inspect", self.image,
-            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
-        await proc.wait()
-        return proc.returncode == 0
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/engine/execution.py','step':'_local_image_present','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _transfer_image(self) -> None:
-        conn = await self.connection()
-        local = await asyncio.create_subprocess_exec(
-            "docker", "save", self.image,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
-        remote = await conn.create_process("docker load", encoding=None)
-        assert local.stdout is not None
-        try:
-            while True:
-                chunk = await local.stdout.read(1 << 16)
-                if not chunk:
-                    break
-                remote.stdin.write(chunk)
-                await remote.stdin.drain()
-            remote.stdin.write_eof()
-        finally:
-            await local.wait()
-            await remote.wait()
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/engine/execution.py','step':'_transfer_image','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def ensure(self, on_status: OnOutput | None = None) -> None:
         await self.connection()

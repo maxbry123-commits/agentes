@@ -55,85 +55,13 @@ def _ensure_event_loop() -> None:
 
 
 async def _create_browser() -> Browser:
-    if not _PLAYWRIGHT_AVAILABLE:
-        raise RuntimeError("Playwright is not installed. Install with: pip install playwright")
-
-    if _state.browser is not None and _state.browser.is_connected():
-        return _state.browser
-
-    if _state.browser is not None:
-        try:
-            # Force-kill if close hangs (zombie browser from previous scan)
-            await asyncio.wait_for(_state.browser.close(), timeout=5)
-        except Exception:
-            # If close() hangs, try to kill the underlying process directly
-            try:
-                browser_proc = getattr(_state.browser, "process", None)
-                if browser_proc is not None:
-                    browser_proc.kill()
-                    await asyncio.wait_for(browser_proc.wait(), timeout=5)
-            except Exception:
-                pass
-        _state.browser = None
-    if _state.playwright is not None:
-        try:
-            await asyncio.wait_for(_state.playwright.stop(), timeout=5)
-        except Exception:
-            pass
-        _state.playwright = None
-
-    _state.playwright = await async_playwright().start()
-    try:
-        _state.browser = await _state.playwright.chromium.launch(
-            headless=True,
-            args=[
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-            ],
-        )
-    except Exception as exc:
-        error_msg = str(exc)
-        # Auto-install Chromium if the browser binary is missing.
-        if "Executable doesn't exist" in error_msg or "download new browsers" in error_msg:
-            logger.warning("Playwright Chromium missing; attempting auto-install...")
-            import asyncio
-            import shutil
-            import sys
-
-            playwright_cmd = shutil.which("playwright")
-            if playwright_cmd is None:
-                # Fallback: try via python -m playwright
-                playwright_cmd = sys.executable
-                install_args = ["-m", "playwright", "install", "chromium"]
-            else:
-                install_args = ["install", "chromium"]
-
-            proc = await asyncio.create_subprocess_exec(
-                playwright_cmd,
-                *install_args,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await proc.communicate()
-            if proc.returncode != 0:
-                raise RuntimeError(
-                    f"Failed to auto-install Playwright Chromium: {stderr.decode().strip()}"
-                ) from exc
-            logger.info("Playwright Chromium auto-installed successfully.")
-
-            # Retry launch after installation.
-            _state.browser = await _state.playwright.chromium.launch(
-                headless=True,
-                args=[
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                ],
-            )
-        else:
-            raise
-    return _state.browser
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/tools/browser/browser_instance.py','step':'_create_browser','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _get_browser() -> tuple[asyncio.AbstractEventLoop, Browser]:

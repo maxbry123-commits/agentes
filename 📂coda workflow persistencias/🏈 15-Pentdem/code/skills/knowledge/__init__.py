@@ -269,192 +269,13 @@ Return JSON with these fields (use null if not found):
             return None
 
     def _mock_parsed_report(self, url: str) -> dict:
-        """Return mock parsed reports for testing."""
-        mock_reports = [
-            {
-                "report_id": "123456",
-                "title": "Stored XSS in user profile name field",
-                "vulnerability_class": "XSS",
-                "severity": "high",
-                "cvss_score": 6.1,
-                "target_tech": "React, Node.js, MongoDB",
-                "attack_vector": "Attacker submitted malicious script in the display name field which was rendered unsanitized in the admin panel",
-                "endpoint_pattern": "/api/v1/users/profile",
-                "parameter": "display_name",
-                "payload": "<img src=x onerror=alert(document.cookie)>",
-                "impact": "Account takeover of any admin user who views the profile",
-                "remediation": "Implemented DOMPurify sanitization on user input before rendering",
-                "url": url,
-                "source": "hackerone",
-            },
-            {
-                "report_id": "123457",
-                "title": "IDOR allows viewing any user's private messages",
-                "vulnerability_class": "IDOR",
-                "severity": "high",
-                "cvss_score": 6.5,
-                "target_tech": "Ruby on Rails, PostgreSQL",
-                "attack_vector": "Changed message_id parameter to enumerate other users' private messages",
-                "endpoint_pattern": "/api/v1/messages/{message_id}",
-                "parameter": "message_id",
-                "payload": "Changed message_id from 1 to 2, 3, 4... via integer enumeration",
-                "impact": "An attacker can read any user's private messages by iterating message IDs",
-                "remediation": "Added ownership check before returning message data",
-                "url": url,
-                "source": "hackerone",
-            },
-            {
-                "report_id": "123458",
-                "title": "SSRF in PDF export feature leads to internal network scan",
-                "vulnerability_class": "SSRF",
-                "severity": "critical",
-                "cvss_score": 8.6,
-                "target_tech": "Python, Flask, wkhtmltopdf",
-                "attack_vector": "The PDF export feature accepts a URL to render — attacker used it to probe internal network",
-                "endpoint_pattern": "/api/v1/export/pdf?url={target_url}",
-                "parameter": "url",
-                "payload": "http://169.254.169.254/latest/meta-data/",
-                "impact": "Access to cloud metadata service exposing AWS credentials",
-                "remediation": "Added URL allowlist and blocked private IP ranges",
-                "url": url,
-                "source": "hackerone",
-            },
-            {
-                "report_id": "123459",
-                "title": "SQL injection in search endpoint",
-                "vulnerability_class": "SQLi",
-                "severity": "critical",
-                "cvss_score": 9.8,
-                "target_tech": "PHP, MySQL, Apache",
-                "attack_vector": "Search query parameter was directly concatenated into SQL query without sanitization",
-                "endpoint_pattern": "/search?q={query}",
-                "parameter": "q",
-                "payload": "' UNION SELECT username,password FROM users--",
-                "impact": "An attacker can extract all user credentials from the database",
-                "remediation": "Switched to parameterized prepared statements",
-                "url": url,
-                "source": "hackerone",
-            },
-            {
-                "report_id": "123460",
-                "title": "SSTI in email template leads to RCE",
-                "vulnerability_class": "SSTI",
-                "severity": "critical",
-                "cvss_score": 9.8,
-                "target_tech": "Python, Jinja2, Django",
-                "attack_vector": "User-controlled name field was injected into email template rendered server-side",
-                "endpoint_pattern": "/api/v1/send-invite",
-                "parameter": "name",
-                "payload": "{{config.__class__.__init__.__globals__['os'].popen('id').read()}}",
-                "impact": "Remote code execution on the email server",
-                "remediation": "Switched to string formatting instead of template rendering for user input",
-                "url": url,
-                "source": "hackerone",
-            },
-            {
-                "report_id": "123461",
-                "title": "Open redirect in OAuth callback allows token theft",
-                "vulnerability_class": "Open Redirect",
-                "severity": "medium",
-                "cvss_score": 4.3,
-                "target_tech": "Node.js, Express, Passport.js",
-                "attack_vector": "The redirect_uri parameter in OAuth flow was not validated, allowing redirection to attacker domain",
-                "endpoint_pattern": "/auth/callback?redirect_uri={url}",
-                "parameter": "redirect_uri",
-                "payload": "https://evil.com/steal-token",
-                "impact": "OAuth authorization code can be stolen via open redirect",
-                "remediation": "Implemented redirect URI allowlist validation",
-                "url": url,
-                "source": "hackerone",
-            },
-            {
-                "report_id": "123462",
-                "title": "LFI via path traversal in file download",
-                "vulnerability_class": "LFI",
-                "severity": "high",
-                "cvss_score": 7.5,
-                "target_tech": "PHP, Linux, Apache",
-                "attack_vector": "The file download endpoint did not sanitize path parameter allowing directory traversal",
-                "endpoint_pattern": "/download?file={path}",
-                "parameter": "file",
-                "payload": "../../../etc/passwd",
-                "impact": "An attacker can read any file on the server including configuration files with credentials",
-                "remediation": "Implemented path canonicalization and restricted access to the uploads directory only",
-                "url": url,
-                "source": "hackerone",
-            },
-            {
-                "report_id": "123463",
-                "title": "Command injection in ping tool",
-                "vulnerability_class": "Command Injection",
-                "severity": "critical",
-                "cvss_score": 9.8,
-                "target_tech": "Python, Flask, Ubuntu",
-                "attack_vector": "The ping tool passed user input directly to os.system() without sanitization",
-                "endpoint_pattern": "/tools/ping?host={ip}",
-                "parameter": "host",
-                "payload": "127.0.0.1; id",
-                "impact": "Remote code execution on the server",
-                "remediation": "Replaced os.system() with subprocess and input validation",
-                "url": url,
-                "source": "hackerone",
-            },
-            {
-                "report_id": "123464",
-                "title": "Auth bypass via header injection",
-                "vulnerability_class": "Auth Bypass",
-                "severity": "critical",
-                "cvss_score": 9.1,
-                "target_tech": "Java, Spring Boot, Tomcat",
-                "attack_vector": "The admin panel trusts X-Forwarded-For and X-Admin headers for authorization",
-                "endpoint_pattern": "/admin/dashboard",
-                "parameter": "X-Admin header",
-                "payload": "X-Admin: true",
-                "impact": "Anyone can access the admin panel by adding a simple HTTP header",
-                "remediation": "Removed header-based authentication, implemented proper session-based auth",
-                "url": url,
-                "source": "hackerone",
-            },
-            {
-                "report_id": "123465",
-                "title": "GraphQL introspection reveals admin mutations",
-                "vulnerability_class": "GraphQL",
-                "severity": "medium",
-                "cvss_score": 5.3,
-                "target_tech": "Node.js, Apollo GraphQL, React",
-                "attack_vector": "GraphQL endpoint had introspection enabled revealing all types and mutations including admin-only operations",
-                "endpoint_pattern": "/graphql",
-                "parameter": "query",
-                "payload": "{__schema{types{name fields{name}}}}",
-                "impact": "Attacker can discover and call undocumented admin mutations",
-                "remediation": "Disabled introspection in production, implemented query depth limiting",
-                "url": url,
-                "source": "hackerone",
-            },
-            {
-                "report_id": "123466",
-                "title": "NoSQL injection bypasses login",
-                "vulnerability_class": "NoSQLi",
-                "severity": "high",
-                "cvss_score": 9.3,
-                "target_tech": "Node.js, MongoDB, Express",
-                "attack_vector": "Login endpoint passed JSON body directly to MongoDB query without sanitization",
-                "endpoint_pattern": "/api/v1/login",
-                "parameter": "password",
-                "payload": '{"$gt": ""}',
-                "impact": "An attacker can bypass authentication by injecting MongoDB operators",
-                "remediation": "Implemented input validation and type checking before database queries",
-                "url": url,
-                "source": "hackerone",
-            },
-        ]
-        rid_match = re.search(r"/reports/(\d+)", url)
-        rid = rid_match.group(1) if rid_match else "999999"
-
-        for r in mock_reports:
-            r["report_id"] = rid
-            r["url"] = url
-        return mock_reports[hash(rid) % len(mock_reports)]
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/knowledge/__init__.py','step':'_mock_parsed_report','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     # ─── Storage ────────────────────────────────────────────────────
 
@@ -546,38 +367,13 @@ Return JSON with these fields (use null if not found):
         )
 
     def _mock_query(self, vuln_class: str, tech: str, limit: int) -> SkillResult:
-        """Return mock knowledge for testing."""
-        all_mock = [
-            {"source": "hackerone", "report_id": "123456", "title": "Stored XSS in user profile name field", "vulnerability_class": "XSS", "severity": "high", "cvss_score": 6.1, "target_tech": "React, Node.js, MongoDB", "attack_vector": "XSS via unsanitized display name field", "endpoint_pattern": "/api/v1/users/profile", "parameter": "display_name", "payload": "<img src=x onerror=alert(document.cookie)>", "impact": "Account takeover of admin users", "remediation": "DOMPurify sanitization", "url": "https://hackerone.com/reports/123456"},
-            {"source": "hackerone", "report_id": "123457", "title": "IDOR allows viewing any user's private messages", "vulnerability_class": "IDOR", "severity": "high", "cvss_score": 6.5, "target_tech": "Ruby on Rails, PostgreSQL", "attack_vector": "IDOR via message_id enumeration", "endpoint_pattern": "/api/v1/messages/{message_id}", "parameter": "message_id", "payload": "Integer ID enumeration (1,2,3...)", "impact": "Read any user's private messages", "remediation": "Ownership check on message access", "url": "https://hackerone.com/reports/123457"},
-            {"source": "hackerone", "report_id": "123458", "title": "SSRF in PDF export leads to internal network scan", "vulnerability_class": "SSRF", "severity": "critical", "cvss_score": 8.6, "target_tech": "Python, Flask, wkhtmltopdf", "attack_vector": "SSRF via URL parameter in PDF export", "endpoint_pattern": "/api/v1/export/pdf?url={target_url}", "parameter": "url", "payload": "http://169.254.169.254/latest/meta-data/", "impact": "Cloud metadata credentials exposed", "remediation": "URL allowlist + private IP block", "url": "https://hackerone.com/reports/123458"},
-            {"source": "hackerone", "report_id": "123459", "title": "SQL injection in search endpoint", "vulnerability_class": "SQLi", "severity": "critical", "cvss_score": 9.8, "target_tech": "PHP, MySQL, Apache", "attack_vector": "SQLi via search query parameter", "endpoint_pattern": "/search?q={query}", "parameter": "q", "payload": "' UNION SELECT username,password FROM users--", "impact": "Extract all user credentials", "remediation": "Parameterized prepared statements", "url": "https://hackerone.com/reports/123459"},
-            {"source": "hackerone", "report_id": "123460", "title": "Auth bypass via admin header", "vulnerability_class": "Auth Bypass", "severity": "critical", "cvss_score": 9.1, "target_tech": "Java, Spring Boot, Tomcat", "attack_vector": "Auth bypass via X-Admin header", "endpoint_pattern": "/admin/dashboard", "parameter": "X-Admin", "payload": "X-Admin: true", "impact": "Anyone can access admin panel via header", "remediation": "Remove header-based auth", "url": "https://hackerone.com/reports/123460"},
-            {"source": "hackerone", "report_id": "123461", "title": "SSTI in email template leads to RCE", "vulnerability_class": "SSTI", "severity": "critical", "cvss_score": 9.8, "target_tech": "Python, Jinja2, Django", "attack_vector": "SSTI via user name in email template", "endpoint_pattern": "/api/v1/send-invite", "parameter": "name", "payload": "{{config.__class__.__init__.__globals__['os'].popen('id').read()}}", "impact": "Remote code execution on server", "remediation": "String formatting instead of template rendering", "url": "https://hackerone.com/reports/123461"},
-            {"source": "hackerone", "report_id": "123462", "title": "Open redirect in OAuth callback", "vulnerability_class": "Open Redirect", "severity": "medium", "cvss_score": 4.3, "target_tech": "Node.js, Express, Passport.js", "attack_vector": "Open redirect via unvalidated redirect_uri", "endpoint_pattern": "/auth/callback?redirect_uri={url}", "parameter": "redirect_uri", "payload": "https://evil.com/steal-token", "impact": "OAuth token theft via redirect", "remediation": "Redirect URI allowlist", "url": "https://hackerone.com/reports/123462"},
-            {"source": "hackerone", "report_id": "123463", "title": "LFI via path traversal in file download", "vulnerability_class": "LFI", "severity": "high", "cvss_score": 7.5, "target_tech": "PHP, Linux, Apache", "attack_vector": "LFI via directory traversal in file param", "endpoint_pattern": "/download?file={path}", "parameter": "file", "payload": "../../../etc/passwd", "impact": "Read any file on server", "remediation": "Path canonicalization + directory restriction", "url": "https://hackerone.com/reports/123463"},
-            {"source": "hackerone", "report_id": "123464", "title": "Command injection in ping tool", "vulnerability_class": "Command Injection", "severity": "critical", "cvss_score": 9.8, "target_tech": "Python, Flask, Ubuntu", "attack_vector": "Command injection via os.system() call", "endpoint_pattern": "/tools/ping?host={ip}", "parameter": "host", "payload": "127.0.0.1; id", "impact": "Remote code execution", "remediation": "subprocess with input validation", "url": "https://hackerone.com/reports/123464"},
-            {"source": "hackerone", "report_id": "123465", "title": "GraphQL introspection reveals admin mutations", "vulnerability_class": "GraphQL", "severity": "medium", "cvss_score": 5.3, "target_tech": "Node.js, Apollo GraphQL, React", "attack_vector": "GraphQL introspection enabled in production", "endpoint_pattern": "/graphql", "parameter": "query", "payload": "{__schema{types{name fields{name}}}}", "impact": "Discover hidden admin mutations", "remediation": "Disable introspection in production", "url": "https://hackerone.com/reports/123465"},
-            {"source": "hackerone", "report_id": "123466", "title": "NoSQL injection bypasses login", "vulnerability_class": "NoSQLi", "severity": "high", "cvss_score": 9.3, "target_tech": "Node.js, MongoDB, Express", "attack_vector": "NoSQLi via JSON body to MongoDB query", "endpoint_pattern": "/api/v1/login", "parameter": "password", "payload": '{"$gt": ""}', "impact": "Authentication bypass", "remediation": "Input validation + type checking", "url": "https://hackerone.com/reports/123466"},
-        ]
-
-        filtered = all_mock
-        if vuln_class:
-            filtered = [r for r in filtered if r["vulnerability_class"].lower() == vuln_class.lower()]
-        if tech:
-            filtered = [r for r in filtered if tech.lower() in r["target_tech"].lower()]
-
-        if not filtered:
-            filtered = all_mock
-
-        return SkillResult(
-            success=True,
-            findings=[],
-            data={"reports": filtered[:limit], "count": len(filtered[:limit]),
-                  "query": {"vuln_class": vuln_class, "tech": tech}},
-            next_skills=[],
-            confidence=1.0,
-        )
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/knowledge/__init__.py','step':'_mock_query','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _search_reports(self, context: dict) -> SkillResult:
         """Full-text search across disclosed reports."""

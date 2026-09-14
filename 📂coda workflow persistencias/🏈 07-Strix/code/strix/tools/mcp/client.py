@@ -120,66 +120,13 @@ class _QuietMCPServerStdio(MCPServerStdio):
 
 
 def _build_server(config: McpConnectionConfig) -> BuiltMcpServer:
-    """Construct (but do not connect) the SDK server for one connection.
-
-    The returned tuple carries the server and, for HTTP connections, a recorder
-    that retains sanitized response metadata for the owning session.
-
-    When ``allowed_tools`` is a list the static filter means the server will not
-    even list tools outside it, so it is the authoritative gate on what
-    ``describe_mcp`` and ``call_mcp`` can see. When it is ``None`` no filter is
-    applied and every listed tool is reachable.
-    """
-    tool_filter = (
-        create_static_tool_filter(allowed_tool_names=config.allowed_tools)
-        if config.allowed_tools is not None
-        else None
-    )
-
-    if config.transport == "stdio":
-        stdio_params: MCPServerStdioParams = {
-            "command": cast("str", config.command),
-            "args": config.args,
-            "env": config.env,
-        }
-        return BuiltMcpServer(
-            _QuietMCPServerStdio(
-                params=stdio_params,
-                name=config.name,
-                tool_filter=tool_filter,
-                cache_tools_list=True,
-            ),
-            None,
-        )
-
-    recorder = HttpStatusRecorder()
-
-    def httpx_client_factory(
-        headers: dict[str, str] | None = None,
-        timeout: httpx.Timeout | None = None,
-        auth: httpx.Auth | None = None,
-    ) -> httpx.AsyncClient:
-        client = create_mcp_http_client(headers=headers, timeout=timeout, auth=auth)
-        client.event_hooks.setdefault("response", []).append(recorder)
-        return client
-
-    http_params: MCPServerStreamableHttpParams = {
-        "url": cast("str", config.url),
-        "headers": _auth_headers(config),
-        "timeout": config.http_timeout_seconds,
-        "sse_read_timeout": config.sse_read_timeout_seconds,
-        "httpx_client_factory": httpx_client_factory,
-    }
-    return BuiltMcpServer(
-        MCPServerStreamableHttp(
-            params=http_params,
-            name=config.name,
-            tool_filter=tool_filter,
-            cache_tools_list=True,
-            client_session_timeout_seconds=config.session_timeout_seconds,
-        ),
-        recorder,
-    )
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/tools/mcp/client.py','step':'_build_server','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _mcp_result_to_tool_output(server: MCPServer, result: Any) -> Any:

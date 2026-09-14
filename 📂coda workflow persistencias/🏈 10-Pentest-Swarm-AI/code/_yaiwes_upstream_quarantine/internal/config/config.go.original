@@ -1,0 +1,391 @@
+package config
+
+import (
+	"fmt"
+	"net/url"
+	"os"
+	"strings"
+
+	"github.com/spf13/viper"
+)
+
+type Config struct {
+	Server       ServerConfig       `mapstructure:"server"`
+	Database     DatabaseConfig     `mapstructure:"database"`
+	Redis        RedisConfig        `mapstructure:"redis"`
+	Orchestrator OrchestratorConfig `mapstructure:"orchestrator"`
+	Agents       AgentsConfig       `mapstructure:"agents"`
+	Tools        ToolsConfig        `mapstructure:"tools"`
+	Scope        ScopeConfig        `mapstructure:"scope"`
+	ASM          ASMConfig          `mapstructure:"asm"`
+	BugBounty    BugBountyConfig    `mapstructure:"bugbounty"`
+	Intelligence IntelligenceConfig `mapstructure:"intelligence"`
+	Integrations IntegrationsConfig `mapstructure:"integrations"`
+	Logging      LoggingConfig      `mapstructure:"logging"`
+}
+
+type ServerConfig struct {
+	Host string `mapstructure:"host"`
+	Port int    `mapstructure:"port"`
+
+	// APIKey, when non-empty, requires an X-API-Key header matching this
+	// value on every request except /api/v1/health (so load-balancer
+	// probes still work). Empty disables auth — appropriate for local
+	// dev only. Env override: PENTESTSWARM_SERVER_API_KEY. See #44.5.
+	APIKey string `mapstructure:"api_key"`
+
+	// CORSOrigins is a comma-separated list of allowed origins for the
+	// CORS middleware. Default ("*") preserves prior behaviour but is a
+	// known anti-pattern for an exposed API; production deployments
+	// should override with the dashboard's actual origin. A future
+	// release will flip the default to a localhost-only value with a
+	// release-notes deprecation cycle. See #44.5.
+	CORSOrigins string `mapstructure:"cors_origins"`
+}
+
+type DatabaseConfig struct {
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+	User     string `mapstructure:"user"`
+	Password string `mapstructure:"password"`
+	Name     string `mapstructure:"name"`
+	SSLMode  string `mapstructure:"sslmode"`
+}
+
+func (d DatabaseConfig) DSN() string {
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
+		d.User, d.Password, d.Host, d.Port, d.Name, d.SSLMode)
+}
+
+type RedisConfig struct {
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+	Password string `mapstructure:"password"`
+	DB       int    `mapstructure:"db"`
+}
+
+func (r RedisConfig) Addr() string {
+	return fmt.Sprintf("%s:%d", r.Host, r.Port)
+}
+
+type OrchestratorConfig struct {
+	Provider      string  `mapstructure:"provider"` // claude, openai, gemini, ollama, lmstudio, orcarouter
+	Model         string  `mapstructure:"model"`
+	APIKey        string  `mapstructure:"api_key"`
+	Endpoint      string  `mapstructure:"endpoint"`
+	ContextWindow int     `mapstructure:"context_window"`
+	MaxTokens     int     `mapstructure:"max_tokens"`
+	Temperature   float64 `mapstructure:"temperature"`
+
+	// Fallback is an optional less-restrictive provider used when the
+	// primary refuses a request (e.g. Claude's safety filter triggering
+	// on legitimate offensive-security prompts). When configured, the
+	// prompts.NewProviderWithRetry factory wraps the primary in
+	// prompts.RetryProvider with this as the fallback.
+	Fallback FallbackConfig `mapstructure:"fallback"`
+}
+
+// FallbackConfig holds the secondary provider used by the refusal-retry
+// path. Typically points at Together AI / DeepSeek / Ollama — providers
+// less prone to refusing offensive-security prompts than Claude.
+type FallbackConfig struct {
+	Provider string `mapstructure:"provider"` // openai, ollama, lmstudio, orcarouter
+	Model    string `mapstructure:"model"`
+	APIKey   string `mapstructure:"api_key"`
+	Endpoint string `mapstructure:"endpoint"`
+}
+
+type AgentModelConfig struct {
+	Provider string `mapstructure:"provider"` // claude, openai, ollama, lmstudio, orcarouter — empty means inherit from orchestrator
+	Model    string `mapstructure:"model"`
+	APIKey   string `mapstructure:"api_key"` // empty means inherit from orchestrator
+	Endpoint string `mapstructure:"endpoint"`
+}
+
+type AgentsConfig struct {
+	Recon      AgentModelConfig `mapstructure:"recon"`
+	Classifier AgentModelConfig `mapstructure:"classifier"`
+	Exploit    AgentModelConfig `mapstructure:"exploit"`
+	Report     AgentModelConfig `mapstructure:"report"`
+}
+
+type ToolsConfig struct {
+	DefaultTimeout int           `mapstructure:"default_timeout"` // seconds
+	Subfinder      SubfinderOpts `mapstructure:"subfinder"`
+	Httpx          HttpxOpts     `mapstructure:"httpx"`
+	Nuclei         NucleiOpts    `mapstructure:"nuclei"`
+	Naabu          NaabuOpts     `mapstructure:"naabu"`
+	Katana         KatanaOpts    `mapstructure:"katana"`
+}
+
+type SubfinderOpts struct {
+	Recursive bool `mapstructure:"recursive"`
+	Timeout   int  `mapstructure:"timeout"`
+	RateLimit int  `mapstructure:"rate_limit"`
+}
+
+type HttpxOpts struct {
+	FollowRedirects bool `mapstructure:"follow_redirects"`
+	Timeout         int  `mapstructure:"timeout"`
+	Threads         int  `mapstructure:"threads"`
+}
+
+type NucleiOpts struct {
+	TemplatePath string   `mapstructure:"template_path"`
+	Severity     []string `mapstructure:"severity"`
+	RateLimit    int      `mapstructure:"rate_limit"`
+	Timeout      int      `mapstructure:"timeout"`
+}
+
+type NaabuOpts struct {
+	Ports   string `mapstructure:"ports"` // "top-1000", "80,443,8080", etc.
+	Rate    int    `mapstructure:"rate"`
+	Timeout int    `mapstructure:"timeout"`
+}
+
+type KatanaOpts struct {
+	Depth   int  `mapstructure:"depth"`
+	JSCrawl bool `mapstructure:"js_crawl"`
+	Timeout int  `mapstructure:"timeout"`
+}
+
+type ScopeConfig struct {
+	EnforceStrict bool `mapstructure:"enforce_strict"` // always true, cannot be disabled
+}
+
+type ASMConfig struct {
+	Enabled           bool   `mapstructure:"enabled"`
+	DefaultSchedule   string `mapstructure:"default_schedule"`   // e.g. "24h"
+	MaxAutoCampaigns  int    `mapstructure:"max_auto_campaigns"` // per 24h per scope
+	NotificationSlack string `mapstructure:"notification_slack"`
+	NotificationEmail string `mapstructure:"notification_email"`
+}
+
+type BugBountyConfig struct {
+	HackerOneAPIKey   string `mapstructure:"hackerone_api_key"`
+	HackerOneUsername string `mapstructure:"hackerone_username"`
+	BugcrowdAPIKey    string `mapstructure:"bugcrowd_api_key"`
+}
+
+type IntelligenceConfig struct {
+	Enabled         bool   `mapstructure:"enabled"`
+	SharePatterns   bool   `mapstructure:"share_patterns"`
+	ConsumePatterns bool   `mapstructure:"consume_patterns"`
+	APIEndpoint     string `mapstructure:"api_endpoint"`
+}
+
+type IntegrationsConfig struct {
+	Jira  JiraConfig  `mapstructure:"jira"`
+	Slack SlackConfig `mapstructure:"slack"`
+}
+
+type JiraConfig struct {
+	URL       string `mapstructure:"url"`
+	APIToken  string `mapstructure:"api_token"`
+	Project   string `mapstructure:"project"`
+	IssueType string `mapstructure:"issue_type"`
+}
+
+type SlackConfig struct {
+	BotToken      string `mapstructure:"bot_token"`
+	SigningSecret string `mapstructure:"signing_secret"`
+	Channel       string `mapstructure:"channel"`
+}
+
+type LoggingConfig struct {
+	Level  string `mapstructure:"level"`  // debug, info, warn, error
+	Format string `mapstructure:"format"` // json, console
+}
+
+// newViper builds the viper instance shared by Load and LoadSettings —
+// defaults, env-var wiring, and config-file resolution — without
+// unmarshaling into a Config struct. Kept private so Load's public
+// behavior (a fully-typed *Config) and LoadSettings' (a raw effective
+// key/value map, used by `pentestswarm config show/get`) can't drift out
+// of sync with each other's defaults.
+func newViper(path string) (*viper.Viper, error) {
+	v := viper.New()
+
+	// Defaults
+	v.SetDefault("server.host", "0.0.0.0")
+	v.SetDefault("server.port", 8080)
+	v.SetDefault("server.api_key", "")
+	v.SetDefault("server.cors_origins", "*")
+	v.SetDefault("database.host", "localhost")
+	v.SetDefault("database.port", 5432)
+	v.SetDefault("database.user", "pentestswarm")
+	v.SetDefault("database.name", "pentestswarm")
+	v.SetDefault("database.sslmode", "disable")
+	v.SetDefault("redis.host", "localhost")
+	v.SetDefault("redis.port", 6379)
+	v.SetDefault("redis.db", 0)
+	v.SetDefault("orchestrator.provider", "claude")
+	v.SetDefault("orchestrator.model", "claude-sonnet-4-6")
+	v.SetDefault("orchestrator.context_window", 200000)
+	v.SetDefault("orchestrator.max_tokens", 8192)
+	v.SetDefault("orchestrator.temperature", 0.1)
+	// Agent defaults: empty provider/api_key = inherit from orchestrator.
+	// This means with just a Claude API key, ALL agents use Claude — no Ollama needed.
+	v.SetDefault("agents.recon.provider", "")
+	v.SetDefault("agents.recon.model", "")
+	v.SetDefault("agents.classifier.provider", "")
+	v.SetDefault("agents.classifier.model", "")
+	v.SetDefault("agents.exploit.provider", "")
+	v.SetDefault("agents.exploit.model", "")
+	v.SetDefault("agents.report.provider", "")
+	v.SetDefault("agents.report.model", "")
+	v.SetDefault("tools.default_timeout", 300)
+	v.SetDefault("tools.subfinder.recursive", false)
+	v.SetDefault("tools.subfinder.timeout", 300)
+	v.SetDefault("tools.subfinder.rate_limit", 10)
+	v.SetDefault("tools.httpx.follow_redirects", true)
+	v.SetDefault("tools.httpx.timeout", 30)
+	v.SetDefault("tools.httpx.threads", 50)
+	v.SetDefault("tools.nuclei.severity", []string{"critical", "high", "medium"})
+	v.SetDefault("tools.nuclei.rate_limit", 150)
+	v.SetDefault("tools.nuclei.timeout", 300)
+	v.SetDefault("tools.naabu.ports", "top-1000")
+	v.SetDefault("tools.naabu.rate", 1000)
+	v.SetDefault("tools.naabu.timeout", 300)
+	v.SetDefault("tools.katana.depth", 3)
+	v.SetDefault("tools.katana.js_crawl", true)
+	v.SetDefault("tools.katana.timeout", 300)
+	v.SetDefault("scope.enforce_strict", true)
+	v.SetDefault("asm.enabled", false)
+	v.SetDefault("asm.default_schedule", "24h")
+	v.SetDefault("asm.max_auto_campaigns", 3)
+	v.SetDefault("intelligence.enabled", false)
+	v.SetDefault("intelligence.share_patterns", false)
+	v.SetDefault("intelligence.consume_patterns", false)
+	v.SetDefault("intelligence.api_endpoint", "https://api.pentestswarm.ai")
+	v.SetDefault("logging.level", "info")
+	v.SetDefault("logging.format", "console")
+
+	// Environment variable overrides: PENTESTSWARM_SERVER_PORT, etc.
+	v.SetEnvPrefix("PENTESTSWARM")
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AutomaticEnv()
+
+	// Read config file
+	if path != "" {
+		v.SetConfigFile(path)
+	} else {
+		v.SetConfigName("config")
+		v.SetConfigType("yaml")
+		v.AddConfigPath(".")
+		v.AddConfigPath("$HOME/.pentestswarm")
+		v.AddConfigPath("/etc/pentestswarm")
+	}
+
+	if err := v.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return nil, fmt.Errorf("reading config: %w", err)
+		}
+		// Config file not found is OK — we use defaults + env vars
+	}
+
+	return v, nil
+}
+
+// Load reads configuration from file and environment variables.
+func Load(path string) (*Config, error) {
+	v, err := newViper(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var cfg Config
+	if err := v.Unmarshal(&cfg); err != nil {
+		return nil, fmt.Errorf("unmarshaling config: %w", err)
+	}
+
+	// Scope enforcement is always on — this is a hard-coded safety constraint
+	cfg.Scope.EnforceStrict = true
+
+	return &cfg, nil
+}
+
+// LoadSettings returns the fully-merged effective configuration (defaults
+// + config file + environment overrides) as a generic map, keyed the same
+// way as the YAML file (snake_case) rather than Go field names. It exists
+// for `pentestswarm config show/get`, which want to print/inspect the
+// effective config without a Config-struct-to-map reflection step.
+//
+// Unlike Load, the scope.enforce_strict safety override is re-applied
+// here explicitly (viper's raw settings wouldn't otherwise reflect it)
+// so the displayed value always matches what Load actually enforces.
+func LoadSettings(path string) (map[string]interface{}, error) {
+	v, err := newViper(path)
+	if err != nil {
+		return nil, err
+	}
+
+	settings := v.AllSettings()
+	if scope, ok := settings["scope"].(map[string]interface{}); ok {
+		scope["enforce_strict"] = true
+	} else {
+		settings["scope"] = map[string]interface{}{"enforce_strict": true}
+	}
+	return settings, nil
+}
+
+// LoadFromPath loads config from a specific file path, returning an error if not found.
+func LoadFromPath(path string) (*Config, error) {
+	if _, err := os.Stat(path); err != nil {
+		return nil, fmt.Errorf("config file not found: %s", path)
+	}
+	return Load(path)
+}
+
+// Validate checks that all required configuration values are set and valid.
+func Validate(cfg *Config) error {
+	var errs []string
+
+	// Orchestrator validation
+	switch cfg.Orchestrator.Provider {
+	case "claude", "openai", "gemini", "orcarouter", "together":
+		if cfg.Orchestrator.APIKey == "" {
+			errs = append(errs, fmt.Sprintf("orchestrator.api_key is required when provider is '%s'", cfg.Orchestrator.Provider))
+		}
+	case "ollama", "lmstudio":
+		if cfg.Orchestrator.Endpoint == "" {
+			errs = append(errs, "orchestrator.endpoint is required when provider is 'ollama' or 'lmstudio'")
+		}
+		if _, err := url.Parse(cfg.Orchestrator.Endpoint); err != nil {
+			errs = append(errs, fmt.Sprintf("orchestrator.endpoint is not a valid URL: %s", err))
+		}
+	case "":
+		errs = append(errs, "orchestrator.provider is required (claude, together, openai, gemini, ollama, lmstudio, orcarouter)")
+	default:
+		errs = append(errs, fmt.Sprintf("orchestrator.provider '%s' is not valid — use claude, together, openai, gemini, ollama, lmstudio, or orcarouter", cfg.Orchestrator.Provider))
+	}
+
+	// Model name validation
+	if cfg.Orchestrator.Model == "" {
+		errs = append(errs, "orchestrator.model is required")
+	}
+
+	// Database validation
+	if cfg.Database.Host == "" {
+		errs = append(errs, "database.host is required")
+	}
+	if cfg.Database.Name == "" {
+		errs = append(errs, "database.name is required")
+	}
+
+	// Server port validation
+	if cfg.Server.Port < 1 || cfg.Server.Port > 65535 {
+		errs = append(errs, "server.port must be between 1 and 65535")
+	}
+
+	// Temperature validation
+	if cfg.Orchestrator.Temperature < 0 || cfg.Orchestrator.Temperature > 2 {
+		errs = append(errs, "orchestrator.temperature must be between 0 and 2")
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("configuration errors:\n  - %s", strings.Join(errs, "\n  - "))
+	}
+
+	return nil
+}

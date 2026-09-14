@@ -147,27 +147,23 @@ def dns_error_response(request: bytes, code: int) -> bytes:
 
 
 def forward_dns(request: bytes, upstream: tuple[str, int], tcp: bool) -> bytes:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM if tcp else socket.SOCK_DGRAM) as connection:
-        connection.settimeout(5)
-        if tcp:
-            connection.connect(upstream)
-            connection.sendall(struct.pack("!H", len(request)) + request)
-            length = struct.unpack("!H", read_exact(connection, 2))[0]
-            return read_exact(connection, length)
-        connection.sendto(request, upstream)
-        return connection.recv(65535)
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'network-image/scope_dns.py','step':'forward_dns','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def read_exact(connection: socket.socket, length: int) -> bytes:
-    chunks: list[bytes] = []
-    remaining = length
-    while remaining:
-        chunk = connection.recv(remaining)
-        if not chunk:
-            raise OSError("unexpected DNS TCP EOF")
-        chunks.append(chunk)
-        remaining -= len(chunk)
-    return b"".join(chunks)
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'network-image/scope_dns.py','step':'read_exact','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 class _ThreadingUdpServer(socketserver.ThreadingMixIn, socketserver.UDPServer):

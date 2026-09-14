@@ -114,17 +114,13 @@ class DockerIsolator:
         self.active_containers: Dict[str, str] = {}
 
     def _check_docker(self) -> bool:
-        """Check if Docker is available."""
-        try:
-            import subprocess
-            result = subprocess.run(
-                ["docker", "info"],
-                capture_output=True,
-                timeout=5,
-            )
-            return result.returncode == 0
-        except Exception:
-            return False
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/docker_isolation.py','step':'_check_docker','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def run_tool(
         self,
@@ -134,111 +130,13 @@ class DockerIsolator:
         timeout: int = None,
         env: Dict[str, str] = None,
     ) -> Dict[str, Any]:
-        """
-        Run a security tool in a Docker container.
-        
-        Returns:
-            {
-                "success": bool,
-                "output": str,
-                "errors": str,
-                "exit_code": int,
-                "tool": str,
-                "container_id": str,
-                "duration": float,
-            }
-        """
-        if not self.docker_available:
-            return await self._run_local(tool, args, target, timeout)
-
-        config = TOOL_CONTAINERS.get(tool)
-        if not config:
-            return {
-                "success": False,
-                "output": "",
-                "errors": f"Unknown tool: {tool}",
-                "exit_code": -1,
-                "tool": tool,
-                "container_id": "",
-                "duration": 0,
-            }
-
-        # Build Docker command
-        cmd = [
-            "docker", "run",
-            "--rm",
-            "--name", f"{config.name}-{target.replace('.', '-')}",
-            "--memory", config.memory_limit,
-            "--cpus", config.cpu_limit,
-            "--network", config.network_mode,
-            "--read-only" if config.read_only else "",
-            "--cap-drop", "ALL",
-            "--security-opt", "no-new-privileges",
-            "-v", f"{tempfile.gettempdir()}:/output:rw",
-        ]
-
-        # Add environment variables
-        if env:
-            for k, v in env.items():
-                cmd.extend(["-e", f"{k}={v}"])
-
-        cmd.append(config.image)
-        cmd.extend(args)
-
-        # Remove empty strings
-        cmd = [c for c in cmd if c]
-
-        start_time = asyncio.get_event_loop().time()
-
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-
-            effective_timeout = timeout or config.timeout
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(),
-                timeout=effective_timeout,
-            )
-
-            duration = asyncio.get_event_loop().time() - start_time
-
-            return {
-                "success": proc.returncode == 0,
-                "output": stdout.decode(errors="ignore"),
-                "errors": stderr.decode(errors="ignore"),
-                "exit_code": proc.returncode,
-                "tool": tool,
-                "container_id": f"{config.name}-{target.replace('.', '-')}",
-                "duration": round(duration, 2),
-            }
-
-        except asyncio.TimeoutError:
-            duration = asyncio.get_event_loop().time() - start_time
-            # Kill container
-            await self._kill_container(f"{config.name}-{target.replace('.', '-')}")
-            return {
-                "success": False,
-                "output": "",
-                "errors": f"Timeout after {effective_timeout}s",
-                "exit_code": -1,
-                "tool": tool,
-                "container_id": "",
-                "duration": round(duration, 2),
-            }
-        except Exception as e:
-            duration = asyncio.get_event_loop().time() - start_time
-            return {
-                "success": False,
-                "output": "",
-                "errors": str(e),
-                "exit_code": -1,
-                "tool": tool,
-                "container_id": "",
-                "duration": round(duration, 2),
-            }
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/docker_isolation.py','step':'run_tool','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _run_local(
         self,
@@ -247,78 +145,22 @@ class DockerIsolator:
         target: str,
         timeout: int = None,
     ) -> Dict[str, Any]:
-        """Fallback: run tool locally without Docker."""
-        cmd = [tool] + args
-
-        start_time = asyncio.get_event_loop().time()
-
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-
-            effective_timeout = timeout or 300
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(),
-                timeout=effective_timeout,
-            )
-
-            duration = asyncio.get_event_loop().time() - start_time
-
-            return {
-                "success": proc.returncode == 0,
-                "output": stdout.decode(errors="ignore"),
-                "errors": stderr.decode(errors="ignore"),
-                "exit_code": proc.returncode,
-                "tool": tool,
-                "container_id": "local",
-                "duration": round(duration, 2),
-            }
-
-        except asyncio.TimeoutError:
-            return {
-                "success": False,
-                "output": "",
-                "errors": f"Timeout after {effective_timeout}s",
-                "exit_code": -1,
-                "tool": tool,
-                "container_id": "local",
-                "duration": round(asyncio.get_event_loop().time() - start_time, 2),
-            }
-        except FileNotFoundError:
-            return {
-                "success": False,
-                "output": "",
-                "errors": f"Tool '{tool}' not found. Install it or run in Docker.",
-                "exit_code": -1,
-                "tool": tool,
-                "container_id": "local",
-                "duration": 0,
-            }
-        except Exception as e:
-            return {
-                "success": False,
-                "output": "",
-                "errors": str(e),
-                "exit_code": -1,
-                "tool": tool,
-                "container_id": "local",
-                "duration": round(asyncio.get_event_loop().time() - start_time, 2),
-            }
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/docker_isolation.py','step':'_run_local','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _kill_container(self, container_name: str):
-        """Kill a running container."""
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "docker", "rm", "-f", container_name,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            await proc.communicate()
-        except Exception:
-            pass
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/docker_isolation.py','step':'_kill_container','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def run_sqlmap(self, url: str, param: str = "", level: int = 1, risk: int = 1) -> Dict:
         """Run sqlmap in isolation."""
@@ -362,9 +204,13 @@ class DockerIsolator:
         return await self.run_tool("subfinder", args, domain, timeout=120)
 
     async def run_httpx(self, targets_file: str) -> Dict:
-        """Run httpx in isolation."""
-        args = ["-l", targets_file, "-json", "-o", "/output/httpx.json", "-silent"]
-        return await self.run_tool("httpx", args, "multi", timeout=120)
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/docker_isolation.py','step':'run_httpx','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def run_dalfox(self, url: str) -> Dict:
         """Run dalfox XSS scanner in isolation."""

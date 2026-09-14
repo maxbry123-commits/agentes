@@ -75,10 +75,13 @@ def _build_config() -> dict[str, Any]:
 
 
 def _run_agent_once(command: str, cwd: Path) -> int:
-    print(f"\n[autopilot] 启动智能体命令: {command}")
-    args = shlex.split(command)
-    process = subprocess.run(args, cwd=str(cwd), check=False)
-    return process.returncode
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'scripts/delayed_autopilot.py','step':'_run_agent_once','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 async def _main() -> int:

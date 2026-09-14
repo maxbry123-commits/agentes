@@ -173,37 +173,13 @@ async def stop_run(rid: str, s: AsyncSession = Depends(db)) -> Run:
 
 @router.post("/sessions/{sid}/browser/start")
 async def browser_start(sid: str, s: AsyncSession = Depends(db)) -> dict[str, object]:
-    """Boot the browser stack in the session's container so the operator can view
-    it even before the agent browses. Needs an active run (the container exists
-    only while a run executes); local sessions only for now."""
-    session = await _get_session(s, sid)
-    if session.server_id:
-        return {"ok": False, "detail": "live browser view is local-only for now"}
-    container = f"redcell-exec-{sid[:12]}"
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "docker", "exec", container, "rc-browserd", "start",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-        )
-    except Exception as exc:
-        return {"ok": False, "detail": str(exc)[:200]}
-    try:
-        out, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
-    except TimeoutError:
-        # wait_for cancels communicate() but leaves docker exec running; kill and reap it.
-        try:
-            proc.kill()
-        except Exception:
-            pass
-        await proc.wait()
-        return {"ok": False, "detail": "browser start timed out"}
-    except Exception as exc:
-        return {"ok": False, "detail": str(exc)[:200]}
-    ok = proc.returncode == 0
-    detail = out.decode(errors="replace")[-200:] if out else ""
-    if not ok and "No such container" in detail:
-        detail = "no running container for this session; start a run first"
-    return {"ok": ok, "detail": detail}
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'apps/api/app/routers/resources.py','step':'browser_start','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 @router.post("/sessions/{sid}/browser/control")

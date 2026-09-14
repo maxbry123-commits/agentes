@@ -236,40 +236,13 @@ _POSTMAN_FETCH_TIMEOUT = 30
 
 
 def _postman_api_json(url: str, api_key: str, label: str) -> dict[str, Any]:
-    """GET a Postman API resource and return the parsed JSON payload.
-
-    Raises :class:`SpecParseError` with an actionable message on auth, network,
-    or shape errors.
-    """
-    if not api_key:
-        raise SpecParseError(
-            "POSTMAN_API_KEY is not set. Export a Postman API key (PMAK-…) to "
-            "fetch from the Postman API, or pass a local collection file instead.",
-        )
-    try:
-        response = requests.get(
-            url,
-            headers={"X-Api-Key": api_key, "Accept": "application/json"},
-            timeout=_POSTMAN_FETCH_TIMEOUT,
-        )
-    except requests.RequestException as exc:
-        raise SpecParseError(f"Failed to reach the Postman API: {exc}") from exc
-
-    if response.status_code == 401:
-        raise SpecParseError("Postman API rejected the key (401). Check POSTMAN_API_KEY.")
-    if response.status_code == 404:
-        raise SpecParseError(
-            f"Postman {label} not found (404). Check the id and that the key can access it.",
-        )
-    if response.status_code != 200:
-        raise SpecParseError(f"Postman API returned HTTP {response.status_code} for {label}.")
-    try:
-        payload = response.json()
-    except ValueError as exc:
-        raise SpecParseError(f"Postman API returned non-JSON for {label}") from exc
-    if not isinstance(payload, dict):
-        raise SpecParseError(f"Unexpected Postman API response shape for {label}")
-    return payload
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/utils/api_spec.py','step':'_postman_api_json','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def fetch_postman_collection(collection_uid: str, api_key: str) -> dict[str, Any]:

@@ -61,19 +61,10 @@ class SlackNotifier(BaseNotifier):
         self._webhook_url = webhook_url
 
     async def _send_message(self, text: str) -> bool:
-        """POST to the Slack incoming webhook. Returns True on HTTP 200.
-
-        Webhooks accept either plain text in the `text` field or a structured
-        `blocks` array. Plain text is enough for our short alerts and avoids
-        accidentally rendering user-controlled HIR text as Slack markup.
-        """
-        import aiohttp
-        payload = {"text": text}
-        timeout = aiohttp.ClientTimeout(total=10)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(self._webhook_url, json=payload) as resp:
-                # Slack webhooks return 200 + body "ok" on success.
-                if resp.status != 200:
-                    return False
-                body = await resp.text()
-                return body.strip() == "ok"
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'core/notifiers/slack.py','step':'_send_message','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye

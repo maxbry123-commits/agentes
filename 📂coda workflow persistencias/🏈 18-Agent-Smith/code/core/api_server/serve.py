@@ -95,57 +95,10 @@ def _port_healthy(port: int) -> bool:
 
 
 async def serve(port: int = 7777) -> str:
-    """
-    Start the dashboard server as an independent background process.
-    Survives MCP server restarts — uses a PID file to detect and reuse
-    a previously spawned dashboard instead of killing it.
-    Restarts automatically if any backend Python module has changed since launch
-    (see _code_fingerprint — not just serve.py's own mtime).
-    """
-    current_mtime = _code_fingerprint()
-
-    # Check PID file first — survives MCP server restarts
-    saved_pid, saved_mtime = _api._read_pid()
-    code_unchanged = saved_mtime is not None and abs(current_mtime - saved_mtime) < 1.0
-    if saved_pid and _api._pid_alive(saved_pid) and _api._port_healthy(port) and code_unchanged:
-        return f"http://localhost:{port}"
-
-    # Old process died, code changed, or never existed — kill stale process if running
-    if saved_pid and _api._pid_alive(saved_pid):
-        # psutil.Process.terminate() abstracts SIGTERM (POSIX) vs
-        # TerminateProcess (Windows). Older form was os.kill(SIGTERM)
-        # which Windows doesn't support for foreign processes.
-        try:
-            import psutil
-            psutil.Process(saved_pid).terminate()
-            await asyncio.sleep(0.3)
-        except (psutil.NoSuchProcess, psutil.AccessDenied, ImportError, OSError):
-            pass
-
-    # Fire-and-forget: process runs independently in a new session.
-    # stdout/stderr → /dev/null so the MCP stdio pipe is never touched.
-    # start_new_session=True detaches from MCP server's process group.
-    # Bind loopback by default so the control plane isn't exposed on the network.
-    # Combined with the per-session bearer token (core.dashboard_auth), this closes
-    # the unauthenticated-dashboard / CSRF / rebind class. Override with
-    # DASHBOARD_HOST=0.0.0.0 only behind a trusted boundary (e.g. reach it via an
-    # SSH tunnel instead — see docs/production-isolation.md).
-    host = os.environ.get("DASHBOARD_HOST", "127.0.0.1")
-    proc = await asyncio.create_subprocess_exec(
-        sys.executable, "-m", "uvicorn",
-        "core.api_server:app",
-        "--host", host,
-        "--port", str(port),
-        "--no-access-log",
-        "--log-level", "critical",
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL,
-        cwd=str(_api._REPO_ROOT),
-        start_new_session=True,
-    )
-    _api._write_pid(proc.pid)
-
-    await asyncio.sleep(1.5)     # give uvicorn time to bind the port
-    if not _api._port_healthy(port):
-        return f"Dashboard failed to start on port {port}"
-    return f"http://localhost:{port}"
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'core/api_server/serve.py','step':'serve','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye

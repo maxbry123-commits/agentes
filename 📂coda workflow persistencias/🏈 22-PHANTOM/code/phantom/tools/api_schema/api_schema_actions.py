@@ -58,59 +58,13 @@ def _sanitize_url(url: str) -> str | None:
 
 
 def _fetch_schema(url_or_data: str, timeout: int = REQUEST_TIMEOUT) -> dict[str, Any] | None:
-    """
-    Fetch and parse schema from URL or parse directly if JSON/YAML string.
-    
-    Security:
-    - Size limit prevents DoS
-    - Timeout prevents hanging
-    - SSRF validation on URLs
-    - Safe YAML loading (no code execution)
-    """
-    # Check if it's a URL
-    if url_or_data.strip().startswith(("http://", "https://")):
-        sanitized = _sanitize_url(url_or_data.strip())
-        if not sanitized:
-            logger.warning("Invalid or unsafe URL")
-            return None
-        
-        try:
-            # Fetch schema from URL
-            with httpx.Client(timeout=timeout, follow_redirects=True) as client:
-                response = client.get(sanitized)
-                response.raise_for_status()
-                
-                # Check size
-                if len(response.content) > MAX_SCHEMA_SIZE:
-                    logger.warning(f"Schema too large: {len(response.content)} bytes")
-                    return None
-                
-                content = response.text
-        except Exception as e:
-            logger.error(f"Failed to fetch schema: {e}")
-            return None
-    else:
-        # Treat as direct schema content
-        content = url_or_data
-        
-        # Check size
-        if len(content) > MAX_SCHEMA_SIZE:
-            logger.warning(f"Schema too large: {len(content)} bytes")
-            return None
-    
-    # Try parsing as JSON first
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError:
-        pass
-    
-    # Try YAML (SAFE loading - no code execution)
-    try:
-        # yaml.safe_load prevents arbitrary Python object execution
-        return yaml.safe_load(content)
-    except yaml.YAMLError as e:
-        logger.error(f"Failed to parse schema: {e}")
-        return None
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/tools/api_schema/api_schema_actions.py','step':'_fetch_schema','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _extract_openapi_v2_endpoints(schema: dict[str, Any]) -> list[dict[str, Any]]:

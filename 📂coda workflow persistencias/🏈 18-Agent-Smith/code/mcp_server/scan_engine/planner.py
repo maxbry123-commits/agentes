@@ -398,27 +398,10 @@ _EXPLOITATION_TOOLS = {"kali_sqlmap", "kali"}  # kali used for sqlmap/hydra/etc
 
 
 def _detect_drift(tool: str, phase: str, tools_run: set) -> list[str]:
-    """Detect behavioral drift and return warning strings."""
-    warnings: list[str] = []
-
-    # Exploitation during recon
-    if phase == "recon" and tool in _EXPLOITATION_TOOLS:
-        warnings.append(
-            f"DRIFT: Running {tool} during recon phase. "
-            f"Complete discovery first: httpx → spider → register endpoints → then test."
-        )
-
-    # Recon tool during testing (going backwards)
-    if phase == "testing" and tool in _RECON_ONLY_TOOLS:
-        warnings.append(
-            f"DRIFT: Running {tool} during testing phase. "
-            f"Recon is already complete. Focus on pending coverage cells."
-        )
-
-    # httpx not run but trying to spider/test
-    if tool == "spider" and "httpx" not in tools_run:
-        warnings.append(
-            "DRIFT: Spider called before httpx. Run httpx first to confirm target is live."
-        )
-
-    return warnings
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'mcp_server/scan_engine/planner.py','step':'_detect_drift','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye

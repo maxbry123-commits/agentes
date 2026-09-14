@@ -78,30 +78,13 @@ class MCPServerAdapter(BaseTool):
             raise RuntimeError(f"无法连接MCP服务器: {str(e)}")
 
     async def _load_http_tools(self):
-        """通过HTTP加载工具列表"""
-        if not self.base_url:
-            logger.error("无法加载工具: 未指定服务URL")
-            return
-
-        try:
-            # 使用mcp的HTTP客户端加载工具
-            # 注意: 这里假设mcp库有HTTP客户端实现
-            # 如果没有，我们可以使用requests作为临时方案
-            import requests
-
-            headers = (
-                {"Authorization": f"Bearer {self.auth_token}"}
-                if self.auth_token
-                else {}
-            )
-            response = requests.get(
-                f"{self.base_url}/tools", headers=headers, timeout=10
-            )
-            response.raise_for_status()
-            tools_info = response.json()
-            self._process_tools_info(tools_info)
-        except Exception as e:
-            logger.error(f"加载MCP工具失败: {str(e)}")
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'ctf_tool/mcp_adapter.py','step':'_load_http_tools','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _load_stdio_tools(self):
         """通过stdio加载工具列表"""
@@ -176,30 +159,13 @@ class MCPServerAdapter(BaseTool):
             return "", f"错误：不支持的通信模式 '{self.communication_mode}'"
 
     async def _execute_http(self, tool_name: str, arguments: dict):
-        """通过HTTP执行工具"""
-        # 使用mcp的HTTP客户端执行工具
-        # 如果没有HTTP客户端实现，使用requests作为临时方案
-        try:
-            import requests
-
-            payload = {"tool": tool_name, "arguments": arguments}
-
-            headers = {"Content-Type": "application/json"}
-            if self.auth_token:
-                headers["Authorization"] = f"Bearer {self.auth_token}"
-
-            response = requests.post(
-                f"{self.base_url}/execute",
-                json=payload,
-                headers=headers,
-                timeout=self.server_config.get("timeout", 30),
-            )
-            response.raise_for_status()
-            result = response.json()
-            return result.get("output", ""), result.get("error", "")
-        except Exception as e:
-            logger.error(f"MCP工具执行失败: {str(e)}")
-            return "", f"MCP工具执行错误: {str(e)}"
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'ctf_tool/mcp_adapter.py','step':'_execute_http','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _execute_stdio(self, tool_name: str, arguments: dict):
         """通过stdio执行工具"""

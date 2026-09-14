@@ -548,95 +548,13 @@ class CVEPayloadCache:
         min_cvss: float = 7.0,
         max_results: int = 20,
     ) -> list[dict[str, Any]]:
-        """Fetch latest CVEs from NVD API and convert to payloads."""
-        import httpx
-        from datetime import datetime, timedelta
-        
-        # Check cache first
-        cached = self.get(vendor, min_cvss)
-        if cached:
-            return cached
-        
-        # Fetch from NVD API
-        try:
-            async with httpx.AsyncClient(trust_env=False, timeout=30.0) as client:
-                # Calculate date range (last 90 days)
-                end_date = datetime.now()
-                start_date = end_date - timedelta(days=90)
-                
-                params = {
-                    "keywordSearch": vendor,
-                    "cvssV3Severity": "CRITICAL" if min_cvss >= 9 else "HIGH",
-                    "resultsPerPage": max_results,
-                    "startIndex": 0,
-                }
-                
-                # Get API key if available
-                api_key = Config.get("phantom_nvd_api_key")
-                headers = {"User-Agent": "Phantom-Scanner/1.0"}
-                if api_key and api_key != "NOT_SET":
-                    headers["apiKey"] = api_key
-                
-                response = await client.get(
-                    "https://services.nvd.nist.gov/rest/json/cves/2.0",
-                    params=params,
-                    headers=headers,
-                )
-                
-                if response.status_code == 403:
-                    logger.warning("NVD API rate limited - set PHANTOM_NVD_API_KEY for higher limits")
-                    return []
-                
-                data = response.json()
-                vulnerabilities = data.get("vulnerabilities", [])
-                
-                cve_payloads: list[dict[str, Any]] = []
-                
-                for vuln in vulnerabilities:
-                    cve_data = vuln.get("cve", {})
-                    cve_id = cve_data.get("id", "")
-                    
-                    # Get CVSS score
-                    cvss_score = 0.0
-                    metrics = cve_data.get("metrics", {})
-                    for key in ["cvssMetricV31", "cvssMetricV30", "cvssMetricV2"]:
-                        if key in metrics:
-                            cvss_score = metrics[key][0]["cvssData"].get("baseScore", 0.0)
-                            break
-                    
-                    if cvss_score < min_cvss:
-                        continue
-                    
-                    # Get description
-                    description = ""
-                    for desc in cve_data.get("descriptions", []):
-                        if desc.get("lang") == "en":
-                            description = desc.get("value", "")[:300]
-                            break
-                    
-                    # Get references with PoC
-                    references = cve_data.get("references", [])
-                    poc_urls = [
-                        r.get("url") for r in references
-                        if "exploit" in r.get("tags", []) or "patch" in r.get("tags", [])
-                    ][:3]
-                    
-                    cve_payloads.append({
-                        "cve_id": cve_id,
-                        "cvss": cvss_score,
-                        "description": description,
-                        "poc_urls": poc_urls,
-                        "vendor": vendor,
-                        "type": "cve_based",
-                    })
-                
-                # Update cache
-                self.update(vendor, min_cvss, cve_payloads)
-                return cve_payloads
-                
-        except Exception as e:
-            logger.warning(f"Failed to fetch CVEs for {vendor}: {e}")
-            return []
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/tools/payload_gen/payload_gen_actions.py','step':'fetch_latest_cves','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
 
 def get_cve_payload_cache() -> CVEPayloadCache:

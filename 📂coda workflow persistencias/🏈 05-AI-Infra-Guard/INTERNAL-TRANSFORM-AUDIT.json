@@ -1,0 +1,311 @@
+{
+  "schema": "yaiwes.internal.transform/v1",
+  "component": "🏈 05-AI-Infra-Guard",
+  "mode": "TRANSFORM",
+  "source_files": 881,
+  "candidates": 43,
+  "changed": 43,
+  "findings": [
+    {
+      "path": "services/api_checker/server.py",
+      "sha256": "98c9ed8ca861f98bc3187a113c4f9b3bdc7677dd7655b57dbd459f537d108af6",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/services/api_checker/server.py.original"
+    },
+    {
+      "path": "services/api_checker/ventor_qtest/check.py",
+      "sha256": "e02daee0f241817a70250d122dbffd8d61c9959a4de4f6425b865563bb6fe5b4",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/services/api_checker/ventor_qtest/check.py.original"
+    },
+    {
+      "path": "services/api_checker/algorithms/common.py",
+      "sha256": "89069222efdaeed5904e6c6f6e8e08ec456a69f623ecd32948f92181bdd1350a",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/services/api_checker/algorithms/common.py.original"
+    },
+    {
+      "path": "services/api_checker/algorithms/signature.py",
+      "sha256": "512bfad46b69727d8eaad84b5cc084846962141def78d4431d131f21f3875faf",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/services/api_checker/algorithms/signature.py.original"
+    },
+    {
+      "path": "services/api_checker/ventor_qtest/runner/openrouter.py",
+      "sha256": "8d5a3db386c94ab8f800372e7eeb74a9b89fd286d8a664aab332e119de4cc0f9",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/services/api_checker/ventor_qtest/runner/openrouter.py.original"
+    },
+    {
+      "path": "services/api_checker/ventor_qtest/runner/orchestrator.py",
+      "sha256": "daaec2ac1d1a32c3997b41be90b10509675d96aa0a27f72d6a185b2bdd9f7b73",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/services/api_checker/ventor_qtest/runner/orchestrator.py.original"
+    },
+    {
+      "path": "skills/aig-agent-redteam/scripts/aig_data.py",
+      "sha256": "cd21fb08f6c8f9ea064f15c276f7f9bb1e0a8301469825d4bdbeae30a2affb52",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/skills/aig-agent-redteam/scripts/aig_data.py.original"
+    },
+    {
+      "path": "skills/aig-agent-redteam/scripts/common/http_probe.py",
+      "sha256": "c8dd018500b2e6e26fd814231702916079f2bececf30dbf6028810eac5730514",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/skills/aig-agent-redteam/scripts/common/http_probe.py.original"
+    },
+    {
+      "path": "AIG-PromptSecurity/deepteam/telemetry.py",
+      "sha256": "2fde7a60332b3d4b308b21c7dce7c6997a5bcf3fd32d393f68c9023818b0abad",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/AIG-PromptSecurity/deepteam/telemetry.py.original"
+    },
+    {
+      "path": "AIG-PromptSecurity/deepteam/plugin_system/remote_plugin_downloader.py",
+      "sha256": "1890ec97774640ae1e07502321fae30c74037d92180787d0130fee2b3d876352",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/AIG-PromptSecurity/deepteam/plugin_system/remote_plugin_downloader.py.original"
+    },
+    {
+      "path": "AIG-PromptSecurity/deepteam/metrics/is_jailbreak/is_jailbreak.py",
+      "sha256": "f615691e53a9d27951380bc987682286a39c30491afda9bd4c7f91328e984257",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/AIG-PromptSecurity/deepteam/metrics/is_jailbreak/is_jailbreak.py.original"
+    },
+    {
+      "path": "AIG-PromptSecurity/deepteam/metrics/ssrf/template.py",
+      "sha256": "a02782c68393d97173f3d1c7996574fada4e4484aa6529a3294aa674f9b0dad7",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/AIG-PromptSecurity/deepteam/metrics/ssrf/template.py.original"
+    },
+    {
+      "path": "AIG-PromptSecurity/deepteam/metrics/sql_injection/template.py",
+      "sha256": "533edd1c14978de7da57c44809acfad54ed334d0e778a0d06d3943ff55f15345",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/AIG-PromptSecurity/deepteam/metrics/sql_injection/template.py.original"
+    },
+    {
+      "path": "AIG-PromptSecurity/deepteam/attacks/single_turn/system_override/template.py",
+      "sha256": "a42f2a70aab843e34fc67b12a1fa61461086575dcef4d099d288d7925b77dc19",
+      "changed": true,
+      "kind": "PY_FILE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/AIG-PromptSecurity/deepteam/attacks/single_turn/system_override/template.py.original"
+    },
+    {
+      "path": "AIG-PromptSecurity/deepteam/attacks/single_turn/stratasword/template.py",
+      "sha256": "a86bea26bb66907ec4aeb2205090f808bc06897788d5016faea664f9c84a00c0",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/AIG-PromptSecurity/deepteam/attacks/single_turn/stratasword/template.py.original"
+    },
+    {
+      "path": "AIG-PromptSecurity/deepteam/vulnerabilities/personal_safety/template.py",
+      "sha256": "c067eba91b3f51bf6441a427f08c96d26889c7ee5d633701ade0da48a551351a",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/AIG-PromptSecurity/deepteam/vulnerabilities/personal_safety/template.py.original"
+    },
+    {
+      "path": "cmd/cli/cmd/webserver.go",
+      "sha256": "c79dc1512fa3b600c2367f7f0394323a42e4cac6f7901e4f70f81de78e456a8d",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/cmd/cli/cmd/webserver.go.original"
+    },
+    {
+      "path": "mcp-scan/testcase/case1/main1.py",
+      "sha256": "1abebd7f741d3c51d7271038081da7238bbf6fa52acb8274dc10c2380b897bbc",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:3",
+      "quarantine": "_yaiwes_upstream_quarantine/mcp-scan/testcase/case1/main1.py.original"
+    },
+    {
+      "path": "mcp-scan/mcp_scan/utils/extract_vuln.py",
+      "sha256": "68f2f93885cea15b955df7cc7326db41e6989b03f63ea3badf59ceb732408206",
+      "changed": true,
+      "kind": "PY_FILE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/mcp-scan/mcp_scan/utils/extract_vuln.py.original"
+    },
+    {
+      "path": "mcp-scan/mcp_scan/tools/execute/execute_actions.py",
+      "sha256": "36b8be8c3b43d4cb65b44be59f72553091a6f145b5b7ade5b225f88f747fce1b",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/mcp-scan/mcp_scan/tools/execute/execute_actions.py.original"
+    },
+    {
+      "path": "Research/deepseek-harness-security-assessment/assessment/adapter/dsh_real_adapter.py",
+      "sha256": "0336bc0690bb971f888131f9c1f517b9b5085c6427a7fe60f3f1800ff3f9a1b3",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/Research/deepseek-harness-security-assessment/assessment/adapter/dsh_real_adapter.py.original"
+    },
+    {
+      "path": "Research/SkillJack/skilljack/llm_adapter.py",
+      "sha256": "3f0beb8cfb3d26b89ef580d4abac519d2f5384ba6b977a04d8a79173f85123df",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/Research/SkillJack/skilljack/llm_adapter.py.original"
+    },
+    {
+      "path": "Research/SkillJack/skilljack/large_scale_generator.py",
+      "sha256": "ee733c9d57925a58cb5040b0604a5485b68e1133caeb8a6987b8280624cd8f77",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/Research/SkillJack/skilljack/large_scale_generator.py.original"
+    },
+    {
+      "path": "agent-scan/agent_scan/utils/extract_vuln.py",
+      "sha256": "c420a69763bf5710b294604149e48e9864c3074796350a587da8d8032cd32a2b",
+      "changed": true,
+      "kind": "PY_FILE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/agent-scan/agent_scan/utils/extract_vuln.py.original"
+    },
+    {
+      "path": "agent-scan/agent_scan/core/agent_adapter/adapter.py",
+      "sha256": "5c57fd31f08515bac290c3f958df4289a2017d5a90b17cdf283b22dee2f79dca",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:3",
+      "quarantine": "_yaiwes_upstream_quarantine/agent-scan/agent_scan/core/agent_adapter/adapter.py.original"
+    },
+    {
+      "path": "agent-scan/testcase/case2/memory_heist_agent.py",
+      "sha256": "18e162f1de9a02919737d57db4d2c7ab384d0aafbc8b59ac871300e4c0f994f4",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:3",
+      "quarantine": "_yaiwes_upstream_quarantine/agent-scan/testcase/case2/memory_heist_agent.py.original"
+    },
+    {
+      "path": "agent-scan/testcase/case2/exfil_server.py",
+      "sha256": "8de2701d9df283a16fb6c374db247d7cf6aec0469ac34b133e380cd7590011e2",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/agent-scan/testcase/case2/exfil_server.py.original"
+    },
+    {
+      "path": "skill-scan/pytests/test_hidden_content.py",
+      "sha256": "90af419fc7746674927bf1e34db0193c73da9c9f1855c47b84b38b7626e006bc",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:6",
+      "quarantine": "_yaiwes_upstream_quarantine/skill-scan/pytests/test_hidden_content.py.original"
+    },
+    {
+      "path": "pkg/httpx/httpx.go",
+      "sha256": "4e841275655a9b4ddaae94a84b4954c1c640743d44da57d4646c5aa04803b1f1",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/pkg/httpx/httpx.go.original"
+    },
+    {
+      "path": "common/websocket/update_api.go",
+      "sha256": "03f1d11e054afcb26ffb9fb04d2b65a880adec66c578370c547a8ecf03ae157a",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/common/websocket/update_api.go.original"
+    },
+    {
+      "path": "common/websocket/websocket.go",
+      "sha256": "3b98b4bf32f0a991e97e2e6d39c87e1d5cf47898c1d4b60739332de42ba273a1",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/common/websocket/websocket.go.original"
+    },
+    {
+      "path": "common/websocket/agent.go",
+      "sha256": "377318340d8eec762d1e5110087c6e29b90c3c9f1539aa6346ebcc73d3865135",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/common/websocket/agent.go.original"
+    },
+    {
+      "path": "common/utils/utils.go",
+      "sha256": "195cb13a544245b84dc821d5fd232e425d4ea6ce3939b154dabe89dedf8f80e6",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/common/utils/utils.go.original"
+    },
+    {
+      "path": "common/utils/utils_test.go",
+      "sha256": "96aa4f09fbc4a0bd12d3d1aeed4316f71657d62b47a5dc2fda6a7cbf7e8197ec",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/common/utils/utils_test.go.original"
+    },
+    {
+      "path": "common/utils/nmap.go",
+      "sha256": "e7daf59b0a7dd53926a79169593f7ce7eeda8f7b7c9f4e729840c2213ab7ad4a",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/common/utils/nmap.go.original"
+    },
+    {
+      "path": "common/utils/favicon.go",
+      "sha256": "cf465029edcdd2b10b0f8437258a9db15a392feac304b9b29c369afd98eb3c76",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/common/utils/favicon.go.original"
+    },
+    {
+      "path": "common/agent/agent.go",
+      "sha256": "712459a56788aa7e9da440a017b4e79adbad42c54031840ed6c82c4f6f6fb7cc",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/common/agent/agent.go.original"
+    },
+    {
+      "path": "common/runner/runner.go",
+      "sha256": "52fffe1010db67ada4cd7eceed6a46bd37897cdd2fbe819fc67acefb361e354c",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/common/runner/runner.go.original"
+    },
+    {
+      "path": "common/fingerprints/parser/parser_test.go",
+      "sha256": "88e6ee55e0e478d3f25a02a0e6f6674705d7355f87c210837bdd55296fc02afe",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/common/fingerprints/parser/parser_test.go.original"
+    },
+    {
+      "path": "common/fingerprints/preload/mlfow.go",
+      "sha256": "6719932cfc99a386ba16c2878fa2f4d0d370f476d91272969820b6dba490af08",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/common/fingerprints/preload/mlfow.go.original"
+    },
+    {
+      "path": "common/fingerprints/preload/preload_test.go",
+      "sha256": "176335c700c545f0f8808ae70ba91d8d2bedf60b52d89e0a28c72f5a409170ef",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/common/fingerprints/preload/preload_test.go.original"
+    },
+    {
+      "path": "common/fingerprints/preload/version_detection_test.go",
+      "sha256": "ce363848c963c6567fd66ee3be351e5c2fbe6f29f01874ff77c16c4cb8d052c9",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/common/fingerprints/preload/version_detection_test.go.original"
+    },
+    {
+      "path": "common/fingerprints/preload/preload.go",
+      "sha256": "dccc711fe53603358ac67f8ce46605e7819df98037a25c179ba1e4d6a2549359",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/common/fingerprints/preload/preload.go.original"
+    }
+  ]
+}

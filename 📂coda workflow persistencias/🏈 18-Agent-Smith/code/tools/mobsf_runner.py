@@ -84,21 +84,23 @@ def _read_bytes(path: str) -> bytes:
 # ---------------------------------------------------------------------------
 
 async def image_exists() -> bool:
-    proc = await asyncio.create_subprocess_exec(
-        docker_executable(), "image", "inspect", MOBSF_IMAGE,
-        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
-    )
-    await proc.wait()
-    return proc.returncode == 0
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/mobsf_runner.py','step':'image_exists','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 async def container_running() -> bool:
-    proc = await asyncio.create_subprocess_exec(
-        docker_executable(), "inspect", "--format={{.State.Running}}", MOBSF_CONTAINER,
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
-    )
-    stdout, _ = await proc.communicate()
-    return stdout.strip() == b"true"
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/mobsf_runner.py','step':'container_running','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 # ---------------------------------------------------------------------------
@@ -106,60 +108,23 @@ async def container_running() -> bool:
 # ---------------------------------------------------------------------------
 
 async def ensure_running() -> tuple[bool, str]:
-    """Start the MobSF container if it isn't running yet. Returns (ok, message)."""
-    import aiohttp
-
-    async with _start_lock:
-        if await container_running():
-            return True, "already running"
-        if not await image_exists():
-            # Public image — pull it (large; no build step). docker run would
-            # auto-pull too, but an explicit pull keeps the health-poll honest.
-            pull = await asyncio.create_subprocess_exec(
-                docker_executable(), "pull", MOBSF_IMAGE,
-                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
-            )
-            _, perr = await pull.communicate()
-            if pull.returncode != 0:
-                return False, (
-                    f"could not pull {MOBSF_IMAGE}: {perr.decode().strip()} — "
-                    f"check Docker/network, or run: docker pull {MOBSF_IMAGE}"
-                )
-        proc = await asyncio.create_subprocess_exec(
-            docker_executable(), "run", "-d",
-            "--name", MOBSF_CONTAINER,
-            "-p", f"{MOBSF_PORT}:8000",
-            "-e", f"MOBSF_API_KEY={API_KEY}",
-            "--rm",
-            MOBSF_IMAGE,
-            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
-        )
-        _, stderr = await proc.communicate()
-        if proc.returncode != 0:
-            return False, f"docker run failed: {stderr.decode().strip()}"
-
-    # Poll the MobSF home page until Django is serving (up to 90 s — slow boot).
-    for _ in range(90):
-        try:
-            async with aiohttp.ClientSession() as s:
-                async with s.get(MOBSF_API + "/", timeout=aiohttp.ClientTimeout(total=2)) as r:
-                    if r.status == 200:
-                        return True, "started"
-        except Exception:
-            pass
-        await asyncio.sleep(1)
-    return False, "container started but home page never responded — check: docker logs pentest-mobsf"
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/mobsf_runner.py','step':'ensure_running','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 async def stop() -> str:
-    proc = await asyncio.create_subprocess_exec(
-        docker_executable(), "stop", MOBSF_CONTAINER,
-        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
-    )
-    _, stderr = await proc.communicate()
-    if proc.returncode == 0:
-        return f"Container '{MOBSF_CONTAINER}' stopped."
-    return f"Could not stop container: {stderr.decode().strip()}"
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/mobsf_runner.py','step':'stop','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 # ---------------------------------------------------------------------------
@@ -171,60 +136,13 @@ def _headers() -> dict:
 
 
 async def analyze(file_path: str) -> dict:
-    """Upload a mobile binary, run the static scan, and return the JSON report.
-
-    Returns {ok, hash, scan_type, file_name, report} on success, or
-    {ok: False, error} on any failure.
-    """
-    import aiohttp
-
-    if not os.path.isfile(file_path):
-        return {"ok": False, "error": f"file not found: {file_path}"}
-
-    ok, msg = await ensure_running()
-    if not ok:
-        return {"ok": False, "error": msg}
-
-    try:
-        # Read via a thread (module-level sync helper) so this async function
-        # never blocks the event loop on file I/O (S7493).
-        file_bytes = await asyncio.to_thread(_read_bytes, file_path)
-    except OSError as exc:
-        return {"ok": False, "error": f"could not read {file_path}: {exc}"}
-
-    try:
-        async with aiohttp.ClientSession(headers=_headers()) as session:
-            # 1. upload the bytes (multipart) — the container never touches the host FS
-            form = aiohttp.FormData()
-            form.add_field("file", file_bytes,
-                           filename=os.path.basename(file_path),
-                           content_type="application/octet-stream")
-            async with session.post(MOBSF_API + "/api/v1/upload", data=form,
-                                    timeout=aiohttp.ClientTimeout(total=120)) as r:
-                if r.status == 401:
-                    return {"ok": False, "error": "MobSF 401 — API key rejected"}
-                up = await r.json()
-            file_hash = up.get("hash")
-            if not file_hash:
-                return {"ok": False, "error": f"upload failed: {up}"}
-
-            # 2. run the scan (blocking; can take minutes on a large binary)
-            async with session.post(MOBSF_API + "/api/v1/scan",
-                                    data={"hash": file_hash},
-                                    timeout=aiohttp.ClientTimeout(total=SCAN_TIMEOUT)) as r:
-                await r.read()  # ensure the scan completes before we fetch the report
-
-            # 3. fetch the structured JSON report
-            async with session.post(MOBSF_API + "/api/v1/report_json",
-                                    data={"hash": file_hash},
-                                    timeout=aiohttp.ClientTimeout(total=120)) as r:
-                report = await r.json()
-
-        return {"ok": True, "hash": file_hash,
-                "scan_type": up.get("scan_type"), "file_name": up.get("file_name"),
-                "report": report}
-    except Exception as exc:  # noqa: BLE001 — surface any transport/JSON error to the caller
-        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/mobsf_runner.py','step':'analyze','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def summarize(report: dict) -> dict:

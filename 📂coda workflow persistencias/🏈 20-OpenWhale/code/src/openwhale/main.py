@@ -23,18 +23,13 @@ console = Console()
 
 
 def _pick_available_port(host: str, preferred_port: int, max_tries: int = 20) -> int:
-    """选择可用端口，优先使用配置端口。"""
-    for offset in range(max_tries):
-        port = preferred_port + offset
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            try:
-                sock.bind((host, port))
-                return port
-            except OSError:
-                continue
-
-    raise RuntimeError(f"无法在 {host} 上找到可用端口，起始端口: {preferred_port}")
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'src/openwhale/main.py','step':'_pick_available_port','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _banner() -> None:

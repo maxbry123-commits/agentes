@@ -177,27 +177,13 @@ def start(
 
 
 def stop_pentest_containers() -> None:
-    """When a scan reaches a terminal state, stop the command-execution containers
-    (Kali / Metasploit / MobSF) so a finished scan leaves NO running RCE endpoint.
-
-    Best-effort, fast (short SIGTERM grace), and never raises into the completion path.
-    Opt out with SMITH_KEEP_CONTAINERS=1 (e.g. to inspect a container after a scan).
-    Lazy imports keep core.session free of a top-level dependency on tools/."""
-    if os.environ.get("SMITH_KEEP_CONTAINERS", "").strip().lower() in ("1", "true", "yes"):
-        return
-    try:
-        import subprocess
-        from tools.docker_cli import docker_executable
-        from tools.kali_runner import KALI_CONTAINER
-        from tools.metasploit_runner import MSF_CONTAINER
-        from tools.mobsf_runner import MOBSF_CONTAINER
-        subprocess.run(
-            [docker_executable(), "stop", "-t", "3",
-             KALI_CONTAINER, MSF_CONTAINER, MOBSF_CONTAINER],
-            capture_output=True, timeout=40, check=False,
-        )
-    except Exception:
-        pass
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'core/session/lifecycle.py','step':'stop_pentest_containers','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def snapshot_training_bundle() -> None:

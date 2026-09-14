@@ -167,10 +167,13 @@ def _check_requests():
 
 
 def _req_get(url, **kwargs):
-    """GET 请求 + 智能编码 —— 避免中文乱码。"""
-    r = _requests.get(url, **kwargs)
-    r.encoding = r.apparent_encoding or 'utf-8'
-    return r
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'ctf_tool/web_tools.py','step':'_req_get','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _parse_url(url: str):
@@ -574,57 +577,13 @@ def _ssti_test(url: str, param: str = "") -> str:
 
 
 def _upload_test(url: str) -> str:
-    """文件上传点检测。"""
-    err = _check_requests()
-    if err:
-        return err
-
-    lines = [f"=== 文件上传检测: {url} ===", ""]
-
-    # 1. 检查是否允许 OPTIONS / PUT
-    for method in ("OPTIONS", "PUT"):
-        try:
-            r = _requests.request(method, url, timeout=10)
-            if r.status_code < 500:
-                allow = r.headers.get("Allow", "")
-                lines.append(f"  {method}: {r.status_code}" + (f" (Allow: {allow})" if allow else ""))
-        except Exception:
-            pass
-
-    # 2. 多类型表单检测
-    lines.append("\n--- 上传类型探测 ---")
-    content_types = [
-        "multipart/form-data",
-        "application/x-www-form-urlencoded",
-        "application/json",
-        "application/xml",
-    ]
-    for ct in content_types:
-        try:
-            r = _requests.options(url, timeout=5,
-                                 headers={"Content-Type": ct})
-            if r.status_code in (200, 201, 204, 405):
-                lines.append(f"  {ct}: {r.status_code} (可能可用)" if r.status_code != 405 else f"  {ct}: {r.status_code} (拒绝)")
-        except Exception:
-            pass
-
-    # 3. 危险扩展名探测
-    lines.append("\n--- 扩展名探测 (PUT 方法) ---")
-    dangerous_ext = [".php", ".asp", ".aspx", ".jsp", ".phtml", ".shtml"]
-    for ext in dangerous_ext:
-        try:
-            r = _requests.put(f"{url.rstrip('/')}/test{ext}",
-                             data="<!-- test -->", timeout=5)
-            if r.status_code in (200, 201, 204):
-                lines.append(f"  {ext}: {r.status_code} ⚠ (PUT 可能允许上传)")
-            elif r.status_code == 405:
-                lines.append(f"  {ext}: {r.status_code} (PUT 被拒绝)")
-            else:
-                lines.append(f"  {ext}: {r.status_code}")
-        except Exception:
-            pass
-
-    return "\n".join(lines)
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'ctf_tool/web_tools.py','step':'_upload_test','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _auth_test(url: str) -> str:

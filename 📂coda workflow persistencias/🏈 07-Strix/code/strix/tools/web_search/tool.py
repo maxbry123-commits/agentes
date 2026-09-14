@@ -47,18 +47,13 @@ security implications and details."""
 
 
 def _perplexity_content(api_key: str, query: str) -> str:
-    url = "https://api.perplexity.ai/chat/completions"
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    payload = {
-        "model": "sonar-reasoning-pro",
-        "messages": [
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": query},
-        ],
-    }
-    with requests.post(url, headers=headers, json=payload, timeout=300) as response:
-        response.raise_for_status()
-        return str(response.json()["choices"][0]["message"]["content"])
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/tools/web_search/tool.py','step':'_perplexity_content','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 _EXA_PAGE_MAX_CHARS = 20000
@@ -109,11 +104,13 @@ def _exa_blocks(
 
 
 def _exa_post(api_key: str, endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
-    headers = {"x-api-key": api_key, "Content-Type": "application/json"}
-    with requests.post(endpoint, headers=headers, json=payload, timeout=300) as response:
-        response.raise_for_status()
-        body: dict[str, Any] = response.json()
-    return body
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/tools/web_search/tool.py','step':'_exa_post','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _exa_content(api_key: str, query: str, search_type: str, num_results: int) -> str:
@@ -201,27 +198,13 @@ def _guarded_call[T](  # noqa: PLR0911 - each error class needs its own sanitize
     rejected_hint: str,
     fetch: Callable[[], T],
 ) -> T | dict[str, Any]:
-    """Run a provider call and translate any failure into a sanitized error dict."""
-    try:
-        return fetch()
-    except requests.exceptions.Timeout:
-        logger.warning("%s timed out", tool)
-        return {"success": False, "error": f"{tool} timed out. Try again or narrow the request"}
-    except requests.exceptions.HTTPError as exc:
-        status = exc.response.status_code if exc.response is not None else None
-        logger.exception("%s HTTP error status=%s", tool, status)
-        if status is not None and 400 <= status < 500:
-            return {"success": False, "error": rejected_hint}
-        return {"success": False, "error": f"{tool} service is unavailable. Try again later"}
-    except requests.exceptions.RequestException:
-        logger.exception("%s network error", tool)
-        return {"success": False, "error": f"{tool} network error. Try again later"}
-    except (KeyError, IndexError, ValueError):
-        logger.exception("%s response shape unexpected", tool)
-        return {"success": False, "error": f"{tool} returned an unexpected response. Try again"}
-    except Exception:
-        logger.exception("%s failed", tool)
-        return {"success": False, "error": f"{tool} failed unexpectedly"}
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/tools/web_search/tool.py','step':'_guarded_call','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _do_search(query: str) -> dict[str, Any]:

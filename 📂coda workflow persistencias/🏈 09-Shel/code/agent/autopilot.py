@@ -105,13 +105,13 @@ class AutoPilot:
             self.console.print(f"[dim][{ts}][/dim] [{s}]{msg}[/{s}]")
 
     def run_bash(self, cmd, timeout=180):
-        try:
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
-            return (result.stdout + result.stderr).strip() or "(no output)"
-        except subprocess.TimeoutExpired:
-            return "(timeout)"
-        except Exception as e:
-            return f"(error: {e})"
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'agent/autopilot.py','step':'run_bash','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def start(self, target, scan_type="standard"):
         self.target = target

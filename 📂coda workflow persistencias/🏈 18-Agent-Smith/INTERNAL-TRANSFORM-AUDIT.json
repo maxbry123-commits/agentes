@@ -1,0 +1,185 @@
+{
+  "schema": "yaiwes.internal.transform/v1",
+  "component": "🏈 18-Agent-Smith",
+  "mode": "TRANSFORM",
+  "source_files": 217,
+  "candidates": 25,
+  "changed": 25,
+  "findings": [
+    {
+      "path": "tools/sandbox_runner.py",
+      "sha256": "29804478c0f39ec5167f1e750fa772cd364c10f2e29e9fd55aa23ee8ad0f8e46",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/tools/sandbox_runner.py.original"
+    },
+    {
+      "path": "tools/__init__.py",
+      "sha256": "723053e8da0e9c1e02eb06e61201c113223949df3ba118cdc131b8386aae29fb",
+      "changed": true,
+      "kind": "PY_FILE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/tools/__init__.py.original"
+    },
+    {
+      "path": "tools/mobsf_runner.py",
+      "sha256": "12ed972befab27573b1ade19f3756f21da7a1a62848d39738b87e12a8c98c83f",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:5",
+      "quarantine": "_yaiwes_upstream_quarantine/tools/mobsf_runner.py.original"
+    },
+    {
+      "path": "tools/kali_runner.py",
+      "sha256": "521aabd1019e3730f4d98cfb1662fb5d0277beab336799ca243662a669bd0fa5",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:6",
+      "quarantine": "_yaiwes_upstream_quarantine/tools/kali_runner.py.original"
+    },
+    {
+      "path": "tools/metasploit_runner.py",
+      "sha256": "5f27805b1113f125223604e0fb6bc7330614056a36b1d0a6db9a6d3d65d4a54d",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:5",
+      "quarantine": "_yaiwes_upstream_quarantine/tools/metasploit_runner.py.original"
+    },
+    {
+      "path": "tools/docker_runner.py",
+      "sha256": "a088a85c9160fabab258dc1762d3012d0ac574e7f45d139f8ef5781d4a425b3b",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:3",
+      "quarantine": "_yaiwes_upstream_quarantine/tools/docker_runner.py.original"
+    },
+    {
+      "path": "mcp_server/http_tools.py",
+      "sha256": "867a528809cdc4f38102294b07a195a89d20da70a3f77a01703dd7b737a2b688",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/mcp_server/http_tools.py.original"
+    },
+    {
+      "path": "installers/start-mcp-server.ps1",
+      "sha256": "d769efcbb668ab6adbd2352e1fbe4390b3390e9ec1e5725dd20b31680a7f1196",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/installers/start-mcp-server.ps1.original"
+    },
+    {
+      "path": "core/host_lane.py",
+      "sha256": "14d6d126fe82a35a15d07fda0ea5ed367ec4df6acc3d8e99732bbf38f93ef824",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/core/host_lane.py.original"
+    },
+    {
+      "path": "core/probe_verbs.py",
+      "sha256": "f64fb2eb71646318a86e43f44a4e5430c8c3f8a688f06703ce20e72989d4b1ac",
+      "changed": true,
+      "kind": "PY_FILE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/core/probe_verbs.py.original"
+    },
+    {
+      "path": "training-data/validate.py",
+      "sha256": "e9a3ce8f4d1b4eb2ad937e9e305384a0256bb5e5e4591c8ba83d54997268087e",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/training-data/validate.py.original"
+    },
+    {
+      "path": "tools/metasploit/server.py",
+      "sha256": "33c40af7148d51f17c372879856229c7e47416cc6d45bd5bc44170c9a2ae0808",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/tools/metasploit/server.py.original"
+    },
+    {
+      "path": "mcp_server/scan_engine/planner.py",
+      "sha256": "cb35f0d809daa3e0529161ef8d0ceeee5863ef6f4557971d5176473403653b0e",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/mcp_server/scan_engine/planner.py.original"
+    },
+    {
+      "path": "mcp_server/scan_engine/discovery.py",
+      "sha256": "5696ebbb0c915be6e9b96e70819a40c5882ef045667b3025ef925a4fa845ac3f",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/mcp_server/scan_engine/discovery.py.original"
+    },
+    {
+      "path": "mcp_server/session_tools/containers.py",
+      "sha256": "f96734f549c74cc4a5b0848590e95f504a645687a75bffb519a78d4fbebe1c55",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/mcp_server/session_tools/containers.py.original"
+    },
+    {
+      "path": "core/notifiers/discord.py",
+      "sha256": "a46a89808c894b769dc8651b43c0ec364d72de3592a84287529f6eab011b05c9",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/core/notifiers/discord.py.original"
+    },
+    {
+      "path": "core/notifiers/slack.py",
+      "sha256": "9640a40bdc7d133e06bc8d4ea1839b847d712a1556acb73cd860884b694faaa5",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/core/notifiers/slack.py.original"
+    },
+    {
+      "path": "core/notifiers/telegram.py",
+      "sha256": "c393d94493c94e1c6e8f2972c737f520633be1f765210e0840b479b9a641d835",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/core/notifiers/telegram.py.original"
+    },
+    {
+      "path": "core/session/lifecycle.py",
+      "sha256": "466972f14cdaa17132cd895795ddabae7846dc6940fbc243d46ac3ab22c45dc3",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/core/session/lifecycle.py.original"
+    },
+    {
+      "path": "core/session/process_detect.py",
+      "sha256": "a612b08646d2e8d95ebba11994c89bb5c7ac8cca46e69f4b98e2178cc03063d9",
+      "changed": true,
+      "kind": "PY_FILE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/core/session/process_detect.py.original"
+    },
+    {
+      "path": "core/api_server/serve.py",
+      "sha256": "f2417b2fe995d092456f8b0d09236a4c208ababd27f2b348ac716818eca2bf39",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/core/api_server/serve.py.original"
+    },
+    {
+      "path": "core/api_server/__init__.py",
+      "sha256": "e3fa00c59a3874ded892846fb782a4c5c9166a4e910c2e4c16dc6aec5ed10c18",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/core/api_server/__init__.py.original"
+    },
+    {
+      "path": "core/api_server/mermaid.py",
+      "sha256": "d35d2b53cc6c38bd7cf772adc57749605ab314dc3ceff712a20ec7e3b7838b1e",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/core/api_server/mermaid.py.original"
+    },
+    {
+      "path": "core/api_server/smith/mcp_sse.py",
+      "sha256": "a76287f78e036f758ee233cee8207542e559b430caf4196f06b73bdcce8e14e7",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:3",
+      "quarantine": "_yaiwes_upstream_quarantine/core/api_server/smith/mcp_sse.py.original"
+    },
+    {
+      "path": "core/api_server/smith/spawn.py",
+      "sha256": "31ff337fac8825dfd5cb636cf8ba2593549355b227cfb0040598435587a9f18d",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/core/api_server/smith/spawn.py.original"
+    }
+  ]
+}

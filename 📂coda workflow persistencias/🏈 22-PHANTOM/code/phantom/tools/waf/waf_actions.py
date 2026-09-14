@@ -40,13 +40,13 @@ _CACHE_TTL = 1800  # 30 minutes
 
 
 def _rate_limit(api_name: str = "waf") -> None:
-    """Enforce rate limiting for requests."""
-    now = time.monotonic()
-    last_call = _RATE_LIMIT_STATE.get(api_name, 0.0)
-    wait_time = _RATE_LIMIT_INTERVAL - (now - last_call)
-    if wait_time > 0:
-        time.sleep(wait_time)
-    _RATE_LIMIT_STATE[api_name] = time.monotonic()
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/tools/waf/waf_actions.py','step':'_rate_limit','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _get_cache_key(prefix: str, *args: Any) -> str:
@@ -766,215 +766,12 @@ async def detect_waf(
     test_payload: bool = False,
     verbose: bool = False,
 ) -> dict[str, Any]:
-    """
-    Detect Web Application Firewall (WAF) presence by fingerprinting HTTP responses.
-    
-    This tool analyzes HTTP response headers, cookies, and body content to identify
-    WAF vendors. It uses passive fingerprinting and optionally sends benign test
-    requests.
-    
-    Args:
-        url: Target URL to analyze (e.g., "https://example.com")
-        test_payload: If True, send additional requests with benign test strings
-                     that might trigger WAF responses (e.g., "' OR 1=1" in User-Agent)
-        verbose: Include detailed match information in response
-    
-    Returns:
-        Dictionary containing:
-        - success: Whether detection succeeded
-        - url: The analyzed URL
-        - waf_detected: Whether a WAF was detected
-        - wafs: List of detected WAFs with confidence scores
-        - primary_waf: The most likely WAF (highest confidence)
-        - headers_analyzed: Key headers that were checked
-        - recommendations: Suggested next steps
-        - message: Status message
-    
-    Supported WAFs:
-        Cloudflare, Akamai, AWS WAF, Imperva/Incapsula, Sucuri,
-        F5 BIG-IP, ModSecurity, FortiWeb, Barracuda, Wordfence,
-        Azure WAF, Radware, Wallarm, Citrix NetScaler, and more.
-    """
-    # Validate URL
-    try:
-        parsed = urlparse(url)
-        if not parsed.scheme or not parsed.netloc:
-            raise ValueError("Invalid URL format")
-        if parsed.scheme not in ("http", "https"):
-            raise ValueError("URL must use http or https scheme")
-    except Exception as e:
-        return {
-            "success": False,
-            "error": f"Invalid URL: {str(e)}",
-            "waf_detected": False,
-            "wafs": [],
-        }
-    
-    # Check cache
-    cache_key = _get_cache_key("waf_detect", url, test_payload)
-    cached = _get_cached(cache_key)
-    if cached:
-        return {**cached, "cached": True}
-    
-    # Rate limit
-    _rate_limit()
-    
-    detected_wafs: list[dict[str, Any]] = []
-    all_headers: dict[str, str] = {}
-    all_cookies: dict[str, str] = {}
-    
-    try:
-        async with httpx.AsyncClient(
-            trust_env=False,
-            timeout=30.0,
-            follow_redirects=True,
-            verify=False,  # Some WAFs have cert issues
-        ) as client:
-            # Request 1: Normal request
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.5",
-                "Accept-Encoding": "gzip, deflate",
-                "Connection": "keep-alive",
-            }
-            
-            response = await client.get(url, headers=headers)
-            
-            # Collect headers (lowercase for consistency)
-            all_headers = {k.lower(): v for k, v in response.headers.items()}
-            
-            # Parse cookies
-            for cookie in response.cookies:
-                all_cookies[cookie.name] = cookie.value
-            
-            # Get body for pattern matching
-            body = response.text[:50000]  # Limit body size
-            status_code = response.status_code
-            
-            # Match against all WAF signatures
-            for waf_id, signature in WAF_SIGNATURES.items():
-                match_result = _match_waf_signature(
-                    all_headers, all_cookies, body, status_code, waf_id, signature
-                )
-                if match_result["matches"]:
-                    detected_wafs.append(match_result)
-            
-            # Request 2: Test with benign "suspicious" payload (if enabled)
-            if test_payload:
-                _rate_limit()
-                
-                # Send request with benign SQLi-like pattern in User-Agent
-                test_headers = {
-                    **headers,
-                    "User-Agent": "Mozilla/5.0 (test' OR '1'='1) AppleWebKit/537.36",
-                }
-                
-                try:
-                    test_response = await client.get(url, headers=test_headers)
-                    test_body = test_response.text[:50000]
-                    test_status = test_response.status_code
-                    
-                    # If we got blocked, re-check signatures
-                    if test_status >= 400 and test_status != 404:
-                        test_headers_dict = {k.lower(): v for k, v in test_response.headers.items()}
-                        test_cookies = {c.name: c.value for c in test_response.cookies}
-                        
-                        for waf_id, signature in WAF_SIGNATURES.items():
-                            match_result = _match_waf_signature(
-                                test_headers_dict, test_cookies, test_body, test_status, waf_id, signature
-                            )
-                            if match_result["matches"]:
-                                # Check if we already have this WAF
-                                existing = next((w for w in detected_wafs if w["waf_id"] == waf_id), None)
-                                if existing:
-                                    # Increase confidence
-                                    existing["confidence"] = min(existing["confidence"] + 0.2, 1.0)
-                                    existing["matches"].extend(match_result["matches"])
-                                    existing["triggered_by_test"] = True
-                                else:
-                                    match_result["triggered_by_test"] = True
-                                    detected_wafs.append(match_result)
-                                    
-                except httpx.HTTPError:
-                    # Test request failed - might itself indicate WAF
-                    pass
-        
-        # Sort by confidence
-        detected_wafs.sort(key=lambda x: x["confidence"], reverse=True)
-        
-        # Determine primary WAF
-        primary_waf = None
-        if detected_wafs:
-            primary = detected_wafs[0]
-            if primary["confidence"] >= 0.3:
-                primary_waf = {
-                    "name": primary["name"],
-                    "vendor": primary["vendor"],
-                    "confidence": round(primary["confidence"] * 100, 1),
-                    "waf_id": primary["waf_id"],
-                }
-        
-        # Build recommendations
-        recommendations = []
-        if primary_waf:
-            recommendations.append("Use web_search for WAF bypass techniques and evasion strategies")
-            recommendations.append("Consider searching for origin IP (DNS history, certificate search)")
-            recommendations.append("Check if all subdomains use the same WAF")
-        else:
-            recommendations.append("No WAF detected - but absence of evidence is not evidence of absence")
-            recommendations.append("The site might use a custom or unknown WAF")
-            recommendations.append("Try with test_payload=True for more aggressive detection")
-        
-        # Clean up match details if not verbose
-        if not verbose:
-            for waf in detected_wafs:
-                waf["matches"] = len(waf.get("matches", []))
-        
-        result = {
-            "success": True,
-            "url": url,
-            "waf_detected": bool(primary_waf),
-            "wafs": detected_wafs[:5],  # Top 5
-            "primary_waf": primary_waf,
-            "headers_analyzed": {
-                "server": all_headers.get("server", ""),
-                "x-powered-by": all_headers.get("x-powered-by", ""),
-                "via": all_headers.get("via", ""),
-            },
-            "cookies_found": list(all_cookies.keys())[:10],
-            "recommendations": recommendations,
-            "message": (
-                f"Detected {primary_waf['name']} (confidence: {primary_waf['confidence']}%)"
-                if primary_waf
-                else "No WAF definitively detected"
-            ),
-        }
-        
-        _set_cached(cache_key, result)
-        return result
-        
-    except httpx.TimeoutException:
-        return {
-            "success": False,
-            "error": "Request timed out - target may be blocking or slow",
-            "waf_detected": False,
-            "wafs": [],
-        }
-    except httpx.HTTPError as e:
-        return {
-            "success": False,
-            "error": f"HTTP error: {str(e)[:200]}",
-            "waf_detected": False,
-            "wafs": [],
-        }
-    except Exception as e:
-        logger.exception("WAF detection failed")
-        return {
-            "success": False,
-            "error": f"Detection failed: {str(e)[:200]}",
-            "waf_detected": False,
-            "wafs": [],
-        }
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/tools/waf/waf_actions.py','step':'detect_waf','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 

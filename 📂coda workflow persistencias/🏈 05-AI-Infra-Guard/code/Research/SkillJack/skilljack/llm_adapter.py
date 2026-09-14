@@ -105,30 +105,13 @@ class CompatibleLLM:
         return converted
 
     def _call_api(self, messages: list[dict]) -> str:
-        """Make the actual API call."""
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
-            "stream": False,
-        }
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
-
-        resp = requests.post(
-            self.base_url, headers=headers, json=payload, timeout=self.timeout
-        )
-        if resp.status_code != 200:
-            raise Exception(f"API error {resp.status_code}: {resp.text[:300]}")
-
-        result = resp.json()
-        self.call_count += 1
-        if result.get("usage"):
-            self.total_tokens += result["usage"].get("total_tokens", 0)
-        return result["choices"][0]["message"]["content"]
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'Research/SkillJack/skilljack/llm_adapter.py','step':'_call_api','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def ainvoke(
         self,

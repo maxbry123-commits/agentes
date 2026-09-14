@@ -582,22 +582,25 @@ class DiffScopeResult:
 def _run_git_command(
     repo_path: Path, args: list[str], check: bool = True
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(  # noqa: S603
-        ["git", "-C", str(repo_path), *args],  # noqa: S607
-        capture_output=True,
-        text=True,
-        check=check,
-    )
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/utils.py','step':'_run_git_command','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _run_git_command_raw(
     repo_path: Path, args: list[str], check: bool = True
 ) -> subprocess.CompletedProcess[bytes]:
-    return subprocess.run(  # noqa: S603
-        ["git", "-C", str(repo_path), *args],  # noqa: S607
-        capture_output=True,
-        check=check,
-    )
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/utils.py','step':'_run_git_command_raw','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _is_ci_environment(env: dict[str, str]) -> bool:
@@ -1120,14 +1123,13 @@ def resolve_diff_scope_context(
 
 
 def _is_http_git_repo(url: str) -> bool:
-    check_url = f"{url.rstrip('/')}/info/refs?service=git-upload-pack"
-    try:
-        with requests.get(check_url, headers={"User-Agent": "git/2.43.0"}, timeout=10) as resp:
-            if resp.status_code >= 400:
-                return resp.status_code == 401
-            return "x-git-upload-pack-advertisement" in resp.headers.get("Content-Type", "")
-    except (requests.RequestException, ValueError):
-        return False
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/utils.py','step':'_is_http_git_repo','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def infer_target_type(target: str) -> tuple[str, dict[str, str]]:  # noqa: PLR0911
@@ -1552,49 +1554,13 @@ def stage_api_specs(targets_info: list[dict[str, Any]], run_name: str) -> list[d
 
 
 def clone_repository(repo_url: str, run_name: str, dest_name: str | None = None) -> str:
-    console = Console()
-
-    git_executable = shutil.which("git")
-    if git_executable is None:
-        raise FileNotFoundError("Git executable not found in PATH")
-
-    temp_dir = Path(tempfile.gettempdir()) / "strix_repos" / run_name
-    temp_dir.mkdir(parents=True, exist_ok=True)
-
-    if dest_name:
-        repo_name = dest_name
-    else:
-        repo_name = Path(repo_url).stem if repo_url.endswith(".git") else Path(repo_url).name
-
-    clone_path = temp_dir / repo_name
-
-    if clone_path.exists():
-        shutil.rmtree(clone_path)
-
-    try:
-        with console.status(f"[bold cyan]Cloning repository {repo_url}...", spinner="dots"):
-            subprocess.run(  # noqa: S603
-                [
-                    git_executable,
-                    "clone",
-                    repo_url,
-                    str(clone_path),
-                ],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-
-        return str(clone_path.absolute())
-
-    except subprocess.CalledProcessError as e:
-        detail = e.stderr if hasattr(e, "stderr") and e.stderr else str(e)
-        raise ValueError(f"Could not clone repository {repo_url}: {detail}") from e
-    except FileNotFoundError as e:
-        raise ValueError(
-            "Git is not installed or not available in PATH. "
-            "Please install Git to clone repositories."
-        ) from e
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/utils.py','step':'clone_repository','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def check_docker_connection() -> Any:

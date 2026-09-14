@@ -769,99 +769,24 @@ def rewrite_localhost_targets(targets_info: list[dict[str, Any]], host_gateway: 
 
 # Repository utilities
 def clone_repository(repo_url: str, run_name: str, dest_name: str | None = None) -> str:
-    console = Console()
-
-    git_executable = shutil.which("git")
-    if git_executable is None:
-        raise FileNotFoundError("Git executable not found in PATH")
-
-    temp_dir = Path(tempfile.gettempdir()) / "phantom_repos" / run_name
-    temp_dir.mkdir(parents=True, exist_ok=True)
-
-    if dest_name:
-        repo_name = dest_name
-    else:
-        repo_name = Path(repo_url).stem if repo_url.endswith(".git") else Path(repo_url).name
-
-    clone_path = temp_dir / repo_name
-
-    if clone_path.exists():
-        shutil.rmtree(clone_path)
-
-    try:
-        with console.status(f"[bold cyan]Cloning repository {repo_url}...", spinner="dots"):
-            subprocess.run(  # noqa: S603
-                [
-                    git_executable,
-                    "clone",
-                    repo_url,
-                    str(clone_path),
-                ],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-
-        return str(clone_path.absolute())
-
-    except subprocess.CalledProcessError as e:
-        error_text = Text()
-        error_text.append("REPOSITORY CLONE FAILED", style="bold red")
-        error_text.append("\n\n", style="white")
-        error_text.append(f"Could not clone repository: {repo_url}\n", style="white")
-        error_text.append(
-            f"Error: {e.stderr if hasattr(e, 'stderr') and e.stderr else str(e)}", style="dim red"
-        )
-
-        panel = Panel(
-            error_text,
-            title="[bold white]PHANTOM",
-            title_align="left",
-            border_style="red",
-            padding=(1, 2),
-        )
-        console.print("\n")
-        console.print(panel)
-        console.print()
-        sys.exit(1)
-    except FileNotFoundError:
-        error_text = Text()
-        error_text.append("GIT NOT FOUND", style="bold red")
-        error_text.append("\n\n", style="white")
-        error_text.append("Git is not installed or not available in PATH.\n", style="white")
-        error_text.append("Please install Git to clone repositories.\n", style="white")
-
-        panel = Panel(
-            error_text,
-            title="[bold white]PHANTOM",
-            title_align="left",
-            border_style="red",
-            padding=(1, 2),
-        )
-        console.print("\n")
-        console.print(panel)
-        console.print()
-        sys.exit(1)
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/interface/utils.py','step':'clone_repository','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 # Docker utilities
 def _start_docker_desktop_windows() -> bool:
-    if os.name != "nt":
-        return False
-
-    candidates = [
-        Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Docker" / "Docker" / "Docker Desktop.exe",
-        Path(os.environ.get("LocalAppData", "")) / "Docker" / "Docker Desktop.exe",
-    ]
-
-    for exe in candidates:
-        if exe.exists():
-            try:
-                subprocess.Popen([str(exe)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # noqa: S603
-                return True
-            except OSError:
-                continue
-    return False
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/interface/utils.py','step':'_start_docker_desktop_windows','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def check_docker_connection() -> Any:

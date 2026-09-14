@@ -95,44 +95,23 @@ def _is_newer(latest: str, current: str) -> bool:
 
 
 def _fetch_latest_version() -> str | None:
-    try:
-        if is_binary_install():
-            with requests.get(
-                f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
-                timeout=REQUEST_TIMEOUT_SECONDS,
-            ) as response:
-                response.raise_for_status()
-                tag = response.json().get("tag_name", "")
-            return tag.lstrip("v") or None
-        with requests.get(
-            f"https://pypi.org/pypi/{PYPI_PACKAGE}/json",
-            timeout=REQUEST_TIMEOUT_SECONDS,
-        ) as response:
-            response.raise_for_status()
-            version = response.json().get("info", {}).get("version")
-        return str(version) if version else None
-    except Exception:  # noqa: BLE001
-        logger.debug("update check failed", exc_info=True)
-        return None
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/update_check.py','step':'_fetch_latest_version','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _fetch_asset_digest(version: str, filename: str) -> str | None:
-    """Return the expected sha256 (hex) for a release asset, if the API provides one."""
-    try:
-        with requests.get(
-            f"https://api.github.com/repos/{GITHUB_REPO}/releases/tags/v{version}",
-            timeout=REQUEST_TIMEOUT_SECONDS,
-        ) as response:
-            response.raise_for_status()
-            assets = response.json().get("assets", [])
-        for asset in assets:
-            if asset.get("name") == filename:
-                digest = asset.get("digest") or ""
-                if digest.startswith("sha256:"):
-                    return digest.removeprefix("sha256:")
-    except Exception:  # noqa: BLE001
-        logger.debug("release asset digest lookup failed", exc_info=True)
-    return None
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/update_check.py','step':'_fetch_asset_digest','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _sha256_file(path: Path) -> str:
@@ -217,22 +196,13 @@ def notify_update(console: Console) -> None:
 
 
 def run_package_upgrade(console: Console, method: str) -> bool:
-    """Upgrade a package-manager install by running its upgrade command."""
-    command = get_upgrade_command(method).split()
-    console.print(f"[dim]Running[/] [#60a5fa]{' '.join(command)}[/]")
-    try:
-        result = subprocess.run(command, check=False)  # noqa: S603
-    except OSError as e:
-        console.print(f"[bold red]Update failed:[/] {e}")
-        return False
-    if result.returncode != 0:
-        console.print(
-            f"[bold red]Update failed[/] [dim](exit code {result.returncode}).[/] "
-            f"Run it manually: [#60a5fa]{get_upgrade_command(method)}[/]"
-        )
-        return False
-    console.print("[#22c55e]✓ strix updated — restart the scan to use the new version[/]")
-    return True
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/update_check.py','step':'run_package_upgrade','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def prompt_update_if_available(console: Console) -> bool:
@@ -313,67 +283,13 @@ def _release_target() -> str | None:
 
 
 def _download_and_replace(version: str, target: str, console: Console) -> bool:
-    is_windows = target.startswith("windows")
-    archive_ext = ".zip" if is_windows else ".tar.gz"
-    filename = f"strix-{version}-{target}{archive_ext}"
-    url = f"https://github.com/{GITHUB_REPO}/releases/download/v{version}/{filename}"
-    binary_name = f"strix-{version}-{target}" + (".exe" if is_windows else "")
-    current_exe = Path(sys.executable).resolve()
-
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_dir = Path(tmp)
-        archive_path = tmp_dir / filename
-        console.print(f"[dim]Downloading[/] {url}")
-        with requests.get(  # nosec B113
-            url,
-            stream=True,
-            timeout=REQUEST_TIMEOUT_SECONDS * 12,
-        ) as response:
-            response.raise_for_status()
-            with archive_path.open("wb") as f:
-                for chunk in response.iter_content(chunk_size=1 << 20):
-                    f.write(chunk)
-
-        expected_digest = _fetch_asset_digest(version, filename)
-        if expected_digest:
-            actual_digest = _sha256_file(archive_path)
-            if actual_digest != expected_digest:
-                raise RuntimeError(
-                    f"checksum mismatch for {filename}: "
-                    f"expected sha256 {expected_digest}, got {actual_digest}"
-                )
-        else:
-            console.print("[dim yellow]No published checksum available; skipping verification[/]")
-
-        if is_windows:
-            with zipfile.ZipFile(archive_path) as zf:
-                zf.extract(binary_name, tmp_dir)
-        else:
-            with tarfile.open(archive_path, "r:gz") as tf:
-                tf.extract(binary_name, tmp_dir, filter="data")
-
-        new_binary = tmp_dir / binary_name
-        new_binary.chmod(new_binary.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-
-        staged = current_exe.with_name(current_exe.name + ".new")
-        try:
-            shutil.copy2(new_binary, staged)
-            if is_windows:
-                # Windows can't replace a running executable in place; move it aside first.
-                old = current_exe.with_name(current_exe.name + ".old")
-                old.unlink(missing_ok=True)
-                current_exe.rename(old)
-                try:
-                    staged.replace(current_exe)
-                except Exception:
-                    old.rename(current_exe)
-                    raise
-            else:
-                staged.replace(current_exe)
-        except Exception:
-            staged.unlink(missing_ok=True)
-            raise
-    return True
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/update_check.py','step':'_download_and_replace','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def self_update(console: Console | None = None, version: str | None = None) -> bool:

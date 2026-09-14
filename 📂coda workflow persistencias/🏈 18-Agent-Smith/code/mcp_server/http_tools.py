@@ -73,86 +73,23 @@ async def http(
 
 
 async def http_probe(url, method="GET", headers=None, body=None, timeout_s=20) -> dict:
-    """Low-level request returning the STRUCTURED response (status/headers/body).
-
-    Used by the server-side coverage sweep, which needs to evaluate a response
-    with an oracle — not the human-readable envelope _do_request wraps. No
-    cost/log/envelope side effects; fail-soft (a dead target returns status 0).
-
-    TLS verification is intentionally disabled (`ssl=False`): this is a pentest
-    probe against operator-chosen targets that routinely present self-signed,
-    expired, or mismatched certs (the same posture as nuclei/sqlmap/curl -k).
-    Enabling validation would make those in-scope targets unscannable. The probe
-    only reads responses to feed an oracle; it sends no secrets to protect."""
-    import aiohttp
-    try:
-        async with aiohttp.ClientSession(
-            max_line_size=_CLIENT_MAX_HDR, max_field_size=_CLIENT_MAX_HDR) as session:
-            async with session.request(
-                method, url, headers=headers or {}, data=body,
-                timeout=aiohttp.ClientTimeout(total=timeout_s), ssl=False,  # NOSONAR S4830 — intentional: see docstring
-            ) as resp:
-                return {"status": resp.status, "headers": dict(resp.headers),
-                        "body": await resp.text()}
-    except Exception as exc:
-        return {"status": 0, "headers": {}, "body": "", "error": str(exc)}
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'mcp_server/http_tools.py','step':'http_probe','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 async def _do_request(url, method, headers, body, opts):
-    import aiohttp
-
-    poc = opts.get("poc", False)
-    burp_proxy = opts.get("burp_proxy", "http://127.0.0.1:8080")
-    proxy = burp_proxy if poc else None
-
-    log.tool_call("http_request", {"url": url, "method": method, "poc": poc})
-    call_id = cost_tracker.start("http_request")
-    artifact_raw = None
-    try:
-        async with aiohttp.ClientSession(
-            max_line_size=_CLIENT_MAX_HDR, max_field_size=_CLIENT_MAX_HDR) as session:
-            async with session.request(
-                method, url,
-                headers=headers or {},
-                data=body,
-                timeout=aiohttp.ClientTimeout(total=30),
-                ssl=False,
-                proxy=proxy,
-            ) as resp:
-                text = await resp.text()
-                base = {
-                    "status": resp.status,
-                    "headers": dict(resp.headers),
-                    "burp": f"request sent through {burp_proxy}" if poc else "not routed through Burp",
-                }
-                # Inline result drives the 500-char preview, cost, and logging —
-                # keep it bounded.
-                result = json.dumps({**base, "body": text[:_INLINE_BODY_CHARS]}, indent=2)
-                # When the body is larger, ALSO keep the full body (up to a sane
-                # cap) as the on-disk artifact so the model can grep/page a big
-                # OpenAPI spec or JS bundle via session(action='artifact'). It's
-                # never sent inline, so it inflates neither context nor cost.
-                if len(text) > _INLINE_BODY_CHARS:
-                    artifact_raw = json.dumps({**base, "body": text[:_MAX_ARTIFACT_BODY]}, indent=2)
-    except Exception as exc:
-        result = json.dumps({
-            "error": str(exc),
-            "hint": f"If poc=true, make sure Burp Suite is open with proxy on {burp_proxy}",
-        })
-    cost_tracker.finish(call_id, result)
-    log.tool_result("http_request", result)
-
-    from mcp_server.scan_engine import wrap
-    # Pass body + headers so the envelope can detect credential-validation
-    # attempts (password/secret/api_key fields). Without these the QA daemon
-    # cannot exclude legitimate login traffic from its session-expiry check
-    # and fires false-positive HIR_AUTH_FAILURE on every login attempt.
-    return wrap("http_request", result, {
-        "url":     url,
-        "method":  method,
-        "body":    body or "",
-        "headers": headers or {},
-    }, artifact_raw=artifact_raw)
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'mcp_server/http_tools.py','step':'_do_request','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 async def _do_save_poc(url, method, headers, body, opts):

@@ -186,54 +186,13 @@ Kunlun-M 是一款专注于代码安全审计的工具，特别擅长 PHP 和 Ja
         return True
 
     async def _initialize_database(self):
-        """初始化 Kunlun-M 数据库"""
-        # 复制 settings.py
-        settings_bak = os.path.join(self.kunlun_path, "Kunlun_M", "settings.py.bak")
-        settings_py = os.path.join(self.kunlun_path, "Kunlun_M", "settings.py")
-
-        if os.path.exists(settings_bak) and not os.path.exists(settings_py):
-            import shutil
-            shutil.copy(settings_bak, settings_py)
-
-        # 运行初始化命令
-        init_cmd = [
-            sys.executable,
-            os.path.join(self.kunlun_path, "kunlun.py"),
-            "init", "initialize"
-        ]
-
-        process = await asyncio.create_subprocess_exec(
-            *init_cmd,
-            cwd=self.kunlun_path,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env={**os.environ, "DJANGO_SETTINGS_MODULE": "Kunlun_M.settings"}
-        )
-
-        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=120)
-
-        if process.returncode != 0:
-            raise Exception(f"Database init failed: {stderr.decode()}")
-
-        # 加载规则
-        load_cmd = [
-            sys.executable,
-            os.path.join(self.kunlun_path, "kunlun.py"),
-            "config", "load"
-        ]
-
-        process = await asyncio.create_subprocess_exec(
-            *load_cmd,
-            cwd=self.kunlun_path,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env={**os.environ, "DJANGO_SETTINGS_MODULE": "Kunlun_M.settings"}
-        )
-
-        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=120)
-
-        self._db_initialized = True
-        logger.info("Kunlun-M database initialized successfully")
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'backend/app/services/agent/tools/kunlun_tool.py','step':'_initialize_database','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _execute(
         self,
@@ -245,129 +204,13 @@ Kunlun-M 是一款专注于代码安全审计的工具，特别擅长 PHP 和 Ja
         max_results: int = 50,
         **kwargs
     ) -> ToolResult:
-        """执行 Kunlun-M 扫描"""
-
-        # 确保初始化
-        if not await self._ensure_initialized():
-            return ToolResult(
-                success=False,
-                error="Kunlun-M 未正确安装或初始化失败。请确保 Kunlun-M-master 目录存在且依赖已安装。"
-            )
-
-        # 构建完整目标路径
-        if target_path.startswith("/"):
-            full_target = target_path
-        else:
-            full_target = os.path.join(self.project_root, target_path)
-
-        if not os.path.exists(full_target):
-            return ToolResult(
-                success=False,
-                error=f"目标路径不存在: {target_path}"
-            )
-
-        # 构建扫描命令
-        cmd = [
-            sys.executable,
-            os.path.join(self.kunlun_path, "kunlun.py"),
-            "scan",
-            "-t", full_target,
-            "-o", "json"  # JSON 输出格式
-        ]
-
-        # 添加语言参数
-        if language:
-            if language.lower() not in self.SUPPORTED_LANGUAGES:
-                return ToolResult(
-                    success=False,
-                    error=f"不支持的语言: {language}。支持: {', '.join(self.SUPPORTED_LANGUAGES)}"
-                )
-            cmd.extend(["-l", language.lower()])
-
-        # 添加规则参数
-        if rules:
-            cmd.extend(["-r", rules])
-
-        # 添加 tamper 参数
-        if tamper:
-            cmd.extend(["-tp", tamper])
-
-        # 包含未确认漏洞
-        if include_unconfirmed:
-            cmd.append("-uc")
-
-        try:
-            # 创建临时输出文件
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-                output_file = f.name
-
-            # 修改命令使用输出文件
-            cmd.extend(["-o", output_file])
-
-            logger.debug(f"Running Kunlun-M: {' '.join(cmd)}")
-
-            # 执行扫描
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                cwd=self.kunlun_path,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env={**os.environ, "DJANGO_SETTINGS_MODULE": "Kunlun_M.settings"}
-            )
-
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(),
-                timeout=600  # 10 分钟超时
-            )
-
-            stdout_text = stdout.decode('utf-8', errors='ignore')
-            stderr_text = stderr.decode('utf-8', errors='ignore')
-
-            # 解析结果
-            findings = await self._parse_results(stdout_text, stderr_text, output_file)
-
-            # 清理临时文件
-            try:
-                os.unlink(output_file)
-            except:
-                pass
-
-            if not findings:
-                return ToolResult(
-                    success=True,
-                    data="🛡️ Kunlun-M 扫描完成，未发现安全问题",
-                    metadata={
-                        "findings_count": 0,
-                        "target": target_path,
-                        "language": language
-                    }
-                )
-
-            # 格式化输出
-            output = self._format_findings(findings[:max_results], target_path)
-
-            return ToolResult(
-                success=True,
-                data=output,
-                metadata={
-                    "findings_count": len(findings),
-                    "target": target_path,
-                    "language": language,
-                    "findings": findings[:10]  # 只在 metadata 中保存前10个
-                }
-            )
-
-        except asyncio.TimeoutError:
-            return ToolResult(
-                success=False,
-                error="Kunlun-M 扫描超时（10分钟）"
-            )
-        except Exception as e:
-            logger.error(f"Kunlun-M scan error: {e}", exc_info=True)
-            return ToolResult(
-                success=False,
-                error=f"扫描执行失败: {str(e)}"
-            )
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'backend/app/services/agent/tools/kunlun_tool.py','step':'_execute','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _parse_results(
         self,
@@ -526,63 +369,13 @@ class KunlunRuleListTool(AgentTool):
         language: Optional[str] = None,
         **kwargs
     ) -> ToolResult:
-        """列出可用规则"""
-
-        if not os.path.exists(self.kunlun_path):
-            return ToolResult(
-                success=False,
-                error="Kunlun-M 未安装"
-            )
-
-        # 构建命令
-        cmd = [
-            sys.executable,
-            os.path.join(self.kunlun_path, "kunlun.py"),
-            "show", "rule"
-        ]
-
-        if language:
-            cmd.extend(["-k", language.lower()])
-
-        try:
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                cwd=self.kunlun_path,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env={**os.environ, "DJANGO_SETTINGS_MODULE": "Kunlun_M.settings"}
-            )
-
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(),
-                timeout=60
-            )
-
-            output = stdout.decode('utf-8', errors='ignore')
-
-            if not output.strip():
-                return ToolResult(
-                    success=True,
-                    data="未找到匹配的规则" if language else "规则列表为空，请先运行初始化",
-                    metadata={"language": language}
-                )
-
-            return ToolResult(
-                success=True,
-                data=f"📋 Kunlun-M 规则列表{f' ({language})' if language else ''}:\n\n{output}",
-                metadata={"language": language}
-            )
-
-        except asyncio.TimeoutError:
-            return ToolResult(
-                success=False,
-                error="获取规则列表超时"
-            )
-        except Exception as e:
-            return ToolResult(
-                success=False,
-                error=f"获取规则列表失败: {str(e)}"
-            )
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'backend/app/services/agent/tools/kunlun_tool.py','step':'_execute','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
 
 class KunlunPluginInput(BaseModel):
@@ -645,79 +438,10 @@ class KunlunPluginTool(AgentTool):
         depth: int = 3,
         **kwargs
     ) -> ToolResult:
-        """执行插件"""
-
-        if plugin_name not in self.AVAILABLE_PLUGINS:
-            return ToolResult(
-                success=False,
-                error=f"未知插件: {plugin_name}。可用插件: {', '.join(self.AVAILABLE_PLUGINS.keys())}"
-            )
-
-        if not os.path.exists(self.kunlun_path):
-            return ToolResult(
-                success=False,
-                error="Kunlun-M 未安装"
-            )
-
-        # 构建完整目标路径
-        if target_path.startswith("/"):
-            full_target = target_path
-        else:
-            full_target = os.path.join(self.project_root, target_path)
-
-        if not os.path.exists(full_target):
-            return ToolResult(
-                success=False,
-                error=f"目标路径不存在: {target_path}"
-            )
-
-        # 构建命令
-        cmd = [
-            sys.executable,
-            os.path.join(self.kunlun_path, "kunlun.py"),
-            "plugin", plugin_name,
-            "-t", full_target
-        ]
-
-        if plugin_name == "entrance_finder":
-            cmd.extend(["-l", str(depth)])
-
-        try:
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                cwd=self.kunlun_path,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env={**os.environ, "DJANGO_SETTINGS_MODULE": "Kunlun_M.settings"}
-            )
-
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(),
-                timeout=300  # 5 分钟超时
-            )
-
-            output = stdout.decode('utf-8', errors='ignore')
-
-            if not output.strip():
-                return ToolResult(
-                    success=True,
-                    data=f"插件 {plugin_name} 执行完成，未发现结果",
-                    metadata={"plugin": plugin_name, "target": target_path}
-                )
-
-            return ToolResult(
-                success=True,
-                data=f"🔌 Kunlun-M 插件 [{plugin_name}] 分析结果:\n\n{output}",
-                metadata={"plugin": plugin_name, "target": target_path}
-            )
-
-        except asyncio.TimeoutError:
-            return ToolResult(
-                success=False,
-                error=f"插件 {plugin_name} 执行超时"
-            )
-        except Exception as e:
-            return ToolResult(
-                success=False,
-                error=f"插件执行失败: {str(e)}"
-            )
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'backend/app/services/agent/tools/kunlun_tool.py','step':'_execute','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye

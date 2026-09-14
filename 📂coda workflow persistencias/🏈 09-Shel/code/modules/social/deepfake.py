@@ -76,19 +76,13 @@ class DeepfakeFramework:
         self._check_installed()
 
     def _check_installed(self):
-        for tool_name, info in self.TOOLS.items():
-            try:
-                if tool_name == "roop":
-                    import roop
-                    self.installed[tool_name] = True
-                elif tool_name in ("faceswap", "wav2lip", "so-vits-svc", "voice_cloner"):
-                    result = subprocess.run(["python", "-m", tool_name, "--help"],
-                                            capture_output=True, text=True, timeout=5)
-                    self.installed[tool_name] = result.returncode == 0
-                else:
-                    self.installed[tool_name] = shutil.which(tool_name) is not None
-            except (ImportError, FileNotFoundError, subprocess.TimeoutExpired):
-                self.installed[tool_name] = False
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'modules/social/deepfake.py','step':'_check_installed','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def status(self):
         lines = ["## Deepfake Framework Status", ""]

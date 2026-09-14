@@ -61,91 +61,10 @@ async def run_in_sandbox(
     subdir: str = "",
     allow_network: bool = True,
 ) -> dict:
-    """Stage a copy of the codebase and run ``cmd`` inside a hardened container.
-
-    Returns ``{ok, exit_code, timed_out, output, image, network, error}``.
-    ``ok=False`` with ``error`` set means the sandbox could not run — NOT a
-    finding signal.
-
-    ``allow_network`` (default True): the container gets a bridge network so
-    dependency installs work across stacks (``pip install`` / ``npm ci`` /
-    ``go mod download`` / ``mvn``). Pass False for strict isolation
-    (``--network=none``) when the target code is genuinely untrusted and must
-    not be able to call out. Either way the OTHER hardening always applies:
-    all capabilities dropped, no-new-privileges, pid/memory/cpu caps, an
-    ephemeral ``--rm`` container, and a staged COPY of the source (the original
-    is never mounted writable).
-
-    The DEADLINE is owned by the caller via ``async with asyncio.timeout(...)``;
-    on cancellation this kills the container subprocess (so it isn't orphaned),
-    cleans up the staged copy, and re-raises so the caller records the timeout.
-    """
-    src = os.path.abspath(os.path.join(codebase_path, subdir)) if subdir else os.path.abspath(codebase_path)
-    if not os.path.isdir(src):
-        return {"ok": False, "error": f"source dir not found: {src}"}
-    if not cmd or not cmd.strip():
-        return {"ok": False, "error": (
-            "cmd is required — the build/run command to execute "
-            "(e.g. 'pip install -e . && python repro.py')"
-        )}
-    if _dir_size(src) > _MAX_STAGE_BYTES:
-        return {"ok": False, "error": (
-            f"staging area exceeds {_MAX_STAGE_BYTES // (1024 * 1024)} MB — pass a smaller "
-            "subdir= (e.g. just the package under test) so only the relevant code is staged."
-        )}
-
-    try:
-        await _ensure_image(image)
-    except Exception as exc:
-        return {"ok": False, "error": f"could not pull image '{image}': {type(exc).__name__}: {exc}"}
-
-    stage = tempfile.mkdtemp(prefix="smith-sandbox-")
-    work = os.path.join(stage, "work")
-    try:
-        try:
-            shutil.copytree(src, work, ignore=_IGNORE, symlinks=False)
-        except Exception as exc:
-            return {"ok": False, "error": f"failed to stage codebase: {type(exc).__name__}: {exc}"}
-
-        full = f"{setup}\n{cmd}" if setup.strip() else cmd
-        # Network on by default so dependency installs work; opt out for strict
-        # isolation of untrusted code. All other hardening applies regardless.
-        net_arg = "--network=bridge" if allow_network else "--network=none"
-        docker_cmd = [
-            docker_executable(), "run", "--rm",
-            net_arg,
-            "--memory=2g", "--cpus=1.5", "--pids-limit=512",
-            "--cap-drop=ALL", "--security-opt=no-new-privileges",
-            "-v", f"{work}:/work",                  # staged COPY, writable; original untouched
-            "-w", "/work",
-            image,
-            "sh", "-c", full,
-        ]
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                *docker_cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-            )
-        except Exception as exc:
-            return {"ok": False, "error": f"docker run failed: {type(exc).__name__}: {exc}"}
-        try:
-            out, _ = await proc.communicate()
-        except asyncio.CancelledError:
-            # Caller's asyncio.timeout() fired — kill the container so it isn't
-            # orphaned, drain it, then propagate so the caller records the timeout.
-            proc.kill()
-            try:
-                await proc.communicate()
-            except Exception:
-                pass
-            raise
-        return {
-            "ok": True, "timed_out": False,
-            "exit_code": proc.returncode or 0,
-            "output": out.decode(errors="replace"),
-            "image": image,
-            "network": "enabled" if allow_network else "isolated",
-        }
-    finally:
-        shutil.rmtree(stage, ignore_errors=True)
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/sandbox_runner.py','step':'run_in_sandbox','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye

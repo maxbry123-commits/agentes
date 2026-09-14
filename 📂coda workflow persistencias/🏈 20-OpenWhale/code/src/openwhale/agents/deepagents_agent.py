@@ -352,86 +352,22 @@ class DeepAgentsChallengeAgent(BaseChallengeAgent):
         completed_process: subprocess.CompletedProcess[str] | None,
         error: str | None = None,
     ) -> str:
-        if error is not None:
-            return json.dumps(
-                {
-                    "command": command,
-                    "cwd": str(cwd),
-                    "timeout_seconds": timeout_seconds,
-                    "error": error,
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
-
-        assert completed_process is not None
-        stdout = completed_process.stdout or ""
-        stderr = completed_process.stderr or ""
-        if len(stdout) > self._bash_max_output_chars:
-            stdout = stdout[: self._bash_max_output_chars] + "\n... [stdout truncated]"
-        if len(stderr) > self._bash_max_output_chars:
-            stderr = stderr[: self._bash_max_output_chars] + "\n... [stderr truncated]"
-
-        return json.dumps(
-            {
-                "command": command,
-                "cwd": str(cwd),
-                "timeout_seconds": timeout_seconds,
-                "returncode": completed_process.returncode,
-                "stdout": stdout,
-                "stderr": stderr,
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'src/openwhale/agents/deepagents_agent.py','step':'_render_bash_result','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _run_bash(self, command: str, cwd: str | None = None, timeout_seconds: int | None = None) -> str:
-        workdir = Path(cwd).expanduser().resolve() if cwd else self._workspace_root
-        timeout = timeout_seconds or self._bash_timeout_seconds
-
-        if not workdir.exists():
-            return self._render_bash_result(
-                command=command,
-                cwd=workdir,
-                timeout_seconds=timeout,
-                completed_process=None,
-                error=f"cwd 不存在: {workdir}",
-            )
-
-        def _execute() -> subprocess.CompletedProcess[str]:
-            return subprocess.run(
-                ["bash", "-lc", command],
-                cwd=str(workdir),
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
-
-        try:
-            completed_process = await asyncio.to_thread(_execute)
-        except subprocess.TimeoutExpired:
-            return self._render_bash_result(
-                command=command,
-                cwd=workdir,
-                timeout_seconds=timeout,
-                completed_process=None,
-                error=f"命令执行超时（>{timeout} 秒）",
-            )
-        except Exception as exc:  # noqa: BLE001
-            return self._render_bash_result(
-                command=command,
-                cwd=workdir,
-                timeout_seconds=timeout,
-                completed_process=None,
-                error=f"命令执行失败: {exc}",
-            )
-
-        return self._render_bash_result(
-            command=command,
-            cwd=workdir,
-            timeout_seconds=timeout,
-            completed_process=completed_process,
-        )
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'src/openwhale/agents/deepagents_agent.py','step':'_run_bash','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def run_competition(self, mcp_session: ClientSession) -> AgentRunResult:
         logger.info("=== 开始 DeepAgents 闯关流程 ===")

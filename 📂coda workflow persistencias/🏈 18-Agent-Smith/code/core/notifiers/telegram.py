@@ -75,22 +75,10 @@ class TelegramNotifier(BaseNotifier):
         self._api_base = api_base
 
     async def _send_message(self, text: str) -> bool:
-        """POST to Telegram sendMessage. Returns True on HTTP 200 + ok=True.
-
-        aiohttp with a 10s timeout so a Telegram outage doesn't pile up
-        tasks behind every HIR fire.
-        """
-        import aiohttp
-        url = self._api_base.format(token=self._token, method="sendMessage")
-        payload = {
-            "chat_id": self._chat_id_int,
-            "text": text,
-            "disable_web_page_preview": True,
-        }
-        timeout = aiohttp.ClientTimeout(total=10)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(url, json=payload) as resp:
-                if resp.status != 200:
-                    return False
-                body = await resp.json()
-                return bool(body.get("ok"))
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'core/notifiers/telegram.py','step':'_send_message','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye

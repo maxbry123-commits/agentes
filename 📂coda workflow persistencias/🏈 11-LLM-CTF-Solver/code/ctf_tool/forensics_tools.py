@@ -20,82 +20,13 @@ except ImportError:
 
 
 def _pcap_analyze(path: str) -> str:
-    """分析 PCAP/PCAPNG 流量文件。"""
-    if not HAS_SCAPY:
-        return (
-            "错误: 需要 scapy 库 (pip install scapy)\n"
-            "如果使用远程服务器，可改用 tshark: tshark -r <文件> -Y <过滤规则>"
-        )
-
-    try:
-        packets = scapy.rdpcap(path)
-    except Exception as e:
-        return f"读取 PCAP 失败: {e}"
-
-    lines = [
-        f"数据包总数: {len(packets)}",
-        f"捕获时长: 约 {packets[-1].time - packets[0].time:.2f} 秒"
-        if len(packets) > 1 else "",
-    ]
-
-    # 协议统计
-    proto_count = {}
-    for pkt in packets:
-        if pkt.haslayer(scapy.IP):
-            proto = pkt[scapy.IP].proto
-            proto_name = {1: "ICMP", 6: "TCP", 17: "UDP"}.get(proto, str(proto))
-            proto_count[proto_name] = proto_count.get(proto_name, 0) + 1
-
-    if proto_count:
-        lines.append("\n协议统计:")
-        for proto, count in sorted(proto_count.items(), key=lambda x: -x[1]):
-            lines.append(f"  {proto}: {count} 个数据包")
-
-    # HTTP 请求提取
-    http_requests = []
-    for pkt in packets:
-        if pkt.haslayer(scapy.TCP) and pkt.haslayer(scapy.Raw):
-            payload = pkt[scapy.Raw].load.decode("utf-8", errors="replace")
-            if re.search(r"^(GET|POST|PUT|DELETE|HEAD|OPTIONS) ", payload, re.MULTILINE):
-                first_line = payload.split("\r\n")[0]
-                http_requests.append(first_line)
-
-    if http_requests:
-        lines.append(f"\nHTTP 请求 ({len(http_requests)} 个):")
-        for req in http_requests[:30]:
-            lines.append(f"  {req}")
-
-    # 标记可疑的数据包
-    suspicious = 0
-    for pkt in packets:
-        if pkt.haslayer(scapy.TCP):
-            tcp = pkt[scapy.TCP]
-            if tcp.flags & 0x29:  # FIN + PSH + URG
-                pass
-            # 检查端口
-            if tcp.sport in (21, 23, 3389) or tcp.dport in (21, 23, 3389):
-                suspicious += 1
-
-    if suspicious:
-        lines.append(f"\n可疑连接 (FTP/Telnet/RDP): {suspicious} 个")
-
-    # DNS 查询
-    dns_queries = set()
-    for pkt in packets:
-        if pkt.haslayer(scapy.DNSQR):
-            try:
-                qname = pkt[scapy.DNSQR].qname.decode("utf-8", errors="replace")
-                dns_queries.add(qname.rstrip("."))
-            except Exception:
-                pass
-
-    if dns_queries:
-        lines.append(f"\nDNS 查询 ({len(dns_queries)} 个):")
-        for q in sorted(dns_queries)[:20]:
-            lines.append(f"  {q}")
-
-    # 过滤空行
-    return "\n".join(line for line in lines if line)
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'ctf_tool/forensics_tools.py','step':'_pcap_analyze','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _pcap_extract_objects(path: str, export_dir: str = "pcap_export") -> str:

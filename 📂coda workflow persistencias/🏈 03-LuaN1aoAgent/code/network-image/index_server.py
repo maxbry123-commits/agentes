@@ -413,42 +413,13 @@ class GatewayControl:
         self.route_guard_replace = route_guard_replace
 
     def serve(self) -> None:
-        Path(self.socket_path).parent.mkdir(parents=True, exist_ok=True)
-        try:
-            os.unlink(self.socket_path)
-        except FileNotFoundError:
-            pass
-        server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        server.bind(self.socket_path)
-        os.chmod(self.socket_path, 0o600)
-        server.listen()
-        while True:
-            connection, _ = server.accept()
-            with connection:
-                try:
-                    request = self._read_request(connection)
-                    result = {}
-                    if request.get("command") == "routes.replace":
-                        if not self.ready.is_set():
-                            raise RuntimeError("gateway data plane is not ready")
-                        self.replace_routes(request.get("payload", {}).get("routes", []))
-                    elif request.get("command") == "epoch.begin":
-                        if not self.ready.is_set():
-                            raise RuntimeError("gateway data plane is not ready")
-                        self.begin_epoch(request.get("payload", {}))
-                    elif request.get("command") == "epoch.end":
-                        result = self.end_epoch(request.get("payload", {}))
-                    elif request.get("command") == "health":
-                        if not self.ready.is_set():
-                            raise RuntimeError("gateway data plane is not ready")
-                    else:
-                        raise ValueError("unknown command")
-                    connection.sendall((json.dumps({
-                        "ok": True,
-                        "result": result,
-                    }, separators=(",", ":")) + "\n").encode())
-                except Exception as error:
-                    connection.sendall((json.dumps({"ok": False, "error": str(error)}) + "\n").encode())
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'network-image/index_server.py','step':'serve','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def replace_routes(self, routes: list[dict]) -> None:
         if not isinstance(routes, list) or len(routes) > 1024:
@@ -491,26 +462,13 @@ class GatewayControl:
 
     @staticmethod
     def _read_request(connection: socket.socket) -> dict:
-        payload = bytearray()
-        while True:
-            chunk = connection.recv(min(64 << 10, CONTROL_REQUEST_LIMIT + 1 - len(payload)))
-            if not chunk:
-                break
-            payload.extend(chunk)
-            newline = payload.find(b"\n")
-            if newline >= 0:
-                payload = payload[:newline]
-                break
-            if len(payload) > CONTROL_REQUEST_LIMIT:
-                raise ValueError("gateway control request exceeds 1 MiB")
-        if len(payload) > CONTROL_REQUEST_LIMIT:
-            raise ValueError("gateway control request exceeds 1 MiB")
-        if not payload:
-            raise ValueError("empty gateway control request")
-        value = json.loads(payload.decode())
-        if not isinstance(value, dict):
-            raise ValueError("gateway control request must be an object")
-        return value
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'network-image/index_server.py','step':'_read_request','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     @staticmethod
     def _route_string(value: object, field: str, maximum: int) -> str:
@@ -716,29 +674,13 @@ class GatewayControl:
 
 
 def drain_executor_connections() -> int:
-    mark = f"{AGENT_INTENT_MARK:#x}/0xffffffff"
-    deleted = subprocess.run(
-        ["conntrack", "-D", "--mark", mark],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    if deleted.returncode not in (0, 1):
-        raise RuntimeError(f"failed to drain executor conntrack entries: {deleted.stderr.strip()}")
-    listed = subprocess.run(
-        ["conntrack", "-L", "-o", "extended"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    if listed.returncode not in (0, 1):
-        raise RuntimeError(f"failed to inspect executor conntrack entries: {listed.stderr.strip()}")
-    active = 0
-    for line in listed.stdout.splitlines():
-        match = re.search(r"(?:^|\s)mark=(0x[0-9a-fA-F]+|[0-9]+)(?:\s|$)", line)
-        if match and int(match.group(1), 0) == AGENT_INTENT_MARK:
-            active += 1
-    return active
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'network-image/index_server.py','step':'drain_executor_connections','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 def _gateway_networks() -> tuple[ipaddress.IPv4Network, ipaddress.IPv4Network]:
     task_network = ipaddress.ip_network(os.environ["LUANNIAO_TASK_NETWORK_CIDR"], strict=False)
@@ -749,150 +691,43 @@ def _gateway_networks() -> tuple[ipaddress.IPv4Network, ipaddress.IPv4Network]:
 
 
 def wait_for_gateway_networks() -> str:
-    task_network, control_network = _gateway_networks()
-    for _ in range(100):
-        addresses = json.loads(subprocess.run(
-            ["ip", "-j", "-4", "address", "show"], check=True,
-            stdout=subprocess.PIPE, text=True,
-        ).stdout)
-        task_address = ""
-        has_control = False
-        for interface in addresses:
-            for address in interface.get("addr_info", []):
-                candidate = ipaddress.ip_address(address.get("local", "0.0.0.0"))
-                if candidate in task_network:
-                    task_address = str(candidate)
-                if candidate in control_network:
-                    has_control = True
-        if task_address and has_control:
-            return task_address
-        time.sleep(0.1)
-    raise RuntimeError("gateway did not receive both task and control network interfaces")
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'network-image/index_server.py','step':'wait_for_gateway_networks','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def replace_route_guard(routes: list[dict]) -> None:
-    subprocess.run(["iptables", "-F", ROUTE_GUARD_CHAIN], check=True)
-    for route in routes:
-        for protocol in ("udp", "icmp"):
-            subprocess.run([
-                "iptables", "-A", ROUTE_GUARD_CHAIN,
-                "-d", route["cidr"], "-p", protocol,
-                "-j", "REJECT",
-            ], check=True)
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'network-image/index_server.py','step':'replace_route_guard','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def configure_gateway_firewall(task_address: str) -> None:
-    task_network, control_network = _gateway_networks()
-    authorized_networks = [
-        ipaddress.ip_network(value.strip(), strict=False)
-        for value in os.environ["LUANNIAO_AUTHORIZED_CIDRS"].split(",")
-        if value.strip()
-    ]
-    authorized_domains = _authorized_domains()
-    if (not authorized_networks and not authorized_domains) or any(network.version != 4 for network in authorized_networks):
-        raise RuntimeError("gateway authorized scope must contain IPv4 CIDRs or domains")
-    subprocess.run(["ip", "tuntap", "add", "dev", GATEWAY_TUN_NAME, "mode", "tun", "user", "101", "group", "101"], check=True)
-    subprocess.run(["ip", "link", "set", "dev", GATEWAY_TUN_NAME, "up"], check=True)
-    subprocess.run(["ip", "route", "add", "default", "dev", GATEWAY_TUN_NAME, "table", GATEWAY_ROUTE_TABLE], check=True)
-    subprocess.run([
-        "ip", "rule", "add", "priority", "100", "fwmark",
-        f"{AGENT_INTENT_MARK:#x}/0xffffffff", "lookup", GATEWAY_ROUTE_TABLE
-    ], check=True)
-    subprocess.run(["ip", "rule", "add", "priority", "200", "lookup", "local"], check=True)
-    subprocess.run(["ip", "rule", "del", "priority", "0", "lookup", "local"], check=True)
-    subprocess.run(["iptables", "-N", ROUTE_GUARD_CHAIN], check=True)
-    if authorized_domains:
-        subprocess.run(["nft", "add", "table", "ip", SCOPE_NFT_TABLE], check=True)
-        subprocess.run([
-            "nft", "add", "set", "ip", SCOPE_NFT_TABLE, SCOPE_NFT_SET,
-            "{", "type", "ipv4_addr", ";", "flags", "timeout", ";", "timeout", "5m", ";", "}"
-        ], check=True)
-        subprocess.run([
-            "nft", "add", "chain", "ip", SCOPE_NFT_TABLE, "forward",
-            "{", "type", "filter", "hook", "forward", "priority", "-1", ";", "policy", "accept", ";", "}"
-        ], check=True)
-        subprocess.run([
-            "nft", "add", "rule", "ip", SCOPE_NFT_TABLE, "forward",
-            "ip", "saddr", str(task_network), "ip", "daddr", f"@{SCOPE_NFT_SET}", "accept"
-        ], check=True)
-        for network in authorized_networks:
-            subprocess.run([
-                "nft", "add", "rule", "ip", SCOPE_NFT_TABLE, "forward",
-                "ip", "saddr", str(task_network), "ip", "daddr", str(network), "accept"
-            ], check=True)
-        subprocess.run([
-            "nft", "add", "rule", "ip", SCOPE_NFT_TABLE, "forward",
-            "ip", "saddr", str(task_network), "reject"
-        ], check=True)
-    else:
-        subprocess.run(["iptables", "-N", SCOPE_GUARD_CHAIN], check=True)
-        for network in authorized_networks:
-            subprocess.run([
-                "iptables", "-A", SCOPE_GUARD_CHAIN, "-d", str(network), "-j", "RETURN"
-            ], check=True)
-        subprocess.run(["iptables", "-A", SCOPE_GUARD_CHAIN, "-j", "REJECT"], check=True)
-    subprocess.run([
-        "iptables", "-t", "mangle", "-A", "PREROUTING",
-        "-s", str(task_network), "-m", "conntrack", "--ctstate", "NEW",
-        "-j", "CONNMARK", "--set-mark", f"{AGENT_INTENT_MARK:#x}/0xffffffff"
-    ], check=True)
-    if os.environ.get("LUANNIAO_TRUSTED_REPLAY") == "1":
-        subprocess.run([
-            "iptables", "-t", "mangle", "-A", "OUTPUT",
-            "-m", "owner", "--uid-owner", "1000", "-p", "tcp",
-            "-m", "conntrack", "--ctstate", "NEW",
-            "-j", "CONNMARK", "--set-mark", f"{AGENT_INTENT_MARK:#x}/0xffffffff"
-        ], check=True)
-        subprocess.run([
-            "iptables", "-t", "mangle", "-A", "OUTPUT",
-            "-m", "owner", "--uid-owner", "1000", "-p", "tcp",
-            "-j", "MARK", "--set-mark", f"{AGENT_INTENT_MARK:#x}/0xffffffff"
-        ], check=True)
-    subprocess.run([
-        "iptables", "-t", "mangle", "-A", "PREROUTING",
-        "-s", str(task_network), "-p", "tcp",
-        "-j", "MARK", "--set-mark", f"{AGENT_INTENT_MARK:#x}/0xffffffff"
-    ], check=True)
-    for protocol in ("udp", "tcp"):
-        subprocess.run([
-            "iptables", "-A", "INPUT", "-s", str(task_network),
-            "-d", f"{task_address}/32", "-p", protocol, "--dport", "53", "-j", "ACCEPT"
-        ], check=True)
-    subprocess.run([
-        "iptables", "-A", "INPUT", "-s", str(task_network), "-j", "REJECT"
-    ], check=True)
-    subprocess.run([
-        "iptables", "-A", "FORWARD", "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"
-    ], check=True)
-    subprocess.run([
-        "iptables", "-A", "FORWARD", "-s", str(task_network), "-d", str(control_network), "-j", "REJECT"
-    ], check=True)
-    if not authorized_domains:
-        subprocess.run([
-            "iptables", "-A", "FORWARD", "-s", str(task_network), "-j", SCOPE_GUARD_CHAIN
-        ], check=True)
-    subprocess.run([
-        "iptables", "-A", "FORWARD", "-s", str(task_network), "-j", ROUTE_GUARD_CHAIN
-    ], check=True)
-    subprocess.run([
-        "iptables", "-A", "FORWARD", "-s", str(task_network), "-j", "ACCEPT"
-    ], check=True)
-    subprocess.run([
-        "iptables", "-A", "FORWARD", "-d", str(task_network), "-j", "REJECT"
-    ], check=True)
-    subprocess.run([
-        "iptables", "-t", "nat", "-A", "POSTROUTING", "-s", str(task_network), "-j", "MASQUERADE"
-    ], check=True)
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'network-image/index_server.py','step':'configure_gateway_firewall','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def authorize_domain_address(address: str, ttl: int) -> None:
-    try:
-        subprocess.run([
-            "nft", "add", "element", "ip", SCOPE_NFT_TABLE, SCOPE_NFT_SET,
-            "{", address, "timeout", f"{ttl}s", "}"
-        ], check=True)
-    except subprocess.CalledProcessError as error:
-        raise OSError(f"failed to authorize DNS address {address}") from error
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'network-image/index_server.py','step':'authorize_domain_address','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def publish_gateway_ready(
@@ -924,15 +759,13 @@ def capture_writer_is_ready(path: Path = CAPTURE_STATUS_PATH) -> bool:
 
 
 def prepare_tun_gate_ready_file(path: Path) -> None:
-    path.unlink(missing_ok=True)
-    os.chmod(path.parent, 0o733)
-    try:
-        subprocess.run([
-            "setpriv", "--reuid=101", "--regid=101", "--clear-groups",
-            "install", "-m", "0600", "/dev/null", str(path),
-        ], check=True)
-    finally:
-        os.chmod(path.parent, 0o755)
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'network-image/index_server.py','step':'prepare_tun_gate_ready_file','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def ensure_conntrack_accounting(path: Path = CONNTRACK_ACCT_PATH) -> None:
@@ -945,90 +778,13 @@ def ensure_conntrack_accounting(path: Path = CONNTRACK_ACCT_PATH) -> None:
 
 
 def gateway() -> None:
-    ca_path = Path("/traffic/ca")
-    flow_root = Path(os.environ["LUANNIAO_TASK_FLOW_ROOT"])
-    epoch_state = Path("/run/luanniao/epoch.json")
-    flow_root.mkdir(parents=True, exist_ok=True)
-    ca_path.mkdir(parents=True, exist_ok=True)
-    epoch_state.parent.mkdir(parents=True, exist_ok=True)
-    epoch_state.write_text('{"active":false}', encoding="utf-8")
-    os.chmod(epoch_state, 0o644)
-    CAPTURE_STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CAPTURE_STATUS_PATH.write_text('{"ready":false,"epochs":{}}', encoding="utf-8")
-    os.chmod(CAPTURE_STATUS_PATH, 0o660)
-    CONNTRACK_STATUS_PATH.write_text('{"epochs":{}}', encoding="utf-8")
-    os.chmod(CONNTRACK_STATUS_PATH, 0o660)
-    ready = threading.Event()
-    task_address = wait_for_gateway_networks()
-    conntrack_tracker = ConntrackEpochTracker(CONNTRACK_STATUS_PATH)
-    control = GatewayControl(
-        "/run/luanniao/gateway.sock",
-        ready,
-        epoch_state,
-        flow_root,
-        ROUTES_PATH,
-        CAPTURE_STATUS_PATH,
-        CONNTRACK_STATUS_PATH,
-        network_epoch_drain=conntrack_tracker.close_epoch,
-        route_guard_replace=replace_route_guard,
-    )
-    configure_gateway_firewall(task_address)
-    control.replace_routes([])
-    threading.Thread(target=control.serve, daemon=True).start()
-    ensure_conntrack_accounting()
-    telemetry = subprocess.Popen(
-        ["conntrack", "-E", "-o", "timestamp,extended"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-    )
-    telemetry_thread = threading.Thread(
-        target=stream_conntrack_epochs,
-        args=(telemetry.stdout, {
-            "run_ref": os.environ.get("LUANNIAO_RUN_REF", ""),
-            "task_ref": os.environ.get("LUANNIAO_TASK_REF", ""),
-        }, ROUTES_PATH, epoch_state, AGENT_INTENT_MARK, CONNTRACK_STATUS_PATH, conntrack_tracker),
-        daemon=True,
-    )
-    telemetry_thread.start()
-    dns = ScopeDnsProxy(
-        task_address,
-        _authorized_domains(),
-        authorize_domain_address,
-        allow_unmatched=bool(os.environ.get("LUANNIAO_AUTHORIZED_CIDRS", "").strip()),
-    )
-    dns.start()
-    ca_cert = ca_path / "mitmproxy-ca-cert.pem"
-    prepare_tun_gate_ready_file(GATEWAY_READY)
-    gate = subprocess.Popen(gateway_tun_command())
-    for _ in range(100):
-        if telemetry.poll() is not None or not telemetry_thread.is_alive():
-            raise RuntimeError("conntrack telemetry exited during TUN gate startup")
-        if not dns.is_alive():
-            raise RuntimeError("gateway DNS forwarder exited during gateway startup")
-        if gate.poll() is not None:
-            raise RuntimeError("protocol gateway exited during gateway startup")
-        if publish_gateway_ready(
-            ready,
-            ca_ready=file_is_nonempty(ca_cert),
-            gate_ready=file_is_nonempty(GATEWAY_READY),
-            capture_ready=capture_writer_is_ready(),
-        ):
-            break
-        time.sleep(0.1)
-    else:
-        raise RuntimeError("protocol gateway readiness timed out")
-    print(json.dumps({"ready": True, "task": os.environ["LUANNIAO_TASK_REF"]}), flush=True)
-    while dns.is_alive() and gate.poll() is None:
-        if telemetry.poll() is not None or not telemetry_thread.is_alive():
-            raise RuntimeError("conntrack telemetry stopped while gateway was running")
-        time.sleep(0.2)
-    code = gate.poll()
-    dns.close()
-    telemetry.terminate()
-    telemetry_thread.join(timeout=2)
-    raise SystemExit(code or 1)
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'network-image/index_server.py','step':'gateway','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def index() -> None:

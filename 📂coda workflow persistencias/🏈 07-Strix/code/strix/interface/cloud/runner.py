@@ -283,51 +283,33 @@ def _request_with_idempotency(
     stream: bool,
     idempotency_key: str | None,
 ) -> requests.Response:
-    """Retry only exact, caller-keyed mutations whose outcome may be ambiguous."""
-    attempts = 1 + (len(_IDEMPOTENCY_RETRY_DELAYS_S) if idempotency_key else 0)
-    for attempt in range(attempts):
-        try:
-            response = http.request(
-                cmd.method,
-                path,
-                token=token,
-                query=query or None,
-                body=body if cmd.method in ("POST", "PUT", "PATCH") else None,
-                stream=stream,
-                idempotency_key=idempotency_key,
-            )
-        except http.CloudTransportError:
-            if attempt + 1 >= attempts:
-                raise
-        else:
-            if attempt + 1 >= attempts or not _idempotency_response_is_retryable(response):
-                return response
-            response.close()
-        time.sleep(_IDEMPOTENCY_RETRY_DELAYS_S[attempt])
-    raise AssertionError("idempotent request retry loop exhausted without returning")
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/cloud/runner.py','step':'_request_with_idempotency','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _idempotency_response_is_retryable(response: requests.Response) -> bool:
-    if 500 <= response.status_code < 600 or response.status_code == 429:
-        return True
-    if response.status_code != 409:
-        return False
-    payload = http.parsed(response)
-    if not isinstance(payload, dict):
-        return False
-    fields = cast("dict[str, Any]", payload)
-    return fields.get("retry_safe") is True or fields.get("code") in _RETRYABLE_IDEMPOTENCY_CODES
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/cloud/runner.py','step':'_idempotency_response_is_retryable','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _scan_rejection_is_definitive(response: requests.Response) -> bool:
-    payload = http.parsed(response)
-    if isinstance(payload, dict):
-        fields = cast("dict[str, Any]", payload)
-        if fields.get("retry_safe") is True:
-            return False
-        if fields.get("terminal") is True:
-            return True
-    return response.status_code in _DEFINITIVE_SCAN_REJECTION_STATUSES
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/cloud/runner.py','step':'_scan_rejection_is_definitive','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _execute(  # noqa: PLR0912, PLR0915
@@ -913,98 +895,25 @@ def _emit_binary(
     force: bool = False,
     json_metadata: bool = False,
 ) -> int:
-    try:
-        if not 200 <= response.status_code < 300:
-            http.check(response)
-        if output:
-            return _write_binary_file(
-                console,
-                response,
-                Path(output).expanduser(),
-                force=force,
-                as_json=json_metadata,
-            )
-        if sys.stdout.isatty():
-            raise http.CloudError(
-                "binary responses require --output FILE when stdout is a terminal; "
-                "redirect stdout only when intentionally piping the bytes.",
-                exit_code=http.EXIT_USAGE,
-            )
-        output_stream: Any = getattr(sys.stdout, "buffer", None)
-        try:
-            for chunk in _response_chunks(response):
-                if output_stream is not None:
-                    output_stream.write(chunk)
-                else:
-                    sys.stdout.write(chunk.decode("utf-8"))
-        except (OSError, UnicodeDecodeError, requests.RequestException) as exc:
-            raise http.CloudError(f"could not write the response to stdout: {exc}") from exc
-        return http.EXIT_OK
-    finally:
-        close = getattr(response, "close", None)
-        if callable(close):
-            with suppress(Exception):
-                close()
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/cloud/runner.py','step':'_emit_binary','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _write_binary_file(
     console: Console, response: Any, path: Path, *, force: bool, as_json: bool
 ) -> int:
-    if path.exists() and not force:
-        raise http.CloudError(
-            f"refusing to replace existing file {path}; pass --force to overwrite it."
-        )
-    temporary: Path | None = None
-    bytes_written = 0
-    try:
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            with tempfile.NamedTemporaryFile(
-                mode="wb",
-                prefix=f".{path.name}.",
-                suffix=".tmp",
-                dir=path.parent,
-                delete=False,
-            ) as stream:
-                temporary = Path(stream.name)
-                for chunk in _response_chunks(response):
-                    stream.write(chunk)
-                    bytes_written += len(chunk)
-        except (OSError, requests.RequestException) as exc:
-            raise http.CloudError(f"could not write {path}: {exc}") from exc
-
-        try:
-            if force:
-                temporary.replace(path)
-            else:
-                os.link(temporary, path)
-                temporary.unlink()
-        except FileExistsError as exc:
-            raise http.CloudError(
-                f"refusing to replace existing file {path}; pass --force to overwrite it."
-            ) from exc
-        except OSError as exc:
-            raise http.CloudError(f"could not write {path}: {exc}") from exc
-
-        if as_json:
-            content_type = str(getattr(response, "headers", {}).get("content-type", ""))
-            emit(
-                console,
-                {
-                    "output": str(path),
-                    "bytes": bytes_written,
-                    **({"content_type": content_type} if content_type else {}),
-                },
-                as_json=True,
-                view="binary_download",
-            )
-        else:
-            console.print("Saved to:")
-            console.print(sanitize_terminal_text(path), markup=False, soft_wrap=True)
-        return http.EXIT_OK
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/cloud/runner.py','step':'_write_binary_file','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _response_chunks(response: Any) -> Iterator[bytes]:

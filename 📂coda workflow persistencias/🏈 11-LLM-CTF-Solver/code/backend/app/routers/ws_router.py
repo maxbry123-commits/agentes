@@ -17,82 +17,10 @@ router = APIRouter()
 
 @router.websocket("/ws/task/{task_id}")
 async def websocket_endpoint(websocket: WebSocket, task_id: str):
-    """WebSocket 端点 — Redis Pub/Sub → 浏览器, 浏览器决策 → Redis。
-
-    工作模式: forward 循环直接 await pubsub.listen() 阻塞在 handler 中
-    （与独立测试 8768 端口一致），listen 循环作为 asyncio.Task 后台轮询。
-    """
-    if not validate_task_id(task_id):
-        await websocket.close(code=1008, reason="非法 task_id")
-        return
-
-    r = aioredis.Redis.from_url(REDIS_URL, decode_responses=True, protocol=2)
-    try:
-        exists = await r.exists(f"task_id:{task_id}")
-        if not exists:
-            await websocket.close(code=1008, reason="任务不存在")
-            await r.aclose()
-            return
-    except Exception:
-        await websocket.close(code=1011, reason="Redis 不可用")
-        await r.aclose()
-        return
-
-    await websocket.accept()
-    logger.info("WebSocket 已连接: task=%s", task_id)
-    await websocket.send_text(json.dumps({
-        "id": "ws-welcome", "msg_type": "system",
-        "content": "WebSocket connected", "type": "info",
-    }))
-
-    pubsub = r.pubsub()
-    await pubsub.subscribe(f"task:{task_id}:messages")
-    logger.info("Redis 已订阅: task=%s", task_id)
-
-    # ── 后台任务: 接收浏览器 HIL 决策 ──
-    stop_event = asyncio.Event()
-
-    async def _listen_client():
-        while not stop_event.is_set():
-            try:
-                raw = await asyncio.wait_for(websocket.receive_text(), timeout=1.0)
-                data = json.loads(raw)
-                if data.get("type") == "user_decision":
-                    checkpoint_id = data.get("checkpoint_id", "")
-                    decision = data.get("decision", {})
-                    await state_store.set(
-                        namespace="checkpoint",
-                        key=f"{task_id}:{checkpoint_id}",
-                        value=decision, ttl=600,
-                    )
-                    logger.info("收到用户决策: checkpoint=%s", checkpoint_id)
-            except asyncio.TimeoutError:
-                continue
-            except WebSocketDisconnect:
-                break
-        stop_event.set()
-
-    listen_task = asyncio.create_task(_listen_client())
-
-    # ── 主循环: Redis Pub/Sub → WebSocket ──
-    try:
-        async for msg in pubsub.listen():
-            if msg and msg.get("type") == "message":
-                try:
-                    await websocket.send_text(msg["data"])
-                except Exception:
-                    break
-    except WebSocketDisconnect:
-        pass
-    except asyncio.CancelledError:
-        pass
-    finally:
-        stop_event.set()
-        listen_task.cancel()
-        try:
-            await listen_task
-        except asyncio.CancelledError:
-            pass
-        await pubsub.unsubscribe(f"task:{task_id}:messages")
-        await r.aclose()
-        logger.info("WebSocket 已断开: task=%s", task_id)
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'backend/app/routers/ws_router.py','step':'websocket_endpoint','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye

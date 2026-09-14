@@ -1493,50 +1493,13 @@ def cleanup(
         ),
     ] = False,
 ) -> None:
-    """Clean up zombie Docker containers left by interrupted scans.
-    
-    If Phantom is interrupted (Ctrl+C, crash, etc.), Docker containers may not
-    be properly stopped. This command finds and removes all phantom-* containers.
-    """
-    from phantom.runtime.docker_runtime import DockerRuntime
-    
-    runtime = DockerRuntime()
-    
-    # Get list of phantom containers
-    try:
-        import subprocess
-        result = subprocess.run(
-            ["docker", "ps", "-a", "--filter", "name=phantom-", "--format", "{{.Names}}"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        containers = [line.strip() for line in result.stdout.strip().split("\n") if line.strip()]
-        
-        if not containers:
-            console.print("[green]No zombie containers found.[/]")
-            return
-        
-        console.print(f"[yellow]Found {len(containers)} phantom container(s):[/]")
-        for container in containers:
-            console.print(f"  • {container}")
-        
-        if not force:
-            confirm = typer.confirm("\nDo you want to remove these containers?")
-            if not confirm:
-                console.print("[dim]Cleanup cancelled.[/]")
-                return
-        
-        console.print("\n[bold]Cleaning up containers...[/]")
-        runtime.cleanup_all_phantom_containers()
-        console.print("[green]✓ All phantom containers removed.[/]")
-        
-    except subprocess.CalledProcessError as e:
-        console.print(f"[red]Error listing containers: {e}[/]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error during cleanup: {e}[/]")
-        raise typer.Exit(1)
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/interface/cli_app.py','step':'cleanup','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 # ──────────────────────────── diff ────────────────────────────

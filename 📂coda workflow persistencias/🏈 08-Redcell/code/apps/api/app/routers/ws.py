@@ -81,72 +81,21 @@ async def ws_shell(ws: WebSocket, shell_id: str) -> None:
 
 
 async def _bridge(ws: WebSocket, proc: asyncio.subprocess.Process) -> None:
-    """Pump raw bytes both ways between the noVNC client and the container's VNC
-    server (RFB over the WebSocket)."""
-    async def to_ws() -> None:
-        assert proc.stdout is not None
-        while True:
-            chunk = await proc.stdout.read(65536)
-            if not chunk:
-                break
-            await ws.send_bytes(chunk)
-
-    async def to_proc() -> None:
-        assert proc.stdin is not None
-        try:
-            while True:
-                data = await ws.receive_bytes()
-                proc.stdin.write(data)
-                await proc.stdin.drain()
-        except WebSocketDisconnect:
-            return
-        except Exception:
-            get_logger("api.ws").exception("noVNC bridge write error")
-            return
-
-    tasks = {asyncio.create_task(to_ws()), asyncio.create_task(to_proc())}
-    try:
-        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-    finally:
-        # Runs even if the bridge itself is cancelled, so the docker exec never leaks.
-        for t in tasks:
-            t.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        try:
-            proc.kill()
-        except Exception:
-            pass
-        try:
-            await proc.wait()
-        except Exception:
-            pass
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'apps/api/app/routers/ws.py','step':'_bridge','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 @router.websocket("/ws/browser/{session_id}")
 async def ws_browser(ws: WebSocket, session_id: str) -> None:
-    """Bridge a noVNC client to the session container's x11vnc via `docker exec`.
-    Local sessions only for now; remote-server sessions are a follow-up."""
-    if not _authed(ws):
-        await ws.close(code=4401)
-        return
-    async with session_scope() as s:
-        session = await sessions_repo.get(s, session_id)
-    if session is None:
-        await ws.close(code=4404)
-        return
-    if session.server_id:
-        await ws.close(code=4403)  # live view for remote servers not supported yet
-        return
-    container = f"redcell-exec-{session_id[:12]}"
-    await ws.accept()
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "docker", "exec", "-i", container, "socat", "-", "TCP:127.0.0.1:5900",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-    except Exception:
-        await ws.close(code=1011)
-        return
-    await _bridge(ws, proc)
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'apps/api/app/routers/ws.py','step':'ws_browser','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye

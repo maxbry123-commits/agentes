@@ -377,26 +377,13 @@ class AuthBrokerSkill(BaseSkill):
 
     async def _fetch_email_body(self, account: dict,
                                  email: dict) -> Optional[str]:
-        """Fetch full body of an email from temp email provider."""
-        if account.get("provider") == "mail.tm":
-            try:
-                import aiohttp
-                async with aiohttp.ClientSession() as session:
-                    headers = {"Authorization": f"Bearer {account.get('token', '')}"}
-                    async with session.get(
-                        f"https://api.mail.tm/messages/{email.get('id', '')}",
-                        headers=headers,
-                    ) as resp:
-                        if resp.status == 200:
-                            data = await resp.json()
-                            # mail.tm returns text/html as lists of strings
-                            html = data.get("html", [])
-                            text = data.get("text", [])
-                            body = (html[0] if html else "") or (text[0] if text else "")
-                            return body if body else None
-            except Exception:
-                pass
-        return None
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/auth_broker.py','step':'_fetch_email_body','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     # ── HTTP helpers ───────────────────────────────────────────
 

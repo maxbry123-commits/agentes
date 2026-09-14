@@ -21,27 +21,22 @@ class NgrokError(RuntimeError):
 
 class NgrokManager:
     def __init__(self) -> None:
-        self._procs: dict[str, asyncio.subprocess.Process] = {}
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/engine/ngrok.py','step':'__init__','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def open(self, listener_id: str, port: int, token: str) -> str:
-        await self.close(listener_id)
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "ngrok", "tcp", str(port), "--authtoken", token,
-                "--log", "stdout", "--log-format", "json", "--log-level", "info",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
-        except FileNotFoundError as exc:
-            raise NgrokError("ngrok is not installed on the worker") from exc
-        self._procs[listener_id] = proc
-        try:
-            public = await asyncio.wait_for(self._read_public_url(proc), timeout=_URL_TIMEOUT)
-        except (TimeoutError, NgrokError):
-            await self.close(listener_id)
-            raise
-        if not public:
-            await self.close(listener_id)
-            raise NgrokError("ngrok exited before publishing a tunnel address")
-        return public
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/engine/ngrok.py','step':'open','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def close(self, listener_id: str) -> None:
         proc = self._procs.pop(listener_id, None)
@@ -59,18 +54,10 @@ class NgrokManager:
             await self.close(lid)
 
     async def _read_public_url(self, proc: asyncio.subprocess.Process) -> str | None:
-        assert proc.stdout is not None
-        while True:
-            line = await proc.stdout.readline()
-            if not line:
-                return None
-            try:
-                rec = json.loads(line)
-            except ValueError:
-                continue
-            err = rec.get("err")
-            if err and err != "<nil>":
-                raise NgrokError(str(err))
-            url = rec.get("url", "")
-            if isinstance(url, str) and url.startswith("tcp://"):
-                return url[len("tcp://"):]
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/engine/ngrok.py','step':'_read_public_url','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye

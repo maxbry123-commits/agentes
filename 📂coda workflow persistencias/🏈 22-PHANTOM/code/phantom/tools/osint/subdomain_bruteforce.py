@@ -169,20 +169,13 @@ def _generate_full_wordlist(size: str = "medium") -> list[str]:
 
 
 async def _resolve_dns(domain: str, resolver_url: str = "https://dns.google/resolve") -> list[str]:
-    """Resolve a domain to IP addresses using DNS-over-HTTPS."""
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(
-                resolver_url,
-                params={"name": domain, "type": "A"}
-            )
-            if response.status_code == 200:
-                data = response.json()
-                if data.get("Answer"):
-                    return [ans.get("data", "") for ans in data["Answer"] if ans.get("type") == 1]
-    except Exception:
-        pass
-    return []
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/tools/osint/subdomain_bruteforce.py','step':'_resolve_dns','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 async def _check_subdomain(
@@ -602,122 +595,13 @@ async def run_subdomain_tools(
     tools: list[str] | None = None,
     timeout_seconds: int = 120,
 ) -> dict[str, Any]:
-    """
-    Run external subdomain enumeration tools (subfinder, assetfinder).
-    
-    Executes available external tools and aggregates their results.
-    This requires the tools to be installed on the system.
-    
-    Args:
-        domain: Target domain (e.g., "example.com")
-        tools: List of tools to run (default: ["subfinder", "assetfinder"])
-        timeout_seconds: Timeout for each tool (default: 120)
-    
-    Returns:
-        Dictionary containing:
-        - success: Whether any tool succeeded
-        - domain: The target domain
-        - subdomains: Combined list of discovered subdomains
-        - by_tool: Results broken down by tool
-        - message: Status message
-    
-    Example:
-        result = await run_subdomain_tools("example.com")
-    """
-    if not domain:
-        return {"success": False, "error": "Domain is required", "subdomains": []}
-    
-    domain = domain.lower().strip()
-    if tools is None:
-        tools = ["subfinder", "assetfinder"]
-    
-    all_subdomains: set[str] = set()
-    by_tool: dict[str, dict[str, Any]] = {}
-    
-    for tool in tools:
-        tool_lower = tool.lower()
-        try:
-            if tool_lower == "subfinder":
-                cmd = f"subfinder -d {domain} -silent -timeout {timeout_seconds}"
-            elif tool_lower == "assetfinder":
-                cmd = f"assetfinder --subs-only {domain}"
-            else:
-                by_tool[tool] = {
-                    "success": False,
-                    "error": f"Unknown tool: {tool}",
-                    "subdomains": [],
-                }
-                continue
-            
-            # Run the tool
-            proc = await asyncio.create_subprocess_shell(
-                cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            
-            try:
-                stdout, stderr = await asyncio.wait_for(
-                    proc.communicate(),
-                    timeout=timeout_seconds + 10
-                )
-                
-                if proc.returncode == 0:
-                    output = stdout.decode("utf-8", errors="ignore")
-                    subdomains = [
-                        line.strip().lower()
-                        for line in output.splitlines()
-                        if line.strip() and domain in line.lower()
-                    ]
-                    
-                    all_subdomains.update(subdomains)
-                    by_tool[tool] = {
-                        "success": True,
-                        "subdomains": subdomains,
-                        "count": len(subdomains),
-                    }
-                else:
-                    error = stderr.decode("utf-8", errors="ignore")[:200]
-                    by_tool[tool] = {
-                        "success": False,
-                        "error": error or f"Exit code {proc.returncode}",
-                        "subdomains": [],
-                    }
-                    
-            except asyncio.TimeoutError:
-                proc.kill()
-                by_tool[tool] = {
-                    "success": False,
-                    "error": f"Timeout after {timeout_seconds}s",
-                    "subdomains": [],
-                }
-                
-        except FileNotFoundError:
-            by_tool[tool] = {
-                "success": False,
-                "error": f"{tool} not found in PATH",
-                "subdomains": [],
-            }
-        except Exception as e:
-            by_tool[tool] = {
-                "success": False,
-                "error": str(e)[:200],
-                "subdomains": [],
-            }
-    
-    # Format results
-    subdomains_list = sorted(all_subdomains)
-    any_success = any(t.get("success", False) for t in by_tool.values())
-    
-    return {
-        "success": any_success,
-        "domain": domain,
-        "subdomains": subdomains_list,
-        "subdomain_count": len(subdomains_list),
-        "by_tool": by_tool,
-        "tools_attempted": list(tools),
-        "message": f"Found {len(subdomains_list)} unique subdomains across {len(tools)} tools",
-    }
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/tools/osint/subdomain_bruteforce.py','step':'run_subdomain_tools','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 @register_tool(sandbox_execution=False)

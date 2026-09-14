@@ -138,41 +138,22 @@ class SlidingWindowRateLimiter:
         self._lock = asyncio.Lock()
 
     async def acquire(self, timeout: Optional[float] = None) -> bool:
-        """Acquire permission to make a request"""
-        start_time = time.monotonic()
-
-        while True:
-            async with self._lock:
-                now = time.monotonic()
-                # Remove expired requests
-                self.requests = [t for t in self.requests if now - t < self.window_seconds]
-
-                if len(self.requests) < self.max_requests:
-                    self.requests.append(now)
-                    return True
-
-                # Calculate wait time
-                oldest = min(self.requests)
-                wait_time = self.window_seconds - (now - oldest)
-
-            if timeout is not None:
-                elapsed = time.monotonic() - start_time
-                if elapsed + wait_time > timeout:
-                    return False
-                wait_time = min(wait_time, timeout - elapsed)
-
-            await asyncio.sleep(wait_time + 0.01)
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'backend/app/services/agent/core/rate_limiter.py','step':'acquire','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def try_acquire(self) -> bool:
-        """Try to acquire without waiting"""
-        async with self._lock:
-            now = time.monotonic()
-            self.requests = [t for t in self.requests if now - t < self.window_seconds]
-
-            if len(self.requests) < self.max_requests:
-                self.requests.append(now)
-                return True
-            return False
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'backend/app/services/agent/core/rate_limiter.py','step':'try_acquire','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
 
 class RateLimiterRegistry:

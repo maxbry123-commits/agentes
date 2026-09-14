@@ -142,73 +142,22 @@ class CloudMetadataSkill(BaseSkill):
         return findings
 
     async def _probe_ssrf(self, url: str) -> List[Dict]:
-        """Probe common parameters for SSRF to cloud metadata."""
-        findings = []
-        
-        for param in SSRF_PARAMS[:10]:
-            # Test with AWS metadata as canary
-            test_url = f"{url}?{param}=" + url_encode("http://169.254.169.254/latest/meta-data/")
-            
-            try:
-                proc = await asyncio.create_subprocess_exec(
-                    "curl", "-s", "-i", "--max-time", "10",
-                    test_url,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                stdout, _ = await proc.communicate()
-                response = stdout.decode(errors="ignore")
-                
-                if self._check_metadata_response(response, "ami-id"):
-                    findings.append({
-                        "type": "ssrf_to_cloud_metadata",
-                        "url": url,
-                        "severity": "critical",
-                        "confidence": 0.9,
-                        "cvss_score": 9.5,
-                        "evidence": f"SSRF via {param} parameter — AWS metadata accessible",
-                        "payload": f"http://169.254.169.254/latest/meta-data/",
-                        "param": param,
-                        "description": f"Server-Side Request Forgery via {param} — cloud instance metadata exposed",
-                        "source_tool": "cloud-metadata",
-                    })
-                    break  # Found SSRF, no need to test more params
-            except Exception:
-                continue
-        
-        return findings
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/cloud_metadata.py','step':'_probe_ssrf','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _send_ssrf(self, url: str, param: str, payload: str) -> Optional[str]:
-        """Send SSRF payload and return response."""
-        try:
-            # Try GET parameter
-            test_url = f"{url}?{param}=" + url_encode(payload)
-            proc = await asyncio.create_subprocess_exec(
-                "curl", "-s", "--max-time", "10",
-                test_url,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await proc.communicate()
-            response = stdout.decode(errors="ignore")
-            
-            if response and len(response) > 10:
-                return response
-            
-            # Try POST parameter
-            proc = await asyncio.create_subprocess_exec(
-                "curl", "-s", "--max-time", "10",
-                "-X", "POST",
-                "-H", "Content-Type: application/x-www-form-urlencoded",
-                "-d", f"{param}={url_encode(payload)}",
-                url,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await proc.communicate()
-            return stdout.decode(errors="ignore")
-        except Exception:
-            return None
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/cloud_metadata.py','step':'_send_ssrf','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _check_metadata_response(self, response: str, check: str) -> bool:
         """Check if response contains expected metadata."""

@@ -48,19 +48,13 @@ class RaceConditionSkill(BaseSkill):
         )
 
     async def _endpoint_exists(self, url: str) -> bool:
-        """Quick check if endpoint returns 2xx before doing heavy concurrent testing."""
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-                "--max-time", "5", url,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await proc.communicate()
-            code = int(stdout.decode(errors="ignore").strip())
-            return 200 <= code < 300
-        except Exception:
-            return False
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/race_condition.py','step':'_endpoint_exists','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _test_race_condition(self, url: str) -> List[Dict]:
         """Test for race condition on a URL."""
@@ -141,27 +135,10 @@ class RaceConditionSkill(BaseSkill):
         return findings
 
     async def _send_request(self, url: str) -> Dict:
-        """Send a single request and measure time."""
-        try:
-            start = time.time()
-            proc = await asyncio.create_subprocess_exec(
-                "curl", "-s", "-i", "--max-time", "10",
-                "-X", "POST",
-                "-H", "Content-Type: application/json",
-                "-d", "{}",
-                url,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await proc.communicate()
-            elapsed = time.time() - start
-            
-            response = stdout.decode(errors="ignore")
-            
-            import re
-            status_match = re.search(r'HTTP/[\d.]+\s+(\d+)', response)
-            status = int(status_match.group(1)) if status_match else 0
-            
-            return {"status": status, "body": response, "time": elapsed}
-        except Exception:
-            return {}
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/race_condition.py','step':'_send_request','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye

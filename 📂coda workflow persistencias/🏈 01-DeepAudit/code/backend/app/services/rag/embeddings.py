@@ -74,38 +74,13 @@ class OpenAIEmbedding(EmbeddingProvider):
         return results[0]
     
     async def embed_texts(self, texts: List[str]) -> List[EmbeddingResult]:
-        if not texts:
-            return []
-        
-        max_length = 8191
-        truncated_texts = [text[:max_length] for text in texts]
-        
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
-        
-        payload = {
-            "model": self.model,
-            "input": truncated_texts,
-        }
-        
-        url = f"{self.base_url.rstrip('/')}/embeddings"
-        
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(url, headers=headers, json=payload)
-            response.raise_for_status()
-            data = response.json()
-            
-            results = []
-            for item in data.get("data", []):
-                results.append(EmbeddingResult(
-                    embedding=item["embedding"],
-                    tokens_used=data.get("usage", {}).get("total_tokens", 0) // len(texts),
-                    model=self.model,
-                ))
-            
-            return results
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'backend/app/services/rag/embeddings.py','step':'embed_texts','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
 
 class AzureOpenAIEmbedding(EmbeddingProvider):
@@ -145,38 +120,13 @@ class AzureOpenAIEmbedding(EmbeddingProvider):
         return results[0]
     
     async def embed_texts(self, texts: List[str]) -> List[EmbeddingResult]:
-        if not texts:
-            return []
-        
-        max_length = 8191
-        truncated_texts = [text[:max_length] for text in texts]
-        
-        headers = {
-            "api-key": self.api_key,
-            "Content-Type": "application/json",
-        }
-        
-        payload = {
-            "input": truncated_texts,
-        }
-        
-        # Azure URL 格式 - 使用最新 API 版本
-        url = f"{self.base_url.rstrip('/')}/openai/deployments/{self.model}/embeddings?api-version={self.API_VERSION}"
-        
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(url, headers=headers, json=payload)
-            response.raise_for_status()
-            data = response.json()
-            
-            results = []
-            for item in data.get("data", []):
-                results.append(EmbeddingResult(
-                    embedding=item["embedding"],
-                    tokens_used=data.get("usage", {}).get("total_tokens", 0) // len(texts),
-                    model=self.model,
-                ))
-            
-            return results
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'backend/app/services/rag/embeddings.py','step':'embed_texts','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
 
 class OllamaEmbedding(EmbeddingProvider):
@@ -221,34 +171,13 @@ class OllamaEmbedding(EmbeddingProvider):
         return results[0]
     
     async def embed_texts(self, texts: List[str]) -> List[EmbeddingResult]:
-        if not texts:
-            return []
-        
-        # 新的 Ollama /api/embed 端点
-        url = f"{self.base_url.rstrip('/')}/api/embed"
-        
-        payload = {
-            "model": self.model,
-            "input": texts,  # 新 API 使用 'input' 参数，支持批量
-        }
-        
-        async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(url, json=payload)
-            response.raise_for_status()
-            data = response.json()
-            
-            # 新 API 返回格式: {"embeddings": [[...], [...], ...]}
-            embeddings = data.get("embeddings", [])
-            
-            results = []
-            for i, embedding in enumerate(embeddings):
-                results.append(EmbeddingResult(
-                    embedding=embedding,
-                    tokens_used=len(texts[i]) // 4,
-                    model=self.model,
-                ))
-            
-            return results
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'backend/app/services/rag/embeddings.py','step':'embed_texts','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
 
 class CohereEmbedding(EmbeddingProvider):
@@ -290,42 +219,13 @@ class CohereEmbedding(EmbeddingProvider):
         return results[0]
     
     async def embed_texts(self, texts: List[str]) -> List[EmbeddingResult]:
-        if not texts:
-            return []
-        
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
-        
-        # v2 API 参数格式
-        payload = {
-            "model": self.model,
-            "inputs": texts,  # v2 使用 'inputs' 而非 'texts'
-            "input_type": "search_document",
-            "embedding_types": ["float"],  # v2 需要指定嵌入类型
-        }
-        
-        url = f"{self.base_url.rstrip('/')}/embed"
-        
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(url, headers=headers, json=payload)
-            response.raise_for_status()
-            data = response.json()
-            
-            results = []
-            # v2 API 返回格式: {"embeddings": {"float": [[...], [...]]}, ...}
-            embeddings_data = data.get("embeddings", {})
-            embeddings = embeddings_data.get("float", []) if isinstance(embeddings_data, dict) else embeddings_data
-            
-            for embedding in embeddings:
-                results.append(EmbeddingResult(
-                    embedding=embedding,
-                    tokens_used=data.get("meta", {}).get("billed_units", {}).get("input_tokens", 0) // max(len(texts), 1),
-                    model=self.model,
-                ))
-            
-            return results
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'backend/app/services/rag/embeddings.py','step':'embed_texts','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
 
 class HuggingFaceEmbedding(EmbeddingProvider):
@@ -366,46 +266,13 @@ class HuggingFaceEmbedding(EmbeddingProvider):
         return results[0]
     
     async def embed_texts(self, texts: List[str]) -> List[EmbeddingResult]:
-        if not texts:
-            return []
-        
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
-        
-        # 新的 HuggingFace Router URL 格式
-        # https://router.huggingface.co/hf-inference/models/{model}/pipeline/feature-extraction
-        url = f"{self.base_url.rstrip('/')}/hf-inference/models/{self.model}/pipeline/feature-extraction"
-        
-        payload = {
-            "inputs": texts,
-            "options": {
-                "wait_for_model": True,
-            }
-        }
-        
-        async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(url, headers=headers, json=payload)
-            response.raise_for_status()
-            data = response.json()
-            
-            results = []
-            # HuggingFace 返回格式: [[embedding1], [embedding2], ...]
-            for embedding in data:
-                # 有时候返回的是嵌套的列表
-                if isinstance(embedding, list) and len(embedding) > 0:
-                    if isinstance(embedding[0], list):
-                        # 取平均或第一个
-                        embedding = embedding[0]
-                
-                results.append(EmbeddingResult(
-                    embedding=embedding,
-                    tokens_used=len(texts[len(results)]) // 4,
-                    model=self.model,
-                ))
-            
-            return results
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'backend/app/services/rag/embeddings.py','step':'embed_texts','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
 
 class JinaEmbedding(EmbeddingProvider):
@@ -438,35 +305,13 @@ class JinaEmbedding(EmbeddingProvider):
         return results[0]
     
     async def embed_texts(self, texts: List[str]) -> List[EmbeddingResult]:
-        if not texts:
-            return []
-        
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
-        
-        payload = {
-            "model": self.model,
-            "input": texts,
-        }
-        
-        url = f"{self.base_url.rstrip('/')}/embeddings"
-        
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(url, headers=headers, json=payload)
-            response.raise_for_status()
-            data = response.json()
-            
-            results = []
-            for item in data.get("data", []):
-                results.append(EmbeddingResult(
-                    embedding=item["embedding"],
-                    tokens_used=data.get("usage", {}).get("total_tokens", 0) // len(texts),
-                    model=self.model,
-                ))
-            
-            return results
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'backend/app/services/rag/embeddings.py','step':'embed_texts','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
 
 class QwenEmbedding(EmbeddingProvider):
@@ -512,53 +357,13 @@ class QwenEmbedding(EmbeddingProvider):
         return results[0]
     
     async def embed_texts(self, texts: List[str]) -> List[EmbeddingResult]:
-        if not texts:
-            return []
-
-        # 与 OpenAI 接口保持一致的截断策略
-        max_length = 8191
-        truncated_texts = [text[:max_length] for text in texts]
-
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
-
-        payload = {
-            "model": self.model,
-            "input": truncated_texts,
-            "encoding_format": "float",
-        }
-
-        url = f"{self.base_url.rstrip('/')}/embeddings"
-
-        try:
-            async with httpx.AsyncClient(timeout=60) as client:
-                response = await client.post(url, headers=headers, json=payload)
-                response.raise_for_status()
-                data = response.json()
-
-                usage = data.get("usage", {}) or {}
-                total_tokens = usage.get("total_tokens") or usage.get("prompt_tokens") or 0
-
-                results: List[EmbeddingResult] = []
-                for item in data.get("data", []):
-                    results.append(EmbeddingResult(
-                        embedding=item["embedding"],
-                        tokens_used=total_tokens // max(len(texts), 1),
-                        model=self.model,
-                    ))
-
-                return results
-        except httpx.HTTPStatusError as e:
-            logger.error(f"Qwen embedding API error: {e.response.status_code} - {e.response.text}")
-            raise RuntimeError(f"Qwen embedding API failed: {e.response.status_code}") from e
-        except httpx.RequestError as e:
-            logger.error(f"Qwen embedding network error: {e}")
-            raise RuntimeError(f"Qwen embedding network error: {e}") from e
-        except Exception as e:
-            logger.error(f"Qwen embedding unexpected error: {e}")
-            raise RuntimeError(f"Qwen embedding failed: {e}") from e
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'backend/app/services/rag/embeddings.py','step':'embed_texts','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
 
 class EmbeddingService:

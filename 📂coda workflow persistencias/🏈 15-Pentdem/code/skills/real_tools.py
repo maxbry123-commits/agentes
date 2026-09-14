@@ -336,42 +336,13 @@ class RealToolRunner:
     # ─── HTTPX ─────────────────────────────────────────────────────
 
     async def run_httpx(self, targets: List[str]) -> ToolResult:
-        """Run httpx for live host detection."""
-        args = ["-json", "-silent", "-status-code", "-title", "-tech-detect"]
-
-        if self.use_docker and self._docker_isolator:
-            # Write targets to temp file
-            import tempfile
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-                f.write("\n".join(targets))
-                tmpfile = f.name
-            result = await self._docker_isolator.run_httpx(tmpfile)
-        else:
-            input_data = "\n".join(targets).encode()
-            proc = await asyncio.create_subprocess_exec(
-                "httpx", *args,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(input=input_data), timeout=120)
-            result = {
-                "success": proc.returncode == 0,
-                "output": stdout.decode(errors="ignore"),
-                "errors": stderr.decode(errors="ignore"),
-                "duration": 0,
-            }
-
-        parsed = self._parse_httpx_output(result.get("output", ""))
-
-        return ToolResult(
-            tool="httpx",
-            success=result.get("success", False),
-            raw_output=result.get("output", ""),
-            parsed_findings=parsed,
-            duration=result.get("duration", 0),
-            errors=result.get("errors", ""),
-        )
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/real_tools.py','step':'run_httpx','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _parse_httpx_output(self, output: str) -> List[Dict]:
         """Parse httpx JSON output."""
@@ -397,27 +368,13 @@ class RealToolRunner:
     # ─── Generic Local Runner ──────────────────────────────────────
 
     async def _run_local(self, tool: str, args: List[str], timeout: int = 300) -> Dict:
-        """Run tool locally."""
-        cmd = [tool] + args
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-            return {
-                "success": proc.returncode == 0,
-                "output": stdout.decode(errors="ignore"),
-                "errors": stderr.decode(errors="ignore"),
-                "duration": 0,
-            }
-        except asyncio.TimeoutError:
-            return {"success": False, "output": "", "errors": f"Timeout after {timeout}s", "duration": timeout}
-        except FileNotFoundError:
-            return {"success": False, "output": "", "errors": f"Tool '{tool}' not found", "duration": 0}
-        except Exception as e:
-            return {"success": False, "output": "", "errors": str(e), "duration": 0}
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/real_tools.py','step':'_run_local','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     # ─── Multi-Tool Orchestration ──────────────────────────────────
 

@@ -1,0 +1,444 @@
+package api
+
+import (
+	"context"
+	"crypto/subtle"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/Armur-Ai/Pentest-Swarm-AI/internal/api/ws"
+	"github.com/Armur-Ai/Pentest-Swarm-AI/internal/config"
+	"github.com/Armur-Ai/Pentest-Swarm-AI/internal/engine"
+	"github.com/Armur-Ai/Pentest-Swarm-AI/internal/models"
+	"github.com/Armur-Ai/Pentest-Swarm-AI/internal/pipeline"
+	"github.com/gofiber/contrib/websocket"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/google/uuid"
+)
+
+// Server wraps the Fiber HTTP server with campaign state.
+type Server struct {
+	app       *fiber.App
+	port      int
+	cfg       *config.Config
+	runner    *engine.Runner
+	campaigns sync.Map // id -> CampaignState
+	hub       *ws.EventHub
+}
+
+// CampaignState holds in-memory state for a running campaign.
+type CampaignState struct {
+	Campaign pipeline.Campaign            `json:"campaign"`
+	Events   []pipeline.CampaignEvent     `json:"events"`
+	Findings []pipeline.ClassifiedFinding `json:"findings"`
+	Cancel   context.CancelFunc           `json:"-"`
+}
+
+// CreateCampaignRequest is the request body for creating a campaign.
+type CreateCampaignRequest struct {
+	Target    string   `json:"target"`
+	Scope     []string `json:"scope"`
+	Objective string   `json:"objective"`
+	Mode      string   `json:"mode"`
+	DryRun    bool     `json:"dry_run"`
+}
+
+// NewServer creates a new API server.
+func NewServer(port int, cfg *config.Config) *Server {
+	app := fiber.New(fiber.Config{
+		AppName:      "pentestswarm",
+		ErrorHandler: errorHandler,
+	})
+
+	app.Use(recover.New())
+	app.Use(logger.New(logger.Config{
+		Format: "${time} ${status} ${method} ${path} ${latency}\n",
+	}))
+
+	corsOrigins := cfg.Server.CORSOrigins
+	if corsOrigins == "" {
+		// Preserve prior behaviour for callers that built a config
+		// programmatically without going through config.Load (which
+		// would have set the default). Empty config + wildcard is a
+		// known anti-pattern flagged in #44.5; future major flips this.
+		corsOrigins = "*"
+	}
+	app.Use(cors.New(cors.Config{
+		AllowOrigins: corsOrigins,
+		AllowHeaders: "Origin, Content-Type, Accept, X-API-Key",
+	}))
+
+	// Opt-in API-key middleware. Empty key disables it entirely so
+	// local development keeps working without configuration. Production
+	// deployments should set server.api_key in config.yaml or
+	// PENTESTSWARM_SERVER_API_KEY in the environment. See #44.5.
+	if cfg.Server.APIKey != "" {
+		app.Use(apiKeyMiddleware(cfg.Server.APIKey))
+	}
+
+	s := &Server{
+		app:    app,
+		port:   port,
+		cfg:    cfg,
+		runner: engine.NewRunner(cfg),
+		hub:    ws.NewEventHub(),
+	}
+	s.registerRoutes()
+
+	return s
+}
+
+func (s *Server) Start() error {
+	return s.app.Listen(fmt.Sprintf(":%d", s.port))
+}
+
+func (s *Server) Shutdown() error {
+	return s.app.Shutdown()
+}
+
+func (s *Server) registerRoutes() {
+	api := s.app.Group("/api/v1")
+
+	api.Get("/health", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{"status": "ok", "service": "pentestswarm"})
+	})
+
+	api.Post("/campaigns", s.createCampaign)
+	api.Get("/campaigns", s.listCampaigns)
+	api.Get("/campaigns/:id", s.getCampaign)
+	api.Post("/campaigns/:id/start", s.startCampaign)
+	api.Post("/campaigns/:id/stop", s.stopCampaign)
+	api.Get("/campaigns/:id/findings", s.getCampaignFindings)
+	api.Get("/campaigns/:id/events", s.getCampaignEvents)          // HTTP polling
+	api.Get("/campaigns/:id/ws", websocket.New(s.handleWebSocket)) // WebSocket
+
+	api.Get("/models", s.listModels)
+	api.Get("/stats", s.getStats)
+}
+
+// --- Handlers ---
+
+func (s *Server) createCampaign(c *fiber.Ctx) error {
+	var req CreateCampaignRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": apiError{Code: "BAD_REQUEST", Message: "Invalid request body: " + err.Error()}})
+	}
+
+	if req.Target == "" {
+		return c.Status(400).JSON(fiber.Map{"error": apiError{Code: "BAD_REQUEST", Message: "target is required"}})
+	}
+	if len(req.Scope) == 0 {
+		return c.Status(400).JSON(fiber.Map{"error": apiError{Code: "BAD_REQUEST", Message: "scope is required"}})
+	}
+
+	if req.Objective == "" {
+		req.Objective = "find all vulnerabilities"
+	}
+	if req.Mode == "" {
+		req.Mode = "manual"
+	}
+
+	id := uuid.New()
+	campaign := pipeline.Campaign{
+		ID:        id,
+		Name:      fmt.Sprintf("scan-%s-%s", req.Target, time.Now().Format("20060102-150405")),
+		Target:    req.Target,
+		Objective: req.Objective,
+		Status:    pipeline.StatusPlanned,
+		Mode:      pipeline.CampaignMode(req.Mode),
+		CreatedAt: time.Now(),
+	}
+
+	state := &CampaignState{Campaign: campaign}
+	s.campaigns.Store(id.String(), state)
+
+	return c.Status(201).JSON(fiber.Map{
+		"id":     id.String(),
+		"name":   campaign.Name,
+		"target": campaign.Target,
+		"status": campaign.Status,
+	})
+}
+
+func (s *Server) listCampaigns(c *fiber.Ctx) error {
+	var campaigns []fiber.Map
+	s.campaigns.Range(func(key, value any) bool {
+		state := value.(*CampaignState)
+		campaigns = append(campaigns, fiber.Map{
+			"id":         state.Campaign.ID.String(),
+			"name":       state.Campaign.Name,
+			"target":     state.Campaign.Target,
+			"status":     state.Campaign.Status,
+			"objective":  state.Campaign.Objective,
+			"created_at": state.Campaign.CreatedAt,
+			"findings":   len(state.Findings),
+		})
+		return true
+	})
+
+	if campaigns == nil {
+		campaigns = []fiber.Map{}
+	}
+
+	return c.JSON(fiber.Map{"data": campaigns, "meta": fiber.Map{"total": len(campaigns)}})
+}
+
+func (s *Server) getCampaign(c *fiber.Ctx) error {
+	id := c.Params("id")
+	val, ok := s.campaigns.Load(id)
+	if !ok {
+		return c.Status(404).JSON(fiber.Map{"error": apiError{Code: "NOT_FOUND", Message: "Campaign not found"}})
+	}
+
+	state := val.(*CampaignState)
+	return c.JSON(fiber.Map{
+		"id":         state.Campaign.ID.String(),
+		"name":       state.Campaign.Name,
+		"target":     state.Campaign.Target,
+		"objective":  state.Campaign.Objective,
+		"status":     state.Campaign.Status,
+		"mode":       state.Campaign.Mode,
+		"created_at": state.Campaign.CreatedAt,
+		"started_at": state.Campaign.StartedAt,
+		"findings":   len(state.Findings),
+		"events":     len(state.Events),
+	})
+}
+
+func (s *Server) startCampaign(c *fiber.Ctx) error {
+	id := c.Params("id")
+	val, ok := s.campaigns.Load(id)
+	if !ok {
+		return c.Status(404).JSON(fiber.Map{"error": apiError{Code: "NOT_FOUND", Message: "Campaign not found"}})
+	}
+
+	state := val.(*CampaignState)
+	if state.Campaign.Status != pipeline.StatusPlanned {
+		return c.Status(409).JSON(fiber.Map{"error": apiError{Code: "CONFLICT", Message: "Campaign already started"}})
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	state.Cancel = cancel
+
+	// Parse scope from campaign
+	var scopeStrs []string
+	for _, d := range state.Campaign.Scope.AllowedDomains {
+		scopeStrs = append(scopeStrs, d)
+	}
+	for _, cidr := range state.Campaign.Scope.AllowedCIDRs {
+		scopeStrs = append(scopeStrs, cidr)
+	}
+	if len(scopeStrs) == 0 {
+		scopeStrs = []string{state.Campaign.Target}
+	}
+
+	cc := engine.CampaignConfig{
+		Target:    state.Campaign.Target,
+		Scope:     scopeStrs,
+		Objective: state.Campaign.Objective,
+		Mode:      string(state.Campaign.Mode),
+		Format:    "md",
+		OutputDir: "./reports",
+	}
+
+	// Run campaign in background
+	campaignIDStr := id
+	go func() {
+		s.runner.Run(ctx, cc, func(event pipeline.CampaignEvent) {
+			state.Events = append(state.Events, event)
+
+			// Track findings. The runner now includes the full
+			// ClassifiedFinding in event.Data, so severity, CVSS, and
+			// target all flow through to the dashboard / stats endpoint.
+			if event.EventType == pipeline.EventFindingDiscovered {
+				var f pipeline.ClassifiedFinding
+				if len(event.Data) > 0 && json.Unmarshal(event.Data, &f) == nil {
+					state.Findings = append(state.Findings, f)
+				} else {
+					state.Findings = append(state.Findings, pipeline.ClassifiedFinding{
+						Title: event.Detail,
+					})
+				}
+			}
+
+			// Track status changes
+			if event.EventType == pipeline.EventStateChange {
+				detail := strings.ToLower(event.Detail)
+				if strings.Contains(detail, "complete") {
+					state.Campaign.Status = pipeline.StatusComplete
+				}
+			}
+
+			// Publish to WebSocket subscribers
+			s.hub.Publish(campaignIDStr, event)
+		})
+	}()
+
+	now := time.Now()
+	state.Campaign.Status = pipeline.StatusInitializing
+	state.Campaign.StartedAt = &now
+
+	return c.Status(202).JSON(fiber.Map{"status": "starting", "id": id})
+}
+
+func (s *Server) stopCampaign(c *fiber.Ctx) error {
+	id := c.Params("id")
+	val, ok := s.campaigns.Load(id)
+	if !ok {
+		return c.Status(404).JSON(fiber.Map{"error": apiError{Code: "NOT_FOUND", Message: "Campaign not found"}})
+	}
+
+	state := val.(*CampaignState)
+	if state.Cancel != nil {
+		state.Cancel()
+	}
+	state.Campaign.Status = pipeline.StatusAborted
+
+	return c.JSON(fiber.Map{"status": "stopped", "id": id})
+}
+
+func (s *Server) getCampaignFindings(c *fiber.Ctx) error {
+	id := c.Params("id")
+	val, ok := s.campaigns.Load(id)
+	if !ok {
+		return c.Status(404).JSON(fiber.Map{"error": apiError{Code: "NOT_FOUND", Message: "Campaign not found"}})
+	}
+
+	state := val.(*CampaignState)
+	return c.JSON(fiber.Map{"data": state.Findings, "meta": fiber.Map{"total": len(state.Findings)}})
+}
+
+func (s *Server) getCampaignEvents(c *fiber.Ctx) error {
+	id := c.Params("id")
+	val, ok := s.campaigns.Load(id)
+	if !ok {
+		return c.Status(404).JSON(fiber.Map{"error": apiError{Code: "NOT_FOUND", Message: "Campaign not found"}})
+	}
+
+	state := val.(*CampaignState)
+
+	// Return last N events (default 50)
+	events := state.Events
+	if len(events) > 50 {
+		events = events[len(events)-50:]
+	}
+
+	return c.JSON(fiber.Map{"data": events, "meta": fiber.Map{"total": len(state.Events)}})
+}
+
+func (s *Server) listModels(c *fiber.Ctx) error {
+	return c.JSON(fiber.Map{"models": models.ModelRegistry()})
+}
+
+func (s *Server) getStats(c *fiber.Ctx) error {
+	total := 0
+	active := 0
+	totalFindings := 0
+	bySeverity := map[pipeline.Severity]int{
+		pipeline.SeverityCritical:      0,
+		pipeline.SeverityHigh:          0,
+		pipeline.SeverityMedium:        0,
+		pipeline.SeverityLow:           0,
+		pipeline.SeverityInformational: 0,
+	}
+	byAgent := map[string]int{}
+
+	s.campaigns.Range(func(key, value any) bool {
+		state := value.(*CampaignState)
+		total++
+		if state.Campaign.Status != pipeline.StatusComplete &&
+			state.Campaign.Status != pipeline.StatusFailed &&
+			state.Campaign.Status != pipeline.StatusAborted &&
+			state.Campaign.Status != pipeline.StatusPlanned {
+			active++
+		}
+		totalFindings += len(state.Findings)
+		for _, f := range state.Findings {
+			bySeverity[f.Severity]++
+		}
+		for _, e := range state.Events {
+			if e.AgentName != "" {
+				byAgent[e.AgentName]++
+			}
+		}
+		return true
+	})
+
+	return c.JSON(fiber.Map{
+		"campaigns":        total,
+		"active_campaigns": active,
+		"total_findings":   totalFindings,
+		"by_severity": fiber.Map{
+			"critical": bySeverity[pipeline.SeverityCritical],
+			"high":     bySeverity[pipeline.SeverityHigh],
+			"medium":   bySeverity[pipeline.SeverityMedium],
+			"low":      bySeverity[pipeline.SeverityLow],
+			"info":     bySeverity[pipeline.SeverityInformational],
+		},
+		"by_agent": byAgent,
+	})
+}
+
+// --- WebSocket ---
+
+func (s *Server) handleWebSocket(c *websocket.Conn) {
+	campaignID := c.Params("id")
+
+	s.hub.Subscribe(campaignID, c.Conn)
+	defer s.hub.Unsubscribe(campaignID, c.Conn)
+
+	// Keep connection alive — read messages (client can send "ping")
+	for {
+		_, _, err := c.ReadMessage()
+		if err != nil {
+			break
+		}
+	}
+}
+
+// --- Error Handling ---
+
+type apiError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// apiKeyMiddleware rejects requests missing or carrying a wrong
+// X-API-Key header. The health endpoint at /api/v1/health is exempt
+// so load-balancer probes still work without distributing the key.
+// Constant-time compare avoids timing-side-channel leakage of the key.
+func apiKeyMiddleware(want string) fiber.Handler {
+	wantBytes := []byte(want)
+	return func(c *fiber.Ctx) error {
+		if c.Path() == "/api/v1/health" {
+			return c.Next()
+		}
+		got := []byte(c.Get("X-API-Key"))
+		if len(got) != len(wantBytes) || subtle.ConstantTimeCompare(got, wantBytes) != 1 {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": apiError{Code: "UNAUTHORIZED", Message: "missing or invalid X-API-Key"},
+			})
+		}
+		return c.Next()
+	}
+}
+
+func errorHandler(c *fiber.Ctx, err error) error {
+	code := fiber.StatusInternalServerError
+	if e, ok := err.(*fiber.Error); ok {
+		code = e.Code
+	}
+
+	return c.Status(code).JSON(fiber.Map{
+		"error": apiError{
+			Code:    fmt.Sprintf("%d", code),
+			Message: err.Error(),
+		},
+	})
+}

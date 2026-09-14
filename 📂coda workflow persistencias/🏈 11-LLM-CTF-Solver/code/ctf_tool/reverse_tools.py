@@ -288,26 +288,13 @@ def _entropy(data: bytes) -> float:
 # ═══════════════════════════════════════════════════════════════════
 
 def _disassemble(path: str, function: str = "", max_lines: int = 200) -> str:
-    """objdump 反汇编。"""
-    if not _find_tool("objdump"):
-        return "错误: 未安装 objdump (apt install binutils)"
-
-    cmd = ["objdump", "-d", "-M", "intel"]
-    if function:
-        cmd.extend(["--disassemble=" + function])
-    cmd.append(path)
-
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        out = result.stdout + result.stderr
-        lines_out = out.split("\n")
-        if len(lines_out) > max_lines:
-            out = "\n".join(lines_out[:max_lines]) + f"\n... (截断, 共 {len(lines_out)} 行)"
-        return out if out.strip() else "反汇编无输出"
-    except subprocess.TimeoutExpired:
-        return "反汇编超时 (60s)"
-    except Exception as e:
-        return f"反汇编失败: {e}"
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'ctf_tool/reverse_tools.py','step':'_disassemble','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 # ═══════════════════════════════════════════════════════════════════

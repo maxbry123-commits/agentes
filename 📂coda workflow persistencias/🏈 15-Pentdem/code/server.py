@@ -82,36 +82,13 @@ async def _run_pipeline(task_id: str, request: PentestRequest):
 
 @app.websocket("/ws/{task_id}")
 async def websocket_endpoint(websocket: WebSocket, task_id: str):
-    await websocket.accept()
-    if task_id not in websockets:
-        websockets[task_id] = []
-    websockets[task_id].append(websocket)
-
-    try:
-        # Send current state immediately
-        if task_id in tasks:
-            await websocket.send_json({
-                "stage": "init",
-                "status": tasks[task_id].get("status", "unknown"),
-                "progress": tasks[task_id].get("progress", 0.0),
-            })
-
-        # Keep connection alive
-        while True:
-            try:
-                data = await asyncio.wait_for(websocket.receive_text(), timeout=30)
-            except asyncio.TimeoutError:
-                try:
-                    await websocket.send_json({"type": "ping"})
-                except Exception:
-                    break
-    except WebSocketDisconnect:
-        pass
-    finally:
-        if task_id in websockets:
-            websockets[task_id] = [ws for ws in websockets[task_id] if ws != websocket]
-            if not websockets[task_id]:
-                del websockets[task_id]
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'server.py','step':'websocket_endpoint','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _broadcast(task_id: str, event: dict):

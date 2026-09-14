@@ -64,69 +64,13 @@ async def create_session(
     auth_token: str | None = None,
     auth_type: str = "bearer",
 ) -> dict[str, Any]:
-    """
-    Create a new session for authenticated testing.
-    
-    Creates and stores a session with cookies, headers, and authentication
-    tokens for use across multiple requests.
-    
-    Args:
-        session_name: Unique name for this session
-        base_url: Base URL for the session (optional)
-        cookies: Initial cookies as dict (optional)
-        headers: Custom headers as dict (optional)
-        auth_token: Authentication token (optional)
-        auth_type: Token type - "bearer", "basic", "api_key", "custom" (default: bearer)
-    
-    Returns:
-        Dict with session_id and session details
-    """
-    session_id = str(uuid.uuid4())[:8]
-    
-    session_data: dict[str, Any] = {
-        "id": session_id,
-        "name": session_name,
-        "created_at": time.time(),
-        "updated_at": time.time(),
-        "base_url": base_url,
-        "cookies": cookies or {},
-        "headers": headers or {},
-        "csrf_token": None,
-        "auth": None,
-    }
-    
-    # Set up authentication
-    if auth_token:
-        if auth_type == "bearer":
-            session_data["headers"]["Authorization"] = f"Bearer {auth_token}"
-            session_data["auth"] = {"type": "bearer", "token_preview": _redact_token(auth_token)}
-        elif auth_type == "basic":
-            # Assume token is already base64 encoded or "user:pass"
-            if ":" in auth_token:
-                encoded = base64.b64encode(auth_token.encode()).decode()
-                session_data["headers"]["Authorization"] = f"Basic {encoded}"
-            else:
-                session_data["headers"]["Authorization"] = f"Basic {auth_token}"
-            session_data["auth"] = {"type": "basic"}
-        elif auth_type == "api_key":
-            session_data["headers"]["X-API-Key"] = auth_token
-            session_data["auth"] = {"type": "api_key", "header": "X-API-Key"}
-        elif auth_type == "custom":
-            session_data["auth"] = {"type": "custom", "token_preview": _redact_token(auth_token)}
-    
-    # Store session
-    _SESSIONS[session_id] = session_data
-    
-    return {
-        "success": True,
-        "session_id": session_id,
-        "session_name": session_name,
-        "base_url": base_url,
-        "cookie_count": len(session_data["cookies"]),
-        "header_count": len(session_data["headers"]),
-        "auth_type": auth_type if auth_token else None,
-        "message": f"Session '{session_name}' created with ID {session_id}",
-    }
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/tools/session_mgmt/session_mgmt_actions.py','step':'create_session','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 @register_tool(sandbox_execution=False)

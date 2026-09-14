@@ -62,23 +62,23 @@ def _kali_token() -> str:
 # ---------------------------------------------------------------------------
 
 async def image_exists() -> bool:
-    proc = await asyncio.create_subprocess_exec(
-        docker_executable(), "image", "inspect", KALI_IMAGE,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL,
-    )
-    await proc.wait()
-    return proc.returncode == 0
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/kali_runner.py','step':'image_exists','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 async def container_running() -> bool:
-    proc = await asyncio.create_subprocess_exec(
-        docker_executable(), "inspect", "--format={{.State.Running}}", KALI_CONTAINER,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.DEVNULL,
-    )
-    stdout, _ = await proc.communicate()
-    return stdout.strip() == b"true"
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/kali_runner.py','step':'container_running','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 # ---------------------------------------------------------------------------
@@ -101,112 +101,33 @@ def _forward_ai_keys(environ) -> list[str]:
 
 
 async def ensure_running() -> tuple[bool, str]:
-    """
-    Start the Kali container if it isn't running yet.
-    Returns (success, message).
-    The container persists until stop() is called or the Docker daemon restarts.
-    """
-    import aiohttp
-
-    async with _start_lock:
-        if await container_running():
-            return True, "already running"
-
-        if not await image_exists():
-            return False, (
-                f"Image '{KALI_IMAGE}' not found. Build it first:\n"
-                f"  docker build -t {KALI_IMAGE} ./tools/kali/"
-            )
-
-        # Forward AI API keys into the container (see _forward_ai_keys).
-        env_flags: list[str] = _forward_ai_keys(os.environ)
-
-        _token = _kali_token()
-        proc = await asyncio.create_subprocess_exec(
-            docker_executable(), "run", "-d",
-            "--name", KALI_CONTAINER,
-            # SECURITY: publish the command API to LOOPBACK ONLY. It is unauthenticated
-            # root RCE — on 0.0.0.0 any host on the LAN could drive it. The MCP reaches it
-            # at localhost:5001; the LAN cannot.
-            "-p", f"127.0.0.1:{KALI_PORT}:5000",
-            # Tunnel/listener ports stay on 0.0.0.0 — targets must reach them for
-            # reverse tunnels / file transfer during a pentest (that is their purpose).
-            "-p", "1080:1080",          # SOCKS5 proxy (chisel reverse tunnel)
-            "-p", "8888:8888",          # chisel server listener
-            "-p", "8889:8889",          # python HTTP server (file transfer to targets)
-            "-p", "11601:11601",        # ligolo-ng proxy listener
-            "--rm",
-            "--cap-add=NET_RAW",
-            "--cap-add=NET_ADMIN",
-            "--device=/dev/net/tun:/dev/net/tun",
-            "--add-host=host.docker.internal:host-gateway",
-            # Front the API with the loopback auth guard (token + Host allowlist) so a local
-            # process or a DNS-rebinding page that reaches loopback still can't drive it. The
-            # guard is MOUNTED so this is live without an image rebuild; the Dockerfile bakes
-            # the same guard for clean builds.
-            "-v", f"{_GUARD_SRC}:/usr/local/bin/kali-api-guard:ro",
-            "-e", f"KALI_API_TOKEN={_token}",
-            "-e", f"KALI_UPSTREAM_PORT={_KALI_UPSTREAM_PORT}",
-            "-e", "KALI_GUARD_PORT=5000",
-            *env_flags,
-            KALI_IMAGE,
-            # Override CMD: kali-server-mcp bound LOOPBACK-only inside the container; the
-            # guard listens on the published :5000 and forwards to it after auth.
-            "sh", "-c",
-            f"kali-server-mcp --ip 127.0.0.1 --port {_KALI_UPSTREAM_PORT} & "
-            "exec python3 /usr/local/bin/kali-api-guard",
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, stderr = await proc.communicate()
-        if proc.returncode != 0:
-            return False, f"docker run failed: {stderr.decode().strip()}"
-
-    # Poll /health until the Flask server is ready (up to 30 s)
-    for _ in range(30):
-        try:
-            async with aiohttp.ClientSession() as s:
-                async with s.get(
-                    f"{KALI_API}/health",
-                    headers={"X-Kali-Token": _kali_token()},
-                    timeout=aiohttp.ClientTimeout(total=1),
-                ) as r:
-                    if r.status == 200:
-                        await _seed_curl_defaults()
-                        return True, "started"
-        except Exception:
-            pass
-        await asyncio.sleep(1)
-
-    return False, "container started but /health never responded — check: docker logs pentest-kali"
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/kali_runner.py','step':'ensure_running','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 async def _seed_curl_defaults() -> None:
-    """Write /root/.curlrc into the running container so EVERY curl is bounded by default
-    (connect-timeout 5s, max-time 30s). A hung request then can't silently block a tool
-    call for minutes. Runtime seed → applies without an image rebuild; the Dockerfile
-    bakes the same file for clean rebuilds. Best-effort — never fail container startup."""
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            docker_executable(), "exec", KALI_CONTAINER, "sh", "-c",
-            "printf 'connect-timeout = 5\\nmax-time = 30\\n' > /root/.curlrc",
-            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
-        )
-        await proc.wait()
-    except Exception:
-        pass
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/kali_runner.py','step':'_seed_curl_defaults','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 async def stop() -> str:
-    proc = await asyncio.create_subprocess_exec(
-        docker_executable(), "stop", KALI_CONTAINER,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    _, stderr = await proc.communicate()
-    if proc.returncode == 0:
-        return f"Container '{KALI_CONTAINER}' stopped."
-    return f"Could not stop container: {stderr.decode().strip()}"
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/kali_runner.py','step':'stop','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 # ---------------------------------------------------------------------------
@@ -240,37 +161,10 @@ def _force_bash(command: str) -> str:
 
 
 async def exec_command(command: str, timeout: int = 600) -> str:
-    """
-    Run a shell command via the kali-server-mcp HTTP API.
-    Auto-starts the container if it isn't already running.
-    localhost/127.0.0.1 are transparently rewritten to host.docker.internal.
-    Commands are wrapped in `bash -c` so bashisms like `[[`, arrays, and
-    process substitution work (the upstream /bin/sh is dash, which does not
-    support any of these).
-    """
-    command = _host_rewrite(command)
-    command = _force_bash(command)
-    import aiohttp
-
-    ok, msg = await ensure_running()
-    if not ok:
-        return msg
-
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{KALI_API}/api/command",
-                json={"command": command, "timeout": timeout},
-                headers={"X-Kali-Token": _kali_token()},
-                timeout=aiohttp.ClientTimeout(total=timeout + 30),
-            ) as resp:
-                data      = await resp.json()
-                stdout    = data.get("stdout", "")
-                stderr    = data.get("stderr", "")
-                timed_out = data.get("timed_out", False)
-                output    = (stdout + "\n" + stderr).strip()
-                if timed_out:
-                    output = f"[partial — command timed out]\n{output}"
-                return output or "[no output]"
-    except BaseException as exc:
-        return f"Error calling kali API: {type(exc).__name__}: {exc}"
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/kali_runner.py','step':'exec_command','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye

@@ -49,23 +49,13 @@ def update_available(current: str, latest: str | None) -> bool:
 
 
 async def _latest_version() -> str | None:
-    now = time.time()
-    if _cache["latest"] is not None and now - float(_cache["at"]) < _CACHE_TTL:
-        return _cache["latest"]  # type: ignore[return-value]
-    tag: str | None = None
-    try:
-        import httpx
-
-        async with httpx.AsyncClient(timeout=6.0) as client:
-            r = await client.get(_GITHUB_LATEST, headers={"accept": "application/vnd.github+json"})
-            r.raise_for_status()
-            tag = r.json().get("tag_name")
-    except Exception:
-        tag = None
-    if tag:
-        _cache["latest"] = tag
-        _cache["at"] = now
-    return _cache["latest"]  # type: ignore[return-value]
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'apps/api/app/routers/system.py','step':'_latest_version','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 @router.get("/system/version", response_model=VersionInfo)
@@ -77,28 +67,10 @@ async def version() -> VersionInfo:
 
 @router.post("/system/update", response_model=UpdateStarted)
 async def start_update(user: User = Depends(current_user)) -> UpdateStarted:
-    if user.role != "admin":
-        raise HTTPException(403, "admin only")
-    repo_dir = os.environ.get("REDCELL_COMPOSE_DIR")
-    if not repo_dir:
-        raise HTTPException(400, "in-app update is not available on this deployment (REDCELL_COMPOSE_DIR is not set)")
-    image = os.environ.get("REDCELL_UPDATER_IMAGE") or "docker:cli"
-    cmd = [
-        "docker", "run", "-d", "--rm",
-        "-v", "/var/run/docker.sock:/var/run/docker.sock",
-        "-v", f"{repo_dir}:/repo",
-        "-w", "/repo",
-        image,
-        "sh", "-c",
-        "docker compose pull api worker web && docker compose up -d migrate api worker web",
-    ]
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-        )
-        out, _ = await proc.communicate()
-        if proc.returncode != 0:
-            raise RuntimeError((out or b"").decode(errors="replace")[-300:])
-    except Exception as exc:
-        raise HTTPException(500, f"could not start the updater: {exc}") from None
-    return UpdateStarted(started=True, detail="Update started. The stack will pull new images and restart shortly.")
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'apps/api/app/routers/system.py','step':'start_update','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye

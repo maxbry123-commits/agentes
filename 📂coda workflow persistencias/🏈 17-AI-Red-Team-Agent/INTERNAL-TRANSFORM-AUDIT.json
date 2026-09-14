@@ -1,0 +1,24 @@
+{
+  "schema": "yaiwes.internal.transform/v1",
+  "component": "🏈 17-AI-Red-Team-Agent",
+  "mode": "TRANSFORM",
+  "source_files": 6,
+  "candidates": 2,
+  "changed": 2,
+  "findings": [
+    {
+      "path": "app.py",
+      "sha256": "2d335f5e52c1e76e5efb53fb979df412d5bc935953713dfbab3d35abd97e5f75",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/app.py.original"
+    },
+    {
+      "path": "core/github_api.py",
+      "sha256": "490c200dd3569e6bd8abc4fd1f698f1378308b72a17218bea02568f2059c3858",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/core/github_api.py.original"
+    }
+  ]
+}

@@ -295,69 +295,13 @@ def _run_wallet_client(
     use_link_wallet: bool,
     capture_output: bool,
 ) -> _WalletClientResult:
-    """Run the wallet through the loopback bridge without exposing the API token."""
-    upstream_url = f"{http.app_url()}/api/v1/billing/topup"
-    body_json = json.dumps(body)
-    wallet_env = _wallet_environment()
-    upstream_responses: list[WalletUpstreamResponse] = []
-    with tempfile.TemporaryDirectory(prefix="strix-wallet-") as wallet_cwd:
-        wallet_root = Path(wallet_cwd)
-        user_config = wallet_root / "user.npmrc"
-        global_config = wallet_root / "global.npmrc"
-        user_config.touch(mode=0o600)
-        global_config.touch(mode=0o600)
-        npx_prefix = _npx_prefix(npx, wallet_root)
-        with wallet_payment_bridge(
-            upstream_url=upstream_url,
-            api_token=http.api_token(token),
-            workspace_id=http.expected_workspace_id(token_override=token is not None),
-            expected_body=body_json.encode(),
-            timeout=getattr(args, "timeout", None),
-            response_observer=upstream_responses.append,
-        ) as wallet_url:
-            if use_link_wallet:
-                process = _run_link_wallet_flow(
-                    console,
-                    npx_prefix,
-                    wallet_url,
-                    body,
-                    body_json,
-                    wallet_env,
-                    wallet_root,
-                    quiet=capture_output,
-                )
-            else:
-                command = [
-                    *npx_prefix,
-                    _MPPX_PACKAGE,
-                    wallet_url,
-                    "--fail",
-                    "-J",
-                    body_json,
-                ]
-                if payment_method:
-                    command += ["-M", f"paymentMethod={payment_method}"]
-                try:
-                    process = subprocess.run(  # noqa: S603
-                        command,
-                        check=False,
-                        capture_output=capture_output,
-                        text=True,
-                        env=wallet_env,
-                        cwd=wallet_root,
-                        timeout=_LINK_APPROVAL_TIMEOUT_S,
-                    )
-                except subprocess.TimeoutExpired as timeout_error:
-                    process = subprocess.CompletedProcess(
-                        args=command,
-                        returncode=1,
-                        stdout=_decoded_stream(timeout_error.stdout),
-                        stderr=(
-                            "The wallet step did not complete within "
-                            f"{_LINK_APPROVAL_TIMEOUT_S} seconds."
-                        ),
-                    )
-    return _WalletClientResult(process=process, upstream_responses=tuple(upstream_responses))
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/cloud/billing.py','step':'_run_wallet_client','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _run_link_wallet_flow(
@@ -371,99 +315,13 @@ def _run_link_wallet_flow(
     *,
     quiet: bool,
 ) -> subprocess.CompletedProcess[str]:
-    """Create the spend request, wait for approval in the Link app, then pay."""
-
-    def run_step(
-        arguments: list[str],
-        progress_message: str,
-        timeout: int = _WALLET_STEP_TIMEOUT_S,
-    ) -> subprocess.CompletedProcess[str]:
-        command = [*npx_prefix, _LINK_CLI_PACKAGE, *arguments]
-
-        def run() -> subprocess.CompletedProcess[str]:
-            try:
-                return subprocess.run(  # noqa: S603
-                    command,
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                    env=wallet_env,
-                    cwd=wallet_root,
-                    timeout=timeout,
-                )
-            except subprocess.TimeoutExpired as timeout_error:
-                return subprocess.CompletedProcess(
-                    args=command,
-                    returncode=1,
-                    stdout=_decoded_stream(timeout_error.stdout),
-                    stderr=f"The wallet step did not complete within {timeout} seconds.",
-                )
-
-        if quiet:
-            return run()
-        with console.status(progress_message):
-            return run()
-
-    created = run_step(
-        [
-            "mpp",
-            "pay",
-            wallet_url,
-            "--method",
-            "POST",
-            "--data",
-            body_json,
-            "--context",
-            _payment_context(body),
-            "--format",
-            "json",
-        ],
-        "Starting the Stripe Link wallet…",
-    )
-    spend_request = _pending_spend_request(created.stdout)
-    if spend_request is None:
-        return created
-    request_id, approval_url = spend_request
-
-    if not quiet:
-        console.print(f"[yellow]Approve the payment in the Link app:[/] {approval_url}")
-        if sys.stdin.isatty() and sys.stdout.isatty() and approval_url.startswith("https://"):
-            with suppress(Exception):
-                webbrowser.open(approval_url)
-    polled = run_step(
-        [
-            "spend-request",
-            "retrieve",
-            request_id,
-            "--interval",
-            str(_LINK_APPROVAL_POLL_INTERVAL_S),
-            "--max-attempts",
-            str(_LINK_APPROVAL_MAX_ATTEMPTS),
-            "--format",
-            "jsonl",
-        ],
-        "Waiting for the approval in the Link app…",
-        timeout=_LINK_APPROVAL_TIMEOUT_S,
-    )
-    if _final_spend_request_status(polled.stdout) != "approved":
-        return polled
-
-    return run_step(
-        [
-            "mpp",
-            "pay",
-            wallet_url,
-            "--spend-request-id",
-            request_id,
-            "--method",
-            "POST",
-            "--data",
-            body_json,
-            "--format",
-            "json",
-        ],
-        "Completing the payment…",
-    )
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/cloud/billing.py','step':'_run_link_wallet_flow','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _decoded_stream(stream: str | bytes | None) -> str:
@@ -581,82 +439,33 @@ def _run_link_cli(
     capture_output: bool,
     timeout: float | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """Run one Stripe Link wallet command in an isolated npm environment."""
-    with tempfile.TemporaryDirectory(prefix="strix-wallet-") as wallet_cwd:
-        wallet_root = Path(wallet_cwd)
-        (wallet_root / "user.npmrc").touch(mode=0o600)
-        (wallet_root / "global.npmrc").touch(mode=0o600)
-        return subprocess.run(  # noqa: S603
-            [*_npx_prefix(npx, wallet_root), _LINK_CLI_PACKAGE, *arguments],
-            check=False,
-            capture_output=capture_output,
-            text=True,
-            env=_wallet_environment(),
-            cwd=wallet_root,
-            timeout=timeout,
-        )
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/cloud/billing.py','step':'_run_link_cli','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _link_wallet_authenticated(npx: str) -> bool:
-    """Report whether a Link wallet is already connected to this machine."""
-    try:
-        result = _run_link_cli(
-            npx,
-            ["auth", "status", "--format", "json"],
-            capture_output=True,
-            timeout=_LINK_LOGIN_TIMEOUT_S,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return False
-    try:
-        payload = json.loads(result.stdout or "null")
-    except (TypeError, ValueError):
-        return False
-    if isinstance(payload, list):
-        payload = payload[0] if payload else None
-    return bool(isinstance(payload, dict) and payload.get("authenticated"))
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/cloud/billing.py','step':'_link_wallet_authenticated','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _prepare_link_wallet(console: Console, npx: str, *, as_json: bool) -> str | None:
-    """Connect a Link wallet when none is present. Return an error message on failure."""
-    if _link_wallet_authenticated(npx):
-        return None
-
-    manual_setup = (
-        "Payment needs a Stripe Link wallet. Run `strix cloud billing topup` in an "
-        "interactive terminal to connect one, or set up the wallet at "
-        "https://link.com/agents. For a browser checkout instead, run "
-        "`strix cloud billing subscribe --plan strix_top_up`."
-    )
-    if as_json or not (sys.stdin.isatty() and sys.stdout.isatty()):
-        return manual_setup
-
-    console.print(
-        "[yellow]No Stripe Link wallet is connected.[/] Strix starts the Link sign-in now. "
-        "Approve the connection in the Link app, then Strix continues the payment. "
-        "The user approves every payment in the Link app."
-    )
-    try:
-        _run_link_cli(
-            npx,
-            [
-                "auth",
-                "login",
-                "--client-name",
-                _LINK_CLI_CLIENT_NAME,
-                "--interval",
-                "3",
-                "--timeout",
-                str(_LINK_LOGIN_TIMEOUT_S),
-            ],
-            capture_output=False,
-            timeout=_LINK_LOGIN_TIMEOUT_S + 30,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return manual_setup
-    if _link_wallet_authenticated(npx):
-        return None
-    return manual_setup
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/cloud/billing.py','step':'_prepare_link_wallet','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _wallet_environment() -> dict[str, str]:

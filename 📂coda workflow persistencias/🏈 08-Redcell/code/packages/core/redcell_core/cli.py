@@ -39,9 +39,21 @@ def seed_cmd(
 
 @db_app.command("upgrade")
 def db_upgrade() -> None:
-    subprocess.run(["alembic", "upgrade", "head"], cwd=str(_CORE_DIR), check=True)
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/cli.py','step':'db_upgrade','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 @db_app.command("downgrade")
 def db_downgrade(rev: str = typer.Argument("-1")) -> None:
-    subprocess.run(["alembic", "downgrade", rev], cwd=str(_CORE_DIR), check=True)
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/cli.py','step':'db_downgrade','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye

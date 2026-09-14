@@ -1,0 +1,80 @@
+{
+  "schema": "yaiwes.internal.transform/v1",
+  "component": "🏈 08-Redcell",
+  "mode": "TRANSFORM",
+  "source_files": 221,
+  "candidates": 10,
+  "changed": 10,
+  "findings": [
+    {
+      "path": "packages/core/redcell_core/probe.py",
+      "sha256": "44fca4463927952e8c2338f9c5b25c9f4490b3041e21e890fde8d67f6cbeb91a",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/packages/core/redcell_core/probe.py.original"
+    },
+    {
+      "path": "packages/core/redcell_core/cli.py",
+      "sha256": "e3dd30fbd112daa7186143ba48ab5fb5e12474e2626b86dbce9e206736860515",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/packages/core/redcell_core/cli.py.original"
+    },
+    {
+      "path": "packages/core/redcell_core/engine/execution.py",
+      "sha256": "ba1a932d9d219d9c5a159d458dee72650306fe97f258cdb5857188fa972a5acc",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:9",
+      "quarantine": "_yaiwes_upstream_quarantine/packages/core/redcell_core/engine/execution.py.original"
+    },
+    {
+      "path": "packages/core/redcell_core/engine/ngrok.py",
+      "sha256": "c766256b7f9d3803f7718f2554f625e83c5effe3f325007f3fb84f525a3ff554",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:3",
+      "quarantine": "_yaiwes_upstream_quarantine/packages/core/redcell_core/engine/ngrok.py.original"
+    },
+    {
+      "path": "packages/core/redcell_core/engine/runner.py",
+      "sha256": "ec2da2419acbb73b00892ce1a0301c9ecef4c07cf6757757aca766ee3517fd15",
+      "changed": true,
+      "kind": "PY_FILE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/packages/core/redcell_core/engine/runner.py.original"
+    },
+    {
+      "path": "apps/api/app/routers/resources.py",
+      "sha256": "b3c3b9b82a96cce151eff137d63b756bbe7218b6efb1591adef123362c9a59da",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/apps/api/app/routers/resources.py.original"
+    },
+    {
+      "path": "apps/api/app/routers/ws.py",
+      "sha256": "7775f8ddfa7647697d67a6db3377879200a71acd47403005f3825eb0231017a5",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/apps/api/app/routers/ws.py.original"
+    },
+    {
+      "path": "apps/api/app/routers/system.py",
+      "sha256": "c685f73f76de820923c7018bc4f848f5de0d95149847b247f85c1a410f11a20c",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/apps/api/app/routers/system.py.original"
+    },
+    {
+      "path": "apps/web/src/features/hooks.ts",
+      "sha256": "a71fedea2f901170f06a1a8c74f8a95ee9509bae8d9691dc0d33a19a89df9f51",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/apps/web/src/features/hooks.ts.original"
+    },
+    {
+      "path": "apps/web/src/app/panels/BrowserPanel.test.tsx",
+      "sha256": "209e9704df94de82e60e1bdbce3b5b718e76bfebb3f95c825982dd918b9a5aea",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/apps/web/src/app/panels/BrowserPanel.test.tsx.original"
+    }
+  ]
+}

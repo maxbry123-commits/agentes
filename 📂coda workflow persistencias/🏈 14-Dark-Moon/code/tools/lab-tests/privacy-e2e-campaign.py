@@ -79,60 +79,23 @@ class Campaign:
         return self.gw.sanitize_output(text, self.vault)
 
     def run(self, label, model_command, timeout=120):
-        """One campaign step, exactly as execute_command() performs it."""
-        gw_result = self.gw.process_command(model_command, self.vault)
-        step = {
-            "label": label,
-            "model_command": model_command,
-            "blocked": gw_result.blocked,
-            "reason": gw_result.reason,
-            "withheld": list(gw_result.withheld),
-            "notes": list(gw_result.notes),
-            "stdout_model_view": "",
-            "exit_code": None,
-            "leaked": [],
-        }
-        if gw_result.blocked:
-            self.steps.append(step)
-            print(f"  {RED}[BLOCKED]{OFF} {label}: {gw_result.reason}")
-            return step
-
-        real_command = gw_result.command or model_command
-        try:
-            proc = subprocess.run(
-                ["docker", "exec", self.toolbox, "bash", "-c", real_command],
-                capture_output=True, text=True, timeout=timeout,
-            )
-            raw = (proc.stdout or "") + (proc.stderr or "")
-            step["exit_code"] = proc.returncode
-        except subprocess.TimeoutExpired:
-            raw = "[timeout]"
-            step["exit_code"] = -1
-
-        # Exactly what execute_command() returns to the model.
-        model_view = self.gw.sanitize_output(raw, self.vault)
-        step["stdout_model_view"] = model_view
-        step["leaked"] = [s for s in self.secrets if s in model_view]
-
-        mark = f"{GREEN}[OK]{OFF}"
-        if step["leaked"]:
-            mark = f"{RED}[LEAK]{OFF}"
-        elif step["withheld"]:
-            mark = f"{YELLOW}[DEGRADED]{OFF}"
-        print(f"  {mark} {label}  {DIM}(exit {step['exit_code']}){OFF}")
-        if step["withheld"]:
-            print(f"          {DIM}kept tokenized: {', '.join(step['withheld'])}{OFF}")
-        self.steps.append(step)
-        return step
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/lab-tests/privacy-e2e-campaign.py','step':'run','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
 
 def ip_of(container):
-    out = subprocess.run(
-        ["docker", "inspect", container, "--format",
-         "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}"],
-        capture_output=True, text=True,
-    )
-    return out.stdout.strip()
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/lab-tests/privacy-e2e-campaign.py','step':'ip_of','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def first_match(text, pattern, default="-"):

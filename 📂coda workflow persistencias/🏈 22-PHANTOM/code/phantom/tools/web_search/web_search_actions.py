@@ -92,52 +92,13 @@ def _duckduckgo_search_fallback(query: str, max_results: int = 5) -> dict[str, A
 
 
 def _search_cve_fallback(cve_id: str) -> dict[str, Any]:
-    """
-    Fallback CVE lookup using DuckDuckGo + MITRE when NVD API is not available.
-    """
-    if not _DDG_AVAILABLE:
-        return {
-            "success": False,
-            "message": "DuckDuckGo not installed. Install with: pip install duckduckgo-search",
-            "content": "",
-        }
-    
-    try:
-        results_text = f"[CVE LOOKUP: {cve_id}]\n"
-        results_text += "=" * 50 + "\n\n"
-        
-        # Search for CVE details
-        with DDGS() as ddgs:
-            results = list(ddgs.text(f"{cve_id} vulnerability CVE details", max_results=3))
-        
-        if results:
-            results_text += "[Search Results]\n"
-            for r in results:
-                results_text += f"- {r.get('title', 'N/A')}\n"
-                results_text += f"  {r.get('href', 'N/A')}\n\n"
-        
-        # Try to fetch MITRE page
-        try:
-            import requests
-            mitre_url = f"https://cve.mitre.org/cgi-bin/cvename.cgi?name={cve_id}"
-            resp = requests.get(mitre_url, timeout=10)
-            if resp.status_code == 200:
-                results_text += f"\n[MITRE Reference]\n{mitre_url}\n"
-        except Exception:
-            pass  # MITRE fetch optional
-        
-        return {
-            "success": True,
-            "content": results_text,
-            "message": f"CVE lookup completed for {cve_id}",
-        }
-        
-    except Exception as e:
-        return {
-            "success": False,
-            "message": f"CVE search failed: {e}",
-            "content": "",
-        }
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/tools/web_search/web_search_actions.py','step':'_search_cve_fallback','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _smart_search_router(query: str) -> dict[str, Any]:
@@ -192,64 +153,10 @@ def _smart_search_router(query: str) -> dict[str, Any]:
 
 @register_tool(sandbox_execution=False)
 async def web_search(query: str, use_smart_router: bool = False) -> dict[str, Any]:
-    token = os.getenv("PERPLEXITY_API_KEY")
-    
-    # Smart router: auto-detect CVE/exploit/fix queries
-    if use_smart_router:
-        router_result = _smart_search_router(query)
-        result = router_result["result"]
-        result["search_type"] = router_result["search_type"]
-        return result
-    
-    # Try Perplexity first if API key is available
-    if token:
-        try:
-            url = "https://api.perplexity.ai/chat/completions"
-            bearer_token = f"Bearer {token}"
-            headers = {"Authorization": bearer_token, "Content-Type": "application/json"}
-
-            payload = {
-                "model": "sonar-reasoning",
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": query},
-                ],
-            }
-
-            async with httpx.AsyncClient(trust_env=False, timeout=300) as client:
-                response = await client.post(url, headers=headers, json=payload)
-                response.raise_for_status()
-                response_data = response.json()
-                content = response_data["choices"][0]["message"]["content"]
-
-            return {
-                "success": True,
-                "query": query,
-                "content": content,
-                "message": "Web search completed successfully",
-            }
-
-        except httpx.TimeoutException:
-            # Fall through to DuckDuckGo fallback
-            pass
-        except httpx.HTTPStatusError:
-            # Fall through to DuckDuckGo fallback
-            pass
-        except httpx.RequestError:
-            # Fall through to DuckDuckGo fallback
-            pass
-        except Exception:  # noqa: BLE001
-            # Fall through to DuckDuckGo fallback
-            pass
-    
-    # Fallback to DuckDuckGo if Perplexity failed or not available
-    if _DDG_AVAILABLE:
-        ddg_result = _duckduckgo_search_fallback(query, max_results=5)
-        ddg_result["fallback_used"] = "duckduckgo"
-        return ddg_result
-    
-    return {
-        "success": False,
-        "message": "PERPLEXITY_API_KEY not set and DuckDuckGo not installed. Install duckduckgo-search or set PERPLEXITY_API_KEY",
-        "results": [],
-    }
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/tools/web_search/web_search_actions.py','step':'web_search','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye

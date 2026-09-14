@@ -42,50 +42,10 @@ def _audit(verb: str, args: list, result: dict) -> None:
 
 
 def run(verb: str, args: list, timeout: int = 30) -> dict:
-    """Execute an allow-listed probe verb on the host.
-
-    Returns {ok, exit_code, stdout, stderr, timed_out, error}. ``ok`` means the
-    process ran to completion (exit code captured) — NOT that the probe's
-    success criterion was met; that judgement belongs to core.probe_runner.
-    """
-    args = list(args or [])
-    valid, reason = probe_verbs.validate(verb, args)
-    if not valid:
-        result = {"ok": False, "exit_code": None, "stdout": "", "stderr": "",
-                  "timed_out": False, "error": f"rejected: {reason}"}
-        _audit(verb, args, result)
-        return result
-
-    binary = probe_verbs.binary_for(verb)
-    if not shutil.which(binary):
-        result = {"ok": False, "exit_code": None, "stdout": "", "stderr": "",
-                  "timed_out": False,
-                  "error": f"'{binary}' is not installed on the host — install it to run this probe"}
-        _audit(verb, args, result)
-        return result
-
-    try:
-        # argv is an allow-listed verb + per-arg-validated args, run with shell=False.
-        proc = subprocess.run(  # noqa: S603
-            [binary, *args],
-            shell=False,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-        result = {
-            "ok": True,
-            "exit_code": proc.returncode,
-            "stdout": proc.stdout or "",
-            "stderr": proc.stderr or "",
-            "timed_out": False,
-            "error": "",
-        }
-    except subprocess.TimeoutExpired:
-        result = {"ok": False, "exit_code": None, "stdout": "", "stderr": "",
-                  "timed_out": True, "error": f"probe timed out after {timeout}s"}
-    except OSError as exc:
-        result = {"ok": False, "exit_code": None, "stdout": "", "stderr": "",
-                  "timed_out": False, "error": f"{type(exc).__name__}: {exc}"}
-    _audit(verb, args, result)
-    return result
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'core/host_lane.py','step':'run','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye

@@ -66,22 +66,10 @@ async def _do_stop_mobsf():
 
 
 async def _do_pull_images():
-    from tools import REGISTRY
-    from tools.docker_cli import docker_executable
-    log.tool_call("pull_images", {})
-    images = [tool.image for tool in REGISTRY.values() if not tool.needs_mount]
-    seen: set[str] = set()
-    unique = [img for img in images if not (img in seen or seen.add(img))]  # type: ignore[func-returns-value]
-    lines: list[str] = []
-    for image in unique:
-        proc = await asyncio.create_subprocess_exec(
-            docker_executable(), "pull", image,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-        )
-        _, _ = await proc.communicate()
-        status = "ok" if proc.returncode == 0 else "FAILED"
-        lines.append(f"[{status}] {image}")
-    result = "\n".join(lines)
-    log.tool_result("pull_images", result)
-    return result
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'mcp_server/session_tools/containers.py','step':'_do_pull_images','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye

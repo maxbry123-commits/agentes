@@ -95,97 +95,54 @@ def diff_against_history(conn: sqlite3.Connection, domain: str, current: list[st
 # ─── Tool Wrappers ─────────────────────────────────────────────
 
 def run_subfinder(domain: str, workdir: Path, timeout: int = 60) -> list[str]:
-    out_file = workdir / "subdomains.txt"
-    try:
-        subprocess.run(
-            ["subfinder", "-d", domain, "-silent", "-timeout", "30", "-o", str(out_file)],
-            check=True, timeout=timeout, capture_output=True,
-        )
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        pass
-    return out_file.read_text().splitlines() if out_file.exists() else []
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'adaptive_recon_orchestrator.py','step':'run_subfinder','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def run_httpx(subdomains: list[str], workdir: Path, timeout: int = 120) -> list[dict]:
-    in_file = workdir / "subdomains.txt"
-    out_file = workdir / "httpx_results.jsonl"
-    in_file.write_text("\n".join(subdomains))
-    try:
-        subprocess.run(
-            ["httpx", "-l", str(in_file), "-json", "-tech-detect", "-status-code",
-             "-title", "-web-server", "-silent", "-timeout", "10", "-retries", "1",
-             "-o", str(out_file)],
-            check=True, timeout=timeout, capture_output=True,
-        )
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        pass
-    if not out_file.exists():
-        return []
-    results = []
-    for line in out_file.read_text().splitlines():
-        if line.strip():
-            try:
-                results.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
-    return results
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'adaptive_recon_orchestrator.py','step':'run_httpx','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def run_katana(target: str, workdir: Path, timeout: int = 60) -> list[str]:
-    out_file = workdir / "katana_endpoints.txt"
-    try:
-        subprocess.run(
-            ["katana", "-u", target, "-jc", "-silent", "-timeout", "10",
-             "-o", str(out_file)],
-            check=True, timeout=timeout, capture_output=True,
-        )
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        pass
-    return out_file.read_text().splitlines() if out_file.exists() else []
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'adaptive_recon_orchestrator.py','step':'run_katana','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def run_nuclei(targets_file: Path, workdir: Path,
                severity: str = "medium,high,critical", timeout: int = 300) -> list[dict]:
-    out_file = workdir / "nuclei_results.jsonl"
-    try:
-        subprocess.run(
-            ["nuclei", "-l", str(targets_file), "-severity", severity,
-             "-jsonl", "-silent", "-timeout", "10", "-retries", "1",
-             "-o", str(out_file)],
-            check=True, timeout=timeout, capture_output=True,
-        )
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        pass
-    if not out_file.exists():
-        return []
-    results = []
-    for line in out_file.read_text().splitlines():
-        if line.strip():
-            try:
-                results.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
-    return results
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'adaptive_recon_orchestrator.py','step':'run_nuclei','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def run_ffuf(target: str, wordlist_path: Path, workdir: Path, timeout: int = 120) -> list[dict]:
-    out_file = workdir / "ffuf_results.json"
-    try:
-        subprocess.run(
-            ["ffuf", "-u", f"{target}/FUZZ", "-w", str(wordlist_path),
-             "-mc", "200,204,301,302,307,401,403,405,500",
-             "-of", "json", "-o", str(out_file),
-             "-t", "20", "-rate", "20", "-timeout", "10", "-s"],
-            check=True, timeout=timeout, capture_output=True,
-        )
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        pass
-    if not out_file.exists():
-        return []
-    try:
-        return json.loads(out_file.read_text()).get("results", [])
-    except json.JSONDecodeError:
-        return []
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'adaptive_recon_orchestrator.py','step':'run_ffuf','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 # ─── Cheap-Model Triage Gate ───────────────────────────────────

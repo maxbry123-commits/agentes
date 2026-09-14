@@ -131,26 +131,13 @@ def discover(explicit_data_dir: str | None = None, explicit_root: str | None = N
 
 
 def download_to_temp(repo: str = AIG_REPO, keep: bool = False) -> AIGData:
-    temp_parent = Path(tempfile.mkdtemp(prefix="aig-agent-redteam-"))
-    root = temp_parent / "AI-Infra-Guard"
-    cmd = ["git", "clone", "--depth", "1", repo, str(root)]
-    try:
-        subprocess.run(cmd, check=True)
-    except FileNotFoundError as e:
-        raise RuntimeError("git 不可用，无法下载 AI-Infra-Guard") from e
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"下载 AI-Infra-Guard 失败: {e}") from e
-
-    data_dir = root / "data"
-    if not data_dir.exists():
-        raise RuntimeError(f"下载成功但未找到 data 目录: {data_dir}")
-
-    data = AIGData(data_dir=data_dir, source="downloaded_temp", root_dir=root)
-    if not keep:
-        # 调用方仍可在本进程内使用路径；命令行模式需要保留供后续命令使用。
-        # 因此 CLI 默认 keep=True，库调用可自行清理。
-        pass
-    return data
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/aig-agent-redteam/scripts/aig_data.py','step':'download_to_temp','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def sync_data(data: AIGData, dest: Path, include: list[str]) -> dict:

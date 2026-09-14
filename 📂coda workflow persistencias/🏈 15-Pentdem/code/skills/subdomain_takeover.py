@@ -144,36 +144,13 @@ class SubdomainTakeoverSkill(BaseSkill):
         return [f"{p}.{target}" for p in prefixes]
 
     async def _resolve_cname(self, domain: str) -> Optional[str]:
-        """Resolve CNAME record for a domain."""
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "dig", "+short", "CNAME", domain,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await proc.communicate()
-            cname = stdout.decode().strip().rstrip(".")
-            if cname and cname != domain:
-                return cname
-        except Exception:
-            pass
-        
-        # Fallback: try nslookup
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "nslookup", "-type=CNAME", domain,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await proc.communicate()
-            output = stdout.decode()
-            match = re.search(r"canonical name = (.+)", output, re.IGNORECASE)
-            if match:
-                return match.group(1).strip().rstrip(".")
-        except Exception:
-            pass
-        
-        return None
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/subdomain_takeover.py','step':'_resolve_cname','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _check_vulnerable_cname(self, cname: str) -> Optional[Dict]:
         """Check if CNAME points to a known vulnerable service."""
@@ -184,21 +161,10 @@ class SubdomainTakeoverSkill(BaseSkill):
         return None
 
     async def _verify_takeover(self, subdomain: str, vuln_service: Dict) -> Optional[str]:
-        """Verify that the service is actually unclaimed."""
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "curl", "-s", "-L", "--max-time", "10",
-                f"https://{subdomain}",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await proc.communicate()
-            body = stdout.decode().lower()
-            
-            verify_string = vuln_service.get("verify", "").lower()
-            if verify_string and verify_string in body:
-                return f"Service '{vuln_service['service']}' confirmed unclaimed: '{verify_string}' found in response"
-        except Exception:
-            pass
-        
-        return None
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/subdomain_takeover.py','step':'_verify_takeover','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye

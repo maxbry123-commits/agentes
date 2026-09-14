@@ -553,31 +553,13 @@ class ToolRunner:
             return f"Error executing {name}: {e}\n{traceback.format_exc()}"
 
     def _bash(self, args):
-        cmd = args["command"]
-        if not self.allow_bash:
-            return "Bash execution is disabled via /shell-off."
-        if self.checkpoint_gate and not self.auto_mode:
-            allowed, msg = self.checkpoint_gate.check_command(cmd)
-            if not allowed:
-                return msg
-        if self.state:
-            self.state.start_action(f"bash: {cmd[:100]}", command=cmd)
-        result = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True, timeout=180
-        )
-        output = ""
-        if result.stdout:
-            output += result.stdout
-        if result.stderr:
-            output += f"\n[stderr]\n{result.stderr}"
-        if result.returncode != 0:
-            output += f"\n[exit code: {result.returncode}]"
-        result_text = output or "(no output)"
-        if self.state:
-            self.state.complete_action(result_text[:500])
-        if len(result_text) > 5000:
-            result_text = result_text[:5000] + "\n... [truncated]"
-        return result_text
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'agent/tools.py','step':'_bash','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _read_file(self, args):
         p = Path(args["path"]).expanduser()

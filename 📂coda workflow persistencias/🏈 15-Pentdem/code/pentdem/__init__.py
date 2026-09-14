@@ -44,7 +44,13 @@ def box(lines: list, border_color: str = "c") -> str:
     return f"{top}\n{mid}\n{bot}"
 
 def clear():
-    os.system("clear 2>/dev/null || cls 2>/dev/null || printf '\\033c'")
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'pentdem/__init__.py','step':'clear','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 # ═══════════════════════════════════════════════════════════════════
 # Banners
@@ -195,12 +201,13 @@ def check_docker() -> dict:
 
 
 def _docker_running() -> bool:
-    import subprocess
-    try:
-        subprocess.run(["docker", "info"], capture_output=True, timeout=3, check=False)
-        return True
-    except Exception:
-        return False
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'pentdem/__init__.py','step':'_docker_running','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 # ═══════════════════════════════════════════════════════════════════

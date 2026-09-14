@@ -1,0 +1,171 @@
+{
+  "schema": "yaiwes.internal.transform/v1",
+  "component": "🏈 01-DeepAudit",
+  "mode": "TRANSFORM",
+  "source_files": 352,
+  "candidates": 23,
+  "changed": 23,
+  "findings": [
+    {
+      "path": "scripts/setup_security_tools.ps1",
+      "sha256": "d9f01fb1eefacd44473bc648b8e718579cc09b94f9342098b404b689f9c922e0",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/scripts/setup_security_tools.ps1.original"
+    },
+    {
+      "path": "scripts/star_history.py",
+      "sha256": "8af98faa04c05fa39162ece2db1f4cefdf3c60ac604488444ad30f6bbaf52054",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/scripts/star_history.py.original"
+    },
+    {
+      "path": "scripts/setup.js",
+      "sha256": "7d9588e854056d386d6377155797bc2def3803df9c5c6d6e3c5e732b3a458d1b",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/scripts/setup.js.original"
+    },
+    {
+      "path": "backend/scripts/create_agent_demo_data.py",
+      "sha256": "b7429f0b470038187bb414c010a84a9292cd519691b675519d58e5cac9e18f6a",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/scripts/create_agent_demo_data.py.original"
+    },
+    {
+      "path": "backend/app/services/scanner.py",
+      "sha256": "8cd2805559a82b3664fd2a97e0f4922095e948b1efc4071f84d38459125fa337",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:4",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/scanner.py.original"
+    },
+    {
+      "path": "backend/app/services/git_ssh_service.py",
+      "sha256": "18edd47547527245ce31fad6614239869198587af68e516c63e5d2c2ecb83e93",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:3",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/git_ssh_service.py.original"
+    },
+    {
+      "path": "backend/app/services/rag/embeddings.py",
+      "sha256": "f46d11dc643633bf021819dc6c2fd3ff43342cacab54d69aac37e62ea7da460c",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:7",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/rag/embeddings.py.original"
+    },
+    {
+      "path": "backend/app/services/llm/base_adapter.py",
+      "sha256": "bb7bb08b72fb9647fcbefabeda755d3e0ee71e2deea77b3911bbbb4fa4e01d57",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/llm/base_adapter.py.original"
+    },
+    {
+      "path": "backend/app/services/llm/adapters/baidu_adapter.py",
+      "sha256": "4fb4f2cdc8d3d80ce001a5514e6dc45afd8c7b90e22ce8891ed441ab65599d63",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/llm/adapters/baidu_adapter.py.original"
+    },
+    {
+      "path": "backend/app/services/agent/tools/run_code.py",
+      "sha256": "4911341966f0c66f58c9330623097ff9d3a7cef6f669705c3514863ee7e195c5",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/tools/run_code.py.original"
+    },
+    {
+      "path": "backend/app/services/agent/tools/smart_scan_tool.py",
+      "sha256": "7b3f3d725d32f7ccec02fb711f5be6bc84f45f4f0c855ed6d54b18b53323ecf2",
+      "changed": true,
+      "kind": "PY_FILE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/tools/smart_scan_tool.py.original"
+    },
+    {
+      "path": "backend/app/services/agent/tools/kunlun_tool.py",
+      "sha256": "4b9031b481379cc12594d445f8828d5b66cb0a3bbcefb5d3a812d260ffa40c18",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:4",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/tools/kunlun_tool.py.original"
+    },
+    {
+      "path": "backend/app/services/agent/tools/sandbox_language.py",
+      "sha256": "b434c358fd1ac84be8d3180293c2a6eaa192cad225aff2082a07551a727b426d",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:5",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/tools/sandbox_language.py.original"
+    },
+    {
+      "path": "backend/app/services/agent/prompts/system_prompts.py",
+      "sha256": "f947702bbbeaa7b3ad481635cf66b23993054123063cfec8bf21921d3df3ed7e",
+      "changed": true,
+      "kind": "PY_FILE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/prompts/system_prompts.py.original"
+    },
+    {
+      "path": "backend/app/services/agent/agents/verification.py",
+      "sha256": "3a57f5447cb9f46a0992032f6262fc667705cec11432f8d95a0c1c4057750644",
+      "changed": true,
+      "kind": "PY_FILE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/agents/verification.py.original"
+    },
+    {
+      "path": "backend/app/services/agent/core/rate_limiter.py",
+      "sha256": "6a5d5ddf544fb48bc39031244f01e65a7e0ceb4898c042ad547ec231477a514d",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/core/rate_limiter.py.original"
+    },
+    {
+      "path": "backend/app/services/agent/knowledge/frameworks/express.py",
+      "sha256": "8e1406529b6dd5383f5fc192f9a60d736097ac10564f02c3f7a659021c18a8b2",
+      "changed": true,
+      "kind": "PY_FILE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/knowledge/frameworks/express.py.original"
+    },
+    {
+      "path": "backend/app/services/agent/knowledge/vulnerabilities/deserialization.py",
+      "sha256": "448276fda774156e01be968cfc916dd6895c7180606273a1ea8588e88913f4a8",
+      "changed": true,
+      "kind": "PY_FILE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/knowledge/vulnerabilities/deserialization.py.original"
+    },
+    {
+      "path": "backend/app/services/agent/knowledge/vulnerabilities/ssrf.py",
+      "sha256": "bb4e31a33a7e21fba4d860bdf97630b611b557ddc0a8ba4f7a0f306e7e7da551",
+      "changed": true,
+      "kind": "PY_FILE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/knowledge/vulnerabilities/ssrf.py.original"
+    },
+    {
+      "path": "backend/app/services/agent/knowledge/vulnerabilities/injection.py",
+      "sha256": "75105cf50767386b1789c278a61c195b8c580c73327672597cc8b951a704e0bc",
+      "changed": true,
+      "kind": "PY_FILE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/knowledge/vulnerabilities/injection.py.original"
+    },
+    {
+      "path": "backend/app/api/v1/endpoints/agent_tasks.py",
+      "sha256": "a9d38462735d987e13b94bc58b0c81165fd3003d97845fe136e013d0533c1ad4",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/api/v1/endpoints/agent_tasks.py.original"
+    },
+    {
+      "path": "backend/app/api/v1/endpoints/auth.py",
+      "sha256": "422d047c7fd5d87e1a0ab35733c6d13e7cc24b5097dbe3cb68077f6137567ab5",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/api/v1/endpoints/auth.py.original"
+    },
+    {
+      "path": "frontend/src/pages/prompt-manager/testCodeSamples.ts",
+      "sha256": "46dfdd4e9b05e05f71c4fba9b86042f4a243e905e8650c05866db100f711b006",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/frontend/src/pages/prompt-manager/testCodeSamples.ts.original"
+    }
+  ]
+}

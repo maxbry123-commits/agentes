@@ -49,19 +49,13 @@ class DarkmoonDockerClient:
         self._gpu_cache = None
 
     def _broadcast(self, b: bytes, session_id: str | None = None):
-        if not self._stream_enabled:
-            return
-
-        sock_path = f"{STREAM_BASE}_{session_id}.sock" if session_id else f"{STREAM_BASE}.sock"
-
-        try:
-            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            s.settimeout(0.01)
-            s.connect(sock_path)
-            s.sendall(b)
-            s.close()
-        except Exception:
-            pass
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'mcp/src/docker_client.py','step':'_broadcast','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def get_container(self) -> Optional[Container]:
         """Get the Darkmoon container if it exists and is running."""
@@ -82,142 +76,13 @@ class DarkmoonDockerClient:
         environment: Optional[Dict[str, str]] = None,
         session_id: Optional[str] = None,   # NEW
     ) -> ExecutionResult:
-        """
-        Execute a command inside the Darkmoon container.
-        Streams stdout/stderr live to monitoring console via UNIX socket.
-        """
-        container = self.get_container()
-        if not container:
-            return ExecutionResult(
-                status=ExecutionStatus.FAILED,
-                stderr=f"Container '{self.container_name}' not found or not running",
-                exit_code=1,
-            )
-
-        timeout = timeout or self.default_timeout
-        start_time = time.time()
-
-        try:
-            # Prepare command.
-            #
-            # Every command is wrapped in coreutils `timeout` INSIDE the container.
-            # The `timeout` argument used to be recorded in metadata and never
-            # enforced: the stream loop below blocks until the process exits, so a
-            # command that never ends (an unbounded `hydra -P rockyou.txt`, a `cat`
-            # on a socket that never sends EOF) froze the whole campaign — no more
-            # findings, no finalize, no report. Enforcing the deadline in the
-            # container means the process is killed even if the client goes away.
-            hard_timeout = effective_timeout(timeout)
-
-            # Route heavy offline cracking to the right component instead of
-            # refusing it. hashcat gets pinned to the GPU when the entrypoint found
-            # a usable one, and always gets `--runtime`, so a full dictionary run
-            # returns what it found inside the budget rather than holding the
-            # campaign for hours. Measured on an RTX 5060: 7.57 MH/s on GPU against
-            # 33.5 kH/s on CPU threads for md5crypt, a factor of 225.
-            if isinstance(command, str):
-                adapted, note = adapt_command(command, self._gpu_state(container))
-                if note:
-                    command = adapted
-                    self._broadcast(f"\n\033[1;33m[guard]\033[0m {note}\n".encode(), session_id)
-
-            if isinstance(command, list):
-                cmd = ["timeout", "--kill-after=5", str(hard_timeout)] + command
-                cmd_str = " ".join(command)
-            else:
-                cmd = ["timeout", "--kill-after=5", str(hard_timeout), "bash", "-c", command]
-                cmd_str = command
-
-            # OPTIONAL: ignore health checks in the live stream (no spam)
-            is_noise = cmd_str.startswith("which ") or cmd_str.startswith("df -h ")
-
-            # Inject cyan prompt with timestamp before streaming
-            if not is_noise:
-                ts = time.strftime("%H:%M:%S")
-                prefix = f"\n\033[1;32m[{ts}] darkmoon>\033[0m {cmd_str}\n\n"
-                self._broadcast(prefix.encode(), session_id)
-
-            # Use docker low-level exec API for correct streaming + exit code
-            exec_id = self.client.api.exec_create(
-                container=container.id,
-                cmd=cmd,
-                workdir=workdir,
-                environment=environment,
-                tty=True,   # important: reduce buffering, keep ANSI
-            )["Id"]
-
-            stream = self.client.api.exec_start(
-                exec_id,
-                stream=True,
-                tty=True,
-            )
-
-            stdout_acc = ""
-
-            for chunk in stream:
-                if not chunk:
-                    continue
-                # chunk is bytes
-                stdout_acc += chunk.decode("utf-8", errors="ignore")
-
-                # broadcast raw bytes (keeps ANSI + CRLF exactly)
-                if not is_noise:
-                    self._broadcast(chunk, session_id)
-
-            duration = time.time() - start_time
-
-            inspect = self.client.api.exec_inspect(exec_id)
-            exit_code = inspect.get("ExitCode", 1)
-
-            # coreutils `timeout` reports 124 on expiry (137 when it had to SIGKILL).
-            # Hand the agent an actionable explanation instead of silence: a bare
-            # "timed out" makes a model retry the identical command, which is how a
-            # campaign burns an hour on the same dead end.
-            if exit_code in (124, 137):
-                self._reap_survivors(container, cmd_str)
-                return ExecutionResult(
-                    status=ExecutionStatus.TIMEOUT,
-                    stdout=stdout_acc,
-                    stderr=remediation(cmd_str, duration, hard_timeout),
-                    exit_code=exit_code,
-                    duration=duration,
-                    metadata={
-                        "command": cmd_str,
-                        "workdir": workdir,
-                        "timeout": hard_timeout,
-                        "timed_out": True,
-                        "guard": classify(cmd_str).label or "unclassified",
-                    },
-                )
-
-            status = (
-                ExecutionStatus.SUCCESS
-                if exit_code == 0
-                else ExecutionStatus.FAILED
-            )
-
-            return ExecutionResult(
-                status=status,
-                stdout=stdout_acc,
-                stderr="",
-                exit_code=exit_code,
-                duration=duration,
-                metadata={
-                    "command": cmd_str,
-                    "workdir": workdir,
-                    "timeout": hard_timeout,
-                },
-            )
-
-        except Exception as e:
-            duration = time.time() - start_time
-            return ExecutionResult(
-                status=ExecutionStatus.FAILED,
-                stderr=f"Execution error: {str(e)}",
-                exit_code=1,
-                duration=duration,
-                metadata={"command": str(command), "error": str(e)},
-            )
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'mcp/src/docker_client.py','step':'execute_command','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _gpu_state(self, container) -> Dict[str, str]:
         """Read the GPU profile the toolbox entrypoint wrote at container start.

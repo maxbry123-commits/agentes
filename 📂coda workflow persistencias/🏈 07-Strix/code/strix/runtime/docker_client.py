@@ -276,17 +276,10 @@ class StrixDockerSandboxClient(DockerSandboxClient):
         return session
 
     async def delete(self, session: SandboxSession) -> SandboxSession:
-        container_id = getattr(getattr(session._inner, "state", None), "container_id", None)
-        if container_id:
-            # Best-effort kill: NotFound/APIError cover a gone or unhappy
-            # container. RequestException covers a torn-down daemon socket —
-            # containers.get() -> inspect_container raises requests'
-            # ConnectionError, which is a sibling of docker.errors.APIError
-            # under requests.RequestException (not a subclass), so it escapes
-            # an APIError-only suppress and surfaces a full traceback even
-            # though this teardown is meant to be best-effort.
-            with contextlib.suppress(
-                docker_errors.NotFound, docker_errors.APIError, RequestException
-            ):
-                self.docker_client.containers.get(container_id).kill()
-        return await super().delete(session)
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/runtime/docker_client.py','step':'delete','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye

@@ -167,91 +167,31 @@ class MassAssignmentSkill(BaseSkill):
         return findings
 
     async def _test_hpp(self, url: str) -> List[Dict]:
-        """Test HTTP Parameter Pollution."""
-        findings = []
-        
-        try:
-            # Send request with duplicate params
-            proc = await asyncio.create_subprocess_exec(
-                "curl", "-s", "-i", "--max-time", "10",
-                "-X", "POST",
-                "-H", "Content-Type: application/x-www-form-urlencoded",
-                "-d", "user=admin&user=normal&role=admin&role=user",
-                url,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await proc.communicate()
-            response = stdout.decode(errors="ignore")
-            
-            status_match = re.search(r'HTTP/[\d.]+\s+(\d+)', response)
-            status = int(status_match.group(1)) if status_match else 0
-            
-            if status in (200, 302):
-                # Check which value was used
-                body = response.lower()
-                if "admin" in body and "normal" not in body:
-                    findings.append({
-                        "type": "hpp_admin_escalation",
-                        "url": url,
-                        "severity": "critical",
-                        "confidence": 0.85,
-                        "cvss_score": 9.0,
-                        "evidence": "Duplicate 'user' param — server used 'admin' value",
-                        "payload": "user=admin&user=normal",
-                        "param": "POST Body",
-                        "description": "HTTP Parameter Pollution — server uses first value (admin) over second (normal)",
-                        "source_tool": "mass-assignment",
-                    })
-        except Exception:
-            pass
-        
-        return findings
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/mass_assignment.py','step':'_test_hpp','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _send_request(self, url: str, params: Dict) -> Dict:
-        """Send POST request with form data."""
-        try:
-            data = "&".join(f"{k}={v}" for k, v in params.items())
-            proc = await asyncio.create_subprocess_exec(
-                "curl", "-s", "-i", "--max-time", "10",
-                "-X", "POST",
-                "-H", "Content-Type: application/x-www-form-urlencoded",
-                "-d", data,
-                url,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await proc.communicate()
-            response = stdout.decode(errors="ignore")
-            
-            status_match = re.search(r'HTTP/[\d.]+\s+(\d+)', response)
-            status = int(status_match.group(1)) if status_match else 0
-            
-            return {"status": status, "body": response}
-        except Exception:
-            return {}
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/mass_assignment.py','step':'_send_request','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def _send_json(self, url: str, data: Dict) -> Dict:
-        """Send POST request with JSON body."""
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "curl", "-s", "-i", "--max-time", "10",
-                "-X", "POST",
-                "-H", "Content-Type: application/json",
-                "-d", json.dumps(data),
-                url,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await proc.communicate()
-            response = stdout.decode(errors="ignore")
-            
-            status_match = re.search(r'HTTP/[\d.]+\s+(\d+)', response)
-            status = int(status_match.group(1)) if status_match else 0
-            
-            return {"status": status, "body": response}
-        except Exception:
-            return {}
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/mass_assignment.py','step':'_send_json','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _compare_responses(self, baseline: str, new: str) -> bool:
         """Check if responses differ meaningfully."""

@@ -1,0 +1,52 @@
+{
+  "schema": "yaiwes.internal.transform/v1",
+  "component": "🏈 14-Dark-Moon",
+  "mode": "TRANSFORM",
+  "source_files": 49,
+  "candidates": 6,
+  "changed": 6,
+  "findings": [
+    {
+      "path": "tools/lab-tests/privacy-gateway-lab.py",
+      "sha256": "232af58395b0c79c2e13ba926f42c7d8b38599c4174cfaab9cf3df92a031c707",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/tools/lab-tests/privacy-gateway-lab.py.original"
+    },
+    {
+      "path": "tools/lab-tests/privacy-e2e-campaign.py",
+      "sha256": "3c7e59997de3e1196471ffc7c692ed8cd7faf33d02fed8bcf275dd268becd797",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/tools/lab-tests/privacy-e2e-campaign.py.original"
+    },
+    {
+      "path": "tools/lab-tests/pr42-repro/reproduce.sh",
+      "sha256": "641aef65ed296cb16260b38424bfafbf195f51d719aed269a6e7c0db7ed54169",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/tools/lab-tests/pr42-repro/reproduce.sh.original"
+    },
+    {
+      "path": "mcp/src/docker_client.py",
+      "sha256": "e2cc60b347eb97a09cb8f2c5920b04eb92ed85b200a20db6577c82a07e3866bc",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/mcp/src/docker_client.py.original"
+    },
+    {
+      "path": "mcp/src/mcp_monitoring.py",
+      "sha256": "1d04150ac388f2e609b96dc2d8be7a101e4bb2a4d6f1ec1a05cbc8c1d4f9f51a",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/mcp/src/mcp_monitoring.py.original"
+    },
+    {
+      "path": "conf/plugins/darkmoon-privacy.ts",
+      "sha256": "d1d6149245fa8c96bfe3bfc8f794a14ea3206364ebbc7a934216cfd0bcbb0bb2",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/conf/plugins/darkmoon-privacy.ts.original"
+    }
+  ]
+}

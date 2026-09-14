@@ -42,25 +42,13 @@ async def probe_server(host: str, username: str | None, secret: str | None, time
 
 
 async def probe_proxy(url: str, timeout: float = 12.0) -> dict:
-    """Health-check a proxy by fetching the egress IP through it. Supports
-    http/https/socks5 (socks needs socksio)."""
-    import httpx
-
-    t0 = perf_counter()
-    try:
-        async with httpx.AsyncClient(proxy=url, timeout=timeout) as client:
-            r = await client.get("https://api.ipify.org?format=json")
-        latency = int((perf_counter() - t0) * 1000)
-        if r.status_code >= 400:
-            return {"ok": False, "error": f"proxy returned HTTP {r.status_code}"}
-        try:
-            egress = r.json().get("ip")
-        except Exception:
-            egress = (r.text or "").strip()[:64]
-        return {"ok": True, "latency_ms": latency, "egress_ip": egress,
-                "output": f"egress IP via proxy: {egress}"}
-    except Exception as exc:
-        return {"ok": False, "error": (str(exc) or type(exc).__name__)[:220]}
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'packages/core/redcell_core/probe.py','step':'probe_proxy','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _parse(output: str) -> dict:

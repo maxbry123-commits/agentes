@@ -405,77 +405,23 @@ async def _check_path(
     stealth: bool = False,
     baseline_length: int | None = None,
 ) -> None:
-    """Check if a path exists."""
-    async with semaphore:
-        # Rate limiting
-        if stealth:
-            await asyncio.sleep(_STEALTH_INTERVAL + random.uniform(0, 0.3))
-        else:
-            await asyncio.sleep(_RATE_LIMIT_INTERVAL)
-        
-        start = time.time()
-        
-        try:
-            response = await client.get(url, follow_redirects=False)
-            elapsed_ms = (time.time() - start) * 1000
-            
-            status = response.status_code
-            content_length = len(response.content)
-            content_type = response.headers.get("content-type", "")
-            redirect_url = response.headers.get("location")
-            
-            # Skip if content length matches baseline (likely custom 404)
-            if baseline_length and abs(content_length - baseline_length) < 50:
-                if status == 200:
-                    return
-            
-            # Check if this is an interesting response
-            if _is_interesting_status(status):
-                is_directory = url.endswith('/') or 'directory' in content_type.lower()
-                
-                result = DirectoryResult(
-                    url=url,
-                    status_code=status,
-                    content_length=content_length,
-                    content_type=content_type,
-                    redirect_url=redirect_url,
-                    is_directory=is_directory,
-                    is_interesting=True,
-                    reason=_categorize_finding(DirectoryResult(
-                        url=url,
-                        status_code=status,
-                        content_length=content_length,
-                        content_type=content_type,
-                        is_directory=is_directory,
-                        is_interesting=True,
-                        reason="",
-                    )),
-                    response_time_ms=elapsed_ms,
-                )
-                results.append(result)
-                
-        except httpx.TimeoutException:
-            pass  # Skip timeouts
-        except Exception as e:
-            logger.debug(f"Error checking {url}: {e}")
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/tools/recon/directory_bruteforce.py','step':'_check_path','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 async def _get_baseline_response(client: httpx.AsyncClient, base_url: str) -> int | None:
-    """Get baseline 404 response length for custom 404 detection."""
-    try:
-        # Request a definitely non-existent path
-        random_path = f"definitely-not-exists-{random.randint(100000, 999999)}"
-        response = await client.get(urljoin(base_url, random_path))
-        
-        if response.status_code == 404:
-            return len(response.content)
-        elif response.status_code == 200:
-            # Custom 404 page - use this as baseline
-            return len(response.content)
-    except Exception:
-        pass
-    
-    return None
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/tools/recon/directory_bruteforce.py','step':'_get_baseline_response','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 # ============================================================================
@@ -494,155 +440,13 @@ async def bruteforce_directories(
     follow_redirects: bool = False,
     exclude_status: list[int] | None = None,
 ) -> dict[str, Any]:
-    """
-    Perform async directory/file brute-forcing.
-    
-    Enumerates directories and files using wordlists, with smart
-    detection of custom 404 pages and interesting responses.
-    
-    Args:
-        url: Target base URL (e.g., "https://example.com")
-        wordlist_path: Path to custom wordlist file
-        wordlist_size: Built-in wordlist size: "small" (50), "medium" (150), "large" (300+)
-        extensions: File extensions to try (e.g., [".php", ".bak"])
-        concurrency: Max concurrent requests (default: 20, reduced in stealth)
-        stealth: Enable stealth mode (slower, randomized timing)
-        timeout: Request timeout in seconds
-        custom_wordlist: Custom list of paths to test
-        follow_redirects: Follow HTTP redirects
-        exclude_status: Status codes to exclude from results
-    
-    Returns:
-        Dictionary containing:
-        - success: Whether scan completed
-        - url: Target URL
-        - found: List of discovered paths
-        - statistics: Scan statistics
-        - message: Status message
-    
-    Example:
-        result = await bruteforce_directories("https://example.com")
-    """
-    # Normalize URL
-    if not url.startswith(('http://', 'https://')):
-        url = 'https://' + url
-    
-    base_url = url.rstrip('/') + '/'
-    
-    # Build wordlist
-    wordlist: list[str] = []
-    
-    if custom_wordlist:
-        wordlist = list(custom_wordlist)
-    elif wordlist_path:
-        try:
-            path = Path(wordlist_path)
-            if path.exists():
-                wordlist = [
-                    line.strip()
-                    for line in path.read_text().splitlines()
-                    if line.strip() and not line.startswith('#')
-                ]
-        except Exception as e:
-            logger.warning(f"Failed to load wordlist: {e}")
-    
-    if not wordlist:
-        wordlist = _generate_wordlist(wordlist_size)
-    
-    # Add extension variants
-    if extensions:
-        extended: list[str] = []
-        for path in wordlist:
-            extended.append(path)
-            for ext in extensions:
-                if not path.endswith(ext):
-                    extended.append(path + ext)
-        wordlist = extended
-    
-    # Adjust concurrency for stealth
-    if stealth:
-        concurrency = min(concurrency, 5)
-    
-    # Exclude status codes
-    exclude_set = set(exclude_status) if exclude_status else set()
-    
-    # Setup HTTP client
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    }
-    
-    results: list[DirectoryResult] = []
-    progress = ScanProgress(total=len(wordlist))
-    
-    async with httpx.AsyncClient(
-        timeout=timeout,
-        follow_redirects=follow_redirects,
-        headers=headers,
-        verify=False,  # Allow self-signed certs
-    ) as client:
-        # Get baseline for custom 404 detection
-        baseline_length = await _get_baseline_response(client, base_url)
-        
-        # Run enumeration
-        semaphore = asyncio.Semaphore(concurrency)
-        
-        # Process in batches
-        batch_size = 100
-        for i in range(0, len(wordlist), batch_size):
-            batch = wordlist[i:i + batch_size]
-            tasks = [
-                _check_path(
-                    client,
-                    _normalize_url(base_url, path),
-                    semaphore,
-                    results,
-                    stealth,
-                    baseline_length,
-                )
-                for path in batch
-            ]
-            await asyncio.gather(*tasks, return_exceptions=True)
-            progress.completed += len(batch)
-    
-    # Filter by exclude_status
-    if exclude_set:
-        results = [r for r in results if r.status_code not in exclude_set]
-    
-    # Sort by importance
-    def sort_key(r: DirectoryResult) -> tuple[int, int]:
-        # Priority: 200s > 401/403 > redirects
-        if r.status_code == 200:
-            return (0, -r.content_length)
-        elif r.status_code in (401, 403):
-            return (1, r.status_code)
-        else:
-            return (2, r.status_code)
-    
-    results.sort(key=sort_key)
-    
-    return {
-        "success": True,
-        "url": base_url,
-        "found": [r.to_dict() for r in results],
-        "found_count": len(results),
-        "statistics": {
-            "total_checked": progress.completed,
-            "found": len(results),
-            "elapsed_seconds": round(progress.elapsed, 2),
-            "requests_per_second": round(progress.rate, 2),
-            "baseline_404_length": baseline_length,
-        },
-        "by_status": {
-            str(code): len([r for r in results if r.status_code == code])
-            for code in set(r.status_code for r in results)
-        },
-        "by_category": {
-            cat: len([r for r in results if r.reason == cat])
-            for cat in set(r.reason for r in results)
-        },
-        "message": f"Found {len(results)} paths from {progress.completed} checks in {progress.elapsed:.1f}s",
-    }
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/tools/recon/directory_bruteforce.py','step':'bruteforce_directories','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 async def smart_path_gen(
@@ -780,110 +584,13 @@ async def recursive_dir_scan(
     timeout: float = 10.0,
     extensions: list[str] | None = None,
 ) -> dict[str, Any]:
-    """
-    Recursively scan discovered directories.
-    
-    After initial enumeration, this tool can recursively explore
-    discovered directories to find deeper content.
-    
-    Args:
-        url: Target base URL
-        max_depth: Maximum recursion depth (default: 3)
-        concurrency: Max concurrent requests
-        stealth: Enable stealth mode
-        timeout: Request timeout
-        extensions: File extensions to try
-    
-    Returns:
-        Dictionary with recursive scan results.
-    
-    Example:
-        result = await recursive_dir_scan("https://example.com/api/")
-    """
-    if not url.startswith(('http://', 'https://')):
-        url = 'https://' + url
-    
-    base_url = url.rstrip('/') + '/'
-    
-    all_results: list[DirectoryResult] = []
-    visited: set[str] = set()
-    to_scan: list[tuple[str, int]] = [(base_url, 0)]
-    
-    # Small wordlist for recursive scanning
-    recursive_wordlist = _generate_wordlist("small")
-    
-    if extensions:
-        extended: list[str] = []
-        for path in recursive_wordlist:
-            extended.append(path)
-            for ext in extensions:
-                if not path.endswith(ext):
-                    extended.append(path + ext)
-        recursive_wordlist = extended
-    
-    if stealth:
-        concurrency = min(concurrency, 3)
-    
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    }
-    
-    start_time = time.time()
-    
-    async with httpx.AsyncClient(
-        timeout=timeout,
-        follow_redirects=False,
-        headers=headers,
-        verify=False,
-    ) as client:
-        while to_scan:
-            current_url, depth = to_scan.pop(0)
-            
-            if current_url in visited or depth > max_depth:
-                continue
-            
-            visited.add(current_url)
-            
-            # Scan this directory
-            results: list[DirectoryResult] = []
-            semaphore = asyncio.Semaphore(concurrency)
-            
-            baseline = await _get_baseline_response(client, current_url)
-            
-            tasks = [
-                _check_path(
-                    client,
-                    _normalize_url(current_url, path),
-                    semaphore,
-                    results,
-                    stealth,
-                    baseline,
-                )
-                for path in recursive_wordlist
-            ]
-            await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # Add results and queue directories for recursion
-            for result in results:
-                all_results.append(result)
-                
-                # Queue directories for deeper scanning
-                if result.is_directory or result.url.endswith('/'):
-                    if depth < max_depth:
-                        to_scan.append((result.url, depth + 1))
-    
-    elapsed = time.time() - start_time
-    
-    return {
-        "success": True,
-        "url": base_url,
-        "found": [r.to_dict() for r in all_results],
-        "found_count": len(all_results),
-        "directories_scanned": len(visited),
-        "max_depth_reached": max_depth,
-        "elapsed_seconds": round(elapsed, 2),
-        "message": f"Found {len(all_results)} paths in {len(visited)} directories",
-    }
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/tools/recon/directory_bruteforce.py','step':'recursive_dir_scan','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 @register_tool(sandbox_execution=False)

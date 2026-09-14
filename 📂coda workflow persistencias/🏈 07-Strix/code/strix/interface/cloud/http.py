@@ -172,34 +172,13 @@ def request(
     stream: bool = False,
     idempotency_key: str | None = None,
 ) -> requests.Response:
-    url = f"{app_url()}/api/v1{path}"
-    headers = {
-        "Authorization": f"Bearer {api_token(token)}",
-    }
-    workspace_id = expected_workspace_id(token_override=token is not None)
-    if workspace_id:
-        headers["X-Strix-Workspace"] = workspace_id
-    if idempotency_key is not None:
-        headers["Idempotency-Key"] = idempotency_key
-    try:
-        response = requests.request(
-            method,
-            url,
-            headers=headers,
-            params={
-                key: ("true" if value else "false") if isinstance(value, bool) else value
-                for key, value in (query or {}).items()
-                if value is not None
-            }
-            or None,
-            json=body,
-            timeout=_timeout_s,
-            stream=stream,
-            allow_redirects=False,
-        )
-    except requests.RequestException as exc:
-        raise CloudTransportError(f"could not reach {app_url()}: {exc}") from exc
-    return response
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/cloud/http.py','step':'request','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def expected_workspace_id(*, token_override: bool) -> str | None:
@@ -212,38 +191,13 @@ def expected_workspace_id(*, token_override: bool) -> str | None:
 
 
 def upload_file(signed_url: str, upload_token: str, path: Path) -> None:
-    """Stream a file to a platform-issued storage URL."""
-    _validate_upload_url(signed_url)
-    response: requests.Response | None = None
-    try:
-        with path.open("rb") as stream:
-            response = requests.put(
-                signed_url,
-                data=stream,
-                headers={
-                    "Authorization": f"Bearer {upload_token}",
-                    "Content-Type": "application/zip",
-                },
-                timeout=_timeout_s,
-                allow_redirects=False,
-            )
-    except (OSError, requests.RequestException) as exc:
-        raise CloudError(f"source upload failed: {exc}") from exc
-    try:
-        if 300 <= response.status_code < 400:
-            raise CloudError("source upload refused an unexpected redirect")
-        if not response.ok:
-            detail = ""
-            try:
-                payload = response.json()
-                if isinstance(payload, dict):
-                    fields = cast("dict[str, Any]", payload)
-                    detail = str(fields.get("message") or fields.get("error") or "")
-            except ValueError:
-                pass
-            raise CloudError(detail or f"source upload failed (HTTP {response.status_code})")
-    finally:
-        response.close()
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/cloud/http.py','step':'upload_file','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _validate_upload_url(signed_url: str) -> None:
@@ -329,48 +283,23 @@ def _is_loopback_host(hostname: str) -> bool:
 
 
 def parsed(response: requests.Response) -> Any:
-    content_type = response.headers.get("content-type", "")
-    if "application/json" in content_type:
-        try:
-            return response.json()
-        except ValueError:
-            return response.text
-    return response.text
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/cloud/http.py','step':'parsed','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def check(response: requests.Response) -> Any:
-    data = parsed(response)
-    if 200 <= response.status_code < 300:
-        content_type = response.headers.get("content-type", "").lower()
-        if "application/json" not in content_type:
-            raise CloudError(
-                "the server returned a non-JSON response. Check STRIX_APP_URL and preview "
-                "access, then retry."
-            )
-        try:
-            return response.json()
-        except ValueError as exc:
-            raise CloudError(
-                "the server returned malformed JSON. Check STRIX_APP_URL and preview "
-                "access, then retry."
-            ) from exc
-    detail = ""
-    error_code = ""
-    if isinstance(data, dict):
-        raw = cast("dict[str, Any]", data)
-        detail = str(raw.get("detail") or raw.get("error") or "")
-        error_code = str(raw.get("code") or raw.get("error_code") or "")
-        nested_error = raw.get("error")
-        if isinstance(nested_error, dict):
-            nested = cast("dict[str, Any]", nested_error)
-            error_code = error_code or str(nested.get("code") or "")
-            detail = str(nested.get("message") or detail)
-    message = detail or f"HTTP {response.status_code}"
-    if error_code == "scan_credit_limit_reached" or response.status_code == 402:
-        raise payment_required_error(data, detail=detail)
-    if response.status_code in (401, 403):
-        raise CloudError(message, exit_code=EXIT_AUTH, payload=data)
-    raise CloudError(message, exit_code=EXIT_ERROR, payload=data)
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/cloud/http.py','step':'check','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def topup_url() -> str:

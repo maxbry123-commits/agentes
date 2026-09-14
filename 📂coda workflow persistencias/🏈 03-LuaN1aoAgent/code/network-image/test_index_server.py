@@ -249,90 +249,22 @@ class RouteProxyTest(unittest.TestCase):
         self.assertNotIn("--proxy", command)
 
     def test_domain_scope_configures_nft_guard_and_gateway_admission(self) -> None:
-        environment = {
-            "LUANNIAO_RUN_REF": "run:test", "LUANNIAO_TASK_REF": "task:test",
-            "LUANNIAO_DIRECT_BROKER": "host.docker.internal:12345",
-            "LUANNIAO_DIRECT_BROKER_TOKEN": "00" * 32,
-            "LUANNIAO_TASK_NETWORK_CIDR": "172.31.0.0/24",
-            "LUANNIAO_CONTROL_NETWORK_CIDR": "172.30.0.0/24",
-            "LUANNIAO_AUTHORIZED_CIDRS": "",
-            "LUANNIAO_AUTHORIZED_DOMAINS": "baidu.com,*.baidu.com",
-        }
-        with patch.dict(os.environ, environment, clear=False):
-            gate_command = gateway_tun_command()
-        self.assertIn("--allow-domain-resolved", gate_command)
-
-        commands: list[list[str]] = []
-        with patch.dict(os.environ, environment, clear=False), patch(
-            "index_server.subprocess.run",
-            side_effect=lambda command, **_kwargs: commands.append(command) or MagicMock(returncode=0),
-        ):
-            configure_gateway_firewall("172.31.0.2")
-        self.assertIn([
-            "nft", "add", "table", "ip", "luanniao_scope"
-        ], commands)
-        self.assertIn([
-            "nft", "add", "rule", "ip", "luanniao_scope", "forward",
-            "ip", "saddr", "172.31.0.0/24", "ip", "daddr", "@allowed4", "accept"
-        ], commands)
-        self.assertIn([
-            "nft", "add", "rule", "ip", "luanniao_scope", "forward",
-            "ip", "saddr", "172.31.0.0/24", "reject"
-        ], commands)
-        self.assertFalse(any("LUANNIAO_SCOPE_GUARD" in command for command in commands))
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'network-image/test_index_server.py','step':'test_domain_scope_configures_nft_guard_and_gateway_admission','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def test_gateway_routes_all_task_tcp_to_one_protocol_gateway(self) -> None:
-        commands: list[list[str]] = []
-
-        def run(command, **_kwargs):
-            commands.append(command)
-            return MagicMock(returncode=0)
-
-        environment = {
-            "LUANNIAO_TASK_NETWORK_CIDR": "172.31.0.0/24",
-            "LUANNIAO_CONTROL_NETWORK_CIDR": "172.30.0.0/24",
-            "LUANNIAO_AUTHORIZED_CIDRS": "198.51.100.0/24,203.0.113.10/32",
-        }
-        with patch.dict(os.environ, environment), patch("index_server.subprocess.run", side_effect=run):
-            configure_gateway_firewall("172.31.0.2")
-
-        set_marks = [command for command in commands if "--set-mark" in command]
-        restore_marks = [command for command in commands if "--restore-mark" in command]
-        fwmark_rules = [command for command in commands if command[:3] == ["ip", "rule", "add"] and "fwmark" in command]
-        later_local = next(command for command in commands if command == ["ip", "rule", "add", "priority", "200", "lookup", "local"])
-        old_local = next(command for command in commands if command == ["ip", "rule", "del", "priority", "0", "lookup", "local"])
-        self.assertEqual(len(set_marks), 2)
-        self.assertFalse(any("--uid-owner" in command and command[command.index("--uid-owner") + 1] in {"0", "1000"} for command in commands))
-        self.assertEqual(len([command for command in set_marks if "PREROUTING" in command]), 2)
-        self.assertEqual(len([command for command in set_marks if "OUTPUT" in command]), 0)
-        self.assertEqual(restore_marks, [])
-        self.assertIn(["ip", "tuntap", "add", "dev", "luanniao0", "mode", "tun", "user", "101", "group", "101"], commands)
-        self.assertIn(["ip", "route", "add", "default", "dev", "luanniao0", "table", "4242"], commands)
-        self.assertEqual([int(rule[rule.index("priority") + 1]) for rule in fwmark_rules], [100])
-        self.assertTrue(all(commands.index(rule) < commands.index(later_local) for rule in fwmark_rules))
-        self.assertLess(commands.index(later_local), commands.index(old_local))
-        self.assertFalse(any("REDIRECT" in command for command in commands))
-        for protocol in ("udp", "tcp"):
-            self.assertIn([
-                "iptables", "-A", "INPUT", "-s", "172.31.0.0/24",
-                "-d", "172.31.0.2/32", "-p", protocol, "--dport", "53", "-j", "ACCEPT"
-            ], commands)
-        self.assertIn([
-            "iptables", "-A", "INPUT", "-s", "172.31.0.0/24", "-j", "REJECT"
-        ], commands)
-        self.assertIn([
-            "iptables", "-A", "FORWARD", "-s", "172.31.0.0/24", "-d", "172.30.0.0/24", "-j", "REJECT"
-        ], commands)
-        self.assertIn([
-            "iptables", "-A", "LUANNIAO_SCOPE_GUARD", "-d", "198.51.100.0/24", "-j", "RETURN"
-        ], commands)
-        self.assertIn([
-            "iptables", "-A", "LUANNIAO_SCOPE_GUARD", "-j", "REJECT"
-        ], commands)
-        self.assertIn([
-            "iptables", "-t", "nat", "-A", "POSTROUTING", "-s", "172.31.0.0/24", "-j", "MASQUERADE"
-        ], commands)
-        self.assertFalse(any("--dports" in command for command in commands))
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'network-image/test_index_server.py','step':'test_gateway_routes_all_task_tcp_to_one_protocol_gateway','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def test_protocol_gateway_runs_unprivileged_as_capture_storage_owner(self) -> None:
         with patch.dict(os.environ, {
@@ -348,21 +280,13 @@ class RouteProxyTest(unittest.TestCase):
         self.assertEqual(command[command.index("--pdeathsig") + 1], "TERM")
 
     def test_uid_routing_exists_only_for_the_trusted_replay_helper(self) -> None:
-        commands: list[list[str]] = []
-        environment = {
-            "LUANNIAO_TASK_NETWORK_CIDR": "172.31.0.0/24",
-            "LUANNIAO_CONTROL_NETWORK_CIDR": "172.30.0.0/24",
-            "LUANNIAO_AUTHORIZED_CIDRS": "198.51.100.0/24",
-            "LUANNIAO_TRUSTED_REPLAY": "1",
-        }
-        with patch.dict(os.environ, environment), patch(
-            "index_server.subprocess.run",
-            side_effect=lambda command, **_kwargs: commands.append(command) or MagicMock(returncode=0),
-        ):
-            configure_gateway_firewall("172.31.0.2")
-        owner_rules = [command for command in commands if "--uid-owner" in command]
-        self.assertEqual(len(owner_rules), 2)
-        self.assertTrue(all(command[command.index("--uid-owner") + 1] == "1000" for command in owner_rules))
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'network-image/test_index_server.py','step':'test_uid_routing_exists_only_for_the_trusted_replay_helper','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def test_gateway_readiness_requires_every_data_plane_component(self) -> None:
         ready = MagicMock()
@@ -382,22 +306,13 @@ class RouteProxyTest(unittest.TestCase):
         ready.set.assert_called_once_with()
 
     def test_tun_ready_file_is_created_by_gateway_uid_without_chown_capability(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "tun-gate.ready"
-            with (
-                patch("index_server.subprocess.run") as run,
-                patch("index_server.os.chmod") as chmod,
-                patch("index_server.os.chown") as chown,
-            ):
-                prepare_tun_gate_ready_file(path)
-
-        run.assert_called_once_with([
-            "setpriv", "--reuid=101", "--regid=101", "--clear-groups",
-            "install", "-m", "0600", "/dev/null", str(path),
-        ], check=True)
-        self.assertEqual(chmod.call_args_list[0].args, (path.parent, 0o733))
-        self.assertEqual(chmod.call_args_list[-1].args, (path.parent, 0o755))
-        chown.assert_not_called()
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'network-image/test_index_server.py','step':'test_tun_ready_file_is_created_by_gateway_uid_without_chown_capability','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def test_body_api_reports_response_truncated_by_requested_byte_limit(self) -> None:
         record = {

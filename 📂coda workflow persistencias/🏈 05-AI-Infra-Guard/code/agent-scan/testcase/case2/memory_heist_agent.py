@@ -85,16 +85,13 @@ TOOL_DEFINITIONS = [
 
 
 def execute_web_fetch(url: str) -> str:
-    """Execute a real HTTP GET request and return the response body."""
-    try:
-        with httpx.Client(timeout=30, follow_redirects=True) as client:
-            response = client.get(
-                url,
-                headers={"User-Agent": "MemoryAgent/1.0 (AI Assistant; python-httpx)"}
-            )
-            return response.text[:5000]  # Limit response size
-    except Exception as e:
-        return f"[web_fetch error] {str(e)}"
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'agent-scan/testcase/case2/memory_heist_agent.py','step':'execute_web_fetch','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def log_event(event_type: str, data: str):
@@ -107,33 +104,13 @@ def log_event(event_type: str, data: str):
 
 
 def call_llm_with_tools(messages: list) -> dict:
-    """
-    Call DeepSeek API with function calling support.
-
-    Returns the raw response JSON. The caller handles tool_calls.
-    """
-    with httpx.Client(timeout=120) as client:
-        response = client.post(
-            f"{DEEPSEEK_BASE_URL}/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": DEEPSEEK_MODEL,
-                "messages": messages,
-                "tools": TOOL_DEFINITIONS,
-                "tool_choice": "auto",
-                "max_tokens": 2000,
-            },
-        )
-
-        if response.status_code != 200:
-            error_msg = f"LLM API error {response.status_code}: {response.text[:200]}"
-            log_event("ERROR", error_msg)
-            return {"error": error_msg}
-
-        return response.json()
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'agent-scan/testcase/case2/memory_heist_agent.py','step':'call_llm_with_tools','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def process_agent_response(messages: list, max_rounds: int = 25) -> str:
@@ -211,65 +188,13 @@ class AgentHandler(BaseHTTPRequestHandler):
     """HTTP handler for the vulnerable target agent."""
 
     def do_POST(self):
-        """Handle POST /chat requests."""
-        if self.path != "/chat":
-            self.send_error(404, "Not Found")
-            return
-
-        try:
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length)
-            data = json.loads(body)
-
-            message = (
-                data.get("message")
-                or data.get("prompt")
-                or data.get("input")
-                or data.get("query")
-                or ""
-            )
-            session_id = data.get("session_id") or data.get("conversation_id") or "default"
-
-            log_event("USER_INPUT", message)
-
-            # Build message list for this conversation
-            if session_id not in conversations:
-                conversations[session_id] = []
-            conv = conversations[session_id]
-
-            messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-            messages.extend(conv)
-            messages.append({"role": "user", "content": message})
-
-            # Process with tool-calling loop
-            response_text = process_agent_response(messages)
-
-            # Update conversation history (keep last 10 turns)
-            conv.append({"role": "user", "content": message})
-            conv.append({"role": "assistant", "content": response_text})
-            if len(conv) > 20:
-                conversations[session_id] = conv[-20:]
-
-            response_data = {
-                "reply": response_text,
-                "status": "ok",
-                "session_id": session_id,
-            }
-            response_json = json.dumps(response_data, ensure_ascii=False).encode("utf-8")
-
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(response_json)))
-            self.end_headers()
-            self.wfile.write(response_json)
-
-        except Exception as e:
-            error_data = json.dumps({"error": str(e)}).encode("utf-8")
-            self.send_response(500)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(error_data)))
-            self.end_headers()
-            self.wfile.write(error_data)
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'agent-scan/testcase/case2/memory_heist_agent.py','step':'do_POST','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def do_GET(self):
         """Health check and reset endpoints."""

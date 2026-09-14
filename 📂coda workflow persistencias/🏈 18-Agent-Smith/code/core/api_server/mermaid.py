@@ -74,40 +74,10 @@ def sanitize_mermaid(src: str) -> str:
 
 
 def _render_mermaid_svgs(content: str) -> dict[str, str]:
-    """Extract mermaid blocks from markdown and render each to SVG via mmdc.
-    Results are cached by content hash to avoid blocking on every poll."""
-    import hashlib
-    import re
-    import subprocess
-    import tempfile
-
-    content_hash = hashlib.sha256(content.encode()).hexdigest()
-    if content_hash in _api._svg_cache:
-        return _api._svg_cache[content_hash]
-
-    blocks = re.findall(r'```mermaid\n(.*?)```', content, re.DOTALL)
-    svgs: dict[str, str] = {}
-    config_path = _api._REPO_ROOT / 'core' / 'mermaid-config.json'
-
-    for i, block in enumerate(blocks):
-        try:
-            with tempfile.NamedTemporaryFile(suffix='.mmd', mode='w', delete=False) as f:
-                f.write(sanitize_mermaid(_remap_mermaid_dark(block)))
-                inp = f.name
-            out = inp.replace('.mmd', '.svg')
-            subprocess.run(
-                ['npx', '@mermaid-js/mermaid-cli', '-i', inp, '-o', out,
-                 '-c', str(config_path),
-                 '--backgroundColor', 'transparent'],
-                capture_output=True, text=True, timeout=60,
-                cwd=str(_api._REPO_ROOT),
-            )
-            if os.path.exists(out):
-                svgs[str(i)] = Path(out).read_text()
-                os.unlink(out)
-            os.unlink(inp)
-        except Exception:
-            pass
-
-    _api._svg_cache[content_hash] = svgs
-    return svgs
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'core/api_server/mermaid.py','step':'_render_mermaid_svgs','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye

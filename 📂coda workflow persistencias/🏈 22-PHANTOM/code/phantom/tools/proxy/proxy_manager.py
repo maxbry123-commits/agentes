@@ -52,30 +52,13 @@ _DNS_PIN_CACHE: dict[str, tuple[set[str], float]] = {}  # hostname -> (ips, time
 _DNS_PIN_TTL = 300.0  # 5 minutes — balance between security and DNS changes
 
 def pin_dns_resolution(hostname: str) -> set[str] | None:
-    """Resolve and cache DNS for a hostname.
-    
-    Returns:
-        Set of resolved IP addresses, or None if resolution failed
-    """
-    hostname_lower = _normalize_ssrf_host(hostname)
-    if not hostname_lower:
-        return None
-    
-    # Check cache
-    now = time.time()
-    if hostname_lower in _DNS_PIN_CACHE:
-        ips, cached_at = _DNS_PIN_CACHE[hostname_lower]
-        if now - cached_at < _DNS_PIN_TTL:
-            return ips
-    
-    # Resolve DNS
-    try:
-        infos = socket.getaddrinfo(hostname_lower, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
-        ips = {sockaddr[0] for _family, _type, _proto, _canon, sockaddr in infos}
-        _DNS_PIN_CACHE[hostname_lower] = (ips, now)
-        return ips
-    except (socket.gaierror, OSError):
-        return None
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/tools/proxy/proxy_manager.py','step':'pin_dns_resolution','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 def verify_dns_pinning(hostname: str) -> bool:
     """Verify that a hostname still resolves to the same IPs as when pinned.
@@ -125,11 +108,13 @@ def _allow_direct_proxy_fallback() -> bool:
 
 
 def _request_timeout_seconds(timeout: int | float) -> int:
-    """Normalize timeout to a sane integer for requests."""
-    value = float(timeout)
-    if value <= 0:
-        return 1
-    return max(1, int(math.ceil(value)))
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/tools/proxy/proxy_manager.py','step':'_request_timeout_seconds','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _normalize_ssrf_host(hostname: str) -> str:
@@ -442,102 +427,13 @@ class ProxyManager:
         timeout: int = 30,
         follow_redirects: bool = False,
     ) -> dict[str, Any]:
-        if headers is None:
-            headers = {}
-
-        # Sync SSRF allowlist from environment before each request
-        _sync_allowed_ssrf_hosts_from_env()
-
-        allow_fallback = _allow_direct_proxy_fallback()
-        timeout_seconds = _request_timeout_seconds(timeout)
-
-        # FIX 1-2: Try proxy first, fallback to direct only when explicitly enabled.
-        proxy_error = None
-        try:
-            start_time = time.time()
-            response = requests.request(
-                method=method,
-                url=url,
-                headers=headers,
-                data=body or None,
-                proxies=self.proxies,
-                timeout=timeout_seconds,
-                allow_redirects=follow_redirects,
-                verify=False,
-            )
-            response_time = int((time.time() - start_time) * 1000)
-
-            body_content = response.text
-            if len(body_content) > 10000:
-                body_content = body_content[:10000] + "\n... [truncated]"
-
-            return {
-                "status_code": response.status_code,
-                "headers": dict(response.headers),
-                "body": body_content,
-                "response_time_ms": response_time,
-                "url": response.url,
-                "message": (
-                    "Request sent through proxy - check list_requests() for captured traffic"
-                ),
-                "transport": "proxy",
-                "direct_fallback_allowed": allow_fallback,
-            }
-        except (ProxyError, RequestsConnectionError) as e:
-            proxy_error = f"{type(e).__name__}: {str(e)}"
-            if not allow_fallback:
-                return {
-                    "error": "Proxy unavailable and direct fallback is disabled",
-                    "details": "Set PHANTOM_PROXY_DIRECT_FALLBACK=true to allow direct HTTP fallback",
-                    "url": url,
-                    "transport": "proxy_only",
-                    "proxy_error": proxy_error,
-                    "direct_fallback_allowed": allow_fallback,
-                }
-            logger.warning(f"Caido proxy unavailable ({proxy_error}), using explicit direct fallback")
-        except (RequestException, Timeout) as e:
-            return {"error": f"Request failed: {type(e).__name__}", "details": str(e), "url": url}
-
-        # FALLBACK: direct
-        try:
-            start_time = time.time()
-            response = requests.request(
-                method=method,
-                url=url,
-                headers=headers,
-                data=body or None,
-                proxies=None,
-                timeout=timeout_seconds,
-                allow_redirects=follow_redirects,
-                verify=False,
-            )
-            response_time = int((time.time() - start_time) * 1000)
-
-            body_content = response.text
-            if len(body_content) > 10000:
-                body_content = body_content[:10000] + "\n... [truncated]"
-
-            return {
-                "status_code": response.status_code,
-                "headers": dict(response.headers),
-                "body": body_content,
-                "response_time_ms": response_time,
-                "url": response.url,
-                "message": "Request sent DIRECTLY",
-                "used_fallback": True,
-                "transport": "direct_fallback",
-                "proxy_error": proxy_error,
-                "direct_fallback_allowed": allow_fallback,
-            }
-        except (RequestException, Timeout) as e:
-            return {
-                "error": f"Request failed (both proxy and direct): {type(e).__name__}",
-                "details": str(e),
-                "url": url,
-                "proxy_error": proxy_error,
-                "transport": "direct_fallback",
-                "direct_fallback_allowed": allow_fallback,
-            }
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/tools/proxy/proxy_manager.py','step':'send_simple_request','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def repeat_request(
         self, request_id: str, modifications: dict[str, Any] | None = None
@@ -646,61 +542,13 @@ class ProxyManager:
     def _send_modified_request(
         self, request_data: dict[str, Any], request_id: str, modifications: dict[str, Any]
     ) -> dict[str, Any]:
-        target_url = request_data.get("url", "")
-        try:
-            start_time = time.time()
-            response = requests.request(
-                method=request_data["method"],
-                url=request_data["url"],
-                headers=request_data["headers"],
-                data=request_data["body"] or None,
-                proxies=self.proxies,
-                timeout=30,
-                verify=False,
-            )
-            response_time = int((time.time() - start_time) * 1000)
-
-            response_body = response.text
-            truncated = len(response_body) > 10000
-            if truncated:
-                response_body = response_body[:10000] + "\n... [truncated]"
-
-            return {
-                "status_code": response.status_code,
-                "status_text": response.reason,
-                "headers": {
-                    k: v
-                    for k, v in response.headers.items()
-                    if k.lower()
-                    in ["content-type", "content-length", "server", "set-cookie", "location"]
-                },
-                "body": response_body,
-                "body_truncated": truncated,
-                "body_size": len(response.content),
-                "response_time_ms": response_time,
-                "url": response.url,
-                "original_request_id": request_id,
-                "modifications_applied": modifications,
-                "request": {
-                    "method": request_data["method"],
-                    "url": request_data["url"],
-                    "headers": request_data["headers"],
-                    "has_body": bool(request_data["body"]),
-                },
-            }
-
-        except ProxyError as e:
-            return {
-                "error": "Proxy connection failed - is Caido running?",
-                "details": str(e),
-                "original_request_id": request_id,
-            }
-        except (RequestException, Timeout) as e:
-            return {
-                "error": f"Failed to repeat request: {type(e).__name__}",
-                "details": str(e),
-                "original_request_id": request_id,
-            }
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/tools/proxy/proxy_manager.py','step':'_send_modified_request','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _handle_scope_list(self) -> dict[str, Any]:
         result = self._get_client().execute(

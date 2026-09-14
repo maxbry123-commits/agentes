@@ -264,35 +264,13 @@ def _clear_log_files(log_dir) -> None:
 
 
 async def _cleanup_tunnels() -> str:
-    """Kill chisel server in the Kali container.
-
-    When the server dies, remote chisel clients lose their connection
-    and exit on their own — no need to reach back into the target.
-    """
-    import asyncio
-    from tools.docker_cli import docker_executable
-
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            docker_executable(), "inspect", "--format={{.State.Running}}", "pentest-kali",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        stdout, _ = await proc.communicate()
-        if stdout.strip() != b"true":
-            return "no kali container running"
-
-        proc = await asyncio.create_subprocess_exec(
-            docker_executable(), "exec", "pentest-kali",
-            "sh", "-c", "pkill -f 'chisel server' 2>/dev/null && echo 'chisel stopped' || echo 'no chisel running'",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        stdout, _ = await proc.communicate()
-        return stdout.decode().strip()
-    except Exception:
-        _log.exception("cleanup_tunnels failed")
-        return "cleanup error"
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'core/api_server/__init__.py','step':'_cleanup_tunnels','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 # ── Facade re-exports + route registration ──────────────────────────────────

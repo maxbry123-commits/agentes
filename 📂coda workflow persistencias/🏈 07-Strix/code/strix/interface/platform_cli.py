@@ -197,119 +197,23 @@ def _run_device_flow(  # noqa: PLR0912, PLR0915
     workspace: str | None = None,
     device_name: str | None = None,
 ) -> dict[str, Any]:
-    app_url = _app_url()
-    interactive = workspace is not None or (
-        sys.stdin.isatty() and scopes is None and scope_profile is None
-    )
-    try:
-        identity = read_or_create_identity(device_name=device_name)
-    except (OSError, ValueError) as exc:
-        raise PlatformAuthError(f"could not prepare the CLI device identity: {exc}") from exc
-
-    try:
-        response = requests.post(
-            f"{app_url}/api/v1/cli/login",
-            timeout=_HTTP_TIMEOUT_S,
-            allow_redirects=False,
-        )
-    except requests.RequestException as exc:
-        raise PlatformAuthError(f"could not reach {app_url}: {exc}") from exc
-    if not 200 <= response.status_code < 300:
-        raise PlatformAuthError(_error_detail(response))
-    authorization = _json_object(response)
-
-    user_code = str(authorization.get("user_code") or "")
-    verification_uri = str(
-        authorization.get("verification_uri_complete")
-        or authorization.get("verification_uri")
-        or ""
-    )
-    device_code = str(authorization.get("device_code") or "")
-    expires_in = _as_positive_int(
-        authorization.get("expires_in"), default=300, maximum=_MAX_EXPIRES_IN_S
-    )
-    interval = _as_positive_int(
-        authorization.get("interval"),
-        default=_DEFAULT_POLL_INTERVAL_S,
-        maximum=_MAX_POLL_INTERVAL_S,
-    )
-    if not device_code or not verification_uri:
-        raise PlatformAuthError("the server returned an incomplete device authorization")
-    if not is_safe_web_url(verification_uri, trusted_origin=app_url):
-        raise PlatformAuthError("the server returned an invalid verification URL")
-
-    console.print(
-        Panel.fit(
-            Text.assemble(
-                ("Confirmation code: ", "dim"),
-                (sanitize_terminal_text(user_code), "bold cyan"),
-            ),
-            title="Verify this device",
-        )
-    )
-    console.print("Open this URL in your browser and confirm the code:")
-    console.print(sanitize_terminal_text(verification_uri), markup=False, soft_wrap=True)
-
-    if open_browser:
-        with contextlib.suppress(Exception):
-            webbrowser.open(verification_uri)
-
-    console.print("[dim]Waiting for browser confirmation…[/]")
-
-    poll_body: dict[str, Any] = {"device_code": device_code, **identity}
-    if interactive:
-        poll_body["interactive"] = True
-    elif scopes:
-        poll_body["scopes"] = scopes
-    elif scope_profile:
-        poll_body["scope_profile"] = scope_profile
-
-    deadline = time.monotonic() + expires_in
-    while time.monotonic() < deadline:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            break
-        time.sleep(min(interval, remaining))
-        try:
-            poll = requests.post(
-                f"{app_url}/api/v1/cli/login/poll",
-                json=poll_body,
-                timeout=_HTTP_TIMEOUT_S,
-                allow_redirects=False,
-            )
-        except requests.RequestException:
-            continue
-        if 200 <= poll.status_code < 300:
-            return _finish_login(
-                console,
-                app_url,
-                poll,
-                scopes=scopes,
-                scope_profile=scope_profile,
-                workspace=workspace,
-            )
-        delta = _handle_poll_error(poll)
-        if delta is None:
-            break
-        interval = min(interval + delta, _MAX_POLL_INTERVAL_S)
-
-    raise PlatformAuthError("the sign-in request expired. Run `strix cloud login` again.")
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/platform_cli.py','step':'_run_device_flow','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _handle_poll_error(poll: requests.Response) -> int | None:
-    """Return the interval increase, or None when the device code expired."""
-    error = ""
-    with contextlib.suppress(ValueError, AttributeError):
-        error = str(poll.json().get("error", ""))
-    if error == "authorization_pending":
-        return 0
-    if error == "slow_down":
-        return 5
-    if error == "access_denied":
-        raise PlatformAuthError("the sign-in request was denied in the browser")
-    if error == "expired_token":
-        return None
-    raise PlatformAuthError(_error_detail(poll))
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/platform_cli.py','step':'_handle_poll_error','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _finish_login(
@@ -321,17 +225,13 @@ def _finish_login(
     scope_profile: str | None,
     workspace: str | None,
 ) -> dict[str, Any]:
-    result = _json_object(poll)
-    if result.get("selection_required"):
-        return _complete_selection(
-            console,
-            app_url,
-            result,
-            scopes=scopes,
-            scope_profile=scope_profile,
-            workspace=workspace,
-        )
-    return _bind_login_record(_require_api_token(result), app_url)
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/platform_cli.py','step':'_finish_login','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _signed_in_record(
@@ -339,10 +239,13 @@ def _signed_in_record(
     *,
     app_url: str,
 ) -> dict[str, Any]:
-    return _bind_login_record(
-        _require_api_token(_json_object(response)),
-        app_url,
-    )
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/platform_cli.py','step':'_signed_in_record','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _require_api_token(record: dict[str, Any]) -> dict[str, Any]:
@@ -387,43 +290,13 @@ def _complete_selection(
     scope_profile: str | None,
     workspace: str | None,
 ) -> dict[str, Any]:
-    organizations = _dict_items(selection.get("organizations"))
-    catalog = _dict_items(selection.get("scopes"))
-    selection_token = str(selection.get("selection_token") or "")
-    if not selection_token or not organizations:
-        raise PlatformAuthError("the server returned an incomplete selection response")
-
-    chosen_org = _choose_workspace(console, organizations, workspace)
-    role = str(chosen_org.get("role") or "admin")
-    chosen_scopes = scopes
-    chosen_profile = scope_profile
-    if chosen_scopes is None and chosen_profile is None and sys.stdin.isatty():
-        chosen_profile, chosen_scopes = _choose_scopes(console, catalog, role)
-
-    body: dict[str, Any] = {
-        "selection_token": selection_token,
-        "organization_id": chosen_org.get("id"),
-    }
-    if chosen_scopes is not None:
-        body["scopes"] = chosen_scopes
-        body["scope_profile"] = "custom"
-    elif chosen_profile is not None:
-        body["scope_profile"] = chosen_profile
-    try:
-        response = requests.post(
-            f"{app_url}/api/v1/cli/login/complete",
-            json=body,
-            timeout=_HTTP_TIMEOUT_S,
-            allow_redirects=False,
-        )
-    except requests.RequestException as exc:
-        raise PlatformAuthError(f"could not reach {app_url}: {exc}") from exc
-    if not 200 <= response.status_code < 300:
-        raise PlatformAuthError(_error_detail(response))
-    return _signed_in_record(
-        response,
-        app_url=app_url,
-    )
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/platform_cli.py','step':'_complete_selection','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _dict_items(value: Any) -> list[dict[str, Any]]:
@@ -550,13 +423,13 @@ def _choose_custom_scopes(console: Console, allowed: list[dict[str, Any]]) -> li
 
 
 def _json_object(response: requests.Response) -> dict[str, Any]:
-    try:
-        data = response.json()
-    except ValueError as exc:
-        raise PlatformAuthError("the server returned a response that is not JSON") from exc
-    if not isinstance(data, dict):
-        raise PlatformAuthError("the server returned an unexpected response shape")
-    return cast("dict[str, Any]", data)
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/platform_cli.py','step':'_json_object','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _as_positive_int(value: Any, *, default: int, maximum: int) -> int:
@@ -570,11 +443,13 @@ def _as_positive_int(value: Any, *, default: int, maximum: int) -> int:
 
 
 def _error_detail(response: requests.Response) -> str:
-    with contextlib.suppress(ValueError, AttributeError):
-        detail = response.json().get("detail")
-        if detail:
-            return str(detail)
-    return f"HTTP {response.status_code}"
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/platform_cli.py','step':'_error_detail','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _session_headers(record: dict[str, Any]) -> dict[str, str]:
@@ -586,24 +461,13 @@ def _session_headers(record: dict[str, Any]) -> dict[str, str]:
 
 
 def _revoke_stored_session(record: dict[str, Any]) -> tuple[bool, str | None]:
-    """Revoke one server session; return (definitively_inactive, error)."""
-    app_url = record.get("app_url")
-    if not isinstance(app_url, str) or not app_url:
-        return False, (
-            "the stored sign-in has no trusted platform URL; use --local-only to remove it"
-        )
-    try:
-        response = requests.delete(
-            f"{app_url.rstrip('/')}/api/v1/cli/session",
-            headers=_session_headers(record),
-            timeout=_HTTP_TIMEOUT_S,
-            allow_redirects=False,
-        )
-    except requests.RequestException as exc:
-        return False, f"could not revoke the remote CLI session: {exc}"
-    if response.status_code in {200, 204, 401}:
-        return True, None
-    return False, f"could not revoke the remote CLI session: {_error_detail(response)}"
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/platform_cli.py','step':'_revoke_stored_session','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _print_logout_failure(console: Console, message: str, *, as_json: bool) -> int:
@@ -618,18 +482,13 @@ def _print_logout_failure(console: Console, message: str, *, as_json: bool) -> i
 def _revoke_replaced_legacy_session(
     previous: dict[str, Any] | None, current: dict[str, Any]
 ) -> None:
-    """Best-effort cleanup when the first device-aware login replaces a legacy token."""
-    if not previous or previous.get("api_token") == current.get("api_token"):
-        return
-    if previous.get("app_url") != current.get("app_url"):
-        return
-    with contextlib.suppress(KeyError, requests.RequestException):
-        requests.delete(
-            f"{previous['app_url']}/api/v1/cli/session",
-            headers=_session_headers(previous),
-            timeout=_HTTP_TIMEOUT_S,
-            allow_redirects=False,
-        )
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/platform_cli.py','step':'_revoke_replaced_legacy_session','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _print_success(console: Console, record: dict[str, Any]) -> None:

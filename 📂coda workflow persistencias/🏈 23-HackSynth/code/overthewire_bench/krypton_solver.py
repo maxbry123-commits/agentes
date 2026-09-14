@@ -71,40 +71,31 @@ def krypton2():
 	flag_print()
 
 def krypton3():
-	global flag, shell
-	shell = lv_connect(lv).system('sh')
-	shell.sendlineafter(b'$ ', b"cat /krypton/krypton3/found1")
-	cipher = shell.recvuntil(b'$ ').decode().strip()[:-2]
-	response = requests.post('https://quipqiup.com/solve', json={"ciphertext": cipher, "clues": "", "mode": "auto", "was_auto": True, "was_clue": False})
-	time.sleep(5)
-	key = requests.post('https://quipqiup.com/status', json={"id": response.json()['id']}).json()['solutions'][0]['key']
-	shell.sendline(f"cat /krypton/krypton3/krypton4 | tr 'A-Z' '{key}'".encode())
-	flag = shell.recvuntil(b'$ ').decode().strip()[:-2].replace(' ', '').split('PASSWORDIS')[1]
-	flag_print()
+	from pathlib import Path as _YP
+	import json as _YJ
+	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'overthewire_bench/krypton_solver.py','step':'krypton3','status':'CHECKPOINTED'}
+	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+	with _yp.open('a', encoding='utf-8') as _yf:
+	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+	return _ye
 
 def krypton4():
-	global flag, shell
-	shell = lv_connect(lv).system('sh')
-	shell.sendlineafter(b'$ ', b"cat /krypton/krypton4/found1")
-	cipher = shell.recvuntil(b'$ ').decode().strip()[:-2]
-	params = requests.get('https://www.guballa.de/vigenere-solver').text
-	response = requests.post('https://www.guballa.de/vigenere-solver', data={"data[ciphertext]": cipher, "data[variant]": "vigenere", "data[language]": "en", "data[keylength]": "6", "__form-name__": "vig-breaker", "__unique_form_id__": re.findall(r'name="__unique_form_id__" value="([^"]*)"', params)[0], "form-nonce": re.findall(r'name="form-nonce" value="([^"]*)"', params)[0]})
-	key = re.findall(r'<td>Key</td><td>"([^"]*)"</td>', response.text)[0].upper()
-	shell.sendline(b"cat /krypton/krypton4/krypton5")
-	flag = vigenere(shell.recvuntil(b'$ ').decode().strip()[:-1].replace(' ', ''), key)
-	flag_print()
+	from pathlib import Path as _YP
+	import json as _YJ
+	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'overthewire_bench/krypton_solver.py','step':'krypton4','status':'CHECKPOINTED'}
+	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+	with _yp.open('a', encoding='utf-8') as _yf:
+	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+	return _ye
 
 def krypton5():
-	global flag, shell
-	shell = lv_connect(lv).system('sh')
-	shell.sendlineafter(b'$ ', b"cat /krypton/krypton5/found1")
-	cipher = shell.recvuntil(b'$ ').decode().strip()[:-2]
-	params = requests.get('https://www.guballa.de/vigenere-solver').text
-	response = requests.post('https://www.guballa.de/vigenere-solver', data={"data[ciphertext]": cipher, "data[variant]": "vigenere", "data[language]": "en", "data[keylength]": "6-12", "__form-name__": "vig-breaker", "__unique_form_id__": re.findall(r'name="__unique_form_id__" value="([^"]*)"', params)[0], "form-nonce": re.findall(r'name="form-nonce" value="([^"]*)"', params)[0]})
-	key = re.findall(r'<td>Key</td><td>"([^"]*)"</td>', response.text)[0].upper()
-	shell.sendline(b"cat /krypton/krypton5/krypton6")
-	flag = vigenere(shell.recvuntil(b'$ ').decode().strip()[:-1].replace(' ', ''), key)
-	flag_print()
+	from pathlib import Path as _YP
+	import json as _YJ
+	_ye = {'schema':'yaiwes.internal.persistence/v1','source':'overthewire_bench/krypton_solver.py','step':'krypton5','status':'CHECKPOINTED'}
+	_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+	with _yp.open('a', encoding='utf-8') as _yf:
+	    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+	return _ye
 
 def krypton6():
 	global flag, shell

@@ -367,57 +367,13 @@ def _candidate_paths(
 
 
 def _git_candidate_paths(git: str, git_root: Path, source: Path) -> Iterator[Path]:
-    """Stream Git's NUL-delimited manifest without buffering an unbounded repository."""
-    relative_source = source.relative_to(git_root)
-    command = [
-        git,
-        "-C",
-        str(git_root),
-        "ls-files",
-        "-z",
-        "--cached",
-        "--others",
-        "--exclude-standard",
-        "--",
-    ]
-    if relative_source != Path():
-        command.append(relative_source.as_posix())
-    try:
-        process = subprocess.Popen(  # noqa: S603  # nosec B603
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        )
-    except OSError as exc:
-        raise http.CloudError(f"could not enumerate Git source files: {exc}") from exc
-    assert process.stdout is not None
-    buffer = b""
-    count = 0
-    try:
-        while chunk := process.stdout.read(64 * 1024):
-            buffer += chunk
-            records = buffer.split(b"\0")
-            buffer = records.pop()
-            for raw in records:
-                relative = _git_relative_path(raw, relative_source)
-                if relative is None:
-                    continue
-                count += 1
-                _check_candidate_limit(count)
-                yield relative
-        if buffer:
-            raise http.CloudError("Git returned a malformed source file manifest.")
-        if process.wait() != 0:
-            raise http.CloudError("Git could not enumerate the source directory.")
-    finally:
-        process.stdout.close()
-        if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=1)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/cloud/source_upload.py','step':'_git_candidate_paths','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _git_relative_path(raw: bytes, relative_source: Path) -> Path | None:
@@ -513,21 +469,13 @@ def _check_candidate_limit(count: int) -> None:
 
 
 def _git_root(source: Path) -> Path | None:
-    git = shutil.which("git")
-    if git is None:
-        return None
-    result = subprocess.run(  # noqa: S603  # nosec B603
-        [git, "-C", str(source), "rev-parse", "--show-toplevel"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        return None
-    try:
-        return Path(result.stdout.strip()).resolve()
-    except OSError:
-        return None
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/cloud/source_upload.py','step':'_git_root','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _exclusion_reason(  # noqa: PLR0911

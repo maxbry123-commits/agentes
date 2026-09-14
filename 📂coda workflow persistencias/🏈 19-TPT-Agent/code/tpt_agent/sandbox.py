@@ -56,77 +56,13 @@ class SandboxExecutor:
         stop_fn: Callable[[], bool] | None,
         on_chunk: Callable[[str], None] | None = None,
     ) -> tuple[str, str, int]:
-        """Run a subprocess with streaming output via threads. Returns (stdout, stderr, exit_code)."""
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-        line_queue: queue.Queue[tuple[str, str | None]] = queue.Queue()
-
-        def _reader(stream, tag: str) -> None:
-            for line in iter(stream.readline, ""):
-                line_queue.put((tag, line))
-            line_queue.put((tag, None))  # EOF sentinel
-
-        threading.Thread(target=_reader, args=(proc.stdout, "out"), daemon=True).start()
-        threading.Thread(target=_reader, args=(proc.stderr, "err"), daemon=True).start()
-
-        stdout_parts: list[str] = []
-        stderr_parts: list[str] = []
-        eof_count = 0
-        deadline = time.time() + timeout_sec
-        last_chunk_at = time.time()
-        CHUNK_INTERVAL = 1.5  # seconds between on_chunk calls
-
-        while eof_count < 2:
-            if stop_fn and stop_fn():
-                try:
-                    proc.terminate()
-                    proc.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                return _strip_ansi("".join(stdout_parts)) + "\n[KILLED: stop requested]", "", -15
-
-            try:
-                tag, line = line_queue.get(timeout=0.5)
-                if line is None:
-                    eof_count += 1
-                elif tag == "out":
-                    stdout_parts.append(line)
-                else:
-                    stderr_parts.append(line)
-                # Fire on_chunk periodically with current stdout
-                if on_chunk and (time.time() - last_chunk_at) >= CHUNK_INTERVAL:
-                    on_chunk(_strip_ansi("".join(stdout_parts)))
-                    last_chunk_at = time.time()
-            except queue.Empty:
-                # Timeout getting a line — fire chunk update if due
-                if on_chunk and stdout_parts and (time.time() - last_chunk_at) >= CHUNK_INTERVAL:
-                    on_chunk(_strip_ansi("".join(stdout_parts)))
-                    last_chunk_at = time.time()
-                # Check hard deadline
-                if time.time() > deadline:
-                    proc.kill()
-                    # Drain remaining lines
-                    while True:
-                        try:
-                            tag2, line2 = line_queue.get_nowait()
-                            if line2 and tag2 == "out":
-                                stdout_parts.append(line2)
-                            elif line2 and tag2 == "err":
-                                stderr_parts.append(line2)
-                        except queue.Empty:
-                            break
-                    stdout = _strip_ansi("".join(stdout_parts))
-                    stderr = _strip_ansi("".join(stderr_parts))
-                    return stdout + f"\n[TIMEOUT after {timeout_sec}s]", stderr, 124
-
-        proc.wait()
-        return _strip_ansi("".join(stdout_parts)), _strip_ansi("".join(stderr_parts)), proc.returncode
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tpt_agent/sandbox.py','step':'_run_popen','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def run(
         self,

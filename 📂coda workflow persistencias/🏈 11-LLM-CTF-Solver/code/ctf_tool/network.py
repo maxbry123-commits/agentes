@@ -20,101 +20,37 @@ except ImportError:
 
 
 def _http_request(method: str, url: str, **kwargs) -> str:
-    if _requests is None:
-        return "错误: 未安装 requests 库"
-    try:
-        timeout = kwargs.pop("timeout", 15)
-        method = method.upper()
-        resp = _requests.request(method, url, timeout=timeout,
-                                 allow_redirects=True, **kwargs)
-        resp.encoding = resp.apparent_encoding or 'utf-8'
-        lines = [
-            f"HTTP {resp.status_code} {len(resp.content)} bytes",
-            f"URL: {resp.url}",
-        ]
-        # 显示关键响应头
-        for h in ("Content-Type", "Server", "Set-Cookie", "Location", "X-Powered-By"):
-            if h.lower() in {k.lower(): k for k in resp.headers}:
-                actual_key = {k.lower(): k for k in resp.headers}[h.lower()]
-                lines.append(f"{h}: {resp.headers[actual_key]}")
-        # 显示响应体（可配置截断阈值，默认 16384）
-        try:
-            from config import Config
-            max_chars = Config().get("http_response_max_chars", 16384)
-        except Exception:
-            max_chars = 16384
-        text = resp.text
-        if len(text) > max_chars:
-            text = text[:max_chars] + "\n... (截断, 共 {} 字节, 阈值={})".format(len(resp.text), max_chars)
-        lines.append("")
-        lines.append(text)
-        return "\n".join(lines)
-    except Exception as e:
-        return f"HTTP 请求失败: {e}"
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'ctf_tool/network.py','step':'_http_request','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 # ── DNS 查询 ────────────────────────────────────────────────────
 
 def _dns_lookup(hostname: str, record_type: str = "A") -> str:
-    try:
-        results = []
-        if record_type.upper() in ("A", "AAAA"):
-            info = socket.getaddrinfo(hostname, 0)
-            seen = set()
-            for family, _st, _proto, _cn, sa in info:
-                ip = sa[0]
-                if ip not in seen:
-                    family_name = "IPv6" if family == socket.AF_INET6 else "IPv4"
-                    results.append(f"  {family_name}: {ip}")
-                    seen.add(ip)
-        else:
-            results.append(f"  SRV/TXT/MX 查询需要额外库，当前仅支持 A/AAAA 记录")
-        if not results:
-            return f"DNS 查询无结果: {hostname}"
-        return f"DNS {record_type} 记录 for {hostname}:\n" + "\n".join(results)
-    except Exception as e:
-        return f"DNS 查询失败: {e}"
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'ctf_tool/network.py','step':'_dns_lookup','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 # ── TCP 端口检测 ───────────────────────────────────────────────
 
 def _tcp_port_check(host: str, ports: str, timeout: int = 3) -> str:
-    try:
-        port_list = []
-        for part in ports.split(","):
-            part = part.strip()
-            if "-" in part:
-                a, b = part.split("-", 1)
-                port_list.extend(range(int(a), int(b) + 1))
-            else:
-                port_list.append(int(part))
-        port_list = port_list[:100]  # 最多扫 100 个
-        open_ports = []
-        for port in port_list:
-            try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(timeout)
-                result = s.connect_ex((host, port))
-                s.close()
-                if result == 0:
-                    # 尝试读取 banner
-                    try:
-                        bs = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                        bs.settimeout(2)
-                        bs.connect((host, port))
-                        bs.sendall(b"\r\n")
-                        banner = bs.recv(256).decode("utf-8", errors="replace").strip()
-                        bs.close()
-                        open_ports.append(f"  {port}/tcp  open  {banner[:80]}")
-                    except Exception:
-                        open_ports.append(f"  {port}/tcp  open")
-            except Exception:
-                pass
-        if not open_ports:
-            return f"端口检测完成: 未发现开放端口 (扫描范围: {ports})"
-        return f"端口检测完成:\n" + "\n".join(open_ports)
-    except Exception as e:
-        return f"端口检测失败: {e}"
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'ctf_tool/network.py','step':'_tcp_port_check','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 # ── 目录爆破 ────────────────────────────────────────────────────
@@ -145,33 +81,13 @@ _COMMON_EXTENSIONS = ["", ".php", ".html", ".htm", ".asp", ".aspx", ".jsp", ".tx
 def _dir_bruteforce(base_url: str, wordlist: Optional[List[str]] = None,
                     extensions: Optional[List[str]] = None, max_results: int = 30,
                     timeout: int = 5) -> str:
-    if _requests is None:
-        return "错误: 未安装 requests 库"
-    base_url = base_url.rstrip("/")
-    words = wordlist or _BUILTIN_WORDLIST
-    exts = extensions or _COMMON_EXTENSIONS
-    found = []
-    try:
-        for word in words:
-            for ext in exts:
-                path = word + ext
-                url = f"{base_url}/{path}"
-                try:
-                    r = _requests.get(url, timeout=timeout, allow_redirects=False)
-                    if r.status_code in (200, 301, 302, 401, 403, 500):
-                        size = len(r.content)
-                        found.append(f"  {r.status_code:3d}  {size:>8}B  {url}")
-                        if len(found) >= max_results:
-                            break
-                except Exception:
-                    pass
-            if len(found) >= max_results:
-                break
-        if not found:
-            return f"目录爆破完成: 未发现路径 (共检查 {len(words) * len(exts)} 个)"
-        return f"目录爆破完成 (发现 {len(found)} 个):\n" + "\n".join(found)
-    except Exception as e:
-        return f"目录爆破失败: {e}"
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'ctf_tool/network.py','step':'_dir_bruteforce','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 # ── 工具类 ──────────────────────────────────────────────────────

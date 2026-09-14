@@ -19,42 +19,13 @@ class ToolExecutor:
 
     async def run(self, tool: str, args: List[str], timeout: int = None,
                   extra_env: Optional[Dict[str, str]] = None) -> Dict:
-        if self.mock:
-            return self._mock_result(tool)
-
-        if not self._tool_available(tool):
-            return {"success": False, "error": f"{tool} not installed", "stdout": ""}
-
-        cmd = [tool] + args
-        timeout = timeout or self.TIMEOUT
-
-        # Build environment with optional extra vars (proxy, etc.)
-        env = os.environ.copy()
-        if extra_env:
-            env.update(extra_env)
-
-        async with self._semaphore:
-            try:
-                proc = await asyncio.wait_for(
-                    asyncio.create_subprocess_exec(
-                        *cmd,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        env=env,
-                    ),
-                    timeout=timeout,
-                )
-                stdout, stderr = await proc.communicate()
-                return {
-                    "success": proc.returncode == 0,
-                    "stdout": stdout.decode("utf-8", errors="replace"),
-                    "stderr": stderr.decode("utf-8", errors="replace"),
-                    "returncode": proc.returncode,
-                }
-            except asyncio.TimeoutError:
-                return {"success": False, "error": f"{tool} timed out ({timeout}s)", "stdout": ""}
-            except Exception as e:
-                return {"success": False, "error": str(e), "stdout": ""}
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'tools/__init__.py','step':'run','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def run_multiple(self, tool: str, args_list: List[List[str]]) -> List[Dict]:
         tasks = [self.run(tool, args) for args in args_list]

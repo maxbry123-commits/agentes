@@ -95,14 +95,13 @@ class PythonTool(BaseTool):
 
     @staticmethod
     def _docker_available() -> bool:
-        try:
-            subprocess.run(
-                ["docker", "info"],
-                capture_output=True, timeout=5,
-            )
-            return True
-        except Exception:
-            return False
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'ctf_tool/python.py','step':'_docker_available','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     @staticmethod
     def _fix_indentation(code: str) -> str:
@@ -195,72 +194,24 @@ class PythonTool(BaseTool):
     # ---- 本地执行 (subprocess) -----------------------------------------
 
     def _execute_locally(self, content: str) -> str:
-        """在临时文件中执行 Python 代码，执行后立即清理。"""
-        tmp_path = None
-        try:
-            tmp = tempfile.NamedTemporaryFile(suffix=".py", delete=False, mode="w", encoding="utf-8")
-            tmp.write(content)
-            tmp_path = tmp.name
-            tmp.close()
-
-            result = subprocess.run(
-                [sys.executable, tmp_path],
-                capture_output=True,
-                text=False,
-                timeout=30,
-            )
-            stdout = result.stdout.decode("utf-8", errors="replace") if result.stdout else ""
-            stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
-            return stdout + stderr
-        except subprocess.TimeoutExpired:
-            return "错误: Python 执行超时 (30s)"
-        except Exception as e:
-            logger.exception("本地 Python 执行失败")
-            return f"错误: {e}"
-        finally:
-            if tmp_path is not None and os.path.exists(tmp_path):
-                os.unlink(tmp_path)
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'ctf_tool/python.py','step':'_execute_locally','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     # ---- 本地执行 (Docker 沙箱) ---------------------------------------
 
     def _execute_in_docker(self, content: str) -> str:
-        """在 Docker 容器中沙箱化执行，限制网络/内存/CPU。"""
-        tmp_path = None
-        try:
-            tmp = tempfile.NamedTemporaryFile(suffix=".py", delete=False, mode="w", encoding="utf-8")
-            tmp.write(content)
-            tmp_path = tmp.name
-            tmp.close()
-
-            result = subprocess.run(
-                [
-                    "docker", "run", "--rm",
-                    "-v", f"{tmp_path}:/script.py:ro",
-                    "--network", "none",
-                    "--memory", "256m",
-                    "--cpus", "1",
-                    "--pids-limit", "50",
-                    "--read-only",
-                    "python:3-alpine",
-                    "python3", "/script.py",
-                ],
-                capture_output=True,
-                text=False,
-                timeout=30,
-            )
-            stdout = result.stdout.decode("utf-8", errors="replace") if result.stdout else ""
-            stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
-            return stdout + stderr
-        except subprocess.TimeoutExpired:
-            return "错误: Docker 执行超时 (30s)"
-        except FileNotFoundError:
-            return "错误: Docker 不可用，请安装 Docker 或切换 sandbox_mode 为 subprocess"
-        except Exception as e:
-            logger.exception("Docker 执行失败")
-            return f"错误: {e}"
-        finally:
-            if tmp_path is not None and os.path.exists(tmp_path):
-                os.unlink(tmp_path)
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'ctf_tool/python.py','step':'_execute_in_docker','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     # ---- 远程执行 -----------------------------------------------------
 

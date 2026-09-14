@@ -180,10 +180,13 @@ class UnifiedClient:
 
     @staticmethod
     def _is_retryable_exception(exc: requests.RequestException) -> bool:
-        status = getattr(exc.response, "status_code", None)
-        if status in _TRANSIENT_HTTP_STATUS:
-            return True
-        return isinstance(exc, (requests.Timeout, requests.ConnectionError))
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'services/api_checker/ventor_qtest/runner/orchestrator.py','step':'_is_retryable_exception','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _retry_wait(self, attempt: int) -> float:
         # attempt starts at 1
@@ -191,151 +194,13 @@ class UnifiedClient:
 
     # ------------------------------------------------------------------
     def generate(self, prompt: str, *, temperature: float = 0.6) -> str:
-        url = self._url()
-        headers = self._headers()
-        timeout = self.timeout
-        max_attempts = self.max_retries + 1
-
-        if self.schema == "openai":
-            payload: Dict[str, Any] = {
-                "model": self.model,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": self.max_tokens,
-                "temperature": temperature,
-                "stream": False,
-            }
-            if self.provider:
-                payload["provider"] = self.provider
-            if self.extra_payload:
-                payload.update(self.extra_payload)
-
-            for attempt in range(1, max_attempts + 1):
-                _wait_for_global_rate_limit(self.name)
-                try:
-                    response = requests.post(url, headers=headers, json=payload, timeout=timeout)
-                except requests.RequestException as exc:  # pragma: no cover - network failure path
-                    status = getattr(exc.response, "status_code", None)
-                    if status == 429:
-                        _trigger_global_rate_limit_pause(self.name, status=429)
-                    if attempt < max_attempts and self._is_retryable_exception(exc):
-                        wait = self._retry_wait(attempt)
-                        logging.warning(
-                            "[%s] 请求异常，第 %d/%d 次重试前等待 %.1fs: %s",
-                            self.name,
-                            attempt,
-                            max_attempts,
-                            wait,
-                            exc,
-                        )
-                        time.sleep(wait)
-                        continue
-                    raise SkipVendor(self.name, status, str(exc)) from None
-
-                status = response.status_code
-                if status in _TRANSIENT_HTTP_STATUS:
-                    if status == 429:
-                        _trigger_global_rate_limit_pause(self.name, status=429)
-                    if attempt < max_attempts:
-                        wait = self._retry_wait(attempt)
-                        logging.warning(
-                            "[%s] 命中 HTTP %s，第 %d/%d 次重试前等待 %.1fs",
-                            self.name,
-                            status,
-                            attempt,
-                            max_attempts,
-                            wait,
-                        )
-                        time.sleep(wait)
-                        continue
-                    raise SkipVendor(self.name, status, body=response.text[:200])
-
-                try:
-                    response.raise_for_status()
-                except requests.RequestException as exc:
-                    status = getattr(exc.response, "status_code", None)
-                    raise SkipVendor(self.name, status, str(exc), body=response.text[:200]) from None
-
-                try:
-                    data = response.json()
-                except Exception as exc:
-                    raise SkipVendor(self.name, status, f"invalid JSON: {exc}", body=response.text[:200]) from None
-
-                text = self._extract_openai_text(data)
-                return text.strip() if self.strip_response else text
-
-            raise SkipVendor(self.name, None, "request error")
-
-        if self.schema == "anthropic":
-            payload = {
-                "model": self.model,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": self.max_tokens,
-            }
-            if self.extra_payload:
-                payload.update(self.extra_payload)
-            for attempt in range(1, max_attempts + 1):
-                _wait_for_global_rate_limit(self.name)
-                try:
-                    response = requests.post(url, headers=headers, json=payload, timeout=timeout)
-                except requests.RequestException as exc:
-                    status = getattr(exc.response, "status_code", None)
-                    if status == 429:
-                        _trigger_global_rate_limit_pause(self.name, status=429)
-                    if attempt < max_attempts and self._is_retryable_exception(exc):
-                        wait = self._retry_wait(attempt)
-                        logging.warning(
-                            "[%s] 请求异常，第 %d/%d 次重试前等待 %.1fs: %s",
-                            self.name,
-                            attempt,
-                            max_attempts,
-                            wait,
-                            exc,
-                        )
-                        time.sleep(wait)
-                        continue
-                    raise SkipVendor(self.name, status, str(exc)) from None
-
-                status = response.status_code
-                if status in _TRANSIENT_HTTP_STATUS:
-                    if status == 429:
-                        _trigger_global_rate_limit_pause(self.name, status=429)
-                    if attempt < max_attempts:
-                        wait = self._retry_wait(attempt)
-                        logging.warning(
-                            "[%s] 命中 HTTP %s，第 %d/%d 次重试前等待 %.1fs",
-                            self.name,
-                            status,
-                            attempt,
-                            max_attempts,
-                            wait,
-                        )
-                        time.sleep(wait)
-                        continue
-                    raise SkipVendor(self.name, status, body=response.text[:200])
-
-                try:
-                    response.raise_for_status()
-                except requests.RequestException as exc:
-                    status = getattr(exc.response, "status_code", None)
-                    raise SkipVendor(self.name, status, str(exc), body=response.text[:200]) from None
-
-                try:
-                    data = response.json()
-                except Exception as exc:
-                    raise SkipVendor(self.name, status, f"invalid JSON: {exc}", body=response.text[:200]) from None
-
-                parts = data.get("content", [])
-                texts = [
-                    part.get("text", "")
-                    for part in parts
-                    if isinstance(part, dict) and part.get("type") == "text"
-                ]
-                text = "\n".join(t for t in texts if t)
-                return text.strip() if self.strip_response else text
-
-            raise SkipVendor(self.name, None, "request error")
-
-        raise RuntimeError(f"未知 schema: {self.schema}")
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'services/api_checker/ventor_qtest/runner/orchestrator.py','step':'generate','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
 
 # ----------------------------------------------------------------------

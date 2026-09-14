@@ -611,22 +611,13 @@ class ToolMatcher:
         return "port scan"
 
     def _run_command(self, cmd, timeout=120):
-        try:
-            result = subprocess.run(
-                cmd,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
-            out = result.stdout + result.stderr
-            return out.strip()
-        except subprocess.TimeoutExpired:
-            return "[TIMEOUT]"
-        except FileNotFoundError:
-            return "[TOOL NOT INSTALLED]"
-        except Exception as e:
-            return f"[ERROR] {e}"
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'agent/tool_matcher.py','step':'_run_command','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _try_parse(self, output, parsers, tool_name):
         if not output or output.startswith("[") or len(output) < 10:

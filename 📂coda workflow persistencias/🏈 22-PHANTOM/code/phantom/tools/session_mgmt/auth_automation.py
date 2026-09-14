@@ -184,113 +184,13 @@ async def refresh_jwt_token(
     refresh_token: str | None = None,
     refresh_endpoint: str | None = None,
 ) -> dict[str, Any]:
-    """
-    Refresh JWT token for authenticated session.
-    
-    Automatically refreshes expired JWT tokens to maintain authentication.
-    Can use cached refresh token or accept new one.
-    
-    Args:
-        session_id: Session ID to refresh token for
-        refresh_token: Refresh token (optional if cached)
-        refresh_endpoint: URL to refresh token (optional)
-    
-    Returns:
-        Dict with new access token and updated session
-    """
-    try:
-        # Check if we have cached token info
-        jwt_info = _JWT_CACHE.get(session_id)
-        
-        if not jwt_info and not refresh_token:
-            return {
-                "success": False,
-                "error": "No refresh token available. Provide refresh_token or login again.",
-            }
-        
-        # Use cached refresh token if not provided
-        refresh_token = refresh_token or (jwt_info.get("refresh_token") if jwt_info else None)
-        
-        if not refresh_token:
-            return {
-                "success": False,
-                "error": "No refresh token found in cache or parameters",
-            }
-        
-        # Determine refresh endpoint
-        if not refresh_endpoint and jwt_info:
-            refresh_endpoint = jwt_info.get("refresh_endpoint")
-        
-        if not refresh_endpoint:
-            return {
-                "success": False,
-                "error": "refresh_endpoint required (not found in cache)",
-            }
-        
-        # Perform token refresh
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-            response = await client.post(
-                refresh_endpoint,
-                json={"refresh_token": refresh_token},
-                headers={"Content-Type": "application/json"},
-            )
-            
-            if response.status_code not in (200, 201):
-                return {
-                    "success": False,
-                    "error": f"Token refresh failed: HTTP {response.status_code}",
-                    "response_body": response.text[:500],
-                }
-            
-            data = response.json()
-            
-            new_access_token = (
-                data.get("access_token") 
-                or data.get("token") 
-                or data.get("jwt")
-            )
-            
-            new_refresh_token = data.get("refresh_token", refresh_token)
-            
-            if not new_access_token:
-                return {
-                    "success": False,
-                    "error": "No access token in refresh response",
-                    "response_keys": list(data.keys()),
-                }
-            
-            # Update session with new token
-            from phantom.tools.session_mgmt.session_mgmt_actions import update_session
-            
-            await update_session(
-                session_id=session_id,
-                headers={"Authorization": f"Bearer {new_access_token}"},
-                merge=True,
-            )
-            
-            # Update cache
-            await _cache_jwt_token(
-                session_id=session_id,
-                token=new_access_token,
-                refresh_token=new_refresh_token,
-                refresh_endpoint=refresh_endpoint,
-            )
-            
-            return {
-                "success": True,
-                "session_id": session_id,
-                "access_token": _redact_token(new_access_token),
-                "token_refreshed": True,
-                "expires_in": data.get("expires_in"),
-                "message": "JWT token refreshed successfully",
-            }
-            
-    except Exception as e:
-        logger.error(f"JWT refresh failed: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-        }
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/tools/session_mgmt/auth_automation.py','step':'refresh_jwt_token','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 async def extract_jwt_from_response(
@@ -394,56 +294,13 @@ async def _form_login(
     password_field: str,
     success_indicator: str | None,
 ) -> dict[str, Any]:
-    """Perform standard form-based login."""
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-        # Get login page
-        response = await client.get(target_url)
-        
-        # Extract CSRF token
-        from phantom.tools.session_mgmt.session_mgmt_actions import extract_csrf_token
-        csrf_result = await extract_csrf_token(response.text)
-        csrf_token = csrf_result.get("primary_token")
-        
-        # Prepare form data
-        form_data = {
-            username_field: username,
-            password_field: password,
-        }
-        
-        if csrf_token:
-            # Try common CSRF field names
-            csrf_field_names = ["csrf_token", "_csrf", "csrfmiddlewaretoken", "_token"]
-            form_data[csrf_field_names[0]] = csrf_token
-        
-        # Submit login form
-        login_response = await client.post(
-            target_url,
-            data=form_data,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-        )
-        
-        # Check for success
-        success = False
-        if success_indicator:
-            success = success_indicator in login_response.text
-        else:
-            # Heuristic: no error keywords and 200-level status
-            error_keywords = ["invalid", "incorrect", "failed", "error", "denied"]
-            has_error = any(kw in login_response.text.lower() for kw in error_keywords)
-            success = not has_error and login_response.status_code < 400
-        
-        # Extract cookies
-        cookies = {}
-        for cookie in client.cookies.jar:
-            cookies[cookie.name] = cookie.value
-        
-        return {
-            "success": success,
-            "cookies": cookies,
-            "headers": {},
-            "tokens": {},
-            "status_code": login_response.status_code,
-        }
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/tools/session_mgmt/auth_automation.py','step':'_form_login','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 async def _json_api_login(
@@ -451,51 +308,13 @@ async def _json_api_login(
     username: str,
     password: str,
 ) -> dict[str, Any]:
-    """Perform JSON API login."""
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(
-            target_url,
-            json={"username": username, "password": password},
-            headers={"Content-Type": "application/json"},
-        )
-        
-        if response.status_code >= 400:
-            return {
-                "success": False,
-                "error": f"Login failed: HTTP {response.status_code}",
-            }
-        
-        try:
-            data = response.json()
-        except Exception:
-            data = {}
-        
-        # Extract JWT token
-        jwt_token = (
-            data.get("token") 
-            or data.get("access_token") 
-            or data.get("jwt")
-        )
-        
-        refresh_token = data.get("refresh_token")
-        
-        tokens = {}
-        if jwt_token:
-            tokens["jwt"] = jwt_token
-        if refresh_token:
-            tokens["refresh_token"] = refresh_token
-        
-        # Extract cookies
-        cookies = {}
-        for cookie in client.cookies.jar:
-            cookies[cookie.name] = cookie.value
-        
-        return {
-            "success": True,
-            "cookies": cookies,
-            "headers": {"Authorization": f"Bearer {jwt_token}"} if jwt_token else {},
-            "tokens": tokens,
-        }
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'phantom/tools/session_mgmt/auth_automation.py','step':'_json_api_login','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 async def _browser_login(

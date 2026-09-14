@@ -268,31 +268,13 @@ def _spider_endpoints(urls: list[str]) -> list[dict]:
 
 
 async def _fetch(url: str) -> tuple[int, str]:
-    import aiohttp
-    # SP-1: attach the crawl's auth (Bearer token / session cookies) so spec,
-    # JS, form and liveness fetches see the AUTHENTICATED surface, not a login wall.
-    _auth = _DISCOVERY_AUTH.get() or {}
-    _headers = _auth.get("headers") or None
-    _cookies = _auth.get("cookies") or None
-    try:
-        # ssl=False is intentional: a pentest tool must reach targets that use
-        # self-signed / invalid certs, so cert validation is deliberately off.
-        timeout = aiohttp.ClientTimeout(total=_FETCH_TIMEOUT)
-        connector = aiohttp.TCPConnector(ssl=False)  # NOSONAR — see comment above (S4830)
-        async with aiohttp.ClientSession(connector=connector, headers=_headers, cookies=_cookies) as session:
-            async with session.get(url, timeout=timeout, allow_redirects=True) as resp:
-                # content.read(n) returns only the first available chunk, which
-                # truncates a streamed/chunked body (a 50 KB spec arrived as a
-                # 1 KB first chunk → JSON parse failed → spec silently skipped).
-                # Accumulate full chunks up to the byte cap instead.
-                buf = bytearray()
-                async for chunk in resp.content.iter_chunked(65536):
-                    buf.extend(chunk)
-                    if len(buf) >= _MAX_FETCH_BYTES:
-                        break
-                return resp.status, bytes(buf).decode("utf-8", "replace")
-    except Exception:
-        return 0, ""
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'mcp_server/scan_engine/discovery.py','step':'_fetch','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _parse_spec_text(text: str) -> dict | None:
@@ -488,35 +470,13 @@ _GRAPHQL_INTROSPECTION = (
 
 
 async def import_graphql(url: str, auth: dict | None = None) -> dict:
-    """SP-3: POST an introspection query and register the /graphql endpoint with
-    every query/mutation field ARG as a body param — so the injectable surface
-    (per-arg cells) is in the matrix and the graphql gate fires. GraphQL has one
-    transport URL, so args (not per-field URLs) are the honest injection targets."""
-    import aiohttp
-    headers = {"Content-Type": "application/json"}
-    headers.update((auth or {}).get("headers") or {})
-    try:
-        timeout = aiohttp.ClientTimeout(total=_FETCH_TIMEOUT)
-        connector = aiohttp.TCPConnector(ssl=False)  # NOSONAR (S4830) — pentest target
-        async with aiohttp.ClientSession(connector=connector, cookies=(auth or {}).get("cookies")) as s:
-            async with s.post(url, data=_GRAPHQL_INTROSPECTION, headers=headers, timeout=timeout) as r:
-                data = json.loads(await r.text())
-    except Exception as exc:
-        return {"registered": 0, "cells": 0, "error": f"introspection failed: {exc}"}
-    schema = (data.get("data") or {}).get("__schema") or {}
-    args: list[str] = []
-    for root in ("queryType", "mutationType"):
-        for field in ((schema.get(root) or {}).get("fields") or []):
-            args += [a.get("name") for a in (field.get("args") or []) if a.get("name")]
-    if not args:
-        return {"registered": 0, "cells": 0, "error": "introspection returned no fields (may be disabled)"}
-    params = [{"name": n, "type": "body_json", "value_hint": "string"} for n in dict.fromkeys(args)]
-    from urllib.parse import urlparse
-    result = await _register_inventory(
-        [{"path": urlparse(url).path or "/graphql", "method": "POST", "params": params,
-          "discovered_by": "graphql-introspection"}], "none")
-    result["fields_args"] = len(params)
-    return result
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'mcp_server/scan_engine/discovery.py','step':'import_graphql','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 async def discover_and_register(target: str, spider_urls: list[str], auth_context: str = "none",

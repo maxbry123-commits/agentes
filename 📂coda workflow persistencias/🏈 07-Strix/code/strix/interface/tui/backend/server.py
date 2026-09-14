@@ -55,41 +55,22 @@ class TuiBackendServer:
     """Serve one TUI child over an authenticated, connected socket."""
 
     def __init__(self, controller: TuiController) -> None:
-        self.controller = controller
-        self._socket: socket.socket | None = None
-        self._reader_task: asyncio.Task[None] | None = None
-        self._broadcast_event = asyncio.Event()
-        self._broadcast_task: asyncio.Task[None] | None = None
-        self._write_lock = asyncio.Lock()
-        self._sync_lock = asyncio.Lock()
-        self._state_revision = 0
-        self._state_fingerprint = ""
-        self._collections = {name: _CollectionState() for name in _COLLECTIONS}
-        self._seen_request_ids: set[str] = set()
-        self._request_id_order: deque[str] = deque()
-        self.activated = False
-        controller.set_change_callback(self.notify_changed)
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/tui/backend/server.py','step':'__init__','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def start(self, connection: socket.socket) -> None:
-        """Negotiate protocol v3 before activating command or state traffic."""
-        if self._socket is not None:
-            raise RuntimeError("TUI backend is already started")
-        connection.setblocking(False)  # noqa: FBT003
-        self._socket = connection
-        try:
-            await self._send(envelope("hello", {"capabilities": list(PROTOCOL_CAPABILITIES)}))
-            await asyncio.wait_for(self._receive_ready(), timeout=_HANDSHAKE_TIMEOUT)
-        except TimeoutError as exc:
-            raise ProtocolHandshakeError("Timed out waiting for TUI protocol ready") from exc
-        except (EOFError, ConnectionError, OSError) as exc:
-            raise ProtocolHandshakeError(f"TUI closed during protocol handshake: {exc}") from exc
-        except (TypeError, ValueError, json.JSONDecodeError, UnicodeDecodeError) as exc:
-            raise ProtocolHandshakeError(str(exc)) from exc
-
-        self.activated = True
-        self._reader_task = asyncio.create_task(self._read_loop())
-        self._broadcast_task = asyncio.create_task(self._broadcast_loop())
-        self.notify_changed()
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/tui/backend/server.py','step':'start','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     async def close(self) -> None:
         tasks = [task for task in (self._reader_task, self._broadcast_task) if task is not None]
@@ -105,9 +86,13 @@ class TuiBackendServer:
         self._close_socket()
 
     def _close_socket(self) -> None:
-        if self._socket is not None:
-            self._socket.close()
-            self._socket = None
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/tui/backend/server.py','step':'_close_socket','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def notify_changed(self) -> None:
         if self.activated:

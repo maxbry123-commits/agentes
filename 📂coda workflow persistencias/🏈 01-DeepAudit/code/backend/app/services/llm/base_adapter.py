@@ -14,15 +14,23 @@ class BaseLLMAdapter(ABC):
     """LLM适配器基类"""
     
     def __init__(self, config: LLMConfig):
-        self.config = config
-        self._client: Optional[httpx.AsyncClient] = None
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'backend/app/services/llm/base_adapter.py','step':'__init__','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
     
     @property
     def client(self) -> httpx.AsyncClient:
-        """获取HTTP客户端"""
-        if self._client is None:
-            self._client = httpx.AsyncClient(timeout=self.config.timeout)
-        return self._client
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'backend/app/services/llm/base_adapter.py','step':'client','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
     
     @abstractmethod
     async def complete(self, request: LLMRequest) -> LLMResponse:

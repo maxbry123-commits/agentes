@@ -1,0 +1,220 @@
+{
+  "schema": "yaiwes.internal.transform/v1",
+  "component": "🏈 07-Strix",
+  "mode": "TRANSFORM",
+  "source_files": 254,
+  "candidates": 30,
+  "changed": 30,
+  "findings": [
+    {
+      "path": "scripts/tui_sidecar_hook.py",
+      "sha256": "b14c8151558920a05dcdbadfbe8f3a0b364745fdff1aab288558fb0d28f73997",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/scripts/tui_sidecar_hook.py.original"
+    },
+    {
+      "path": "strix/report/state.py",
+      "sha256": "a946cfc1c94c7196165f827e8bdb9facb3c3f2c522a2ca99df483f8fa662b11a",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/report/state.py.original"
+    },
+    {
+      "path": "strix/utils/api_spec.py",
+      "sha256": "1552c47c9512714878ce26a50e87d2f2559c672a0e2351377cb87012ad8983ca",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/utils/api_spec.py.original"
+    },
+    {
+      "path": "strix/config/codex.py",
+      "sha256": "59ce71271d90c6a60405d89d5ac07e16e9809e1b0a589326538acdb1ca4dffd7",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/config/codex.py.original"
+    },
+    {
+      "path": "strix/runtime/docker_client.py",
+      "sha256": "081563d467cce5957818f50a7d4fce3df64a503d737d3b9332f56593178d8c4f",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/runtime/docker_client.py.original"
+    },
+    {
+      "path": "strix/telemetry/scarf.py",
+      "sha256": "227766fd3ee094e0bed566c97fe7633930bd26da347107cb453171cad04f31c0",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/telemetry/scarf.py.original"
+    },
+    {
+      "path": "strix/telemetry/posthog.py",
+      "sha256": "122f80dd93db562b05179eb95fcdeea609337fe61a12afe1b24c49a326e1c33d",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/telemetry/posthog.py.original"
+    },
+    {
+      "path": "strix/interface/utils.py",
+      "sha256": "cf5838f8b2f1d29e63e9fffa0633e0ea902e1d44e7c8885b5d585637e2b0a425",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:4",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/utils.py.original"
+    },
+    {
+      "path": "strix/interface/update_check.py",
+      "sha256": "d554d206effd46b59427ec50375f80bc3ddb9988ca81cfc630c0655633f314fb",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:4",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/update_check.py.original"
+    },
+    {
+      "path": "strix/interface/platform_cli.py",
+      "sha256": "528fa1ff6bf9478d41c510c856ccdc4c64566a4e6768e25f3e319e4ddc79c33c",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:9",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/platform_cli.py.original"
+    },
+    {
+      "path": "strix/tools/proxy/tools.py",
+      "sha256": "2e0819fef34d45e0d09a58f08d0a3202f822638d7cd2b59f22337b3a5645d2f6",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/tools/proxy/tools.py.original"
+    },
+    {
+      "path": "strix/tools/mcp/client.py",
+      "sha256": "6e969fb64133bf5564e8de6d3d60f97aa4db680c2c30d6cbd86f248e3813167d",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/tools/mcp/client.py.original"
+    },
+    {
+      "path": "strix/tools/mcp/config.py",
+      "sha256": "685a640666caa9761a12d55e333fa4932357f25fa7298dd49b752a13beed1669",
+      "changed": true,
+      "kind": "PY_FILE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/tools/mcp/config.py.original"
+    },
+    {
+      "path": "strix/tools/mcp/failures.py",
+      "sha256": "abc73667b12b077489fdf6f65aa824fbde8af0af88a416d9c73589a57ce9dd55",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/tools/mcp/failures.py.original"
+    },
+    {
+      "path": "strix/tools/threat_model/tools.py",
+      "sha256": "be7c5909ac7ef8558c2d0674d6054a06a921c89b21eaecb4dce66531c4adfd0e",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/tools/threat_model/tools.py.original"
+    },
+    {
+      "path": "strix/tools/web_search/tool.py",
+      "sha256": "49963f4593f421d9db5578568d28874baa66766ba31c941937954c104cf3d7e5",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:3",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/tools/web_search/tool.py.original"
+    },
+    {
+      "path": "strix/interface/tui/sidecar.py",
+      "sha256": "ea530d9c4d9edcd27f13d005f3167591615b97ae2edf3977e4fdb7e89033fa99",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:8",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/tui/sidecar.py.original"
+    },
+    {
+      "path": "strix/interface/tui/runtime.py",
+      "sha256": "2240d84a5e0f543182d97ea17046d3dbf22b1946522a07979c5896e1306dd13d",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/tui/runtime.py.original"
+    },
+    {
+      "path": "strix/interface/cloud/billing.py",
+      "sha256": "92f1bfffefff2b9aa4762dc4146fb7bc60d1bb95ed78bb072dde8dc50dbc0e08",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:5",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/billing.py.original"
+    },
+    {
+      "path": "strix/interface/cloud/spec.py",
+      "sha256": "369f21c777537f46288553c9be09ee3c3199872fd7fe1286d33e62fa686088da",
+      "changed": true,
+      "kind": "PY_FILE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/spec.py.original"
+    },
+    {
+      "path": "strix/interface/cloud/http.py",
+      "sha256": "ccb00c9073264289d301715e11417748fa8d8a52baa747875bf2bd886185c3f2",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:4",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/http.py.original"
+    },
+    {
+      "path": "strix/interface/cloud/payment_proxy.py",
+      "sha256": "fbcb1676a940cdd7e3516b9b4c87e5c73bc7a10ca057259395ed8b05058722a6",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/payment_proxy.py.original"
+    },
+    {
+      "path": "strix/interface/cloud/source_upload.py",
+      "sha256": "1e1b6a2cca5d4a88f506c4844286d73b093203c127e37e721ac64df157c05b39",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:2",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/source_upload.py.original"
+    },
+    {
+      "path": "strix/interface/cloud/runner.py",
+      "sha256": "92cd5b30101824d95f459d97e55a22899c454a1744cd0f4696d4eab0645fd7be",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:5",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/runner.py.original"
+    },
+    {
+      "path": "strix/interface/viewer/auth.py",
+      "sha256": "27439a44c2aad8baca3c5dc34a3246c0a6d86fcf192365f6b958bc020fa6e658",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:1",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/auth.py.original"
+    },
+    {
+      "path": "strix/interface/tui/backend/server.py",
+      "sha256": "610311cfb1107ecfd90ef699f0acff452c8b75d915b222cf5b6a8cb65f64b953",
+      "changed": true,
+      "kind": "PY_FUNCTIONS:3",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/tui/backend/server.py.original"
+    },
+    {
+      "path": "strix/interface/viewer/static/assets/index-B94ANU8d.js",
+      "sha256": "108fa90acc7f717ce763e5c2bfccfbe741e34a3ebf5b40147f292dad33313d8e",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/static/assets/index-B94ANU8d.js.original"
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/EmailVerifyInline.tsx",
+      "sha256": "2bc3cfa52cac8f9f2ff3c426332db64e239ef8157351d11b1cf42103e16f0fd6",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/frontend/src/components/EmailVerifyInline.tsx.original"
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/EmailReportView.tsx",
+      "sha256": "3f05304ad37afba6b4984bb3fca8523e06d428fb62984876e74d7322ea666ff7",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/frontend/src/components/EmailReportView.tsx.original"
+    },
+    {
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/ProxyRenderer.tsx",
+      "sha256": "c1cbfefdd73d022e3540174cdbd341286fa246cd6b9a07a475b22a439adc28af",
+      "changed": true,
+      "kind": "SAFE_STUB",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/frontend/src/components/live/tool-renderers/ProxyRenderer.tsx.original"
+    }
+  ]
+}

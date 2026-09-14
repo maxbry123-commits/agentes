@@ -213,68 +213,10 @@ class WebDashboard:
 </html>"""
 
     def generate_api_routes(self) -> str:
-        """Generate FastAPI routes for the dashboard."""
-        return '''
-from fastapi import FastAPI, WebSocket
-from fastapi.responses import HTMLResponse, JSONResponse
-import json
-
-app = FastAPI()
-
-@app.get("/", response_class=HTMLResponse)
-async def dashboard():
-    from skills.web_dashboard import WebDashboard
-    return WebDashboard().generate_dashboard_html()
-
-@app.get("/api/findings")
-async def get_findings():
-    # Load from current session
-    try:
-        from skills.session_persistence import SessionPersistence
-        persistence = SessionPersistence()
-        sessions = persistence.list_sessions()
-        if sessions:
-            session = persistence.load_session(sessions[0]["session_id"])
-            return {"findings": session.get("findings", []) if session else []}
-    except Exception:
-        pass
-    return {"findings": []}
-
-@app.get("/api/attack-paths")
-async def get_attack_paths():
-    try:
-        from skills.session_persistence import SessionPersistence
-        persistence = SessionPersistence()
-        sessions = persistence.list_sessions()
-        if sessions:
-            session = persistence.load_session(sessions[0]["session_id"])
-            return {"paths": session.get("attack_paths", []) if session else []}
-    except Exception:
-        pass
-    return {"paths": []}
-
-@app.get("/api/stats")
-async def get_stats():
-    try:
-        from skills.session_persistence import SessionPersistence
-        persistence = SessionPersistence()
-        sessions = persistence.list_sessions()
-        if sessions:
-            session = persistence.load_session(sessions[0]["session_id"])
-            if session:
-                return session.get("stats", {})
-    except Exception:
-        pass
-    return {}
-
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    try:
-        while True:
-            # Keep connection alive and send updates
-            import asyncio
-            await asyncio.sleep(1)
-    except Exception:
-        pass
-'''
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'skills/web_dashboard.py','step':'generate_api_routes','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye

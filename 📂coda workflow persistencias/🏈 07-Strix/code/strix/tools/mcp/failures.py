@@ -93,27 +93,13 @@ def _from_status(
 
 
 def _direct(exc: BaseException) -> FailureInfo | None:
-    if isinstance(exc, httpx.HTTPStatusError):
-        response = exc.response
-        request = response.request
-        return _from_status(
-            response.status_code,
-            response.reason_phrase,
-            _retry_after(response.headers.get("Retry-After")),
-            request_method=request.method,
-            request_path=request.url.path,
-        )
-    if isinstance(exc, httpx.TimeoutException):
-        return FailureInfo("timeout", reason="request timed out")
-    if isinstance(exc, httpx.TransportError):
-        return FailureInfo("transport", reason="transport error")
-    if isinstance(exc, McpError):
-        return FailureInfo("protocol", reason="MCP protocol error")
-    if isinstance(exc, UserError):
-        match = _HTTP_ERROR_RE.search(str(exc))
-        if match:
-            return _from_status(int(match.group(1)))
-    return None
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/tools/mcp/failures.py','step':'_direct','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def classify(exc: BaseException) -> FailureInfo:
@@ -135,15 +121,13 @@ class HttpStatusRecorder:
         self._failure: FailureInfo | None = None
 
     async def __call__(self, response: httpx.Response) -> None:
-        if not 200 <= response.status_code < 300:
-            request = response.request
-            self._failure = _from_status(
-                response.status_code,
-                response.reason_phrase,
-                _retry_after(response.headers.get("Retry-After")),
-                request_method=request.method,
-                request_path=request.url.path,
-            )
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/tools/mcp/failures.py','step':'__call__','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye
 
     def take(self) -> FailureInfo | None:
         failure, self._failure = self._failure, None

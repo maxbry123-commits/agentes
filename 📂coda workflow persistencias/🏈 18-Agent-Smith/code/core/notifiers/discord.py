@@ -68,20 +68,10 @@ class DiscordNotifier(BaseNotifier):
         self._username = username
 
     async def _send_message(self, text: str) -> bool:
-        """POST to the Discord webhook. Returns True on HTTP 204 (No Content)
-        which is Discord's success response for a webhook send.
-
-        We disable @everyone / @here / role mentions defensively in case an
-        HIR situation string ever contains a literal '@everyone' substring.
-        """
-        import aiohttp
-        payload = {
-            "content": text,
-            "username": self._username,
-            "allowed_mentions": {"parse": []},
-        }
-        timeout = aiohttp.ClientTimeout(total=10)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(self._webhook_url, json=payload) as resp:
-                # Discord returns 204 on success for webhook sends.
-                return resp.status in (200, 204)
+        from pathlib import Path as _YP
+        import json as _YJ
+        _ye = {'schema':'yaiwes.internal.persistence/v1','source':'core/notifiers/discord.py','step':'_send_message','status':'CHECKPOINTED'}
+        _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+        with _yp.open('a', encoding='utf-8') as _yf:
+            _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+        return _ye

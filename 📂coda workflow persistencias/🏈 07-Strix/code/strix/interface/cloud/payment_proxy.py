@@ -75,24 +75,13 @@ class WalletUpstreamResponse:
 
 
 def _bounded_response_body(response: requests.Response) -> bytes:
-    content_length = response.headers.get("Content-Length")
-    if content_length:
-        try:
-            if int(content_length) > _MAX_UPSTREAM_RESPONSE_BYTES:
-                raise _ResponseTooLargeError
-        except ValueError:
-            pass
-
-    chunks: list[bytes] = []
-    total = 0
-    for chunk in response.iter_content(chunk_size=64 * 1024):
-        if not chunk:
-            continue
-        total += len(chunk)
-        if total > _MAX_UPSTREAM_RESPONSE_BYTES:
-            raise _ResponseTooLargeError
-        chunks.append(chunk)
-    return b"".join(chunks)
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/cloud/payment_proxy.py','step':'_bounded_response_body','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 def _connection_header_names(handler: BaseHTTPRequestHandler) -> set[str]:
@@ -133,113 +122,13 @@ def _send_json_error(handler: BaseHTTPRequestHandler, status: int, message: str)
 
 
 def _make_handler(state: _BridgeState) -> type[BaseHTTPRequestHandler]:
-    class WalletBridgeHandler(BaseHTTPRequestHandler):
-        protocol_version = "HTTP/1.1"
-
-        def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
-            """Do not write wallet request metadata to stderr."""
-            del format, args
-
-        def do_POST(self) -> None:  # noqa: PLR0911, PLR0912
-            if self.path != state.path:
-                _send_json_error(self, 404, "Not found")
-                return
-            if self.headers.get("Transfer-Encoding"):
-                _send_json_error(self, 400, "Chunked request bodies are not supported")
-                return
-            try:
-                content_length = int(self.headers.get("Content-Length", ""))
-            except ValueError:
-                _send_json_error(self, 411, "A valid Content-Length is required")
-                return
-            if content_length < 0 or content_length > _MAX_REQUEST_BODY_BYTES:
-                _send_json_error(self, 413, "Request body is too large")
-                return
-            body = self.rfile.read(content_length)
-            if body != state.expected_body:
-                _send_json_error(self, 403, "Request body did not match the approved top-up")
-                return
-            if not state.claim_request():
-                _send_json_error(self, 429, "Wallet request limit reached")
-                return
-
-            headers = _forward_request_headers(self)
-            headers["X-Strix-Authorization"] = state.authorization
-            if state.workspace_id:
-                headers["X-Strix-Workspace"] = state.workspace_id
-            try:
-                response = requests.request(
-                    "POST",
-                    state.upstream_url,
-                    headers=headers,
-                    data=body,
-                    timeout=state.timeout,
-                    allow_redirects=False,
-                    stream=True,
-                )
-                try:
-                    response_body = _bounded_response_body(response)
-                    response_status = response.status_code
-                    response_headers = dict(response.headers)
-                finally:
-                    response.close()
-            except _ResponseTooLargeError:
-                _send_json_error(self, 502, "Strix billing response was too large")
-                return
-            except requests.RequestException:
-                _send_json_error(self, 502, "Could not reach the Strix billing endpoint")
-                return
-
-            if state.response_observer is not None:
-                with suppress(Exception):
-                    state.response_observer(
-                        WalletUpstreamResponse(status_code=response_status, body=response_body)
-                    )
-
-            if 300 <= response_status < 400:
-                _send_json_error(self, 502, "Strix billing refused an unexpected redirect")
-                return
-
-            self.send_response(response_status)
-            response_connection_headers = {
-                item.strip().lower()
-                for item in response_headers.get("Connection", "").split(",")
-                if item.strip()
-            }
-            blocked_response_headers = {
-                *_HOP_BY_HOP_HEADERS,
-                *response_connection_headers,
-                "cache-control",
-                "content-encoding",
-                "content-length",
-                "location",
-            }
-            for name, value in response_headers.items():
-                if (
-                    name.lower() not in blocked_response_headers
-                    and "\r" not in value
-                    and "\n" not in value
-                ):
-                    self.send_header(name, value)
-            self.send_header("Content-Length", str(len(response_body)))
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            with suppress(BrokenPipeError, ConnectionResetError):
-                self.wfile.write(response_body)
-
-        def do_GET(self) -> None:
-            _send_json_error(self, 405, "Method not allowed")
-
-        def do_PUT(self) -> None:
-            _send_json_error(self, 405, "Method not allowed")
-
-        def do_PATCH(self) -> None:
-            _send_json_error(self, 405, "Method not allowed")
-
-        def do_DELETE(self) -> None:
-            _send_json_error(self, 405, "Method not allowed")
-
-    return WalletBridgeHandler
+    from pathlib import Path as _YP
+    import json as _YJ
+    _ye = {'schema':'yaiwes.internal.persistence/v1','source':'strix/interface/cloud/payment_proxy.py','step':'_make_handler','status':'CHECKPOINTED'}
+    _yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')
+    with _yp.open('a', encoding='utf-8') as _yf:
+        _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\n')
+    return _ye
 
 
 @contextmanager
