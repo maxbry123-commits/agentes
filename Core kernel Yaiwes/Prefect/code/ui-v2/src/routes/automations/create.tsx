@@ -1,0 +1,175 @@
+import { useQuery } from "@tanstack/react-query";
+import type { ErrorComponentProps } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useMemo } from "react";
+import { toast } from "sonner";
+import { z } from "zod";
+import { useCreateAutomation } from "@/api/automations";
+import { categorizeError } from "@/api/error-utils";
+import { buildGetEventQuery } from "@/api/events";
+import type { components } from "@/api/prefect";
+import { AutomationsCreateHeader } from "@/components/automations/automations-create-header";
+import {
+	AutomationWizard,
+	type AutomationWizardSchemaType,
+	inferTriggerTemplate,
+	transformEventToTrigger,
+} from "@/components/automations/automations-wizard";
+import { PrefectLoading } from "@/components/ui/loading";
+import { RouteErrorState } from "@/components/ui/route-error-state";
+
+type AutomationCreate = components["schemas"]["AutomationCreate"];
+
+/**
+ * Search params schema for the create automation route.
+ * Supports pre-populating the wizard from:
+ * - An event (via eventId + eventDate)
+ * - A direct trigger definition (via trigger)
+ * - Actions to pre-fill (via actions)
+ */
+const searchParams = z.object({
+	/** Direct action to pre-populate the actions step */
+	actions: z.record(z.string(), z.unknown()).optional(),
+	/** Event ID to pre-populate the trigger from */
+	eventId: z.string().optional(),
+	/** Event date in YYYY-MM-DD format for fetching the event */
+	eventDate: z.string().optional(),
+	/** Direct trigger definition to pre-populate the trigger step */
+	trigger: z.record(z.string(), z.unknown()).optional(),
+});
+
+/**
+ * Parses a YYYY-MM-DD date string into a Date object.
+ */
+function parseRouteDate(dateStr: string): Date {
+	const [year, month, day] = dateStr.split("-").map(Number);
+	return new Date(year, month - 1, day);
+}
+
+export const Route = createFileRoute("/automations/create")({
+	component: function RouteComponent() {
+		const { createAutomation, isPending } = useCreateAutomation();
+		const navigate = useNavigate();
+		const defaultValues = useCreateDefaultValues();
+
+		const handleSubmit = (values: AutomationWizardSchemaType) => {
+			const automationData: AutomationCreate = {
+				name: values.name,
+				description: values.description ?? "",
+				enabled: true,
+				trigger: values.trigger,
+				actions: values.actions,
+			};
+
+			createAutomation(automationData, {
+				onSuccess: () => {
+					toast.success("Automation created successfully");
+					void navigate({ to: "/automations" });
+				},
+				onError: (error) => {
+					toast.error(`Failed to create automation: ${error.message}`);
+				},
+			});
+		};
+
+		return (
+			<div className="flex flex-col gap-4">
+				<AutomationsCreateHeader />
+				<AutomationWizard
+					defaultValues={defaultValues}
+					onSubmit={handleSubmit}
+					isSubmitting={isPending}
+				/>
+			</div>
+		);
+	},
+	validateSearch: searchParams,
+	loaderDeps: ({ search }) => ({
+		eventId: search.eventId,
+		eventDate: search.eventDate,
+	}),
+	loader: ({ deps, context: { queryClient } }) => {
+		// Prefetch event data if eventId and eventDate are provided
+		if (deps.eventId && deps.eventDate) {
+			const eventDate = parseRouteDate(deps.eventDate);
+			void queryClient.prefetchQuery(
+				buildGetEventQuery(deps.eventId, eventDate),
+			);
+		}
+	},
+	errorComponent: function AutomationCreateErrorComponent({
+		error,
+		reset,
+	}: ErrorComponentProps) {
+		const serverError = categorizeError(
+			error,
+			"Failed to load automation wizard",
+		);
+		if (
+			serverError.type !== "server-error" &&
+			serverError.type !== "client-error"
+		) {
+			throw error;
+		}
+		return (
+			<div className="flex flex-col gap-4">
+				<div>
+					<h1 className="text-2xl font-semibold">Create Automation</h1>
+				</div>
+				<RouteErrorState error={serverError} onRetry={reset} />
+			</div>
+		);
+	},
+	wrapInSuspense: true,
+	pendingComponent: PrefectLoading,
+});
+
+/**
+ * Hook to get default values for the automation wizard.
+ * Supports pre-populating from:
+ * - An event (via eventId + eventDate search params)
+ * - A direct trigger definition (via trigger search param)
+ * - An action definition (via actions search param)
+ *
+ * Returns undefined if no pre-population params are provided.
+ */
+function useCreateDefaultValues() {
+	const { eventId, eventDate, trigger, actions } = Route.useSearch();
+
+	// Only fetch event if both event params are provided
+	const shouldFetchEvent = Boolean(eventId && eventDate);
+
+	// Use useQuery (not useSuspenseQuery) because useSuspenseQuery doesn't support enabled option
+	const { data: event } = useQuery({
+		...buildGetEventQuery(
+			eventId ?? "",
+			eventDate ? parseRouteDate(eventDate) : new Date(),
+		),
+		enabled: shouldFetchEvent,
+	});
+
+	return useMemo(() => {
+		const defaults: Record<string, unknown> = {};
+
+		// Trigger from event takes priority over direct trigger param
+		if (shouldFetchEvent && event) {
+			const eventTrigger = transformEventToTrigger(event);
+			defaults.trigger = eventTrigger.trigger;
+			defaults.triggerTemplate = eventTrigger.triggerTemplate;
+		} else if (trigger) {
+			defaults.trigger = trigger;
+			defaults.triggerTemplate = inferTriggerTemplate(trigger);
+		}
+
+		// Pre-populate actions from search param
+		if (actions) {
+			defaults.actions = [actions];
+		}
+
+		if (Object.keys(defaults).length === 0) {
+			return undefined;
+		}
+
+		return defaults;
+	}, [shouldFetchEvent, event, trigger, actions]);
+}

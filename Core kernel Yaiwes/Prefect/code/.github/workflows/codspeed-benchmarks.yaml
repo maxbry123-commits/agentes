@@ -1,0 +1,99 @@
+name: CodSpeed Benchmarks
+
+env:
+  PY_COLORS: 1
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/codspeed-benchmarks.yaml
+      - .github/workflows/python-tests.yaml
+      - "src/prefect/**/*.py"
+      - pyproject.toml
+      - Dockerfile
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  run-benchmarks:
+    name: Benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+          
+      - name: Install the project
+        run:  uv sync --group benchmark --compile-bytecode --locked
+
+      - name: Start server
+        run: |
+          PREFECT_HOME=$(pwd) uv run prefect server start&
+          PREFECT_API_URL="http://127.0.0.1:4200/api" uv run ./scripts/wait-for-server.py
+
+          # TODO: Replace `wait-for-server` with dedicated command
+          #       https://github.com/PrefectHQ/prefect/issues/6990
+
+      - name: Run benchmarks
+        uses: CodSpeedHQ/action@v5
+        env:
+          PREFECT_API_URL: "http://127.0.0.1:4200/api"
+        with:
+          mode: simulation
+          # Import benchmarks run in separate pytest invocations so each one
+          # starts in a fresh Python interpreter.  Each benchmark uses
+          # benchmark.pedantic(setup=_reset_to_cold_state) so that the
+          # setup function (which clears sys.modules and Prometheus
+          # collectors) runs *outside* CodSpeed's callgrind markers —
+          # only the import itself is measured.
+          #
+          # -o 'filterwarnings=' overrides pyproject.toml filters that
+          # reference prefect.* warning classes, which would otherwise
+          # trigger a prefect import during pytest startup.
+          #
+          # pytest-codspeed writes each invocation's results to a unique file
+          # (keyed by PID), so the CodSpeed action collects all of them.
+          run: |
+            for module in \
+              prefect \
+              prefect.client.schemas.objects \
+              prefect.flows \
+              prefect.deployments \
+              prefect.events \
+              prefect.server.api.server \
+              prefect.task_runners \
+            ; do
+              uv run pytest "benches/bench_import.py::bench_import_module[$module]" \
+                --codspeed -vv -o 'filterwarnings='
+            done
+            uv run pytest benches/bench_import.py::bench_import_prefect_flow \
+              --codspeed -vv -o 'filterwarnings='
+            uv run pytest \
+              benches/bench_tasks.py \
+              benches/bench_flows.py::bench_flow_decorator \
+              benches/bench_flows.py::bench_flow_call \
+              --codspeed \
+              --numprocesses auto \
+              --dist worksteal \
+              -vv
+          token: ${{ secrets.CODSPEED_TOKEN }}

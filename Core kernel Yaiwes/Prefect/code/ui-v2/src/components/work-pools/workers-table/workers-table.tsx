@@ -1,0 +1,131 @@
+import type {
+	ColumnFiltersState,
+	OnChangeFn,
+	PaginationState,
+} from "@tanstack/react-table";
+import { useCallback, useMemo } from "react";
+import type { WorkPoolWorker } from "@/api/work-pools";
+import { DataTable } from "@/components/ui/data-table";
+import { useTable } from "@/lib/tanstack-table";
+import { cn } from "@/utils";
+import { createWorkersTableColumnsWithActions } from "./components/workers-table-columns";
+import { WorkersTableEmptyState } from "./components/workers-table-empty-state";
+import { WorkersTableRowActions } from "./components/workers-table-row-actions";
+import { WorkersTableToolbar } from "./components/workers-table-toolbar";
+
+export type WorkersTableProps = {
+	workPoolName: string;
+	workers: WorkPoolWorker[];
+	pagination: PaginationState;
+	columnFilters: ColumnFiltersState;
+	onPaginationChange: (pagination: PaginationState) => void;
+	onColumnFiltersChange: (columnFilters: ColumnFiltersState) => void;
+	className?: string;
+};
+
+export const WorkersTable = ({
+	workPoolName,
+	workers,
+	pagination,
+	columnFilters,
+	onPaginationChange,
+	onColumnFiltersChange,
+	className,
+}: WorkersTableProps) => {
+	const searchQuery = (columnFilters.find((filter) => filter.id === "name")
+		?.value ?? "") as string;
+
+	const handleSearchChange = useCallback(
+		(value: string) => {
+			const filters = columnFilters.filter((filter) => filter.id !== "name");
+			onColumnFiltersChange(
+				value ? [...filters, { id: "name", value }] : filters,
+			);
+		},
+		[onColumnFiltersChange, columnFilters],
+	);
+
+	const handlePaginationChange: OnChangeFn<PaginationState> = useCallback(
+		(updater) => {
+			const newPagination =
+				typeof updater === "function" ? updater(pagination) : updater;
+			onPaginationChange(newPagination);
+		},
+		[pagination, onPaginationChange],
+	);
+
+	const sortedWorkers = useMemo(() => {
+		// Match v1 behaviour: ONLINE workers first, then by most recent heartbeat.
+		return [...workers].sort((a, b) => {
+			if (a.status !== b.status) {
+				return a.status === "ONLINE" ? -1 : 1;
+			}
+			const aTime = a.last_heartbeat_time
+				? new Date(a.last_heartbeat_time).getTime()
+				: 0;
+			const bTime = b.last_heartbeat_time
+				? new Date(b.last_heartbeat_time).getTime()
+				: 0;
+			return bTime - aTime;
+		});
+	}, [workers]);
+
+	const filteredWorkers = useMemo(() => {
+		if (!searchQuery) return sortedWorkers;
+		return sortedWorkers.filter((worker) =>
+			worker.name.toLowerCase().includes(searchQuery.toLowerCase()),
+		);
+	}, [sortedWorkers, searchQuery]);
+
+	const columns = useMemo(
+		() =>
+			createWorkersTableColumnsWithActions({
+				workPoolName,
+				ActionsComponent: WorkersTableRowActions,
+			}),
+		[workPoolName],
+	);
+
+	const table = useTable({
+		data: filteredWorkers,
+		columns,
+		manualPagination: false,
+		state: {
+			pagination,
+		},
+		onPaginationChange: handlePaginationChange,
+	});
+
+	// Show empty state when no workers at all or no search results
+	const showEmptyState =
+		workers.length === 0 || (searchQuery && filteredWorkers.length === 0);
+
+	if (showEmptyState) {
+		return (
+			<div className={cn("space-y-4", className)}>
+				<WorkersTableToolbar
+					searchQuery={searchQuery}
+					onSearchChange={handleSearchChange}
+					resultsCount={filteredWorkers.length}
+					totalCount={workers.length}
+				/>
+				<WorkersTableEmptyState
+					hasSearchQuery={searchQuery.length > 0}
+					workPoolName={workPoolName}
+				/>
+			</div>
+		);
+	}
+
+	return (
+		<div className={cn("space-y-4", className)}>
+			<WorkersTableToolbar
+				searchQuery={searchQuery}
+				onSearchChange={handleSearchChange}
+				resultsCount={filteredWorkers.length}
+				totalCount={workers.length}
+			/>
+			<DataTable table={table} />
+		</div>
+	);
+};

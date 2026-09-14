@@ -1,0 +1,180 @@
+---
+title: " "
+sidebarTitle: prefect experimental
+---
+
+# `prefect experimental`
+
+
+
+```command
+prefect experimental [OPTIONS] COMMAND [ARGS]...
+```
+
+
+
+<Info>
+Access experimental features (subject to change).
+</Info>
+
+
+
+
+
+
+
+
+## `prefect experimental result-storage`
+
+
+
+```command
+prefect experimental result-storage [OPTIONS] COMMAND [ARGS]...
+```
+
+
+
+<Info>
+Manage default result storage.
+</Info>
+
+
+
+
+
+
+
+
+### `prefect experimental result-storage inspect`
+
+
+
+```command
+prefect experimental result-storage inspect [OPTIONS]
+```
+
+
+
+<Info>
+Inspect the configured default result storage.
+</Info>
+
+
+
+
+
+
+<AccordionGroup>
+
+
+
+
+<Accordion title="Options" defaultOpen>
+
+<ResponseField name="--output">
+    Specify an output format. Currently supports: json
+</ResponseField>
+
+</Accordion>
+
+</AccordionGroup>
+
+
+
+### `prefect experimental result-storage set`
+
+
+
+```command
+prefect experimental result-storage set [OPTIONS] [BLOCK]
+```
+
+
+
+<Info>
+Set the default result storage block.
+</Info>
+
+
+
+
+
+
+<AccordionGroup>
+
+
+<Accordion title="Arguments" defaultOpen>
+<ResponseField name="BLOCK" type="string">
+    A block slug in the form &lt;BLOCK_TYPE_SLUG&gt;/&lt;BLOCK_NAME&gt;.
+</ResponseField>
+</Accordion>
+
+
+
+<Accordion title="Options" defaultOpen>
+
+<ResponseField name="--id">
+    A block document id.
+</ResponseField>
+
+</Accordion>
+
+</AccordionGroup>
+
+
+
+### `prefect experimental result-storage clear`
+
+
+
+```command
+prefect experimental result-storage clear [OPTIONS]
+```
+
+
+
+<Info>
+Clear the configured default result storage.
+</Info>
+
+
+
+
+
+
+
+
+## `prefect experimental plugins`
+
+
+
+```command
+prefect experimental plugins [OPTIONS] COMMAND [ARGS]...
+```
+
+
+
+<Info>
+[deprecated] Plugin system diagnostics. Use `prefect plugins diagnose`.
+</Info>
+
+
+
+
+
+
+
+
+### `prefect experimental plugins diagnose`
+
+
+
+```command
+prefect experimental plugins diagnose [OPTIONS]
+```
+
+
+
+<Info>
+[deprecated] Diagnose the plugin system.
+</Info>

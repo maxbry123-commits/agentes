@@ -1,0 +1,48 @@
+{
+  "bundle_bytes": 42411851,
+  "bundle_sha256": "4f509b5ce39ea345318eb7a5bdc3beafe9c8b46b3cb96985ff49ab8d51e1669b",
+  "extracted_tree": {
+    "bytes": 87606151,
+    "files": 5385,
+    "sha256": "1ff2b4b151d08bf621d232b39fb3003355b96af785dc4f32df1396453ef8d5ec"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "Prefect.bundle.zip.part-0001",
+      "sha256": "93c999f95796fd1ad48eba212524194ce0a67c5776ffec4d6fd7f4dddfee33ec"
+    },
+    {
+      "bytes": 12582912,
+      "name": "Prefect.bundle.zip.part-0002",
+      "sha256": "49924c1baf868e1ed1e1393686032248b696f6cad33fb4f0466a166b7776885e"
+    },
+    {
+      "bytes": 12582912,
+      "name": "Prefect.bundle.zip.part-0003",
+      "sha256": "391f2b75c6b5d06e0a2090e00e0e87918b4733c6df30603e984c1fdc65a04623"
+    },
+    {
+      "bytes": 4663115,
+      "name": "Prefect.bundle.zip.part-0004",
+      "sha256": "d0a47961376c2196f5321ede29c3ba0073fc718f428ec65821b7a80918f8ed12"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Prefect",
+  "source_bytes": 87606151,
+  "source_commit": "9795fc271ce582dbe94165cdc43a9119bc3828f6",
+  "source_files": 5385,
+  "source_ref": "HEAD",
+  "source_repo": "PrefectHQ/prefect",
+  "source_tree": {
+    "bytes": 87606151,
+    "files": 5385,
+    "sha256": "1ff2b4b151d08bf621d232b39fb3003355b96af785dc4f32df1396453ef8d5ec"
+  }
+}

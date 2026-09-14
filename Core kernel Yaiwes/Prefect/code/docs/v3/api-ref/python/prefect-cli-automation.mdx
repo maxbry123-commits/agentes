@@ -1,0 +1,133 @@
+---
+title: automation
+sidebarTitle: automation
+---
+
+# `prefect.cli.automation`
+
+
+
+Automation command — native cyclopts implementation.
+
+Manage automations.
+
+
+## Functions
+
+### `ls` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/prefect/cli/automation.py#L32" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+ls()
+```
+
+
+List all automations.
+
+
+### `inspect` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/prefect/cli/automation.py#L96" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+inspect(name: Annotated[Optional[str], cyclopts.Parameter(show=False, help="An automation's name.")] = None)
+```
+
+
+Inspect an automation.
+
+**Examples:**
+
+```bash
+$ prefect automation inspect "my-automation"
+$ prefect automation inspect --id "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+$ prefect automation inspect "my-automation" --output json
+$ prefect automation inspect "my-automation" --output yaml
+```
+
+
+### `resume` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/prefect/cli/automation.py#L185" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+resume(name: Annotated[Optional[str], cyclopts.Parameter(show=False, help="An automation's name.")] = None)
+```
+
+
+Resume an automation.
+
+**Examples:**
+
+```bash
+$ prefect automation resume "my-automation"
+$ prefect automation resume --id "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+```
+
+
+### `pause` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/prefect/cli/automation.py#L245" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+pause(name: Annotated[Optional[str], cyclopts.Parameter(show=False, help="An automation's name.")] = None)
+```
+
+
+Pause an automation.
+
+**Examples:**
+
+```bash
+$ prefect automation pause "my-automation"
+$ prefect automation pause --id "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+```
+
+
+### `delete` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/prefect/cli/automation.py#L305" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+delete(name: Annotated[Optional[str], cyclopts.Parameter(show=False, help="An automation's name.")] = None)
+```
+
+
+Delete an automation.
+
+**Examples:**
+
+```bash
+$ prefect automation delete "my-automation"
+$ prefect automation delete --id "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+$ prefect automation delete --all
+```
+
+
+### `create` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/prefect/cli/automation.py#L409" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+create()
+```
+
+
+Create one or more automations from a file or JSON string.
+
+**Examples:**
+
+```bash
+$ prefect automation create --from-file automation.yaml
+$ prefect automation create -f automation.json
+$ prefect automation create --from-json '{"name": "my-automation", "trigger": {...}, "actions": [...]}'
+$ prefect automation create -j '[{"name": "auto1", ...}, {"name": "auto2", ...}]'
+```
+
+
+### `update` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/prefect/cli/automation.py#L514" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+update()
+```
+
+
+Update an existing automation from a file or JSON string.
+
+**Examples:**
+
+```bash
+$ prefect automation update --id "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" --from-file automation.yaml
+$ prefect automation update --id "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" -f automation.json
+$ prefect automation update --id "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" --from-json '{"name": "updated-automation", "trigger": {...}, "actions": [...]}'
+```
+

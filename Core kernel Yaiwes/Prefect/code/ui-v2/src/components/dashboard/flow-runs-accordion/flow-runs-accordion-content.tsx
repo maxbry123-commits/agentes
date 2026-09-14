@@ -1,0 +1,189 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Suspense, useCallback, useMemo, useState } from "react";
+import {
+	buildPaginateFlowRunsQuery,
+	type FlowRunsFilter,
+	type FlowRunsPaginateFilter,
+} from "@/api/flow-runs";
+import { buildGetFlowRunsTaskRunsCountQuery } from "@/api/task-runs";
+import { FlowRunCard } from "@/components/flow-runs/flow-run-card";
+import {
+	Pagination,
+	PaginationContent,
+	PaginationItem,
+	PaginationNextButton,
+	PaginationPreviousButton,
+} from "@/components/ui/pagination";
+import { Skeleton } from "@/components/ui/skeleton";
+
+type FlowRunsAccordionContentProps = {
+	/** The flow ID to display runs for */
+	flowId: string;
+	/** Filter for flow runs */
+	filter?: FlowRunsFilter;
+	/**
+	 * Controlled page value. When provided, the component reads the current
+	 * page from this prop instead of internal state so callers can persist
+	 * pagination in the URL (matching V1 behavior).
+	 */
+	page?: number;
+	/**
+	 * Called when the user navigates to a different page. Required when
+	 * `page` is provided to make the component controlled.
+	 */
+	onPageChange?: (page: number) => void;
+};
+
+const ITEMS_PER_PAGE = 3;
+
+/**
+ * Content component for each accordion section.
+ * Displays a paginated list of flow runs for a specific flow.
+ */
+export function FlowRunsAccordionContent({
+	flowId,
+	filter,
+	page: controlledPage,
+	onPageChange,
+}: FlowRunsAccordionContentProps) {
+	const [internalPage, setInternalPage] = useState(1);
+	const page = controlledPage ?? internalPage;
+	const setPage = useCallback(
+		(next: number) => {
+			// Always update internal state so that if this section later
+			// transitions from controlled back to uncontrolled (e.g. when the
+			// URL drops `flow`/`page` on return to page 1), the derived `page`
+			// resolves to the correct value instead of a stale one.
+			setInternalPage(next);
+			onPageChange?.(next);
+		},
+		[onPageChange],
+	);
+	const queryClient = useQueryClient();
+
+	// Build filter for this specific flow with pagination
+	const buildFilterForPage = useCallback(
+		(targetPage: number): FlowRunsPaginateFilter => {
+			return {
+				...filter,
+				flows: {
+					...filter?.flows,
+					operator: "and_" as const,
+					id: { any_: [flowId] },
+				},
+				page: targetPage,
+				limit: ITEMS_PER_PAGE,
+				sort: "EXPECTED_START_TIME_DESC" as const,
+			};
+		},
+		[filter, flowId],
+	);
+
+	const paginatedFilter = useMemo(
+		() => buildFilterForPage(page),
+		[buildFilterForPage, page],
+	);
+
+	// Fetch paginated flow runs
+	const { data } = useQuery(
+		buildPaginateFlowRunsQuery(paginatedFilter, 30_000),
+	);
+
+	const flowRuns = data?.results ?? [];
+	const totalPages = data?.pages ?? 1;
+
+	// Prefetch a page of flow runs and their task run counts
+	const prefetchPage = useCallback(
+		(targetPage: number) => {
+			const filter = buildFilterForPage(targetPage);
+			const pageQuery = buildPaginateFlowRunsQuery(filter, 30_000);
+
+			void queryClient
+				.fetchQuery(pageQuery)
+				.then((data) => {
+					if (!data) return;
+					const flowRunIds = (data.results ?? [])
+						.map((run) => run.id)
+						.filter(Boolean);
+
+					// Prefetch task run counts for each flow run individually
+					// to match the query key used by FlowRunTaskRuns component
+					flowRunIds.forEach((flowRunId) => {
+						void queryClient.prefetchQuery(
+							buildGetFlowRunsTaskRunsCountQuery([flowRunId]),
+						);
+					});
+				})
+				.catch(() => {
+					// Swallow errors so a failed prefetch doesn't break hover handlers
+				});
+		},
+		[buildFilterForPage, queryClient],
+	);
+
+	// Prefetch next page on hover
+	const prefetchNextPage = useCallback(() => {
+		if (page < totalPages) {
+			prefetchPage(page + 1);
+		}
+	}, [page, totalPages, prefetchPage]);
+
+	// Prefetch previous page on hover
+	const prefetchPreviousPage = useCallback(() => {
+		if (page > 1) {
+			prefetchPage(page - 1);
+		}
+	}, [page, prefetchPage]);
+
+	return (
+		<div className="space-y-3">
+			{flowRuns.map((flowRun) => (
+				<Suspense key={flowRun.id} fallback={<FlowRunCardSkeleton />}>
+					<FlowRunCard flowRun={flowRun} />
+				</Suspense>
+			))}
+
+			{totalPages > 1 && (
+				<Pagination className="justify-start">
+					<PaginationContent>
+						<PaginationItem>
+							<PaginationPreviousButton
+								onClick={() => setPage(Math.max(1, page - 1))}
+								onMouseEnter={prefetchPreviousPage}
+								disabled={page === 1}
+							/>
+						</PaginationItem>
+						<PaginationItem>
+							<p className="text-sm px-2">
+								Page {page} of {totalPages}
+							</p>
+						</PaginationItem>
+						<PaginationItem>
+							<PaginationNextButton
+								onClick={() => setPage(Math.min(totalPages, page + 1))}
+								onMouseEnter={prefetchNextPage}
+								disabled={page === totalPages}
+							/>
+						</PaginationItem>
+					</PaginationContent>
+				</Pagination>
+			)}
+		</div>
+	);
+}
+
+function FlowRunCardSkeleton() {
+	return (
+		<div className="flex flex-col gap-2 rounded-md border p-4">
+			<div className="flex justify-between items-center">
+				<Skeleton className="h-4 w-32" />
+				<Skeleton className="h-4 w-16" />
+			</div>
+			<div className="flex items-center gap-2">
+				<Skeleton className="h-5 w-20" />
+				<Skeleton className="h-4 w-24" />
+				<Skeleton className="h-4 w-16" />
+			</div>
+		</div>
+	);
+}

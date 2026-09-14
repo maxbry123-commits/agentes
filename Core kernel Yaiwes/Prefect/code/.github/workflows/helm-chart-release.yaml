@@ -1,0 +1,31 @@
+name: Create prefect-helm release
+
+on:
+  # As soon as this repo creates an official release, we will
+  # create a corresponding release in the helm chart repo
+  release:
+    types: [released]
+
+jobs:
+  create_helm_release:
+    if: startsWith(github.ref, 'refs/tags/3.')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate prefect-ci-bot-public token
+        id: app_token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.PREFECT_CI_BOT_PUBLIC_CLIENT_ID }}
+          private-key: ${{ secrets.PREFECT_CI_BOT_PUBLIC_PRIVATE_KEY }}
+          owner: PrefectHQ
+          repositories: prefect-helm
+          # Scope to the minimum needed for `gh workflow run`.
+          permission-actions: write
+
+      - name: Create prefect-helm release
+        run: |
+          gh workflow run helm-release.yaml \
+            --repo PrefectHQ/prefect-helm \
+            --ref main
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
