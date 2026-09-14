@@ -1,0 +1,56 @@
+{
+  "schema": "yaiwes.kernel.planner-decomposer4.queue/v1",
+  "created_at": "2026-09-14",
+  "objective": "Planner.DecomposeObjective deterministic objective decomposition without LLM",
+  "microflow": "objective -> normalize text -> classify objective type -> select template -> generate ordered milestones -> checkpoints",
+  "destination_root": "Core kernel Yaiwes",
+  "motor2_blob": "84d566e2ee4e98e42eb3a864026d067d48caabd9",
+  "engine_blob": "91e6e4486692eab314be5c7130d8310d3c855397",
+  "selection_policy": "deterministic/no-LLM planning relevance + maturity + community valuation + compatibility with canonical Motor2",
+  "queue": [
+    {
+      "id": "PD4-001",
+      "source_repo": "aibasel/downward",
+      "source_ref": "HEAD",
+      "slug": "Fast-Downward",
+      "dest_repo": "maxbry123-commits/agentes",
+      "dest_branch": "main",
+      "dest_root": "Core kernel Yaiwes",
+      "publish": true,
+      "role": "deterministic classical planner/search backend for ordered action plans"
+    },
+    {
+      "id": "PD4-002",
+      "source_repo": "aiplan4eu/unified-planning",
+      "source_ref": "HEAD",
+      "slug": "Unified-Planning",
+      "dest_repo": "maxbry123-commits/agentes",
+      "dest_branch": "main",
+      "dest_root": "Core kernel Yaiwes",
+      "publish": true,
+      "role": "planner abstraction with hierarchical task-network support and plan hierarchy representation"
+    },
+    {
+      "id": "PD4-003",
+      "source_repo": "aibasel/pyperplan",
+      "source_ref": "HEAD",
+      "slug": "Pyperplan",
+      "dest_repo": "maxbry123-commits/agentes",
+      "dest_branch": "main",
+      "dest_root": "Core kernel Yaiwes",
+      "publish": true,
+      "role": "lightweight deterministic STRIPS planner suitable for transparent rule/search prototypes"
+    },
+    {
+      "id": "PD4-004",
+      "source_repo": "dananau/GTPyhop",
+      "source_ref": "HEAD",
+      "slug": "GTPyhop",
+      "dest_repo": "maxbry123-commits/agentes",
+      "dest_branch": "main",
+      "dest_root": "Core kernel Yaiwes",
+      "publish": true,
+      "role": "goal-task-network planner that decomposes goals and tasks hierarchically without an LLM"
+    }
+  ]
+}
