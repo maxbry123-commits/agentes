@@ -1,0 +1,34 @@
+name: Upload and build nightly wheels
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  cron:
+    # Do not attempt to upload nightly through forks
+    if: github.repository_owner == 'networkx'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
+        with:
+          environments: build-release
+      - name: Build a wheel and a sdist
+        run: pixi run -e build-release build-dist
+      - name: Verify the distribution
+        run: pixi run -e build-release verify-dist
+      - name: List contents of sdist
+        run: pixi run -e build-release python -m tarfile --list dist/networkx-*.tar.gz
+      - name: List contents of wheel
+        run: pixi run -e build-release python -m zipfile --list dist/networkx-*.whl
+      - name: Upload nightly wheel
+        uses: scientific-python/upload-nightly-action@e76cfec8a4611fd02808a801b0ff5a7d7c1b2d99 # 0.6.4
+        with:
+          anaconda_nightly_upload_token: ${{ secrets.ANACONDA_NIGHTLY }}
+          artifacts_path: dist/
