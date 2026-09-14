@@ -1,0 +1,173 @@
+#!/bin/bash
+set -euo pipefail
+echo "CLICKHOUSE_ID=${CLICKHOUSE_ID}"
+
+set +x
+# Get the url of a ClickHouse cloud instance, based on the $CLICKHOUSE_ID that we assigned in '.buildkite/hooks/post-checkout'
+# We also use this id as part of the concurrent group key in '.buildkite/pipeline.yml', so we're guaranteed to be the only job trying to use this instance.
+# This allows us to distribute our tests across multiple ClickHouse cloud instances (since running too many parallel tests will overload any single instance).
+export CLICKHOUSE_API_KEY=$(buildkite-agent secret get clickhouse_api_key)
+export CLICKHOUSE_KEY_SECRET=$(buildkite-agent secret get clickhouse_key_secret)
+export CLICKHOUSE_USERNAME=$(buildkite-agent secret get clickhouse_username)
+export CLICKHOUSE_PASSWORD=$(buildkite-agent secret get clickhouse_password)
+export R2_ACCESS_KEY_ID=$(buildkite-agent secret get R2_ACCESS_KEY_ID)
+export R2_SECRET_ACCESS_KEY=$(buildkite-agent secret get R2_SECRET_ACCESS_KEY)
+# We concatenate our clickhouse instance prefix, along with our chosen clickhouse id (e.g. 'dev-tensorzero-e2e-tests-instance-' and '0'), to form the instance name
+# Then, we look up the instance url for this name, and add basic-auth credentials to the url to get our full TENSORZERO_CLICKHOUSE_URL
+# The 'export' statements go on separate lines to prevent the return code from the $() command from being ignored
+CURL_OUTPUT=$(curl \
+    --retry 10 --retry-delay 5 --retry-max-time 300 --retry-all-errors --max-time 30 \
+    --user "$CLICKHOUSE_API_KEY:$CLICKHOUSE_KEY_SECRET" https://api.clickhouse.cloud/v1/organizations/b55f1935-803f-4931-90b3-4d26089004d4/services)
+echo "ClickHouse API response: $CURL_OUTPUT"
+TENSORZERO_CLICKHOUSE_URL=$(echo "$CURL_OUTPUT" | jq -r ".result[] | select(.name == \"${CLICKHOUSE_PREFIX}${CLICKHOUSE_ID}\") | .endpoints[] | select(.protocol == \"https\") | \"https://$CLICKHOUSE_USERNAME:$CLICKHOUSE_PASSWORD@\" + .host + \":\" + (.port | tostring)")
+export TENSORZERO_CLICKHOUSE_URL
+echo $TENSORZERO_CLICKHOUSE_URL
+CLICKHOUSE_HOST=$(echo $TENSORZERO_CLICKHOUSE_URL | sed 's|https://[^@]*@||' | sed 's|:[0-9]*||')
+export CLICKHOUSE_HOST
+
+# Generate unique database name with random suffix for isolation
+RANDOM_SUFFIX=$(openssl rand -hex 4)
+DATABASE_NAME="tensorzero_e2e_tests_${RANDOM_SUFFIX}"
+echo "Using database name: $DATABASE_NAME"
+
+# Append the database name to the ClickHouse URL path
+TENSORZERO_CLICKHOUSE_URL="${TENSORZERO_CLICKHOUSE_URL%/}/${DATABASE_NAME}"
+export TENSORZERO_CLICKHOUSE_URL
+echo "Updated ClickHouse URL with database: $TENSORZERO_CLICKHOUSE_URL"
+
+# Fire off a background request to wake up the ClickHouse Cloud instance
+# (idle instances take ~4-5 min to wake up, so start this early while we install dependencies)
+echo "Starting background ClickHouse wake-up..."
+curl --retry 20 --retry-delay 5 --retry-max-time 300 --retry-all-errors --max-time 15 \
+    "$TENSORZERO_CLICKHOUSE_URL" --data-binary 'SELECT 1' > /dev/null 2>&1 &
+
+REPO_ROOT="$(pwd)"
+
+# Set up cleanup function to run on exit
+cleanup_database() {
+    if [ -n "${TENSORZERO_CLICKHOUSE_URL:-}" ]; then
+        # Extract database name from the URL path
+        DB_NAME=$(echo "$TENSORZERO_CLICKHOUSE_URL" | sed 's|.*/||')
+        if [ -n "$DB_NAME" ]; then
+            echo "Cleaning up database: $DB_NAME"
+            # Remove the database path from URL for the cleanup call
+            BASE_URL=$(echo "$TENSORZERO_CLICKHOUSE_URL" | sed 's|/[^/]*$||')
+            curl -X POST \
+                --retry 10 --retry-delay 5 --retry-max-time 300 --retry-all-errors --max-time 30 \
+                "${BASE_URL%/}/?param_target=$DB_NAME" \
+                --data-binary "DROP DATABASE IF EXISTS {target:Identifier}" || true
+            echo "Cleanup completed for database: $DB_NAME"
+        fi
+    fi
+    docker compose -f "$REPO_ROOT/crates/tensorzero-core/tests/e2e/docker-compose.yml" down -v || true
+    cat "$REPO_ROOT/crates/e2e_logs.txt" || echo "e2e logs don't exist"
+}
+
+# Register cleanup function to run on script exit (success or failure)
+trap cleanup_database EXIT
+
+set -x
+
+
+# Install ClickHouse client and load fixtures into remote ClickHouse
+# Install prerequisite packages
+sudo apt-get install -y apt-transport-https ca-certificates curl gnupg
+# Download the ClickHouse GPG key and store it in the keyring
+# This URL now gives 'Not Found'
+#curl -fsSL 'https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key' | sudo gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg
+# The ClickHouse docs are wrong about the GPG key id:
+# https://github.com/ClickHouse/ClickHouse/issues/41420#issuecomment-1255111702
+sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 3E4AD4719DDE9A38
+# Get the system architecture
+ARCH=$(dpkg --print-architecture)
+# Add the ClickHouse repository to apt sources
+echo "deb https://packages.clickhouse.com/deb stable main" | sudo tee /etc/apt/sources.list.d/clickhouse.list
+# Update apt package lists
+sudo apt-get update
+# Pin to 26.4.3.37: 26.5.1.882 forces the ParquetV3 reader for `INSERT FROM INFILE`
+# and rejects our committed `large_*.parquet` fixtures with `Code: 117 (INCORRECT_DATA)`,
+# ignoring `input_format_parquet_use_native_reader_v3=0`.
+CLICKHOUSE_CLIENT_VERSION=26.4.3.37
+sudo apt-get install -y \
+    "clickhouse-client=${CLICKHOUSE_CLIENT_VERSION}" \
+    "clickhouse-common-static=${CLICKHOUSE_CLIENT_VERSION}"
+
+curl \
+    --retry 20 --retry-delay 5 --retry-max-time 300 --retry-all-errors --max-time 15 \
+    "$TENSORZERO_CLICKHOUSE_URL" --data-binary 'SHOW DATABASES'
+curl --proto '=https' --tlsv1.2 -sSf --retry 3 --retry-delay 5 --retry-all-errors https://sh.rustup.rs | sh -s -- -y
+. "$HOME/.cargo/env"
+curl -LsSf --retry 3 --retry-delay 5 --retry-all-errors https://astral.sh/uv/0.9.27/install.sh | sh
+source $HOME/.local/bin/env
+curl -LsSf --retry 3 --retry-delay 5 --retry-all-errors https://get.nexte.st/latest/linux | tar zxf - -C ~/.cargo/bin
+# Install s5cmd for authenticated fixture downloads from R2
+ARCH=$(uname -m)
+if [ "$ARCH" = "x86_64" ]; then
+    S5CMD_ARCH="64bit"
+elif [ "$ARCH" = "aarch64" ]; then
+    S5CMD_ARCH="arm64"
+else
+    echo "Unsupported architecture: $ARCH" && exit 1
+fi
+curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors "https://github.com/peak/s5cmd/releases/download/v2.3.0/s5cmd_2.3.0_Linux-${S5CMD_ARCH}.tar.gz" \
+    | tar xz -C /usr/local/bin s5cmd
+uv run ./ui/fixtures/download-large-fixtures.py
+uv run ./ui/fixtures/download-small-fixtures.py
+./ci/delete-clickhouse-dbs.sh
+
+# Start postgres service for migrations
+# `cargo test-clickhouse` should not include any Postgres tests, but we're including it here to be safe.
+docker compose -f crates/tensorzero-core/tests/e2e/docker-compose.yml up -d --wait postgres
+export TENSORZERO_POSTGRES_URL=postgres://postgres:postgres@localhost:5432/tensorzero-e2e-tests
+export DATABASE_URL=postgres://postgres:postgres@localhost:5432/tensorzero-e2e-tests
+
+cd crates
+SQLX_OFFLINE=1 cargo build-e2e
+cargo run --bin gateway --features e2e_tests -- --run-postgres-migrations
+
+cargo run-e2e > e2e_logs.txt 2>&1 &
+    count=0
+    max_attempts=180
+    while ! curl -s -f http://localhost:3000/health >/dev/null 2>&1; do
+        echo "Waiting for gateway to be healthy..."
+        sleep 1
+        count=$((count + 1))
+        if [ $count -ge $max_attempts ]; then
+        echo "Gateway failed to become healthy after $max_attempts attempts"
+        cat e2e_logs.txt
+        exit 1
+        fi
+    done
+    export GATEWAY_PID=$!
+
+# Start test compilation in background while we load fixtures
+echo "Starting background test compilation..."
+SQLX_OFFLINE=1 cargo test-clickhouse --no-run &
+TEST_BUILD_PID=$!
+
+export CLICKHOUSE_USER=$(buildkite-agent secret get CLICKHOUSE_CLOUD_INSERT_USERNAME)
+export CLICKHOUSE_PASSWORD=$(buildkite-agent secret get CLICKHOUSE_CLOUD_INSERT_PASSWORD)
+export CLICKHOUSE_SECURE=1
+export SQLX_OFFLINE=1
+cd ../ui/fixtures
+max_retries=3
+for attempt in $(seq 1 $max_retries); do
+    if ./load_fixtures.sh $DATABASE_NAME; then
+        break
+    fi
+    if [ $attempt -eq $max_retries ]; then
+        echo "load_fixtures.sh failed after $max_retries attempts"
+        exit 1
+    fi
+    echo "load_fixtures.sh failed (attempt $attempt/$max_retries), retrying..."
+    sleep 5
+done
+cd ../../crates
+sleep 2
+
+# Wait for background test compilation to finish
+echo "Waiting for test compilation to complete..."
+wait $TEST_BUILD_PID
+
+cargo test-clickhouse --no-fail-fast -- --skip test_concurrent_clickhouse_migrations
+cat e2e_logs.txt

@@ -1,0 +1,5 @@
+minimumReleaseAge: 4320
+
+packages:
+  - "crates/tensorzero-node"
+  - "ui"
