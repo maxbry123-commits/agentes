@@ -1,0 +1,1507 @@
+{
+	"fixme1.py": {
+		"description": "Fix the syntax error in the Python script to print the flag.",
+		"hints": [
+			"Indentation is very meaningful in Python",
+			"To view the file in the webshell, do: $ nano fixme1.py",
+			"To exit nano, press Ctrl and x and follow the on-screen prompts.",
+			"The str_xor function does not need to be reverse engineered for this challenge."
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c/26/fixme1.py"
+		],
+		"solver_function": "fixme1py",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 240
+	},
+	"fixme2.py": {
+		"description": "Fix the syntax error in the Python script to print the flag.",
+		"hints": [
+			"Are equality and assignment the same symbol?",
+			"To view the file in the webshell, do: $ nano fixme2.py",
+			"To exit nano, press Ctrl and x and follow the on-screen prompts.",
+			"The str_xor function does not need to be reverse engineered for this challenge."
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c/5/fixme2.py"
+		],
+		"solver_function": "fixme2py",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 241
+	},
+	"Mod 26": {
+		"description": "Cryptography can be easy, do you know what ROT13 is? cvpbPGS{arkg_gvzr_V'yy_gel_2_ebhaqf_bs_ebg13_Ncualgvd}",
+		"hints": [
+			"This can be solved online if you don't want to do it by hand!"
+		],
+		"solver_function": "mod26",
+		"category": "Cryptography",
+		"difficulty": "easy",
+		"id": 144
+	},
+	"rotation": {
+		"description": "You will find the flag after decrypting this file.",
+		"hints": [
+			"Sometimes rotation is right"
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c/385/encrypted.txt"
+		],
+		"solver_function": "rotation",
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"id": 373
+	},
+	"interencdec": {
+		"description": "Can you get the real meaning from this file.",
+		"hints": [
+			"Engaging in various decoding processes is of utmost importance"
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c_titan/3/enc_flag"
+		],
+		"solver_function": "interencdec",
+		"category": "Cryptography",
+		"difficulty": "easy",
+		"id": 418
+	},
+	"ReadMyCert": {
+		"description": "How about we take you on an adventure on exploring certificate signing requests",
+		"hints": [
+			"Download the certificate signing request and try to read it."
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c/426/readmycert.csr"
+		],
+		"solver_function": "readmycert",
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"id": 367
+	},
+	"patchme.py": {
+		"description": "Can you get the flag? \n Run this Python program in the same directory as this encrypted flag.",
+		"files": [
+			"https://artifacts.picoctf.net/c/201/patchme.flag.py",
+			"https://artifacts.picoctf.net/c/201/flag.txt.enc"
+		],
+		"solver_function": "patchmepy",
+		"category": "Reverse Enineering",
+		"difficulty": "medium",
+		"id": 287
+	},
+	"Safe Opener": {
+		"description": "Can you open this safe?\nI forgot the key to my safe but this program is supposed to help me with retrieving the lost key. Can you help me unlock my safe?\nPut the password you recover into the picoCTF flag format like:\npicoCTF{password}",
+		"files": [
+			"https://artifacts.picoctf.net/c/83/SafeOpener.java"
+		],
+		"solver_function": "safe_opener",
+		"category": "Reverse Enineering",
+		"difficulty": "medium",
+		"id": 294
+	},
+	"Secret of the Polyglot": {
+		"description": "The Network Operations Center (NOC) of your local institution picked up a suspicious file, they're getting conflicting information on what type of file it is. They've brought you in as an external expert to examine the file. Can you extract all the information from this strange file?",
+		"hints": [
+			"This problem can be solved by just opening the file in different ways"
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c_titan/99/flag2of2-final.pdf"
+		],
+		"solver_function": "secret_of_the_polyglot",
+		"category": "Forensics",
+		"difficulty": "easy",
+		"id": 423
+	},
+	"Mob psycho": {
+		"description": "Can you handle APKs?",
+		"hints": [
+			"Did you know you can unzip APK files?",
+			"Now you have the whole host of shell tools for searching these files."
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c_titan/51/mobpsycho.apk"
+		],
+		"solver_function": "mob_psycho",
+		"category": "Forensics",
+		"difficulty": "medium",
+		"id": 420
+	},
+	"Redaction gone wrong": {
+		"description": "Now you DON'T see me.\nThis report has some critical data in it, some of which have been redacted correctly, while some were not. Can you find an important key that was not redacted properly?",
+		"hints": [
+			"How can you be sure of the redaction?"
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c/84/Financial_Report_for_ABC_Labs.pdf"
+		],
+		"solver_function": "redaction_gone_wrong",
+		"category": "Forensics",
+		"difficulty": "medium",
+		"id": 290
+	},
+	"C3": {
+		"description": "This is the Custom Cyclical Cipher!\nEnclose the flag in our wrapper for submission. If the flag was \"example\" you would submit \"picoCTF{example}\".",
+		"hints": [
+			"Modern crypto schemes don't depend on the encoder to be secret, but this one does."
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c_titan/47/ciphertext",
+			"https://artifacts.picoctf.net/c_titan/47/convert.py"
+		],
+		"solver_function": "c3",
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"id": 407
+	},
+	"PW Crack 4": {
+		"description": "Can you crack the password to get the flag?\nDownload the password checker here and you'll need the encrypted flag and the hash in the same directory too.\nThere are 100 potential passwords with only 1 being correct. You can find these by examining the password checker script.",
+		"hints": [
+			"A for loop can help you do many things very quickly.",
+			"The str_xor function does not need to be reverse engineered for this challenge."
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c/21/level4.py",
+			"https://artifacts.picoctf.net/c/21/level4.flag.txt.enc",
+			"https://artifacts.picoctf.net/c/21/level4.hash.bin"
+		],
+		"solver_function": "pw_crack_4",
+		"category": "General Skills",
+		"difficulty": "medium",
+		"id": 248
+	},
+	"CanYouSee": {
+		"description": "How about some hide and seek?",
+		"hints": [
+			"How can you view the information about the picture?",
+			"If something isn't in the expected form, maybe it deserves attention?"
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c_titan/5/unknown.zip"
+		],
+		"solver_function": "canyousee",
+		"category": "Forensics",
+		"difficulty": "easy",
+		"id": 408
+	},
+	"Lookey here": {
+		"description": "Attackers have hidden information in a very large mass of data in the past, maybe they are still doing it.",
+		"hints": [
+			"Download the file and search for the flag based on the known prefix."
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c/126/anthem.flag.txt"
+		],
+		"solver_function": "lookey_here",
+		"category": "Forensics",
+		"difficulty": "medium",
+		"id": 279
+	},
+	"Time Machine": {
+		"description": "What was I last working on? I remember writing a note to help me remember...",
+		"hints": [
+			"The cat command will let you read a file, but that won't help you here!",
+			"Read the chapter on Git from the picoPrimer here. (https://primer.picoctf.org/#_git_version_control)",
+			"When committing a file with git, a message can (and should) be included."
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c_titan/67/challenge.zip"
+		],
+		"solver_function": "time_machine",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 425
+	},
+	"Collaborative Development": {
+		"description": "My team has been working very hard on new features for our flag printing program! I wonder how they'll work together?",
+		"hints": [
+			"git branch -a will let you see available branches",
+			"How can file 'diffs' be brought to the main branch? Don't forget to git config!",
+			"Merge conflicts can be tricky! Try a text editor like nano, emacs, or vim."
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c_titan/71/challenge.zip"
+		],
+		"solver_function": "collaborative_development",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 410
+	},
+	"Commitment Issues": {
+		"description": "I accidentally wrote the flag down. Good thing I deleted it!",
+		"hints": [
+			"Version control can help you recover files if you change or lose them!",
+			"Read the chapter on Git from the picoPrimer here (https://primer.picoctf.org/#_git_version_control)",
+			"You can 'checkout' commits to see the files inside them"
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c_titan/137/challenge.zip"
+		],
+		"solver_function": "commitment_issues",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 411
+	},
+	"repetitions": {
+		"description": "Can you make sense of this file?",
+		"hints": [
+			"Multiple decoding is always good."
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c/475/enc_flag"
+		],
+		"solver_function": "repetitions",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 371
+	},
+	"Big Zip": {
+		"description": "Unzip this archive and find the flag.",
+		"hints": [
+			"Can grep be instructed to look at every file in a directory and its subdirectories?"
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c/503/big-zip-files.zip"
+		],
+		"solver_function": "big_zip",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 322
+	},
+	"First Find": {
+		"description": "Unzip this archive and find the file named 'uber-secret.txt'",
+		"files": [
+			"https://artifacts.picoctf.net/c/500/files.zip"
+		],
+		"solver_function": "first_find",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 320
+	},
+	"runme.py": {
+		"description": "Run the runme.py script to get the flag. Download the script with your browser or with wget in the webshell.",
+		"hints": [
+			"If you have Python on your computer, you can download the script normally and run it. Otherwise, use the wget command in the webshell.",
+			"To use wget in the webshell, first right click on the download link and select 'Copy Link' or 'Copy Link Address'",
+			"Type everything after the dollar sign in the webshell: $ wget , then paste the link after the space after wget and press enter. This will download the script for you in the webshell so you can run it!",
+			"Finally, to run the script, type everything after the dollar sign and then press enter: $ python3 runme.py You should have the flag now!"
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c/34/runme.py"
+		],
+		"solver_function": "runmepy",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 250
+	},
+	"where are the robots": {
+		"description": "Can you find the robots? https://jupiter.challenges.picoctf.org/problem/60915/ or http://jupiter.challenges.picoctf.org:60915",
+		"hints": [
+			"What part of the website could tell you where the creator doesn't want you to look?"
+		],
+		"solver_function": "where_are_the_robots",
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"id": 4
+	},
+	"vault-door-training": {
+		"description": "Your mission is to enter Dr. Evil's laboratory and retrieve the blueprints for his Doomsday Project. The laboratory is protected by a series of locked vault doors. Each door is controlled by a computer and requires a password to open. Unfortunately, our undercover agents have not been able to obtain the secret passwords for the vault doors, but one of our junior agents obtained the source code for each vault's computer! You will need to read the source code for each level to figure out what the password is for that vault door. As a warmup, we have created a replica vault in our training facility.",
+		"hints": [
+			"The password is revealed in the program's source code."
+		],
+		"files": [
+			"https://jupiter.challenges.picoctf.org/static/a4a1ca9c54d8fac9404f9cbc50d9751a/VaultDoorTraining.java"
+		],
+		"solver_function": "vault_door_training",
+		"category": "Reverse Enineering",
+		"difficulty": "easy",
+		"id": 7
+	},
+	"vault-door-1": {
+		"description": "This vault uses some complicated arrays! I hope you can make sense of it, special agent.",
+		"hints": [
+			"Look up the charAt() method online."
+		],
+		"files": [
+			"https://jupiter.challenges.picoctf.org/static/ff2585f7afd21b81f69d2fbe37c081ae/VaultDoor1.java"
+		],
+		"solver_function": "vault_door_1",
+		"category": "Reverse Enineering",
+		"difficulty": "easy",
+		"id": 12
+	},
+	"So Meta": {
+		"description": "Find the flag in this picture.",
+		"hints": [
+			"What does meta mean in the context of files?",
+			"Ever heard of metadata?"
+		],
+		"files": [
+			"https://jupiter.challenges.picoctf.org/static/89b371a46702a31aa9931a2a2b12f8bf/pico_img.png"
+		],
+		"solver_function": "so_meta",
+		"category": "Forensics",
+		"difficulty": "medium",
+		"id": 19
+	},
+	"strings it": {
+		"description": "Can you find the flag in file without running it?",
+		"hints": [
+			"strings (https://linux.die.net/man/1/strings)"
+		],
+		"files": [
+			"https://jupiter.challenges.picoctf.org/static/94d00153b0057d37da225ee79a846c62/strings"
+		],
+		"solver_function": "strings_it",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 37
+	},
+	"Easy1": {
+		"description": "The one time pad can be cryptographically secure, but not when you know the key. Can you solve this? We've given you the encrypted flag, key, and a table to help UFJKXQZQUNB with the key of SOLVECRYPTO. Can you use this table to solve it?",
+		"hints": [
+			"Submit your answer in our flag format. For example, if your answer was 'hello', you would submit 'picoCTF{HELLO}' as the flag.",
+			"Please use all caps for the message."
+		],
+		"files": [
+			"https://jupiter.challenges.picoctf.org/static/1fd21547c154c678d2dab145c29f1d79/table.txt"
+		],
+		"solver_function": "easy1",
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"id": 43
+	},
+	"Glory of the Garden": {
+		"description": "This garden contains more than it seems.",
+		"hints": [
+			"What is a hex editor?"
+		],
+		"files": [
+			"https://jupiter.challenges.picoctf.org/static/d0e1ffb10fc0017c6a82c57900f3ffe3/garden.jpg"
+		],
+		"solver_function": "glory_of_the_garden",
+		"category": "Forensics",
+		"difficulty": "easy",
+		"id": 44
+	},
+	"caesar": {
+		"description": "Decrypt this message.",
+		"hints": [
+			"caesar cipher tutorial (https://learncryptography.com/classical-encryption/caesar-cipher)"
+		],
+		"files": [
+			"https://jupiter.challenges.picoctf.org/static/49f31c8f17817dc2d367428c9e5ab0bc/ciphertext"
+		],
+		"solver_function": "caesar",
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"id": 64
+	},
+	"dont-use-client-side": {
+		"description": "Can you break into this super secure portal? https://jupiter.challenges.picoctf.org/problem/29835/ or http://jupiter.challenges.picoctf.org:29835",
+		"hints": [
+			"Never trust the client"
+		],
+		"solver_function": "dont_use_client_side",
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"id": 66
+	},
+	"First Grep": {
+		"description": "Can you find the flag in file? This would be really tedious to look through manually, something tells me there is a better way.",
+		"hints": [
+			"grep tutorial (https://ryanstutorials.net/linuxtutorial/grep.php)"
+		],
+		"files": [
+			"https://jupiter.challenges.picoctf.org/static/315d3325dc668ab7f1af9194f2de7e7a/file"
+		],
+		"solver_function": "first_grep",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 85
+	},
+	"Wireshark twoo twooo two twoo...": {
+		"description": "Can you find the flag? shark2.pcapng.",
+		"hints": [
+			"Did you really find _the_ flag?",
+			"Look for traffic that seems suspicious."
+		],
+		"files": [
+			"https://mercury.picoctf.net/static/7b8e53329b34946177a9b5f2860a0292/shark2.pcapng"
+		],
+		"solver_function": "wireshark_twoo_twooo",
+		"category": "Forensics",
+		"difficulty": "medium",
+		"id": 110
+	},
+	"packer": {
+		"description": "Reverse this linux executable?",
+		"hints": [
+			"What can we do to reduce the size of a binary after compiling it."
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c_titan/22/out"
+		],
+		"solver_function": "packer",
+		"category": "Reverse Enineering",
+		"difficulty": "medium",
+		"id": 421
+	},
+	"Disk, disk, sleuth!": {
+		"description": "Use `srch_strings` from the sleuthkit and some terminal-fu to find a flag in this disk image: dds1-alpine.flag.img.gz",
+		"hints": [
+			"Have you ever used `file` to determine what a file was?",
+			"Relevant terminal-fu in picoGym: https://play.picoctf.org/practice/challenge/85",
+			"Mastering this terminal-fu would enable you to find the flag in a single command: https://play.picoctf.org/practice/challenge/48",
+			"Using your own computer, you could use qemu to boot from this disk!"
+		],
+		"files": [
+			"https://mercury.picoctf.net/static/626ea9c275fbd02dd3451b81f9c5e249/dds1-alpine.flag.img.gz"
+		],
+		"solver_function": "disk_disk_sleuth",
+		"category": "Forensics",
+		"difficulty": "medium",
+		"id": 113
+	},
+	"Wireshark doo dooo do doo...": {
+		"description": "Can you find the flag? shark1.pcapng.",
+		"files": [
+			"https://mercury.picoctf.net/static/81c7862241faf4a48bd64a858392c92b/shark1.pcapng"
+		],
+		"solver_function": "wireshark_doo_dooo",
+		"category": "Forensics",
+		"difficulty": "medium",
+		"id": 115
+	},
+	"keygenme-py": {
+		"description": "keygenme-trial.py",
+		"files": [
+			"https://mercury.picoctf.net/static/9055e7d35f5f4646338a1734aea0dda5/keygenme-trial.py"
+		],
+		"solver_function": "keygenme_py",
+		"category": "Reverse Enineering",
+		"difficulty": "medium",
+		"id": 121
+	},
+	"More Cookies": {
+		"description": "I forgot Cookies can Be modified Client-side, so now I decided to encrypt them! http://mercury.picoctf.net:34962/",
+		"hints": [
+			"https://en.wikipedia.org/wiki/Homomorphic_encryption",
+			"The search endpoint is only helpful for telling you if you are admin or not, you won't be able to guess the flag name"
+		],
+		"solver_function": "more_cookies",
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"id": 124
+	},
+	"Easy Peasy": {
+		"description": "A one-time pad is unbreakable, but can you manage to recover the flag? (Wrap with picoCTF{}) nc mercury.picoctf.net 36981 otp.py",
+		"hints": [
+			"Maybe there's a way to make this a 2x pad."
+		],
+		"files": [
+			"https://mercury.picoctf.net/static/6920807ae08f883dbb50f6f301f92684/otp.py"
+		],
+		"solver_function": "easy_peasy",
+		"category": "General Skills",
+		"difficulty": "medium",
+		"id": 125
+	},
+	"Matryoshka doll": {
+		"description": "Matryoshka dolls are a set of wooden dolls of decreasing size placed one inside another. What's the final one?",
+		"hints": [
+			"Wait, you can hide files inside files? But how do you find them?",
+			"Make sure to submit the flag as picoCTF{XXXXX}"
+		],
+		"files": [
+			"https://mercury.picoctf.net/static/b6205dd933ec01c022c4e6acbdf11116/dolls.jpg"
+		],
+		"solver_function": "matryoshka_doll",
+		"category": "Forensics",
+		"difficulty": "medium",
+		"id": 129
+	},
+	"MacroHard WeakEdge": {
+		"description": "I've hidden a flag in this file. Can you find it? Forensics is fun.pptm",
+		"files": [
+			"https://mercury.picoctf.net/static/2e739f9e0dc9f4c1556ea6b033c3ec8e/Forensics%20is%20fun.pptm"
+		],
+		"solver_function": "macrohard_weakedge",
+		"category": "Forensics",
+		"difficulty": "medium",
+		"id": 130
+	},
+	"Who are you?": {
+		"description": "Let me in. Let me iiiiiiinnnnnnnnnnnnnnnnnnnn http://mercury.picoctf.net:46199/",
+		"hints": [
+			"It ain't much, but it's an RFC https://tools.ietf.org/html/rfc2616"
+		],
+		"solver_function": "who_are_you",
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"id": 142
+	},
+	"Cache Me Outside": {
+		"description": "While being super relevant with my meme references, I wrote a program to see how much you understand heap allocations. nc mercury.picoctf.net 49825",
+		"hints": [
+			"It may be helpful to read a little bit on GLIBC's tcache."
+		],
+		"files": [
+			"https://mercury.picoctf.net/static/044d5d7c9f7e469d9fed513aea8617c6/heapedit",
+			"https://mercury.picoctf.net/static/044d5d7c9f7e469d9fed513aea8617c6/Makefile",
+			"https://mercury.picoctf.net/static/044d5d7c9f7e469d9fed513aea8617c6/libc.so.6"
+		],
+		"solver_function": "cache_me_outside",
+		"category": "Binary Exploitation",
+		"difficulty": "hard",
+		"id": 146
+	},
+	"Some Assembly Required 1": {
+		"description": "http://mercury.picoctf.net:36152/index.html",
+		"solver_function": "some_assembly_required_1",
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"id": 152
+	},
+	"No Padding, No Problem": {
+		"description": "Oracles can be your best friend, they will decrypt anything, except the flag's ciphertext. How will you break it? Connect with nc mercury.picoctf.net 60368.",
+		"hints": [
+			"What can you do with a different pair of ciphertext and plaintext? What if it is not so different after all..."
+		],
+		"solver_function": "no_padding_no_problem",
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"id": 154
+	},
+	"New Caesar": {
+		"description": "We found a brand new type of encryption, can you break the secret code? (Wrap with picoCTF{}) dcebcmebecamcmanaedbacdaanafagapdaaoabaaafdbapdpaaapadanandcafaadbdaapdpandcac",
+		"hints": [
+			"How does the cipher work if the alphabet isn't 26 letters?",
+			"Even though the letters are split up, the same paradigms still apply"
+		],
+		"files": [
+			"https://mercury.picoctf.net/static/226a5ad9c9cb528673058d06d4c4380b/new_caesar.py"
+		],
+		"solver_function": "new_caesar",
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"id": 158
+	},
+	"Dachshund Attacks": {
+		"description": "What if d is too small? Connect with nc mercury.picoctf.net 30761.",
+		"hints": [
+			"What do you think about my pet? https://mercury.picoctf.net/static/817a74a86bcd5f69113e6f2453651cc2/dachshund.jpg"
+		],
+		"solver_function": "dachshund_attacks",
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"id": 159
+	},
+	"Static ain't always noise": {
+		"description": "Can you look at the data in this binary: static? This BASH script might help!",
+		"files": [
+			"https://mercury.picoctf.net/static/0f6ea599582dcce7b4f1ba94e3617baf/static",
+			"https://mercury.picoctf.net/static/0f6ea599582dcce7b4f1ba94e3617baf/ltdis.sh"
+		],
+		"solver_function": "static_aint_always_noise",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 163
+	},
+	"crackme-py": {
+		"description": "crackme.py",
+		"files": [
+			"https://mercury.picoctf.net/static/b7cabaae6561256c50728d3515db3058/crackme.py"
+		],
+		"solver_function": "crackme_py",
+		"category": "Reverse Enineering",
+		"difficulty": "medium",
+		"id": 175
+	},
+	"Tab, Tab, Attack": {
+		"description": "Using tabcomplete in the Terminal will add years to your life, esp. when dealing with long rambling directory structures and filenames: Addadshashanammu.zip",
+		"hints": [
+			"After `unzip`ing, this problem can be solved with 11 button-presses...(mostly Tab)..."
+		],
+		"files": [
+			"https://mercury.picoctf.net/static/9689f2b453ad5daeb73ca7534e4d1521/Addadshashanammu.zip"
+		],
+		"solver_function": "tab_tab_attack",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 176
+	},
+	"Here's a LIBC": {
+		"description": "I am once again asking for you to pwn this binary vuln libc.so.6 Makefile nc mercury.picoctf.net 23584",
+		"hints": [
+			"PWNTools has a lot of useful features for getting offsets."
+		],
+		"files": [
+			"https://mercury.picoctf.net/static/db3de64aff99326d98a0a12efcc57e7b/vuln",
+			"https://mercury.picoctf.net/static/db3de64aff99326d98a0a12efcc57e7b/libc.so.6",
+			"https://mercury.picoctf.net/static/db3de64aff99326d98a0a12efcc57e7b/Makefile"
+		],
+		"solver_function": "heres_a_libc",
+		"category": "Binary Exploitation",
+		"difficulty": "hard",
+		"id": 179
+	},
+	"Mini RSA": {
+		"description": "What happens if you have a small exponent? There is a twist though, we padded the plaintext so that (M ** e) is just barely larger than N. Let's decrypt this: ciphertext",
+		"hints": [
+			"RSA tutorial (https://en.wikipedia.org/wiki/RSA_(cryptosystem))",
+			"How could having too small of an e affect the security of this key?",
+			"Make sure you don't lose precision, the numbers are pretty big (besides the e value)",
+			"You shouldn't have to make too many guesses",
+			"pico is in the flag, but not at the beginning"
+		],
+		"files": [
+			"https://mercury.picoctf.net/static/a24cf907007a19dbf30310acad0df9e5/ciphertext"
+		],
+		"solver_function": "mini_rsa",
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"id": 188
+	},
+	"login": {
+		"description": "My dog-sitter's brother made this website but I can't get in; can you help? https://login.mars.picoctf.net/",
+		"solver_function": "login",
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"id": 200
+	},
+	"Codebook": {
+		"description": "Run the Python script code.py in the same directory as codebook.txt.",
+		"hints": [
+			"On the webshell, use ls to see if both files are in the directory you are in",
+			"The str_xor function does not need to be reverse engineered for this challenge."
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c/1/code.py",
+			"https://artifacts.picoctf.net/c/1/codebook.txt"
+		],
+		"solver_function": "codebook",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 238
+	},
+	"convertme.py": {
+		"description": "Run the Python script and convert the given number from decimal to binary to get the flag.",
+		"hints": [
+			"Look up a decimal to binary number conversion app on the web or use your computer's calculator!",
+			"The str_xor function does not need to be reverse engineered for this challenge.",
+			"If you have Python on your computer, you can download the script normally and run it. Otherwise, use the wget command in the webshell.",
+			"To use wget in the webshell, first right click on the download link and select 'Copy Link' or 'Copy Link Address'",
+			"Type everything after the dollar sign in the webshell: $ wget , then paste the link after the space after wget and press enter. This will download the script for you in the webshell so you can run it!",
+			"Finally, to run the script, type everything after the dollar sign and then press enter: $ python3 convertme.py"
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c/24/convertme.py"
+		],
+		"solver_function": "convertme",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 239
+	},
+	"PW Crack 1": {
+		"description": "Can you crack the password to get the flag? Download the password checker here and you'll need the encrypted flag in the same directory too.",
+		"hints": [
+			"To view the file in the webshell, do: $ nano level1.py",
+			"To exit nano, press Ctrl and x and follow the on-screen prompts.",
+			"The str_xor function does not need to be reverse engineered for this challenge."
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c/11/level1.py",
+			"https://artifacts.picoctf.net/c/11/level1.flag.txt.enc"
+		],
+		"solver_function": "pw_crack_1",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 245
+	},
+	"PW Crack 2": {
+		"description": "Can you crack the password to get the flag? Download the password checker here and you'll need the encrypted flag in the same directory too.",
+		"hints": [
+			"Does that encoding look familiar?",
+			"The str_xor function does not need to be reverse engineered for this challenge."
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c/13/level2.py",
+			"https://artifacts.picoctf.net/c/13/level2.flag.txt.enc"
+		],
+		"solver_function": "pw_crack_2",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 246
+	},
+	"PW Crack 3": {
+		"description": "Can you crack the password to get the flag? Download the password checker here and you'll need the encrypted flag and the hash in the same directory too. There are 7 potential passwords with 1 being correct. You can find these by examining the password checker script.",
+		"hints": [
+			"To view the level3.hash.bin file in the webshell, do: $ bvi level3.hash.bin",
+			"To exit bvi type :q and press enter.",
+			"The str_xor function does not need to be reverse engineered for this challenge."
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c/17/level3.py",
+			"https://artifacts.picoctf.net/c/17/level3.flag.txt.enc",
+			"https://artifacts.picoctf.net/c/17/level3.hash.bin"
+		],
+		"solver_function": "pw_crack_3",
+		"category": "General Skills",
+		"difficulty": "medium",
+		"id": 247
+	},
+	"PW Crack 5": {
+		"description": "Can you crack the password to get the flag? Download the password checker here and you'll need the encrypted flag and the hash in the same directory too. Here's a dictionary with all possible passwords based on the password conventions we've seen so far.",
+		"hints": [
+			"Opening a file in Python is crucial to using the provided dictionary.",
+			"You may need to trim the whitespace from the dictionary word before hashing. Look up the Python string function, strip",
+			"The str_xor function does not need to be reverse engineered for this challenge."
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c/32/level5.py",
+			"https://artifacts.picoctf.net/c/32/level5.flag.txt.enc",
+			"https://artifacts.picoctf.net/c/32/level5.hash.bin",
+			"https://artifacts.picoctf.net/c/32/dictionary.txt"
+		],
+		"solver_function": "pw_crack_5",
+		"category": "General Skills",
+		"difficulty": "medium",
+		"id": 249
+	},
+	"Serpentine": {
+		"description": "Find the flag in the Python script!",
+		"hints": [
+			"Try running the script and see what happens",
+			"In the webshell, try examining the script with a text editor like nano",
+			"To exit nano, press Ctrl and x and follow the on-screen prompts.",
+			"The str_xor function does not need to be reverse engineered for this challenge."
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c/37/serpentine.py"
+		],
+		"solver_function": "serpentine",
+		"category": "General Skills",
+		"difficulty": "medium",
+		"id": 251
+	},
+	"FindAndOpen": {
+		"description": "Someone might have hidden the password in the trace file. Find the key to unlock this file. This tracefile might be good to analyze.",
+		"hints": [
+			"Download the pcap and look for the password or flag.",
+			"Don't try to use a password cracking tool, there are easier ways here."
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c/496/dump.pcap",
+			"https://artifacts.picoctf.net/c/496/flag.zip"
+		],
+		"solver_function": "findandopen",
+		"category": "Forensics",
+		"difficulty": "medium",
+		"id": 348
+	},
+	"HideToSee": {
+		"description": "How about some hide and seek heh? Look at this image here.",
+		"hints": [
+			"Download the image and try to extract it."
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c/236/atbash.jpg"
+		],
+		"solver_function": "hidetosee",
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"id": 351
+	},
+	"PcapPoisoning": {
+		"description": "How about some hide and seek heh? Download this file and find the flag.",
+		"files": [
+			"https://artifacts.picoctf.net/c/375/trace.pcap"
+		],
+		"solver_function": "pcappoisoning",
+		"category": "Forensics",
+		"difficulty": "medium",
+		"id": 362
+	},
+	"Reverse": {
+		"description": "Try reversing this file? Can ya? I forgot the password to this file. Please find it for me?",
+		"files": [
+			"https://artifacts.picoctf.net/c/276/ret"
+		],
+		"solver_function": "reverse",
+		"category": "Reverse Enineering",
+		"difficulty": "medium",
+		"id": 372
+	},
+	"Safe Opener 2": {
+		"description": "What can you do with this file? I forgot the key to my safe but this file is supposed to help me with retrieving the lost key. Can you help me unlock my safe?",
+		"hints": [
+			"Download and try to decompile the file."
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c/289/SafeOpener.class"
+		],
+		"solver_function": "safe_opener_2",
+		"category": "Reverse Enineering",
+		"difficulty": "medium",
+		"id": 375
+	},
+	"timer": {
+		"description": "You will find the flag after analysing this apk",
+		"hints": [
+			"Decompile",
+			"mobsf or jadx"
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c/449/timer.apk"
+		],
+		"solver_function": "timer",
+		"category": "Reverse Enineering",
+		"difficulty": "medium",
+		"id": 381
+	},
+	"Blame Game": {
+		"description": "Someone's commits seems to be preventing the program from working. Who is it?",
+		"hints": [
+			"In collaborative projects, many users can make many changes. How can you see the changes within one file?",
+			"Read the chapter on Git from the picoPrimer https://primer.picoctf.org/#_git_version_control.",
+			"You can use python3 <file>.py to try running the code, though you won't need to for this challenge."
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c_titan/73/challenge.zip"
+		],
+		"solver_function": "blame_game",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 405
+	},
+	"Custom encryption": {
+		"description": "Can you get sense of this code file and write the function that will decode the given encrypted file content. Find the encrypted file here flag_info and code file might be good to analyze and get the flag. ",
+		"hints": [
+			"Understanding encryption algorithm to come up with decryption algorithm."
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c_titan/93/enc_flag",
+			"https://artifacts.picoctf.net/c_titan/93/custom_encryption.py"
+		],
+		"solver_function": "custom_encryption",
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"id": 412
+	},
+	"Irish-Name-Repo 1": {
+		"description": "There is a website running at https://jupiter.challenges.picoctf.org/problem/50009/. Do you think you can log us in? Try to see if you can login!",
+		"hints": [
+			"There doesn't seem to be many ways to interact with this. I wonder if the users are kept in a database?",
+			"Try to think about how the website verifies your login."
+		],
+		"solver_function": "irish_name_repo_1",
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"id": 80
+	},
+	"vault-door-5": {
+		"description": "In the last challenge, you mastered octal (base 8), decimal (base 10), and hexadecimal (base 16) numbers, but this vault door uses a different change of base as well as URL encoding!",
+		"hints": [
+			"You may find an encoder/decoder tool helpful, such as https://encoding.tools/",
+			"Read the wikipedia articles on URL encoding and base 64 encoding to understand how they work and what the results look like."
+		],
+		"files": [
+			"https://jupiter.challenges.picoctf.org/static/d31ce4356bdfd15d33a9af7e35ab4d0a/VaultDoor5.java"
+		],
+		"solver_function": "vault_door_5",
+		"category": "Reverse Enineering",
+		"difficulty": "medium",
+		"id": 77
+	},
+	"What Lies Within": {
+		"description": "Theres something in the building. Can you retrieve the flag?",
+		"hints": [
+			"There is data encoded somewhere... there might be an online decoder."
+		],
+		"files": [
+			"https://jupiter.challenges.picoctf.org/static/011955b303f293d60c8116e6a4c5c84f/buildings.png"
+		],
+		"solver_function": "what_lies_within",
+		"category": "Forensics",
+		"difficulty": "medium",
+		"id": 74
+	},
+	"miniRSA": {
+		"description": "Let's decrypt this: ciphertext? Something seems a bit small.",
+		"hints": [
+			"RSA tutorial (https://en.wikipedia.org/wiki/RSA_(cryptosystem))",
+			"How could having too small an e affect the security of this 2048 bit key?",
+			"Make sure you don't lose precision, the numbers are pretty big (besides the e value)"
+		],
+		"files": [
+			"https://jupiter.challenges.picoctf.org/static/ee7e2388b45f521b285334abb5a63771/ciphertext"
+		],
+		"solver_function": "mini_rsa",
+		"category": "Cryptography",
+		"difficulty": "hard",
+		"id": 73
+	},
+	"vault-door-4": {
+		"description": "This vault uses ASCII encoding for the password.",
+		"hints": [
+			"Use a search engine to find an 'ASCII table'.",
+			"You will also need to know the difference between octal, decimal, and hexadecimal numbers."
+		],
+		"files": [
+			"https://jupiter.challenges.picoctf.org/static/c695ee23309d453a3ef369c34cc1bccb/VaultDoor4.java"
+		],
+		"solver_function": "vault_door_4",
+		"category": "Reverse Enineering",
+		"difficulty": "medium",
+		"id": 71
+	},
+	"Client-side-again": {
+		"description": "Can you break into this super secure portal? https://jupiter.challenges.picoctf.org/problem/6353/",
+		"hints": [
+			"What is obfuscation?"
+		],
+		"solver_function": "client_side_again",
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"id": 69
+	},
+	"Bases": {
+		"description": "What does this bDNhcm5fdGgzX3IwcDM1 mean? I think it has something to do with bases.",
+		"hints": [
+			"Submit your answer in our flag format. For example, if your answer was 'hello', you would submit 'picoCTF{hello}' as the flag."
+		],
+		"solver_function": "bases",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 67
+	},
+	"vault-door-7": {
+		"description": "This vault uses bit shifts to convert a password string into an array of integers. Hurry, agent, we are running out of time to stop Dr. Evil's nefarious plans!",
+		"hints": [
+			"Use a decimal/hexadecimal converter such as this one: https://www.mathsisfun.com/binary-decimal-hexadecimal-converter.html",
+			"You will also need to consult an ASCII table such as this one: https://www.asciitable.com/"
+		],
+		"files": [
+			"https://jupiter.challenges.picoctf.org/static/301ede7795d964123b7a7d99af89723f/VaultDoor7.java"
+		],
+		"solver_function": "vault_door_7",
+		"category": "Reverse Enineering",
+		"difficulty": "hard",
+		"id": 65
+	},
+	"13": {
+		"description": "Cryptography can be easy, do you know what ROT13 is? cvpbPGS{abg_gbb_onq_bs_n_ceboyrz}",
+		"hints": [
+			"This can be solved online if you don't want to do it by hand!"
+		],
+		"solver_function": "_13",
+		"category": "Cryptography",
+		"difficulty": "easy",
+		"id": 62
+	},
+	"rsa-pop-quiz": {
+		"description": "Class, take your seats! It's PRIME-time for a quiz... nc jupiter.challenges.picoctf.org 18821",
+		"hints": [
+			"RSA info (https://simple.wikipedia.org/wiki/RSA_algorithm)"
+		],
+		"solver_function": "rsa_pop_quiz",
+		"category": "Cryptography",
+		"difficulty": "hard",
+		"id": 61
+	},
+	"vault-door-3": {
+		"description": "This vault uses for-loops and byte arrays.",
+		"hints": [
+			"Make a table that contains each value of the loop variables and the corresponding buffer index that it writes to."
+		],
+		"files": [
+			"https://jupiter.challenges.picoctf.org/static/943ea40e3f54fca6d2145fa7aadc5e09/VaultDoor3.java"
+		],
+		"solver_function": "vault_door_3",
+		"category": "Reverse Enineering",
+		"difficulty": "medium",
+		"id": 60
+	},
+	"Irish-Name-Repo 2": {
+		"description": "There is a website running at https://jupiter.challenges.picoctf.org/problem/53751/. Someone has bypassed the login before, and now it's being strengthened. Try to see if you can still login!",
+		"hints": [
+			"The password is being filtered."
+		],
+		"solver_function": "irish_name_repo_2",
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"id": 59
+	},
+	"Warmed Up": {
+		"description": "What is 0x3D (base 16) in decimal (base 10)?",
+		"hints": [
+			"Submit your answer in our flag format. For example, if your answer was '22', you would submit 'picoCTF{22}' as the flag."
+		],
+		"solver_function": "warmed_up",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 58
+	},
+	"extensions": {
+		"description": "This is a really weird text file TXT? Can you find the flag?",
+		"hints": [
+			"How do operating systems know what kind of file it is? (It's not just the ending!",
+			"Make sure to submit the flag as picoCTF{XXXXX}"
+		],
+		"files": [
+			"https://jupiter.challenges.picoctf.org/static/e7e5d188621ee705ceeb0452525412ef/flag.txt"
+		],
+		"solver_function": "extensions",
+		"category": "Forensics",
+		"difficulty": "medium",
+		"id": 52
+	},
+	"plumbing": {
+		"description": "Sometimes you need to handle process data outside of a file. Can you find a way to keep the output from this program and search for the flag? Connect to jupiter.challenges.picoctf.org 14291.",
+		"hints": [
+			"Remember the flag format is picoCTF{XXXX}",
+			"What's a pipe? No not that kind of pipe... This kind http://www.linfo.org/pipes.html"
+		],
+		"solver_function": "plumbing",
+		"category": "General Skills",
+		"difficulty": "medium",
+		"id": 48
+	},
+	"logon": {
+		"description": "The factory is hiding things from all of its users. Can you login as Joe and find what they've been looking at? https://jupiter.challenges.picoctf.org/problem/15796/",
+		"hints": [
+			"Hmm it doesn't seem to check anyone's password, except for Joe's?"
+		],
+		"solver_function": "logon",
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"id": 46
+	},
+	"vault-door-6": {
+		"description": "This vault uses an XOR encryption scheme.",
+		"hints": [
+			"If X ^ Y = Z, then Z ^ Y = X. Write a program that decrypts the flag based on this fact."
+		],
+		"files": [
+			"https://jupiter.challenges.picoctf.org/static/937a166e2c8c5bf34928a2dab22e8ade/VaultDoor6.java"
+		],
+		"solver_function": "vault_door_6",
+		"category": "Reverse Enineering",
+		"difficulty": "medium",
+		"id": 45
+	},
+	"The Numbers": {
+		"description": "The numbers... what do they mean?",
+		"hints": [
+			"The flag is in the format PICOCTF{}"
+		],
+		"files": [
+			"https://jupiter.challenges.picoctf.org/static/f209a32253affb6f547a585649ba4fda/the_numbers.png"
+		],
+		"solver_function": "the_numbers",
+		"category": "Cryptography",
+		"difficulty": "easy",
+		"id": 68
+	},
+	"Mr-Worldwide": {
+		"description": "A musician left us a message. What's it mean?",
+		"files": [
+			"https://jupiter.challenges.picoctf.org/static/d5570d48262dbba2a31f2a940409ad9d/message.txt"
+		],
+		"solver_function": "mr_worldwide",
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"id": 40
+	},
+	"waves over lambda": {
+		"description": "We made a lot of substitutions to encrypt this. Can you decrypt it? Connect with nc jupiter.challenges.picoctf.org 13758.",
+		"files": [
+			"Flag is not in the usual flag format"
+		],
+		"solver_function": "waves_over_lambda",
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"id": 38
+	},
+	"Based": {
+		"description": "To get truly 1337, you must understand different data encodings, such as hexadecimal or binary. Can you get the flag from this program to prove you are on the way to becoming 1337? Connect with nc jupiter.challenges.picoctf.org 15130.",
+		"hints": [
+			"I hear python can convert things.",
+			"It might help to have multiple windows open."
+		],
+		"solver_function": "based",
+		"category": "General Skills",
+		"difficulty": "medium",
+		"id": 35
+	},
+	"what's a net cat?": {
+		"description": "Using netcat (nc) is going to be pretty important. Can you connect to jupiter.challenges.picoctf.org at port 25103 to get the flag?",
+		"hints": [
+			"nc tutorial (https://linux.die.net/man/1/nc)"
+		],
+		"solver_function": "whats_a_net_cat",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 34
+	},
+	"Flags": {
+		"description": "What do the flags mean?",
+		"hints": [
+			"The flag is in the format PICOCTF{}"
+		],
+		"files": [
+			"https://jupiter.challenges.picoctf.org/static/fbeb5f9040d62b18878d199cdda2d253/flag.png"
+		],
+		"solver_function": "flags",
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"id": 31
+	},
+	"shark on wire 1": {
+		"description": "We found this packet capture. Recover the flag.",
+		"hints": [
+			"Try using a tool like Wireshark",
+			"What are streams?"
+		],
+		"files": [
+			"https://jupiter.challenges.picoctf.org/static/483e50268fe7e015c49caf51a69063d0/capture.pcap"
+		],
+		"solver_function": "shark_on_wire_1",
+		"category": "Forensics",
+		"difficulty": "medium",
+		"id": 30
+	},
+	"Lets Warm Up": {
+		"description": "If I told you a word started with 0x70 in hexadecimal, what would it start with in ASCII?",
+		"hints": [
+			"Submit your answer in our flag format. For example, if your answer was 'hello', you would submit 'picoCTF{hello}' as the flag."
+		],
+		"solver_function": "lets_warm_up",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 22
+	},
+	"Tapping": {
+		"description": "Theres tapping coming in from the wires. What's it saying nc jupiter.challenges.picoctf.org 9422.",
+		"hints": [
+			"What kind of encoding uses dashes and dots?",
+			"The flag is in the format PICOCTF{}"
+		],
+		"solver_function": "tapping",
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"id": 21
+	},
+	"Insp3ct0r": {
+		"description": "Kishor Balan tipped us off that the following code may need inspection: https://jupiter.challenges.picoctf.org/problem/44924/",
+		"hints": [
+			"How do you inspect web code on a browser?",
+			"There's 3 parts"
+		],
+		"solver_function": "inspector",
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"id": 18
+	},
+	"picobrowser": {
+		"description": "This website can be rendered only by picobrowser, go and catch the flag! https://jupiter.challenges.picoctf.org/problem/50522/",
+		"hints": [
+			"You don't need to download a new web browser"
+		],
+		"solver_function": "picobrowser",
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"id": 9
+	},
+	"Irish-Name-Repo 3": {
+		"description": "There is a secure website running at https://jupiter.challenges.picoctf.org/problem/40742/. Try to see if you can login as admin!",
+		"hints": [
+			"Seems like the password is encrypted."
+		],
+		"solver_function": "irish_name_repo_3",
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"id": 8
+	},
+	"la cifra de": {
+		"description": "I found this cipher in an old book. Can you figure out what it says? Connect with nc jupiter.challenges.picoctf.org 58295.",
+		"hints": [
+			"There are tools that make this easy.",
+			"Perhaps looking at history will help"
+		],
+		"solver_function": "la_cifra_de",
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"id": 3
+	},
+	"information": {
+		"description": "Files can always be changed in a secret way. Can you find the flag? cat.jpg",
+		"hints": [
+			"Look at the details of the file",
+			"Make sure to submit the flag as picoCTF{XXXXX}"
+		],
+		"files": [
+			"https://mercury.picoctf.net/static/e5825f58ef798fdd1af3f6013592a971/cat.jpg"
+		],
+		"solver_function": "information",
+		"category": "Forensics",
+		"difficulty": "easy",
+		"id": 186
+	},
+	"Super Serial": {
+		"description": "Try to recover the flag stored on this website http://mercury.picoctf.net:2148/",
+		"hints": [
+			"The flag is at ../flag"
+		],
+		"solver_function": "super_serial",
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"id": 180
+	},
+	"Most Cookies": {
+		"description": "Alright, enough of using my own encryption. Flask session cookies should be plenty secure! http://mercury.picoctf.net:53700/",
+		"hints": [
+			"How secure is a flask cookie?"
+		],
+		"files": [
+			"https://mercury.picoctf.net/static/e99686c2e3e6cdd9e355f1d10c9d80d6/server.py"
+		],
+		"solver_function": "most_cookies",
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"id": 177
+	},
+	"Web Gauntlet": {
+		"description": "Can you beat the filters? Log in as admin http://jupiter.challenges.picoctf.org:29164/ http://jupiter.challenges.picoctf.org:29164/filter.php",
+		"hints": [
+			"You are not allowed to login with valid credentials.",
+			"Write down the injections you use in case you lose your progress.",
+			"For some filters it may be hard to see the characters, always (always) look at the raw hex in the response.",
+			"sqlite",
+			"If your cookie keeps getting reset, try using a private browser window"
+		],
+		"solver_function": "web_gauntlet",
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"id": 88
+	},
+	"Web Gauntlet 2": {
+		"description": "This website looks familiar... Log in as admin Site: http://mercury.picoctf.net:65261/ Filter: http://mercury.picoctf.net:65261/filter.php",
+		"hints": [
+			"I tried to make it a little bit less contrived since the mini competition.",
+			"Each filter is separated by a space. Spaces are not filtered.",
+			"There is only 1 round this time, when you beat it the flag will be in filter.php.",
+			"There is a length component now.",
+			"sqlite"
+		],
+		"solver_function": "web_gauntlet_2",
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"id": 174
+	},
+	"Cookies": {
+		"description": "Who doesn't love cookies? Try to figure out the best one. http://mercury.picoctf.net:29649/",
+		"solver_function": "cookies",
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"id": 173
+	},
+	"Wave a flag": {
+		"description": "Can you invoke help flags for a tool or binary? This program has extraordinarily helpful information...",
+		"hints": [
+			"This program will only work in the webshell or another Linux computer.",
+			"Run this program by entering the following in the Terminal prompt: $ ./warm, but you'll first have to make it executable with $ chmod +x warm",
+			"-h and --help are the most common arguments to give to programs to get more information from them!",
+			"Not every program implements help features like -h and --help."
+		],
+		"files": [
+			"https://mercury.picoctf.net/static/f95b1ee9f29d631d99073e34703a2826/warm"
+		],
+		"solver_function": "wave_a_flag",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 170
+	},
+	"Python Wrangling": {
+		"description": "Python scripts are invoked kind of like programs in the Terminal... Can you run this Python script using this password to get the flag?",
+		"hints": [
+			"$ man python"
+		],
+		"files": [
+			"https://mercury.picoctf.net/static/325a52d249be0bd3811421eacd2c877a/ende.py",
+			"https://mercury.picoctf.net/static/325a52d249be0bd3811421eacd2c877a/pw.txt",
+			"https://mercury.picoctf.net/static/325a52d249be0bd3811421eacd2c877a/flag.txt.en"
+		],
+		"solver_function": "python_wrangling",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 166
+	},
+	"Hurry up! Wait!": {
+		"description": "svchost.exe",
+		"files": [
+			"https://mercury.picoctf.net/static/18afff80df59ffe13188a4907089ec8d/svchost.exe"
+		],
+		"solver_function": "hurry_up_wait",
+		"category": "Reverse Enineering",
+		"difficulty": "hard",
+		"id": 165
+	},
+	"Mind your Ps and Qs": {
+		"description": "In RSA, a small e value can be problematic, but what about N? Can you decrypt this? values",
+		"hints": [
+			"Bits are expensive, I used only a little bit over 100 to save money"
+		],
+		"files": [
+			"https://mercury.picoctf.net/static/2604f8b51a5cc62d38a3736938f19cef/values"
+		],
+		"solver_function": "mind_your_ps_and_qs",
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"id": 162
+	},
+	"Scavenger Hunt": {
+		"description": "There is some interesting information hidden around this site http://mercury.picoctf.net:39698/. Can you find it?",
+		"hints": [
+			"You should have enough hints to find the files, don't run a brute forcer."
+		],
+		"solver_function": "scavenger_hunt",
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"id": 161
+	},
+	"Nice netcat...": {
+		"description": "There is a nice program that you can talk to by using this command in a shell: $ nc mercury.picoctf.net 21135, but it doesn't speak English...",
+		"hints": [
+			"You can practice using netcat with this picoGym problem: what's a netcat? (https://play.picoctf.org/practice/challenge/34",
+			"You can practice reading and writing ASCII with this picoGym problem: Let's Warm Up (https://play.picoctf.org/practice/challenge/22)"
+		],
+		"solver_function": "nice_netcat",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 156
+	},
+	"Obedient Cat": {
+		"description": "This file has a flag in plain sight (aka \"in-the-clear\").",
+		"hints": [
+			"$ man cat"
+		],
+		"files": [
+			"https://mercury.picoctf.net/static/0e428b2db9788d31189329bed089ce98/flag"
+		],
+		"solver_function": "obedient_cat",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 147
+	},
+	"Disk, disk, sleuth! II": {
+		"description": "All we know is the file with the flag is named `down-at-the-bottom.txt`... Disk image: dds2-alpine.flag.img.gz",
+		"hints": [
+			"The sleuthkit has some great tools for this challenge as well.",
+			"Sleuthkit docs here are so helpful: TSK Tool Overview (http://wiki.sleuthkit.org/index.php?title=TSK_Tool_Overview)",
+			"This disk can also be booted with qemu!"
+		],
+		"files": [
+			"https://mercury.picoctf.net/static/aed64c508175df5fe23207c10e0e47e5/dds2-alpine.flag.img.gz"
+		],
+		"solver_function": "disk_disk_sleuth_2",
+		"category": "Forensics",
+		"difficulty": "medium",
+		"id": 137
+	},
+	"Shop": {
+		"description": "Best Stuff - Cheap Stuff, Buy Buy Buy... Store Instance: source. The shop is open for business at nc mercury.picoctf.net 10337.",
+		"hints": [
+			"Always check edge cases when programming"
+		],
+		"files": [
+			"https://mercury.picoctf.net/static/73724c199e55e6c056bb00e7bbfdfb38/source"
+		],
+		"solver_function": "shop",
+		"category": "Reverse Enineering",
+		"difficulty": "medium",
+		"id": 134
+	},
+	"caas": {
+		"description": "Now presenting cowsay as a service https://caas.mars.picoctf.net/",
+		"files": [
+			"https://artifacts.picoctf.net/picoMini+by+redpwn/Web+Exploitation/caas/index.js"
+		],
+		"solver_function": "caas",
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"id": 202
+	},
+	"Torrent Analyze": {
+		"description": "SOS, someone is torrenting on our network. One of your colleagues has been using torrent to download some files on the company's network. Can you identify the file(s) that were downloaded? The file name will be the flag, like picoCTF{filename}.",
+		"hints": [
+			"Download and open the file with a packet analyzer like Wireshark.",
+			"You may want to enable BitTorrent protocol (BT-DHT, etc.) on Wireshark. Analyze -> Enabled Protocols",
+			"Try to understand peers, leechers and seeds. Article: https://www.techworm.net/2017/03/seeds-peers-leechers-torrents-language.html",
+			"The file name ends with .iso"
+		],
+		"files": [
+			"https://artifacts.picoctf.net/c/165/torrent.pcap"
+		],
+		"solver_function": "torrent_analyze",
+		"category": "Forensics",
+		"difficulty": "medium",
+		"id": 311
+	},
+	"GET aHEAD": {
+		"description": "Find the flag being held on this server to get ahead of the competition http://mercury.picoctf.net:34561/",
+		"hints": [
+			"Maybe you have more than 2 choices",
+			"Check out tools like Burpsuite to modify your requests and look at the responses"
+		],
+		"solver_function": "get_ahead",
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"id": 132
+	},
+	"Transformation": {
+		"description": "I wonder what this really is... ''.join([chr((ord(flag[i]) << 8) + ord(flag[i + 1])) for i in range(0, len(flag), 2)])",
+		"hints": [
+			"You may find some decoders online"
+		],
+		"files": [
+			"https://mercury.picoctf.net/static/a757282979af14ab5ed74f0ed5e2ca95/enc"
+		],
+		"solver_function": "transformation",
+		"category": "Reverse Enineering",
+		"difficulty": "easy",
+		"id": 104
+	},
+	"2Warm": {
+		"description": "Can you convert the number 42 (base 10) to binary (base 2)?",
+		"hints": [
+			"Submit your answer in our competition's flag format. For example, if your answer was '11111', you would submit 'picoCTF{11111}' as the flag."
+		],
+		"solver_function": "_2warm",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"id": 86
+	},
+	"FactCheck": {
+		"description": "This binary is putting together some important piece of information... Can you uncover that information? Examine this file. Do you understand its inner workings? ",
+		"files": [
+			"https://artifacts.picoctf.net/c_titan/190/bin"
+		],
+		"solver_function": "factcheck",
+		"category": "Reverse Enineering",
+		"difficulty": "medium",
+		"id": 416
+	},
+	"endianness-v2": {
+		"description": "Here's a file that was recovered from a 32-bits system that organized the bytes a weird way. We're not even sure what type of file it is. Download it here and see what you can get out of it",
+		"files": [
+			"https://artifacts.picoctf.net/c_titan/37/challengefile"
+		],
+		"solver_function": "endianness_v2",
+		"category": "Forensics",
+		"difficulty": "medium",
+		"id": 415
+	}
+}

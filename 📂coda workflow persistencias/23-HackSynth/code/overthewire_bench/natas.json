@@ -1,0 +1,172 @@
+[
+	{
+		"id": 0,
+		"category": "Web Exploitation",
+		"difficulty": "easy"
+	},
+	{
+		"id": 1,
+		"category": "Web Exploitation",
+		"difficulty": "easy"
+	},
+	{
+		"id": 2,
+		"category": "Web Exploitation",
+		"difficulty": "easy"
+	},
+	{
+		"id": 3,
+		"category": "Web Exploitation",
+		"difficulty": "easy"
+	},
+	{
+		"id": 4,
+		"category": "Web Exploitation",
+		"difficulty": "easy"
+	},
+	{
+		"id": 5,
+		"category": "Web Exploitation",
+		"difficulty": "easy"
+	},
+	{
+		"id": 6,
+		"category": "Web Exploitation",
+		"difficulty": "easy"
+	},
+	{
+		"id": 7,
+		"category": "Web Exploitation",
+		"difficulty": "easy"
+	},
+	{
+		"id": 8,
+		"category": "Web Exploitation",
+		"difficulty": "medium"
+	},
+	{
+		"id": 9,
+		"category": "Web Exploitation",
+		"difficulty": "easy"
+	},
+	{
+		"id": 10,
+		"category": "Web Exploitation",
+		"difficulty": "easy"
+	},
+	{
+		"id": 11,
+		"category": "Web Exploitation",
+		"difficulty": "medium"
+	},
+	{
+		"id": 12,
+		"category": "Web Exploitation",
+		"difficulty": "easy"
+	},
+	{
+		"id": 13,
+		"category": "Web Exploitation",
+		"difficulty": "easy"
+	},
+	{
+		"id": 14,
+		"category": "Web Exploitation",
+		"difficulty": "easy"
+	},
+	{
+		"id": 15,
+		"category": "Cryptography",
+		"difficulty": "medium"
+	},
+	{
+		"id": 16,
+		"category": "Cryptography",
+		"difficulty": "medium"
+	},
+	{
+		"id": 17,
+		"category": "Cryptography",
+		"difficulty": "medium"
+	},
+	{
+		"id": 18,
+		"category": "Web Exploitation",
+		"difficulty": "easy"
+	},
+	{
+		"id": 19,
+		"category": "Web Exploitation",
+		"difficulty": "easy"
+	},
+	{
+		"id": 20,
+		"category": "Web Exploitation",
+		"difficulty": "easy"
+	},
+	{
+		"id": 21,
+		"category": "Web Exploitation",
+		"difficulty": "easy"
+	},
+	{
+		"id": 22,
+		"category": "Web Exploitation",
+		"difficulty": "medium"
+	},
+	{
+		"id": 23,
+		"category": "Web Exploitation",
+		"difficulty": "medium"
+	},
+	{
+		"id": 24,
+		"category": "Web Exploitation",
+		"difficulty": "medium"
+	},
+	{
+		"id": 25,
+		"category": "Web Exploitation",
+		"difficulty": "hard"
+	},
+	{
+		"id": 26,
+		"category": "Web Exploitation",
+		"difficulty": "hard"
+	},
+	{
+		"id": 27,
+		"category": "Web Exploitation",
+		"difficulty": "hard"
+	},
+	{
+		"id": 28,
+		"category": "Web Exploitation",
+		"difficulty": "hard"
+	},
+	{
+		"id": 29,
+		"category": "Web Exploitation",
+		"difficulty": "easy"
+	},
+	{
+		"id": 30,
+		"category": "Web Exploitation",
+		"difficulty": "medium"
+	},
+	{
+		"id": 31,
+		"category": "Web Exploitation",
+		"difficulty": "easy"
+	},
+	{
+		"id": 32,
+		"category": "Web Exploitation",
+		"difficulty": "medium"
+	},
+	{
+		"id": 33,
+		"category": "Web Exploitation",
+		"difficulty": "hard"
+	}
+]

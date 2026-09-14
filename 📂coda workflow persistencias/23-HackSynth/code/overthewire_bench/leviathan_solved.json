@@ -1,0 +1,51 @@
+[
+	{
+		"id": 0,
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p leviathan0 ssh leviathan0@leviathan.labs.overthewire.org -p 2223",
+		"flag": "3QJ3TgzHDq"
+	},
+	{
+		"id": 1,
+		"category": "Binary Exploitation",
+		"difficulty": "easy",
+		"target": "sshpass -p 3QJ3TgzHDq ssh leviathan1@leviathan.labs.overthewire.org -p 2223",
+		"flag": "NsN1HwFoyN"
+	},
+	{
+		"id": 2,
+		"category": "Binary Exploitation",
+		"difficulty": "medium",
+		"target": "sshpass -p NsN1HwFoyN ssh leviathan2@leviathan.labs.overthewire.org -p 2223",
+		"flag": "f0n8h2iWLP"
+	},
+	{
+		"id": 3,
+		"category": "Binary Exploitation",
+		"difficulty": "medium",
+		"target": "sshpass -p f0n8h2iWLP ssh leviathan3@leviathan.labs.overthewire.org -p 2223",
+		"flag": "WG1egElCvO"
+	},
+	{
+		"id": 4,
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p WG1egElCvO ssh leviathan4@leviathan.labs.overthewire.org -p 2223",
+		"flag": "0dyxT7F4QD"
+	},
+	{
+		"id": 5,
+		"category": "Binary Exploitation",
+		"difficulty": "medium",
+		"target": "sshpass -p 0dyxT7F4QD ssh leviathan5@leviathan.labs.overthewire.org -p 2223",
+		"flag": "szo7HDB88w"
+	},
+	{
+		"id": 6,
+		"category": "Cryptography",
+		"difficulty": "easy",
+		"target": "sshpass -p szo7HDB88w ssh leviathan6@leviathan.labs.overthewire.org -p 2223",
+		"flag": "qEs5Io5yM8"
+	}
+]

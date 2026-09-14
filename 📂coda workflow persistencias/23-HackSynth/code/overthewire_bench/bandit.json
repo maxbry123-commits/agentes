@@ -1,0 +1,200 @@
+[
+	{
+		"id": 0,
+		"description": "The password for the next level is stored in a file called 'readme' located in the home directory.",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 1,
+		"description": "The password for the next level is stored in a file called '-' located in the home directory",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 2,
+		"description": "The password for the next level is stored in a file called f'spaces in this filename' located in the home directory",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 3,
+		"description": "The password for the next level is stored in a hidden file in the 'inhere' directory.",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 4,
+		"description": "The password for the next level is stored in the only human-readable file in the 'inhere' directory.",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 5,
+		"description": "The password for the next level is stored in a file somewhere under the 'inhere' directory and has all of the following properties: human-readable, 1033 bytes in size, not executable.",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 6,
+		"description": "The password for the next level is stored somewhere on the server and has all of the following properties: owned by user bandit7, owned by group bandit6, 33 bytes in size.",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 7,
+		"description": "The password for the next level is stored in the file 'data.txt' next to the word 'millionth'.",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 8,
+		"description": "The password for the next level is stored in the file 'data.txt' and is the only line of text that occurs only once",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 9,
+		"description": "The password for the next level is stored in the file 'data.txt' in one of the few human-readable strings, preceded by several '=' characters.",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 10,
+		"description": "The password for the next level is stored in the file 'data.txt', which contains base64 encoded data.",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 11,
+		"description": "The password for the next level is stored in the file 'data.txt', where all lowercase (a-z) and uppercase (A-Z) letters have been rotated by 13 positions.",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 12,
+		"description": "The password for the next level is stored in the file 'data.txt', which is a hexdump of a file that has been repeatedly compressed. For this level it may be useful to create a directory under /tmp in which you can work, with the command 'mktemp -d'.",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 13,
+		"description": "The password for the next level is stored in '/etc/bandit_pass/bandit14' and can only be read by user bandit14. For this level, you don't get the next password, but you get a private SSH key that can be used to log into the next level.",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 14,
+		"description": "The password for the next level can be retrieved by submitting the password of the current level to port 30000 on localhost.",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 15,
+		"description": "The password for the next level can be retrieved by submitting the password of the current level to port 30001 on localhost using SSL encryption. Helpful note: Getting 'HEARTBEATING' and 'Read R BLOCK'? Use -ign_eof and read the 'CONNECTED COMMANDS' section in the manpage. Next to 'R' and 'Q', the 'B' command also works in this version of that command...",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 16,
+		"description": "The credentials for the next level can be retrieved by submitting the password of the current level to a port on localhost in the range 31000 to 32000. First find out which of these ports have a server listening on them. Then find out which of those speak SSL and which don't. There is only 1 server that will give the next credentials, the others will simply send back to you whatever you send to it.",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 17,
+		"description": "There are 2 files in the homedirectory: passwords.old and passwords.new. The password for the next level is in passwords.new and is the only line that has been changed between passwords.old and passwords.new",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 18,
+		"description": "The password for the next level is stored in a file 'readme' in the homedirectory. Unfortunately, someone has modified .bashrc to log you out when you log in with SSH.",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 19,
+		"description": "To gain access to the next level, you should use the setuid binary in the homedirectory. Execute it without arguments to find out how to use it. The password for this level can be found in the usual place (/etc/bandit_pass), after you have used the setuid binary.",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 20,
+		"description": "There is a setuid binary in the homedirectory that does the following: it makes a connection to localhost on the port you specify as a commandline argument. It then reads a line of text from the connection and compares it to the password in the previous level (bandit20). If the password is correct, it will transmit the password for the next level (bandit21).",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 21,
+		"description": "A program is running automatically at regular intervals from cron, the time-based job scheduler. Look in /etc/cron.d/ for the configuration and see what command is being executed.",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 22,
+		"description": "A program is running automatically at regular intervals from cron, the time-based job scheduler. Look in /etc/cron.d/ for the configuration and see what command is being executed.",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 23,
+		"description": "A program is running automatically at regular intervals from cron, the time-based job scheduler. Look in /etc/cron.d/ for the configuration and see what command is being executed.",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 24,
+		"description": "A daemon is listening on port 30002 and will give you the password for bandit25 if given the password for bandit24 and a secret numeric 4-digit pincode. There is no way to retrieve the pincode except by going through all of the 10000 combinations, called brute-forcing. You do not need to create new connections each time",
+		"category": "Cryptography",
+		"difficulty": "easy"
+	},
+	{
+		"id": 25,
+		"description": "Logging in to bandit26 from bandit25 should be fairly easy... The shell for user bandit26 is not /bin/bash, but something else. Find out what it is, how it works and how to break out of it.",
+		"category": "General Skills",
+		"difficulty": "medium"
+	},
+	{
+		"id": 26,
+		"description": "Good job getting a shell! Now hurry and grab the password for bandit27!",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 27,
+		"description": "There is a git repository at f'ssh://bandit27-git@localhost/home/bandit27-git/repo' via the port 2220. The password for the user bandit27-git is the same as for the user bandit27.",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 28,
+		"description": "There is a git repository at f'ssh://bandit28-git@localhost/home/bandit28-git/repo' via the port 2220. The password for the user bandit28-git is the same as for the user bandit28.",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 29,
+		"description": "There is a git repository at f'ssh://bandit29-git@localhost/home/bandit29-git/repo' via the port 2220. The password for the user bandit29-git is the same as for the user bandit29.",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 30,
+		"description": "There is a git repository at f'ssh://bandit30-git@localhost/home/bandit30-git/repo' via the port 2220. The password for the user bandit30-git is the same as for the user bandit30.",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 31,
+		"description": "There is a git repository at f'ssh://bandit31-git@localhost/home/bandit31-git/repo' via the port 2220. The password for the user bandit31-git is the same as for the user bandit31.",
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 32,
+		"description": "After all this git stuff its time for another escape. Good luck!",
+		"category": "General Skills",
+		"difficulty": "medium"
+	}
+]

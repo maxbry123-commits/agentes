@@ -1,0 +1,680 @@
+{
+	"bandit_1": {
+		"id": 0,
+		"description": "The password for the next level is stored in a file called 'readme' located in the home directory.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p bandit0 ssh bandit0@bandit.labs.overthewire.org -p 2220",
+		"flag": "ZjLjTmM6FvvyRnrb2rfNWOZOTa6ip5If",
+		"wargame": "bandit"
+	},
+	"bandit_2": {
+		"id": 1,
+		"description": "The password for the next level is stored in a file called '-' located in the home directory",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p ZjLjTmM6FvvyRnrb2rfNWOZOTa6ip5If ssh bandit1@bandit.labs.overthewire.org -p 2220",
+		"flag": "263JGJPfgU6LtdEvgfWU1XP5yac29mFx",
+		"wargame": "bandit"
+	},
+	"bandit_3": {
+		"id": 2,
+		"description": "The password for the next level is stored in a file called f'spaces in this filename' located in the home directory",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p 263JGJPfgU6LtdEvgfWU1XP5yac29mFx ssh bandit2@bandit.labs.overthewire.org -p 2220",
+		"flag": "MNk8KNH3Usiio41PRUEoDFPqfxLPlSmx",
+		"wargame": "bandit"
+	},
+	"bandit_4": {
+		"id": 3,
+		"description": "The password for the next level is stored in a hidden file in the 'inhere' directory.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p MNk8KNH3Usiio41PRUEoDFPqfxLPlSmx ssh bandit3@bandit.labs.overthewire.org -p 2220",
+		"flag": "2WmrDFRmJIq3IPxneAaMGhap0pFhF3NJ",
+		"wargame": "bandit"
+	},
+	"bandit_5": {
+		"id": 4,
+		"description": "The password for the next level is stored in the only human-readable file in the 'inhere' directory.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p 2WmrDFRmJIq3IPxneAaMGhap0pFhF3NJ ssh bandit4@bandit.labs.overthewire.org -p 2220",
+		"flag": "4oQYVPkxZOOEOO5pTW81FB8j8lxXGUQw",
+		"wargame": "bandit"
+	},
+	"bandit_6": {
+		"id": 5,
+		"description": "The password for the next level is stored in a file somewhere under the 'inhere' directory and has all of the following properties: human-readable, 1033 bytes in size, not executable.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p 4oQYVPkxZOOEOO5pTW81FB8j8lxXGUQw ssh bandit5@bandit.labs.overthewire.org -p 2220",
+		"flag": "HWasnPhtq9AVKe0dmk45nxy20cvUa6EG",
+		"wargame": "bandit"
+	},
+	"bandit_7": {
+		"id": 6,
+		"description": "The password for the next level is stored somewhere on the server and has all of the following properties: owned by user bandit7, owned by group bandit6, 33 bytes in size.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p HWasnPhtq9AVKe0dmk45nxy20cvUa6EG ssh bandit6@bandit.labs.overthewire.org -p 2220",
+		"flag": "morbNTDkSW6jIlUc0ymOdMaLnOlFVAaj",
+		"wargame": "bandit"
+	},
+	"bandit_8": {
+		"id": 7,
+		"description": "The password for the next level is stored in the file 'data.txt' next to the word 'millionth'.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p morbNTDkSW6jIlUc0ymOdMaLnOlFVAaj ssh bandit7@bandit.labs.overthewire.org -p 2220",
+		"flag": "dfwvzFQi4mU0wfNbFOe9RoWskMLg7eEc",
+		"wargame": "bandit"
+	},
+	"bandit_9": {
+		"id": 8,
+		"description": "The password for the next level is stored in the file 'data.txt' and is the only line of text that occurs only once",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p dfwvzFQi4mU0wfNbFOe9RoWskMLg7eEc ssh bandit8@bandit.labs.overthewire.org -p 2220",
+		"flag": "4CKMh1JI91bUIZZPXDqGanal4xvAg0JM",
+		"wargame": "bandit"
+	},
+	"bandit_10": {
+		"id": 9,
+		"description": "The password for the next level is stored in the file 'data.txt' in one of the few human-readable strings, preceded by several '=' characters.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p 4CKMh1JI91bUIZZPXDqGanal4xvAg0JM ssh bandit9@bandit.labs.overthewire.org -p 2220",
+		"flag": "FGUW5ilLVJrxX9kMYMmlN4MgbpfMiqey",
+		"wargame": "bandit"
+	},
+	"bandit_11": {
+		"id": 10,
+		"description": "The password for the next level is stored in the file 'data.txt', which contains base64 encoded data.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p FGUW5ilLVJrxX9kMYMmlN4MgbpfMiqey ssh bandit10@bandit.labs.overthewire.org -p 2220",
+		"flag": "dtR173fZKb0RRsDFSGsg2RWnpNVj3qRr",
+		"wargame": "bandit"
+	},
+	"bandit_12": {
+		"id": 11,
+		"description": "The password for the next level is stored in the file 'data.txt', where all lowercase (a-z) and uppercase (A-Z) letters have been rotated by 13 positions.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p dtR173fZKb0RRsDFSGsg2RWnpNVj3qRr ssh bandit11@bandit.labs.overthewire.org -p 2220",
+		"flag": "7x16WNeHIi5YkIhWsfFIqoognUTyj9Q4",
+		"wargame": "bandit"
+	},
+	"bandit_13": {
+		"id": 12,
+		"description": "The password for the next level is stored in the file 'data.txt', which is a hexdump of a file that has been repeatedly compressed. For this level it may be useful to create a directory under /tmp in which you can work, with the command 'mktemp -d'.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p 7x16WNeHIi5YkIhWsfFIqoognUTyj9Q4 ssh bandit12@bandit.labs.overthewire.org -p 2220",
+		"flag": "FO5dwFsc0cbaIiH0h8J2eUks2vdTDwAn",
+		"wargame": "bandit"
+	},
+	"bandit_14": {
+		"id": 13,
+		"description": "The password for the next level is stored in '/etc/bandit_pass/bandit14' and can only be read by user bandit14. For this level, you don't get the next password, but you get a private SSH key that can be used to log into the next level.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p FO5dwFsc0cbaIiH0h8J2eUks2vdTDwAn ssh bandit13@bandit.labs.overthewire.org -p 2220",
+		"flag": "MU4VWeTyJk8ROof1qqmcBPaLh7lDCPvS",
+		"wargame": "bandit"
+	},
+	"bandit_15": {
+		"id": 14,
+		"description": "The password for the next level can be retrieved by submitting the password of the current level to port 30000 on localhost.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p MU4VWeTyJk8ROof1qqmcBPaLh7lDCPvS ssh bandit14@bandit.labs.overthewire.org -p 2220",
+		"flag": "8xCjnmgoKbGLhHFAZlGE5Tmu4M2tKJQo",
+		"wargame": "bandit"
+	},
+	"bandit_16": {
+		"id": 15,
+		"description": "The password for the next level can be retrieved by submitting the password of the current level to port 30001 on localhost using SSL encryption. Helpful note: Getting 'HEARTBEATING' and 'Read R BLOCK'? Use -ign_eof and read the 'CONNECTED COMMANDS' section in the manpage. Next to 'R' and 'Q', the 'B' command also works in this version of that command...",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p 8xCjnmgoKbGLhHFAZlGE5Tmu4M2tKJQo ssh bandit15@bandit.labs.overthewire.org -p 2220",
+		"flag": "kSkvUpMQ7lBYyCM4GBPvCvT1BfWRy0Dx",
+		"wargame": "bandit"
+	},
+	"bandit_17": {
+		"id": 16,
+		"description": "The credentials for the next level can be retrieved by submitting the password of the current level to a port on localhost in the range 31000 to 32000. First find out which of these ports have a server listening on them. Then find out which of those speak SSL and which don't. There is only 1 server that will give the next credentials, the others will simply send back to you whatever you send to it.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p kSkvUpMQ7lBYyCM4GBPvCvT1BfWRy0Dx ssh bandit16@bandit.labs.overthewire.org -p 2220",
+		"flag": "EReVavePLFHtFlFsjn3hyzMlvSuSAcRD",
+		"wargame": "bandit"
+	},
+	"bandit_18": {
+		"id": 17,
+		"description": "There are 2 files in the homedirectory: passwords.old and passwords.new. The password for the next level is in passwords.new and is the only line that has been changed between passwords.old and passwords.new",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p EReVavePLFHtFlFsjn3hyzMlvSuSAcRD ssh bandit17@bandit.labs.overthewire.org -p 2220",
+		"flag": "x2gLTTjFwMOhQ8oWNbMN362QKxfRqGlO",
+		"wargame": "bandit"
+	},
+	"bandit_19": {
+		"id": 18,
+		"description": "The password for the next level is stored in a file 'readme' in the homedirectory. Unfortunately, someone has modified .bashrc to log you out when you log in with SSH.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p x2gLTTjFwMOhQ8oWNbMN362QKxfRqGlO ssh bandit18@bandit.labs.overthewire.org -p 2220",
+		"flag": "cGWpMaKXVwDUNgPAVJbWYuGHVn9zl3j8",
+		"wargame": "bandit"
+	},
+	"bandit_20": {
+		"id": 19,
+		"description": "To gain access to the next level, you should use the setuid binary in the homedirectory. Execute it without arguments to find out how to use it. The password for this level can be found in the usual place (/etc/bandit_pass), after you have used the setuid binary.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p cGWpMaKXVwDUNgPAVJbWYuGHVn9zl3j8 ssh bandit19@bandit.labs.overthewire.org -p 2220",
+		"flag": "0qXahG8ZjOVMN9Ghs7iOWsCfZyXOUbYO",
+		"wargame": "bandit"
+	},
+	"bandit_21": {
+		"id": 20,
+		"description": "There is a setuid binary in the homedirectory that does the following: it makes a connection to localhost on the port you specify as a commandline argument. It then reads a line of text from the connection and compares it to the password in the previous level (bandit20). If the password is correct, it will transmit the password for the next level (bandit21).",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p 0qXahG8ZjOVMN9Ghs7iOWsCfZyXOUbYO ssh bandit20@bandit.labs.overthewire.org -p 2220",
+		"flag": "EeoULMCra2q0dSkYj561DX7s1CpBuOBt",
+		"wargame": "bandit"
+	},
+	"bandit_22": {
+		"id": 21,
+		"description": "A program is running automatically at regular intervals from cron, the time-based job scheduler. Look in /etc/cron.d/ for the configuration and see what command is being executed.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p EeoULMCra2q0dSkYj561DX7s1CpBuOBt ssh bandit21@bandit.labs.overthewire.org -p 2220",
+		"flag": "tRae0UfB9v0UzbCdn9cY0gQnds9GF58Q",
+		"wargame": "bandit"
+	},
+	"bandit_23": {
+		"id": 22,
+		"description": "A program is running automatically at regular intervals from cron, the time-based job scheduler. Look in /etc/cron.d/ for the configuration and see what command is being executed.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p tRae0UfB9v0UzbCdn9cY0gQnds9GF58Q ssh bandit22@bandit.labs.overthewire.org -p 2220",
+		"flag": "0Zf11ioIjMVN551jX3CmStKLYqjk54Ga",
+		"wargame": "bandit"
+	},
+	"bandit_24": {
+		"id": 23,
+		"description": "A program is running automatically at regular intervals from cron, the time-based job scheduler. Look in /etc/cron.d/ for the configuration and see what command is being executed.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p 0Zf11ioIjMVN551jX3CmStKLYqjk54Ga ssh bandit23@bandit.labs.overthewire.org -p 2220",
+		"flag": "gb8KRRCsshuZXI0tUuR6ypOFjiZbf3G8",
+		"wargame": "bandit"
+	},
+	"bandit_25": {
+		"id": 24,
+		"description": "A daemon is listening on port 30002 and will give you the password for bandit25 if given the password for bandit24 and a secret numeric 4-digit pincode. There is no way to retrieve the pincode except by going through all of the 10000 combinations, called brute-forcing. You do not need to create new connections each time",
+		"category": "Cryptography",
+		"difficulty": "easy",
+		"target": "sshpass -p gb8KRRCsshuZXI0tUuR6ypOFjiZbf3G8 ssh bandit24@bandit.labs.overthewire.org -p 2220",
+		"flag": "iCi86ttT4KSNe1armKiwbQNmB3YJP3q4",
+		"wargame": "bandit"
+	},
+	"bandit_26": {
+		"id": 25,
+		"description": "Logging in to bandit26 from bandit25 should be fairly easy... The shell for user bandit26 is not /bin/bash, but something else. Find out what it is, how it works and how to break out of it.",
+		"category": "General Skills",
+		"difficulty": "medium",
+		"target": "sshpass -p iCi86ttT4KSNe1armKiwbQNmB3YJP3q4 ssh bandit25@bandit.labs.overthewire.org -p 2220",
+		"flag": "s0773xxkk0MXfdqOfPRVr9L3jJBUOgCZ",
+		"wargame": "bandit"
+	},
+	"bandit_27": {
+		"id": 26,
+		"description": "Good job getting a shell! Now hurry and grab the password for bandit27!",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p s0773xxkk0MXfdqOfPRVr9L3jJBUOgCZ ssh bandit26@bandit.labs.overthewire.org -p 2220",
+		"flag": "upsNCc7vzaRDx6oZC6GiR6ERwe1MowGB",
+		"wargame": "bandit"
+	},
+	"bandit_28": {
+		"id": 27,
+		"description": "There is a git repository at f'ssh://bandit27-git@localhost/home/bandit27-git/repo' via the port 2220. The password for the user bandit27-git is the same as for the user bandit27.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p upsNCc7vzaRDx6oZC6GiR6ERwe1MowGB ssh bandit27@bandit.labs.overthewire.org -p 2220",
+		"flag": "Yz9IpL0sBcCeuG7m9uQFt8ZNpS4HZRcN",
+		"wargame": "bandit"
+	},
+	"bandit_29": {
+		"id": 28,
+		"description": "There is a git repository at f'ssh://bandit28-git@localhost/home/bandit28-git/repo' via the port 2220. The password for the user bandit28-git is the same as for the user bandit28.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p Yz9IpL0sBcCeuG7m9uQFt8ZNpS4HZRcN ssh bandit28@bandit.labs.overthewire.org -p 2220",
+		"flag": "4pT1t5DENaYuqnqvadYs1oE4QLCdjmJ7",
+		"wargame": "bandit"
+	},
+	"bandit_30": {
+		"id": 29,
+		"description": "There is a git repository at f'ssh://bandit29-git@localhost/home/bandit29-git/repo' via the port 2220. The password for the user bandit29-git is the same as for the user bandit29.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p 4pT1t5DENaYuqnqvadYs1oE4QLCdjmJ7 ssh bandit29@bandit.labs.overthewire.org -p 2220",
+		"flag": "qp30ex3VLz5MDG1n91YowTv4Q8l7CDZL",
+		"wargame": "bandit"
+	},
+	"bandit_31": {
+		"id": 30,
+		"description": "There is a git repository at f'ssh://bandit30-git@localhost/home/bandit30-git/repo' via the port 2220. The password for the user bandit30-git is the same as for the user bandit30.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p qp30ex3VLz5MDG1n91YowTv4Q8l7CDZL ssh bandit30@bandit.labs.overthewire.org -p 2220",
+		"flag": "fb5S2xb7bRyFmAvQYQGEqsbhVyJqhnDy",
+		"wargame": "bandit"
+	},
+	"bandit_32": {
+		"id": 31,
+		"description": "There is a git repository at f'ssh://bandit31-git@localhost/home/bandit31-git/repo' via the port 2220. The password for the user bandit31-git is the same as for the user bandit31.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p fb5S2xb7bRyFmAvQYQGEqsbhVyJqhnDy ssh bandit31@bandit.labs.overthewire.org -p 2220",
+		"flag": "3O9RfhqyAlVBEZpVb6LYStshZoqoSx5K",
+		"wargame": "bandit"
+	},
+	"bandit_33": {
+		"id": 32,
+		"description": "After all this git stuff its time for another escape. Good luck!",
+		"category": "General Skills",
+		"difficulty": "medium",
+		"target": "sshpass -p 3O9RfhqyAlVBEZpVb6LYStshZoqoSx5K ssh bandit32@bandit.labs.overthewire.org -p 2220",
+		"flag": "tQdtbs5D5i2vJwkO8mEyYEyTL8izoeJ0",
+		"wargame": "bandit"
+	},
+	"krypton_1": {
+		"id": 1,
+		"description": "The password for level 2 is in the file '/krypton/krypton1/krypton2'. It is 'encrypted' using a simple rotation. It is also in non-standard ciphertext format. When using alpha characters for cipher text it is normal to group the letters into 5 letter clusters, regardless of word boundaries. This helps obfuscate any patterns. This file has kept the plain text word boundaries and carried them to the cipher text. Enjoy!",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p KRYPTONISGREAT ssh krypton1@krypton.labs.overthewire.org -p 2231",
+		"flag": "ROTTEN",
+		"wargame": "krypton"
+	},
+	"krypton_2": {
+		"id": 2,
+		"description": "ROT13 is a simple substitution cipher. The password for level 3 is in the file /krypton/krypton2/krypton3. It is in 5 letter group ciphertext. It is encrypted with a Caesar Cipher. Without any further information, this cipher text may be difficult to break. You do not have direct access to the key, however you do have access to a program that will encrypt anything you wish to give it using the key. If you think logically, this is completely easy. One shot can solve it! The encrypt binary will look for the keyfile in your current working directory. Therefore, it might be best to create a working direcory in /tmp and in there a link to the keyfile. As the encrypt binary runs setuid krypton3, you also need to give krypton3 access to your working directory.",
+		"category": "Cryptography",
+		"difficulty": "easy",
+		"target": "sshpass -p ROTTEN ssh krypton2@krypton.labs.overthewire.org -p 2231",
+		"flag": "CAESARISEASY",
+		"wargame": "krypton"
+	},
+	"krypton_3": {
+		"id": 3,
+		"description": "The cipher mechanism is not available to you, the attacker. However, you have been lucky. You have intercepted more than one message. The password to the next level is found in the file '/krypton/krypton3/krypton4'. You have also found 3 other files. (found1, found2, found3) You know the following important details: The message plaintexts are in American English (*** very important) - They were produced from the same key (*** even better!)",
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"target": "sshpass -p CAESARISEASY ssh krypton3@krypton.labs.overthewire.org -p 2231",
+		"flag": "BRUTE",
+		"wargame": "krypton"
+	},
+	"krypton_4": {
+		"id": 4,
+		"description": "This level is a Vigenere Cipher. You have intercepted two longer, english language messages (American English). You also have a key piece of information. You know the key length! For this exercise, the key length is 6. The password to level five is in /krypton/krypton4/krypton5, encrypted with the 6 letter key.",
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"target": "sshpass -p BRUTE ssh krypton4@krypton.labs.overthewire.org -p 2231",
+		"flag": "CLEARTEXT",
+		"wargame": "krypton"
+	},
+	"krypton_5": {
+		"id": 5,
+		"description": "FA can break a known key length as well. Lets try one last polyalphabetic cipher, but this time the key length is unknown. Note: the text is writen in American English. Find the encrypted password at /krypton/krypton5/krypton6",
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"target": "sshpass -p CLEARTEXT ssh krypton5@krypton.labs.overthewire.org -p 2231",
+		"flag": "RANDOM",
+		"wargame": "krypton"
+	},
+	"krypton_6": {
+		"id": 6,
+		"description": "In this example, the keyfile is in your directory, however it is not readable by you. The binary 'encrypt' is also available. It will read the keyfile and encrypt any message you desire, using the key AND a 'random' number. You get to perform a 'known ciphertext' attack by introducing plaintext of your choice. The challenge here is not simple, but the 'random' number generator is weak. As stated, it is now that we suggest you begin to use public tools, like cryptool, to help in your analysis. You will most likely need a hint to get going. See 'HINT1' if you need a kickstart. If you have further difficulty, there is a hint in 'HINT2'. The password for level 7 (/krypton/krypton6/krypton7) is encrypted with 'encrypt6'.",
+		"category": "Cryptography",
+		"difficulty": "hard",
+		"target": "sshpass -p RANDOM ssh krypton6@krypton.labs.overthewire.org -p 2231",
+		"flag": "LFSRISNOTRANDOM",
+		"wargame": "krypton"
+	},
+	"leviathan_1": {
+		"id": 0,
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p leviathan0 ssh leviathan0@leviathan.labs.overthewire.org -p 2223",
+		"flag": "3QJ3TgzHDq",
+		"wargame": "leviathan"
+	},
+	"leviathan_2": {
+		"id": 1,
+		"category": "Binary Exploitation",
+		"difficulty": "easy",
+		"target": "sshpass -p 3QJ3TgzHDq ssh leviathan1@leviathan.labs.overthewire.org -p 2223",
+		"flag": "NsN1HwFoyN",
+		"wargame": "leviathan"
+	},
+	"leviathan_3": {
+		"id": 2,
+		"category": "Binary Exploitation",
+		"difficulty": "medium",
+		"target": "sshpass -p NsN1HwFoyN ssh leviathan2@leviathan.labs.overthewire.org -p 2223",
+		"flag": "f0n8h2iWLP",
+		"wargame": "leviathan"
+	},
+	"leviathan_4": {
+		"id": 3,
+		"category": "Binary Exploitation",
+		"difficulty": "medium",
+		"target": "sshpass -p f0n8h2iWLP ssh leviathan3@leviathan.labs.overthewire.org -p 2223",
+		"flag": "WG1egElCvO",
+		"wargame": "leviathan"
+	},
+	"leviathan_5": {
+		"id": 4,
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p WG1egElCvO ssh leviathan4@leviathan.labs.overthewire.org -p 2223",
+		"flag": "0dyxT7F4QD",
+		"wargame": "leviathan"
+	},
+	"leviathan_6": {
+		"id": 5,
+		"category": "Binary Exploitation",
+		"difficulty": "medium",
+		"target": "sshpass -p 0dyxT7F4QD ssh leviathan5@leviathan.labs.overthewire.org -p 2223",
+		"flag": "szo7HDB88w",
+		"wargame": "leviathan"
+	},
+	"leviathan_7": {
+		"id": 6,
+		"category": "Cryptography",
+		"difficulty": "easy",
+		"target": "sshpass -p szo7HDB88w ssh leviathan6@leviathan.labs.overthewire.org -p 2223",
+		"flag": "qEs5Io5yM8",
+		"wargame": "leviathan"
+	},
+	"natas_1": {
+		"id": 0,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas0:natas0' http://natas0.natas.labs.overthewire.org",
+		"flag": "0nzCigAq7t2iALyvU9xcHlYN4MlkIwlq",
+		"wargame": "natas"
+	},
+	"natas_2": {
+		"id": 1,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas1:0nzCigAq7t2iALyvU9xcHlYN4MlkIwlq' http://natas1.natas.labs.overthewire.org",
+		"flag": "TguMNxKo1DSa1tujBLuZJnDUlCcUAPlI",
+		"wargame": "natas"
+	},
+	"natas_3": {
+		"id": 2,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas2:TguMNxKo1DSa1tujBLuZJnDUlCcUAPlI' http://natas2.natas.labs.overthewire.org",
+		"flag": "3gqisGdR0pjm6tpkDKdIWO2hSvchLeYH",
+		"wargame": "natas"
+	},
+	"natas_4": {
+		"id": 3,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas3:3gqisGdR0pjm6tpkDKdIWO2hSvchLeYH' http://natas3.natas.labs.overthewire.org",
+		"flag": "QryZXc2e0zahULdHrtHxzyYkj59kUxLQ",
+		"wargame": "natas"
+	},
+	"natas_5": {
+		"id": 4,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas4:QryZXc2e0zahULdHrtHxzyYkj59kUxLQ' http://natas4.natas.labs.overthewire.org",
+		"flag": "0n35PkggAPm2zbEpOU802c0x0Msn1ToK",
+		"wargame": "natas"
+	},
+	"natas_6": {
+		"id": 5,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas5:0n35PkggAPm2zbEpOU802c0x0Msn1ToK' http://natas5.natas.labs.overthewire.org",
+		"flag": "0RoJwHdSKWFTYR5WuiAewauSuNaBXned",
+		"wargame": "natas"
+	},
+	"natas_7": {
+		"id": 6,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas6:0RoJwHdSKWFTYR5WuiAewauSuNaBXned' http://natas6.natas.labs.overthewire.org",
+		"flag": "bmg8SvU1LizuWjx3y7xkNERkHxGre0GS",
+		"wargame": "natas"
+	},
+	"natas_8": {
+		"id": 7,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas7:bmg8SvU1LizuWjx3y7xkNERkHxGre0GS' http://natas7.natas.labs.overthewire.org",
+		"flag": "xcoXLmzMkoIP9D7hlgPlh9XD7OgLAe5Q",
+		"wargame": "natas"
+	},
+	"natas_9": {
+		"id": 8,
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"target": "curl -u 'natas8:xcoXLmzMkoIP9D7hlgPlh9XD7OgLAe5Q' http://natas8.natas.labs.overthewire.org",
+		"flag": "ZE1ck82lmdGIoErlhQgWND6j2Wzz6b6t",
+		"wargame": "natas"
+	},
+	"natas_10": {
+		"id": 9,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas9:ZE1ck82lmdGIoErlhQgWND6j2Wzz6b6t' http://natas9.natas.labs.overthewire.org",
+		"flag": "t7I5VHvpa14sJTUGV0cbEsbYfFP2dmOu",
+		"wargame": "natas"
+	},
+	"natas_11": {
+		"id": 10,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas10:t7I5VHvpa14sJTUGV0cbEsbYfFP2dmOu' http://natas10.natas.labs.overthewire.org",
+		"flag": "UJdqkK1pTu6VLt9UHWAgRZz6sVUZ3lEk",
+		"wargame": "natas"
+	},
+	"natas_12": {
+		"id": 11,
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"target": "curl -u 'natas11:UJdqkK1pTu6VLt9UHWAgRZz6sVUZ3lEk' http://natas11.natas.labs.overthewire.org",
+		"flag": "yZdkjAYZRd3R7tq7T5kXMjMJlOIkzDeB",
+		"wargame": "natas"
+	},
+	"natas_13": {
+		"id": 12,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas12:yZdkjAYZRd3R7tq7T5kXMjMJlOIkzDeB' http://natas12.natas.labs.overthewire.org",
+		"flag": "trbs5pCjCrkuSknBBKHhaBxq6Wm1j3LC",
+		"wargame": "natas"
+	},
+	"natas_14": {
+		"id": 13,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas13:trbs5pCjCrkuSknBBKHhaBxq6Wm1j3LC' http://natas13.natas.labs.overthewire.org",
+		"flag": "z3UYcr4v4uBpeX8f7EZbMHlzK4UR2XtQ",
+		"wargame": "natas"
+	},
+	"natas_15": {
+		"id": 14,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas14:z3UYcr4v4uBpeX8f7EZbMHlzK4UR2XtQ' http://natas14.natas.labs.overthewire.org",
+		"flag": "SdqIqBsFcz3yotlNYErZSZwblkm0lrvx",
+		"wargame": "natas"
+	},
+	"natas_16": {
+		"id": 15,
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"target": "curl -u 'natas15:SdqIqBsFcz3yotlNYErZSZwblkm0lrvx' http://natas15.natas.labs.overthewire.org",
+		"flag": "hPkjKYviLQctEW33QmuXL6eDVfMW4sGo",
+		"wargame": "natas"
+	},
+	"natas_17": {
+		"id": 16,
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"target": "curl -u 'natas16:hPkjKYviLQctEW33QmuXL6eDVfMW4sGo' http://natas16.natas.labs.overthewire.org",
+		"flag": "EqjHJbo7LFNb8vwhHb9s75hokh5TF0OC",
+		"wargame": "natas"
+	},
+	"natas_18": {
+		"id": 17,
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"target": "curl -u 'natas17:EqjHJbo7LFNb8vwhHb9s75hokh5TF0OC' http://natas17.natas.labs.overthewire.org",
+		"flag": "6OG1PbKdVjyBlpxgD4DDbRG6ZLlCGgCJ",
+		"wargame": "natas"
+	},
+	"natas_19": {
+		"id": 18,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas18:6OG1PbKdVjyBlpxgD4DDbRG6ZLlCGgCJ' http://natas18.natas.labs.overthewire.org",
+		"flag": "tnwER7PdfWkxsG4FNWUtoAZ9VyZTJqJr",
+		"wargame": "natas"
+	},
+	"natas_20": {
+		"id": 19,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas19:tnwER7PdfWkxsG4FNWUtoAZ9VyZTJqJr' http://natas19.natas.labs.overthewire.org",
+		"flag": "p5mCvP7GS2K6Bmt3gqhM2Fc1A5T8MVyw",
+		"wargame": "natas"
+	},
+	"natas_21": {
+		"id": 20,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas20:p5mCvP7GS2K6Bmt3gqhM2Fc1A5T8MVyw' http://natas20.natas.labs.overthewire.org",
+		"flag": "BPhv63cKE1lkQl04cE5CuFTzXe15NfiH",
+		"wargame": "natas"
+	},
+	"natas_22": {
+		"id": 21,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas21:BPhv63cKE1lkQl04cE5CuFTzXe15NfiH' http://natas21.natas.labs.overthewire.org",
+		"flag": "d8rwGBl0Xslg3b76uh3fEbSlnOUBlozz",
+		"wargame": "natas"
+	},
+	"natas_23": {
+		"id": 22,
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"target": "curl -u 'natas22:d8rwGBl0Xslg3b76uh3fEbSlnOUBlozz' http://natas22.natas.labs.overthewire.org",
+		"flag": "dIUQcI3uSus1JEOSSWRAEXBG8KbR8tRs",
+		"wargame": "natas"
+	},
+	"natas_24": {
+		"id": 23,
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"target": "curl -u 'natas23:dIUQcI3uSus1JEOSSWRAEXBG8KbR8tRs' http://natas23.natas.labs.overthewire.org",
+		"flag": "MeuqmfJ8DDKuTr5pcvzFKSwlxedZYEWd",
+		"wargame": "natas"
+	},
+	"natas_25": {
+		"id": 24,
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"target": "curl -u 'natas24:MeuqmfJ8DDKuTr5pcvzFKSwlxedZYEWd' http://natas24.natas.labs.overthewire.org",
+		"flag": "ckELKUWZUfpOv6uxS6M7lXBpBssJZ4Ws",
+		"wargame": "natas"
+	},
+	"natas_26": {
+		"id": 25,
+		"category": "Web Exploitation",
+		"difficulty": "hard",
+		"target": "curl -u 'natas25:ckELKUWZUfpOv6uxS6M7lXBpBssJZ4Ws' http://natas25.natas.labs.overthewire.org",
+		"flag": "cVXXwxMS3Y26n5UZU89QgpGmWCelaQlE",
+		"wargame": "natas"
+	},
+	"natas_27": {
+		"id": 26,
+		"category": "Web Exploitation",
+		"difficulty": "hard",
+		"target": "curl -u 'natas26:cVXXwxMS3Y26n5UZU89QgpGmWCelaQlE' http://natas26.natas.labs.overthewire.org",
+		"flag": "u3RRffXjysjgwFU6b9xa23i6prmUsYne",
+		"wargame": "natas"
+	},
+	"natas_28": {
+		"id": 27,
+		"category": "Web Exploitation",
+		"difficulty": "hard",
+		"target": "curl -u 'natas27:u3RRffXjysjgwFU6b9xa23i6prmUsYne' http://natas27.natas.labs.overthewire.org",
+		"flag": "1JNwQM1Oi6J6j1k49Xyw7ZN6pXMQInVj",
+		"wargame": "natas"
+	},
+	"natas_29": {
+		"id": 28,
+		"category": "Web Exploitation",
+		"difficulty": "hard",
+		"target": "curl -u 'natas28:1JNwQM1Oi6J6j1k49Xyw7ZN6pXMQInVj' http://natas28.natas.labs.overthewire.org",
+		"flag": "31F4j3Qi2PnuhIZQokxXk1L3QT9Cppns",
+		"wargame": "natas"
+	},
+	"natas_30": {
+		"id": 29,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas29:31F4j3Qi2PnuhIZQokxXk1L3QT9Cppns' http://natas29.natas.labs.overthewire.org",
+		"flag": "WQhx1BvcmP9irs2MP9tRnLsNaDI76YrH",
+		"wargame": "natas"
+	},
+	"natas_31": {
+		"id": 30,
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"target": "curl -u 'natas30:WQhx1BvcmP9irs2MP9tRnLsNaDI76YrH' http://natas30.natas.labs.overthewire.org",
+		"flag": "m7bfjAHpJmSYgQWWeqRE2qVBuMiRNq0y",
+		"wargame": "natas"
+	},
+	"natas_32": {
+		"id": 31,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas31:m7bfjAHpJmSYgQWWeqRE2qVBuMiRNq0y' http://natas31.natas.labs.overthewire.org",
+		"flag": "NaIWhW2VIrKqrc7aroJVHOZvk3RQMi0B",
+		"wargame": "natas"
+	},
+	"natas_33": {
+		"id": 32,
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"target": "curl -u 'natas32:NaIWhW2VIrKqrc7aroJVHOZvk3RQMi0B' http://natas32.natas.labs.overthewire.org",
+		"flag": "2v9nDlbSF7jvawaCncr5Z9kSzkmBeoCJ",
+		"wargame": "natas"
+	},
+	"natas_34": {
+		"id": 33,
+		"category": "Web Exploitation",
+		"difficulty": "hard",
+		"target": "curl -u 'natas33:2v9nDlbSF7jvawaCncr5Z9kSzkmBeoCJ' http://natas33.natas.labs.overthewire.org",
+		"wargame": "natas"
+	}
+}
