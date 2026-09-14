@@ -1,0 +1,33 @@
+{
+  "schema": "yaiwes.internal.link-manifest/v4",
+  "component": "🏈 02-CyberStrikeAI",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.0",
+  "source_files_audited": 692,
+  "active_surfaces_transformed": 2,
+  "link_count": 3,
+  "links": [
+    {
+      "order": 1,
+      "path": "mcp-servers/reverse_shell/mcp_reverse_shell.py",
+      "original_sha256": "b49f65c80a0e73b608815d5aeb41d7cbf92da6eba39f00f4724f0e25346f3acf",
+      "quarantine": "_yaiwes_upstream_quarantine/mcp-servers/reverse_shell/mcp_reverse_shell.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:0",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 2,
+      "path": "internal/c2/listener_websocket.go",
+      "original_sha256": "689356c34c50fa74ff96233ccc6c8c6d31d2f30bca29624a6e016fd7f6a80354",
+      "quarantine": "_yaiwes_upstream_quarantine/internal/c2/listener_websocket.go.original",
+      "transform_kind": "SAFE_STUB",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 3,
+      "path": "yaiwes_internal/README.md",
+      "role": "COMPONENT_PERSISTENCE_LINK",
+      "transform_kind": "INTERNAL_RUNTIME"
+    }
+  ]
+}

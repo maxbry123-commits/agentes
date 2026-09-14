@@ -1,0 +1,249 @@
+{
+  "schema": "yaiwes.internal.swarm-registry/v4",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.0",
+  "chain_id": "yaiwes-internal-navy-seals-chain-v4",
+  "component_count": 24,
+  "components": [
+    {
+      "order": 1,
+      "component": "🏈 01-DeepAudit",
+      "previous": null,
+      "next": "🏈 02-CyberStrikeAI",
+      "manifest": "📂coda workflow persistencias/🏈 01-DeepAudit/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 352,
+      "transformed": 2,
+      "links": 3
+    },
+    {
+      "order": 2,
+      "component": "🏈 02-CyberStrikeAI",
+      "previous": "🏈 01-DeepAudit",
+      "next": "🏈 03-LuaN1aoAgent",
+      "manifest": "📂coda workflow persistencias/🏈 02-CyberStrikeAI/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 692,
+      "transformed": 2,
+      "links": 3
+    },
+    {
+      "order": 3,
+      "component": "🏈 03-LuaN1aoAgent",
+      "previous": "🏈 02-CyberStrikeAI",
+      "next": "🏈 04-AI-Pentest",
+      "manifest": "📂coda workflow persistencias/🏈 03-LuaN1aoAgent/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 145,
+      "transformed": 2,
+      "links": 3
+    },
+    {
+      "order": 4,
+      "component": "🏈 04-AI-Pentest",
+      "previous": "🏈 03-LuaN1aoAgent",
+      "next": "🏈 05-AI-Infra-Guard",
+      "manifest": "📂coda workflow persistencias/🏈 04-AI-Pentest/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 42,
+      "transformed": 1,
+      "links": 2
+    },
+    {
+      "order": 5,
+      "component": "🏈 05-AI-Infra-Guard",
+      "previous": "🏈 04-AI-Pentest",
+      "next": "🏈 06-PentAGI",
+      "manifest": "📂coda workflow persistencias/🏈 05-AI-Infra-Guard/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 881,
+      "transformed": 6,
+      "links": 7
+    },
+    {
+      "order": 6,
+      "component": "🏈 06-PentAGI",
+      "previous": "🏈 05-AI-Infra-Guard",
+      "next": "🏈 07-Strix",
+      "manifest": "📂coda workflow persistencias/🏈 06-PentAGI/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 1044,
+      "transformed": 0,
+      "links": 1
+    },
+    {
+      "order": 7,
+      "component": "🏈 07-Strix",
+      "previous": "🏈 06-PentAGI",
+      "next": "🏈 08-Redcell",
+      "manifest": "📂coda workflow persistencias/🏈 07-Strix/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 254,
+      "transformed": 10,
+      "links": 11
+    },
+    {
+      "order": 8,
+      "component": "🏈 08-Redcell",
+      "previous": "🏈 07-Strix",
+      "next": "🏈 09-Shel",
+      "manifest": "📂coda workflow persistencias/🏈 08-Redcell/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 221,
+      "transformed": 2,
+      "links": 3
+    },
+    {
+      "order": 9,
+      "component": "🏈 09-Shel",
+      "previous": "🏈 08-Redcell",
+      "next": "🏈 10-Pentest-Swarm-AI",
+      "manifest": "📂coda workflow persistencias/🏈 09-Shel/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 50,
+      "transformed": 0,
+      "links": 1
+    },
+    {
+      "order": 10,
+      "component": "🏈 10-Pentest-Swarm-AI",
+      "previous": "🏈 09-Shel",
+      "next": "🏈 11-LLM-CTF-Solver",
+      "manifest": "📂coda workflow persistencias/🏈 10-Pentest-Swarm-AI/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 335,
+      "transformed": 0,
+      "links": 1
+    },
+    {
+      "order": 11,
+      "component": "🏈 11-LLM-CTF-Solver",
+      "previous": "🏈 10-Pentest-Swarm-AI",
+      "next": "🏈 12-PentestGPT",
+      "manifest": "📂coda workflow persistencias/🏈 11-LLM-CTF-Solver/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 138,
+      "transformed": 1,
+      "links": 2
+    },
+    {
+      "order": 12,
+      "component": "🏈 12-PentestGPT",
+      "previous": "🏈 11-LLM-CTF-Solver",
+      "next": "🏈 13-Auto-Pentest-LLM",
+      "manifest": "📂coda workflow persistencias/🏈 12-PentestGPT/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 52,
+      "transformed": 0,
+      "links": 1
+    },
+    {
+      "order": 13,
+      "component": "🏈 13-Auto-Pentest-LLM",
+      "previous": "🏈 12-PentestGPT",
+      "next": "🏈 14-Dark-Moon",
+      "manifest": "📂coda workflow persistencias/🏈 13-Auto-Pentest-LLM/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 12,
+      "transformed": 0,
+      "links": 1
+    },
+    {
+      "order": 14,
+      "component": "🏈 14-Dark-Moon",
+      "previous": "🏈 13-Auto-Pentest-LLM",
+      "next": "🏈 15-Pentdem",
+      "manifest": "📂coda workflow persistencias/🏈 14-Dark-Moon/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 49,
+      "transformed": 1,
+      "links": 2
+    },
+    {
+      "order": 15,
+      "component": "🏈 15-Pentdem",
+      "previous": "🏈 14-Dark-Moon",
+      "next": "🏈 16-Autonomous-Pentest-Agent",
+      "manifest": "📂coda workflow persistencias/🏈 15-Pentdem/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 77,
+      "transformed": 1,
+      "links": 2
+    },
+    {
+      "order": 16,
+      "component": "🏈 16-Autonomous-Pentest-Agent",
+      "previous": "🏈 15-Pentdem",
+      "next": "🏈 17-AI-Red-Team-Agent",
+      "manifest": "📂coda workflow persistencias/🏈 16-Autonomous-Pentest-Agent/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 28,
+      "transformed": 0,
+      "links": 1
+    },
+    {
+      "order": 17,
+      "component": "🏈 17-AI-Red-Team-Agent",
+      "previous": "🏈 16-Autonomous-Pentest-Agent",
+      "next": "🏈 18-Agent-Smith",
+      "manifest": "📂coda workflow persistencias/🏈 17-AI-Red-Team-Agent/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 6,
+      "transformed": 0,
+      "links": 1
+    },
+    {
+      "order": 18,
+      "component": "🏈 18-Agent-Smith",
+      "previous": "🏈 17-AI-Red-Team-Agent",
+      "next": "🏈 19-TPT-Agent",
+      "manifest": "📂coda workflow persistencias/🏈 18-Agent-Smith/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 217,
+      "transformed": 0,
+      "links": 1
+    },
+    {
+      "order": 19,
+      "component": "🏈 19-TPT-Agent",
+      "previous": "🏈 18-Agent-Smith",
+      "next": "🏈 20-OpenWhale",
+      "manifest": "📂coda workflow persistencias/🏈 19-TPT-Agent/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 14,
+      "transformed": 0,
+      "links": 1
+    },
+    {
+      "order": 20,
+      "component": "🏈 20-OpenWhale",
+      "previous": "🏈 19-TPT-Agent",
+      "next": "🏈 21-H-Pentest",
+      "manifest": "📂coda workflow persistencias/🏈 20-OpenWhale/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 19,
+      "transformed": 1,
+      "links": 2
+    },
+    {
+      "order": 21,
+      "component": "🏈 21-H-Pentest",
+      "previous": "🏈 20-OpenWhale",
+      "next": "🏈 22-PHANTOM",
+      "manifest": "📂coda workflow persistencias/🏈 21-H-Pentest/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 46,
+      "transformed": 0,
+      "links": 1
+    },
+    {
+      "order": 22,
+      "component": "🏈 22-PHANTOM",
+      "previous": "🏈 21-H-Pentest",
+      "next": "🏈 23-HackSynth",
+      "manifest": "📂coda workflow persistencias/🏈 22-PHANTOM/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 153,
+      "transformed": 3,
+      "links": 4
+    },
+    {
+      "order": 23,
+      "component": "🏈 23-HackSynth",
+      "previous": "🏈 22-PHANTOM",
+      "next": "🏈 24-Security-AI-Agent",
+      "manifest": "📂coda workflow persistencias/🏈 23-HackSynth/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 11,
+      "transformed": 0,
+      "links": 1
+    },
+    {
+      "order": 24,
+      "component": "🏈 24-Security-AI-Agent",
+      "previous": "🏈 23-HackSynth",
+      "next": null,
+      "manifest": "📂coda workflow persistencias/🏈 24-Security-AI-Agent/INTERNAL-LINK-MANIFEST.json",
+      "source_files_audited": 0,
+      "transformed": 0,
+      "links": 1
+    }
+  ]
+}

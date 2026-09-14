@@ -3,141 +3,24 @@
   "component": "🏈 03-LuaN1aoAgent",
   "mode": "TRANSFORM",
   "source_files": 145,
-  "candidates": 19,
-  "changed": 19,
+  "candidates": 2,
+  "changed": 2,
   "findings": [
     {
-      "path": "network-image/test_replay_client.py",
-      "sha256": "0fa9fb806b322484ab439a0312c207ae05b40016c70ce0dcfd69d9499ae064c8",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:4",
-      "quarantine": "_yaiwes_upstream_quarantine/network-image/test_replay_client.py.original"
-    },
-    {
       "path": "network-image/index_server.py",
-      "sha256": "cd7eed79661c3deb0b9eb1dd4d8c8973c6492c160b9eaa5b845347cf75c27c73",
+      "source_id": "51402a45b93bff23528be92915eab72a8b65aa3d344107a22841f2e6c65e0f43",
+      "sha256": "56401fc7790ed2f4530009aeff5e5e3fcd78cff1988d01c563cbf193762ccf57",
       "changed": true,
-      "kind": "PY_FUNCTIONS:9",
+      "kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
       "quarantine": "_yaiwes_upstream_quarantine/network-image/index_server.py.original"
     },
     {
       "path": "network-image/scope_dns.py",
-      "sha256": "a4503da7a52b14a93781d6d45bf5ea3772d6e8d8a142c72a706ad21ae040c9c7",
+      "source_id": "a5314dd61bdc90bd6e17e927821ae3799ea107cc8a2d09b1fc5498afdb3ab85f",
+      "sha256": "9647e8d8e79597023befd7aa35d4bd27a31e175cf15a6c4bb7092f6010b9bf3c",
       "changed": true,
-      "kind": "PY_FUNCTIONS:2",
+      "kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
       "quarantine": "_yaiwes_upstream_quarantine/network-image/scope_dns.py.original"
-    },
-    {
-      "path": "network-image/test_index_server.py",
-      "sha256": "478f603bdb5b03e93bf5cdb1c18abef007d9cadafcf25c9a7298f03c14f5da55",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:4",
-      "quarantine": "_yaiwes_upstream_quarantine/network-image/test_index_server.py.original"
-    },
-    {
-      "path": "network-image/replay_client.py",
-      "sha256": "e3bef61af1bcc7c7c26d811317f24341d4db86e6c1658285a4376a4d8b191109",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:2",
-      "quarantine": "_yaiwes_upstream_quarantine/network-image/replay_client.py.original"
-    },
-    {
-      "path": "src/controller.ts",
-      "sha256": "e1a3e11559247035c2e37ee77b116c1f3d4152f0d057bc7c152610f1347b650b",
-      "changed": true,
-      "kind": "SAFE_STUB",
-      "quarantine": "_yaiwes_upstream_quarantine/src/controller.ts.original"
-    },
-    {
-      "path": "src/executor-environment.ts",
-      "sha256": "70384bcb35790fa91b9ed5b80d9eec5e76123ea8306e0fa8e8c88793b406f6a4",
-      "changed": true,
-      "kind": "SAFE_STUB",
-      "quarantine": "_yaiwes_upstream_quarantine/src/executor-environment.ts.original"
-    },
-    {
-      "path": "src/executor-sandbox-docker.ts",
-      "sha256": "930371bef3299019c505e34435dec524282ccf7c59fe0c0f9e6b92118691e13c",
-      "changed": true,
-      "kind": "SAFE_STUB",
-      "quarantine": "_yaiwes_upstream_quarantine/src/executor-sandbox-docker.ts.original"
-    },
-    {
-      "path": "network-image/gateway-tun/protocol_gateway.go",
-      "sha256": "008b57126580e75b9e6e8b334661038aaf13fadfe0e9375cc6b87e3e79e03525",
-      "changed": true,
-      "kind": "SAFE_STUB",
-      "quarantine": "_yaiwes_upstream_quarantine/network-image/gateway-tun/protocol_gateway.go.original"
-    },
-    {
-      "path": "web/src/components/TrafficInspector.tsx",
-      "sha256": "0f222fb40a80bfd2a6b63d0fe3181997b982d3312359b214ca9adfa3559ef8f4",
-      "changed": true,
-      "kind": "SAFE_STUB",
-      "quarantine": "_yaiwes_upstream_quarantine/web/src/components/TrafficInspector.tsx.original"
-    },
-    {
-      "path": "src/tools/research-tools.ts",
-      "sha256": "5a1cd46b05413ed50324e18558d53c8831708420d21cd017c41e5cf869f0d83f",
-      "changed": true,
-      "kind": "SAFE_STUB",
-      "quarantine": "_yaiwes_upstream_quarantine/src/tools/research-tools.ts.original"
-    },
-    {
-      "path": "src/tools/browser-tools.ts",
-      "sha256": "367f02c1094d9b26488be0fcb01cc269906badf76ff312fd5cc8b6f9c6809222",
-      "changed": true,
-      "kind": "SAFE_STUB",
-      "quarantine": "_yaiwes_upstream_quarantine/src/tools/browser-tools.ts.original"
-    },
-    {
-      "path": "src/connectivity/host-egress-broker.ts",
-      "sha256": "f58a7718c0ab1b70aed15f173763bbd9c768f522fcb1db6d4651415094d769fd",
-      "changed": true,
-      "kind": "SAFE_STUB",
-      "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/host-egress-broker.ts.original"
-    },
-    {
-      "path": "src/connectivity/runtime-owner-lease.ts",
-      "sha256": "d7f3c174242232d404bd969245ef6749ef5376b0ebdd50fcc6ca5992ac805cc6",
-      "changed": true,
-      "kind": "SAFE_STUB",
-      "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/runtime-owner-lease.ts.original"
-    },
-    {
-      "path": "src/connectivity/traffic-proxy-client.ts",
-      "sha256": "992f72696aa32256b305526de701d105c0c7eef48d5586962330a2759765b89b",
-      "changed": true,
-      "kind": "SAFE_STUB",
-      "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/traffic-proxy-client.ts.original"
-    },
-    {
-      "path": "src/connectivity/replay-gateway-runtime.ts",
-      "sha256": "2c20201bd043af23f55915545bd26e9fa340724e43a720ed27e60868e4a131c8",
-      "changed": true,
-      "kind": "SAFE_STUB",
-      "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/replay-gateway-runtime.ts.original"
-    },
-    {
-      "path": "src/connectivity/mitm-flow-client.ts",
-      "sha256": "5607b4ad6a9506753aa3d0284ccf8465ddc2145f468d8ec10b5237a22720b2d3",
-      "changed": true,
-      "kind": "SAFE_STUB",
-      "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/mitm-flow-client.ts.original"
-    },
-    {
-      "path": "src/connectivity/network-sandbox-manager.ts",
-      "sha256": "697bbf464a7267c0aa696ad1b857f0d65a2092ed60e35b836260d9ca181bcb6d",
-      "changed": true,
-      "kind": "SAFE_STUB",
-      "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/network-sandbox-manager.ts.original"
-    },
-    {
-      "path": "src/connectivity/traffic-proxy-manager.ts",
-      "sha256": "6a95dc06e0db67e8aa7bfe5512f8b1e9deaad655b32755a971339a3a2497184b",
-      "changed": true,
-      "kind": "SAFE_STUB",
-      "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/traffic-proxy-manager.ts.original"
     }
   ]
 }

@@ -4,75 +4,75 @@
   "mode": "TRANSFORM",
   "components": 24,
   "source_files": 4838,
-  "candidates": 299,
-  "changed": 299,
+  "candidates": 32,
+  "changed": 32,
   "errors": [],
   "summary": [
     {
       "component": "🏈 01-DeepAudit",
       "source_files": 352,
-      "candidates": 23,
-      "changed": 23
+      "candidates": 2,
+      "changed": 2
     },
     {
       "component": "🏈 02-CyberStrikeAI",
       "source_files": 692,
-      "candidates": 17,
-      "changed": 17
+      "candidates": 2,
+      "changed": 2
     },
     {
       "component": "🏈 03-LuaN1aoAgent",
       "source_files": 145,
-      "candidates": 19,
-      "changed": 19
+      "candidates": 2,
+      "changed": 2
     },
     {
       "component": "🏈 04-AI-Pentest",
       "source_files": 42,
-      "candidates": 9,
-      "changed": 9
+      "candidates": 1,
+      "changed": 1
     },
     {
       "component": "🏈 05-AI-Infra-Guard",
       "source_files": 881,
-      "candidates": 43,
-      "changed": 43
+      "candidates": 6,
+      "changed": 6
     },
     {
       "component": "🏈 06-PentAGI",
       "source_files": 1044,
-      "candidates": 14,
-      "changed": 14
+      "candidates": 0,
+      "changed": 0
     },
     {
       "component": "🏈 07-Strix",
       "source_files": 254,
-      "candidates": 30,
-      "changed": 30
-    },
-    {
-      "component": "🏈 08-Redcell",
-      "source_files": 221,
       "candidates": 10,
       "changed": 10
     },
     {
+      "component": "🏈 08-Redcell",
+      "source_files": 221,
+      "candidates": 2,
+      "changed": 2
+    },
+    {
       "component": "🏈 09-Shel",
       "source_files": 50,
-      "candidates": 13,
-      "changed": 13
+      "candidates": 0,
+      "changed": 0
     },
     {
       "component": "🏈 10-Pentest-Swarm-AI",
       "source_files": 335,
-      "candidates": 16,
-      "changed": 16
+      "candidates": 0,
+      "changed": 0
     },
     {
       "component": "🏈 11-LLM-CTF-Solver",
       "source_files": 138,
-      "candidates": 13,
-      "changed": 13
+      "candidates": 1,
+      "changed": 1
     },
     {
       "component": "🏈 12-PentestGPT",
@@ -89,62 +89,62 @@
     {
       "component": "🏈 14-Dark-Moon",
       "source_files": 49,
-      "candidates": 6,
-      "changed": 6
-    },
-    {
-      "component": "🏈 15-Pentdem",
-      "source_files": 77,
-      "candidates": 24,
-      "changed": 24
-    },
-    {
-      "component": "🏈 16-Autonomous-Pentest-Agent",
-      "source_files": 28,
       "candidates": 1,
       "changed": 1
     },
     {
+      "component": "🏈 15-Pentdem",
+      "source_files": 77,
+      "candidates": 1,
+      "changed": 1
+    },
+    {
+      "component": "🏈 16-Autonomous-Pentest-Agent",
+      "source_files": 28,
+      "candidates": 0,
+      "changed": 0
+    },
+    {
       "component": "🏈 17-AI-Red-Team-Agent",
       "source_files": 6,
-      "candidates": 2,
-      "changed": 2
+      "candidates": 0,
+      "changed": 0
     },
     {
       "component": "🏈 18-Agent-Smith",
       "source_files": 217,
-      "candidates": 25,
-      "changed": 25
+      "candidates": 0,
+      "changed": 0
     },
     {
       "component": "🏈 19-TPT-Agent",
       "source_files": 14,
-      "candidates": 2,
-      "changed": 2
+      "candidates": 0,
+      "changed": 0
     },
     {
       "component": "🏈 20-OpenWhale",
       "source_files": 19,
-      "candidates": 3,
-      "changed": 3
+      "candidates": 1,
+      "changed": 1
     },
     {
       "component": "🏈 21-H-Pentest",
       "source_files": 46,
-      "candidates": 6,
-      "changed": 6
+      "candidates": 0,
+      "changed": 0
     },
     {
       "component": "🏈 22-PHANTOM",
       "source_files": 153,
-      "candidates": 20,
-      "changed": 20
+      "candidates": 3,
+      "changed": 3
     },
     {
       "component": "🏈 23-HackSynth",
       "source_files": 11,
-      "candidates": 3,
-      "changed": 3
+      "candidates": 0,
+      "changed": 0
     },
     {
       "component": "🏈 24-Security-AI-Agent",

@@ -1,0 +1,97 @@
+{
+  "schema": "yaiwes.internal.link-manifest/v4",
+  "component": "🏈 07-Strix",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.0",
+  "source_files_audited": 254,
+  "active_surfaces_transformed": 10,
+  "link_count": 11,
+  "links": [
+    {
+      "order": 1,
+      "path": "strix/runtime/docker_client.py",
+      "original_sha256": "b9b282d46093ce3e3501117af07c83255b74081771e1b16b00238a43958bdbde",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/runtime/docker_client.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:0",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 2,
+      "path": "strix/interface/utils.py",
+      "original_sha256": "de7b2c0e41b21232ccb3027763b05fd40f08c5ccd35820cf3994b038db390af0",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/utils.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:2",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 3,
+      "path": "strix/interface/platform_cli.py",
+      "original_sha256": "27572b803dac24a0b228745068fcd05bc31b92826acf62b5736b0b82ee592eda",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/platform_cli.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:5",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 4,
+      "path": "strix/tools/mcp/failures.py",
+      "original_sha256": "ed17064024509346b2762259a99c07c912a7e4b6afc7ddd63dbc9b83d179e6b6",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/tools/mcp/failures.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 5,
+      "path": "strix/interface/tui/sidecar.py",
+      "original_sha256": "b05ede9fb3fa10d8efdb0ba7e37dea6f1b69f720f147654016aebd7e10851b20",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/tui/sidecar.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:8",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 6,
+      "path": "strix/interface/cloud/billing.py",
+      "original_sha256": "a95137dd0331a62a776c76335ec41e497ba67d70854c78235aecf724d4c131c3",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/billing.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:2",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 7,
+      "path": "strix/interface/cloud/http.py",
+      "original_sha256": "b544678f70aa7f1fba5ef3391fa4efca8783e8490bf40f955d336273fe40d6ec",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/http.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:3",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 8,
+      "path": "strix/interface/cloud/payment_proxy.py",
+      "original_sha256": "e6f40be303f36fc5947f69a3e8ebbe5d124bf3593c1f59287625fe291ef99ee5",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/payment_proxy.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 9,
+      "path": "strix/interface/cloud/runner.py",
+      "original_sha256": "d3ea421e9a6ab7e6b1e1770b139ab81dc729b5699ca19ed4d31aeca3e67dfc73",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/runner.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:3",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 10,
+      "path": "strix/interface/tui/backend/server.py",
+      "original_sha256": "f4f32b7038ac6152371b10234e4fa648c75177688b71b33bfffa361bea537bc6",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/tui/backend/server.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 11,
+      "path": "yaiwes_internal/README.md",
+      "role": "COMPONENT_PERSISTENCE_LINK",
+      "transform_kind": "INTERNAL_RUNTIME"
+    }
+  ]
+}

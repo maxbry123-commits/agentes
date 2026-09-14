@@ -1,0 +1,25 @@
+{
+  "schema": "yaiwes.internal.link-manifest/v4",
+  "component": "🏈 11-LLM-CTF-Solver",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.0",
+  "source_files_audited": 138,
+  "active_surfaces_transformed": 1,
+  "link_count": 2,
+  "links": [
+    {
+      "order": 1,
+      "path": "frontend/src/utils/websocket.ts",
+      "original_sha256": "be62010f831a9b39ae5ba9795376b0ebdad00864299b2855b3aceb9abba07f3b",
+      "quarantine": "_yaiwes_upstream_quarantine/frontend/src/utils/websocket.ts.original",
+      "transform_kind": "SAFE_STUB",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 2,
+      "path": "yaiwes_internal/README.md",
+      "role": "COMPONENT_PERSISTENCE_LINK",
+      "transform_kind": "INTERNAL_RUNTIME"
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "schema": "yaiwes.internal.link-manifest/v4",
+  "component": "🏈 03-LuaN1aoAgent",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.0",
+  "source_files_audited": 145,
+  "active_surfaces_transformed": 2,
+  "link_count": 3,
+  "links": [
+    {
+      "order": 1,
+      "path": "network-image/index_server.py",
+      "original_sha256": "56401fc7790ed2f4530009aeff5e5e3fcd78cff1988d01c563cbf193762ccf57",
+      "quarantine": "_yaiwes_upstream_quarantine/network-image/index_server.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 2,
+      "path": "network-image/scope_dns.py",
+      "original_sha256": "9647e8d8e79597023befd7aa35d4bd27a31e175cf15a6c4bb7092f6010b9bf3c",
+      "quarantine": "_yaiwes_upstream_quarantine/network-image/scope_dns.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 3,
+      "path": "yaiwes_internal/README.md",
+      "role": "COMPONENT_PERSISTENCE_LINK",
+      "transform_kind": "INTERNAL_RUNTIME"
+    }
+  ]
+}

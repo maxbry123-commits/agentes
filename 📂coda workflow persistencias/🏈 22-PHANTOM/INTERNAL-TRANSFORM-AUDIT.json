@@ -3,148 +3,32 @@
   "component": "🏈 22-PHANTOM",
   "mode": "TRANSFORM",
   "source_files": 153,
-  "candidates": 20,
-  "changed": 20,
+  "candidates": 3,
+  "changed": 3,
   "findings": [
     {
-      "path": "phantom/tools/executor.py",
-      "sha256": "a148563a2c6abfba87e64c4113b71941c0e55c36343f031e95b02985fb7b8bdd",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:1",
-      "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/executor.py.original"
-    },
-    {
-      "path": "phantom/config/secrets.py",
-      "sha256": "54f0c82060beb17387800bc4737c1b5e1e2e50a7a630db89d2c461a2ed7fcbc5",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:1",
-      "quarantine": "_yaiwes_upstream_quarantine/phantom/config/secrets.py.original"
-    },
-    {
       "path": "phantom/runtime/docker_runtime.py",
-      "sha256": "206a9a7d3fe99a1a0fe1fc3e39798e6b6f4d308f14e57afa7551cdc5fa5d0fd4",
+      "source_id": "c832edb048c7ab817c4cd2915cd6cdea0b861ee88c61370103f54580bc5f0556",
+      "sha256": "d5de779a212c83e0b625f23ce7a1a4732e04835ba94b28e1959d3924e44d6156",
       "changed": true,
-      "kind": "PY_FUNCTIONS:6",
+      "kind": "PY_FILE_STUB_AFTER_FUNCTIONS:0",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/runtime/docker_runtime.py.original"
     },
     {
-      "path": "phantom/interface/cli_app.py",
-      "sha256": "030c4172cc27da026224f353a6f27c1b2e5c8e1a07d448b46eaee5a4f5076656",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:1",
-      "quarantine": "_yaiwes_upstream_quarantine/phantom/interface/cli_app.py.original"
-    },
-    {
-      "path": "phantom/interface/utils.py",
-      "sha256": "79db2448ed9346b7ba892830c393ee90c92f7e903304714297d4cf29ec529498",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:2",
-      "quarantine": "_yaiwes_upstream_quarantine/phantom/interface/utils.py.original"
-    },
-    {
-      "path": "phantom/tools/osint/subdomain_bruteforce.py",
-      "sha256": "e17bdec94110f31d6915c5279fc2723c1e9ee620e08c6e6c92095a64cd25e47d",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:2",
-      "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/osint/subdomain_bruteforce.py.original"
-    },
-    {
-      "path": "phantom/tools/osint/osint_actions.py",
-      "sha256": "9fb2789cf8fdc1f8bcde159b38dd3e9a77a22cec26737f7c0e0a67113ef201b9",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:5",
-      "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/osint/osint_actions.py.original"
-    },
-    {
-      "path": "phantom/tools/session_mgmt/__init__.py",
-      "sha256": "83b1330c3e81e506be378368c0aee6395204f7a987280042d81b2e8b38cf153b",
-      "changed": true,
-      "kind": "PY_FILE_STUB",
-      "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/session_mgmt/__init__.py.original"
-    },
-    {
-      "path": "phantom/tools/session_mgmt/session_mgmt_actions.py",
-      "sha256": "93e3f6d7cabf9c4c9c037601d7a1587b869833020339e68af2c8060ccc68580f",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:1",
-      "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/session_mgmt/session_mgmt_actions.py.original"
-    },
-    {
-      "path": "phantom/tools/session_mgmt/auth_automation.py",
-      "sha256": "1fc7c45459e8a94ff32a67579db44d46cf1cf55818b1d5218ff3efe513897534",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:3",
-      "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/session_mgmt/auth_automation.py.original"
-    },
-    {
-      "path": "phantom/tools/waf/waf_actions.py",
-      "sha256": "012e3dc28bde1710510a21508339c974cb54866c5c702e2fe5c9b41fa5752482",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:2",
-      "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/waf/waf_actions.py.original"
-    },
-    {
       "path": "phantom/tools/proxy/proxy_manager.py",
-      "sha256": "af070278063ba8ad864c14cf2d438565c99350b1066fb9f58e9aa173f0a74e4d",
+      "source_id": "0013ad83d6fd45510f28a4a5a40d5cccdae61ced1a62907f6f4eb2efb8713aec",
+      "sha256": "61d37cc2fb663746eca120c521eadc9dfc927e5717d253cc9bbb8ee8f2719341",
       "changed": true,
-      "kind": "PY_FUNCTIONS:4",
+      "kind": "PY_FILE_STUB_AFTER_FUNCTIONS:0",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/proxy/proxy_manager.py.original"
     },
     {
-      "path": "phantom/tools/api_schema/api_schema_actions.py",
-      "sha256": "30d78ed19bd34247c0f2e21dfc5d04c4ecc3de071fade1703d77b5d47d37489c",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:1",
-      "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/api_schema/api_schema_actions.py.original"
-    },
-    {
-      "path": "phantom/tools/vuln_intel/vuln_intel_actions.py",
-      "sha256": "8f19db31ecb47a00731ca09e588301941b4b853783f4f2b01cb3daca1756cc9d",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:3",
-      "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/vuln_intel/vuln_intel_actions.py.original"
-    },
-    {
-      "path": "phantom/tools/payload_gen/payload_gen_actions.py",
-      "sha256": "f06261cce0f68be94fc356d3c804c2730ead039c35ff853af3a6fb7da5b8ccba",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:1",
-      "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/payload_gen/payload_gen_actions.py.original"
-    },
-    {
-      "path": "phantom/tools/web_search/web_search_actions.py",
-      "sha256": "9d1434375f281cac60b1dccc64ab2df0763a7b69999e8872fd013fa6c8101a4e",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:2",
-      "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/web_search/web_search_actions.py.original"
-    },
-    {
-      "path": "phantom/tools/browser/browser_instance.py",
-      "sha256": "ccf5c357c8336fd1986a7d21ffaecab48d46fc65545dc4a6ce97363ef59b35ad",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:1",
-      "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/browser/browser_instance.py.original"
-    },
-    {
-      "path": "phantom/tools/recon/js_analysis_actions.py",
-      "sha256": "2898877087abf38b53d0ccd4e3ecb79305fde6babcdf1e5668314d54bb3a3599",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:1",
-      "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/recon/js_analysis_actions.py.original"
-    },
-    {
       "path": "phantom/tools/recon/directory_bruteforce.py",
-      "sha256": "6eabd8e8c2c5a6c36d7e026d263de9971c89c6ab98cff085571f197a10fcf31d",
+      "source_id": "26081063e31dd9f4531e2c0c2913445ac1b715cbd8e67a28c410e41de2da2258",
+      "sha256": "e21ba077a5f789212e28b885d8a290f484a4b6e44d1b17ac6655e4a339c73ccf",
       "changed": true,
-      "kind": "PY_FUNCTIONS:4",
+      "kind": "PY_FILE_STUB_AFTER_FUNCTIONS:2",
       "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/recon/directory_bruteforce.py.original"
-    },
-    {
-      "path": "phantom/tools/fuzzer/fuzzer_manager.py",
-      "sha256": "75d18ae479f370330391a20b01c495e5784c878282bf6b2b25cd5764d1681ca5",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:1",
-      "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/fuzzer/fuzzer_manager.py.original"
     }
   ]
 }

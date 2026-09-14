@@ -1,0 +1,33 @@
+{
+  "schema": "yaiwes.internal.link-manifest/v4",
+  "component": "🏈 08-Redcell",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.0",
+  "source_files_audited": 221,
+  "active_surfaces_transformed": 2,
+  "link_count": 3,
+  "links": [
+    {
+      "order": 1,
+      "path": "packages/core/redcell_core/engine/ngrok.py",
+      "original_sha256": "4307a7b64b0d3d8e0e1ee4b8a86667614c161d172d9f04a11745c22eaac55187",
+      "quarantine": "_yaiwes_upstream_quarantine/packages/core/redcell_core/engine/ngrok.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 2,
+      "path": "apps/api/app/routers/ws.py",
+      "original_sha256": "b076963aa3be2df22cb72d08444feef0d00f77371ab55af9eaae4e4591d5954b",
+      "quarantine": "_yaiwes_upstream_quarantine/apps/api/app/routers/ws.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 3,
+      "path": "yaiwes_internal/README.md",
+      "role": "COMPONENT_PERSISTENCE_LINK",
+      "transform_kind": "INTERNAL_RUNTIME"
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "schema": "yaiwes.internal.link-manifest/v4",
+  "component": "🏈 05-AI-Infra-Guard",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.0",
+  "source_files_audited": 881,
+  "active_surfaces_transformed": 6,
+  "link_count": 7,
+  "links": [
+    {
+      "order": 1,
+      "path": "services/api_checker/ventor_qtest/runner/orchestrator.py",
+      "original_sha256": "95979658c309bad86f1c0e144b581d08fb74451ffbdb600b1144011e7d2e21ad",
+      "quarantine": "_yaiwes_upstream_quarantine/services/api_checker/ventor_qtest/runner/orchestrator.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 2,
+      "path": "skills/aig-agent-redteam/scripts/common/http_probe.py",
+      "original_sha256": "e1b657b18ca58f43876ca58141456eb3d328d1daa112ba6a6105a8d4f5736353",
+      "quarantine": "_yaiwes_upstream_quarantine/skills/aig-agent-redteam/scripts/common/http_probe.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 3,
+      "path": "Research/SkillJack/skilljack/llm_adapter.py",
+      "original_sha256": "0702e6aa608005fe9ae0ee0a3da48cd939bb7cb0a4eb57e48a066defdf8dc515",
+      "quarantine": "_yaiwes_upstream_quarantine/Research/SkillJack/skilljack/llm_adapter.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:0",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 4,
+      "path": "agent-scan/testcase/case2/memory_heist_agent.py",
+      "original_sha256": "28d55728aa7a104b2f00ef8baaee36450bb5b55f0a96ea9aa7e901fc9fd5175f",
+      "quarantine": "_yaiwes_upstream_quarantine/agent-scan/testcase/case2/memory_heist_agent.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:0",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 5,
+      "path": "pkg/httpx/httpx.go",
+      "original_sha256": "50a86f6528cdf979aecbc5f21d6ee252e50058f77ac4ffb6156fa54d5d66fac6",
+      "quarantine": "_yaiwes_upstream_quarantine/pkg/httpx/httpx.go.original",
+      "transform_kind": "SAFE_STUB",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 6,
+      "path": "common/websocket/websocket.go",
+      "original_sha256": "d3bc13a9160a4b3b070d1fee26c3a4460aaeefeb863faee515130385ffe311a4",
+      "quarantine": "_yaiwes_upstream_quarantine/common/websocket/websocket.go.original",
+      "transform_kind": "SAFE_STUB",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 7,
+      "path": "yaiwes_internal/README.md",
+      "role": "COMPONENT_PERSISTENCE_LINK",
+      "transform_kind": "INTERNAL_RUNTIME"
+    }
+  ]
+}

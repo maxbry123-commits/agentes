@@ -1,0 +1,25 @@
+{
+  "schema": "yaiwes.internal.link-manifest/v4",
+  "component": "🏈 20-OpenWhale",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.0",
+  "source_files_audited": 19,
+  "active_surfaces_transformed": 1,
+  "link_count": 2,
+  "links": [
+    {
+      "order": 1,
+      "path": "src/openwhale/agents/deepagents_agent.py",
+      "original_sha256": "8605c6424395d2c69835d465c3aa1b18d9dc8ad86456684f4c50818df5cb5cba",
+      "quarantine": "_yaiwes_upstream_quarantine/src/openwhale/agents/deepagents_agent.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 2,
+      "path": "yaiwes_internal/README.md",
+      "role": "COMPONENT_PERSISTENCE_LINK",
+      "transform_kind": "INTERNAL_RUNTIME"
+    }
+  ]
+}

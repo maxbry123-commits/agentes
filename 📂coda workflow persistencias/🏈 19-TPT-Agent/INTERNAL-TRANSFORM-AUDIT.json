@@ -3,22 +3,7 @@
   "component": "🏈 19-TPT-Agent",
   "mode": "TRANSFORM",
   "source_files": 14,
-  "candidates": 2,
-  "changed": 2,
-  "findings": [
-    {
-      "path": "tpt_agent/prompts.py",
-      "sha256": "06825ebb2ac4c26eea7ee1b55d2de8ffb121e1346447814ccc87accf535b603b",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:1",
-      "quarantine": "_yaiwes_upstream_quarantine/tpt_agent/prompts.py.original"
-    },
-    {
-      "path": "tpt_agent/sandbox.py",
-      "sha256": "ae021d801c645671d28ffcfd7bf759f224193a8edc2bf153ace8a5ee13e383e8",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:1",
-      "quarantine": "_yaiwes_upstream_quarantine/tpt_agent/sandbox.py.original"
-    }
-  ]
+  "candidates": 0,
+  "changed": 0,
+  "findings": []
 }

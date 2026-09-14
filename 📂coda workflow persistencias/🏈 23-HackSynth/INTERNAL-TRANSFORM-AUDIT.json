@@ -3,29 +3,7 @@
   "component": "🏈 23-HackSynth",
   "mode": "TRANSFORM",
   "source_files": 11,
-  "candidates": 3,
-  "changed": 3,
-  "findings": [
-    {
-      "path": "picoctf_bench/challenge_solver.py",
-      "sha256": "11929338693447c541fc5efa3209cca7b475fc910a9056bf70d8abf38313a076",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:103",
-      "quarantine": "_yaiwes_upstream_quarantine/picoctf_bench/challenge_solver.py.original"
-    },
-    {
-      "path": "overthewire_bench/krypton_solver.py",
-      "sha256": "6512e2510d6fef091fe6d772c4ab1cd9501823b7ba95275501fa205b22fdc64f",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:3",
-      "quarantine": "_yaiwes_upstream_quarantine/overthewire_bench/krypton_solver.py.original"
-    },
-    {
-      "path": "overthewire_bench/natas_solver.py",
-      "sha256": "37567e7b8e6a3241a6c7c42321b9865cc7e0606a0a8bf70a44485ad10163d1b7",
-      "changed": true,
-      "kind": "PY_FUNCTIONS:2",
-      "quarantine": "_yaiwes_upstream_quarantine/overthewire_bench/natas_solver.py.original"
-    }
-  ]
+  "candidates": 0,
+  "changed": 0,
+  "findings": []
 }

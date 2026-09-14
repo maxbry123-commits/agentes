@@ -1,0 +1,41 @@
+{
+  "schema": "yaiwes.internal.link-manifest/v4",
+  "component": "🏈 22-PHANTOM",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.0",
+  "source_files_audited": 153,
+  "active_surfaces_transformed": 3,
+  "link_count": 4,
+  "links": [
+    {
+      "order": 1,
+      "path": "phantom/runtime/docker_runtime.py",
+      "original_sha256": "d5de779a212c83e0b625f23ce7a1a4732e04835ba94b28e1959d3924e44d6156",
+      "quarantine": "_yaiwes_upstream_quarantine/phantom/runtime/docker_runtime.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:0",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 2,
+      "path": "phantom/tools/proxy/proxy_manager.py",
+      "original_sha256": "61d37cc2fb663746eca120c521eadc9dfc927e5717d253cc9bbb8ee8f2719341",
+      "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/proxy/proxy_manager.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:0",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 3,
+      "path": "phantom/tools/recon/directory_bruteforce.py",
+      "original_sha256": "e21ba077a5f789212e28b885d8a290f484a4b6e44d1b17ac6655e4a339c73ccf",
+      "quarantine": "_yaiwes_upstream_quarantine/phantom/tools/recon/directory_bruteforce.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:2",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 4,
+      "path": "yaiwes_internal/README.md",
+      "role": "COMPONENT_PERSISTENCE_LINK",
+      "transform_kind": "INTERNAL_RUNTIME"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "schema": "yaiwes.internal.link-manifest/v4",
+  "component": "🏈 14-Dark-Moon",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.0",
+  "source_files_audited": 49,
+  "active_surfaces_transformed": 1,
+  "link_count": 2,
+  "links": [
+    {
+      "order": 1,
+      "path": "tools/lab-tests/privacy-gateway-lab.py",
+      "original_sha256": "968a97a88189a828283aeb126fd98886324c3906455dd9a0f342f1e3ef6f907d",
+      "quarantine": "_yaiwes_upstream_quarantine/tools/lab-tests/privacy-gateway-lab.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:0",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 2,
+      "path": "yaiwes_internal/README.md",
+      "role": "COMPONENT_PERSISTENCE_LINK",
+      "transform_kind": "INTERNAL_RUNTIME"
+    }
+  ]
+}

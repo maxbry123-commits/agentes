@@ -1,0 +1,33 @@
+{
+  "schema": "yaiwes.internal.link-manifest/v4",
+  "component": "🏈 01-DeepAudit",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.0",
+  "source_files_audited": 352,
+  "active_surfaces_transformed": 2,
+  "link_count": 3,
+  "links": [
+    {
+      "order": 1,
+      "path": "backend/app/services/llm/base_adapter.py",
+      "original_sha256": "6384418d8aaeedc27cd2ffa1dc8f6973b2dac29997cfaff1a2bdce8895844637",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/llm/base_adapter.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 2,
+      "path": "backend/app/services/agent/core/rate_limiter.py",
+      "original_sha256": "b4c40d2ba6851f61db63c5907594c9eefc1797245c8df9d2388fc91bce752e68",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/core/rate_limiter.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:0",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 3,
+      "path": "yaiwes_internal/README.md",
+      "role": "COMPONENT_PERSISTENCE_LINK",
+      "transform_kind": "INTERNAL_RUNTIME"
+    }
+  ]
+}

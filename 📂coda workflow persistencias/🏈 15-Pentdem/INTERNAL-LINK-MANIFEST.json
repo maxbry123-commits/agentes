@@ -1,0 +1,25 @@
+{
+  "schema": "yaiwes.internal.link-manifest/v4",
+  "component": "🏈 15-Pentdem",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.0",
+  "source_files_audited": 77,
+  "active_surfaces_transformed": 1,
+  "link_count": 2,
+  "links": [
+    {
+      "order": 1,
+      "path": "skills/proxy_manager.py",
+      "original_sha256": "6ec1d33f308a763903dddfc1bce81c60b03a357997f99dfc5e5d09aa179861f4",
+      "quarantine": "_yaiwes_upstream_quarantine/skills/proxy_manager.py.original",
+      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:0",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 2,
+      "path": "yaiwes_internal/README.md",
+      "role": "COMPONENT_PERSISTENCE_LINK",
+      "transform_kind": "INTERNAL_RUNTIME"
+    }
+  ]
+}
