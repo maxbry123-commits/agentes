@@ -1,12 +1,13 @@
 {
-  "schema": "yaiwes.internal.link-manifest/v4.1",
+  "schema": "yaiwes.internal.link-manifest/v4.2",
   "component": "🏈 17-AI-Red-Team-Agent",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.1",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.2",
   "source_files_audited": 6,
   "last_delta_candidates": 0,
   "last_delta_changed": 0,
   "active_surfaces_transformed_cumulative": 2,
+  "component_runtime": "yaiwes_internal/persistence_runtime.py",
   "link_count": 3,
   "links": [
     {
@@ -29,9 +30,10 @@
     },
     {
       "order": 3,
-      "path": "yaiwes_internal/README.md",
+      "path": "yaiwes_internal/persistence_runtime.py",
+      "active_sha256": "3e51e63fa055fa92e48e2c32be4328b561befb10b8a864a444b0fc916079d5b4",
       "role": "COMPONENT_PERSISTENCE_LINK",
-      "transform_kind": "INTERNAL_RUNTIME"
+      "transform_kind": "GENERATED_INTERNAL_RUNTIME_V4_2"
     }
   ]
 }

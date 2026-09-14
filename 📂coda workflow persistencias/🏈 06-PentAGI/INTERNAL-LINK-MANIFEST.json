@@ -1,12 +1,13 @@
 {
-  "schema": "yaiwes.internal.link-manifest/v4.1",
+  "schema": "yaiwes.internal.link-manifest/v4.2",
   "component": "🏈 06-PentAGI",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.1",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.2",
   "source_files_audited": 1044,
   "last_delta_candidates": 0,
   "last_delta_changed": 0,
   "active_surfaces_transformed_cumulative": 14,
+  "component_runtime": "yaiwes_internal/persistence_runtime.py",
   "link_count": 15,
   "links": [
     {
@@ -137,9 +138,10 @@
     },
     {
       "order": 15,
-      "path": "yaiwes_internal/README.md",
+      "path": "yaiwes_internal/persistence_runtime.py",
+      "active_sha256": "3c58850a851dc2e4a49e53b5b1a8763c7d048f5a5c17593c23f7444f2e700a91",
       "role": "COMPONENT_PERSISTENCE_LINK",
-      "transform_kind": "INTERNAL_RUNTIME"
+      "transform_kind": "GENERATED_INTERNAL_RUNTIME_V4_2"
     }
   ]
 }

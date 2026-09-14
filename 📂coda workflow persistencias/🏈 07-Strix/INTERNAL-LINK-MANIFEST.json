@@ -1,12 +1,13 @@
 {
-  "schema": "yaiwes.internal.link-manifest/v4.1",
+  "schema": "yaiwes.internal.link-manifest/v4.2",
   "component": "🏈 07-Strix",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.1",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.2",
   "source_files_audited": 254,
   "last_delta_candidates": 0,
   "last_delta_changed": 0,
   "active_surfaces_transformed_cumulative": 30,
+  "component_runtime": "yaiwes_internal/persistence_runtime.py",
   "link_count": 31,
   "links": [
     {
@@ -281,9 +282,10 @@
     },
     {
       "order": 31,
-      "path": "yaiwes_internal/README.md",
+      "path": "yaiwes_internal/persistence_runtime.py",
+      "active_sha256": "9f63001d60fdd5202f65617d117d3f2e06903a34faadae8d1ad8b996b0af5b10",
       "role": "COMPONENT_PERSISTENCE_LINK",
-      "transform_kind": "INTERNAL_RUNTIME"
+      "transform_kind": "GENERATED_INTERNAL_RUNTIME_V4_2"
     }
   ]
 }

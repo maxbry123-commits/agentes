@@ -1,12 +1,13 @@
 {
-  "schema": "yaiwes.internal.link-manifest/v4.1",
+  "schema": "yaiwes.internal.link-manifest/v4.2",
   "component": "🏈 19-TPT-Agent",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.1",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.2",
   "source_files_audited": 14,
   "last_delta_candidates": 0,
   "last_delta_changed": 0,
   "active_surfaces_transformed_cumulative": 2,
+  "component_runtime": "yaiwes_internal/persistence_runtime.py",
   "link_count": 3,
   "links": [
     {
@@ -29,9 +30,10 @@
     },
     {
       "order": 3,
-      "path": "yaiwes_internal/README.md",
+      "path": "yaiwes_internal/persistence_runtime.py",
+      "active_sha256": "4ff2c08fa15c403ab4be263b74defcad15094f605904536e3a0da5991cf2f138",
       "role": "COMPONENT_PERSISTENCE_LINK",
-      "transform_kind": "INTERNAL_RUNTIME"
+      "transform_kind": "GENERATED_INTERNAL_RUNTIME_V4_2"
     }
   ]
 }

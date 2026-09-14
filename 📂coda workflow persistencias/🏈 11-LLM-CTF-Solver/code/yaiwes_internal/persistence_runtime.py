@@ -1,0 +1,34 @@
+from __future__ import annotations
+import json
+from pathlib import Path
+from typing import Any, Dict
+
+TEAM = 'Swarm agent team Navy seals YAIWES'
+COMPONENT = '🏈 11-LLM-CTF-Solver'
+SCHEMA = "yaiwes.component.persistence-runtime/v4.2"
+
+
+def persist_task_step(state_root: str | Path, task_id: str, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    """Persist one benign component handoff atomically."""
+    root = Path(state_root) / COMPONENT
+    root.mkdir(parents=True, exist_ok=True)
+    target = root / f"{task_id}.json"
+    event = {
+        "schema": SCHEMA,
+        "team": TEAM,
+        "component": COMPONENT,
+        "task_id": task_id,
+        "payload": dict(payload or {}),
+        "status": "RELEASED",
+    }
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    tmp.write_text(json.dumps(event, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(target)
+    return event
+
+
+def load_task_step(state_root: str | Path, task_id: str) -> Dict[str, Any] | None:
+    target = Path(state_root) / COMPONENT / f"{task_id}.json"
+    if not target.is_file():
+        return None
+    return json.loads(target.read_text(encoding="utf-8"))

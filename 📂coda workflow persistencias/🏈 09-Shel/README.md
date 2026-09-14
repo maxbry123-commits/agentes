@@ -1,26 +1,29 @@
-# 🏈 09-Shel — YAIWES Internal Persistence Architecture v4.1
+# 🏈 09-Shel — YAIWES Internal Persistence Architecture v4.2
 
 ## Swarm agent team Navy seals YAIWES
 
-**Nueva versión:** `YAIWES-INTERNAL-PERSISTENCE-v4.1`  
+**Nueva versión:** `YAIWES-INTERNAL-PERSISTENCE-v4.2`  
 **Modo:** `INTERNAL_CODE_TRANSFORMATION`  
 **Archivos fuente runtime auditados:** `50`  
 **Transformaciones acumuladas dentro de `code/`:** `13`  
 **Delta de la última pasada:** `0`  
-**Eslabones internos totales:** `14`
+**Eslabones internos totales:** `14`  
+**Runtime interno del componente:** `code/yaiwes_internal/persistence_runtime.py`
 
 ## Arquitectura nueva
 
-`INTERNAL SOURCE → AUDIT → QUARANTINE ORIGINAL → SAFE PERSISTENCE REPLACEMENT → CHECKPOINT → EVIDENCE → HANDOFF`
+`INTERNAL SOURCE → AUDIT → QUARANTINE ORIGINAL → SAFE PERSISTENCE REPLACEMENT → COMPONENT RUNTIME → CHECKPOINT → EVIDENCE → HANDOFF`
 
 Las superficies internas detectadas con efectos externos se transformaron dentro de `code/`. Cada original previo a la cirugía queda preservado bajo `_yaiwes_upstream_quarantine/` para procedencia, y el archivo activo transformado queda registrado con SHA256 en `INTERNAL-LINK-MANIFEST.json`.
+
+Todos los componentes, incluso aquellos sin superficies candidatas, contienen ahora un runtime interno benigno de persistencia que escribe el estado de tarea de forma atómica.
 
 ## Cadena del componente
 
 `🏈 08-Redcell → 🏈 09-Shel → 🏈 10-Pentest-Swarm-AI`
 
-Cada archivo transformado acumulado es un eslabón de persistencia. El componente completo entrega estado al siguiente componente únicamente después de cerrar sus eslabones internos.
+Cada archivo transformado acumulado es un eslabón de persistencia. `persistence_runtime.py` es el eslabón ejecutable del componente y entrega estado al siguiente componente.
 
 ## Fables
 
-Fables consume exclusivamente los manifiestos internos v4.1 ya transformados. No ejecuta los originales de cuarentena.
+Fables carga exclusivamente `code/yaiwes_internal/persistence_runtime.py` de cada componente y consume los manifiestos internos v4.2. No ejecuta los originales de cuarentena.
