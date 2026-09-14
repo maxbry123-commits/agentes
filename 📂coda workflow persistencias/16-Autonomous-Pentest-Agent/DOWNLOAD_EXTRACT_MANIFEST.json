@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 63949,
+  "bundle_sha256": "f601e654e328c96f70ec3e8fd98eae859b0874088b9fe12eb4525fdb0ffb563a",
+  "extracted_tree": {
+    "bytes": 172349,
+    "files": 46,
+    "sha256": "b692d154462a0462b5bb339eb4404bf97449fc9fe5a90dc6f0fc08102af7b650"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 63949,
+      "name": "16-Autonomous-Pentest-Agent.bundle.zip.part-0001",
+      "sha256": "f601e654e328c96f70ec3e8fd98eae859b0874088b9fe12eb4525fdb0ffb563a"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "16-Autonomous-Pentest-Agent",
+  "source_bytes": 172349,
+  "source_commit": "e56544537bc20cf6b384fe70487bd0d60216e607",
+  "source_files": 46,
+  "source_ref": "HEAD",
+  "source_repo": "deltaRed1a/autonomous-pentest-agent",
+  "source_tree": {
+    "bytes": 172349,
+    "files": 46,
+    "sha256": "b692d154462a0462b5bb339eb4404bf97449fc9fe5a90dc6f0fc08102af7b650"
+  }
+}

@@ -1,0 +1,100 @@
+# Tools available to the agent, organized by phase
+recon:
+  - name: nmap
+    command: "nmap"
+    description: "Network scanner for port and service discovery"
+    common_args:
+      quick: "-sV -sC -T4"
+      full: "-sV -sC -p- -T4"
+      udp: "-sU --top-ports 20"
+
+  - name: ping
+    command: "ping"
+    description: "Basic connectivity check"
+    common_args:
+      default: "-c 3"
+
+enumeration:
+  - name: gobuster
+    command: "gobuster"
+    description: "Directory and file brute-forcer"
+    common_args:
+      dir: "dir -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt"
+      files: "dir -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt -x .sh,.cgi,.pl,.py,.php"
+
+  - name: nikto
+    command: "nikto"
+    description: "Web vulnerability scanner"
+    common_args:
+      default: "-h"
+
+  - name: whatweb
+    command: "whatweb"
+    description: "Web technology fingerprinter"
+    common_args:
+      default: ""
+
+  - name: curl
+    command: "curl"
+    description: "HTTP client for manual web requests"
+    common_args:
+      default: "-v"
+
+  - name: smbclient
+    command: "smbclient"
+    description: "SMB/CIFS client for share enumeration"
+    common_args:
+      list: "-L"
+
+  - name: enum4linux
+    command: "enum4linux"
+    description: "SMB enumeration tool"
+    common_args:
+      default: "-a"
+
+exploit:
+  - name: searchsploit
+    command: "searchsploit"
+    description: "Exploit-DB search tool"
+    common_args:
+      default: ""
+      json: "--json"
+
+  - name: python3
+    command: "python3"
+    description: "Python interpreter for custom exploits"
+    common_args:
+      default: ""
+
+  - name: curl
+    command: "curl"
+    description: "HTTP client for exploit delivery"
+    common_args:
+      shellshock: "-A '() { :;}; echo; echo; /bin/bash -c \"COMMAND\"'"
+
+  - name: netcat
+    command: "nc"
+    description: "Network utility for reverse shells"
+    common_args:
+      listener: "-lvnp"
+
+privesc:
+  - name: sudo_check
+    command: "sudo -l"
+    description: "Check sudo permissions"
+
+  - name: find_suid
+    command: "find / -perm -4000 -type f 2>/dev/null"
+    description: "Find SUID binaries"
+
+  - name: find_writable
+    command: "find / -writable -type f 2>/dev/null"
+    description: "Find world-writable files"
+
+  - name: cat_cron
+    command: "cat /etc/crontab"
+    description: "Check cron jobs"
+
+  - name: linpeas
+    command: "linpeas.sh"
+    description: "Linux privilege escalation audit script"

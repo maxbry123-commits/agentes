@@ -1,0 +1,42 @@
+DEMO VIDEO SCRIPT — 3-5 minutes
+=================================
+
+[0:00-0:30] INTRO
+- Show the project README briefly
+- "This is an autonomous pentest agent powered by Claude that executes
+  the full penetration testing kill chain against HTB machines."
+- Show the architecture diagram
+
+[0:30-1:00] SETUP
+- Show HTB VPN connection (tun0 up)
+- Show Shocker machine spawned
+- Show the .env config
+- Run preflight_check.sh — all green
+
+[1:00-1:30] DRY RUN
+- Run with --dry-run flag
+- Show Claude reasoning through phases without executing
+- "Notice how Claude plans its approach before executing anything"
+
+[1:30-3:30] LIVE RUN — SHOCKER
+- Run with confirmation mode
+- RECON: Watch nmap discover ports 80, 2222
+- ENUM: Watch gobuster find /cgi-bin/, then /cgi-bin/user.sh
+- EXPLOIT: Watch Claude identify Shellshock, craft the curl payload
+- PRIVESC: Watch sudo -l → perl → root
+- Show flags captured
+
+[3:30-4:00] VALIDATION
+- Show the validation report scoring
+- Compare agent's path vs the writeup ground truth
+- Show the generated pentest report
+
+[4:00-4:30] LAME (optional — time permitting)
+- Quick cut of Lame run
+- "The same framework, different machine — nmap → SMB → Samba exploit → root"
+
+[4:30-5:00] WRAP-UP
+- Show the design doc and final report
+- Key takeaway: "Claude's reasoning ability makes it a capable
+  penetration testing assistant that can work through complex
+  multi-step attack chains with minimal human guidance."
