@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 810667,
+  "bundle_sha256": "efd4e9cee13ee4b73f0f9947b81f62030e4cd0ca9b95aaee5f67f670da47f494",
+  "extracted_tree": {
+    "bytes": 2221608,
+    "files": 244,
+    "sha256": "9d8139d369becca8a3cd1b036e49bb042915102ae0c6c819464aee419de5e06e"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 810667,
+      "name": "Mesa.bundle.zip.part-0001",
+      "sha256": "efd4e9cee13ee4b73f0f9947b81f62030e4cd0ca9b95aaee5f67f670da47f494"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Mesa",
+  "source_bytes": 2221608,
+  "source_commit": "a5dfcd6ad2bb7863a00d8735649d4c3ebaf014f8",
+  "source_files": 244,
+  "source_ref": "HEAD",
+  "source_repo": "mesa/mesa",
+  "source_tree": {
+    "bytes": 2221608,
+    "files": 244,
+    "sha256": "9d8139d369becca8a3cd1b036e49bb042915102ae0c6c819464aee419de5e06e"
+  }
+}

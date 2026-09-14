@@ -1,0 +1,336 @@
+"""Agent.py related tests."""
+
+from typing import ClassVar
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from mesa.agent import Agent
+from mesa.model import Model
+
+
+class AgentTest(Agent):
+    """Agent class for testing."""
+
+    def get_unique_identifier(self):
+        """Return unique identifier for this agent."""
+        return self.unique_id
+
+
+def test_agent_removal():
+    """Test agent removal."""
+    model = Model()
+    agent = AgentTest(model)
+    # Check if the agent is added
+    assert agent in model.agents
+
+    agent.remove()
+    # Check if the agent is removed
+    assert agent not in model.agents
+
+
+def test_agent_rng():
+    """Test whether agent.random and agent.rng are equal to model.random and model.rng."""
+    model = Model(rng=42)
+    agent = Agent(model)
+    assert agent.random is model.random
+    assert agent.rng is model.rng
+
+
+def test_agent_create():
+    """Test create agent factory method."""
+    # Fast Path (No args/kwargs)
+    model = Model()
+    n = 10
+    fast_agents = Agent.create_agents(model, n)
+
+    assert len(fast_agents) == n
+    assert all(isinstance(a, Agent) for a in fast_agents)
+    assert all(a.model is model for a in fast_agents)
+
+    # Standard Path (With args/kwargs)
+    class TestAgent(Agent):
+        def __init__(self, model, attr, def_attr, a=0, b=0):
+            super().__init__(model)
+            self.some_attribute = attr
+            self.some_default_value = def_attr
+            self.a = a
+            self.b = b
+
+    model = Model(rng=42)
+    n = 10
+    some_attribute = model.rng.random(n)
+    a = tuple([model.random.random() for _ in range(n)])
+    TestAgent.create_agents(model, n, some_attribute, 5, a=a, b=7)
+
+    for agent, value, a_i in zip(model.agents, some_attribute, a):
+        assert agent.some_attribute == value
+        assert agent.some_default_value == 5
+        assert agent.a == a_i
+        assert agent.b == 7
+
+
+def test_agent_create_with_pandas():
+    """Test create_agents with pandas Series to improve coverage."""
+
+    class TestAgent(Agent):
+        def __init__(self, model, series_attr=None, kw_series_attr=None):
+            super().__init__(model)
+            self.series_attr = series_attr
+            self.kw_series_attr = kw_series_attr
+
+    model = Model()
+    n = 5
+
+    # Test pandas Series as positional argument (should hit pandas detection logic)
+    series_data = pd.Series([10, 20, 30, 40, 50])
+    agents = TestAgent.create_agents(model, n, series_data)
+    for i, agent in enumerate(agents):
+        assert agent.series_attr == series_data.iloc[i]
+
+    # Test pandas Series as keyword argument
+    kw_series_data = pd.Series([100, 200, 300, 400, 500])
+    agents = TestAgent.create_agents(model, n, kw_series_attr=kw_series_data)
+    for i, agent in enumerate(agents):
+        assert agent.kw_series_attr == kw_series_data.iloc[i]
+
+    # A sequence whose length does not match n now raises instead of
+    # broadcasting the whole sequence to every agent.
+    short_series = pd.Series([1, 2])  # length 2, but n=5
+    with pytest.raises(ValueError, match="does not match the number of agents"):
+        TestAgent.create_agents(model, n, short_series)
+
+
+def test_agent_from_dataframe():
+    """Test create_agents from a pandas DataFrame."""
+
+    class TestAgent(Agent):
+        def __init__(
+            self,
+            model,
+            value=None,
+            list_attr=None,
+            tuple_attr=None,
+            df_value=None,
+            extra_attr=None,
+        ):
+            super().__init__(model)
+            self.value = value
+            self.list_attr = list_attr
+            self.tuple_attr = tuple_attr
+            self.df_value = df_value
+            self.extra_attr = extra_attr
+
+    model = Model()
+    n = 5
+    data = {
+        "value": range(n),
+        "list_attr": [[i] for i in range(n)],
+        "df_value": [f"df_{i}" for i in range(n)],
+        "tuple_attr": [(1, 2)] * n,
+    }
+    df = pd.DataFrame(data)
+
+    # Test with constant (non-sequence) override via **kwargs
+    agents = TestAgent.from_dataframe(model, df, extra_attr=5)
+
+    assert len(agents) == n
+    for i, agent in enumerate(agents):
+        assert agent.value == i
+        assert agent.list_attr == [i]
+        assert agent.df_value == f"df_{i}"
+        assert agent.tuple_attr == (1, 2)
+        assert agent.extra_attr == 5
+
+    # Test that passing a sequence in kwargs raises TypeError
+    for bad in ([1, 2, 3], (1, 2, 3), np.array([1, 2, 3]), pd.Series([1, 2, 3])):
+        with pytest.raises(TypeError, match="does not support sequence data in kwargs"):
+            TestAgent.from_dataframe(model, df, list_attr=bad)
+
+    # kwargs should override DataFrame columns on key collision
+    agents = TestAgent.from_dataframe(model, df, value=999)
+    assert all(a.value == 999 for a in agents)
+
+    # empty DataFrame should create an empty AgentSet
+    empty_df = pd.DataFrame(columns=list(df.columns))
+    agents = TestAgent.from_dataframe(model, empty_df, extra_attr=5)
+    assert len(agents) == 0
+
+    # DataFrame index should be ignored
+    df_with_index = df.copy()
+    df_with_index.index = range(100, 100 + n)
+    agents = TestAgent.from_dataframe(model, df_with_index, extra_attr=5)
+    assert [a.value for a in agents] == list(range(n))
+
+
+def test_agent_str():
+    """Test __str__ returns human-readable string."""
+    model = Model()
+    agent = AgentTest(model)
+    assert str(agent) == f"AgentTest, agent_id = {agent.unique_id}"
+
+
+def test_agent_repr():
+    """Test __repr__ returns unambiguous string with agent state."""
+
+    class Wolf(Agent):
+        def __init__(self, model):
+            super().__init__(model)
+            self.wealth = 100
+            self.energy = 50
+
+    model = Model()
+    wolf = Wolf(model)
+
+    r = repr(wolf)
+
+    assert "Wolf" in r
+    assert "id=0" in r or "id=" in r
+    assert "wealth=100" in r
+    assert "energy=50" in r
+    assert "object at 0x" not in r
+
+
+def test_agent_repr_basic():
+    """Test __repr__ on basic Agent with no custom attributes."""
+    model = Model()
+    agent = Agent(model)
+
+    r = repr(agent)
+
+    assert "Agent" in r
+    assert "id=" in r
+    assert "model=" not in r
+    assert "current_action=" not in r
+
+
+def test_agent_repr_subclass():
+    """Test __repr__ uses subclass name, not base Agent name."""
+
+    class Wolf(Agent):
+        pass
+
+    model = Model()
+    wolf = Wolf(model)
+
+    r = repr(wolf)
+
+    assert "Wolf" in r
+    assert str(wolf.unique_id) in r
+    assert "Agent" not in r
+
+
+def test_agent_repr_extensible():
+    """Test that subclasses can exclude additional fields from __repr__."""
+
+    class Wolf(Agent):
+        _repr_excluded_fields: ClassVar[set[str]] = {
+            "model",
+            "current_action",
+            "internal_cache",
+        }
+
+        def __init__(self, model):
+            super().__init__(model)
+            self.wealth = 100
+            self.internal_cache = "secret_data"
+
+    model = Model()
+    wolf = Wolf(model)
+
+    r = repr(wolf)
+
+    assert "wealth=100" in r
+    assert "internal_cache" not in r
+    assert "secret_data" not in r
+
+
+def test_agent_repr_filters_mesa_fields():
+    """Test that Mesa internal fields are filtered from __repr__."""
+
+    class Wolf(Agent):
+        def __init__(self, model):
+            super().__init__(model)
+            self.wealth = 100
+            self.model = model
+            self.current_action = None
+
+    model = Model()
+    wolf = Wolf(model)
+
+    r = repr(wolf)
+
+    assert "wealth=100" in r
+    assert "model=" not in r
+    assert "current_action=" not in r
+
+
+def test_agent_repr_filters_private_attributes():
+    """Test that private attributes (starting with _) are filtered from __repr__."""
+
+    class Wolf(Agent):
+        def __init__(self, model):
+            super().__init__(model)
+            self.wealth = 100
+            self._internal_state = "processing"
+            self._cache = {"data": "sensitive"}
+
+    model = Model()
+    wolf = Wolf(model)
+
+    r = repr(wolf)
+
+    assert "wealth=100" in r
+    assert "_internal_state" not in r
+    assert "_cache" not in r
+    assert "processing" not in r
+
+
+def test_agent_repr_with_various_types():
+    """Test __repr__ with different attribute types (strings, numbers, None, lists)."""
+
+    class Wolf(Agent):
+        def __init__(self, model):
+            super().__init__(model)
+            self.name = "Alpha"
+            self.count = 42
+            self.status = None
+            self.items = [1, 2, 3]
+
+    model = Model()
+    wolf = Wolf(model)
+
+    r = repr(wolf)
+
+    assert "name='Alpha'" in r or 'name="Alpha"' in r
+    assert "count=42" in r
+    assert "status=None" in r
+    assert "items=[1, 2, 3]" in r
+
+
+def test_agent_remove_cleans_up_datasets():
+    """Test that remove() removes the agent from every dataset it belongs to."""
+
+    class DatasetAgent(AgentTest):
+        pass
+
+    model = Model()
+    dataset = model.data_registry.track_agents_numpy(
+        DatasetAgent, "my_dataset", fields="x"
+    )
+
+    agent = DatasetAgent(model)
+    assert agent in dataset.active_agents
+
+    agent.remove()
+
+    assert agent not in dataset.active_agents
+    assert len(dataset) == 0
+
+
+def test_agent_advance_is_noop():
+    """Test that advance() is a no-op."""
+    model = Model()
+    agent = AgentTest(model)
+    assert agent.advance() is None

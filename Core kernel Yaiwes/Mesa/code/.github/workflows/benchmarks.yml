@@ -1,0 +1,85 @@
+name: Performance benchmarks
+
+on:
+  pull_request:
+    types: [opened, ready_for_review, labeled]
+    branches:
+      - main
+    paths:
+      - '**.py'
+      - '.github/workflows/benchmarks.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  run-benchmarks:
+    if: >
+      github.event.action == 'labeled' && contains(github.event.pull_request.labels.*.name, 'trigger-benchmarks') ||
+      github.event.action == 'opened' ||
+      github.event.action == 'ready_for_review'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - name: Add project directory to PYTHONPATH
+        run: echo "PYTHONPATH=$PYTHONPATH:$(pwd)" >> $GITHUB_ENV
+      - name: Install uv
+        run: pip install uv
+      - name: Install dependencies
+        run: uv pip install --system numpy pandas tqdm tabulate matplotlib solara networkx scipy
+
+      # Benchmarks on main
+      - name: Checkout main branch
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          repository: mesa/mesa
+      - name: Install Mesa
+        run: pip install --no-deps .
+      - name: Run benchmarks on main branch
+        working-directory: benchmarks
+        run: python global_benchmark.py
+
+      # Upload main benchmarks, then checkout PR
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v7
+        with:
+          name: timings-main
+          path: benchmarks/timings_1.pickle
+      - name: Checkout PR branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          fetch-depth: 0
+          persist-credentials: false
+          clean: false
+      - name: Install Mesa of the PR branch
+        run: pip install --no-deps .
+      - name: Download benchmark results
+        uses: actions/download-artifact@v8
+        with:
+          name: timings-main
+          path: benchmarks
+
+      # Run benchmarks on PR and compare
+      - name: Run benchmarks on PR branch
+        working-directory: benchmarks
+        run: python global_benchmark.py
+      - name: Run compare timings
+        working-directory: benchmarks
+        run: python compare_timings.py > benchmark_output.txt
+
+      # Save PR number and results for the comment workflow
+      - name: Save PR number
+        run: echo "${{ github.event.pull_request.number }}" > benchmarks/pr_number.txt
+      - name: Upload benchmark comparison
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-results
+          path: |
+            benchmarks/benchmark_output.txt
+            benchmarks/pr_number.txt
