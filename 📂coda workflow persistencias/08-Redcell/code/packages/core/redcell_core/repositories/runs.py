@@ -1,0 +1,81 @@
+from __future__ import annotations
+
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..models import Run
+from . import ids
+
+PHASES = ["Reconnaissance", "Exploitation", "Post-Exploitation", "Reporting"]
+_PHASE_RANK = {p: i for i, p in enumerate(PHASES)}
+
+
+async def list_for_session(s: AsyncSession, sid: str, *, status: str | None = None,
+                           q: str | None = None, limit: int | None = None, offset: int = 0) -> list[Run]:
+    from ._query import paginate, search
+    stmt = select(Run).where(Run.session_id == sid)
+    if status:
+        stmt = stmt.where(Run.status == status)
+    stmt = search(stmt, q, [Run.name, Run.model])
+    stmt = paginate(stmt.order_by(Run.started_at.desc()), limit, offset)
+    return list((await s.scalars(stmt)).all())
+
+
+async def get(s: AsyncSession, rid: str) -> Run | None:
+    return await s.get(Run, rid)
+
+
+async def create(s: AsyncSession, data: dict) -> Run:
+    row = Run(id=data.get("id") or ids.new_id("run"),
+              started_at=data.get("started_at") or ids.now_iso(),
+              **{k: v for k, v in data.items() if k not in ("id", "started_at")})
+    s.add(row)
+    await s.flush()
+    return row
+
+
+async def start_if_not_running(s: AsyncSession, rid: str) -> bool:
+    result = await s.execute(
+        update(Run).where(Run.id == rid, Run.status != "running").values(status="running"))
+    await s.flush()
+    return (result.rowcount or 0) > 0
+
+
+async def set_status(s: AsyncSession, rid: str, status: str) -> Run | None:
+    row = await s.get(Run, rid)
+    if row:
+        row.status = status
+        await s.flush()
+    return row
+
+
+async def set_phase(s: AsyncSession, rid: str, phase: str) -> str | None:
+    """Advance the run's phase along the engagement pipeline, forward only:
+    Reconnaissance -> Exploitation -> Post-Exploitation -> Reporting. Unknown phases
+    and backward moves are ignored. Returns the effective phase, or None if missing.
+
+    The advance is one conditional UPDATE that matches only lower-ranked stored
+    phases, so concurrent milestones cannot race the phase backward."""
+    target = _PHASE_RANK.get(phase)
+    if target is not None:
+        lower = [p for p, r in _PHASE_RANK.items() if r < target]
+        await s.execute(update(Run).where(Run.id == rid, Run.phase.in_(lower)).values(phase=phase))
+        await s.flush()
+    row = await s.get(Run, rid)
+    if row is None:
+        return None
+    await s.refresh(row)
+    return row.phase
+
+
+async def set_meters(s: AsyncSession, rid: str, tokens_delta: int, cost_delta: float, elapsed_delta: int) -> None:
+    row = await s.get(Run, rid)
+    if row:
+        row.tokens = (row.tokens or 0) + tokens_delta
+        row.cost_usd = round((row.cost_usd or 0.0) + cost_delta, 4)
+        row.elapsed_sec = (row.elapsed_sec or 0) + elapsed_delta
+        await s.flush()
+
+
+async def list_by_status(s: AsyncSession, status: str) -> list[Run]:
+    return list((await s.scalars(select(Run).where(Run.status == status))).all())
