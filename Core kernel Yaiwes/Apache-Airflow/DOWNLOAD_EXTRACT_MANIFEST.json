@@ -1,22 +1,276 @@
 {
-  "archive_bytes": 99625445,
-  "archive_sha256": "279a841bbf22f59d2ace4efcb13c053cb25cb783d07544a1921e2103ae00f027",
+  "archive_bytes": 99186795,
+  "archive_sha256": "40afef6d8662f4ba20782080dcd7aa97d05a0cd8123b5d0a9f4aca60226cfc98",
   "extracted_tree": {
-    "bytes": 187816275,
-    "files": 14188,
-    "sha256": "7b0e79c5f23e4837e2823e162caf00ef81b60062a27f80e10ae228bbc9f493c6"
+    "bytes": 186519472,
+    "files": 14078,
+    "sha256": "c159830377b1dd50c68567af05456f26a59f86a9d799858447ed5e70f57f48c9"
   },
   "extraction_verified": true,
+  "lfs_fetch_attempted": false,
   "motor1_blob": "a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500",
-  "normalization": "dereference_upstream_symlinks; resolve_git_lfs_when_requested",
-  "recovery_reason": "SOURCE_SPECIAL_FILE_GAP",
-  "schema": "yaiwes.kernel.recovery-download-extract/v1",
+  "normalizations": [
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": ".claude/skills/aip-user-stories",
+      "target": "../../.agents/skills/aip-user-stories"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": ".claude/skills/airflow-translations",
+      "target": "../../.agents/skills/airflow-translations"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": ".claude/skills/prepare-providers-documentation",
+      "target": "../../.agents/skills/prepare-providers-documentation"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": ".claude/skills/upgrade-fab-provider",
+      "target": "../../.agents/skills/upgrade-fab-provider"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": ".github/skills/aip-user-stories",
+      "target": "../../.agents/skills/aip-user-stories"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": ".github/skills/airflow-translations",
+      "target": "../../.agents/skills/airflow-translations"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": ".github/skills/prepare-providers-documentation",
+      "target": "../../.agents/skills/prepare-providers-documentation"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": ".github/skills/upgrade-fab-provider",
+      "target": "../../.agents/skills/upgrade-fab-provider"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "CLAUDE.md",
+      "target": "AGENTS.md"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "airflow-core/src/airflow/_shared/configuration",
+      "target": "../../../../shared/configuration/src/airflow_shared/configuration"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "airflow-core/src/airflow/_shared/dagnode",
+      "target": "../../../../shared/dagnode/src/airflow_shared/dagnode"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "airflow-core/src/airflow/_shared/listeners",
+      "target": "../../../../shared/listeners/src/airflow_shared/listeners"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "airflow-core/src/airflow/_shared/logging",
+      "target": "../../../../shared/logging/src/airflow_shared/logging"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "airflow-core/src/airflow/_shared/module_loading",
+      "target": "../../../../shared/module_loading/src/airflow_shared/module_loading"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "airflow-core/src/airflow/_shared/observability",
+      "target": "../../../../shared/observability/src/airflow_shared/observability"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "airflow-core/src/airflow/_shared/plugins_manager",
+      "target": "../../../../shared/plugins_manager/src/airflow_shared/plugins_manager"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "airflow-core/src/airflow/_shared/providers_discovery",
+      "target": "../../../../shared/providers_discovery/src/airflow_shared/providers_discovery"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "airflow-core/src/airflow/_shared/secrets_backend",
+      "target": "../../../../shared/secrets_backend/src/airflow_shared/secrets_backend"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "airflow-core/src/airflow/_shared/secrets_masker",
+      "target": "../../../../shared/secrets_masker/src/airflow_shared/secrets_masker"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "airflow-core/src/airflow/_shared/serialization",
+      "target": "../../../../shared/serialization/src/airflow_shared/serialization"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "airflow-core/src/airflow/_shared/state",
+      "target": "../../../../shared/state/src/airflow_shared/state"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "airflow-core/src/airflow/_shared/template_rendering",
+      "target": "../../../../shared/template_rendering/src/airflow_shared/template_rendering"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "airflow-core/src/airflow/_shared/timezones",
+      "target": "../../../../shared/timezones/src/airflow_shared/timezones"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "java-sdk/example/gradle.properties",
+      "target": "../gradle.properties"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "java-sdk/scala_spark_example/gradle.properties",
+      "target": "../gradle.properties"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "registry/CLAUDE.md",
+      "target": "AGENTS.md"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "task-sdk/src/airflow/sdk/_shared/AGENTS.md",
+      "target": "../../../../../airflow-core/src/airflow/_shared/AGENTS.md"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "task-sdk/src/airflow/sdk/_shared/README.md",
+      "target": "../../../../../airflow-core/src/airflow/_shared/README.md"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "task-sdk/src/airflow/sdk/_shared/configuration",
+      "target": "../../../../../shared/configuration/src/airflow_shared/configuration"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "task-sdk/src/airflow/sdk/_shared/dagnode",
+      "target": "../../../../../shared/dagnode/src/airflow_shared/dagnode"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "task-sdk/src/airflow/sdk/_shared/listeners",
+      "target": "../../../../../shared/listeners/src/airflow_shared/listeners"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "task-sdk/src/airflow/sdk/_shared/logging",
+      "target": "../../../../../shared/logging/src/airflow_shared/logging/"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "task-sdk/src/airflow/sdk/_shared/module_loading",
+      "target": "../../../../../shared/module_loading/src/airflow_shared/module_loading"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "task-sdk/src/airflow/sdk/_shared/observability",
+      "target": "../../../../../shared/observability/src/airflow_shared/observability"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "task-sdk/src/airflow/sdk/_shared/plugins_manager",
+      "target": "../../../../../shared/plugins_manager/src/airflow_shared/plugins_manager"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "task-sdk/src/airflow/sdk/_shared/providers_discovery",
+      "target": "../../../../../shared/providers_discovery/src/airflow_shared/providers_discovery"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "task-sdk/src/airflow/sdk/_shared/secrets_backend",
+      "target": "../../../../../shared/secrets_backend/src/airflow_shared/secrets_backend"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "task-sdk/src/airflow/sdk/_shared/secrets_masker",
+      "target": "../../../../../shared/secrets_masker/src/airflow_shared/secrets_masker"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "task-sdk/src/airflow/sdk/_shared/serialization",
+      "target": "../../../../../shared/serialization/src/airflow_shared/serialization"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "task-sdk/src/airflow/sdk/_shared/state",
+      "target": "../../../../../shared/state/src/airflow_shared/state"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "task-sdk/src/airflow/sdk/_shared/template_rendering",
+      "target": "../../../../../shared/template_rendering/src/airflow_shared/template_rendering"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "task-sdk/src/airflow/sdk/_shared/timezones",
+      "target": "../../../../../shared/timezones/src/airflow_shared/timezones"
+    }
+  ],
+  "schema": "yaiwes.kernel.catalog20.final-repair-manifest/v1",
   "slug": "Apache-Airflow",
   "source_commit": "1f5d7691663016c898718768991a2dae522b4475",
   "source_repo": "apache/airflow",
   "source_tree": {
-    "bytes": 187816275,
-    "files": 14188,
-    "sha256": "7b0e79c5f23e4837e2823e162caf00ef81b60062a27f80e10ae228bbc9f493c6"
-  }
+    "bytes": 186519472,
+    "files": 14078,
+    "sha256": "c159830377b1dd50c68567af05456f26a59f86a9d799858447ed5e70f57f48c9"
+  },
+  "unresolved_lfs_source_pointers": []
 }
