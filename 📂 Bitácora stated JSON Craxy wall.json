@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-14T10:40:59Z",
+  "updated_at": "2026-09-14T10:51:43Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -1864,14 +1864,14 @@
       "component": "BullMQ",
       "source": "Core kernel Yaiwes/Componentes recuperados B/BullMQ/",
       "current_step": 3,
-      "status": "PENDING_STEP3",
+      "status": "PASS_STEP3",
       "abc": "B",
       "target": "Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/bullmq/",
-      "owner": "SOL",
-      "lock": "CLAIMED",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-14T10:40:59Z SOL exact STEP3 Node 22.22.2; provenance remediation; resume_existing_claim=True; no MOVE repeat",
-        "after": "STEP3 GAP INSTALL Node22.13 run=34720547406 rc=1: yarn install v1.22.22 [1/5] Validating package.json... [2/5] Resolving packages... warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@^4.1.0\" warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@^4.3.0\" warning Resolution field \"brace-expansion@5.0.9\" is incompatible with requested version \"brace-expansion@^1.1.7\" warning Resolution field \"picomatch@4.0.5\" is incompatible with requested version \"picomatch@^2.3.1\" warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@4.2.0\" warning Resolution field \"picomatch@4.0.5\" is incompatible with requested version \"picomatch@^4.0.7\" [3/5] Fetching packages... error @semantic-release/changelog@7.0.0: The engine \"node\" is incompatible with this module. Expected version \"^22.22.2 || > 24.15\". Got \"22.13.0\" error Found incompatible module. info Visit https://yarnpkg.com/en/docs/cli/install for documentation about this command. "
+        "after": "2026-09-14T10:51:43Z STEP3 PASS run=34834756951 job=103945934361; Node22.22.2; FABLES ACTIVE; real Redis Queue/Worker input21->output42; L2_build+L3_runtime+L4_feature; SOURCE_URL+COMMIT+SHA256 persisted; prune __pycache__; MOVE not repeated; artifact_commit=17f26c25536be416f03ae88fd562913f00948ae7; final_tree=b4511b01508ba0ff7252c1377a8a6a49d576fd73"
       },
       "evidence": [
         "worker:SOL integración 2",
@@ -1891,7 +1891,21 @@
         "step3:repair:node_runtime_22.12.0_to_22.13.0",
         "step3:gap:INSTALL:Node22.13:run:34720547406:rc=1:yarn install v1.22.22 [1/5] Validating package.json... [2/5] Resolving packages... warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@^4.1.0\" warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@^4.3.0\" warning Resolution field \"brace-expansion@5.0.9\" is incompatible with requested version \"brace-expansion@^1.1.7\" warning Resolution field \"picomatch@4.0.5\" is incompatible with requested version \"picomatch@^2.3.1\" warning Resolution field \"js-yaml@5.2.3\" is incompatible with requested version \"js-yaml@4.2.0\" warning Resolution field \"picomatch@4.0.5\" is incompatible with requested version \"picomatch@^4.0.7\" [3/5] Fetching packages... error @semantic-release/changelog@7.0.0: The engine \"node\" is incompatible with this module. Expected version \"^22.22.2 || > 24.15\". Got \"22.13.0\" error Found incompatible module. info Visit https://yarnpkg.com/en/docs/cli/install for documentation about this command. ",
         "step3:repair:node_runtime_22.13.0_to_22.22.2",
-        "provenance:repair:SOURCE_URL+COMMIT+SHA256"
+        "provenance:repair:SOURCE_URL+COMMIT+SHA256",
+        "before:path:Core kernel Yaiwes/Componentes recuperados B/BullMQ:commit:ccabd9e0166fe1de68d6bf607dffab219789699b:tree:604737cd870d5f9fa624fb0aa25c9db6f67c3ab3",
+        "move_after:path:Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/bullmq:commit:f8b8d9f48925827ab98df5fc216842586c6c54a9:tree:604737cd870d5f9fa624fb0aa25c9db6f67c3ab3:package_blob:6c059cb46bd4b43f2462a3a5710b0408a5a4c280",
+        "final:path:Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/bullmq:commit:17f26c25536be416f03ae88fd562913f00948ae7:tree:b4511b01508ba0ff7252c1377a8a6a49d576fd73",
+        "provenance:SOURCE_URL.txt:blob:e7b2bab8ca583cadd43323f0f70ffbfba9399d53",
+        "provenance:SOURCE_COMMIT.txt:blob:4bf369dcdd70363e04ae86e5bb836af403ce1e1a",
+        "provenance:SOURCE_SHA256.txt:blob:e8891746b9d8157fc81017a19ffa6622fff1bbdf:sha256:0a38a940c39fc354caa19fbe093fc9b8c5572ed6a875e550dc1de12c825a5fa5",
+        "provenance:YAIWES_PROVENANCE.json:blob:7e164656082adbfebdb88de3b5ecfd88b4d4417d",
+        "step3:STEP3_EVIDENCE.json:blob:305698d5695641852645607c4855c71eb5e3bd26",
+        "step3:adapter.py:blob:d92fcb4c597bfb093d68040defa89ee0052e88e2:sha256:c62a0402f12f15a4f3130f852ca6e61cbc4214f6bb86215621639e9244034b92",
+        "step3:microtest.cjs:blob:23a9328a21889813570ea549cf24b41b1b41484a",
+        "step3:ficha.bullmq.v2.json:blob:88eeaeeadbfb8b806637b969e56fc73c4a6a5a3b",
+        "step3:run:34834756951:job:103945934361:PASS:Node22.22.2:L2+L3+L4:input21-output42",
+        "step3:prune:__pycache__",
+        "step2:move_repeated:false"
       ],
       "history": [
         {
@@ -1974,9 +1988,19 @@
           "actor": "SOL",
           "label": "SOL GPT",
           "event": "RESUME_STEP3_NODE2222_REPAIR"
+        },
+        {
+          "at": "2026-09-14T10:51:43Z",
+          "actor": "SOL",
+          "label": "SOL GPT",
+          "event": "STEP3_PASS_PROVENANCE_CLOSED_RELEASE",
+          "run": 34834756951,
+          "job": 103945934361,
+          "artifact_commit": "17f26c25536be416f03ae88fd562913f00948ae7",
+          "final_tree": "b4511b01508ba0ff7252c1377a8a6a49d576fd73"
         }
       ],
-      "next_action": "REPAIR_EXACT_STEP3_GAP_AND_RETRY"
+      "next_action": "COMPLETE"
     },
     {
       "id": 34,
@@ -2159,7 +2183,7 @@
     }
   ],
   "counts": {
-    "closed_current_contract": 33
+    "closed_current_contract": 35
   },
   "kernel_hold_policy": {
     "approved": true,
