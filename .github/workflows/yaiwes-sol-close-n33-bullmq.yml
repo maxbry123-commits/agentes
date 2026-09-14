@@ -1,0 +1,153 @@
+name: YAIWES SOL close N33 BullMQ
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-sol-close-n33-bullmq.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-sol-close-n33-bullmq
+  cancel-in-progress: false
+
+jobs:
+  close:
+    runs-on: ubuntu-24.04
+    env:
+      WALL: '📂 Bitácora stated JSON Craxy wall.json'
+      TARGET: 'Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/bullmq'
+      SOURCE_PATH: 'Core kernel Yaiwes/Componentes recuperados B/BullMQ'
+      BEFORE_COMMIT: 'ccabd9e0166fe1de68d6bf607dffab219789699b'
+      BEFORE_TREE: '604737cd870d5f9fa624fb0aa25c9db6f67c3ab3'
+      MOVE_COMMIT: 'f8b8d9f48925827ab98df5fc216842586c6c54a9'
+      MOVE_TREE: '604737cd870d5f9fa624fb0aa25c9db6f67c3ab3'
+      SOURCE_PACKAGE_BLOB: '6c059cb46bd4b43f2462a3a5710b0408a5a4c280'
+      ARTIFACT_COMMIT: '17f26c25536be416f03ae88fd562913f00948ae7'
+      FINAL_TREE: 'b4511b01508ba0ff7252c1377a8a6a49d576fd73'
+      SOURCE_URL_BLOB: 'e7b2bab8ca583cadd43323f0f70ffbfba9399d53'
+      SOURCE_COMMIT_BLOB: '4bf369dcdd70363e04ae86e5bb836af403ce1e1a'
+      SOURCE_SHA256_BLOB: 'e8891746b9d8157fc81017a19ffa6622fff1bbdf'
+      PROVENANCE_BLOB: '7e164656082adbfebdb88de3b5ecfd88b4d4417d'
+      STEP3_EVIDENCE_BLOB: '305698d5695641852645607c4855c71eb5e3bd26'
+      ADAPTER_BLOB: 'd92fcb4c597bfb093d68040defa89ee0052e88e2'
+      MICROTEST_BLOB: '23a9328a21889813570ea549cf24b41b1b41484a'
+      FICHA_BLOB: '88eeaeeadbfb8b806637b969e56fc73c4a6a5a3b'
+      SOURCE_SNAPSHOT_SHA256: '0a38a940c39fc354caa19fbe093fc9b8c5572ed6a875e550dc1de12c825a5fa5'
+      ADAPTER_SHA256: 'c62a0402f12f15a4f3130f852ca6e61cbc4214f6bb86215621639e9244034b92'
+      TEST_RUN: '34834756951'
+      TEST_JOB: '103945934361'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 30
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /📂 Bitácora stated JSON Craxy wall.json
+            /Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/bullmq/
+
+      - name: Revalidate immutable evidence and current claim
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse "${BEFORE_COMMIT}:${SOURCE_PATH}")" = "$BEFORE_TREE"
+          test "$(git rev-parse "${MOVE_COMMIT}:${TARGET}")" = "$MOVE_TREE"
+          test "$(git rev-parse "${MOVE_COMMIT}:${TARGET}/package.json")" = "$SOURCE_PACKAGE_BLOB"
+          test "$(git rev-parse "${ARTIFACT_COMMIT}:${TARGET}")" = "$FINAL_TREE"
+          test "$(git rev-parse "${ARTIFACT_COMMIT}:${TARGET}/SOURCE_URL.txt")" = "$SOURCE_URL_BLOB"
+          test "$(git rev-parse "${ARTIFACT_COMMIT}:${TARGET}/SOURCE_COMMIT.txt")" = "$SOURCE_COMMIT_BLOB"
+          test "$(git rev-parse "${ARTIFACT_COMMIT}:${TARGET}/SOURCE_SHA256.txt")" = "$SOURCE_SHA256_BLOB"
+          test "$(git rev-parse "${ARTIFACT_COMMIT}:${TARGET}/YAIWES_PROVENANCE.json")" = "$PROVENANCE_BLOB"
+          test "$(git rev-parse "${ARTIFACT_COMMIT}:${TARGET}/yaiwes/STEP3_EVIDENCE.json")" = "$STEP3_EVIDENCE_BLOB"
+          test "$(git rev-parse "${ARTIFACT_COMMIT}:${TARGET}/yaiwes/bullmq_adapter.py")" = "$ADAPTER_BLOB"
+          test "$(git rev-parse "${ARTIFACT_COMMIT}:${TARGET}/yaiwes/bullmq_microtest.cjs")" = "$MICROTEST_BLOB"
+          test "$(git rev-parse "${ARTIFACT_COMMIT}:${TARGET}/yaiwes/ficha.bullmq.v2.json")" = "$FICHA_BLOB"
+          test "$(cat "$TARGET/SOURCE_SHA256.txt")" = "$SOURCE_SNAPSHOT_SHA256"
+          python3 - <<'PY'
+          import json,os
+          d=json.load(open(os.environ['WALL'],encoding='utf-8'))
+          n=next(x for x in d['nodes'] if x.get('id')==33 and x.get('component')=='BullMQ')
+          assert n['current_step']==3, n
+          assert n['status']=='PENDING_STEP3', n
+          assert n['owner']=='SOL' and n['lock']=='CLAIMED', n
+          assert n['target'].rstrip('/')==os.environ['TARGET'], n
+          print('N33_FAIL_CLOSED_GUARD=PASS')
+          PY
+
+      - name: Register verified PASS and release N33
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os
+          from datetime import datetime,timezone
+          p=os.environ['WALL']
+          d=json.load(open(p,encoding='utf-8'))
+          n=next(x for x in d['nodes'] if x.get('id')==33 and x.get('component')=='BullMQ')
+          assert n['status']=='PENDING_STEP3' and n['owner']=='SOL' and n['lock']=='CLAIMED'
+          now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
+          n['status']='PASS_STEP3'
+          n['next_action']='COMPLETE'
+          n['checkpoint']['after']=(
+            f"{now} STEP3 PASS run={os.environ['TEST_RUN']} job={os.environ['TEST_JOB']}; "
+            "Node22.22.2; FABLES ACTIVE; real Redis Queue/Worker input21->output42; "
+            "L2_build+L3_runtime+L4_feature; SOURCE_URL+COMMIT+SHA256 persisted; "
+            "prune __pycache__; MOVE not repeated; "
+            f"artifact_commit={os.environ['ARTIFACT_COMMIT']}; final_tree={os.environ['FINAL_TREE']}"
+          )
+          facts=[
+            f"before:path:{os.environ['SOURCE_PATH']}:commit:{os.environ['BEFORE_COMMIT']}:tree:{os.environ['BEFORE_TREE']}",
+            f"move_after:path:{os.environ['TARGET']}:commit:{os.environ['MOVE_COMMIT']}:tree:{os.environ['MOVE_TREE']}:package_blob:{os.environ['SOURCE_PACKAGE_BLOB']}",
+            f"final:path:{os.environ['TARGET']}:commit:{os.environ['ARTIFACT_COMMIT']}:tree:{os.environ['FINAL_TREE']}",
+            f"provenance:SOURCE_URL.txt:blob:{os.environ['SOURCE_URL_BLOB']}",
+            f"provenance:SOURCE_COMMIT.txt:blob:{os.environ['SOURCE_COMMIT_BLOB']}",
+            f"provenance:SOURCE_SHA256.txt:blob:{os.environ['SOURCE_SHA256_BLOB']}:sha256:{os.environ['SOURCE_SNAPSHOT_SHA256']}",
+            f"provenance:YAIWES_PROVENANCE.json:blob:{os.environ['PROVENANCE_BLOB']}",
+            f"step3:STEP3_EVIDENCE.json:blob:{os.environ['STEP3_EVIDENCE_BLOB']}",
+            f"step3:adapter.py:blob:{os.environ['ADAPTER_BLOB']}:sha256:{os.environ['ADAPTER_SHA256']}",
+            f"step3:microtest.cjs:blob:{os.environ['MICROTEST_BLOB']}",
+            f"step3:ficha.bullmq.v2.json:blob:{os.environ['FICHA_BLOB']}",
+            f"step3:run:{os.environ['TEST_RUN']}:job:{os.environ['TEST_JOB']}:PASS:Node22.22.2:L2+L3+L4:input21-output42",
+            'step3:prune:__pycache__',
+            'step2:move_repeated:false'
+          ]
+          ev=n.setdefault('evidence',[])
+          for x in facts:
+              if x not in ev: ev.append(x)
+          n.setdefault('history',[]).append({
+            'at':now,'actor':'SOL','label':'SOL GPT',
+            'event':'STEP3_PASS_PROVENANCE_CLOSED_RELEASE',
+            'run':int(os.environ['TEST_RUN']),'job':int(os.environ['TEST_JOB']),
+            'artifact_commit':os.environ['ARTIFACT_COMMIT'],
+            'final_tree':os.environ['FINAL_TREE']
+          })
+          n['owner']=None
+          n['lock']='FREE'
+          d['updated_at']=now
+          d.setdefault('counts',{})['closed_current_contract']=sum(1 for x in d['nodes'] if x.get('next_action')=='COMPLETE')
+          json.dump(d,open(p,'w',encoding='utf-8'),ensure_ascii=False,indent=2)
+          open(p,'a',encoding='utf-8').write('\n')
+          print('N33_CLOSED_PASS_STEP3')
+          PY
+
+      - name: Commit Crazy Wall checkpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$WALL"
+          git commit -m "crazy-wall: close N33 BullMQ verified STEP3 PASS"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            if git rebase origin/main && git push origin HEAD:main; then
+              echo "CLOSE_COMMIT=$(git rev-parse HEAD)"
+              exit 0
+            fi
+            git rebase --abort || true
+            sleep $((attempt*2))
+          done
+          exit 41
