@@ -1,0 +1,201 @@
+{
+  "schema": "yaiwes.swarm.wiring/v3",
+  "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "datatype": "yaiwes.task-state.v2",
+  "count": 24,
+  "links": [
+    {
+      "order": 1,
+      "component": "🏈 01-DeepAudit",
+      "previous": null,
+      "next": "🏈 02-CyberStrikeAI",
+      "adapter": "📂coda workflow persistencias/🏈 01-DeepAudit/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    },
+    {
+      "order": 2,
+      "component": "🏈 02-CyberStrikeAI",
+      "previous": "🏈 01-DeepAudit",
+      "next": "🏈 03-LuaN1aoAgent",
+      "adapter": "📂coda workflow persistencias/🏈 02-CyberStrikeAI/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    },
+    {
+      "order": 3,
+      "component": "🏈 03-LuaN1aoAgent",
+      "previous": "🏈 02-CyberStrikeAI",
+      "next": "🏈 04-AI-Pentest",
+      "adapter": "📂coda workflow persistencias/🏈 03-LuaN1aoAgent/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    },
+    {
+      "order": 4,
+      "component": "🏈 04-AI-Pentest",
+      "previous": "🏈 03-LuaN1aoAgent",
+      "next": "🏈 05-AI-Infra-Guard",
+      "adapter": "📂coda workflow persistencias/🏈 04-AI-Pentest/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    },
+    {
+      "order": 5,
+      "component": "🏈 05-AI-Infra-Guard",
+      "previous": "🏈 04-AI-Pentest",
+      "next": "🏈 06-PentAGI",
+      "adapter": "📂coda workflow persistencias/🏈 05-AI-Infra-Guard/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    },
+    {
+      "order": 6,
+      "component": "🏈 06-PentAGI",
+      "previous": "🏈 05-AI-Infra-Guard",
+      "next": "🏈 07-Strix",
+      "adapter": "📂coda workflow persistencias/🏈 06-PentAGI/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    },
+    {
+      "order": 7,
+      "component": "🏈 07-Strix",
+      "previous": "🏈 06-PentAGI",
+      "next": "🏈 08-Redcell",
+      "adapter": "📂coda workflow persistencias/🏈 07-Strix/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    },
+    {
+      "order": 8,
+      "component": "🏈 08-Redcell",
+      "previous": "🏈 07-Strix",
+      "next": "🏈 09-Shel",
+      "adapter": "📂coda workflow persistencias/🏈 08-Redcell/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    },
+    {
+      "order": 9,
+      "component": "🏈 09-Shel",
+      "previous": "🏈 08-Redcell",
+      "next": "🏈 10-Pentest-Swarm-AI",
+      "adapter": "📂coda workflow persistencias/🏈 09-Shel/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    },
+    {
+      "order": 10,
+      "component": "🏈 10-Pentest-Swarm-AI",
+      "previous": "🏈 09-Shel",
+      "next": "🏈 11-LLM-CTF-Solver",
+      "adapter": "📂coda workflow persistencias/🏈 10-Pentest-Swarm-AI/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    },
+    {
+      "order": 11,
+      "component": "🏈 11-LLM-CTF-Solver",
+      "previous": "🏈 10-Pentest-Swarm-AI",
+      "next": "🏈 12-PentestGPT",
+      "adapter": "📂coda workflow persistencias/🏈 11-LLM-CTF-Solver/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    },
+    {
+      "order": 12,
+      "component": "🏈 12-PentestGPT",
+      "previous": "🏈 11-LLM-CTF-Solver",
+      "next": "🏈 13-Auto-Pentest-LLM",
+      "adapter": "📂coda workflow persistencias/🏈 12-PentestGPT/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    },
+    {
+      "order": 13,
+      "component": "🏈 13-Auto-Pentest-LLM",
+      "previous": "🏈 12-PentestGPT",
+      "next": "🏈 14-Dark-Moon",
+      "adapter": "📂coda workflow persistencias/🏈 13-Auto-Pentest-LLM/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    },
+    {
+      "order": 14,
+      "component": "🏈 14-Dark-Moon",
+      "previous": "🏈 13-Auto-Pentest-LLM",
+      "next": "🏈 15-Pentdem",
+      "adapter": "📂coda workflow persistencias/🏈 14-Dark-Moon/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    },
+    {
+      "order": 15,
+      "component": "🏈 15-Pentdem",
+      "previous": "🏈 14-Dark-Moon",
+      "next": "🏈 16-Autonomous-Pentest-Agent",
+      "adapter": "📂coda workflow persistencias/🏈 15-Pentdem/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    },
+    {
+      "order": 16,
+      "component": "🏈 16-Autonomous-Pentest-Agent",
+      "previous": "🏈 15-Pentdem",
+      "next": "🏈 17-AI-Red-Team-Agent",
+      "adapter": "📂coda workflow persistencias/🏈 16-Autonomous-Pentest-Agent/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    },
+    {
+      "order": 17,
+      "component": "🏈 17-AI-Red-Team-Agent",
+      "previous": "🏈 16-Autonomous-Pentest-Agent",
+      "next": "🏈 18-Agent-Smith",
+      "adapter": "📂coda workflow persistencias/🏈 17-AI-Red-Team-Agent/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    },
+    {
+      "order": 18,
+      "component": "🏈 18-Agent-Smith",
+      "previous": "🏈 17-AI-Red-Team-Agent",
+      "next": "🏈 19-TPT-Agent",
+      "adapter": "📂coda workflow persistencias/🏈 18-Agent-Smith/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    },
+    {
+      "order": 19,
+      "component": "🏈 19-TPT-Agent",
+      "previous": "🏈 18-Agent-Smith",
+      "next": "🏈 20-OpenWhale",
+      "adapter": "📂coda workflow persistencias/🏈 19-TPT-Agent/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    },
+    {
+      "order": 20,
+      "component": "🏈 20-OpenWhale",
+      "previous": "🏈 19-TPT-Agent",
+      "next": "🏈 21-H-Pentest",
+      "adapter": "📂coda workflow persistencias/🏈 20-OpenWhale/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    },
+    {
+      "order": 21,
+      "component": "🏈 21-H-Pentest",
+      "previous": "🏈 20-OpenWhale",
+      "next": "🏈 22-PHANTOM",
+      "adapter": "📂coda workflow persistencias/🏈 21-H-Pentest/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    },
+    {
+      "order": 22,
+      "component": "🏈 22-PHANTOM",
+      "previous": "🏈 21-H-Pentest",
+      "next": "🏈 23-HackSynth",
+      "adapter": "📂coda workflow persistencias/🏈 22-PHANTOM/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    },
+    {
+      "order": 23,
+      "component": "🏈 23-HackSynth",
+      "previous": "🏈 22-PHANTOM",
+      "next": "🏈 24-Security-AI-Agent",
+      "adapter": "📂coda workflow persistencias/🏈 23-HackSynth/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    },
+    {
+      "order": 24,
+      "component": "🏈 24-Security-AI-Agent",
+      "previous": "🏈 23-HackSynth",
+      "next": null,
+      "adapter": "📂coda workflow persistencias/🏈 24-Security-AI-Agent/code/coda_persistence/yaiwes_persistence_adapter.py",
+      "handoff": "CHECKPOINT_THEN_NEXT"
+    }
+  ]
+}

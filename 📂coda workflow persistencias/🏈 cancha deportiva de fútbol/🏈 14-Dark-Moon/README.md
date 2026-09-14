@@ -46,3 +46,15 @@ Este eslabón participa en una malla circular de 24 componentes para handoff de 
 **Contrato de salida:** `CHECKPOINTED|VERIFIED|RELEASED`  
 **Contrato de entrada:** `task_id + checkpoint + evidence`  
 **Failover:** siguiente eslabón únicamente después de validación del registro y del adapter.
+
+## Cableado Swarm v3
+
+**Equipo:** Swarm agent team Navy seals YAIWES  
+**Cadena:** `yaiwes-navy-seals-persistence-chain-v3`  
+**Posición:** `14/24`  
+**Anterior:** `🏈 13-Auto-Pentest-LLM`  
+**Siguiente:** `🏈 15-Pentdem`
+
+`🏈 13-Auto-Pentest-LLM → 🏈 14-Dark-Moon → 🏈 15-Pentdem`
+
+Contrato de handoff: `yaiwes.task-state.v2`. Este eslabón recibe estado de tarea, guarda checkpoint/evidencia mediante el adapter YAIWES y entrega el estado al siguiente eslabón. El runner maestro solo carga los adapters YAIWES generados; no invoca automáticamente el código upstream.

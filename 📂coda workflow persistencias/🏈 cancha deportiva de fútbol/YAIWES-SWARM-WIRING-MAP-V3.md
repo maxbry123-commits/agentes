@@ -2,11 +2,11 @@
 
 ## Swarm agent team Navy seals YAIWES
 
-**Cadena:** `yaiwes-navy-seals-persistence-chain-v3`  
-**Contrato:** `yaiwes.task-state.v2`  
-**Topología:** `LINEAR_PERSISTENCE_CHAIN`
+**Chain:** `yaiwes-navy-seals-persistence-chain-v3`
 
 `INPUT → CLAIM → CHECKPOINT → VERIFY → HANDOFF → NEXT → ... → RELEASE/END`
+
+### Cadena 24/24
 
 01. `🏈 01-DeepAudit` → `🏈 02-CyberStrikeAI`
 02. `🏈 02-CyberStrikeAI` → `🏈 03-LuaN1aoAgent`
@@ -33,10 +33,9 @@
 23. `🏈 23-HackSynth` → `🏈 24-Security-AI-Agent`
 24. `🏈 24-Security-AI-Agent` → `END`
 
-## Frontera de ejecución
+### Frontera
 
 - Solo se ejecutan adapters de persistencia YAIWES generados y verificados.
-- El código upstream se conserva para trazabilidad y no se autoejecuta desde la cadena.
-- Descubrimiento estático para superficies externas no confiables.
-- Red denegada por defecto en el contrato.
-- Cada handoff exige checkpoint y evidencia antes de pasar al siguiente eslabón.
+- El código upstream no se autoejecuta desde este workflow.
+- Red denegada por defecto en el contrato de los eslabones.
+- Cada handoff conserva checkpoint y evidencia.

@@ -1,5 +1,5 @@
 {
-  "schema": "yaiwes.swarm.registry/v2",
+  "schema": "yaiwes.swarm.registry/v3",
   "count": 24,
   "components": [
     {
@@ -13,7 +13,28 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 1,
+      "previous": null,
+      "next": "🏈 02-CyberStrikeAI",
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     },
     {
       "schema": "yaiwes.coda.persistence-link/v2",
@@ -26,7 +47,28 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 2,
+      "previous": "🏈 01-DeepAudit",
+      "next": "🏈 03-LuaN1aoAgent",
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     },
     {
       "schema": "yaiwes.coda.persistence-link/v2",
@@ -39,7 +81,28 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 3,
+      "previous": "🏈 02-CyberStrikeAI",
+      "next": "🏈 04-AI-Pentest",
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     },
     {
       "schema": "yaiwes.coda.persistence-link/v2",
@@ -52,7 +115,28 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 4,
+      "previous": "🏈 03-LuaN1aoAgent",
+      "next": "🏈 05-AI-Infra-Guard",
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     },
     {
       "schema": "yaiwes.coda.persistence-link/v2",
@@ -65,7 +149,28 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 5,
+      "previous": "🏈 04-AI-Pentest",
+      "next": "🏈 06-PentAGI",
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     },
     {
       "schema": "yaiwes.coda.persistence-link/v2",
@@ -78,7 +183,28 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 6,
+      "previous": "🏈 05-AI-Infra-Guard",
+      "next": "🏈 07-Strix",
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     },
     {
       "schema": "yaiwes.coda.persistence-link/v2",
@@ -91,7 +217,28 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 7,
+      "previous": "🏈 06-PentAGI",
+      "next": "🏈 08-Redcell",
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     },
     {
       "schema": "yaiwes.coda.persistence-link/v2",
@@ -104,7 +251,28 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 8,
+      "previous": "🏈 07-Strix",
+      "next": "🏈 09-Shel",
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     },
     {
       "schema": "yaiwes.coda.persistence-link/v2",
@@ -117,7 +285,28 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 9,
+      "previous": "🏈 08-Redcell",
+      "next": "🏈 10-Pentest-Swarm-AI",
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     },
     {
       "schema": "yaiwes.coda.persistence-link/v2",
@@ -130,7 +319,28 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 10,
+      "previous": "🏈 09-Shel",
+      "next": "🏈 11-LLM-CTF-Solver",
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     },
     {
       "schema": "yaiwes.coda.persistence-link/v2",
@@ -143,7 +353,28 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 11,
+      "previous": "🏈 10-Pentest-Swarm-AI",
+      "next": "🏈 12-PentestGPT",
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     },
     {
       "schema": "yaiwes.coda.persistence-link/v2",
@@ -156,7 +387,28 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 12,
+      "previous": "🏈 11-LLM-CTF-Solver",
+      "next": "🏈 13-Auto-Pentest-LLM",
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     },
     {
       "schema": "yaiwes.coda.persistence-link/v2",
@@ -169,7 +421,28 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 13,
+      "previous": "🏈 12-PentestGPT",
+      "next": "🏈 14-Dark-Moon",
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     },
     {
       "schema": "yaiwes.coda.persistence-link/v2",
@@ -182,7 +455,28 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 14,
+      "previous": "🏈 13-Auto-Pentest-LLM",
+      "next": "🏈 15-Pentdem",
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     },
     {
       "schema": "yaiwes.coda.persistence-link/v2",
@@ -195,7 +489,28 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 15,
+      "previous": "🏈 14-Dark-Moon",
+      "next": "🏈 16-Autonomous-Pentest-Agent",
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     },
     {
       "schema": "yaiwes.coda.persistence-link/v2",
@@ -208,7 +523,28 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 16,
+      "previous": "🏈 15-Pentdem",
+      "next": "🏈 17-AI-Red-Team-Agent",
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     },
     {
       "schema": "yaiwes.coda.persistence-link/v2",
@@ -221,7 +557,28 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 17,
+      "previous": "🏈 16-Autonomous-Pentest-Agent",
+      "next": "🏈 18-Agent-Smith",
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     },
     {
       "schema": "yaiwes.coda.persistence-link/v2",
@@ -234,7 +591,28 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 18,
+      "previous": "🏈 17-AI-Red-Team-Agent",
+      "next": "🏈 19-TPT-Agent",
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     },
     {
       "schema": "yaiwes.coda.persistence-link/v2",
@@ -247,7 +625,28 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 19,
+      "previous": "🏈 18-Agent-Smith",
+      "next": "🏈 20-OpenWhale",
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     },
     {
       "schema": "yaiwes.coda.persistence-link/v2",
@@ -260,7 +659,28 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 20,
+      "previous": "🏈 19-TPT-Agent",
+      "next": "🏈 21-H-Pentest",
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     },
     {
       "schema": "yaiwes.coda.persistence-link/v2",
@@ -273,7 +693,28 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 21,
+      "previous": "🏈 20-OpenWhale",
+      "next": "🏈 22-PHANTOM",
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     },
     {
       "schema": "yaiwes.coda.persistence-link/v2",
@@ -286,7 +727,28 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 22,
+      "previous": "🏈 21-H-Pentest",
+      "next": "🏈 23-HackSynth",
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     },
     {
       "schema": "yaiwes.coda.persistence-link/v2",
@@ -299,7 +761,28 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 23,
+      "previous": "🏈 22-PHANTOM",
+      "next": "🏈 24-Security-AI-Agent",
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     },
     {
       "schema": "yaiwes.coda.persistence-link/v2",
@@ -312,7 +795,39 @@
       "mode": "TASK_PERSISTENCE_ONLY",
       "offensive_execution": false,
       "network_default": "deny",
-      "source_execution_during_discovery": false
+      "source_execution_during_discovery": false,
+      "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+      "order": 24,
+      "previous": "🏈 23-HackSynth",
+      "next": null,
+      "consume": {
+        "datatype": "yaiwes.task-state.v2",
+        "required": [
+          "task_id",
+          "payload"
+        ]
+      },
+      "expose": {
+        "datatype": "yaiwes.task-state.v2",
+        "provides": [
+          "task_id",
+          "payload",
+          "checkpoint",
+          "evidence"
+        ]
+      },
+      "handoff": "CHECKPOINT_THEN_NEXT"
     }
-  ]
+  ],
+  "chain_id": "yaiwes-navy-seals-persistence-chain-v3",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "wiring": {
+    "topology": "LINEAR_PERSISTENCE_CHAIN",
+    "datatype": "yaiwes.task-state.v2",
+    "entry": "🏈 01-DeepAudit",
+    "exit": "🏈 24-Security-AI-Agent",
+    "count": 24,
+    "source_execution": false,
+    "network_default": "deny"
+  }
 }
