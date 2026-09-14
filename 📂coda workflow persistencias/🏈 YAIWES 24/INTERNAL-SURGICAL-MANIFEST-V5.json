@@ -1,0 +1,24 @@
+{
+  "schema": "yaiwes.internal.surgical/v5",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v5.2",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "component": "🏈 YAIWES 24",
+  "source_code_available": false,
+  "source_code_status": "SOURCE_CODE_UNAVAILABLE",
+  "files": [],
+  "counts": {
+    "accounted": 0,
+    "keep_unchanged": 0,
+    "restored_benign": 0,
+    "blocked_offensive": 0,
+    "review_fail_closed": 0,
+    "links": 0
+  },
+  "policy": {
+    "offensive_execution": false,
+    "ambiguous": "FAIL_CLOSED",
+    "originals_preserved": true,
+    "restored_benign": true,
+    "checkpoint_each_internal_link": true
+  }
+}
