@@ -109,6 +109,7 @@ def main() -> None:
     runner = r'''from __future__ import annotations
 import importlib.util
 import json
+import sys
 from pathlib import Path
 from typing import Any, Dict
 
@@ -118,10 +119,12 @@ CHAIN_ID = "yaiwes-navy-seals-persistence-chain-v3"
 def _load_adapter(adapter_path: Path):
     if adapter_path.name != "yaiwes_persistence_adapter.py" or "coda_persistence" not in adapter_path.parts:
         raise ValueError("adapter path outside generated YAIWES persistence surface")
-    spec = importlib.util.spec_from_file_location("yaiwes_generated_adapter", adapter_path)
+    module_name = "yaiwes_generated_adapter_" + str(abs(hash(str(adapter_path))))
+    spec = importlib.util.spec_from_file_location(module_name, adapter_path)
     if spec is None or spec.loader is None:
         raise RuntimeError("adapter import failed")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
     spec.loader.exec_module(module)
     return module.YaiwesPersistenceAdapter
 
