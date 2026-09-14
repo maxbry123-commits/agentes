@@ -1,0 +1,40 @@
+/** Internal type. DO NOT USE DIRECTLY. */
+type Exact<T extends {[key: string]: unknown}> = {[K in keyof T]: T[K]};
+/** Internal type. DO NOT USE DIRECTLY. */
+export type Incremental<T> =
+  | T
+  | {[P in keyof T]?: P extends ' $fragmentName' | '__typename' ? T[P] : never};
+// Generated GraphQL types, do not edit manually.
+
+import * as Types from '../../graphql/types';
+
+export type AssetKeyInput = {
+  path: Array<string>;
+};
+
+export type AssetGroupAndLocationQueryVariables = Exact<{
+  assetKey: Types.AssetKeyInput;
+}>;
+
+export type AssetGroupAndLocationQuery = {
+  __typename: 'Query';
+  assetOrError:
+    | {
+        __typename: 'Asset';
+        id: string;
+        definition: {
+          __typename: 'AssetNode';
+          id: string;
+          groupName: string;
+          repository: {
+            __typename: 'Repository';
+            id: string;
+            name: string;
+            location: {__typename: 'RepositoryLocation'; id: string; name: string};
+          };
+        } | null;
+      }
+    | {__typename: 'AssetNotFoundError'};
+};
+
+export const AssetGroupAndLocationQueryVersion = '584b27ecda9ff883e92f2d8858520a543ea0be07d39e1b4c0fc5d802231bb602';

@@ -1,0 +1,41 @@
+/** Internal type. DO NOT USE DIRECTLY. */
+export type Incremental<T> =
+  | T
+  | {[P in keyof T]?: P extends ' $fragmentName' | '__typename' ? T[P] : never};
+// Generated GraphQL types, do not edit manually.
+
+import * as Types from '../../graphql/types';
+
+export type ChangeReason =
+  | 'CODE_VERSION'
+  | 'DEPENDENCIES'
+  | 'METADATA'
+  | 'NEW'
+  | 'PARTITIONS_DEFINITION'
+  | 'REMOVED'
+  | 'TAGS';
+
+export type AssetNodeFragment = {
+  __typename: 'AssetNode';
+  id: string;
+  graphName: string | null;
+  hasMaterializePermission: boolean;
+  hasWipePermission: boolean;
+  jobNames: Array<string>;
+  changedReasons: Array<Types.ChangeReason>;
+  opNames: Array<string>;
+  description: string | null;
+  computeKind: string | null;
+  isPartitioned: boolean;
+  isObservable: boolean;
+  isMaterializable: boolean;
+  isAutoCreatedStub: boolean;
+  kinds: Array<string>;
+  owners: Array<
+    {__typename: 'TeamAssetOwner'; team: string} | {__typename: 'UserAssetOwner'; email: string}
+  >;
+  assetKey: {__typename: 'AssetKey'; path: Array<string>};
+  tags: Array<{__typename: 'DefinitionTag'; key: string; value: string}>;
+};
+
+export type AssetNodeKeyFragment = {__typename: 'AssetKey'; path: Array<string>};

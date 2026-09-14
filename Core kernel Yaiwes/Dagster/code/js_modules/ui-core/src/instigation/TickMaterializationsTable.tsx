@@ -1,0 +1,246 @@
+import {
+  Box,
+  ButtonLink,
+  Colors,
+  Container,
+  HeaderCell,
+  HeaderRow,
+  Heading,
+  Icon,
+  Inner,
+  Row,
+  RowCell,
+  Spinner,
+  Text,
+  TextInput,
+} from '@dagster-io/ui-components';
+import {useVirtualizer} from '@tanstack/react-virtual';
+import {useMemo, useRef, useState} from 'react';
+import {Link} from 'react-router-dom';
+
+import {gql, useQuery} from '../apollo-client';
+import styles from './css/TickMaterializationsTable.module.css';
+import {
+  AssetGroupAndLocationQuery,
+  AssetGroupAndLocationQueryVariables,
+} from './types/TickMaterializationsTable.types';
+import {displayNameForAssetKey, tokenForAssetKey} from '../asset-graph/Utils';
+import {AssetLink} from '../assets/AssetLink';
+import {AssetKeysDialogEmptyState} from '../assets/AutoMaterializePolicyPage/AssetKeysDialog';
+import {EvaluationDetailDialog} from '../assets/AutoMaterializePolicyPage/EvaluationDetailDialog';
+import {AssetDaemonTickFragment} from '../assets/auto-materialization/types/AssetDaemonTicksQuery.types';
+import {globalAssetGraphPathForGroup} from '../assets/globalAssetGraphPathToString';
+import {AssetKeyInput} from '../graphql/types';
+import {buildRepoAddress} from '../workspace/buildRepoAddress';
+
+const TEMPLATE_COLUMNS = '30% 17% 53%';
+
+export const TickMaterializationsTable = ({
+  tick,
+}: {
+  tick: Pick<
+    AssetDaemonTickFragment,
+    'requestedAssetKeys' | 'requestedMaterializationsForAssets' | 'autoMaterializeAssetEvaluationId'
+  > | null;
+}) => {
+  const [queryString, setQueryString] = useState('');
+
+  const filteredAssetKeys = useMemo(
+    () =>
+      tick
+        ? tick.requestedAssetKeys.filter((assetKey) =>
+            displayNameForAssetKey(assetKey).includes(queryString),
+          )
+        : [],
+    [tick, queryString],
+  );
+
+  const parentRef = useRef<HTMLDivElement | null>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: filteredAssetKeys.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 34,
+    overscan: 10,
+  });
+  const totalHeight = rowVirtualizer.getTotalSize();
+  const items = rowVirtualizer.getVirtualItems();
+
+  const assetKeyToPartitionsMap = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    tick?.requestedMaterializationsForAssets.forEach(({assetKey, partitionKeys}) => {
+      map[tokenForAssetKey(assetKey)] = partitionKeys;
+    });
+    return map;
+  }, [tick?.requestedMaterializationsForAssets]);
+
+  const content = () => {
+    if (queryString && !filteredAssetKeys.length) {
+      return (
+        <AssetKeysDialogEmptyState
+          title="No matching asset keys"
+          description={
+            <>
+              No matching asset keys for <strong>{queryString}</strong>
+            </>
+          }
+        />
+      );
+    }
+    if (!tick?.requestedAssetKeys.length) {
+      return (
+        <Box padding={{vertical: 12, horizontal: 24}}>
+          <Text size={12} color="textLight">
+            None
+          </Text>
+        </Box>
+      );
+    }
+    return (
+      <Container ref={parentRef}>
+        <HeaderRow templateColumns={TEMPLATE_COLUMNS} sticky>
+          <HeaderCell>Asset</HeaderCell>
+          <HeaderCell>Group</HeaderCell>
+          <HeaderCell>Result</HeaderCell>
+        </HeaderRow>
+        <Inner totalHeight={totalHeight}>
+          {items.map(({index, key, size, start}) => {
+            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+            const assetKey = filteredAssetKeys[index]!;
+            return (
+              <AssetDetailRow
+                key={key}
+                height={size}
+                start={start}
+                assetKey={assetKey}
+                partitionKeys={assetKeyToPartitionsMap[tokenForAssetKey(assetKey)]}
+                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                evaluationId={tick.autoMaterializeAssetEvaluationId!}
+              />
+            );
+          })}
+        </Inner>
+      </Container>
+    );
+  };
+
+  return (
+    <Box style={{height: '500px'}} flex={{direction: 'column'}}>
+      <Box
+        padding={{vertical: 12, horizontal: 24}}
+        flex={{justifyContent: 'space-between', alignItems: 'center'}}
+        border="bottom"
+      >
+        <Heading size={14} weight={600}>
+          Requested materializations
+        </Heading>
+        <TextInput
+          icon="search"
+          value={queryString}
+          onChange={(e) => setQueryString(e.target.value)}
+          placeholder="Filter by asset key…"
+          style={{width: '252px'}}
+        />
+      </Box>
+      {content()}
+    </Box>
+  );
+};
+
+const AssetDetailRow = ({
+  start,
+  height,
+  assetKey,
+  partitionKeys,
+  evaluationId,
+}: {
+  start: number;
+  height: number;
+  assetKey: AssetKeyInput;
+  partitionKeys?: string[];
+  evaluationId: string;
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const numMaterializations = partitionKeys?.length || 1;
+  const queryResult = useQuery<AssetGroupAndLocationQuery, AssetGroupAndLocationQueryVariables>(
+    ASSET_GROUP_QUERY,
+    {
+      fetchPolicy: 'cache-and-network',
+      variables: {
+        assetKey: {path: assetKey.path},
+      },
+    },
+  );
+  const {data} = queryResult;
+
+  const asset = data?.assetOrError.__typename === 'Asset' ? data.assetOrError : null;
+  const definition = asset?.definition;
+  const repoAddress = definition
+    ? buildRepoAddress(definition.repository.name, definition.repository.location.name)
+    : null;
+
+  return (
+    <Row start={start} height={height}>
+      <Box className={styles.rowGrid} border="bottom">
+        <RowCell>
+          <AssetLink path={assetKey.path} icon="asset" textStyle="middle-truncate" />
+        </RowCell>
+        <RowCell>
+          {data ? (
+            definition && definition.groupName && repoAddress ? (
+              <Link to={globalAssetGraphPathForGroup(definition.groupName, assetKey)}>
+                <Box flex={{direction: 'row', gap: 8, alignItems: 'center'}}>
+                  <Icon color={Colors.textLight()} name="asset_group" />
+                  {definition.groupName}
+                </Box>
+              </Link>
+            ) : (
+              <Text size={12} color="textLight">
+                Asset not found
+              </Text>
+            )
+          ) : (
+            <Spinner purpose="body-text" />
+          )}
+        </RowCell>
+        <RowCell>
+          {definition ? (
+            <>
+              <ButtonLink onClick={() => setIsOpen(true)}>
+                {numMaterializations} materialization{numMaterializations === 1 ? '' : 's'}{' '}
+                requested
+              </ButtonLink>
+              <EvaluationDetailDialog
+                isOpen={isOpen}
+                onClose={() => setIsOpen(false)}
+                evaluationID={evaluationId}
+                assetKeyPath={assetKey.path}
+              />
+            </>
+          ) : null}
+        </RowCell>
+      </Box>
+    </Row>
+  );
+};
+
+const ASSET_GROUP_QUERY = gql`
+  query AssetGroupAndLocationQuery($assetKey: AssetKeyInput!) {
+    assetOrError(assetKey: $assetKey) {
+      ... on Asset {
+        id
+        definition {
+          id
+          groupName
+          repository {
+            id
+            name
+            location {
+              id
+              name
+            }
+          }
+        }
+      }
+    }
+  }
+`;

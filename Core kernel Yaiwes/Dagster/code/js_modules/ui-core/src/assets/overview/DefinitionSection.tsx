@@ -1,0 +1,261 @@
+import {
+  Box,
+  ButtonLink,
+  Colors,
+  Icon,
+  MiddleTruncate,
+  Tag,
+  Text,
+  Tooltip,
+} from '@dagster-io/ui-components';
+import {Link} from 'react-router-dom';
+
+import {useLinkedAsset} from './useLinkedAsset';
+import {displayNameForAssetKey} from '../../asset-graph/Utils';
+import {TimeFromNow} from '../../ui/TimeFromNow';
+import {AssetDefinedInMultipleReposNotice} from '../AssetDefinedInMultipleReposNotice';
+import {assetDetailsPathForKey} from '../assetDetailsPathForKey';
+import {AttributeAndValue} from './Common';
+import {CodeLink, getCodeReferenceKey} from '../../code-links/CodeLink';
+import {AssetKind, isCanonicalStorageKindTag, isSystemTag} from '../../graph/KindTags';
+import {useStateWithStorage} from '../../hooks/useStateWithStorage';
+import {
+  isCanonicalCodeSourceEntry,
+  isCanonicalTableNameEntry,
+  isCanonicalUriEntry,
+} from '../../metadata/TableSchema';
+import {RepositoryLink} from '../../nav/RepositoryLink';
+import {DefinitionOwners} from '../../owners/DefinitionOwners';
+import {CopyIconButton} from '../../ui/CopyButton';
+import {buildTagString} from '../../ui/tagAsString';
+import {WorkspaceLocationNodeFragment} from '../../workspace/WorkspaceContext/types/WorkspaceQueries.types';
+import {RepoAddress} from '../../workspace/types';
+import {globalAssetGraphPathForGroup} from '../globalAssetGraphPathToString';
+import {AssetViewDefinitionNodeFragment} from '../types/AssetView.types';
+import {WorkspaceAssetNode} from '../useAllAssets';
+
+export const DefinitionSection = ({
+  repoAddress,
+  location,
+  assetNode,
+  cachedOrLiveAssetNode,
+  storageAddress,
+}: {
+  repoAddress: RepoAddress | null;
+  location: WorkspaceLocationNodeFragment | undefined;
+  assetNode: AssetViewDefinitionNodeFragment | null | undefined;
+  cachedOrLiveAssetNode: AssetViewDefinitionNodeFragment | WorkspaceAssetNode;
+  storageAddress?: {tableName: string; storageKind: string | null} | null;
+}) => {
+  const storageKindTag = cachedOrLiveAssetNode.tags?.find(isCanonicalStorageKindTag);
+  const filteredTags = cachedOrLiveAssetNode.tags?.filter(
+    (tag) => tag.key !== 'dagster/storage_kind',
+  );
+
+  const nonSystemTags = filteredTags?.filter((tag) => !isSystemTag(tag));
+  const systemTags = filteredTags?.filter(isSystemTag);
+
+  const tableNameMetadata = assetNode?.metadataEntries?.find(isCanonicalTableNameEntry);
+  const uriMetadata = assetNode?.metadataEntries?.find(isCanonicalUriEntry);
+  const codeSource = assetNode?.metadataEntries?.find(isCanonicalCodeSourceEntry);
+
+  return (
+    <Box flex={{direction: 'column', gap: 12}}>
+      <AttributeAndValue label="Group">
+        <Tag icon="asset_group">
+          <Link
+            to={globalAssetGraphPathForGroup(
+              cachedOrLiveAssetNode.groupName,
+              cachedOrLiveAssetNode.assetKey,
+            )}
+          >
+            {cachedOrLiveAssetNode.groupName}
+          </Link>
+        </Tag>
+      </AttributeAndValue>
+
+      <AttributeAndValue label="Code location">
+        <Box flex={{direction: 'column'}}>
+          <AssetDefinedInMultipleReposNotice
+            assetKey={cachedOrLiveAssetNode.assetKey}
+            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+            loadedFromRepo={repoAddress!}
+          />
+          {/* eslint-disable-next-line @typescript-eslint/no-non-null-assertion */}
+          <RepositoryLink repoAddress={repoAddress!} />
+          {location && (
+            <Text size={12} color="textLighter">
+              Loaded <TimeFromNow unixTimestamp={location.updatedTimestamp} />
+            </Text>
+          )}
+        </Box>
+      </AttributeAndValue>
+      <AttributeAndValue label="Owners">
+        {cachedOrLiveAssetNode.owners && cachedOrLiveAssetNode.owners.length > 0 && (
+          <DefinitionOwners owners={cachedOrLiveAssetNode.owners} />
+        )}
+      </AttributeAndValue>
+      <AttributeAndValue label="Compute kind">
+        {cachedOrLiveAssetNode.computeKind && (
+          <AssetKind
+            style={{position: 'relative'}}
+            kind={cachedOrLiveAssetNode.computeKind}
+            reduceColor
+            linkToFilteredAssetsTable
+          />
+        )}
+      </AttributeAndValue>
+      <AttributeAndValue label="Kinds">
+        {(cachedOrLiveAssetNode.kinds.length > 1 || !cachedOrLiveAssetNode.computeKind) &&
+          cachedOrLiveAssetNode.kinds.map((kind) => (
+            <AssetKind
+              key={kind}
+              style={{position: 'relative'}}
+              kind={kind}
+              reduceColor
+              linkToFilteredAssetsTable
+            />
+          ))}
+      </AttributeAndValue>
+      <AttributeAndValue label="Storage">
+        {(tableNameMetadata || uriMetadata || storageKindTag) && (
+          <Box flex={{direction: 'column', gap: 4}} style={{minWidth: 0, fontSize: 12}}>
+            {tableNameMetadata && (
+              <Box flex={{direction: 'row', gap: 4, alignItems: 'center'}}>
+                <MiddleTruncate text={tableNameMetadata.text} />
+                <CopyIconButton value={tableNameMetadata.text} />
+              </Box>
+            )}
+            {uriMetadata && (
+              <Box flex={{direction: 'row', gap: 4, alignItems: 'center'}} style={{minWidth: 0}}>
+                {uriMetadata.__typename === 'TextMetadataEntry' ? (
+                  <span style={{wordBreak: 'break-all', minWidth: 0}}>{uriMetadata.text}</span>
+                ) : (
+                  <a
+                    target="_blank"
+                    rel="noreferrer"
+                    href={uriMetadata.url}
+                    style={{wordBreak: 'break-all', minWidth: 0}}
+                  >
+                    {uriMetadata.url}
+                  </a>
+                )}
+                <span style={{flexShrink: 0}}>
+                  <CopyIconButton
+                    value={
+                      uriMetadata.__typename === 'TextMetadataEntry'
+                        ? uriMetadata?.text
+                        : uriMetadata.url
+                    }
+                  />
+                </span>
+              </Box>
+            )}
+            {storageKindTag && (
+              <AssetKind
+                style={{position: 'relative'}}
+                kind={storageKindTag.value}
+                reduceColor
+                linkToFilteredAssetsTable
+              />
+            )}
+          </Box>
+        )}
+      </AttributeAndValue>
+      <AttributeAndValue label="Tags">
+        {filteredTags && filteredTags.length > 0 && (
+          <Box flex={{direction: 'column', gap: 8}}>
+            <Box>
+              {nonSystemTags.map((tag, idx) => (
+                <Tag key={idx}>{buildTagString(tag)}</Tag>
+              ))}
+            </Box>
+            {systemTags.length > 0 && <SystemTagsToggle tags={systemTags} />}
+          </Box>
+        )}
+      </AttributeAndValue>
+      <QueryfulLinkedAssetRow
+        assetKey={cachedOrLiveAssetNode.assetKey}
+        storageAddress={storageAddress}
+      />
+      <AttributeAndValue label="Source code">
+        {codeSource &&
+          codeSource.codeReferences &&
+          codeSource.codeReferences.map((ref) => (
+            <CodeLink key={getCodeReferenceKey(ref)} sourceLocation={ref} />
+          ))}
+      </AttributeAndValue>
+    </Box>
+  );
+};
+
+const QueryfulLinkedAssetRow = ({
+  assetKey,
+  storageAddress,
+}: {
+  assetKey: {path: string[]};
+  storageAddress: {tableName: string; storageKind: string | null} | null | undefined;
+}) => {
+  const result = useLinkedAsset({currentAssetKey: assetKey, storageAddress});
+  if (result.type !== 'linked') {
+    return null;
+  }
+  return <LinkedAssetRow linkedAssetKey={result.linkedAssetKey} />;
+};
+
+export const LinkedAssetRow = ({linkedAssetKey}: {linkedAssetKey: {path: string[]}}) => {
+  return (
+    <AttributeAndValue
+      label={
+        <Box flex={{direction: 'row', gap: 4, alignItems: 'center'}}>
+          Linked asset
+          <Tooltip
+            content="This asset targets the same table as an asset loaded by a connection."
+            placement="top"
+          >
+            <Icon name="info" color={Colors.textLight()} />
+          </Tooltip>
+        </Box>
+      }
+    >
+      <Link to={assetDetailsPathForKey(linkedAssetKey)}>
+        {displayNameForAssetKey(linkedAssetKey)}
+      </Link>
+    </AttributeAndValue>
+  );
+};
+
+const SystemTagsToggle = ({tags}: {tags: Array<{key: string; value: string}>}) => {
+  const [shown, setShown] = useStateWithStorage('show-asset-definition-system-tags', Boolean);
+
+  if (!shown) {
+    return (
+      <Text size={12}>
+        <ButtonLink onClick={() => setShown(true)}>
+          <Box flex={{alignItems: 'center'}}>
+            <span>Show system tags ({tags.length || 0})</span>
+            <Icon name="arrow_drop_down" style={{transform: 'rotate(0deg)'}} />
+          </Box>
+        </ButtonLink>
+      </Text>
+    );
+  } else {
+    return (
+      <Box flex={{direction: 'column', gap: 8}}>
+        <Box>
+          {tags.map((tag, idx) => (
+            <Tag key={idx}>{buildTagString(tag)}</Tag>
+          ))}
+        </Box>
+        <Text size={12}>
+          <ButtonLink onClick={() => setShown(false)}>
+            <Box flex={{alignItems: 'center'}}>
+              <span>Hide system tags</span>
+              <Icon name="arrow_drop_down" style={{transform: 'rotate(180deg)'}} />
+            </Box>
+          </ButtonLink>
+        </Text>
+      </Box>
+    );
+  }
+};

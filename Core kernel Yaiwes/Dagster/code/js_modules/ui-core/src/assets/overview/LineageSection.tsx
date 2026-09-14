@@ -1,0 +1,101 @@
+import {Box, Button, Heading, MiddleTruncate} from '@dagster-io/ui-components';
+import React, {useState} from 'react';
+import {Link} from 'react-router-dom';
+
+import {NoValue} from './Common';
+import {displayNameForAssetKey, sortAssetKeys, tokenForAssetKey} from '../../asset-graph/Utils';
+import {StatusDot} from '../../asset-graph/sidebar/StatusDot';
+import {DependsOnSelfBanner} from '../DependsOnSelfBanner';
+import {assetDetailsPathForKey} from '../assetDetailsPathForKey';
+import {WorkspaceAssetNode} from '../useAllAssets';
+
+export const LineageSection = ({
+  dependsOnSelf,
+  upstream,
+  downstream,
+}: {
+  upstream: WorkspaceAssetNode[] | null;
+  downstream: WorkspaceAssetNode[] | null;
+  dependsOnSelf: boolean;
+}) => {
+  return (
+    <>
+      {dependsOnSelf && (
+        <Box padding={{bottom: 12}}>
+          <DependsOnSelfBanner />
+        </Box>
+      )}
+
+      <Box flex={{direction: 'row'}}>
+        <Box flex={{direction: 'column', gap: 6}} style={{width: '50%'}}>
+          <Heading size={14} weight={600}>
+            Upstream assets
+          </Heading>
+          {upstream?.length ? (
+            <AssetLinksWithStatus assets={upstream} />
+          ) : (
+            <Box>
+              <NoValue />
+            </Box>
+          )}
+        </Box>
+        <Box flex={{direction: 'column', gap: 6}} style={{width: '50%'}}>
+          <Heading size={14} weight={600}>
+            Downstream assets
+          </Heading>
+          {downstream?.length ? (
+            <AssetLinksWithStatus assets={downstream} />
+          ) : (
+            <Box>
+              <NoValue />
+            </Box>
+          )}
+        </Box>
+      </Box>
+    </>
+  );
+};
+
+const AssetLinksWithStatus = ({
+  assets,
+  displayedByDefault = 20,
+}: {
+  assets: WorkspaceAssetNode[];
+  displayedByDefault?: number;
+}) => {
+  const [displayedCount, setDisplayedCount] = useState(displayedByDefault);
+
+  const displayed = React.useMemo(
+    () => assets.sort((a, b) => sortAssetKeys(a.assetKey, b.assetKey)).slice(0, displayedCount),
+    [assets, displayedCount],
+  );
+
+  return (
+    <Box flex={{direction: 'column', gap: 6}}>
+      {displayed.map((asset) => (
+        <Link to={assetDetailsPathForKey(asset.assetKey)} key={tokenForAssetKey(asset.assetKey)}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'auto minmax(0, 1fr)',
+              gap: '6px',
+              alignItems: 'center',
+            }}
+          >
+            <StatusDot node={{assetKey: asset.assetKey, definition: asset}} />
+            <MiddleTruncate text={displayNameForAssetKey(asset.assetKey)} />
+          </div>
+        </Link>
+      ))}
+      <Box>
+        {displayed.length < assets.length ? (
+          <Button onClick={() => setDisplayedCount(Number.MAX_SAFE_INTEGER)}>
+            Show {assets.length - displayed.length} more
+          </Button>
+        ) : displayed.length > displayedByDefault ? (
+          <Button onClick={() => setDisplayedCount(displayedByDefault)}>Show less</Button>
+        ) : undefined}
+      </Box>
+    </Box>
+  );
+};

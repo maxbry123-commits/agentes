@@ -1,0 +1,232 @@
+import {
+  Box,
+  Button,
+  Checkbox,
+  Dialog,
+  DialogBody,
+  DialogFooter,
+  Spinner,
+  Text,
+} from '@dagster-io/ui-components';
+import {memo, useCallback, useContext, useMemo, useState} from 'react';
+
+import {
+  DeleteDynamicPartitionsMutation,
+  DeleteDynamicPartitionsMutationVariables,
+} from './types/DeleteDynamicPartitionsDialog.types';
+import {usePartitionHealthData} from './usePartitionHealthData';
+import {RefetchQueriesFunction, gql, useMutation} from '../apollo-client';
+import {CloudOSSContext} from '../app/CloudOSSContext';
+import {PYTHON_ERROR_FRAGMENT} from '../app/PythonErrorFragment';
+import {PythonErrorInfo} from '../app/PythonErrorInfo';
+import {AssetKeyInput, PartitionDefinitionType} from '../graphql/types';
+import {OrdinalPartitionSelector} from '../partitions/OrdinalPartitionSelector';
+import {RepoAddress} from '../workspace/types';
+
+export interface DeleteDynamicPartitionsDialogProps {
+  assetKey: AssetKeyInput;
+  repoAddress: RepoAddress;
+  partitionsDefName: string;
+  isOpen: boolean;
+  onClose: () => void;
+  onComplete?: () => void;
+  requery?: RefetchQueriesFunction;
+}
+
+export const DeleteDynamicPartitionsDialog = memo((props: DeleteDynamicPartitionsDialogProps) => {
+  return (
+    <Dialog
+      isOpen={props.isOpen}
+      title={`Delete ${props.partitionsDefName} partitions`}
+      onClose={props.onClose}
+      style={{width: '50vw', minWidth: 500, maxWidth: 700}}
+    >
+      <DeleteDynamicPartitionsDialogInner {...props} />
+    </Dialog>
+  );
+});
+
+export const DeleteDynamicPartitionsDialogInner = memo(
+  ({
+    repoAddress,
+    assetKey,
+    partitionsDefName,
+    onClose,
+    onComplete,
+    requery,
+  }: DeleteDynamicPartitionsDialogProps) => {
+    const [deleting, setDeleting] = useState(false);
+    const [result, setResult] = useState<
+      DeleteDynamicPartitionsMutation['deleteDynamicPartitions'] | undefined
+    >();
+    const [selectedPartitions, setSelectedPartitions] = useState<string[]>([]);
+
+    const {
+      featureContext: {canWipeOnDeleteDynamicPartitions},
+    } = useContext(CloudOSSContext);
+    const [wipeChecked, setWipeChecked] = useState(true);
+    const wipeMaterializations = canWipeOnDeleteDynamicPartitions && wipeChecked;
+    const [health] = usePartitionHealthData([assetKey]);
+
+    const dynamicHealth = health?.dimensions.find(
+      (d) => d.type === PartitionDefinitionType.DYNAMIC,
+    );
+
+    const [deletePartitions] = useMutation<
+      DeleteDynamicPartitionsMutation,
+      DeleteDynamicPartitionsMutationVariables
+    >(DELETE_DYNAMIC_PARTITIONS_MUTATION, {refetchQueries: requery});
+
+    const onDelete = useCallback(
+      async (partitionKeys: string[]) => {
+        setDeleting(true);
+        const resp = await deletePartitions({
+          variables: {
+            repositorySelector: {
+              repositoryLocationName: repoAddress.location,
+              repositoryName: repoAddress.name,
+            },
+            partitionsDefName,
+            partitionKeys,
+            wipeMaterializations,
+          },
+        });
+        setResult(resp.data?.deleteDynamicPartitions);
+        setDeleting(false);
+        onComplete?.();
+      },
+      [
+        deletePartitions,
+        onComplete,
+        partitionsDefName,
+        repoAddress.location,
+        repoAddress.name,
+        wipeMaterializations,
+      ],
+    );
+
+    const content = useMemo(() => {
+      if (result) {
+        return (
+          <Box flex={{direction: 'column'}}>
+            {result.__typename === 'DeleteDynamicPartitionsSuccess' ? (
+              <Text size={14}>
+                The selected partitions of <strong>{partitionsDefName}</strong>
+                {wipeMaterializations ? ' and associated materializations have' : ' have'} been
+                deleted.
+              </Text>
+            ) : (
+              <PythonErrorInfo error={result} />
+            )}
+          </Box>
+        );
+      }
+      if (deleting) {
+        return (
+          <Box flex={{gap: 8, direction: 'column'}}>
+            <div>Wiping...</div>
+          </Box>
+        );
+      }
+      return (
+        <Box flex={{direction: 'column', gap: 6}}>
+          <Text size={14}>
+            Select partition keys of the <strong>{partitionsDefName}</strong> partition definition
+            to delete.
+          </Text>
+          {health && dynamicHealth ? (
+            <OrdinalPartitionSelector
+              allPartitions={dynamicHealth?.partitionKeys}
+              selectedPartitions={selectedPartitions}
+              setSelectedPartitions={setSelectedPartitions}
+              health={health}
+              isDynamic={true}
+            />
+          ) : (
+            <Spinner purpose="section" />
+          )}
+          {canWipeOnDeleteDynamicPartitions ? (
+            <Box margin={{top: 8}}>
+              <Checkbox
+                label="Also wipe materialization events for these partitions from all assets that share this partition definition"
+                checked={wipeChecked}
+                onChange={() => setWipeChecked((checked) => !checked)}
+              />
+            </Box>
+          ) : null}
+          <Text size={14} style={{marginTop: 10}}>
+            Deleting partitions impacts all assets that share this partition definition.
+            {wipeMaterializations
+              ? ' Materialization events for these partitions will be wiped.'
+              : ''}{' '}
+            <strong>This action cannot be undone.</strong>
+          </Text>
+        </Box>
+      );
+    }, [
+      canWipeOnDeleteDynamicPartitions,
+      deleting,
+      dynamicHealth,
+      health,
+      partitionsDefName,
+      result,
+      selectedPartitions,
+      wipeChecked,
+      wipeMaterializations,
+    ]);
+
+    return (
+      <>
+        <DialogBody>{content}</DialogBody>
+        <DialogFooter topBorder>
+          <Button intent={result ? 'primary' : 'none'} onClick={onClose}>
+            {result ? 'Done' : 'Cancel'}
+          </Button>
+          {result ? null : (
+            <Button
+              intent="danger"
+              onClick={() => onDelete(selectedPartitions)}
+              disabled={deleting || selectedPartitions.length === 0}
+              loading={deleting}
+            >
+              {selectedPartitions.length === 1
+                ? 'Delete 1 partition'
+                : `Delete ${selectedPartitions.length} partitions`}
+            </Button>
+          )}
+        </DialogFooter>
+      </>
+    );
+  },
+);
+
+export const DELETE_DYNAMIC_PARTITIONS_MUTATION = gql`
+  mutation DeleteDynamicPartitionsMutation(
+    $partitionKeys: [String!]!
+    $partitionsDefName: String!
+    $repositorySelector: RepositorySelector!
+    $wipeMaterializations: Boolean
+  ) {
+    deleteDynamicPartitions(
+      partitionKeys: $partitionKeys
+      partitionsDefName: $partitionsDefName
+      repositorySelector: $repositorySelector
+      wipeMaterializations: $wipeMaterializations
+    ) {
+      ... on DeleteDynamicPartitionsSuccess {
+        __typename
+      }
+      ... on UnauthorizedError {
+        message
+        __typename
+      }
+      ... on UnsupportedOperationError {
+        message
+        __typename
+      }
+      ...PythonErrorFragment
+    }
+  }
+
+  ${PYTHON_ERROR_FRAGMENT}
+`;

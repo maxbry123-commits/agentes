@@ -1,0 +1,17 @@
+[tool.ruff]
+
+# Extend root configuration. Note that having this [tool.ruff] section in a pyproject in examples
+# has the effect of making each example package treated as first-party, where `dagster` and
+# integrations will be treated as third-party. This is appropriate for example code.
+extend = "../pyproject.toml"
+
+[tool.ruff.lint]
+# Examples are illustrative reference code, not production codebase — the
+# standards applied here are intentionally looser than in the wider repo.
+# TID251 (banned-api): examples may use bare yaml.safe_load / yaml.load
+# directly rather than routing through dagster_shared.yaml_utils helpers,
+# since example readers shouldn't need to know about internal helpers.
+extend-ignore = [
+    "TID251",
+    "TID252",
+]

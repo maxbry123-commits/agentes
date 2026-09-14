@@ -1,0 +1,73 @@
+[build-system]
+requires = ["hatchling>=1.19.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "project_fully_featured"
+version = "1!0+dev"
+requires-python = ">=3.10,<3.12"
+authors = [{name = "Dagster Labs", email = "hello@dagsterlabs.com"}]
+dependencies = [
+    "dagster",
+    "dagster-aws",
+    "dagster-dbt",
+    "dagster-pandas",
+    "dagster-pyspark",
+    "dagster-slack",
+    "dagster-postgres",
+    "dbt-duckdb",
+    "dbt-snowflake",
+    "duckdb!=0.3.3, <= 6.0.0",  # missing wheels
+    "pandas",
+    "pyarrow>=4.0.0",
+    "pyspark<4",
+    "requests",
+    "gcsfs",
+    "fsspec",
+    "s3fs",
+    "scipy",
+    "scikit-learn",
+    "sqlalchemy!=1.4.42",  # workaround for https://github.com/snowflakedb/snowflake-sqlalchemy/issues/350
+    "snowflake-sqlalchemy",
+]
+
+[project.optional-dependencies]
+dev = ["dagster-webserver", "pytest"]
+tests = ["mypy", "pylint", "pytest"]
+
+[tool.dagster]
+module_name = "project_fully_featured.definitions"
+code_location_name = "project_fully_featured"
+
+[dependency-groups]
+test = [
+    "dagster[test]",
+    "dagster-pipes",
+    "dagster-shared",
+    "dagster-webserver",
+    "dagster-graphql",
+    "dagster-pandas",
+    "dagster-spark",
+    "dagster-pyspark",
+    "dagster-dbt",
+    "dagster-slack",
+    "dagster-aws",
+    "dagster-postgres",
+]
+
+[tool.uv]
+exclude-newer = "48h"
+
+[tool.uv.sources]
+dagster = { path = "../../python_modules/dagster", editable = true }
+dagster-pipes = { path = "../../python_modules/dagster-pipes", editable = true }
+dagster-shared = { path = "../../python_modules/libraries/dagster-shared", editable = true }
+dagster-webserver = { path = "../../python_modules/dagster-webserver", editable = true }
+dagster-graphql = { path = "../../python_modules/dagster-graphql", editable = true }
+dagster-pandas = { path = "../../python_modules/libraries/dagster-pandas/", editable = true }
+dagster-spark = { path = "../../python_modules/libraries/dagster-spark/", editable = true }
+dagster-pyspark = { path = "../../python_modules/libraries/dagster-pyspark/", editable = true }
+dagster-dbt = { path = "../../python_modules/libraries/dagster-dbt/", editable = true }
+dagster-slack = { path = "../../python_modules/libraries/dagster-slack/", editable = true }
+dagster-aws = { path = "../../python_modules/libraries/dagster-aws/", editable = true }
+dagster-postgres = { path = "../../python_modules/libraries/dagster-postgres/", editable = true }

@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling>=1.19.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dbt-example"
+version = "1!0+dev"
+requires-python = ">=3.10,<3.15"
+dependencies = [
+    "dagster==1!0+dev",
+    "dagster-webserver==1!0+dev",
+    "dagster-airlift[core,in-airflow]==1!0+dev",
+    "dbt-duckdb",
+    "pandas",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.hatch.build.targets.wheel]
+bypass-selection = true
