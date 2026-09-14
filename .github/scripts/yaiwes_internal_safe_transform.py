@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Trigger internal 24-component transform run.
 from __future__ import annotations
 
 import ast
