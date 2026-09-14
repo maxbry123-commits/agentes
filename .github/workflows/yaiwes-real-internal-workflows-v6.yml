@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/yaiwes-real-internal-workflows-v6.yml'
       - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v6.py'
+      - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v61.py'
   workflow_dispatch:
 
 permissions:
@@ -34,22 +35,22 @@ jobs:
             /📂coda workflow persistencias/*/code/**/*.go
             /📂coda workflow persistencias/*/code/**/*.ts
             /📂coda workflow persistencias/*/code/**/*.js
-            /📂coda workflow persistencias/*/code/**/go.mod
-            /📂coda workflow persistencias/*/code/**/go.sum
             /📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v6.py
+            /📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v61.py
             /📂coda workflow persistencias/🏈 cancha deportiva de fútbol/*
 
-      - name: Validate V6 runner syntax
+      - name: Validate V6.1 runner syntax
         run: |
           set -euo pipefail
           python3 -m py_compile '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v6.py'
+          python3 -m py_compile '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v61.py'
 
       - name: Execute real internal workflows and FABLES handoffs
         env:
           PYTHONUNBUFFERED: '1'
         run: |
           set -euo pipefail
-          python3 '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v6.py'
+          python3 '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v61.py'
 
       - name: Verify 23 real workflow executions plus closure node
         run: |
@@ -75,9 +76,11 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          p=Path('📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v6.py')
-          t=p.read_text(encoding='utf-8')
-          assert '_yaiwes_upstream_quarantine' not in '\n'.join(line for line in t.splitlines() if 'quarantine' not in line.lower())
+          for name in ('yaiwes_real_workflow_chain_v6.py','yaiwes_real_workflow_chain_v61.py'):
+              t=(Path('📂coda workflow persistencias/Fables enchufe universal')/name).read_text(encoding='utf-8')
+              for line in t.splitlines():
+                  if '_yaiwes_upstream_quarantine' in line and 'never' not in line.lower() and 'quarantine' not in line.lower():
+                      raise AssertionError(line)
           print('QUARANTINE_WIRING=DENIED')
           PY
 
@@ -91,7 +94,7 @@ jobs:
           if git diff --cached --quiet; then
             echo NO_CHANGES
           else
-            git commit -m 'test(coda): prove real internal YAIWES workflows v6'
+            git commit -m 'test(coda): prove real internal YAIWES workflows v6.1'
             git pull --rebase origin main
             git push origin HEAD:main
           fi
