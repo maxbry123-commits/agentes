@@ -1,0 +1,46 @@
+{
+  "schema": "yaiwes.coda.persistence-link-manifest/v1",
+  "link_id": "01-DeepAudit",
+  "source_repo": "lintsinghua/DeepAudit",
+  "source_commit": "324133fe60b540327d182fbb8c800aa65a613349",
+  "source_tree_sha256": "bcb29183c573e82813cfc2df623d20b2ad412b0abe6788de9607675f866a5f4c",
+  "download_extract_verified": true,
+  "role": "planning-state-checkpoint-handoff",
+  "next_link": "02-CyberStrikeAI",
+  "preserved": [
+    "dynamic agent execution structure",
+    "parallel/dependency orchestration",
+    "graph controller",
+    "state tracking",
+    "persistence primitives",
+    "circuit breaker",
+    "event/message flow",
+    "reflection/collaboration"
+  ],
+  "quarantined_from_public_tool_surface": [
+    "sandbox execution",
+    "HTTP sandbox",
+    "vulnerability verification",
+    "injection test tools",
+    "fuzzing harness",
+    "generic code execution",
+    "external security scanners",
+    "smart scanning",
+    "vulnerability reporting"
+  ],
+  "safe_runtime": "code/coda_persistence/link.py",
+  "tests": {
+    "workflow_run_id": 34810287658,
+    "job_id": 103870094620,
+    "result": "PASS",
+    "passed": 4,
+    "failed": 0,
+    "checks": [
+      "checkpoint_roundtrip_and_handoff",
+      "resume_is_idempotent",
+      "forbidden_task_fails_closed_after_bounded_retries",
+      "state_path_is_not_controlled_by_raw_ids"
+    ]
+  },
+  "status": "TRANSFORMED_SAFE_LINK_PASS"
+}
