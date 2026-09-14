@@ -1,0 +1,64 @@
+{
+  "name": "ai-agentguard",
+  "version": "1.4.2",
+  "description": "Command-line security tool that protects systems from dangerous commands executed by AI coding agents like Claude Code, Cursor, and Kiro CLI",
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "bin": {
+    "agentguard": "./dist/bin/agentguard.js",
+    "agentguard-shell": "./dist/bin/agentguard-shell.js"
+  },
+  "scripts": {
+    "build": "./scripts/build.sh",
+    "dev": "tsc --watch",
+    "test": "vitest --run",
+    "test:watch": "vitest",
+    "test:unit": "vitest --run tests/unit",
+    "test:integration": "vitest --run tests/integration",
+    "test:vitest": "vitest --run",
+    "docker:test": "./scripts/docker-test.sh integration",
+    "docker:smoke": "./scripts/docker-test.sh smoke",
+    "docker:shell": "./scripts/docker-test.sh shell",
+    "docker:clean": "./scripts/docker-test.sh clean",
+    "smoke": "./scripts/smoke-test.sh",
+    "test:all": "npm run build && npm test && npm run smoke"
+  },
+  "keywords": [
+    "security",
+    "ai",
+    "agent",
+    "shell",
+    "command",
+    "protection",
+    "claude",
+    "cursor",
+    "kiro",
+    "opencode",
+    "guardrails"
+  ],
+  "author": "krishkumar",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/krishkumar/agentguard.git"
+  },
+  "homepage": "https://github.com/krishkumar/agentguard#readme",
+  "bugs": {
+    "url": "https://github.com/krishkumar/agentguard/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "fast-check": "^4.3.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0"
+  },
+  "dependencies": {
+    "build": "^0.1.4"
+  }
+}

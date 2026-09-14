@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chmod:*)",
+      "Bash(npm run build:*)",
+      "Bash(/opt/homebrew/bin/npm run build)",
+      "Bash(npm run test:unit:*)",
+      "Bash(/opt/homebrew/bin/npm run test:unit)",
+      "Bash(docker --version:*)",
+      "Bash(source ~/.nvm/nvm.sh)",
+      "Bash(nvm use node)",
+      "Bash(npm test:*)",
+      "Bash(node -e:*)",
+      "Bash(./scripts/docker-test.sh:*)",
+      "Bash(npm run test:integration:*)",
+      "Bash(node:*)",
+      "Bash(/bin/ls:*)",
+      "Bash(AGENTGUARD_REAL_BASH=/bin/bash node dist/bin/wrappers/bash -c \"./nuketown.sh\")",
+      "Bash(cat:*)",
+      "Bash(echo:*)",
+      "WebFetch(domain:raw.githubusercontent.com)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

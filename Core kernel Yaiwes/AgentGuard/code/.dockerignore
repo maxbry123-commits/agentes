@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Build output (we rebuild in container)
+dist/
+
+# Test artifacts
+coverage/
+test-results/
+.nyc_output/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Misc
+*.log
+*.tmp
