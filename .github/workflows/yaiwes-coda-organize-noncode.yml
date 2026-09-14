@@ -1,0 +1,113 @@
+name: YAIWES CODA Organize Non-Code
+
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-coda-organize-noncode.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-coda-organize-noncode
+  cancel-in-progress: false
+
+jobs:
+  organize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          lfs: false
+
+      - name: Move project-level non-code into football field
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='📂coda workflow persistencias'
+          FIELD="$ROOT/🏈 cancha deportiva de fútbol"
+          mkdir -p "$FIELD"
+
+          # Keep downloaded component source trees intact. Only centralize project-level
+          # docs/control manifests so vendor layouts are not broken.
+          while IFS= read -r -d '' f; do
+            base="$(basename "$f")"
+            git mv "$f" "$FIELD/$base"
+          done < <(find "$ROOT" -maxdepth 1 -type f \( -name '*.md' -o -name '*.json' -o -name '*.txt' -o -name '*.yaml' -o -name '*.yml' \) -print0)
+
+          if [ -f "$ROOT/Fables enchufe universal/UPLOAD-HERE.md" ]; then
+            git mv "$ROOT/Fables enchufe universal/UPLOAD-HERE.md" "$FIELD/FABLES-UPLOAD-HERE.md"
+          fi
+
+      - name: Rewire CODA24 paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/yaiwes-coda24-download-extract.yml')
+          s=p.read_text()
+          root='📂coda workflow persistencias/'
+          field='📂coda workflow persistencias/🏈 cancha deportiva de fútbol/'
+          for name in (
+              'CODA24-DOWNLOAD-QUEUE-20260914.json',
+              'CODA24-DOWNLOAD-STATE-20260914.json',
+              'CODA24-DOWNLOAD-INDEX-20260914.md',
+          ):
+              s=s.replace(root+name, field+name)
+          # Do not auto-rerun the broken 24-wide queue on this organizational commit.
+          # Keep explicit dispatch until PentAGI special-file gap is resolved.
+          marker="on:\n  push:\n    paths:\n      - '.github/workflows/yaiwes-coda24-download-extract.yml'\n      - '📂coda workflow persistencias/🏈 cancha deportiva de fútbol/CODA24-DOWNLOAD-QUEUE-20260914.json'\n  workflow_dispatch:\n"
+          if marker in s:
+              s=s.replace(marker, "on:\n  workflow_dispatch:\n")
+          p.write_text(s)
+          PY
+
+      - name: Verify organization
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='📂coda workflow persistencias'
+          FIELD="$ROOT/🏈 cancha deportiva de fútbol"
+          test -d "$FIELD"
+          test -f "$FIELD/CODA24-DOWNLOAD-QUEUE-20260914.json"
+          test -f "$FIELD/CODA24-DOWNLOAD-STATE-20260914.json"
+          test -f "$FIELD/CODA24-DOWNLOAD-INDEX-20260914.md"
+          test -f "$FIELD/CODA24-CHAIN.json"
+          test -f "$FIELD/CODA24-TRANSFORMATION-CONTRACT.json"
+          test -f "$FIELD/README.md"
+          if find "$ROOT" -maxdepth 1 -type f \( -name '*.md' -o -name '*.json' -o -name '*.txt' -o -name '*.yaml' -o -name '*.yml' \) | grep -q .; then
+            echo 'ROOT_NONCODE_REMAINS'
+            find "$ROOT" -maxdepth 1 -type f
+            exit 1
+          fi
+          grep -Fq "$FIELD/CODA24-DOWNLOAD-QUEUE-20260914.json" .github/workflows/yaiwes-coda24-download-extract.yml
+          grep -Fq "$FIELD/CODA24-DOWNLOAD-STATE-20260914.json" .github/workflows/yaiwes-coda24-download-extract.yml
+          grep -Fq "$FIELD/CODA24-DOWNLOAD-INDEX-20260914.md" .github/workflows/yaiwes-coda24-download-extract.yml
+          echo 'CODA_NONCODE_ORGANIZATION=PASS'
+
+      - name: Commit organization
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'NO_CHANGES'
+            exit 0
+          fi
+          git commit -m 'chore(coda): centralize non-code in football field'
+          ok=0
+          for attempt in 1 2 3 4; do
+            git fetch origin main
+            if git rebase origin/main && git push origin HEAD:main; then ok=1; break; fi
+            git rebase --abort || true
+            sleep $((attempt * 3))
+          done
+          test "$ok" -eq 1
