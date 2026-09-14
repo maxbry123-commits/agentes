@@ -1,0 +1,1819 @@
+/* WPDS design tokens (the canonical --wpds-* CSS variables). */
+@import '@wordpress/theme/design-tokens.css';
+
+/* Page-level horizontal padding. Defined as a single CSS variable so every
+   page wrapper resolves to the same gutter — see globals.css commentary in
+   marketing-prototype. Drops to 16px on mobile. */
+:root {
+  --wa-page-pad-x: 48px;
+}
+@media (max-width: 767px) {
+  :root {
+    --wa-page-pad-x: 16px;
+  }
+}
+
+/* Documented persona-color exception — see CLAUDE.md. The only non-WPDS color
+   tokens allowed in this codebase. Used on agent avatar squares in the sidebar
+   and the kind pill on cards. */
+:root {
+  --wa-persona-mk-bg: #e3899d;
+  --wa-persona-mk-ink: #be185d;
+  --wa-persona-pr-bg: #a1e7e3;
+  --wa-persona-pr-ink: #1d4ed8;
+  --wa-persona-in-bg: #ffe4ad;
+  --wa-persona-in-ink: #b45309;
+  --wa-persona-ac-bg: #9ac3e0;
+  --wa-persona-ac-ink: #15803d;
+  --wa-persona-rp-bg: #c892bc;
+  --wa-persona-rp-ink: #6d28d9;
+  --wa-persona-ss-bg: #f7cfaf;
+  --wa-persona-ss-ink: #0f766e;
+  --wa-persona-cs-bg: #e5e5e5;
+  --wa-persona-cs-ink: #ffffff;
+
+  /* @wordpress/ui Dialog/AlertDialog z-index defaults to `initial` (= auto).
+   * App-level chrome uses z-index up to 61 — without this, modals stack
+   * behind the page content. Set above the app's highest layer. */
+  --wp-ui-dialog-z-index: 1000;
+
+  /* Left-nav width, shared by the sidebar and the snackbar host so the
+   * snackbar can center within the content canvas (right of the nav). */
+  --wa-sidebar-width: 280px;
+}
+
+/* Host for the post-action confirmation Snackbar (write / revert / dismiss /
+ * batch). @wordpress/components Snackbar doesn't position itself when used
+ * standalone outside SnackbarList, so the host anchors it. It's centered
+ * within the content canvas — the area right of the sticky sidebar, NOT the
+ * full viewport — and sits above the app's highest z-index layer (61).
+ * pointer-events are off on the host so it doesn't trap clicks across the
+ * full content width; the snackbar itself re-enables them. */
+.wa-snackbar-host {
+  position: fixed;
+  left: var(--wa-sidebar-width);
+  right: 0;
+  bottom: var(--wpds-dimension-padding-2xl, 24px);
+  display: flex;
+  justify-content: center;
+  z-index: 1100;
+  pointer-events: none;
+}
+.wa-snackbar-host > * {
+  pointer-events: auto;
+}
+
+/* On the proposal/batch canvas the snackbar floats just above the fixed
+ * action bar. ActionBar publishes its rendered height to
+ * --wa-action-bar-height (token paddings are breakpoint-variable, so we
+ * measure rather than hardcode); the fallback covers the brief window before
+ * the measurement lands. */
+.wa-snackbar-host--above-action-bar {
+  bottom: calc(var(--wa-action-bar-height, 64px) + var(--wpds-dimension-gap-md));
+}
+
+/* Below 768px the sidebar collapses to an off-canvas drawer, so the content
+ * canvas spans the full viewport and the snackbar centers across all of it. */
+@media (max-width: 768px) {
+  .wa-snackbar-host {
+    left: 0;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--wpds-color-background-surface-neutral-weak);
+  color: var(--wpds-color-foreground-content-neutral);
+  font-family: var(--wpds-typography-font-family-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Sidebar nav items — sized for the WPDS admin-ui dark navigation pattern:
+   slightly larger icons (24px, set inline in LeftNav.tsx) and larger label
+   text (md), tightly stacked vertically (sm padding = 8px) to match the
+   i3.2 Figma rhythm. */
+.wa-navlink {
+  display: flex;
+  align-items: center;
+  gap: var(--wpds-dimension-gap-md);
+  padding: var(--wpds-dimension-padding-xs) var(--wpds-dimension-padding-md);
+  border-radius: var(--wpds-border-radius-md);
+  font-family: var(--wpds-typography-font-family-body);
+  font-size: var(--wpds-typography-font-size-md);
+  color: var(--wpds-color-foreground-content-neutral);
+  cursor: var(--wpds-cursor-control);
+  transition: background-color 0.1s;
+}
+.wa-navlink:hover {
+  background: var(--wpds-color-background-interactive-neutral-weak-active);
+}
+.wa-navlink--active {
+  background: var(--wpds-color-background-surface-info-weak);
+  color: var(--wpds-color-foreground-interactive-brand);
+  font-weight: var(--wpds-typography-font-weight-medium);
+}
+.wa-navlink--paused {
+  color: var(--wpds-color-foreground-content-neutral-weak);
+}
+
+.wa-eyebrow {
+  font-size: var(--wpds-typography-font-size-xs);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--wpds-color-foreground-content-neutral-weak);
+}
+
+.wa-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.wa-mono {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Detail-shell layout: a fixed-height column that pins the ActionBar to the
+   viewport bottom. The outer is height: 100vh (no window scroll); the Page
+   inside grows via flex:1 so its `.content` (overflow: auto) becomes the
+   scroll container; the ActionBar is the last sibling and sits at the very
+   bottom of the column = viewport bottom, regardless of content length. */
+.wa-detail-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+/* Force-grow the Page inside the detail shell. WPDS Page defaults to
+   `height: 100%`, which collapses to content-height when its parent has
+   minHeight (no explicit height). The `>` selector + the wrapper class give
+   us the (0,2,0) specificity needed to beat the (0,1,0) hashed module
+   class. */
+.wa-detail-shell > .wa-detail-shell-page {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
+/* Marketing / Pricing detail title row — thumbnail slot on the left, title
+   and breadcrumb on the right. Thumbnail visual + sizing live in
+   ProductThumbnail (.wa-product-thumb*); this rule only owns the row layout. */
+.wa-detail-title-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--wpds-dimension-gap-lg);
+  margin-bottom: var(--wpds-dimension-gap-xl);
+}
+.wa-detail-title-row > .wa-detail-title-text {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Sub-page content wrapper. Constrains detail-view content to 1100px and
+   centers it inside the Page's `.content.has-padding` container, matching
+   the 533:4193 Figma layout. The Page header (with breadcrumbs + actions)
+   stays full-width above; only the body is constrained. */
+.wa-subpage-content {
+  max-width: 1100px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+  /* Page hasPadding gives 16px (gap-lg) of top + bottom padding; we add
+     gap-lg again on each axis so the persona eyebrow sits 32px (2xl) below
+     the page header and the last card has 32px of breathing room above the
+     sticky ActionBar. Matches the 797:20806 Figma rhythm and applies to
+     every detail-view template. */
+  padding-top: var(--wpds-dimension-gap-lg);
+  padding-bottom: var(--wpds-dimension-gap-lg);
+}
+
+/* Breadcrumbs — mirrors @wordpress/admin-ui Breadcrumbs styling. The
+   component lives in ui/src/components/Breadcrumbs.tsx and renders inside
+   Page's `breadcrumbs` slot. */
+.wa-breadcrumbs {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.wa-breadcrumbs > li {
+  flex-shrink: 0;
+}
+.wa-breadcrumbs > li:last-child {
+  flex-shrink: 1;
+  min-width: 0;
+}
+.wa-breadcrumbs__current {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0;
+}
+.wa-breadcrumbs__separator {
+  color: var(--wpds-color-stroke-surface-neutral);
+  margin: 0 var(--wpds-dimension-gap-sm);
+  user-select: none;
+}
+
+/* Bottom action bar on IssueDetail / BatchReview. Lives as the last child
+   of `.wa-detail-shell` — naturally pinned to viewport bottom by flex
+   layout. */
+.wa-action-bar {
+  flex: none;
+  background: var(--wpds-color-background-surface-neutral);
+  border-top: var(--wpds-border-width-sm) solid var(--wpds-color-stroke-surface-neutral);
+  box-shadow: var(--wpds-elevation-md);
+  /* Horizontal padding matches WPDS Page's `.content.has-padding` rule
+     (--wpds-dimension-padding-2xl) so the ActionBar's content lines up with
+     the page title and the body content above it. */
+  padding: var(--wpds-dimension-padding-md) var(--wpds-dimension-padding-2xl);
+  z-index: 10;
+}
+
+/* Score bars on KPI cards. */
+.wa-score-bar {
+  height: 3px;
+  border-radius: var(--wpds-border-radius-sm);
+  background: var(--wpds-color-background-surface-neutral-strong);
+  overflow: hidden;
+}
+.wa-score-bar > div {
+  height: 100%;
+  border-radius: var(--wpds-border-radius-sm);
+  background: var(--bar-fill, var(--wpds-color-background-interactive-brand-strong));
+}
+/* Invisible spacer that reserves the bar's slot on KPI tiles that have no
+   score — keeps every tile's hint text on the same baseline regardless of
+   which tiles carry a bar. */
+.wa-score-bar--placeholder {
+  background: transparent;
+}
+
+.wa-variant-card {
+  position: relative;
+  cursor: var(--wpds-cursor-control);
+  transition: box-shadow 0.14s, border-color 0.14s;
+}
+.wa-variant-card--selected {
+  border-color: var(--wpds-color-stroke-interactive-brand) !important;
+  box-shadow: 0 0 0 3px var(--wpds-color-background-surface-info-weak);
+}
+
+/* Pricing-batch product card — expandable row inside the batch review. The
+   header is the only interactive surface; click anywhere on it to toggle.
+   Collapsed = ~52px; expanded adds rationale + sources beneath. */
+.wa-batch-product-card {
+  position: relative;
+  cursor: var(--wpds-cursor-control);
+  transition: box-shadow 0.14s, border-color 0.14s;
+}
+.wa-batch-product-card__header {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--wpds-dimension-padding-md);
+  background: transparent;
+  border: none;
+  cursor: var(--wpds-cursor-control);
+}
+.wa-batch-product-card__header:focus-visible {
+  outline: var(--wpds-border-width-focus) solid var(--wpds-color-stroke-focus);
+  outline-offset: 2px;
+}
+.wa-batch-product-card--expanded {
+  border-color: var(--wpds-color-stroke-surface-neutral-strong) !important;
+}
+
+/* "Agent pick" chip rendered inline at the top of the recommended variant
+   card — same shape as the prototype. */
+.wa-agent-pick {
+  display: inline-block;
+  font-size: var(--wpds-typography-font-size-xs);
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  background: var(--wa-persona-mk-ink);
+  color: var(--wpds-color-foreground-interactive-brand-strong);
+  border-radius: var(--wpds-border-radius-sm);
+  text-transform: uppercase;
+  font-weight: var(--wpds-typography-font-weight-medium);
+  margin-bottom: var(--wpds-dimension-gap-sm);
+}
+
+/* Brand-voice / Yoast checklist row — see globals.css commentary in
+   marketing-prototype for the why. */
+.wa-check-row {
+  display: flex;
+  flex-direction: row;
+  gap: var(--wpds-dimension-gap-sm);
+  align-items: baseline;
+}
+.wa-check-row > .wa-check-mark {
+  flex: none;
+  color: var(--wpds-color-foreground-content-success);
+  font-weight: var(--wpds-typography-font-weight-medium);
+}
+
+/* ---------- Responsive ---------- */
+/* Mobile breakpoint (<768px): sidebar becomes an off-canvas drawer triggered
+   by a hamburger in a top bar. Tablet breakpoint (<1024px): IssueDetail's
+   two-column body collapses to a single column so the right rail drops below
+   the main content. WPDS Stack uses inline flex props that we can't override
+   with media queries, so the responsive layouts use plain divs with these
+   class names instead. */
+
+/* Dark sidebar. WPDS doesn't ship a true inverse-surface token, so the
+   sidebar borrows --wpds-color-background-interactive-neutral-strong (the dark color
+   WPDS uses for its primary-button background). Mild semantic stretch (a
+   button bg used as a surface), but it keeps everything inside WPDS — swap
+   to a proper inverse token if WPDS adds one. See CLAUDE.md. */
+.wa-sidebar {
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  flex: none;
+  width: var(--wa-sidebar-width);
+  /* CUSTOM: near-black surface for the left nav. WPDS has no dark-brand
+     surface token that matches; documented in DESIGN.md as a sidebar-only
+     exception alongside the persona colors. Hex matches the i3.2 Figma
+     (#1e1e1e — WPDS's own gray-900 / interactive-neutral-strong value). */
+  background: #1e1e1e;
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+}
+.wa-sidebar .wa-eyebrow {
+  color: rgba(255, 255, 255, 0.5);
+}
+.wa-sidebar .wa-navlink {
+  color: rgba(255, 255, 255, 0.78);
+}
+/* Hover/active read as translucent indigo on the near-black surface,
+   matching the i3.2 Figma's nav-link treatment (rgba(56,88,233,0.12) is
+   12%-opacity --wpds-color-foreground-interactive-brand on the sidebar bg). */
+.wa-sidebar .wa-navlink:hover {
+  background: rgba(56, 88, 233, 0.12);
+}
+.wa-sidebar .wa-navlink--active {
+  background: rgba(56, 88, 233, 0.12);
+  color: #ffffff;
+}
+.wa-sidebar .wa-navlink--paused {
+  color: rgba(255, 255, 255, 0.36);
+  cursor: default;
+}
+.wa-sidebar .wa-navlink--paused:hover {
+  background: transparent;
+}
+/* @wordpress/icons SVGs ship without a default fill, so they'd render
+   black against the dark sidebar bg. Inherit currentColor so each link's
+   icon matches its label — selected stays white, the rest pick up the
+   muted gray text color. */
+.wa-sidebar .wa-navlink svg {
+  fill: currentColor;
+}
+/* CUSTOM: WPDS Badge ships only filled semantic intents (is-*-intent), none of
+   which read correctly on the near-black sidebar. The CIAB WooPayments Figma
+   (node 778-19640) specifies an outline-only count badge here: transparent
+   fill, hairline stroke, white count. We keep the WPDS Badge component
+   (intent="none" for its border + structure) and re-skin those three
+   properties. Unlayered, so it wins over @layer wp-ui-components without
+   !important; scoped to .wa-sidebar so light-surface badges are untouched.
+   Documented in DESIGN.md (persona/sidebar dark-surface exception). */
+.wa-sidebar .wa-nav-badge {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.24);
+  color: #ffffff;
+}
+
+/* WPDS @wordpress/components Button variant="link" defaults to
+   `text-decoration: underline`. WooAgent text links read as links via
+   brand color + the arrow-up-right icon; no underline needed. */
+.components-button.is-link {
+  text-decoration: none;
+}
+.wa-sidebar-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: var(--wpds-dimension-gap-xs) var(--wpds-dimension-padding-md);
+}
+
+/* CUSTOM: footer toggle that reveals the Connection popover. (a) WPDS Button
+   has no dark-surface variant matching the sidebar; the toggle has to live
+   on the same #1e1e1e background as the rest of the sidebar chrome.
+   (b) Native <button> reset + hover/focus parity with the nav links above.
+   (c) Follow-up: collapse into a WPDS Button variant when one ships for
+   dark surfaces. */
+/* WPDS Dropdown wraps the renderToggle in a .components-dropdown div that
+   defaults to inline-block. In the sidebar footer we want the toggle (and
+   therefore its hover/focus background) to span the full sidebar width,
+   so force the wrapper to block-level. Scoped to .wa-sidebar so other
+   Dropdown usages elsewhere keep their default sizing. */
+.wa-sidebar .components-dropdown {
+  display: block;
+}
+.wa-sidebar-footer-toggle {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  padding: var(--wpds-dimension-padding-md);
+  font: inherit;
+}
+.wa-sidebar-footer-toggle:hover,
+.wa-sidebar-footer-toggle:focus-visible {
+  background: rgba(56, 88, 233, 0.12);
+  outline: none;
+}
+
+.wa-mobile-bar {
+  display: none;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  align-items: center;
+  gap: var(--wpds-dimension-gap-sm);
+  padding: var(--wpds-dimension-padding-sm) var(--wpds-dimension-padding-md);
+  background: var(--wpds-color-background-surface-neutral);
+  border-bottom:
+    var(--wpds-border-width-sm) solid var(--wpds-color-stroke-surface-neutral-weak);
+}
+
+.wa-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  border-radius: var(--wpds-border-radius-md);
+  cursor: var(--wpds-cursor-control);
+  color: var(--wpds-color-foreground-content-neutral);
+}
+.wa-icon-btn:hover {
+  background: var(--wpds-color-background-interactive-neutral-weak-active);
+}
+
+.wa-sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 40;
+}
+
+/* Persona avatar — used in the page eyebrow, card bottom-right, and any
+   spot that needs the small persona dot. Sizes: xs (14), sm (18), md (24). */
+.wa-persona-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border-radius: 50%;
+  font-weight: var(--wpds-typography-font-weight-medium);
+  letter-spacing: 0;
+  user-select: none;
+}
+/* CUSTOM: persona-avatar size variants use a pixel-scaled font-size that
+   tracks the container height (xs/sm/md = 14/18/24 px). (a) WPDS body
+   type tokens (xs=11px is the smallest) don't go small enough for the
+   xs/sm avatars without breaking the monogram-fits-the-circle proportion.
+   (b) Inline px tied to height/width. (c) Follow-up: revisit if WPDS
+   adds a 2xs body size or an avatar-monogram component. */
+.wa-persona-avatar--xs { height: 14px; width: 14px; font-size: 7px; }
+.wa-persona-avatar--sm { height: 18px; width: 18px; font-size: 8px; }
+.wa-persona-avatar--md { height: 24px; width: 24px; font-size: 10px; }
+/* Image variant: artwork is self-contained, so drop the colored background
+   and let the PNG fill the circle. object-fit keeps the 48px source square
+   aspect-correct when rendered into the 14/18/24px circles. */
+.wa-persona-avatar--image {
+  background: none;
+  object-fit: cover;
+}
+
+/* Top bar — search + Ask agent button. Sticky beneath the global header
+   on desktop; sits below the mobile bar when the drawer is closed. */
+.wa-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--wpds-dimension-gap-md);
+  padding: var(--wpds-dimension-padding-md) var(--wa-page-pad-x);
+  background: var(--wpds-color-background-surface-neutral);
+  border-bottom:
+    var(--wpds-border-width-sm) solid var(--wpds-color-stroke-surface-neutral-weak);
+}
+.wa-topbar__search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--wpds-dimension-gap-xs);
+  width: 360px;
+  max-width: 100%;
+  padding: 6px var(--wpds-dimension-padding-sm);
+  background: var(--wpds-color-background-surface-neutral-weak);
+  border: var(--wpds-border-width-sm) solid var(--wpds-color-stroke-surface-neutral-weak);
+  border-radius: var(--wpds-border-radius-md);
+  color: var(--wpds-color-foreground-content-neutral-weak);
+  font-size: var(--wpds-typography-font-size-sm);
+}
+.wa-topbar__search input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font: inherit;
+  color: var(--wpds-color-foreground-content-neutral);
+}
+.wa-topbar__search input::placeholder {
+  color: var(--wpds-color-foreground-content-neutral-weak);
+}
+
+/* Ask Agent drawer — right-anchored panel, command-palette flavored. */
+.wa-drawer-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.32);
+  z-index: 60;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+}
+.wa-drawer-scrim.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+.wa-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 420px;
+  max-width: 100vw;
+  background: var(--wpds-color-background-surface-neutral);
+  box-shadow: var(--wpds-elevation-lg);
+  z-index: 61;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.18s ease;
+}
+.wa-drawer.is-open {
+  transform: translateX(0);
+}
+.wa-drawer__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--wpds-dimension-padding-md);
+  border-bottom: var(--wpds-border-width-sm) solid var(--wpds-color-stroke-surface-neutral-weak);
+}
+.wa-drawer__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--wpds-dimension-padding-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--wpds-dimension-gap-md);
+}
+.wa-drawer__footer {
+  padding: var(--wpds-dimension-padding-sm) var(--wpds-dimension-padding-md);
+  border-top: var(--wpds-border-width-sm) solid var(--wpds-color-stroke-surface-neutral-weak);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wpds-dimension-gap-md);
+  font-size: var(--wpds-typography-font-size-xs);
+  color: var(--wpds-color-foreground-content-neutral-weak);
+}
+
+.wa-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: var(--wpds-border-radius-sm);
+  background: var(--wpds-color-background-surface-neutral-weak);
+  border: var(--wpds-border-width-sm) solid var(--wpds-color-stroke-surface-neutral-weak);
+  font-size: var(--wpds-typography-font-size-xs);
+  color: var(--wpds-color-foreground-content-neutral);
+}
+
+.wa-suggestion-row {
+  display: flex;
+  align-items: center;
+  gap: var(--wpds-dimension-gap-sm);
+  padding: var(--wpds-dimension-padding-sm) var(--wpds-dimension-padding-md);
+  border: var(--wpds-border-width-sm) solid var(--wpds-color-stroke-surface-neutral-weak);
+  border-bottom: none;
+  background: var(--wpds-color-background-surface-neutral);
+  cursor: var(--wpds-cursor-control);
+  font-size: var(--wpds-typography-font-size-sm);
+}
+.wa-suggestion-row:first-of-type { border-top-left-radius: var(--wpds-border-radius-md); border-top-right-radius: var(--wpds-border-radius-md); }
+.wa-suggestion-row:last-of-type {
+  border-bottom: var(--wpds-border-width-sm) solid var(--wpds-color-stroke-surface-neutral-weak);
+  border-bottom-left-radius: var(--wpds-border-radius-md);
+  border-bottom-right-radius: var(--wpds-border-radius-md);
+}
+.wa-suggestion-row--highlight {
+  background: var(--wpds-color-background-surface-info-weak);
+  color: var(--wpds-color-foreground-interactive-brand);
+}
+.wa-suggestion-row__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wa-suggestion-row__time {
+  font-size: var(--wpds-typography-font-size-xs);
+  color: var(--wpds-color-foreground-content-neutral-weak);
+  flex: none;
+}
+
+/* ---------- Ask Agent drawer — chat surface (DSGWOO-1348) ---------- */
+
+/* Wrapper for the agent picker strip at the top of the drawer body.
+   Hosts the WPDS Dropdown that switches between live agents. */
+.wa-chat-picker {
+  display: flex;
+  align-items: center;
+  padding: var(--wpds-dimension-padding-sm) var(--wpds-dimension-padding-md);
+  border-bottom: var(--wpds-border-width-sm) solid var(--wpds-color-stroke-surface-neutral-weak);
+  background: var(--wpds-color-background-surface-neutral-weak);
+}
+.wa-chat-picker__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wpds-dimension-gap-sm);
+  padding: var(--wpds-dimension-padding-xs) var(--wpds-dimension-padding-sm);
+  background: transparent;
+  border: var(--wpds-border-width-sm) solid transparent;
+  border-radius: var(--wpds-border-radius-sm);
+  cursor: pointer;
+  color: var(--wpds-color-foreground-content-neutral);
+  font-family: var(--wpds-typography-font-family-body);
+}
+.wa-chat-picker__toggle:hover {
+  background: var(--wpds-color-background-interactive-neutral-weak-active);
+}
+.wa-chat-picker__toggle:focus-visible {
+  outline: 2px solid var(--wpds-color-stroke-focus);
+  outline-offset: 2px;
+}
+.wa-chat-picker__name {
+  font-size: var(--wpds-typography-font-size-sm);
+  font-weight: var(--wpds-typography-font-weight-medium);
+}
+.wa-chat-picker__menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  padding: var(--wpds-dimension-padding-xs);
+}
+.wa-chat-picker__option {
+  display: flex;
+  align-items: center;
+  gap: var(--wpds-dimension-gap-sm);
+  padding: var(--wpds-dimension-padding-sm);
+  background: transparent;
+  border: 0;
+  border-radius: var(--wpds-border-radius-sm);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--wpds-typography-font-family-body);
+  font-size: var(--wpds-typography-font-size-sm);
+  color: var(--wpds-color-foreground-content-neutral);
+}
+.wa-chat-picker__option:hover:not(:disabled) {
+  background: var(--wpds-color-background-interactive-neutral-weak-active);
+}
+.wa-chat-picker__option.is-active {
+  background: var(--wpds-color-background-interactive-neutral-weak-active);
+  font-weight: var(--wpds-typography-font-weight-medium);
+}
+.wa-chat-picker__option.is-disabled,
+.wa-chat-picker__option:disabled {
+  cursor: not-allowed;
+  color: var(--wpds-color-foreground-content-neutral-weak);
+}
+.wa-chat-picker__option.is-disabled .wa-persona-avatar,
+.wa-chat-picker__option:disabled .wa-persona-avatar {
+  opacity: 0.45;
+}
+.wa-chat-picker__option-avatar {
+  position: relative;
+  display: inline-flex;
+}
+.wa-chat-picker__unread-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--wpds-color-background-interactive-brand-strong);
+  border: 2px solid var(--wpds-color-background-surface-neutral-weak);
+}
+.wa-chat-picker__option-label {
+  flex: 1 1 auto;
+}
+.wa-chat-picker__option-hint {
+  font-size: var(--wpds-typography-font-size-xs);
+  color: var(--wpds-color-foreground-content-neutral-weak);
+}
+
+/* Inner chat (Messages + ChatInput) is composed from
+   @automattic/agenttic-ui — the package scopes its styles under
+   .agenttic and exposes CSS custom properties. We re-point those at
+   WPDS tokens so the chat reads as WooAgent rather than Big Sky. The
+   .wa-chat-stack shim makes the embedded container claim the remaining
+   drawer height so Messages scrolls and Input pins to the bottom. */
+.wa-drawer .agenttic {
+  --color-background: var(--wpds-color-background-surface-neutral);
+  --color-foreground: var(--wpds-color-foreground-content-neutral);
+  --color-popover: var(--wpds-color-background-surface-neutral);
+  --color-popover-muted: var(--wpds-color-background-surface-neutral-weak);
+  --color-primary: var(--wpds-color-background-interactive-brand-strong);
+  /* CUSTOM: hardcoded #ffffff. (a) WPDS has no "foreground on brand-strong
+     background" token — the foreground-interactive-brand-* family is for text
+     that *is* brand-colored, not text sitting on top of it. (b) Agenttic needs
+     a concrete color for label text inside its primary button. (c) Revisit if
+     WPDS adds an on-* foreground role; see DESIGN.md Tokens. */
+  --color-primary-foreground: #ffffff;
+  --color-muted: var(--wpds-color-background-surface-info-weak);
+  --color-muted-foreground: var(--wpds-color-foreground-content-neutral-weak);
+  --color-ring: var(--wpds-color-background-interactive-brand-strong);
+  --color-success-background: var(--wpds-color-background-surface-success-weak);
+  --color-warning-background: var(--wpds-color-background-surface-warning-weak);
+  --color-error-background: var(--wpds-color-background-surface-error-weak);
+  --color-error: var(--wpds-color-foreground-content-error);
+  --color-link: var(--wpds-color-foreground-interactive-brand, var(--wpds-color-background-interactive-brand-strong));
+  --font-sans: var(--wpds-typography-font-family-body);
+  /* Re-point Agenttic's type scale at WPDS typography tokens so the chat
+     reads in the app's voice, not Big Sky's. Mapped by semantic role:
+     base → body-md (the body size used elsewhere), sm → sm, xs → xs, each
+     with its matching WPDS line-height. Agenttic's -.01em tracking is reset
+     to normal (WPDS has no negative tracking). Weights collapse to the WPDS
+     scale: medium/semibold/bold all resolve to `medium` — WPDS exposes only
+     regular + medium, and the operator UI renders no bold anywhere, so the
+     chat matches (see DESIGN.md Typography). The remaining hardcoded sizes
+     in Agenttic live only in its ImageUploader and chart sub-components,
+     which this drawer doesn't surface. */
+  --text-base: var(--wpds-typography-font-size-md);
+  --text-base--line-height: var(--wpds-typography-line-height-md);
+  --text-base--tracking: normal;
+  --text-sm: var(--wpds-typography-font-size-sm);
+  --text-sm--line-height: var(--wpds-typography-line-height-sm);
+  --text-xs: var(--wpds-typography-font-size-xs);
+  --text-xs--line-height: var(--wpds-typography-line-height-xs);
+  --font-weight-medium: var(--wpds-typography-font-weight-medium);
+  --font-weight-semibold: var(--wpds-typography-font-weight-medium);
+  --font-weight-bold: var(--wpds-typography-font-weight-medium);
+}
+.wa-chat-stack {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* Gap between the agent picker above and the chat content (suggestions /
+     messages) below — 24px = padding-2xl at the standard density. */
+  margin-top: var(--wpds-dimension-padding-2xl);
+}
+.wa-chat-stack [data-slot="messages"] {
+  padding-left: var(--wpds-dimension-padding-md);
+  padding-right: var(--wpds-dimension-padding-md);
+}
+.wa-chat-stack [data-slot="chat-input"] {
+  padding: var(--wpds-dimension-padding-sm) var(--wpds-dimension-padding-md);
+  /* 24px gap (padding-2xl at standard density) above the composer's top
+     border, separating the chat content from the input divider. */
+  margin-top: var(--wpds-dimension-padding-2xl);
+  border-top: var(--wpds-border-width-sm) solid var(--wpds-color-stroke-surface-neutral-weak);
+}
+
+/* Row of reference + dispatch chips that hangs off an assistant turn.
+   Lives inside the Agenttic message bubble as a `type: 'component'`
+   content block. */
+.wa-chat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wpds-dimension-gap-xs);
+  margin-top: var(--wpds-dimension-gap-xs);
+}
+
+/* Inline-flex pill — reference + dispatch share the chrome. */
+.wa-ref-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wpds-dimension-gap-xs);
+  padding: 4px var(--wpds-dimension-padding-sm);
+  /* CUSTOM: hardcoded 9999px. (a) The WPDS radius scale tops out at `xl`
+     (app-shell surfaces) — there's no pill/full token. (b) A fully-rounded
+     pill is the chip shape from Figma. (c) See DESIGN.md Tokens. */
+  border-radius: 9999px;
+  background: var(--wpds-color-background-surface-neutral-weak);
+  border: var(--wpds-border-width-sm) solid var(--wpds-color-stroke-surface-neutral-weak);
+  color: var(--wpds-color-foreground-content-neutral);
+  font-size: var(--wpds-typography-font-size-xs);
+  cursor: var(--wpds-cursor-control, pointer);
+  max-width: 100%;
+}
+.wa-ref-chip:hover {
+  background: var(--wpds-color-background-surface-info-weak);
+  border-color: var(--wpds-color-stroke-interactive-brand);
+}
+.wa-ref-chip__kind {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--wpds-color-foreground-content-neutral-weak);
+  font-size: 10px;
+}
+.wa-ref-chip__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}
+.wa-ref-chip--working {
+  background: var(--wpds-color-background-surface-info-weak);
+}
+.wa-ref-chip--failed {
+  background: var(--wpds-color-background-surface-error-weak);
+  color: var(--wpds-color-foreground-content-error);
+}
+.wa-ref-chip__spinner {
+  display: inline-flex;
+  width: 12px;
+  height: 12px;
+  align-items: center;
+  justify-content: center;
+}
+.wa-ref-chip__spinner > * {
+  width: 12px !important;
+  height: 12px !important;
+  margin: 0 !important;
+}
+
+/* SSE-driven mid-flight ThinkingBlock — replaces Agenttic's bare
+   "Thinking…" indicator once at least one slow-tool event arrives.
+   Multi-line because a Pricing benchmark fires several web_search
+   calls in sequence. */
+.wa-chat-thinking-wrap {
+  padding: 0 var(--wpds-dimension-padding-md);
+}
+.wa-chat-thinking-block {
+  display: flex;
+  gap: var(--wpds-dimension-gap-sm);
+  padding: var(--wpds-dimension-padding-sm) var(--wpds-dimension-padding-md);
+  background: var(--wpds-color-background-surface-neutral-weak);
+  border: var(--wpds-border-width-sm) solid var(--wpds-color-stroke-surface-neutral-weak);
+  border-radius: var(--wpds-border-radius-md);
+  color: var(--wpds-color-foreground-content-neutral-weak);
+  font-size: var(--wpds-typography-font-size-sm);
+  font-style: italic;
+  max-width: 90%;
+  align-self: flex-start;
+}
+.wa-chat-thinking-block__spinner {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 2px;
+}
+.wa-chat-thinking-block__spinner > * { width: 14px !important; height: 14px !important; margin: 0 !important; }
+.wa-chat-thinking-block__rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wpds-dimension-gap-xs);
+}
+.wa-chat-thinking-block__row {
+  line-height: var(--wpds-typography-line-height-md);
+}
+
+/* Error notice container — keeps Notice off the bottom edge. */
+.wa-chat-error { padding: 0 var(--wpds-dimension-padding-md); }
+
+/* Suggestion stack on an empty thread. */
+.wa-chat-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wpds-dimension-gap-xs);
+  padding: 0 var(--wpds-dimension-padding-md) var(--wpds-dimension-padding-sm);
+}
+.wa-chat-suggestions .wa-eyebrow { padding-left: var(--wpds-dimension-padding-xs); }
+
+/* ---------- Variant card (refreshed) ---------- */
+/* Header row: letter badge + label chips on the left; score labels + radio
+   mark on the right. */
+.wa-variant-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wpds-dimension-gap-md);
+  margin-bottom: var(--wpds-dimension-gap-sm);
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.wa-variant-header__left {
+  display: flex;
+  align-items: center;
+  gap: var(--wpds-dimension-gap-sm);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.wa-variant-header__right {
+  display: flex;
+  align-items: center;
+  gap: var(--wpds-dimension-gap-md);
+  flex: none;
+}
+
+/* Inline score label — "SEO 91" / "Voice 96%" with a muted label and a
+   colored value. No pill bg; the color cue comes from the value. */
+.wa-score-label {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: var(--wpds-typography-font-size-xs);
+  color: var(--wpds-color-foreground-content-neutral-weak);
+}
+.wa-score-label__value {
+  font-weight: var(--wpds-typography-font-weight-medium);
+  color: var(--wpds-color-foreground-content-neutral);
+}
+.wa-score-label__value--good { color: var(--wpds-color-foreground-content-success); }
+.wa-score-label__value--info { color: var(--wpds-color-foreground-interactive-brand); }
+.wa-score-label__value--caution { color: var(--wpds-color-foreground-content-caution); }
+.wa-score-label__value--warning { color: var(--wpds-color-foreground-content-warning); }
+
+/* Radio mark on the right of each variant card. Standard WPDS-style radio
+   button: outline ring when unselected, brand-colored ring with a filled
+   inner dot when selected. The visible mark is decoration only — the
+   semantic input lives in a `VisuallyHidden` wrapper. */
+.wa-radio-mark {
+  position: relative;
+  display: inline-block;
+  height: 18px;
+  width: 18px;
+  border-radius: 50%;
+  border: var(--wpds-border-width-sm) solid var(--wpds-color-stroke-interactive-neutral);
+  background: var(--wpds-color-background-surface-neutral);
+  flex: none;
+}
+.wa-radio-mark--selected {
+  background: var(--wpds-color-background-interactive-brand-strong);
+  border-color: var(--wpds-color-background-interactive-brand-strong);
+}
+.wa-radio-mark--selected::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  height: 6px;
+  width: 6px;
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+/* Variant letter circle — used both on the variant cards (24px) and the
+   ActionBar footer badge (28px, --lg). Always filled with a tone selected
+   by the `data-tone` attribute; uppercase letter in white.
+   CUSTOM: the per-variant B/C tones (navy + violet) are not in WPDS — they
+   come from the variant-letter component in Figma to visually distinguish
+   the three drafts. Tone A reuses the WPDS brand-strong token. Documented
+   in DESIGN.md alongside the persona-color exception. */
+.wa-variant-letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  width: 24px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--wpds-color-background-interactive-brand-strong);
+  color: var(--wpds-color-foreground-interactive-brand-strong);
+  font-weight: var(--wpds-typography-font-weight-medium);
+  font-size: var(--wpds-typography-font-size-sm);
+  text-transform: uppercase;
+}
+.wa-variant-letter--lg {
+  height: 28px;
+  width: 28px;
+  font-weight: 700;
+}
+.wa-variant-letter[data-tone="B"] {
+  background: #1E3A8A;
+  color: #ffffff;
+}
+.wa-variant-letter[data-tone="C"] {
+  background: #7C3AED;
+  color: #ffffff;
+}
+
+/* ---------- Action bar — two states ---------- */
+.wa-action-bar__left {
+  display: flex;
+  align-items: center;
+  gap: var(--wpds-dimension-gap-sm);
+  min-width: 0;
+}
+
+/* Done-state ✓ icon — outlined green check-circle (the SVG draws the
+   ring itself; no filled background). Color cascades to the SVG via
+   `currentColor`. Matches the Figma "Icon/ActionBar/Sucess" spec. */
+.wa-done-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  width: 24px;
+  color: var(--wpds-color-foreground-content-success);
+  flex: none;
+}
+
+/* Undone-state ↩ icon — neutral u-turn arrow shown after Undo is
+   confirmed. Color cascades to the SVG via `currentColor`. */
+.wa-undo-arrow {
+  display: inline-flex;
+  align-items: center;
+  color: var(--wpds-color-foreground-content-neutral);
+}
+
+/* ---------- Batch review ---------- */
+/* Counter strip: Approved / Rejected / Pending cells + a labelled progress
+   bar, all on one row separated by vertical dividers. Mirrors the i3.2
+   Figma layout (DataViz/Card/Text) — counters left-justified, progress
+   takes the remaining width. */
+.wa-batch-counter {
+  display: flex;
+  align-items: center;
+  gap: var(--wpds-dimension-gap-lg);
+}
+.wa-batch-counter__cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--wpds-dimension-gap-xs);
+  flex: none;
+  min-width: 48px;
+}
+.wa-batch-counter__divider {
+  width: var(--wpds-border-width-sm);
+  height: 36px;
+  background: var(--wpds-color-stroke-surface-neutral-weak);
+  flex: none;
+}
+.wa-batch-counter__progress {
+  display: flex;
+  flex-direction: column;
+  /* Tight gap between the label row and the bar — matches Figma rhythm. */
+  gap: var(--wpds-dimension-gap-sm);
+  flex: 1;
+  min-width: 0;
+}
+.wa-batch-counter__progress-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wpds-dimension-gap-sm);
+}
+.wa-batch-progress {
+  width: 100%;
+  height: 5px;
+  border-radius: 9999px;
+  background: var(--wpds-color-background-track-neutral);
+  overflow: hidden;
+}
+.wa-batch-progress__bar {
+  height: 100%;
+  /* CUSTOM: #4AB866 is the exact green specified in the i3.2 Figma
+     (node 2:9921, DataViz/Card/Text progress fill). No WPDS success
+     token matches — bg-surface-success reads as pale mint and
+     fg-content-success skews cooler/darker than this Material-style
+     mid-green. Designer-pinned to this hex for the batch progress bar
+     specifically; not generalized into a token. */
+  background: #4AB866;
+  transition: width 0.2s ease;
+}
+
+/* Per-row accordion header. Whole header is the click target; chevron on
+   the right indicates state. */
+.wa-batch-row__header {
+  display: flex;
+  align-items: center;
+  gap: var(--wpds-dimension-gap-md);
+  width: 100%;
+  padding: var(--wpds-dimension-padding-md);
+  background: transparent;
+  border: none;
+  border-bottom: var(--wpds-border-width-sm) solid transparent;
+  cursor: var(--wpds-cursor-control);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.wa-batch-row__header:hover {
+  background: var(--wpds-color-background-surface-neutral-weak);
+}
+.wa-batch-row__header[aria-expanded="true"] {
+  border-bottom-color: var(--wpds-color-stroke-surface-neutral-weak);
+}
+
+.wa-batch-row__body {
+  padding: var(--wpds-dimension-padding-md);
+}
+
+/* Side-by-side columns: Current + N variants. Falls back to vertical stack
+   below 1024px. Default 4 cols; the grid auto-adapts via auto-fill if
+   variant count differs. */
+.wa-batch-cols {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--wpds-dimension-gap-sm);
+  margin-bottom: var(--wpds-dimension-gap-md);
+}
+@media (max-width: 1023px) {
+  .wa-batch-cols {
+    grid-template-columns: 1fr;
+  }
+}
+
+.wa-batch-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wpds-dimension-gap-xs);
+  padding: var(--wpds-dimension-padding-md);
+  background: var(--wpds-color-background-surface-neutral);
+  border: var(--wpds-border-width-sm) solid var(--wpds-color-stroke-surface-neutral-weak);
+  border-radius: var(--wpds-border-radius-md);
+  text-align: left;
+  cursor: var(--wpds-cursor-control);
+  transition: border-color 0.14s, box-shadow 0.14s;
+  font: inherit;
+  color: inherit;
+}
+.wa-batch-col:disabled {
+  cursor: default;
+}
+.wa-batch-col--current {
+  background: var(--wpds-color-background-surface-neutral-weak);
+  cursor: default;
+}
+.wa-batch-col--variant:hover:not(:disabled) {
+  border-color: var(--wpds-color-stroke-surface-neutral);
+}
+.wa-batch-col--selected {
+  border-color: var(--wpds-color-stroke-interactive-brand) !important;
+  box-shadow: 0 0 0 2px var(--wpds-color-background-surface-info-weak);
+}
+.wa-batch-col__head {
+  display: flex;
+  align-items: center;
+  gap: var(--wpds-dimension-gap-xs);
+  flex-wrap: wrap;
+  margin-bottom: var(--wpds-dimension-gap-sm);
+}
+.wa-batch-col__scores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wpds-dimension-gap-sm);
+}
+
+.wa-batch-row__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wpds-dimension-gap-md);
+  padding-top: var(--wpds-dimension-padding-md);
+  border-top: var(--wpds-border-width-sm) solid var(--wpds-color-stroke-surface-neutral-weak);
+  flex-wrap: wrap;
+}
+.wa-batch-row__footer-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wpds-dimension-gap-xs);
+}
+
+/* IssueDetail body — single column (right rail was removed in the Figma
+   refresh; the "Reversible" reminder now lives in the action bar). Cards
+   stack with gap-xl (24px) between siblings to match the Figma rhythm. */
+.wa-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wpds-dimension-gap-xl);
+}
+.wa-detail-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wpds-dimension-gap-xl);
+}
+
+/* IssueDetail KPI row */
+.wa-kpi-row {
+  display: flex;
+  flex-direction: row;
+  gap: var(--wpds-dimension-gap-md);
+}
+
+/* CollapsibleCard.Content is itself a wrapper that nests a real Card.Content
+   inside (.content-inner). The inner element owns the padding, so an inline
+   style on CollapsibleCard.Content lands on the wrong node. Zero the bottom
+   padding via a descendant selector so the last full-bleed line-item row
+   becomes the natural bottom edge of the Order context card. */
+.wa-order-context-content > * {
+  padding-block-end: 0;
+}
+
+/* Order-context card line-item row. Each line is a full-bleed band with a
+   hairline top border (the first row gets one too — acts as the visual
+   divider between the meta block and the items list). Matches the 742:1331
+   Figma. Owned by the Sales Support detail's Order context card; not
+   reused elsewhere. */
+.wa-order-line {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--wpds-dimension-gap-md);
+  padding:
+    var(--wpds-dimension-padding-md)
+    var(--wpds-dimension-padding-2xl);
+  border-top:
+    var(--wpds-border-width-xs) solid
+    var(--wpds-color-stroke-surface-neutral-weak);
+}
+
+/* IssueDetail page header — title block + status block side by side */
+.wa-page-header {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--wpds-dimension-gap-lg);
+}
+
+/* Sticky action bar inner row */
+.wa-action-bar-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wpds-dimension-gap-md);
+  /* Match the 1100px sub-page content width so the action bar's left/right
+     groups align with the centered body content above (Figma 533:4193). */
+  max-width: 1100px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+}
+.wa-action-bar-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--wpds-dimension-gap-sm);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+
+/* ---------- Settings → Models ---------- */
+/* Wrap the Settings page so the cards have a sensible reading width
+   without stretching across the full main shell. */
+.wa-settings {
+  max-width: 760px;
+  padding: var(--wpds-dimension-padding-xl) var(--wa-page-pad-x);
+}
+
+.wa-model-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.wa-model-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wpds-dimension-gap-md);
+  padding: var(--wpds-dimension-padding-md) 0;
+  border-bottom:
+    var(--wpds-border-width-sm)
+    solid var(--wpds-color-stroke-surface-neutral-weak);
+}
+.wa-model-row:last-child { border-bottom: none; }
+.wa-model-row:first-child { padding-top: 0; }
+
+.wa-default-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--wpds-dimension-padding-sm);
+  border-radius: var(--wpds-border-radius-sm);
+  font-size: var(--wpds-typography-font-size-xs);
+  font-weight: var(--wpds-typography-font-weight-medium);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--wpds-color-background-surface-info-weak);
+  color: var(--wpds-color-foreground-interactive-brand);
+}
+
+/* ---------- Onboarding (first-run setup) ---------- */
+/* Centered single-column flow per onboarding-design-brief.md §7. The full
+   sidebar/topbar shell is intentionally absent — there's nothing to navigate
+   to until Step 5 hands off to the main app. */
+.wa-onboarding-shell {
+  min-height: 100vh;
+  width: 100%;
+  background: var(--wpds-color-background-surface-neutral-weak);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* CUSTOM: oversized vertical padding for the onboarding shell — 128px top
+     to match the i3.2 Figma's landing-page treatment, 120px bottom to give
+     every onboarding screen scroll headroom and breathing room. WPDS
+     padding tokens top out at padding-3xl (~32px) — no token reaches
+     either value, so this is the documented exception. */
+  padding-block-start: 128px;
+  padding-inline: var(--wpds-dimension-padding-md);
+  padding-block-end: 120px;
+  gap: var(--wpds-dimension-gap-xl);
+}
+
+/* min-width on the form/header keeps the cards from squeezing on narrow
+   layouts. The stepper wrap is content-width — the new Figma stepper
+   sizes itself naturally and centers within the shell. */
+.wa-onboarding-header,
+.wa-onboarding-surface {
+  width: 100%;
+  min-width: 512px;
+  max-width: var(--wpds-dimension-surface-width-sm, 560px);
+}
+.wa-onboarding-stepper-wrap {
+  width: auto;
+  max-width: 100%;
+  display: flex;
+  justify-content: center;
+}
+.wa-onboarding-header { text-align: center; }
+.wa-onboarding-header > * { align-items: center; }
+/* CUSTOM: 250px top padding on the Done step matches the i3.2 Figma's
+   landing-page treatment, where wordmark + subheading + button sit well
+   below the page top. WPDS padding tokens stop at padding-3xl (~32px), so
+   no token reaches 250px — this is the documented Done-step exception
+   alongside the shell's 128px default. */
+.wa-onboarding-shell--done {
+  padding-block-start: 250px;
+}
+
+.wa-onboarding-wordmark {
+  /* Asset is 497×86 (2x of 248.5×43 — its Figma display size). */
+  width: 248px;
+  height: auto;
+  display: block;
+}
+
+@media (max-width: 540px) {
+  .wa-onboarding-header,
+  .wa-onboarding-surface {
+    min-width: 0;
+  }
+}
+
+/* Stepper — see Figma "Horizontal stepper alt 02 / Numbers" variant.
+   Inline label/marker rows separated by fixed-width neutral connectors.
+   Active and done states share the same dark fill — only the glyph
+   swaps (number → check). Connectors stay neutral throughout. */
+.wa-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  width: 100%;
+  flex-wrap: wrap;
+  row-gap: var(--wpds-dimension-gap-xs);
+}
+.wa-stepper__item {
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+.wa-stepper__connector {
+  flex: none;
+  width: 24px;
+  height: 1px;
+  background: var(--wpds-color-stroke-surface-neutral);
+}
+.wa-stepper__step {
+  display: flex;
+  align-items: center;
+  gap: var(--wpds-dimension-gap-sm);
+  background: transparent;
+  border: none;
+  padding:
+    var(--wpds-dimension-padding-xs)
+    var(--wpds-dimension-padding-sm);
+  border-radius: var(--wpds-border-radius-sm);
+  cursor: var(--wpds-cursor-control);
+  font: inherit;
+  color: inherit;
+  flex: none;
+  transition: color 0.1s;
+}
+.wa-stepper__step:disabled { cursor: default; }
+.wa-stepper__marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  width: 24px;
+  border-radius: 50%;
+  font-family: var(--wpds-typography-font-family-body);
+  font-size: var(--wpds-typography-font-size-xs);
+  line-height: 1;
+  font-weight: var(--wpds-typography-font-weight-medium);
+  background: transparent;
+  color: var(--wpds-color-foreground-content-neutral-weak);
+  border:
+    var(--wpds-border-width-xs)
+    solid var(--wpds-color-stroke-surface-neutral);
+  flex: none;
+}
+.wa-stepper__label {
+  font-size: var(--wpds-typography-font-size-sm);
+  font-weight: var(--wpds-typography-font-weight-medium);
+  line-height: var(--wpds-typography-line-height-sm, 20px);
+  color: var(--wpds-color-foreground-content-neutral-weak);
+  white-space: nowrap;
+}
+/* Active = filled dark circle with white number. */
+.wa-stepper__step--current .wa-stepper__marker {
+  background: var(--wpds-color-background-interactive-neutral-strong);
+  border-color: var(--wpds-color-background-interactive-neutral-strong);
+  color: var(--wpds-color-foreground-interactive-neutral-strong);
+}
+/* Done = outlined circle with a dark check (no fill). The label still
+   reads "completed" via dark text — only the marker treatment changes. */
+.wa-stepper__step--done .wa-stepper__marker {
+  background: transparent;
+  border-color: var(--wpds-color-stroke-surface-neutral-strong);
+  color: var(--wpds-color-foreground-content-neutral);
+}
+.wa-stepper__step--current .wa-stepper__label,
+.wa-stepper__step--done .wa-stepper__label {
+  color: var(--wpds-color-foreground-content-neutral);
+}
+.wa-stepper__step--done:not(:disabled):hover .wa-stepper__label {
+  color: var(--wpds-color-foreground-interactive-brand);
+}
+
+/* Inline +/− disclosure used in Step 2 (plugin install) and Step 4 (custom
+   provider). Non-button look — text-link styling using mono small caps. */
+.wa-onboarding-disclosure {
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: var(--wpds-cursor-control);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.wa-onboarding-disclosure:hover {
+  color: var(--wpds-color-foreground-interactive-brand);
+}
+
+/* Big, copy-on-click pairing-code block. Documented mono-font exception (see
+   DESIGN.md "No monospace fonts" carve-out) — pairing codes are literal
+   verbatim tokens where character disambiguation (0/O, 1/l/I) matters more
+   than visual harmony with body copy. */
+/* CUSTOM: oversize pairing-code display at 36px in an 84px-tall box matching
+   the i3.2 Figma. (a) WPDS body type tops out at xl=20px / 2xl=32px — no
+   token reaches 36, and there is no WPDS oversize-token affordance. (b)
+   Inline 36px font, 84px min-height, light neutral fill, mono family. (c)
+   Follow-up: revisit if WPDS adds a CodeDisplay / copyable-token primitive. */
+.wa-onboarding-pairing-code {
+  position: relative;
+  font-family: var(--wpds-typography-font-family-mono);
+  font-size: 36px;
+  letter-spacing: 0.06em;
+  font-weight: var(--wpds-typography-font-weight-regular);
+  text-align: center;
+  min-height: 84px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding:
+    var(--wpds-dimension-padding-md)
+    var(--wpds-dimension-padding-lg);
+  background: var(--wpds-color-background-surface-neutral-weak);
+  border:
+    var(--wpds-border-width-xs)
+    solid var(--wpds-color-stroke-surface-neutral);
+  border-radius: var(--wpds-border-radius-lg);
+  color: var(--wpds-color-foreground-content-neutral);
+  cursor: pointer;
+  user-select: all;
+  transition: background-color 0.1s, border-color 0.1s;
+}
+.wa-onboarding-pairing-code:hover {
+  background: var(--wpds-color-background-surface-neutral);
+  border-color: var(--wpds-color-stroke-interactive-brand);
+}
+/* Copy icon revealed on hover — sits in the top-right corner of the code
+   box. Browser-default cursor:copy (a green plus) is replaced by a plain
+   pointer and this affordance, so the interaction reads as deliberate. */
+.wa-onboarding-pairing-code__hover-icon {
+  position: absolute;
+  top: var(--wpds-dimension-padding-md);
+  right: var(--wpds-dimension-padding-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.1s;
+  color: var(--wpds-color-foreground-content-neutral-weak);
+  pointer-events: none;
+}
+.wa-onboarding-pairing-code:hover .wa-onboarding-pairing-code__hover-icon {
+  opacity: 1;
+}
+
+/* Provider cards on the Model step. A row of three on desktop, stacked on mobile. */
+.wa-onboarding-providers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--wpds-dimension-gap-sm);
+}
+@media (max-width: 767px) {
+  .wa-onboarding-providers {
+    grid-template-columns: 1fr;
+  }
+}
+.wa-onboarding-provider {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  text-align: left;
+  padding: var(--wpds-dimension-padding-md);
+  background: var(--wpds-color-background-surface-neutral);
+  border:
+    var(--wpds-border-width-sm)
+    solid var(--wpds-color-stroke-surface-neutral);
+  border-radius: var(--wpds-border-radius-md);
+  cursor: var(--wpds-cursor-control);
+  font: inherit;
+  color: inherit;
+  transition: border-color 0.14s, box-shadow 0.14s;
+}
+.wa-onboarding-provider:hover:not(:disabled) {
+  border-color: var(--wpds-color-stroke-surface-neutral-strong);
+}
+.wa-onboarding-provider--selected {
+  border-color: var(--wpds-color-stroke-interactive-brand) !important;
+  box-shadow: 0 0 0 2px var(--wpds-color-background-surface-info-weak);
+}
+.wa-onboarding-provider__check {
+  position: absolute;
+  top: var(--wpds-dimension-padding-sm);
+  right: var(--wpds-dimension-padding-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 18px;
+  width: 18px;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--wpds-color-foreground-interactive-brand);
+  border:
+    var(--wpds-border-width-sm)
+    solid var(--wpds-color-stroke-interactive-brand);
+}
+
+/* On mobile, hide the labels and show only the markers + connectors —
+   matches the Figma "Mobile version" variant. The 768px breakpoint lines
+   up with the rest of the app's mobile cutover (sidebar → drawer, etc). */
+@media (max-width: 767px) {
+  .wa-stepper__label { display: none; }
+  .wa-stepper__step { gap: 0; }
+}
+
+/* <768px: sidebar becomes off-canvas drawer; kanban scrolls horizontally;
+   KPI row wraps to 2x2; action bar stacks; page header stacks; the desktop
+   top bar gives way to the mobile bar (the hamburger lives there). */
+@media (max-width: 767px) {
+  .wa-topbar {
+    display: none;
+  }
+  .wa-mobile-bar {
+    display: flex;
+  }
+  .wa-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 50;
+    height: 100vh;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    box-shadow: var(--wpds-elevation-lg);
+  }
+  .wa-sidebar.is-open {
+    transform: translateX(0);
+  }
+  .wa-sidebar-backdrop.is-open {
+    display: block;
+  }
+
+  .wa-kpi-row {
+    flex-wrap: wrap;
+  }
+  .wa-kpi-row > * {
+    flex: 1 1 calc(50% - var(--wpds-dimension-gap-md));
+    min-width: 140px;
+  }
+
+  .wa-page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .wa-action-bar {
+    /* Vertical tightens on mobile, but horizontal stays on the page-content
+       token so the bar still aligns with the title and body. */
+    padding:
+      var(--wpds-dimension-padding-sm) var(--wpds-dimension-padding-2xl);
+  }
+  .wa-action-bar-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .wa-action-bar-actions {
+    justify-content: stretch;
+  }
+  .wa-action-bar-actions > * {
+    flex: 1 1 auto;
+  }
+}
+
+/* ---------- Dismiss dialog ---------- */
+.wa-dismiss-dialog__chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--wpds-dimension-gap-sm);
+}
+/* Content-sized chips so each button keeps uniform padding around its own
+   label (no stretched columns). The `large` dialog width gives all four room
+   to sit on one row; nowrap stops a label from breaking internally. */
+.wa-dismiss-dialog__chips > * {
+  white-space: nowrap;
+}
+.wa-dismiss-dialog__info {
+  display: flex;
+  gap: var(--wpds-dimension-gap-md);
+  padding: var(--wpds-dimension-padding-md);
+  background: var(--wpds-color-background-surface-neutral-weak);
+  border:
+    var(--wpds-border-width-xs)
+    solid var(--wpds-color-stroke-surface-neutral-weak);
+  border-radius: var(--wpds-border-radius-lg);
+}
+
+/* Product thumbnail — shared component used on queue cards (DataViews
+   mediaField slot), Marketing/Pricing detail pages, and BatchReview
+   child rows. Renders <img> when src is set, persona-derived placeholder
+   when not. See docs/specs/2026-05-16-product-images-design.md. */
+.wa-product-thumb {
+  display: block;
+  object-fit: cover;
+  border-radius: var(--wpds-border-radius-md);
+  background: var(--wpds-color-background-surface-neutral-weak);
+  /* DataViews table rows are flex containers and stretch their cells'
+     children unless we lock the box down. Use min/max + flex:none so the
+     illustration tile (a flex div) lands at the exact same dimensions as
+     the <img> photo tile. overflow:hidden clips any oversized inline-SVG
+     so a viewBox-bigger glyph can't bleed past the tile bounds. */
+  box-sizing: border-box;
+  flex: none;
+  overflow: hidden;
+}
+.wa-product-thumb--sm {
+  width: 40px; height: 40px;
+  min-width: 40px; min-height: 40px;
+  max-width: 40px; max-height: 40px;
+}
+.wa-product-thumb--md {
+  width: 72px; height: 72px;
+  min-width: 72px; min-height: 72px;
+  max-width: 72px; max-height: 72px;
+}
+.wa-product-thumb--lg {
+  width: 86px; height: 86px;
+  min-width: 86px; min-height: 86px;
+  max-width: 86px; max-height: 86px;
+}
+.wa-product-thumb--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* CUSTOM: warm-gray icon color from the i3 Figma icon-alternates board
+     (node 797:32604). No WPDS neutral-weak token matches this exact value
+     (#CECBC6 is warmer than --wpds-color-foreground-content-neutral-weak), and
+     the designer specified the hex directly for the placeholder treatment.
+     Used by the fallback @wordpress/icons glyph path (un-mapped personas).
+     Documented in docs/specs/2026-05-16-product-images-design.md. */
+  color: #CECBC6;
+}
+/* @wordpress/icons SVGs render with their default fill (black) unless we
+   explicitly bind them to currentColor — same gotcha as the sidebar nav
+   icons above. Without this, the warm-gray `color` set on the placeholder
+   above doesn't reach the SVG. */
+.wa-product-thumb--placeholder svg {
+  fill: currentColor;
+}
+
+/* Per-persona illustration variant. The tile bg is set inline from the
+   --wa-persona-*-bg tokens (in ProductThumbnail.tsx) so each persona's
+   queue cards carry a soft color wash. The illustrations themselves
+   stay in a fixed warm-gray duotone so the queue's color rhythm comes
+   from the tile, not the icon — matches Variant 7 in mockups/placeholder-
+   variants.html.
+
+   CUSTOM: --persona-mid (#D6D3D1) and --persona-ink (#57534E) are warm-
+   gray tones with no WPDS token equivalent. Designer-chosen pair that
+   reads as "duotone illustration" against any of the persona tile washes
+   without competing with them. */
+.wa-product-thumb--illus {
+  --persona-mid: #D6D3D1;
+  --persona-ink: #57534E;
+}
+/* The illustration SVG (inlined via dangerouslySetInnerHTML in the
+   component) defines its own fills via the persona-mid/ink vars above —
+   so the placeholder's `fill: currentColor` rule above is harmless but
+   irrelevant here. What we DO need: size the SVG to fill ~42% of the
+   tile (matching the i3 Figma 284/667 ratio) and center it. */
+.wa-product-thumb--illus > svg {
+  width: 42%;
+  height: 42%;
+}
+
+/* When ProductThumbnail is rendered into a DataViews grid mediaField
+   slot, fill the slot instead of using the fixed sm/md/lg pixel size.
+   DataViews's .dataviews-view-grid__media is 100% width with aspect-
+   ratio 1/1 and already styles a direct <img> child to fill — but our
+   .wa-product-thumb--md width:72px (etc.) overrides that. Scope these
+   overrides to the DataViews wrapper so other use sites (detail pages,
+   BatchReview row) keep their fixed sizes. The slot owns the border-
+   radius so we drop ours to avoid double-rounding. */
+.dataviews-view-grid__media .wa-product-thumb {
+  width: 100%;
+  height: 100%;
+  /* The table-view lock-down on the --sm/md/lg modifiers pins max/min to
+     a fixed px size; in the grid we want full-bleed instead, so reset all
+     four constraints back to `none` here. */
+  min-width: 0;
+  min-height: 0;
+  max-width: none;
+  max-height: none;
+  border-radius: 0;
+}
+/* In the DataViews grid the tile fills its (much larger) slot, so the
+   placeholder icon's fixed px size set via the <Icon size={N}> prop
+   ends up tiny against the tile. Override to ~42% of the tile, matching
+   the i3 Figma icon-alternates board (284/667 ≈ 42.6%). The override
+   targets the SVG directly so it beats Icon's inline width/height. */
+.dataviews-view-grid__media .wa-product-thumb--placeholder svg {
+  width: 42%;
+  height: 42%;
+}
+
+/* When ProductThumbnail is rendered into a DataViews grid mediaField
+   slot, fill the slot instead of using the fixed sm/md/lg pixel size.
+   DataViews's .dataviews-view-grid__media is 100% width with aspect-
+   ratio 1/1 and already styles a direct <img> child to fill — but our
+   .wa-product-thumb--md width:72px (etc.) overrides that. Scope these
+   overrides to the DataViews wrapper so other use sites (detail pages,
+   BatchReview row) keep their fixed sizes. The slot owns the border-
+   radius so we drop ours to avoid double-rounding. */
+.dataviews-view-grid__media .wa-product-thumb {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+}
+

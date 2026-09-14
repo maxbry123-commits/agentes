@@ -1,0 +1,96 @@
+# Go
+/daemon/bin/
+/daemon/wooagent
+/daemon/spike-adk
+/daemon/spike-mcp
+/daemon/mcp-probe
+/daemon/manifest-compute
+/daemon/persona-marketing
+/daemon/persona-pricing
+/daemon/persona-sales-support
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+go.work.sum
+
+# Node
+/ui/node_modules/
+/ui/dist/
+/ui/.vite/
+/ui/*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp.*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local runtime state
+/.wooagent/
+/tmp/
+
+# Build artifacts
+/dist/
+/build/
+
+# UI assets embedded into the daemon binary at build time. The placeholder
+# index.html stays committed so //go:embed compiles on a fresh clone; the
+# real (Vite-built) bundle lands here via scripts/build-ui-into-daemon.sh
+# and shouldn't be checked in (binary churn + size).
+/daemon/internal/uiassets/dist/*
+!/daemon/internal/uiassets/dist/index.html
+
+# Personal scratch / drafts (not part of the project)
+/April 22 - wooagent-mockups/
+/mockups/
+/blog-2026-04-27.md
+/uxtesting.md
+/uxresearch.md
+/wooagent-design-md-post-2026-05-07.md
+/wooagent-target-user-post-2026-05-11.md
+/docs/research/2026-05-11-primary-user-wooagent-cloud.md
+
+# Personal brainstorming/spec workspace (superpowers workflow)
+/docs/superpowers/
+/.superpowers/
+
+# Personal Claude Code skills / settings (operator-local)
+/.claude/
+
+# Root-level plan/design/proposal/brief docs are scratch by default.
+# Tracked specs go in docs/specs/; tracked plans (if any) go in docs/plans/.
+/*-plan.md
+/*-design.md
+/*-proposal.md
+/*-brief.md
+
+# Other internal-only docs kept local (not matched by the patterns above)
+/WooAgent_plan.md
+/WooAgent_Pitch.md
+/wooagent-os-prd V2.md
+/wooagentcloud_PRD.md
+/update-2026-04-22.md
+/progress.md
+/wooagent-os-public-launch-plan-2026-05-22.md
+/docs/api-contract-v1.md
+/docs/specs/2026-05-15-internal-demo-script.md
+/docs/2026-05-22-launch-anchor-post-data-handling-section.md
+/docs/2026-05-15-woocommerce-claude-pii-patterns.md
+/docs/specs/2026-05-15-sales-support-pii-redaction-design.md
+/linearproject.md
+/hvmpersona.md
+/architecturesummary.md
+/architecturesummary.jpg
+/internalcallfortesting.md
+/Logo.png

@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 1073056,
+  "bundle_sha256": "c427c75492be24c83ddf38a2ac2d280d85bd1bc0ff150f791dae2fbabc8b1efb",
+  "extracted_tree": {
+    "bytes": 3072573,
+    "files": 468,
+    "sha256": "29647ae1d5453b91086ae944a92c074b0a07588dbb8929acb01624dc6d6f557d"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 1073056,
+      "name": "WooAgent-OS.bundle.zip.part-0001",
+      "sha256": "c427c75492be24c83ddf38a2ac2d280d85bd1bc0ff150f791dae2fbabc8b1efb"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "WooAgent-OS",
+  "source_bytes": 3072573,
+  "source_commit": "eea9d09dfcc606ec2d98e524ceda3c0b6a302d60",
+  "source_files": 468,
+  "source_ref": "HEAD",
+  "source_repo": "Automattic/wooagent-os",
+  "source_tree": {
+    "bytes": 3072573,
+    "files": 468,
+    "sha256": "29647ae1d5453b91086ae944a92c074b0a07588dbb8929acb01624dc6d6f557d"
+  }
+}

@@ -1,0 +1,735 @@
+package pricing
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/wooagent-os/wooagent-os/daemon/internal/personas"
+)
+
+func TestCooldown_IncludesSkippedWindow(t *testing.T) {
+	p := Pricing{}.Cooldown()
+	if p.TargetKey != "product_id" {
+		t.Errorf("TargetKey: got %q want product_id", p.TargetKey)
+	}
+	if p.Skipped != 7*24*time.Hour {
+		t.Errorf("Skipped: got %v want 168h", p.Skipped)
+	}
+}
+
+// The lenient UnmarshalJSON handles three real drifts we've seen from the
+// model: `recommendation` instead of `direction`, `price_change_percent`
+// instead of `percent_change`, and `rationale` as an array of strings.
+// Anything beyond these three is intentionally not in scope.
+
+func TestProposalOut_LenientParse_ModelDriftFromIndigoPillowRun(t *testing.T) {
+	// Reproduces the exact drift caught on the May 4 staging run: model
+	// emitted recommendation/price_change_percent/rationale-as-array.
+	raw := `{
+		"product_id": "3664",
+		"product_name": "Indigo-Dyed Throw Pillow",
+		"current_price": 48.00,
+		"recommendation": "increase",
+		"proposed_price": 56.00,
+		"price_change_amount": 8.00,
+		"price_change_percent": 16.67,
+		"rationale": [
+			"Mid-tier indigo throw pillows at Crate & Barrel, Anthropologie, and Parachute cluster at $59.95-$72.00.",
+			"Current $48 trails the band. Recommend a +16.67% step toward the median, capped at the skill's ±25% rule."
+		],
+		"observed_median": 65.00,
+		"observed_low": 59.95,
+		"observed_high": 72.00,
+		"sources": [
+			{"url": "https://crateandbarrel.com/x", "retailer": "Crate & Barrel", "comparable_product": "Indigo Pillow", "observed_price": 59.95},
+			{"url": "https://anthropologie.com/x", "retailer": "Anthropologie", "comparable_product": "Indigo Pillow", "observed_price": 68.00},
+			{"url": "https://parachutehome.com/x", "retailer": "Parachute", "comparable_product": "Linen Pillow", "observed_price": 72.00}
+		]
+	}`
+	var out proposalOut
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if out.Direction != "increase" {
+		t.Errorf("Direction = %q, want %q (recommendation→direction synonym)", out.Direction, "increase")
+	}
+	if out.PercentChange != 16.67 {
+		t.Errorf("PercentChange = %v, want 16.67 (price_change_percent→percent_change synonym)", out.PercentChange)
+	}
+	if !strings.Contains(out.Rationale, "Mid-tier indigo") || !strings.Contains(out.Rationale, "trails the band") {
+		t.Errorf("Rationale array not joined into string; got %q", out.Rationale)
+	}
+	if !strings.Contains(out.Rationale, "\n\n") {
+		t.Errorf("Rationale paragraphs not separated; got %q", out.Rationale)
+	}
+	if out.ProposedPrice != 56.00 {
+		t.Errorf("ProposedPrice = %v, want 56.00", out.ProposedPrice)
+	}
+	if len(out.Sources) != 3 {
+		t.Errorf("Sources len = %d, want 3", len(out.Sources))
+	}
+	if out.Sources[0].Retailer != "Crate & Barrel" {
+		t.Errorf("Sources[0].Retailer = %q, want %q", out.Sources[0].Retailer, "Crate & Barrel")
+	}
+}
+
+func TestProposalOut_StrictShapeAlsoWorks(t *testing.T) {
+	// The shape the prompt actually asks for must still parse cleanly —
+	// the lenient layer must never break the canonical path.
+	raw := `{
+		"no_proposal": false,
+		"previous_price": 48.00,
+		"proposed_price": 56.00,
+		"percent_change": 16.67,
+		"direction": "increase",
+		"observed_median": 65.00,
+		"observed_low": 59.95,
+		"observed_high": 72.00,
+		"rationale": "Mid-tier comps cluster at $65; current $48 trails the band.",
+		"sources": [
+			{"url": "https://x", "retailer": "X", "comparable_product": "y", "observed_price": 60.0}
+		]
+	}`
+	var out proposalOut
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		t.Fatalf("unmarshal canonical shape: %v", err)
+	}
+	if out.NoProposal {
+		t.Errorf("NoProposal = true, want false")
+	}
+	if out.Direction != "increase" {
+		t.Errorf("Direction = %q, want increase", out.Direction)
+	}
+	if out.PercentChange != 16.67 {
+		t.Errorf("PercentChange = %v, want 16.67", out.PercentChange)
+	}
+	if out.Rationale != "Mid-tier comps cluster at $65; current $48 trails the band." {
+		t.Errorf("Rationale roundtrip wrong: %q", out.Rationale)
+	}
+}
+
+func TestProposalOut_DeclineShape(t *testing.T) {
+	raw := `{
+		"no_proposal": true,
+		"reason_no_proposal": "Searched 4 retailers; only 1 returned comparable; below the skill's 3-source minimum."
+	}`
+	var out proposalOut
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		t.Fatalf("unmarshal decline: %v", err)
+	}
+	if !out.NoProposal {
+		t.Errorf("NoProposal = false, want true")
+	}
+	if !strings.Contains(out.ReasonNoProposal, "below the skill's 3-source") {
+		t.Errorf("reason_no_proposal lost: %q", out.ReasonNoProposal)
+	}
+}
+
+func TestExtractJSONObject_PrefixSuffixTolerated(t *testing.T) {
+	// The model occasionally wraps JSON in commentary despite being told
+	// not to. extractJSONObject pulls the balanced object out.
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "bare object",
+			in:   `{"no_proposal": true}`,
+			want: `{"no_proposal": true}`,
+		},
+		{
+			name: "prose preamble",
+			in:   "Here is the proposal:\n{\"no_proposal\": true}",
+			want: `{"no_proposal": true}`,
+		},
+		{
+			name: "trailing commentary",
+			in:   `{"no_proposal": true}\n\nLet me know if you have questions.`,
+			want: `{"no_proposal": true}`,
+		},
+		{
+			name: "string with brace inside",
+			in:   `{"reason": "the {curly} thing"}`,
+			want: `{"reason": "the {curly} thing"}`,
+		},
+		{
+			name:  "no object",
+			in:    "no JSON here",
+			want:  "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := extractJSONObject(tc.in)
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------- bucketing
+
+// bucketTestProduct is a lightweight fixture row for findLargestEligibleBucket
+// tests. The adapter below converts it into the real `product` struct,
+// matching whatever category shape the helper consumes.
+type bucketTestProduct struct {
+	id       int
+	sku      string
+	category string
+}
+
+func makeBucketProducts(in []bucketTestProduct) []product {
+	out := make([]product, len(in))
+	for i, p := range in {
+		out[i] = product{ID: p.id, SKU: p.sku}
+		if p.category != "" {
+			out[i].Categories = []struct {
+				Name string `json:"name"`
+			}{{Name: p.category}}
+		}
+	}
+	return out
+}
+
+func TestFindLargestEligibleBucket_ReturnsBucketWhenAtOrAboveThreshold(t *testing.T) {
+	products := makeBucketProducts([]bucketTestProduct{
+		{1, "SKU-001", "Home & Textiles"},
+		{2, "SKU-002", "Home & Textiles"},
+		{3, "SKU-003", "Home & Textiles"},
+		{100, "SKU-100", "Apparel"},
+		{101, "SKU-101", "Apparel"},
+	})
+	got := findLargestEligibleBucket(products, 3)
+	if got == nil {
+		t.Fatalf("expected bucket; got nil")
+	}
+	if got.Category != "Home & Textiles" {
+		t.Errorf("Category=%q, want Home & Textiles", got.Category)
+	}
+	if len(got.Products) != 3 {
+		t.Errorf("len(Products)=%d, want 3", len(got.Products))
+	}
+}
+
+func TestFindLargestEligibleBucket_NilWhenNoneAtThreshold(t *testing.T) {
+	products := makeBucketProducts([]bucketTestProduct{
+		{1, "SKU-001", "Home & Textiles"},
+		{2, "SKU-002", "Home & Textiles"},
+		{100, "SKU-100", "Apparel"},
+	})
+	if got := findLargestEligibleBucket(products, 3); got != nil {
+		t.Errorf("expected nil (no bucket >= 3); got Category=%q size=%d", got.Category, len(got.Products))
+	}
+}
+
+func TestFindLargestEligibleBucket_PicksLargestOnTie_AlphabeticalBreak(t *testing.T) {
+	products := makeBucketProducts([]bucketTestProduct{
+		{1, "SKU-001", "Home & Textiles"},
+		{2, "SKU-002", "Home & Textiles"},
+		{3, "SKU-003", "Home & Textiles"},
+		{100, "SKU-100", "Apparel"},
+		{101, "SKU-101", "Apparel"},
+		{102, "SKU-102", "Apparel"},
+	})
+	got := findLargestEligibleBucket(products, 3)
+	if got == nil {
+		t.Fatalf("expected bucket; got nil")
+	}
+	// Both buckets have 3; deterministic tie-break = alphabetical.
+	if got.Category != "Apparel" {
+		t.Errorf("Category=%q, want Apparel (alphabetical first)", got.Category)
+	}
+}
+
+func TestFindLargestEligibleBucket_IgnoresEmptyCategory(t *testing.T) {
+	products := makeBucketProducts([]bucketTestProduct{
+		{1, "SKU-001", ""},
+		{2, "SKU-002", ""},
+		{3, "SKU-003", ""},
+		{100, "SKU-100", "Apparel"},
+	})
+	if got := findLargestEligibleBucket(products, 3); got != nil {
+		t.Errorf("uncategorized products should never form a batch; got bucket=%q", got.Category)
+	}
+}
+
+// ---------------------------------------------------------------- packAsBatch
+
+// makeDraft is a helper for test drafts.
+func makeDraft(sku string, productID int, category string) personas.Drafted {
+	return personas.Drafted{
+		Title:           "Price change · " + sku,
+		ProposalType:    "product_price_change",
+		Priority:        "medium",
+		ProposalContent: "rationale",
+		Target: map[string]any{
+			"product_id":       productID,
+			"product_sku":      sku,
+			"product_category": category,
+			"previous_price":   50.0,
+			"proposed_price":   45.0,
+			"percent_change":   -10.0,
+			"direction":        "decrease",
+			"currency":         "USD",
+		},
+	}
+}
+
+func TestPackAsBatch_FillsBatchFields(t *testing.T) {
+	drafts := []personas.Drafted{
+		makeDraft("SKU-001", 1, "Home & Textiles"),
+		makeDraft("SKU-002", 2, "Home & Textiles"),
+		makeDraft("SKU-003", 3, "Home & Textiles"),
+	}
+	packed := packAsBatch(drafts, "Home & Textiles")
+	if packed.BatchTitle == "" {
+		t.Error("BatchTitle should be set")
+	}
+	if !strings.Contains(packed.BatchTitle, "Home & Textiles") {
+		t.Errorf("BatchTitle should name the category; got %q", packed.BatchTitle)
+	}
+	if !strings.Contains(packed.BatchTitle, "3 products") {
+		t.Errorf("BatchTitle should show product count; got %q", packed.BatchTitle)
+	}
+	if packed.BatchIntent != "pricing_bulk" {
+		t.Errorf("BatchIntent=%q, want pricing_bulk", packed.BatchIntent)
+	}
+	if len(packed.BatchSiblings) != 2 {
+		t.Errorf("BatchSiblings length=%d, want 2 (primary + 2 siblings = 3 total)", len(packed.BatchSiblings))
+	}
+	if got := packed.Target["product_sku"]; got != "SKU-001" {
+		t.Errorf("primary should be the first draft; got product_sku=%v", got)
+	}
+}
+
+func TestProductJSON_ImageFields(t *testing.T) {
+	payload := []byte(`{
+		"id": 7,
+		"name": "Indigo Pillow",
+		"sku": "IND-7",
+		"status": "publish",
+		"type": "simple",
+		"regular_price": "48.00",
+		"image_url": "https://store.example.com/wp-content/uploads/2024/01/pillow.jpg",
+		"image_alt": "Indigo throw pillow"
+	}`)
+	var p product
+	if err := json.Unmarshal(payload, &p); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if p.ImageURL != "https://store.example.com/wp-content/uploads/2024/01/pillow.jpg" {
+		t.Errorf("ImageURL = %q", p.ImageURL)
+	}
+	if p.ImageAlt != "Indigo throw pillow" {
+		t.Errorf("ImageAlt = %q", p.ImageAlt)
+	}
+}
+
+func TestPickAnchorPrice_PrefersSaleWhenPresent(t *testing.T) {
+	cases := []struct {
+		name      string
+		regular   string
+		sale      string
+		wantValue float64
+		wantField string
+		wantOK    bool
+	}{
+		{"only regular", "39.00", "", 39.00, "regular_price", true},
+		{"sale active", "39.00", "29.99", 29.99, "sale_price", true},
+		{"sale empty string", "39.00", "  ", 39.00, "regular_price", true},
+		{"sale zero", "39.00", "0.00", 39.00, "regular_price", true},
+		{"sale negative", "39.00", "-1.00", 39.00, "regular_price", true},
+		{"no regular, no sale", "", "", 0, "", false},
+		{"no regular but sale set — skip", "", "29.99", 0, "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := product{RegularPrice: tc.regular, SalePrice: tc.sale}
+			value, field, ok := pickAnchorPrice(p)
+			if ok != tc.wantOK {
+				t.Fatalf("ok=%v, want %v", ok, tc.wantOK)
+			}
+			if !ok {
+				return
+			}
+			if value != tc.wantValue {
+				t.Errorf("value=%v, want %v", value, tc.wantValue)
+			}
+			if field != tc.wantField {
+				t.Errorf("field=%q, want %q", field, tc.wantField)
+			}
+		})
+	}
+}
+
+func TestDraftForProduct_TargetShape_SalePrice(t *testing.T) {
+	// Build a Drafted directly from the pieces draftForProduct assembles.
+	// We construct the target manually to assert the contract we promise
+	// to the dispatcher + UI: target_field present, observed values
+	// captured, regular_price holds the value to write into target_field.
+	p := product{ID: 821, Name: "Wool Throw", SKU: "WT-1", RegularPrice: "39.00", SalePrice: "35.00"}
+	currentPrice, targetField, ok := pickAnchorPrice(p)
+	if !ok {
+		t.Fatalf("pickAnchorPrice returned !ok for valid sale product")
+	}
+	out := proposalOut{
+		PreviousPrice: currentPrice, // 35.00
+		ProposedPrice: 40.00,
+		PercentChange: 14.3,
+		Direction:     "increase",
+	}
+	target := buildPricingTarget(p, out, "USD", targetField)
+	if got := target["target_field"]; got != "sale_price" {
+		t.Errorf("target_field=%v, want sale_price", got)
+	}
+	if got := target["regular_price"]; got != "40.00" {
+		t.Errorf("regular_price=%v, want \"40.00\" (the value to WRITE into target_field)", got)
+	}
+	if got := target["regular_price_observed"]; got != "39.00" {
+		t.Errorf("regular_price_observed=%v, want \"39.00\"", got)
+	}
+	if got := target["sale_price_observed"]; got != "35.00" {
+		t.Errorf("sale_price_observed=%v, want \"35.00\"", got)
+	}
+	if got := target["previous_price"]; got != 35.00 {
+		t.Errorf("previous_price=%v, want 35.00 (the sale anchor)", got)
+	}
+}
+
+func TestDraftForProduct_TargetShape_RegularPriceBackcompat(t *testing.T) {
+	p := product{ID: 7, Name: "Mug", SKU: "MUG-1", RegularPrice: "12.00", SalePrice: ""}
+	currentPrice, targetField, ok := pickAnchorPrice(p)
+	if !ok {
+		t.Fatalf("pickAnchorPrice returned !ok for regular-only product")
+	}
+	out := proposalOut{
+		PreviousPrice: currentPrice,
+		ProposedPrice: 14.50,
+		PercentChange: 20.8,
+		Direction:     "increase",
+	}
+	target := buildPricingTarget(p, out, "USD", targetField)
+	if got := target["target_field"]; got != "regular_price" {
+		t.Errorf("target_field=%v, want regular_price", got)
+	}
+	if got := target["regular_price"]; got != "14.50" {
+		t.Errorf("regular_price=%v, want \"14.50\"", got)
+	}
+	if got := target["regular_price_observed"]; got != "12.00" {
+		t.Errorf("regular_price_observed=%v, want \"12.00\"", got)
+	}
+	if _, hasSaleObs := target["sale_price_observed"]; hasSaleObs {
+		t.Errorf("sale_price_observed should be absent when no sale price is set; target=%v", target)
+	}
+}
+
+func TestPickFirstProduct_AllowsVariable(t *testing.T) {
+	// After variable-product support lands, pickFirstProduct should no
+	// longer skip type=variable. The function still skips no-price and
+	// cooldown'd entries — those gates stay.
+	summaries := []productSummary{
+		{ID: 100, Status: "publish", Type: "simple", RegularPrice: ""},        // skipped: no price
+		{ID: 101, Status: "publish", Type: "variable", RegularPrice: ""},      // accepted: variable parents have empty regular_price by design
+		{ID: 102, Status: "publish", Type: "simple", RegularPrice: "19.99"},   // accepted
+	}
+	id, err := firstEligible(summaries, map[int]struct{}{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != 101 {
+		t.Fatalf("expected id 101 (first variable, no price-string requirement on variables); got %d", id)
+	}
+}
+
+func TestListEligibleProducts_IncludesVariable(t *testing.T) {
+	products := []product{
+		{ID: 200, Status: "publish", Type: "simple", RegularPrice: "29.99"},
+		{ID: 201, Status: "publish", Type: "variable", RegularPrice: ""},
+		{ID: 202, Status: "publish", Type: "simple", RegularPrice: ""},
+	}
+	got := filterEligible(products, map[int]struct{}{})
+	if len(got) != 2 {
+		t.Fatalf("expected 2 eligible (variable + simple-with-price); got %d (%v)", len(got), got)
+	}
+	wantIDs := map[int]bool{200: true, 201: true}
+	for _, p := range got {
+		if !wantIDs[p.ID] {
+			t.Fatalf("unexpected id %d in eligible set", p.ID)
+		}
+	}
+}
+
+func TestPickFirstProduct_AllowsGrouped(t *testing.T) {
+	// Grouped parents have meaningless regular_price (the parent is a
+	// wrapper; children carry the real prices), so they must pass the
+	// picker like variable parents do. draftForProduct fans out to
+	// children via grouped_products IDs.
+	summaries := []productSummary{
+		{ID: 300, Status: "publish", Type: "simple", RegularPrice: ""},
+		{ID: 301, Status: "publish", Type: "grouped", RegularPrice: ""},
+		{ID: 302, Status: "publish", Type: "simple", RegularPrice: "19.99"},
+	}
+	id, err := firstEligible(summaries, map[int]struct{}{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != 301 {
+		t.Fatalf("expected id 301 (grouped parent passes despite empty regular_price); got %d", id)
+	}
+}
+
+func TestListEligibleProducts_IncludesGrouped(t *testing.T) {
+	products := []product{
+		{ID: 400, Status: "publish", Type: "simple", RegularPrice: "29.99"},
+		{ID: 401, Status: "publish", Type: "grouped", RegularPrice: ""},
+		{ID: 402, Status: "publish", Type: "simple", RegularPrice: ""},
+	}
+	got := filterEligible(products, map[int]struct{}{})
+	if len(got) != 2 {
+		t.Fatalf("expected 2 eligible (grouped + simple-with-price); got %d (%v)", len(got), got)
+	}
+	wantIDs := map[int]bool{400: true, 401: true}
+	for _, p := range got {
+		if !wantIDs[p.ID] {
+			t.Fatalf("unexpected id %d in eligible set", p.ID)
+		}
+	}
+}
+
+// ---------------------------------------------------------------- COGS / sub-cost floor
+
+func TestProduct_DecodesCostOfGoodsSold(t *testing.T) {
+	// Woo 10.3+ /wp-json/wc/v3/products/<id> shape, mirrored by the
+	// companion plugin's wooagent-products/get.
+	payload := []byte(`{
+		"id": 821,
+		"name": "Wool Throw",
+		"type": "simple",
+		"regular_price": "49.00",
+		"cost_of_goods_sold": {"values": [{"defined_value": 22.50, "effective_value": 22.50}], "total_value": 22.50}
+	}`)
+	var p product
+	if err := json.Unmarshal(payload, &p); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if p.CostOfGoodsSold.TotalValue != 22.50 {
+		t.Fatalf("TotalValue = %v, want 22.50", p.CostOfGoodsSold.TotalValue)
+	}
+}
+
+func TestProduct_TolerantOfMissingCostField(t *testing.T) {
+	// Stores running pre-10.3 Woo OR with the COGS feature toggle off
+	// emit no cost_of_goods_sold field at all. Must decode without error
+	// and yield productCost(p) == 0 — i.e., "no floor data, no floor."
+	payload := []byte(`{"id": 7, "name": "Mug", "type": "simple", "regular_price": "12.00"}`)
+	var p product
+	if err := json.Unmarshal(payload, &p); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if productCost(p) != 0 {
+		t.Fatalf("productCost on COGS-less product = %v, want 0", productCost(p))
+	}
+}
+
+func TestProductCost_ReturnsZeroForNonPositive(t *testing.T) {
+	cases := []struct {
+		name  string
+		total float64
+		want  float64
+	}{
+		{"zero (COGS feature off)", 0, 0},
+		{"negative (malformed)", -1.50, 0},
+		{"positive", 22.50, 22.50},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := product{}
+			p.CostOfGoodsSold.TotalValue = tc.total
+			if got := productCost(p); got != tc.want {
+				t.Errorf("productCost(total=%v) = %v, want %v", tc.total, got, tc.want)
+			}
+		})
+	}
+}
+
+// costLineMarker is the unique phrase that only appears on the optional
+// per-product cost-floor data line (not in the static template prose).
+const costLineMarker = "cost floor (proposed_price MUST be ≥ this)"
+
+func TestBuildUserPrompt_IncludesCostLineWhenSet(t *testing.T) {
+	p := product{ID: 821, Name: "Wool Throw", SKU: "WT-1", RegularPrice: "39.00"}
+	got := buildUserPrompt(p, "USD", 39.00, "regular_price", 22.50)
+	if !strings.Contains(got, costLineMarker) {
+		t.Fatalf("prompt missing cost-line marker %q; got:\n%s", costLineMarker, got)
+	}
+	if !strings.Contains(got, "22.50 USD") {
+		t.Fatalf("prompt missing cost value '22.50 USD'; got:\n%s", got)
+	}
+}
+
+func TestBuildUserPrompt_OmitsCostLineWhenAbsent(t *testing.T) {
+	// COGS feature off / pre-10.3 store → cost==0 → the data line MUST
+	// be absent. (The static template still contains the "When a cost
+	// floor is shown above..." conditional instruction; that's fine —
+	// the model knows to ignore it when no floor line is present.)
+	p := product{ID: 7, Name: "Mug", SKU: "MUG-1", RegularPrice: "12.00"}
+	got := buildUserPrompt(p, "USD", 12.00, "regular_price", 0)
+	if strings.Contains(got, costLineMarker) {
+		t.Fatalf("prompt should NOT include cost-line marker when cost==0; got:\n%s", got)
+	}
+}
+
+// validateProposalGuardrails mirrors the post-LLM hard-reject sequence in
+// draftForProduct so we can unit-test the sub-cost gate without booting an
+// MCP client or Anthropic. Kept in the test file deliberately — when the
+// production path changes, this helper must be updated to match.
+func validateProposalGuardrails(out proposalOut, sourcesMin int, cost float64) error {
+	if out.NoProposal {
+		return nil
+	}
+	if len(out.Sources) < sourcesMin {
+		return nil
+	}
+	if out.ProposedPrice <= 0 {
+		return fmt.Errorf("proposed_price must be > 0")
+	}
+	if cost > 0 && out.ProposedPrice < cost {
+		return fmt.Errorf("proposed_price %.2f below cost-of-goods %.2f (sub-cost floor)", out.ProposedPrice, cost)
+	}
+	if absFloat(out.PercentChange) > 25.0+0.01 {
+		return fmt.Errorf("percent_change %.2f exceeds ±25%% step cap", out.PercentChange)
+	}
+	return nil
+}
+
+func TestSubCostFloor_HardRejectsBelowCost(t *testing.T) {
+	out := proposalOut{
+		ProposedPrice: 18.00,
+		PercentChange: -10.0,
+		Sources:       []proposalSource{{URL: "x"}, {URL: "y"}},
+	}
+	err := validateProposalGuardrails(out, 2, 22.50)
+	if err == nil {
+		t.Fatalf("expected sub-cost error; got nil")
+	}
+	if !strings.Contains(err.Error(), "sub-cost floor") {
+		t.Errorf("err message lost 'sub-cost floor' marker; got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "18.00") || !strings.Contains(err.Error(), "22.50") {
+		t.Errorf("err message should include both proposed and cost; got: %v", err)
+	}
+}
+
+func TestSubCostFloor_AcceptsAtOrAboveCost(t *testing.T) {
+	cases := []struct {
+		name     string
+		proposed float64
+		cost     float64
+	}{
+		{"exactly at cost", 22.50, 22.50},
+		{"above cost", 28.00, 22.50},
+		{"cost==0 means no floor", 1.00, 0},
+		{"cost negative degrades to no floor", 1.00, -5.0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := proposalOut{
+				ProposedPrice: tc.proposed,
+				PercentChange: 5.0,
+				Sources:       []proposalSource{{URL: "x"}, {URL: "y"}},
+			}
+			if err := validateProposalGuardrails(out, 2, tc.cost); err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestProduct_DecodesGroupedProductsField(t *testing.T) {
+	// WC REST API returns grouped_products as an array of integer child
+	// IDs on the parent product. draftForGroupedParent needs this field
+	// populated to know which children to fan out to.
+	payload := []byte(`{
+		"id": 4000,
+		"name": "Logo Collection",
+		"type": "grouped",
+		"grouped_products": [3902, 3903, 3904]
+	}`)
+	var p product
+	if err := json.Unmarshal(payload, &p); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(p.GroupedProducts) != 3 {
+		t.Fatalf("len(GroupedProducts) = %d, want 3", len(p.GroupedProducts))
+	}
+	if p.GroupedProducts[0] != 3902 || p.GroupedProducts[1] != 3903 || p.GroupedProducts[2] != 3904 {
+		t.Fatalf("GroupedProducts = %v, want [3902 3903 3904]", p.GroupedProducts)
+	}
+}
+
+// TestDistinctSources is the core of the at-least-2-retailers guard: nine
+// comparables from a single retailer (the Madewell-sunglasses case that
+// motivated this rule) must count as one source, while genuine multi-
+// retailer sets count their retailers.
+func TestDistinctSources(t *testing.T) {
+	cases := []struct {
+		name    string
+		sources []proposalSource
+		want    int
+	}{
+		{
+			name: "nine SKUs one retailer collapses to one",
+			sources: []proposalSource{
+				{Retailer: "Madewell", URL: "https://www.madewell.com/a"},
+				{Retailer: "Madewell", URL: "https://www.madewell.com/b"},
+				{Retailer: "Madewell", URL: "https://www.madewell.com/c"},
+			},
+			want: 1,
+		},
+		{
+			name: "case and whitespace insensitive",
+			sources: []proposalSource{
+				{Retailer: "Madewell"},
+				{Retailer: "  madewell "},
+			},
+			want: 1,
+		},
+		{
+			name: "two genuine retailers",
+			sources: []proposalSource{
+				{Retailer: "Madewell"},
+				{Retailer: "Everlane"},
+			},
+			want: 2,
+		},
+		{
+			name: "blank retailer falls back to URL host, www-normalized",
+			sources: []proposalSource{
+				{URL: "https://www.madewell.com/a"},
+				{URL: "https://madewell.com/b"},
+				{URL: "https://everlane.com/c"},
+			},
+			want: 2,
+		},
+		{
+			name: "source with neither retailer nor host does not count",
+			sources: []proposalSource{
+				{Retailer: "Madewell"},
+				{Retailer: "", URL: ""},
+			},
+			want: 1,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := distinctSources(tc.sources); got != tc.want {
+				t.Errorf("distinctSources() = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
