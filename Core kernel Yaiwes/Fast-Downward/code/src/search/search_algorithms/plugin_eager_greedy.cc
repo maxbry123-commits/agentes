@@ -1,0 +1,76 @@
+#include "eager_search.h"
+#include "search_common.h"
+
+#include "../plugins/plugin.h"
+
+using namespace std;
+
+namespace plugin_eager_greedy {
+class EagerGreedySearchFeature
+    : public plugins::TypedFeature<TaskIndependentSearchAlgorithm> {
+public:
+    EagerGreedySearchFeature() : TypedFeature("eager_greedy") {
+        document_title("Greedy search (eager)");
+        document_synopsis("");
+
+        add_list_option<shared_ptr<TaskIndependentEvaluator>>(
+            "evals", "evaluators");
+        add_list_option<shared_ptr<TaskIndependentEvaluator>>(
+            "preferred", "use preferred operators of these evaluators", "[]");
+        add_option<int>(
+            "boost", "boost value for preferred operator open lists", "0");
+        eager_search::add_eager_search_options_to_feature(
+            *this, "eager_greedy");
+
+        document_note(
+            "Open list",
+            "In most cases, eager greedy best first search uses "
+            "an alternation open list with one queue for each evaluator. "
+            "If preferred operator evaluators are used, it adds an extra queue "
+            "for each of these evaluators that includes only the nodes that "
+            "are generated with a preferred operator. "
+            "If only one evaluator and no preferred operator evaluator is used, "
+            "the search does not use an alternation open list but a "
+            "standard open list with only one queue.");
+        document_note("Closed nodes", "Closed node are not re-opened");
+        document_note(
+            "Equivalent statements using general eager search",
+            "\n```\n--search \"let(h2, eval2, eager_greedy([eval1, h2], preferred=[h2], boost=100))\"\n```\n"
+            "is equivalent to\n"
+            "```\n--search \"let(h1, eval1, let(h2, eval2,\n"
+            "              eager(alt([single(h1), single(h1, pref_only=true), \n"
+            "                         single(h2), single(h2, pref_only=true)], boost=100),\n"
+            "                    preferred=[h2])))\"\n```\n"
+            "------------------------------------------------------------\n"
+            "```\n--search \"eager_greedy([eval1, eval2])\"\n```\n"
+            "is equivalent to\n"
+            "```\n--search \"eager(alt([single(eval1), single(eval2)]))\"\n```\n"
+            "------------------------------------------------------------\n"
+            "```\n--search \"let(h1, eval1, eager_greedy([h1], preferred=[h1]))\"\n```\n"
+            "is equivalent to\n"
+            "```\n--search \"let(h1, eval1, eager(alt([single(h1), single(h1, pref_only=true)]),\n"
+            "                               preferred=[h1]))\"\n```\n"
+            "------------------------------------------------------------\n"
+            "```\n--search \"eager_greedy([eval1])\"\n```\n"
+            "is equivalent to\n"
+            "```\n--search \"eager(single(eval1))\"\n```\n",
+            true);
+    }
+
+    virtual shared_ptr<TaskIndependentSearchAlgorithm> create_component(
+        const plugins::Options &opts) const override {
+        return components::make_auto_task_independent_component<
+            eager_search::EagerSearch, SearchAlgorithm>(
+            search_common::create_greedy_open_list_factory(
+                opts.get_list<shared_ptr<TaskIndependentEvaluator>>("evals"),
+                opts.get_list<shared_ptr<TaskIndependentEvaluator>>(
+                    "preferred"),
+                opts.get<int>("boost")),
+            false, shared_ptr<TaskIndependentEvaluator>(nullptr),
+            opts.get_list<shared_ptr<TaskIndependentEvaluator>>("preferred"),
+            eager_search::get_eager_search_arguments_from_options(opts));
+    }
+};
+
+static plugins::FeaturePlugin<EagerGreedySearchFeature> _plugin;
+}

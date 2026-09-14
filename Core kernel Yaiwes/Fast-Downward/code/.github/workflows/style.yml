@@ -1,0 +1,37 @@
+---
+name: Code style tests
+
+on:
+  push:
+    branches: [main, release-*]
+  pull_request:
+    branches: [main, release-*]
+
+jobs:
+  style:
+    name: Test code style
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v3
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip3 install tox
+          sudo apt-get -y install clang-tidy-18
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get -y install clang-format-18
+
+      - name: Run code style tests
+        run: |
+          cd misc/
+          tox -e style,clang-tidy
+
+...
