@@ -1,0 +1,245 @@
+<a id="camel.models.deepseek_model"></a>
+
+<a id="camel.models.deepseek_model.DeepSeekModel"></a>
+
+## DeepSeekModel
+
+```python
+class DeepSeekModel(OpenAICompatibleModel):
+```
+
+DeepSeek API in a unified OpenAICompatibleModel interface.
+
+**Parameters:**
+
+- **model_type** (Union[ModelType, str]): Model for which a backend is created.
+- **model_config_dict** (Optional[Dict[str, Any]], optional): A dictionary that will be fed into:obj:`openai.ChatCompletion.create()`. If :obj:`None`, :obj:`DeepSeekConfig().as_dict()` will be used. (default: :obj:`None`)
+- **api_key** (Optional[str], optional): The API key for authenticating with the DeepSeek service. (default: :obj:`None`)
+- **url** (Optional[str], optional): The url to the DeepSeek service. (default: :obj:`https://api.deepseek.com`)
+- **token_counter** (Optional[BaseTokenCounter], optional): Token counter to use for the model. If not provided, :obj:`OpenAITokenCounter` will be used. (default: :obj:`None`)
+- **timeout** (Optional[float], optional): The timeout value in seconds for API calls. If not provided, will fall back to the MODEL_TIMEOUT environment variable or default to 180 seconds. (default: :obj:`None`)
+- **max_retries** (int, optional): Maximum number of retries for API calls. (default: :obj:`3`) **kwargs (Any): Additional arguments to pass to the client initialization.
+- **References**: 
+- **https**: //api-docs.deepseek.com/
+
+<a id="camel.models.deepseek_model.DeepSeekModel.__init__"></a>
+
+### __init__
+
+```python
+def __init__(
+    self,
+    model_type: Union[ModelType, str],
+    model_config_dict: Optional[Dict[str, Any]] = None,
+    api_key: Optional[str] = None,
+    url: Optional[str] = None,
+    token_counter: Optional[BaseTokenCounter] = None,
+    timeout: Optional[float] = None,
+    max_retries: int = 3,
+    **kwargs: Any
+):
+```
+
+<a id="camel.models.deepseek_model.DeepSeekModel._get_reasoning_session_id"></a>
+
+### _get_reasoning_session_id
+
+```python
+def _get_reasoning_session_id(self):
+```
+
+Get the current agent session ID for reasoning cache isolation.
+
+<a id="camel.models.deepseek_model.DeepSeekModel._get_tool_call_id"></a>
+
+### _get_tool_call_id
+
+```python
+def _get_tool_call_id(tool_call: Any):
+```
+
+<a id="camel.models.deepseek_model.DeepSeekModel._get_message_content"></a>
+
+### _get_message_content
+
+```python
+def _get_message_content(message: Any):
+```
+
+<a id="camel.models.deepseek_model.DeepSeekModel._cache_tool_call_reasoning"></a>
+
+### _cache_tool_call_reasoning
+
+```python
+def _cache_tool_call_reasoning(self, response: Any):
+```
+
+Cache reasoning content for DeepSeek thinking-mode tool calls.
+
+DeepSeek requires the assistant `__INLINE_CODE_0__` generated with a
+tool call to be passed back in later requests. CAMEL memory stores the
+OpenAI-compatible tool-call message, so the model layer keeps the
+DeepSeek-specific field keyed by tool_call_id and injects it before
+the next request.
+
+<a id="camel.models.deepseek_model.DeepSeekModel._cache_reasoning_content"></a>
+
+### _cache_reasoning_content
+
+```python
+def _cache_reasoning_content(
+    self,
+    reasoning_content: Optional[str],
+    tool_call_ids: List[str],
+    content: Optional[str] = None
+):
+```
+
+Cache DeepSeek reasoning collected from a streamed response.
+
+<a id="camel.models.deepseek_model.DeepSeekModel._collect_stream_reasoning"></a>
+
+### _collect_stream_reasoning
+
+```python
+def _collect_stream_reasoning(
+    self,
+    chunk: ChatCompletionChunk,
+    reasoning_parts: List[str],
+    content_parts: List[str],
+    tool_call_ids: Set[str]
+):
+```
+
+Collect reasoning/content/tool ids from a streaming chunk.
+
+<a id="camel.models.deepseek_model.DeepSeekModel._is_stream_response_complete"></a>
+
+### _is_stream_response_complete
+
+```python
+def _is_stream_response_complete(chunk: ChatCompletionChunk):
+```
+
+Return whether a streaming chunk completes one response.
+
+<a id="camel.models.deepseek_model.DeepSeekModel._cache_collected_stream_reasoning"></a>
+
+### _cache_collected_stream_reasoning
+
+```python
+def _cache_collected_stream_reasoning(
+    self,
+    reasoning_parts: List[str],
+    content_parts: List[str],
+    tool_call_ids: Set[str]
+):
+```
+
+Cache collected streaming reasoning once it is complete.
+
+<a id="camel.models.deepseek_model.DeepSeekModel._wrap_stream_reasoning_cache"></a>
+
+### _wrap_stream_reasoning_cache
+
+```python
+def _wrap_stream_reasoning_cache(self, response: Stream[ChatCompletionChunk]):
+```
+
+Wrap a DeepSeek stream and cache reasoning after consumption.
+
+<a id="camel.models.deepseek_model.DeepSeekModel._inject_tool_call_reasoning"></a>
+
+### _inject_tool_call_reasoning
+
+```python
+def _inject_tool_call_reasoning(self, messages: List[OpenAIMessage]):
+```
+
+Inject cached reasoning into assistant tool-call messages.
+
+<a id="camel.models.deepseek_model.DeepSeekModel._with_reasoning_content"></a>
+
+### _with_reasoning_content
+
+```python
+def _with_reasoning_content(self, message: OpenAIMessage, reasoning_content: str):
+```
+
+Return a copy of an OpenAI message with DeepSeek reasoning.
+
+<a id="camel.models.deepseek_model.DeepSeekModel.preprocess_messages"></a>
+
+### preprocess_messages
+
+```python
+def preprocess_messages(self, messages: List[OpenAIMessage]):
+```
+
+Preprocess messages and restore DeepSeek tool-call reasoning.
+
+<a id="camel.models.deepseek_model.DeepSeekModel.postprocess_response"></a>
+
+### postprocess_response
+
+```python
+def postprocess_response(self, response: Any):
+```
+
+Postprocess responses and cache DeepSeek tool-call reasoning.
+
+<a id="camel.models.deepseek_model.DeepSeekModel._normalize_thinking_config"></a>
+
+### _normalize_thinking_config
+
+```python
+def _normalize_thinking_config(self, request_config: Dict[str, Any]):
+```
+
+Move top-level `__INLINE_CODE_0____INLINE_CODE_1____INLINE_CODE_2__` for OpenAI SDK.
+
+<a id="camel.models.deepseek_model.DeepSeekModel._is_thinking_mode_enabled"></a>
+
+### _is_thinking_mode_enabled
+
+```python
+def _is_thinking_mode_enabled(self, request_config: Dict[str, Any]):
+```
+
+<a id="camel.models.deepseek_model.DeepSeekModel._prepare_request"></a>
+
+### _prepare_request
+
+```python
+def _prepare_request(
+    self,
+    messages: List[OpenAIMessage],
+    response_format: Optional[Type[BaseModel]] = None,
+    tools: Optional[List[Dict[str, Any]]] = None
+):
+```
+
+<a id="camel.models.deepseek_model.DeepSeekModel._run"></a>
+
+### _run
+
+```python
+def _run(
+    self,
+    messages: List[OpenAIMessage],
+    response_format: Optional[Type[BaseModel]] = None,
+    tools: Optional[List[Dict[str, Any]]] = None
+):
+```
+
+Runs inference of DeepSeek chat completion.
+
+**Parameters:**
+
+- **messages** (List[OpenAIMessage]): Message list with the chat history in OpenAI API format.
+
+**Returns:**
+
+  Union[ChatCompletion, Stream[ChatCompletionChunk]]:
+`ChatCompletion` in the non-stream mode, or
+`Stream[ChatCompletionChunk]` in the stream mode.
