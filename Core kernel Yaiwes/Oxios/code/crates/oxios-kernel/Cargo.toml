@@ -1,0 +1,128 @@
+[package]
+name = "oxios-kernel"
+version = "2.2.0"
+edition = "2024"
+description = "Oxios kernel: supervisor, event bus, state store"
+license = "MIT"
+repository = "https://github.com/project-oxi/oxios"
+
+[features]
+default = []
+wasm-sandbox = ["dep:wasmtime", "dep:wasmtime-wasi"]
+# Unified browser feature — browse tools + screenshot, both via oxibrowser-core 0.21.
+# Replaces the former `native-browser` (SDK-dependent) and `screenshot` (standalone)
+# features with a single direct dependency on oxibrowser-core.
+browser = ["dep:oxibrowser-core"]
+
+# MLX embedding provider (Apple Silicon only)
+# Provides EmbeddingGemma-300m dense vectors for semantic search.
+# When disabled, falls back to TF-IDF sparse embeddings.
+embedding-gguf = ["dep:llama-gguf", "dep:hf-hub"]
+
+# First-party app modules (opt-in, default-off). Embed a sibling app's core
+# library so oxios agents access its data via typed Rust APIs (no CLI
+# shell-out). Activated at runtime via the `[memo]` / `[timeline]` config
+# sections. The core crates are siblings (not yet on crates.io); paths are
+# used locally, versions recorded for a future crates.io publish.
+# See docs/designs/2026-08-05-app-module-integration-design.md
+memo = ["dep:oximemo-core"]
+foundation-keychain = ["dep:keyring"]
+timeline = ["dep:oxiline-core"]
+
+[dependencies]
+oxios-ouroboros = { version = "2.2.0", path = "../oxios-ouroboros" }
+oxios-markdown = { version = "2.2.0", path = "../oxios-markdown" }
+oxios-calendar = { version = "2.2.0", path = "../oxios-calendar" }
+oxios-mcp = { version = "2.2.0", path = "../oxios-mcp" }
+oxicode-sdk = { workspace = true }
+# oxibrain client (RFC-047): per-call `serve --stdio` child for console RPCs.
+oxibrain-client = { workspace = true }
+# 0.73.0: BrowseProgress::PdfExported, etc. oxicode-sdk 0.72 dropped the
+# BrowseTool/BrowseSessionTool factory re-exports + the browser/native-browser
+# features — products own browsing themselves (RFC-046).
+oxicode-agent = "0.81.0"
+# oxicode-ai — needed for ContentBlock/ImageContent in browse tool screenshots.
+# The SDK re-exports ContentBlock but not ImageContent, so we depend directly.
+oxicode-ai = "0.81.0"
+# First-party app module cores (optional, opt-in via the `memo`/`timeline`
+# features). Published to crates.io; resolved from the registry.
+oximemo-core = { version = "0.7", optional = true }
+oxiline-core = { version = "0.3", optional = true }
+# oxibrowser-core 0.21 — direct dependency for browse tools + screenshot.
+# Behind the unified `browser` feature (RFC-046). 0.21 adds Tab::print_to_pdf +
+# WebAssembly support (wasmi ↔ boa_engine bridge).
+oxibrowser-core = { version = "0.21", optional = true }
+# serde_yaml — YAML parsing (skill frontmatter + BrowseScriptTool steps).
+serde_yaml = "0.9"
+tokio = { workspace = true }
+futures = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+cron = "0.16"
+
+regex = { workspace = true }
+oxi-vault-git = { workspace = true }
+toml = { workspace = true }
+glob = "0.3"
+tempfile = { workspace = true }
+lettre = { workspace = true }
+# HTTP client for ClawHub API
+reqwest = { workspace = true }
+# Base64 decoding for image generation (b64_json response normalization)
+base64 = "0.22"
+# ZIP extraction for ClawHub skill archives
+zip = { workspace = true }
+# tar.gz extraction for host-tool downloads (RFC-041 provisioner)
+flate2 = { workspace = true }
+tar = { workspace = true }
+# URL parsing
+url = "2.5"
+sha2 = { workspace = true }
+hex = { workspace = true }
+# `which` for locating an `oxibrain` already on PATH (Task 5 supervisor).
+which = "7"
+getrandom = { workspace = true }
+once_cell = { workspace = true }
+blake3 = { workspace = true }
+tracing-subscriber = { workspace = true }
+parking_lot = { workspace = true }
+wasmtime = { version = "36.0.14", features = ["cranelift"], optional = true }
+wasmtime-wasi = { version = "36.0.14", optional = true }
+sysinfo = "0.35"
+dirs = { workspace = true }
+libc = { workspace = true }
+inquire = { workspace = true }
+console = { workspace = true }
+indicatif = "0.17"
+keyring = { workspace = true, optional = true }
+
+# SQLite — kernel-managed tables + agent history log (RFC-012).
+# Non-optional since the sqlite-memory feature was removed (RFC-047).
+rusqlite = { version = "0.40", features = ["bundled"] }
+
+# MLX embedding (Apple Silicon, optional)
+[target.'cfg(target_arch = "aarch64")'.dependencies]
+llama-gguf = { version = "0.14", optional = true, features = ["cpu", "huggingface"] }
+hf-hub = { version = "0.4", optional = true }
+
+
+
+[dev-dependencies]
+tempfile = { workspace = true }
+lettre = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
+zip = { workspace = true }
+blake3 = { workspace = true }
+serde_json = { workspace = true }
+
+ criterion = { version = "0.5", features = ["async"] }
+
+[lints]
+workspace = true

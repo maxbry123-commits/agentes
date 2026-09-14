@@ -1,0 +1,166 @@
+//! Telegram response formatter.
+
+use oxios_gateway::format::ChannelFormatter;
+use oxios_gateway::message::{ErrorKind, OutgoingMessage};
+
+/// Telegram-specific response formatter.
+///
+/// Formats outgoing messages for Telegram with Markdown-compatible
+/// metadata footer and emoji indicators.
+pub struct TelegramFormatter;
+
+impl ChannelFormatter for TelegramFormatter {
+    fn format_success(&self, msg: &OutgoingMessage) -> String {
+        let mut out = msg.content.clone();
+
+        if let Some(meta) = &msg.meta {
+            let mut footer_parts = Vec::new();
+            if !meta.phase.is_empty() {
+                let eval = if meta.evaluation_passed.unwrap_or(false) {
+                    "✅"
+                } else {
+                    "⚠️"
+                };
+                footer_parts.push(format!("{} {}", eval, meta.phase));
+            }
+            if let Some(tag) = &meta.project_tag {
+                footer_parts.push(tag.clone());
+            }
+            if let Some(dur) = meta.duration_ms {
+                footer_parts.push(format!("{:.1}s", dur as f64 / 1000.0));
+            }
+            if !footer_parts.is_empty() {
+                out.push_str(&format!("\n\n_{}_", footer_parts.join(" · ")));
+            }
+        }
+
+        out
+    }
+
+    fn format_error(&self, msg: &OutgoingMessage) -> String {
+        let meta = msg.meta.as_ref();
+        let kind = meta.and_then(|m| m.error.as_ref()).map(|e| e.kind);
+
+        let icon = match kind {
+            Some(ErrorKind::ProviderError) => "🔌",
+            Some(ErrorKind::Timeout) => "⏱️",
+            _ => "❌",
+        };
+
+        let mut out = format!("{} {}", icon, msg.content);
+
+        if let Some(err) = meta.and_then(|m| m.error.as_ref())
+            && let Some(s) = &err.suggestion
+        {
+            out.push_str(&format!("\n\n💡 _{s}_"));
+        }
+
+        out
+    }
+
+    fn format_progress(&self, phase: &str) -> String {
+        match phase {
+            "Interview" => "🔍 Analyzing...",
+            "Seed" => "📋 Planning...",
+            "Execute" => "⚡ Executing...",
+            "Evaluate" => "📊 Evaluating...",
+            "Evolve" => "🔄 Refining...",
+            _ => "⏳ Processing...",
+        }
+        .into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use oxios_gateway::message::{ResponseMeta, UserFacingError};
+    use std::collections::HashMap;
+
+    fn make_msg(content: &str, meta: Option<ResponseMeta>) -> OutgoingMessage {
+        OutgoingMessage {
+            id: uuid::Uuid::new_v4(),
+            channel: "telegram".to_string(),
+            user_id: "123".to_string(),
+            content: content.to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata: HashMap::new(),
+            meta,
+            target_conn_id: None,
+            seq: None,
+            partial: None,
+        }
+    }
+
+    #[test]
+    fn format_success_no_meta() {
+        let msg = make_msg("Hello", None);
+        let fmt = TelegramFormatter;
+        assert_eq!(fmt.format_success(&msg), "Hello");
+    }
+
+    #[test]
+    fn format_success_with_phase() {
+        let meta = ResponseMeta {
+            project_tag: Some("[🔧 Test]".to_string()),
+            phase: "Execute".to_string(),
+            evaluation_passed: Some(true),
+            duration_ms: Some(3500),
+            ..Default::default()
+        };
+        let msg = make_msg("Done!", Some(meta));
+        let fmt = TelegramFormatter;
+        let result = fmt.format_success(&msg);
+        assert!(result.contains("Done!"));
+        assert!(result.contains("✅ Execute"));
+        assert!(result.contains("[🔧 Test]"));
+        assert!(result.contains("3.5s"));
+    }
+
+    #[test]
+    fn format_error_internal() {
+        let meta = ResponseMeta {
+            error: Some(UserFacingError {
+                message: "Internal error".to_string(),
+                kind: ErrorKind::Internal,
+                suggestion: None,
+            }),
+            ..Default::default()
+        };
+        let msg = make_msg("Internal error", Some(meta));
+        let fmt = TelegramFormatter;
+        let result = fmt.format_error(&msg);
+        assert!(result.starts_with("❌"));
+    }
+
+    #[test]
+    fn format_error_provider_with_suggestion() {
+        let meta = ResponseMeta {
+            error: Some(UserFacingError {
+                message: "AI service error".to_string(),
+                kind: ErrorKind::ProviderError,
+                suggestion: Some("Try again in 1-2 minutes.".to_string()),
+            }),
+            ..Default::default()
+        };
+        let msg = make_msg("AI service error", Some(meta));
+        let fmt = TelegramFormatter;
+        let result = fmt.format_error(&msg);
+        assert!(result.starts_with("🔌"));
+        assert!(result.contains("💡"));
+    }
+
+    #[test]
+    fn format_progress_known_phases() {
+        let fmt = TelegramFormatter;
+        assert_eq!(fmt.format_progress("Interview"), "🔍 Analyzing...");
+        assert_eq!(fmt.format_progress("Execute"), "⚡ Executing...");
+        assert_eq!(fmt.format_progress("Evolve"), "🔄 Refining...");
+    }
+
+    #[test]
+    fn format_progress_unknown() {
+        let fmt = TelegramFormatter;
+        assert_eq!(fmt.format_progress("Unknown"), "⏳ Processing...");
+    }
+}

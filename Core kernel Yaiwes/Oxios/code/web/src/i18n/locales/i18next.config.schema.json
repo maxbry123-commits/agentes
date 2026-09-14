@@ -1,0 +1,17 @@
+{
+  "$schema": "https://www.internationalize.com/schema/config/v3.0.0-beta.0/schema.json",
+  "defaultLocale": "en",
+  "locales": ["en", "ko"],
+  "defaultNS": "common",
+  "ns": [
+    "common",
+    "dashboard",
+    "settings",
+    "knowledge",
+    "chat",
+    "agents",
+    "security",
+    "events",
+    "resources"
+  ]
+}

@@ -1,0 +1,1091 @@
+//! Sandboxed filesystem abstraction for the knowledge base.
+//!
+//! Ported from files.md (`server/fs/fs.go`, `core/fs.rs`) by Artem Zakirullin.
+//! Each knowledge base has its own root directory. All paths are validated
+//! to prevent path traversal attacks.
+
+use std::cmp::Reverse;
+use std::collections::HashMap;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
+
+use md5::{Digest as Md5Digest, Md5};
+
+use crate::types::{
+    DIR_ARCHIVE, DIR_JOURNAL, DIR_MEDIA, DIR_USER_ROOT, FileEntry, FsError, MAX_TEXT_SIZE,
+};
+
+/// Forbidden filename characters and their safe replacements.
+const FORBIDDEN_CHARS: &[(&str, &str)] = &[
+    ("<", "＜"),
+    (">", "＞"),
+    (":", "꞉"),
+    ("\"", "″"),
+    ("|", "⼁"),
+    ("\\", "＼"),
+    ("?", "？"),
+    ("*", "﹡"),
+    ("\x00", ""),
+    ("/", "／"),
+];
+
+/// System directories to exclude from user-facing listings.
+pub const SYSTEM_DIRS: &[&str] = &["archive", "media", "journal", "insights", "img"];
+
+/// System files to exclude from user-facing listings.
+pub const SYSTEM_FILES: &[&str] = &[
+    "Chat.md", "Later.md", "Done.md", "Shop.md", "Watch.md", "Read.md",
+];
+
+/// Files/dirs to ignore during listing.
+const IGNORED_NAMES: &[&str] = &[".", "..", ".obsidian", ".gitignore", ".DS_Store", ".git"];
+
+/// Maximum size for a single read() / read_to_string() call. Protects
+/// against OOM when a huge file ends up inside the sandbox (F23). Text
+/// content syncs are also bounded by [`MAX_TEXT_SIZE`].
+pub const MAX_READ_SIZE: u64 = MAX_TEXT_SIZE as u64;
+
+/// Minimum number of hex chars required for `unhash()` lookups. Shorter
+/// prefixes match too many files and let callers resolve arbitrary
+/// handles (F18). 5 chars = short_hash width, ~10^6 collision space.
+const MIN_UNHASH_LEN: usize = 5;
+
+// ============================================================================
+// VirtualFs
+// ============================================================================
+
+/// Sandboxed filesystem for a single knowledge base.
+///
+/// All file operations are constrained to the root directory.
+/// Path traversal attempts are rejected.
+#[derive(Clone, Debug)]
+pub struct VirtualFs {
+    root: PathBuf,
+    quota_kb: i64,
+}
+
+impl VirtualFs {
+    /// Create a new VirtualFs rooted at the given directory.
+    ///
+    /// Creates the directory if it doesn't exist.
+    pub fn new(root: PathBuf) -> std::io::Result<Self> {
+        if !root.exists() {
+            std::fs::create_dir_all(&root)?;
+        }
+        Ok(Self { root, quota_kb: 0 })
+    }
+
+    /// Set a storage quota in kilobytes (0 = unlimited).
+    pub fn with_quota(mut self, quota_kb: i64) -> Self {
+        self.quota_kb = quota_kb;
+        self
+    }
+
+    /// Get the root path.
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// Get the configured quota in KB (0 = unlimited).
+    pub fn quota_kb(&self) -> i64 {
+        self.quota_kb
+    }
+
+    /// Resolve a sandboxed path under `dir` for `filename`, verifying the
+    /// final location stays under the knowledge root (rejects `..`, absolute,
+    /// and symlink escapes).
+    pub fn safe_path(&self, dir: &str, filename: &str) -> Result<PathBuf, FsError> {
+        let dir_trimmed = dir.trim();
+        if dir_trimmed.starts_with("..") {
+            return Err(FsError::UnsafePath);
+        }
+
+        let relative: PathBuf = if dir == DIR_USER_ROOT {
+            if filename.is_empty() {
+                return Ok(self.root.clone());
+            }
+            PathBuf::from(filename)
+        } else {
+            PathBuf::from(dir).join(filename)
+        };
+
+        let rel_str = relative.to_string_lossy();
+        if rel_str.starts_with('/') || rel_str.starts_with("../") {
+            return Err(FsError::UnsafePath);
+        }
+
+        let full = self.root.join(&relative);
+
+        // Normalize and verify we didn't escape root
+        let stripped = full
+            .strip_prefix(&self.root)
+            .map_err(|_| FsError::UnsafePath)?;
+        let (normalized, escaped) = normalize_path(stripped);
+        if escaped || normalized.to_string_lossy().contains("..") {
+            return Err(FsError::UnsafePath);
+        }
+
+        let final_path = self.root.join(&normalized);
+        // Re-verify containment by resolving symlinks: a symlink planted
+        // inside the root (e.g. via archive restore or external mount)
+        // could otherwise point outside and let read/write/delete escape
+        // the sandbox (F4).
+        self.verify_under_root(&final_path)?;
+        Ok(final_path)
+    }
+
+    /// Resolve `target` (and its longest existing ancestor when the target
+    /// does not yet exist) via `canonicalize` and confirm the result still
+    /// lives under the canonicalized root. Rejects symlink escapes.
+    fn verify_under_root(&self, target: &Path) -> Result<(), FsError> {
+        let canonical_root = self.root.canonicalize().map_err(|_| FsError::UnsafePath)?;
+
+        let canonical_target = match target.canonicalize() {
+            Ok(p) => p,
+            Err(_) => {
+                // Target doesn't exist yet (typical for writes). Walk up
+                // to the nearest existing ancestor, canonicalize it, then
+                // re-append the non-existent tail components. Tail items
+                // can't be symlinks yet, so they don't change containment.
+                let mut existing = target.to_path_buf();
+                let mut tail: Vec<std::ffi::OsString> = Vec::new();
+                while std::fs::symlink_metadata(&existing).is_err() {
+                    let Some(name) = existing.file_name() else {
+                        return Err(FsError::UnsafePath);
+                    };
+                    tail.push(name.to_owned());
+                    if !existing.pop() {
+                        return Err(FsError::UnsafePath);
+                    }
+                }
+                let mut c = existing.canonicalize().map_err(|_| FsError::UnsafePath)?;
+                for name in tail.into_iter().rev() {
+                    c.push(name);
+                }
+                c
+            }
+        };
+
+        if !canonical_target.starts_with(&canonical_root) {
+            return Err(FsError::UnsafePath);
+        }
+        Ok(())
+    }
+
+    // ── POSIX Path API (단일 path 문자열) ────────────────────
+
+    /// Read file content by POSIX-style relative path.
+    /// `path` examples: "Rust.md", "brain/Rust.md", "journal/2024.08 August.md"
+    pub fn read_path(&self, path: &str) -> Result<String, FsError> {
+        let (dir, filename) = split_posix_path(path);
+        self.read(dir, filename)
+    }
+
+    /// Write file content by POSIX-style relative path.
+    pub fn write_path(&self, path: &str, content: &str) -> Result<(), FsError> {
+        let (dir, filename) = split_posix_path(path);
+        self.write(dir, filename, content)
+    }
+
+    /// Delete file by POSIX-style relative path.
+    pub fn delete_path(&self, path: &str) -> Result<(), FsError> {
+        let (dir, filename) = split_posix_path(path);
+        self.del(dir, filename)
+    }
+
+    /// Rename/move file by POSIX-style relative paths.
+    pub fn rename_path(&self, old_path: &str, new_path: &str) -> Result<(), FsError> {
+        let (old_dir, old_filename) = split_posix_path(old_path);
+        let (new_dir, new_filename) = split_posix_path(new_path);
+        self.rename(old_dir, old_filename, new_dir, new_filename)
+    }
+
+    /// Check if file exists by POSIX-style relative path.
+    pub fn exists_path(&self, path: &str) -> Result<bool, FsError> {
+        let (dir, filename) = split_posix_path(path);
+        self.exists(dir, filename)
+    }
+
+    /// Get mtime by POSIX-style relative path.
+    pub fn mtime_path(&self, path: &str) -> Result<i64, FsError> {
+        let (dir, filename) = split_posix_path(path);
+        self.mtime(dir, filename)
+    }
+
+    // ── Basic I/O ───────────────────────────────────────────
+
+    /// Check if a file or directory exists.
+    pub fn exists(&self, dir: &str, filename: &str) -> Result<bool, FsError> {
+        let path = self.safe_path(dir, filename)?;
+        Ok(path.exists())
+    }
+
+    /// Read file contents as a string.
+    ///
+    /// Refuses files larger than [`MAX_READ_SIZE`] so a giant file inside
+    /// the sandbox (or arriving via sync) cannot OOM the process (F23).
+    pub fn read(&self, dir: &str, filename: &str) -> Result<String, FsError> {
+        let path = self.safe_path(dir, filename)?;
+        let meta = std::fs::metadata(&path)?;
+        if meta.len() > MAX_READ_SIZE {
+            return Err(FsError::TooLarge);
+        }
+        let mut file = std::fs::File::open(&path)?;
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)?;
+        Ok(contents)
+    }
+
+    /// Write content to a file, creating parent directories as needed.
+    pub fn write(&self, dir: &str, filename: &str, content: &str) -> Result<(), FsError> {
+        let path = self.safe_path(dir, filename)?;
+        self.atomic_write(&path, content.as_bytes())
+    }
+
+    /// Read a file as raw bytes.
+    pub fn read_bytes(&self, dir: &str, filename: &str) -> Result<Vec<u8>, FsError> {
+        let path = self.safe_path(dir, filename)?;
+        let meta = std::fs::metadata(&path)?;
+        if meta.len() > MAX_READ_SIZE {
+            return Err(FsError::TooLarge);
+        }
+        Ok(std::fs::read(&path)?)
+    }
+
+    /// Write raw bytes to a file, creating parent directories as needed.
+    /// Respects the configured quota (same logic as `write()`).
+    pub fn write_bytes(&self, dir: &str, filename: &str, data: &[u8]) -> Result<(), FsError> {
+        let path = self.safe_path(dir, filename)?;
+        self.atomic_write(&path, data)
+    }
+
+    /// Atomic write: serialize to a sibling temp file, fsync, then rename.
+    ///
+    /// `std::fs::rename` is atomic on the same filesystem, so a crash
+    /// between truncate and write_all can no longer leave a 0-byte or
+    /// partial file at `path` (F5). The temp name carries a UUID so two
+    /// concurrent writers cannot stomp on each other's scratch file.
+    fn atomic_write(&self, path: &Path, data: &[u8]) -> Result<(), FsError> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        if self.quota_kb > 0 {
+            let new_size = data.len() as i64;
+            let old_size = std::fs::metadata(path).map(|m| m.len() as i64).unwrap_or(0);
+            // Skip the recursive quota walk when this write doesn't grow
+            // the total (F17) — overwriting with same/smaller content is
+            // always within quota.
+            if new_size > old_size {
+                let used = self.calculate_used_quota()?;
+                let available = (self.quota_kb * 1024) - used;
+                if (new_size - old_size) > available {
+                    return Err(FsError::QuotaExceeded);
+                }
+            }
+        }
+
+        let dir = path.parent().unwrap_or_else(|| Path::new("."));
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+        // Hidden temp file kept inside the target directory so the rename
+        // stays on the same filesystem (required for atomicity).
+        let tmp_path = dir.join(format!(".{file_name}.{}.tmp", uuid::Uuid::new_v4()));
+
+        let result: Result<(), FsError> = (|| {
+            let mut file = std::fs::File::create(&tmp_path)?;
+            file.write_all(data)?;
+            // Durably flush before the rename so the renamed file isn't
+            // half-written after a crash.
+            file.sync_all()?;
+            drop(file);
+            std::fs::rename(&tmp_path, path)?;
+            Ok(())
+        })();
+
+        if result.is_err() {
+            // Best-effort cleanup; error is reported from the actual op.
+            let _ = std::fs::remove_file(&tmp_path);
+        }
+        result
+    }
+
+    /// Read a file by POSIX path as raw bytes.
+    pub fn read_path_bytes(&self, path: &str) -> Result<Vec<u8>, FsError> {
+        let (dir, filename) = split_posix_path(path);
+        self.read_bytes(dir, filename)
+    }
+
+    /// Write raw bytes to a file by POSIX path.
+    pub fn write_path_bytes(&self, path: &str, data: &[u8]) -> Result<(), FsError> {
+        let (dir, filename) = split_posix_path(path);
+        self.write_bytes(dir, filename, data)
+    }
+
+    /// Delete a file.
+    pub fn del(&self, dir: &str, filename: &str) -> Result<(), FsError> {
+        let path = self.safe_path(dir, filename)?;
+        std::fs::remove_file(&path)?;
+        Ok(())
+    }
+
+    /// Rename/move a file.
+    pub fn rename(
+        &self,
+        old_dir: &str,
+        old_filename: &str,
+        new_dir: &str,
+        new_filename: &str,
+    ) -> Result<(), FsError> {
+        let old_path = self.safe_path(old_dir, old_filename)?;
+        let new_path = self.safe_path(new_dir, new_filename)?;
+        if let Some(parent) = new_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::rename(&old_path, &new_path)?;
+        Ok(())
+    }
+
+    /// Create a directory.
+    pub fn make_dir(&self, dir: &str) -> Result<(), FsError> {
+        let path = self.safe_path(dir, "")?;
+        std::fs::create_dir_all(&path)?;
+        Ok(())
+    }
+
+    /// Touch a file: create if missing, update mtime if present.
+    pub fn touch(&self, dir: &str, filename: &str) -> Result<(), FsError> {
+        let path = self.safe_path(dir, filename)?;
+        if path.exists() {
+            let now = SystemTime::now();
+            filetime::set_file_mtime(&path, filetime::FileTime::from_system_time(now))?;
+        } else {
+            self.write(dir, filename, "")?;
+        }
+        Ok(())
+    }
+
+    // ── Metadata ─────────────────────────────────────────────
+
+    /// Get the ctime/mtime of a file in milliseconds since epoch.
+    pub fn ctime(&self, dir: &str, filename: &str) -> Result<i64, FsError> {
+        let path = self.safe_path(dir, filename)?;
+        let meta = std::fs::metadata(&path)?;
+        Ok(mtime_to_ms(meta.modified()?))
+    }
+
+    /// Get the modification time of a file in milliseconds since epoch.
+    pub fn mtime(&self, dir: &str, filename: &str) -> Result<i64, FsError> {
+        let path = self.safe_path(dir, filename)?;
+        let meta = std::fs::metadata(&path)?;
+        Ok(mtime_to_ms(meta.modified()?))
+    }
+
+    /// Recursively collect mtimes for all files with given extensions.
+    pub fn mtimes(&self, root: &str, extensions: &[&str]) -> Result<HashMap<String, i64>, FsError> {
+        let root_path = self.safe_path(root, "")?;
+        let mut result = HashMap::new();
+        self.walk_dir(&root_path, &root_path, extensions, &mut result)?;
+        Ok(result)
+    }
+
+    // ── Listing ─────────────────────────────────────────────
+
+    /// List files and directories in a directory.
+    pub fn files_and_dirs(&self, dir: &str) -> Result<Vec<FileEntry>, FsError> {
+        let user_path = self.safe_path(dir, "")?;
+        if !user_path.exists() {
+            return Ok(vec![]);
+        }
+
+        let mut entries = Vec::new();
+        for entry in std::fs::read_dir(&user_path)? {
+            let entry = entry?;
+            let path = entry.path();
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+
+            if IGNORED_NAMES.contains(&name.as_str()) {
+                continue;
+            }
+
+            let meta = std::fs::metadata(&path)?;
+            let is_dir = meta.is_dir();
+            let ctime = mtime_to_ms(meta.modified().unwrap_or(SystemTime::UNIX_EPOCH));
+            let hash = hash_filename(&name);
+            let display_name = display_name(&name);
+            let has_content = !is_dir && meta.len() > 0;
+
+            entries.push(FileEntry::new(
+                name,
+                hash,
+                display_name,
+                ctime,
+                has_content,
+                is_dir,
+                dir.to_string(),
+            ));
+        }
+        Ok(entries)
+    }
+
+    /// List only directories in the root.
+    pub fn dirs(&self) -> Result<Vec<FileEntry>, FsError> {
+        Ok(self
+            .files_and_dirs(DIR_USER_ROOT)?
+            .into_iter()
+            .filter(|f| f.is_dir)
+            .collect())
+    }
+
+    /// Check if a file has non-whitespace content.
+    pub fn is_multiline(&self, dir: &str, filename: &str) -> Result<bool, FsError> {
+        let content = self.read(dir, filename)?;
+        Ok(!content.trim().is_empty())
+    }
+
+    /// Create the standard system directories (archive, media, journal).
+    pub fn create_system_dirs(&self) -> Result<(), FsError> {
+        for dir in [DIR_ARCHIVE, DIR_MEDIA, DIR_JOURNAL] {
+            self.make_dir(dir)?;
+        }
+        Ok(())
+    }
+
+    /// Reverse a hash to find the original filename.
+    ///
+    /// Requires at least [`MIN_UNHASH_LEN`] hex chars so short prefixes
+    /// cannot resolve to arbitrary files (F18). Ambiguous matches (more
+    /// than one candidate) return [`FsError::CannotUnhash`] instead of
+    /// picking the first hit.
+    pub fn unhash(&self, dir: &str, filename_hash: &str) -> Result<String, FsError> {
+        if dir == DIR_USER_ROOT && filename_hash == DIR_USER_ROOT {
+            return Ok(DIR_USER_ROOT.to_string());
+        }
+        if filename_hash.len() < MIN_UNHASH_LEN {
+            return Err(FsError::CannotUnhash);
+        }
+        let files = self.files_and_dirs(dir)?;
+
+        // Primary pass: hash_prefix match. Collect all matches and refuse
+        // to guess when more than one file qualifies.
+        let mut hash_matches: Vec<&FileEntry> = files
+            .iter()
+            .filter(|f| hash_filename(&f.name).starts_with(filename_hash))
+            .collect();
+        if hash_matches.len() == 1 {
+            return Ok(hash_matches.remove(0).name.clone());
+        }
+        if !hash_matches.is_empty() {
+            return Err(FsError::CannotUnhash);
+        }
+
+        // Secondary pass: exact filename-prefix match (callers passing a
+        // human-readable prefix, e.g. "Chat" for "Chat.md"). Same single-
+        // match rule to prevent handle hijacking.
+        let mut name_matches: Vec<&FileEntry> = files
+            .iter()
+            .filter(|f| f.name.starts_with(filename_hash))
+            .collect();
+        if name_matches.len() == 1 {
+            return Ok(name_matches.remove(0).name.clone());
+        }
+        Err(FsError::CannotUnhash)
+    }
+
+    /// Search files by name across the entire knowledge base.
+    pub fn search_files_by_name(&self, query: &str) -> Result<Vec<FileEntry>, FsError> {
+        let query_lower = query.to_lowercase().trim().to_string();
+        if query_lower.contains('/') {
+            return Err(FsError::UnsafePath);
+        }
+
+        let mut notes = Vec::new();
+        self.collect_md_files(&self.root, &self.root, &mut notes)?;
+
+        if !query_lower.is_empty() {
+            let matching: Vec<FileEntry> = notes
+                .iter()
+                .filter(|f| {
+                    let top = f.parent_dir.split('/').next().unwrap_or("");
+                    top.to_lowercase().starts_with(&query_lower)
+                        || f.display_name.to_lowercase().contains(&query_lower)
+                })
+                .cloned()
+                .collect();
+            if !matching.is_empty() {
+                notes = matching;
+            }
+        }
+
+        notes.sort_by_key(|a| Reverse(a.ctime));
+        Ok(notes)
+    }
+
+    /// List all `.md` files in the vault with their sizes.
+    /// Returns `(posix_path, size_bytes)` pairs. Skips dot-files and dot-dirs.
+    pub fn all_md_files(&self) -> Result<Vec<(String, i64)>, FsError> {
+        let mut result = Vec::new();
+        self.collect_md_paths(&self.root, &self.root, &mut result)?;
+        Ok(result)
+    }
+
+    // ── Private helpers ─────────────────────────────────────
+
+    #[allow(clippy::only_used_in_recursion)]
+    fn walk_dir(
+        &self,
+        root_path: &Path,
+        current_path: &Path,
+        extensions: &[&str],
+        result: &mut HashMap<String, i64>,
+    ) -> Result<(), FsError> {
+        if !current_path.is_dir() {
+            return Ok(());
+        }
+        for entry in std::fs::read_dir(current_path)? {
+            let entry = entry?;
+            let path = entry.path();
+            let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+
+            if filename.starts_with('.') {
+                continue;
+            }
+
+            // Use the entry's own metadata (symlink_metadata on Unix) so a
+            // symlink planted inside the root cannot redirect the walk to
+            // files outside the sandbox (F6).
+            let meta = match entry.metadata() {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            if meta.file_type().is_symlink() {
+                continue;
+            }
+
+            if meta.is_dir() {
+                self.walk_dir(root_path, &path, extensions, result)?;
+            } else {
+                if !extensions.is_empty() {
+                    let ext = path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .map(|e| format!(".{e}"));
+                    let ext_match = ext
+                        .as_ref()
+                        .map(|e| extensions.contains(&e.as_str()))
+                        .unwrap_or(false);
+                    if !ext_match {
+                        continue;
+                    }
+                }
+
+                let rel = path
+                    .strip_prefix(root_path)
+                    .map_err(|_| FsError::UnsafePath)?;
+                let display = rel.to_string_lossy();
+                let display_path = if display.starts_with('/') || display.starts_with('\\') {
+                    display[1..].to_string()
+                } else {
+                    display.to_string()
+                };
+
+                result.insert(display_path, mtime_to_ms(meta.modified()?));
+            }
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::only_used_in_recursion)]
+    fn collect_md_files(
+        &self,
+        root_path: &Path,
+        current_path: &Path,
+        files: &mut Vec<FileEntry>,
+    ) -> Result<(), FsError> {
+        if !current_path.is_dir() {
+            return Ok(());
+        }
+        for entry in std::fs::read_dir(current_path)? {
+            let entry = entry?;
+            let path = entry.path();
+            let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+
+            // entry.metadata() does not traverse the entry's own symlink,
+            // and we skip any symlink outright so the walk stays inside
+            // the sandbox (F6).
+            let meta = match entry.metadata() {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            if meta.file_type().is_symlink() {
+                continue;
+            }
+
+            if meta.is_dir() {
+                if filename.starts_with('.') {
+                    continue;
+                }
+                self.collect_md_files(root_path, &path, files)?;
+            } else {
+                if !filename.ends_with(".md") || filename.starts_with('.') {
+                    continue;
+                }
+
+                let rel = path
+                    .strip_prefix(root_path)
+                    .map_err(|_| FsError::UnsafePath)?;
+                let parent = rel
+                    .parent()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                let parent_str = if parent.is_empty() || parent == "." {
+                    DIR_USER_ROOT.to_string()
+                } else {
+                    parent
+                };
+
+                let ctime = mtime_to_ms(meta.modified().unwrap_or(SystemTime::UNIX_EPOCH));
+                let hash = hash_filename(filename);
+                let display_name = display_name(filename);
+
+                files.push(FileEntry::new(
+                    filename.to_string(),
+                    hash,
+                    display_name,
+                    ctime,
+                    meta.len() > 0,
+                    false,
+                    parent_str,
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Collect all .md file paths and sizes (for frontmatter scanning).
+    #[allow(clippy::only_used_in_recursion)]
+    fn collect_md_paths(
+        &self,
+        root_path: &Path,
+        current_path: &Path,
+        result: &mut Vec<(String, i64)>,
+    ) -> Result<(), FsError> {
+        if !current_path.is_dir() {
+            return Ok(());
+        }
+        for entry in std::fs::read_dir(current_path)? {
+            let entry = entry?;
+            let path = entry.path();
+            let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if filename.starts_with('.') {
+                continue;
+            }
+            let meta = match entry.metadata() {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            if meta.file_type().is_symlink() {
+                continue;
+            }
+            if meta.is_dir() {
+                self.collect_md_paths(root_path, &path, result)?;
+            } else if filename.ends_with(".md") {
+                let rel = path
+                    .strip_prefix(root_path)
+                    .map_err(|_| FsError::UnsafePath)?;
+                result.push((rel.to_string_lossy().to_string(), meta.len() as i64));
+            }
+        }
+        Ok(())
+    }
+
+    fn calculate_used_quota(&self) -> std::io::Result<i64> {
+        let mut total = 0i64;
+        if self.root.exists() {
+            for entry in std::fs::read_dir(&self.root)? {
+                let entry = entry?;
+                let meta = entry.metadata()?;
+                if meta.is_file() {
+                    total += meta.len() as i64;
+                } else if meta.is_dir() {
+                    total += dir_size(entry.path())?;
+                }
+            }
+        }
+        Ok(total)
+    }
+}
+
+// ============================================================================
+// Free Functions
+// ============================================================================
+
+/// Compute MD5 hash of a filename (first 11 hex characters).
+pub fn hash_filename(filename: &str) -> String {
+    let mut hasher = Md5::new();
+    hasher.update(filename.as_bytes());
+    hex::encode(hasher.finalize())[..11].to_string()
+}
+
+/// Compute short hash (first 5 hex characters).
+pub fn short_hash(filename: &str) -> String {
+    let mut hasher = Md5::new();
+    hasher.update(filename.as_bytes());
+    hex::encode(hasher.finalize())[..5].to_string()
+}
+
+/// Sanitize a filename by replacing forbidden characters.
+pub fn sanitize_filename(filename: &str) -> String {
+    let mut result = filename.to_string();
+    for (forbidden, safe) in FORBIDDEN_CHARS {
+        result = result.replace(forbidden, safe);
+    }
+    result
+}
+
+/// Reverse sanitize: restore original forbidden characters.
+pub fn unsanitize_filename(filename: &str) -> String {
+    let mut result = filename.to_string();
+    for (forbidden, safe) in FORBIDDEN_CHARS {
+        if !forbidden.is_empty() && *forbidden != "\x00" {
+            result = result.replace(safe, forbidden);
+        }
+    }
+    result
+}
+
+/// Get display name from filename: capitalized, without `.md` or `.html` extension.
+pub fn display_name(filename: &str) -> String {
+    let trimmed = filename.trim();
+    let without_ext = trimmed
+        .strip_suffix(".md")
+        .or_else(|| trimmed.strip_suffix(".html"))
+        .unwrap_or(trimmed);
+    let mut chars = without_ext.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+    }
+}
+
+/// Check if a filename represents a checklist item.
+pub fn is_checklist_item(filename: &str) -> bool {
+    let trimmed = filename.trim();
+    if !trimmed.starts_with('-') {
+        return false;
+    }
+    if let Some(pos) = trimmed.rfind('-') {
+        pos > 0 && pos < trimmed.len() - 1
+    } else {
+        false
+    }
+}
+
+/// Filter: exclude checklist files.
+pub fn exclude_checklists(files: &[FileEntry]) -> Vec<FileEntry> {
+    files
+        .iter()
+        .filter(|f| {
+            let name = f.name.trim_end_matches(".md");
+            !(name.starts_with('_') && name.ends_with('_'))
+        })
+        .cloned()
+        .collect()
+}
+
+/// Filter: exclude system directories.
+pub fn exclude_system_dirs(files: &[FileEntry]) -> Vec<FileEntry> {
+    files
+        .iter()
+        .filter(|f| !SYSTEM_DIRS.contains(&f.name.as_str()))
+        .cloned()
+        .collect()
+}
+
+/// Filter: exclude system files.
+pub fn exclude_system_files(files: &[FileEntry]) -> Vec<FileEntry> {
+    files
+        .iter()
+        .filter(|f| !SYSTEM_FILES.contains(&f.name.as_str()))
+        .cloned()
+        .collect()
+}
+
+/// Filter: only directories.
+pub fn only_dirs(files: &[FileEntry]) -> Vec<FileEntry> {
+    files.iter().filter(|f| f.is_dir).cloned().collect()
+}
+
+/// Filter: only files (not directories).
+pub fn only_files(files: &[FileEntry]) -> Vec<FileEntry> {
+    files.iter().filter(|f| !f.is_dir).cloned().collect()
+}
+
+/// Filter: only user content files (exclude system files, dirs, non-md/non-html).
+pub fn only_user_text_files(files: &[FileEntry]) -> Vec<FileEntry> {
+    files
+        .iter()
+        .filter(|f| {
+            !f.is_dir
+                && (f.name.ends_with(".md") || f.name.ends_with(".html"))
+                && !SYSTEM_FILES.contains(&f.name.as_str())
+        })
+        .cloned()
+        .collect()
+}
+
+/// Sort files by ctime descending (newest first).
+pub fn sort_by_ctime_desc(files: &mut [FileEntry]) {
+    files.sort_by_key(|a| Reverse(a.ctime));
+}
+
+/// Extract filenames from a list of file entries.
+pub fn only_filenames(files: &[FileEntry]) -> Vec<String> {
+    files.iter().map(|f| f.name.clone()).collect()
+}
+
+/// Split a POSIX-style path like "brain/Rust.md" into (dir, filename).
+/// Root-level files like "Chat.md" become ("/", "Chat.md").
+pub fn split_posix_path(path: &str) -> (&str, &str) {
+    let path = path.trim_start_matches('/');
+    if let Some(slash_pos) = path.rfind('/') {
+        let (dir, file) = path.split_at(slash_pos);
+        (dir, &file[1..])
+    } else {
+        (crate::types::DIR_USER_ROOT, path)
+    }
+}
+
+// ── Internal helpers ────────────────────────────────────────
+
+fn normalize_path(path: &Path) -> (PathBuf, bool) {
+    let mut components = Vec::new();
+    let mut escaped = false;
+    for component in path.components() {
+        match component {
+            std::path::Component::Normal(s) => components.push(s),
+            std::path::Component::ParentDir => {
+                if components.is_empty() {
+                    escaped = true;
+                } else {
+                    components.pop();
+                }
+            }
+            std::path::Component::CurDir => {}
+            std::path::Component::RootDir | std::path::Component::Prefix(_) => {}
+        }
+    }
+    (components.iter().collect(), escaped)
+}
+
+fn mtime_to_ms(time: SystemTime) -> i64 {
+    time.duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+fn dir_size(path: PathBuf) -> std::io::Result<i64> {
+    let mut total = 0i64;
+    for entry in std::fs::read_dir(path)? {
+        let entry = entry?;
+        let meta = entry.metadata()?;
+        if meta.is_file() {
+            total += meta.len() as i64;
+        } else if meta.is_dir() {
+            total += dir_size(entry.path())?;
+        }
+    }
+    Ok(total)
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn test_fs() -> (VirtualFs, TempDir) {
+        let dir = TempDir::new().unwrap();
+        let fs = VirtualFs::new(dir.path().to_path_buf()).unwrap();
+        (fs, dir)
+    }
+
+    #[test]
+    fn test_write_and_read() {
+        let (fs, _t) = test_fs();
+        fs.write("brain", "test.md", "Hello").unwrap();
+        assert_eq!(fs.read("brain", "test.md").unwrap(), "Hello");
+    }
+
+    #[test]
+    fn test_exists() {
+        let (fs, _t) = test_fs();
+        assert!(!fs.exists("/", "nope.md").unwrap());
+        fs.write("/", "exists.md", "x").unwrap();
+        assert!(fs.exists("/", "exists.md").unwrap());
+    }
+
+    #[test]
+    fn test_delete() {
+        let (fs, _t) = test_fs();
+        fs.write("/", "del.md", "x").unwrap();
+        fs.del("/", "del.md").unwrap();
+        assert!(!fs.exists("/", "del.md").unwrap());
+    }
+
+    #[test]
+    fn test_rename() {
+        let (fs, _t) = test_fs();
+        fs.write("/", "old.md", "data").unwrap();
+        fs.rename("/", "old.md", "/", "new.md").unwrap();
+        assert!(!fs.exists("/", "old.md").unwrap());
+        assert_eq!(fs.read("/", "new.md").unwrap(), "data");
+    }
+
+    #[test]
+    fn test_path_traversal_rejected() {
+        let (fs, _t) = test_fs();
+        assert!(fs.safe_path("../etc", "passwd").is_err());
+        assert!(fs.safe_path("a", "../../etc/passwd").is_err());
+    }
+
+    #[test]
+    fn test_touch_creates_file() {
+        let (fs, _t) = test_fs();
+        fs.touch("/", "new.md").unwrap();
+        assert!(fs.exists("/", "new.md").unwrap());
+    }
+
+    #[test]
+    fn test_hash_filename_deterministic() {
+        assert_eq!(hash_filename("test.md"), hash_filename("test.md"));
+        assert_eq!(hash_filename("test.md").len(), 11);
+    }
+
+    #[test]
+    fn test_display_name() {
+        assert_eq!(display_name("rust.md"), "Rust");
+        assert_eq!(display_name("design.html"), "Design");
+        assert_eq!(display_name(" filename "), "Filename");
+    }
+
+    #[test]
+    fn test_sanitize_roundtrip() {
+        let original = "test/file:name";
+        let sanitized = sanitize_filename(original);
+        assert_ne!(sanitized, original);
+        assert_eq!(unsanitize_filename(&sanitized), original);
+    }
+
+    #[test]
+    fn test_files_and_dirs() {
+        let (fs, _t) = test_fs();
+        fs.make_dir("brain").unwrap();
+        fs.write("brain", "Rust.md", "content").unwrap();
+        let entries = fs.files_and_dirs("brain").unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "Rust.md");
+    }
+
+    #[test]
+    fn test_create_system_dirs() {
+        let (fs, _t) = test_fs();
+        fs.create_system_dirs().unwrap();
+        assert!(fs.exists(DIR_ARCHIVE, "").unwrap());
+        assert!(fs.exists(DIR_MEDIA, "").unwrap());
+        assert!(fs.exists(DIR_JOURNAL, "").unwrap());
+    }
+
+    #[test]
+    fn test_mtimes() {
+        let (fs, _t) = test_fs();
+        fs.write("/", "a.md", "a").unwrap();
+        let mtimes = fs.mtimes("/", &[".md"]).unwrap();
+        assert!(mtimes.contains_key("a.md"));
+    }
+
+    #[test]
+    fn test_search_files_by_name() {
+        let (fs, _t) = test_fs();
+        fs.make_dir("brain").unwrap();
+        fs.write("brain", "Rust.md", "").unwrap();
+        let results = fs.search_files_by_name("brain").unwrap();
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_unhash() {
+        let (fs, _t) = test_fs();
+        fs.write("/", "target.md", "x").unwrap();
+        let h = hash_filename("target.md");
+        assert_eq!(fs.unhash("/", &h).unwrap(), "target.md");
+    }
+
+    #[test]
+    fn test_filter_functions() {
+        let f = FileEntry::new(
+            "a.md".into(),
+            "h".into(),
+            "A".into(),
+            0,
+            true,
+            false,
+            "/".into(),
+        );
+        let d = FileEntry::new(
+            "dir".into(),
+            "h".into(),
+            "Dir".into(),
+            0,
+            false,
+            true,
+            "/".into(),
+        );
+        assert_eq!(only_dirs(&[f.clone(), d.clone()]).len(), 1);
+        assert_eq!(only_files(&[f.clone(), d]).len(), 1);
+    }
+
+    #[test]
+    fn test_quota_enforcement() {
+        let dir = TempDir::new().unwrap();
+        let fs = VirtualFs::new(dir.path().to_path_buf())
+            .unwrap()
+            .with_quota(1); // 1 KB
+        assert!(fs.write("/", "big.md", &"x".repeat(2048)).is_err());
+    }
+
+    #[test]
+    fn test_read_write_bytes() {
+        let (fs, _t) = test_fs();
+        let data: &[u8] = &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A]; // PNG header fragment
+        fs.write_bytes("media", "image.png", data).unwrap();
+        let read_back = fs.read_bytes("media", "image.png").unwrap();
+        assert_eq!(read_back, data);
+    }
+
+    #[test]
+    fn test_write_bytes_quota() {
+        let dir = TempDir::new().unwrap();
+        let fs = VirtualFs::new(dir.path().to_path_buf())
+            .unwrap()
+            .with_quota(1); // 1 KB
+        let big = vec![0u8; 2048];
+        assert!(fs.write_bytes("/", "big.bin", &big).is_err());
+    }
+
+    #[test]
+    fn test_path_bytes_roundtrip() {
+        let (fs, _t) = test_fs();
+        let data = b"\x00\x01\x02\xFF binary data";
+        fs.write_path_bytes("sub/file.bin", data).unwrap();
+        let read_back = fs.read_path_bytes("sub/file.bin").unwrap();
+        assert_eq!(read_back, data);
+    }
+}

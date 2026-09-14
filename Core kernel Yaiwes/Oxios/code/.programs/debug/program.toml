@@ -1,0 +1,13 @@
+[program]
+name = "debug"
+version = "1.0.0"
+description = "Systematic debugging with hypothesis-driven approach"
+author = "oxios"
+
+[requires_tools]
+names = ["read", "exec", "grep", "find"]
+
+[host_requirements]
+required = []
+optional = ["git", "lldb"]
+

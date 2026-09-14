@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: oxios
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Build web assets
+        working-directory: oxios/channels/oxios-web/web
+        run: bun install && bun run build
+
+      - uses: actions/checkout@v4
+        with:
+          repository: a7garden/oxi
+          path: oxi
+          ref: v0.4.4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build
+        working-directory: oxios
+        run: cargo build

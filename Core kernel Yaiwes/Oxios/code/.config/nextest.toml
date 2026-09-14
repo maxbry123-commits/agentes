@@ -1,0 +1,32 @@
+# Oxios nextest configuration
+# https://nexte.st/book/configuration.html
+
+[store]
+# Store test binaries in a dedicated directory for reuse across runs
+dir = "target/nextest"
+
+[profile.default]
+# Max concurrent tests — leave headroom for the rest of the system
+test-threads = "num-cpus"
+# Fail fast on first failure
+fail-fast = true
+# sysinfo::System::new_all() (used by ResourceMonitor) is slow on macOS
+# and on loaded CI machines. Allow generous per-test timeouts.
+slow-timeout = { period = "30s", terminate-after = 3, grace-period = "10s" }
+# Hard per-test timeout — 2 minutes, more than enough for any single test.
+# nextest does not have a built-in `timeout` key; this is the closest equivalent
+# in older nextest versions. Newer versions use --timeout flag.
+# Treat warnings as non-failing (some tests intentionally produce warnings)
+status-level = "pass"
+# Final summary with failure details
+failure-output = "immediate-final"
+success-output = "never"
+
+[profile.ci]
+# CI profile: more retries for flaky tests, no fail-fast to see all failures
+fail-fast = false
+retries = 2
+
+[profile.default.junit]
+# JUnit XML output for CI integration
+path = "target/nextest/junit.xml"

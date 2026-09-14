@@ -1,0 +1,398 @@
+# Oxios Agent OS — Default Configuration
+# Copy to ~/.oxios/config.toml and customize as needed.
+
+# ── Secrets (API keys, tokens, passwords) ─────────────────────────────────
+# All sensitive values in one place.
+# Environment variables serve as fallback when not set here.
+# Priority: config.toml → ~/.oxicode/auth.json → env var
+#
+# [secrets]
+# # Web API authentication key (falls back to OXIOS_API_KEY env var)
+# oxios_api_key = ""
+#
+# # Email SMTP password (falls back to OXIOS_EMAIL_PASSWORD / RESEND_API_KEY env var)
+# email_smtp_password = ""
+#
+# # Telegram bot token (falls back to TELEGRAM_BOT_TOKEN env var)
+# telegram_bot_token = ""
+#
+# # ClawHub marketplace API key (falls back to CLAWHUB_TOKEN env var)
+# clawhub_api_key = ""
+#
+# # LLM provider API keys (fall back to OXIOS_<PROVIDER>_API_KEY env var)
+# [secrets.providers]
+# anthropic = "sk-ant-..."
+# openai = "sk-..."
+# google = "..."
+
+[kernel]
+# Path to the workspace directory.
+# workspace = "~/.oxios/workspace"
+# Explicit override for the markdown knowledge base root.
+# Resolution order (see KernelConfig::resolved_knowledge_root):
+#   1. this key (after `~/` expansion)
+#   2. `~/.oxi/config.toml [vault].path` (ecosystem-canonical; shared with oximemo)
+#   3. fallback `~/.oxi/vault`
+# knowledge_root = "~/vault"
+event_bus_capacity = 256
+max_agents = 10
+
+[engine]
+# Default model in "provider/model" format.
+# MUST be set before first run — onboarding wizard will prompt if empty.
+# default_model = ""
+# Explicit API key (highest priority).
+# If empty, falls back to ~/.oxicode/auth.json, then environment variables.
+# api_key = ""
+# Enable complexity-based model routing.
+# routing_enabled = false
+# Prefer cost-efficient models when routing.
+# prefer_cost_efficient = false
+# Fallback models to try when primary fails.
+# fallback_models = ["anthropic/claude-3-5-haiku-20241022"]
+
+# ── Multi-Model Router (SDK 0.66.0) ───────────────────────────────────────
+# When enabled, the engine automatically selects the best model for each
+# task based on complexity signals. The router registers as provider
+# "router" with profile models like "router/auto", "router/budget".
+[engine.router]
+enabled = false
+# default_profile = "auto"
+# classifier_model = "anthropic/claude-haiku-4-20250514"
+# max_session_budget = 5.0
+# context_upgrade_threshold = 50000
+
+# [engine.router.scoring]
+# structural = 0.25
+# behavioral = 0.20
+# context = 0.15
+# vision = 0.10
+# message = 0.30
+
+# [engine.router.profiles.auto.tiers]
+# fast = { model = "anthropic/claude-haiku-4-20250514" }
+# balanced = { model = "anthropic/claude-sonnet-4-20250514" }
+# strong = { model = "anthropic/claude-opus-4-20250514" }
+
+# ── Lifecycle Hooks (SDK 0.66.0) ───────────────────────────────────────
+# Shell commands executed on agent lifecycle events.
+# Claude Code compatible schema.
+# [[hooks]]
+# event = "PreToolUse"
+# matcher = "Bash|Write"
+# command = "echo 'Tool starting' >> ~/.oxios/logs/hooks.log"
+# timeout_secs = 10
+#
+# [[hooks]]
+# event = "PostToolUse"
+# matcher = ""
+# command = "echo 'Tool done' >> ~/.oxios/logs/hooks.log"
+
+[daemon]
+# PID file for background daemon.
+# Log directory.
+# log_dir = "~/.oxios/logs"
+
+[gateway]
+# Host to bind the web server to.
+# NOTE: Bind to localhost only. Change to "0.0.0.0" only if you understand the risks.
+host = "127.0.0.1"
+# Port for the web dashboard.
+port = 4200
+# Expose /api-docs (Swagger UI) and /openapi.json.
+# Gated to loopback binds (127.0.0.0/8, ::1, "localhost") for safety.
+# Set to true during local dev to inspect the OpenAPI schema.
+# Default: false (production-safe).
+# expose_api_docs = false
+
+# RFC-024 SP1: ceiling on HTTP→gateway request-response matching.
+# The HTTP layer returns 504 when the orchestrator does not respond
+# within this duration. Default: 120s.
+# response_timeout_secs = 120
+
+# RFC-024 SP1: in-memory replay buffer for WS resume / C2 (order+replay).
+[gateway.reliability]
+# Per-channel ring buffer size. Older messages are evicted on overflow.
+# replay_buffer_size = 512
+# How long a message stays in the buffer.
+# replay_ttl_secs = 60
+
+[exec]
+# Default execution mode: "structured" (recommended) or "shell".
+# Shell mode is DANGEROUS — requires explicit allow_shell_mode=true.
+default_mode = "structured"
+# Allow shell mode (bash -c execution). DANGEROUS — keep false in production.
+allow_shell_mode = false
+# Commands allowed for structured execution.
+allowlist_mode = "enforced"
+allowed_commands = [
+    "ls", "cat", "head", "tail", "wc",
+    "grep", "rg", "find", "fd",
+    "git",
+    "cargo", "rustc",
+    "python3", "node", "bun",
+    "curl", "wget",
+    "jq", "yq",
+    "echo", "mkdir", "cp", "mv",
+]
+# Default command timeout in seconds.
+default_timeout_secs = 120
+# Maximum command timeout in seconds.
+max_timeout_secs = 600
+
+[orchestrator]
+# Maximum Ouroboros evolution iterations before giving up.
+max_evolution_iterations = 3
+# Minimum evaluation score for task to be considered passed.
+min_evaluation_score = 0.8
+# Enable evaluation result caching (avoids re-evaluating same seed+output).
+eval_cache_enabled = true
+# Keywords that trigger spec (Ouroboros) mode. Prefix-only match.
+spec_keywords = ["#spec", "#plan"]
+# Default execution mode: "spec" (Ouroboros pipeline) or "chat" (direct agent).
+default_mode = "spec"
+
+[context]
+active_limit_tokens = 100000
+cache_limit_entries = 50
+
+[security]
+# Web API authentication. Secure by default — generate a key with
+# `oxios auth generate` (or set [engine].api_key / OXIOS_API_KEY) and
+# configure your clients to send it as `Authorization: Bearer <key>`.
+# For a trusted single-user LOCAL machine you may opt out with false,
+# but never disable auth when binding to a non-loopback interface.
+auth_enabled = true
+# Allowed CORS origins. Browsers treat `localhost` and `127.0.0.1` as distinct
+# origins, so both are included. 5173 covers the Vite dev server (`bun dev`).
+cors_origins = ["http://localhost:4200", "http://127.0.0.1:4200", "http://localhost:5173", "http://127.0.0.1:5173"]
+# Default allowed tools for agents.
+allowed_tools = ["read", "write", "edit", "bash", "grep", "find", "exec"]
+network_access = false
+max_execution_time_secs = 300
+max_memory_mb = 512
+can_fork = false
+
+# Tool approval mode (RFC-035). Controls how often the agent prompts before
+# running a tool. See docs/designs/2026-07-27-approval-mode-system-design.md.
+[security.approval]
+# "manual" (default — each tool's declared policy) | "allow-list" | "auto-run"
+mode = "manual"
+# Tools auto-run in allow-list mode. Format: tool name or "exec:<binary>".
+# Filled automatically when you tick "don't ask again" on an approval card.
+# allow_list = ["exec:curl", "web_search"]
+allow_list = []
+
+# Per-tool policy overrides (optional). Replaces the tool's declared policy.
+# Values: "auto" | "ondemand" | "always".
+# [security.approval.tool_overrides]
+# exec = "always"
+# web_search = "auto"
+
+[logging]
+# Log format: "pretty" (default), "json" (for ELK/Loki/CloudWatch), "compact"
+format = "pretty"
+# Log level override. Falls back to RUST_LOG env var, then "info".
+# level = "info"
+[surfaces]
+# Surfaces started by `oxios serve`. The default ("web") is the HTTP API /
+# dashboard. Add "remote" to enable the E2EE companion surface (RFC-044),
+# or start it ad-hoc with `oxios serve --remote`.
+enabled = ["web"]
+
+# Telegram channel settings (when enabled)
+# [channels.telegram]
+# Allowed Telegram user IDs (empty = allow all)
+# allowed_users = []
+# [channels.telegram.session]
+# Auto-rotate session after N hours of inactivity (0 = disabled)
+# rotation_hours = 2
+# Max messages per session before auto-rotate (0 = unlimited)
+# max_messages = 0
+
+# Session management (applies to all channels)
+[session]
+# Maximum number of sessions to retain. Oldest are pruned first.
+# Set to 0 for unlimited.
+max_sessions = 100
+# Session TTL in hours. Sessions older than this are auto-deleted.
+# Set to 0 for unlimited (no TTL-based pruning).
+ttl_hours = 168
+# Enable automatic pruning on every session save.
+auto_prune = true
+
+# ── Brain (oxibrain 0.8 daemonless) ────────────────────────────────────────
+# oxios spawns a caller-owned `oxibrain serve --stdio` child against an
+# explicit data directory. When the binary is missing, memory operations
+# degrade gracefully (return empty) and agent turns complete normally.
+[brain]
+enabled = true
+auto_install = true
+# dir = ""          # Empty = ~/.oxi/brain ($OXI_BRAIN_DIR honored)
+# binary_path = ""  # Explicit binary; non-empty skips auto-install
+# Default brain space offered to new chats without a project binding.
+# default_space = ""   # Empty = chats start unconnected
+# Uncomment to customize settings; when the section is omitted, defaults below apply.
+# Events are stored as .ics files in ~/.oxios/workspace/calendar/events/
+# [calendar]
+# enabled = true
+# timezone = "Asia/Seoul"
+# default_reminder_minutes = [15]
+# alarm_channels = ["web"]
+# journal_sync = "on_open"
+# system_calendar = true
+# archive_after_days = 365
+
+# Web search provider for the `web_search` tool ([search]).
+# provider = "scrape"  → zero-config multi-engine scraping (DuckDuckGo /
+#                        Wikipedia / Bing). Best-effort quality.
+# provider = "tavily"  → Tavily Search API (LLM-oriented, structured results).
+# provider = "brave"   → Brave Search API (independent index, region control).
+# When a managed provider is configured but the call fails (bad key, network,
+# quota), the tool automatically falls back to the scraping engines.
+# [search]
+# provider = "scrape"
+# tavily_api_key = ""
+# brave_api_key = ""
+# timeout_secs = 15
+# region = "kr-KR"     # Brave country/search_lang hint (e.g. "kr-KR", "en-US")
+
+# Execution recipe resolution (coding host design). `general-v1` is the
+# system default — ordinary turns keep the existing tool composition.
+# `coding-omp-v1` becomes selectable per project only while coding_pilot is
+# true, via project_bindings. Unknown binding ids degrade to general-v1.
+# [execution_recipe]
+# enabled = true
+# coding_pilot = false
+# coding_shell = true
+# coding_eval = true
+# project_bindings = { "<project-uuid>" = "coding-omp-v1" }
+
+# Agent history log (enabled by default).
+# Controls how past agent executions are retained for transparent observation.
+[agent_log]
+# Maximum number of agent records to keep (0 = unlimited)
+max_entries = 10000
+# TTL for agent records in hours (0 = unlimited)
+ttl_hours = 720  # 30 days
+# Max tool_calls per agent to persist (0 = unlimited)
+# Truncates old calls to keep storage bounded
+# Full traces remain available via Session.trajectory_steps
+max_tool_calls_per_agent = 500
+# How many agents to prune per cycle (prevents long locks)
+prune_batch_size = 100
+# Path to the SQLite database file (empty = ~/.oxios/state/agent_log.db)
+# db_path = ""
+
+# Budget enforcement — token/call rate limits per agent.
+# [budget]
+# enabled = true
+# default_token_budget = 0   # 0 = unlimited
+# default_calls_budget = 0   # 0 = unlimited
+# default_window_secs = 3600 # reset window
+# Monthly spend limit in USD (null = no limit).
+# When set, the cost dashboard shows month-to-date spend vs this limit.
+# monthly_spend_limit_usd = 50.0
+
+# Email system (disabled by default).
+# Enable to allow agents to send HTML emails via SMTP.
+# v1: sends to your own email only (my_email).
+# [email]
+# enabled = true
+# my_email = "me@gmail.com"
+# provider = "gmail"  # gmail | icloud | fastmail | custom
+# Set password via: export OXIOS_EMAIL_PASSWORD="your-app-password"
+# rate_limit_per_hour = 10
+
+# ── Token Maxing (RFC-031) ───────────────────────────────────────────────
+# Autonomous burn of SUBSCRIPTION-quota providers during a configured time
+# window. ONLY providers declared here with billing_model = "subscription"
+# are ever used — a metered (per-token) key can never be silently drafted.
+# Disabled by default; uncomment and set enabled = true to opt in.
+#
+# [token-maxing]
+# enabled = false
+# default_min_remaining_percent = 5     # stop draining a provider below this %
+# recalibration_interval_secs = 60      # 0 = off (stay purely self-tracked)
+# parallel_providers = false            # cross-provider parallelism (Phase 5)
+#
+# [[token-maxing.providers]]
+# provider = "zai"                      # must match the engine provider id
+# billing_model = "subscription"        # REQUIRED — the only accepted value
+# token_limit = 2000000                 # plan allocation per window (tokens)
+# reset_window_secs = 18000             # 5h — drain window + reset cadence
+# min_remaining_percent = 5             # floor for this provider (optional)
+# models = ["zai/glm-4.6", "zai/glm-4.5-air"]  # REQUIRED non-empty: models to round-robin
+
+# ── System Agents (LobeHub-inspired) ───────────────────────────────────────
+# Assign different models to different background system tasks.
+# Each task has: model (empty = inherit default), enabled, context_limit, custom_prompt.
+# This enables cost optimization — use cheap models for simple tasks like topic naming.
+#
+# [system_agents.topic]
+# model = ""  # empty = inherit engine default_model
+# enabled = true
+#
+# [system_agents.history_compress]
+# model = "anthropic/claude-3-5-haiku-20241022"  # cheap model for compression
+# enabled = true
+# context_limit = 8000
+#
+# [system_agents.memory_analysis]
+# model = ""  # use default for high-quality extraction
+# enabled = true
+#
+# [system_agents.follow_up_action]
+# model = ""  # empty = inherit engine default_model
+# enabled = true
+#
+# [system_agents.input_completion]
+# enabled = false  # disabled by default — opt in
+# ── Image Generation ────────────────────────────────────────────────────────
+# Lets agents generate images via the `image_generation` tool. Opt-in.
+# Uses an OpenAI-compatible /v1/images/generations endpoint — the API key is
+# resolved through the SAME chain as the chat engine (env → [engine].api_key
+# → ~/.oxios/auth.json → ~/.oxicode/auth.json), so no separate credential is needed.
+# Disabled by default; uncomment and set enabled = true to opt in.
+#
+# [image-gen]
+# enabled = true
+# provider = "openai"                          # OpenAI-compatible provider id
+# base_url = "https://api.openai.com/v1"       # or any OpenAI-compatible endpoint
+# default_model = "gpt-image-1"                # REQUIRED when enabled
+# default_num = 1                              # images per call (1-8)
+#
+# fal.ai provider (model variety: Flux, Seedream, Nano Banana, …). Uses the
+# async queue API — the tool submits and polls internally (up to ~175s).
+# base_url defaults to https://queue.fal.run when omitted or left as the
+# OpenAI endpoint. The key resolves via OXIOS_FAL_API_KEY or the "fal" entry
+# in ~/.oxios/auth.json.
+#
+# [image-gen]
+# enabled = true
+# provider = "fal"
+# default_model = "fal-ai/flux/schnell"
+
+
+# ── Remote companion surface (RFC-044) ────────────────────────────────────
+# E2EE WebSocket surface for paired mobile / web clients. Disabled by
+# default — opt in via either:
+#   * Config (persistent): set `[remote] enabled = true` and add "remote"
+#     to `[surfaces].enabled` above.
+#   * CLI (per-invocation): `oxios serve --remote [--pairing-address host]`.
+#
+# Pairing flow:
+#   1. `oxios serve --remote` prints a single readiness JSON line on stdout
+#      (`pairing_url` + `device_id`) plus an SVG QR on stderr.
+#   2. A mobile client scans the QR or opens `oxios://pair?code=...`.
+#   3. Both sides complete Noise_XX; the client is then authorized.
+#
+# [remote]
+# enabled = true
+# port = 6768                                # WS bind port (default: 6768, orca-compatible)
+# bind_address = "127.0.0.1"                 # WS bind host (default: 127.0.0.1, loopback only).
+#                                            # Widen to a LAN/Tailscale IP (e.g. "100.64.1.20")
+#                                            # or "0.0.0.0" to accept network clients. The listener
+#                                            # is then reachable from the network; companion auth
+#                                            # (Noise_XX + device token) is still enforced.
+# pairing_address = "100.64.1.20"            # advertised host (or host:port). Wildcards rejected.

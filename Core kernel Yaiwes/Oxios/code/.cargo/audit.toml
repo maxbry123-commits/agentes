@@ -1,0 +1,17 @@
+# Audit exceptions are limited to dependencies with no available fix or
+# findings that are intentionally outside the default runtime surface.
+[advisories]
+ignore = [
+    # No upstream constant-time fix is available; RSA is transitive via oxicode-ai.
+    "RUSTSEC-2023-0071",
+    # These remain transitive/unmaintained in the current oxicode-sdk dependency graph.
+    "RUSTSEC-2024-0436",
+    "RUSTSEC-2025-0046",
+    "RUSTSEC-2025-0057",
+    "RUSTSEC-2025-0118",
+    "RUSTSEC-2025-0119",
+    "RUSTSEC-2025-0141",
+    # Upstream-owned transitive via oxibrowser-render (oxicode-sdk): no in-repo fix.
+    "RUSTSEC-2026-0206", # rustybuzz unmaintained (usvg -> blitz)
+    "RUSTSEC-2026-0253", # lru pop() panic-safety UAF (azul-layout); fixed >= 0.18.2, unreachable via pinned graph
+]
