@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/scripts/yaiwes_internal_surgical_transform_v5.py'
+      - '.github/scripts/yaiwes_internal_surgical_transform_v5_runner.py'
       - '.github/workflows/yaiwes-coda-internal-surgical-v5.yml'
   workflow_dispatch:
 
@@ -29,13 +30,16 @@ jobs:
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             /.github/scripts/yaiwes_internal_surgical_transform_v5.py
+            /.github/scripts/yaiwes_internal_surgical_transform_v5_runner.py
             /.github/workflows/yaiwes-coda-internal-surgical-v5.yml
             /📂coda workflow persistencias/
 
       - name: Transform internal source surgically
         run: |
           set -euo pipefail
-          python3 .github/scripts/yaiwes_internal_surgical_transform_v5.py
+          python3 -m py_compile .github/scripts/yaiwes_internal_surgical_transform_v5.py
+          python3 -m py_compile .github/scripts/yaiwes_internal_surgical_transform_v5_runner.py
+          python3 .github/scripts/yaiwes_internal_surgical_transform_v5_runner.py
 
       - name: Validate 24 manifests and policies
         run: |
