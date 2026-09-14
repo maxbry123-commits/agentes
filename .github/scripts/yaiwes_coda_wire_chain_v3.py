@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Triggered after the v3 workflow was installed on main.
+# Authoritative builder for YAIWES CODA persistence chain v3.
 from __future__ import annotations
 
 import json
@@ -37,9 +37,12 @@ def main() -> None:
 
         doc = FIELD / c['component'] / 'README.md'
         text = doc.read_text(encoding='utf-8')
-        marker = '\n## Cableado Swarm v3\n'
-        if marker in text:
-            text = text.split(marker, 1)[0].rstrip() + '\n'
+        legacy_marker = '\n## Cableado maestro — Persistence Mesh v2.1\n'
+        v3_marker = '\n## Cableado Swarm v3\n'
+        if legacy_marker in text:
+            text = text.split(legacy_marker, 1)[0].rstrip() + '\n'
+        if v3_marker in text:
+            text = text.split(v3_marker, 1)[0].rstrip() + '\n'
         prev_name = c['previous'] or 'START'
         next_name = c['next'] or 'END'
         text += f'''\n## Cableado Swarm v3\n\n**Equipo:** {TEAM}  \n**Cadena:** `{CHAIN_ID}`  \n**Posición:** `{i+1}/24`  \n**Anterior:** `{prev_name}`  \n**Siguiente:** `{next_name}`\n\n`{prev_name} → {c['component']} → {next_name}`\n\nContrato de handoff: `{DT}`. Este eslabón recibe estado de tarea, guarda checkpoint/evidencia mediante el adapter YAIWES y entrega el estado al siguiente eslabón. El runner maestro solo carga los adapters YAIWES generados; no invoca automáticamente el código upstream.\n'''
