@@ -9,6 +9,35 @@ SCHEMA = "yaiwes.coda.hybrid/v9"
 SUBAGENT_CAPABLE = (1, 4, 9, 12, 16, 19, 20, 23)
 SERVICE_STAGES = (2, 3, 5, 6, 7, 8, 10, 11, 13, 14, 15, 17, 18, 21, 22, 24)
 
+COMPONENT_MODES: dict[int, str] = {
+    1: "subagent",
+    2: "state_service",
+    3: "planner_gate",
+    4: "subagent",
+    5: "task_service",
+    6: "persistence_service",
+    7: "mcp_connection_service",
+    8: "coordination_service",
+    9: "subagent",
+    10: "deterministic_planner",
+    11: "memory_service",
+    12: "subagent",
+    13: "audit_service",
+    14: "local_adapter",
+    15: "memory_learning_service",
+    16: "subagent",
+    17: "model_gateway",
+    18: "control_plane",
+    19: "subagent",
+    20: "subagent",
+    21: "dag_planner",
+    22: "state_hygiene_service",
+    23: "subagent",
+    24: "finalizer",
+}
+
+_ESCALATION_STATUSES = {"BLOCKED", "FAILED", "UNRESOLVED", "LOW_CONFIDENCE", "NO_PROGRESS", "CONFLICT"}
+
 
 def _verified_metrics(item: dict[str, Any]) -> tuple[int, ...]:
     """Return a deterministic quality vector for one same-problem candidate.
@@ -44,6 +73,35 @@ def _verified_metrics(item: dict[str, Any]) -> tuple[int, ...]:
     )
 
 
+def escalation_decision(result: dict[str, Any]) -> dict[str, Any]:
+    """Decide, without an LLM vote, whether a normal queue result needs hive help."""
+    status = str(result.get("status", "")).upper()
+    report = result.get("report") if isinstance(result.get("report"), dict) else {}
+    reasons: list[str] = []
+
+    if status in _ESCALATION_STATUSES:
+        reasons.append(f"status:{status}")
+    if report:
+        if int(report.get("components", 0) or 0) not in {0, 24}:
+            reasons.append("incomplete_component_chain")
+        if int(report.get("research_cycles", 0) or 0) not in {0, 24}:
+            reasons.append("incomplete_research_cycle")
+        if report.get("universal_plug_after_component_24") is False:
+            reasons.append("universal_plug_missing")
+    if result.get("no_progress") is True:
+        reasons.append("no_progress")
+    if result.get("conflict") is True:
+        reasons.append("conflicting_evidence")
+
+    return {
+        "schema": SCHEMA,
+        "escalate": bool(reasons),
+        "reasons": sorted(set(reasons)),
+        "candidate_components": list(SUBAGENT_CAPABLE) if reasons else [],
+        "policy": "structured-state-only",
+    }
+
+
 def deterministic_fan_in(results: Iterable[dict[str, Any]]) -> dict[str, Any]:
     """Select the best verified candidate with a stable lexical tie-break.
 
@@ -69,7 +127,10 @@ def deterministic_fan_in(results: Iterable[dict[str, Any]]) -> dict[str, Any]:
     # Highest quality wins. Lexicographically smallest candidate_id breaks exact
     # ties so replaying the same evidence always produces the same winner.
     best_quality = max(tuple(x["quality"]) for x in ranked)
-    tied = sorted(x for x in ranked if tuple(x["quality"]) == best_quality)
+    tied = sorted(
+        (x for x in ranked if tuple(x["quality"]) == best_quality),
+        key=lambda x: x["candidate_id"],
+    )
     winner = tied[0]
 
     fully_verified = best_quality[:7] == (1, 1, 1, 1, 1, 1, 1)
@@ -126,7 +187,9 @@ def run_hive_candidates(
     candidate_results = []
     for result in parallel.get("results", []):
         row = dict(result)
-        row["candidate_id"] = task_to_candidate.get(str(row.get("task_id")), str(row.get("task_id", "")))
+        row["candidate_id"] = task_to_candidate.get(
+            str(row.get("task_id")), str(row.get("task_id", ""))
+        )
         candidate_results.append(row)
 
     fan_in = deterministic_fan_in(candidate_results)
@@ -179,7 +242,9 @@ def activation_contract() -> dict[str, Any]:
         "linear_entrypoint": "yaiwes_coda_bus_v8.run_coda_chain",
         "parallel_entrypoint": "yaiwes_coda_hybrid_v9.run_independent_queue",
         "hive_entrypoint": "yaiwes_coda_hybrid_v9.run_hive_candidates",
+        "escalation_entrypoint": "yaiwes_coda_hybrid_v9.escalation_decision",
         "component_order": list(range(1, 25)),
+        "component_modes": {str(k): v for k, v in COMPONENT_MODES.items()},
         "subagent_capable": list(SUBAGENT_CAPABLE),
         "service_stages": list(SERVICE_STAGES),
         "research_each_coda": True,
