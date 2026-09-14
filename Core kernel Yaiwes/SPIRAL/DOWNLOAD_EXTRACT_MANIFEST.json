@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 2339172,
+  "bundle_sha256": "abe311a426289aac3d4c8241d7437906ae85288bafd228cac0df5ab512defb00",
+  "extracted_tree": {
+    "bytes": 3788418,
+    "files": 38,
+    "sha256": "21d300366921251c3d25ed587141ac9028be7568925dbdc629f4958e2f7cc86e"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 2339172,
+      "name": "SPIRAL.bundle.zip.part-0001",
+      "sha256": "abe311a426289aac3d4c8241d7437906ae85288bafd228cac0df5ab512defb00"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "SPIRAL",
+  "source_bytes": 3788418,
+  "source_commit": "7ae099580b2bf8fdf9c3632451922b8ba1134e38",
+  "source_files": 38,
+  "source_ref": "HEAD",
+  "source_repo": "IBM/SPIRAL",
+  "source_tree": {
+    "bytes": 3788418,
+    "files": 38,
+    "sha256": "21d300366921251c3d25ed587141ac9028be7568925dbdc629f4958e2f7cc86e"
+  }
+}
