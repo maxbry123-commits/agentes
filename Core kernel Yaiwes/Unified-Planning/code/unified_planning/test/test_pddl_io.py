@@ -1,0 +1,1781 @@
+# Copyright 2021-2023 AIPlan4EU project
+# Copyright 2024-2026 Unified Planning library and its maintainers
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License
+
+import os
+import re
+import tempfile
+import pytest
+from typing import cast
+import unified_planning
+from unified_planning.environment import Environment
+from unified_planning.model.action import InstantaneousAction
+from unified_planning.model.metrics import (
+    MaximizeExpressionOnFinalState,
+    MinimizeExpressionOnFinalState,
+)
+from unified_planning.shortcuts import *
+from unified_planning.test import (
+    unittest_TestCase,
+    main,
+    skipIfNoOneshotPlannerForProblemKind,
+)
+from unified_planning.io import (
+    PDDLWriter,
+    UPPDDLReader,
+    PDDLReader,
+    extract_pddl_requirements,
+)
+from unified_planning.test.examples import get_example_problems
+from unified_planning.exceptions import (
+    UPProblemDefinitionError,
+    UPUnsupportedProblemTypeError,
+)
+from unified_planning.model.metrics import MinimizeSequentialPlanLength
+from unified_planning.plans import SequentialPlan, TimeTriggeredPlan
+from unified_planning.model.problem_kind import simple_numeric_kind
+from unified_planning.model.types import _UserType
+from unified_planning.interop import (
+    check_ai_pddl_requirements,
+    convert_problem_from_ai_pddl,
+)
+
+from pddl import parse_domain, parse_problem  # type: ignore
+
+
+FILE_PATH = os.path.dirname(os.path.abspath(__file__))
+PDDL_DOMAINS_PATH = os.path.join(FILE_PATH, "pddl")
+
+
+class TestPddlIO(unittest_TestCase):
+    def setUp(self):
+        unittest_TestCase.setUp(self)
+        self.problems = get_example_problems()
+
+    def _normalized_pddl_str(self, w):
+        return " ".join(w.split()).replace("( ", "(").replace(" )", ")")
+
+    def test_basic_writer(self):
+        problem = self.problems["basic"].problem
+
+        w = PDDLWriter(problem)
+
+        pddl_domain = self._normalized_pddl_str(w.get_domain())
+        self.assertIn("(:requirements :strips :negative-preconditions)", pddl_domain)
+        self.assertIn("(:predicates (x))", pddl_domain)
+        self.assertIn("(:action a", pddl_domain)
+        self.assertIn(":parameters ()", pddl_domain)
+        self.assertIn(":precondition (and (not (x)))", pddl_domain)
+        self.assertIn(":effect (and (x))", pddl_domain)
+
+        pddl_problem = self._normalized_pddl_str(w.get_problem())
+        self.assertIn("(:domain basic-domain)", pddl_problem)
+        self.assertIn("(:init)", pddl_problem)
+        self.assertIn("(:goal (and (x)))", pddl_problem)
+
+    def test_iff_condition_writer(self):
+        a = Fluent("a", BoolType())
+        b = Fluent("b", BoolType())
+        act = InstantaneousAction("act")
+        act.add_precondition(Iff(a, b))
+        act.add_effect(a, True)
+
+        problem = Problem("iff_problem")
+        problem.add_fluent(a, default_initial_value=False)
+        problem.add_fluent(b, default_initial_value=False)
+        problem.add_action(act)
+
+        w = PDDLWriter(problem)
+        pddl_domain = self._normalized_pddl_str(w.get_domain())
+        self.assertIn("(:requirements :strips :disjunctive-preconditions)", pddl_domain)
+
+    def test_basic_non_constant_boolean_assignment(self):
+        problem = self.problems["basic"].problem.clone()
+        x = problem.fluent("x")
+        y = problem.add_fluent("y", default_initial_value=True)
+        a = problem.action("a")
+        a.clear_effects()
+        a.add_effect(x, y)
+
+        w = PDDLWriter(problem)
+        with self.assertRaises(UPProblemDefinitionError) as e:
+            _ = w.get_domain()
+
+        w = PDDLWriter(problem, rewrite_bool_assignments=True)
+        pddl_domain = self._normalized_pddl_str(w.get_domain())
+        self.assertIn("(:requirements :strips :negative-preconditions)", pddl_domain)
+        self.assertIn("(:predicates (x) (y))", pddl_domain)
+        self.assertIn("(:action a", pddl_domain)
+        self.assertIn(":parameters ()", pddl_domain)
+        self.assertIn(":precondition (and (not (x)))", pddl_domain)
+        self.assertIn(
+            ":effect (and (when (y) (x)) (when (not (y)) (not (x)))))", pddl_domain
+        )
+
+        pddl_problem = self._normalized_pddl_str(w.get_problem())
+        self.assertIn("(:domain basic-domain)", pddl_problem)
+        self.assertIn("(:init (y))", pddl_problem)
+        self.assertIn("(:goal (and (x)))", pddl_problem)
+
+    def test_basic_conditional_writer(self):
+        problem = self.problems["basic_conditional"].problem
+
+        self.assertTrue(problem.action("a_x").is_conditional())
+        self.assertFalse(problem.action("a_y").is_conditional())
+
+        w = PDDLWriter(problem)
+
+        pddl_domain = self._normalized_pddl_str(w.get_domain())
+        self.assertIn(
+            "(:requirements :strips :negative-preconditions :conditional-effects)",
+            pddl_domain,
+        )
+        self.assertIn("(:predicates (x) (y))", pddl_domain)
+        self.assertIn("(:action a_x", pddl_domain)
+        self.assertIn(":parameters ()", pddl_domain)
+        self.assertIn(":precondition (and (not (x)))", pddl_domain)
+        self.assertIn(":effect (and (when (y) (x)))", pddl_domain)
+        self.assertIn("(:action a_y", pddl_domain)
+        self.assertIn(":parameters ()", pddl_domain)
+        self.assertIn(":precondition (and (not (y)))", pddl_domain)
+        self.assertIn(":effect (and (y))", pddl_domain)
+
+        pddl_problem = self._normalized_pddl_str(w.get_problem())
+        self.assertIn("(:domain basic_conditional-domain)", pddl_problem)
+        self.assertIn("(:init)", pddl_problem)
+        self.assertIn("(:goal (and (x)))", pddl_problem)
+
+    def test_processes_writer(self):
+        problem = self.problems["1d_movement"].problem
+        w = PDDLWriter(problem)
+        pddl_domain = self._normalized_pddl_str(w.get_domain())
+        self.assertIn("(:process moving", pddl_domain)
+        self.assertIn("#t", pddl_domain)
+
+    def test_basic_exists_writer(self):
+        problem = self.problems["basic_exists"].problem
+
+        w = PDDLWriter(problem)
+
+        pddl_domain = self._normalized_pddl_str(w.get_domain())
+        self.assertIn(
+            "(:requirements :strips :typing :existential-preconditions)", pddl_domain
+        )
+        self.assertIn("(:predicates (x) (y ?semaphore - semaphore))", pddl_domain)
+        self.assertIn("(:action a", pddl_domain)
+        self.assertIn(":parameters ()", pddl_domain)
+        self.assertIn(
+            ":precondition (and (exists (?s - semaphore) (y ?s)))", pddl_domain
+        )
+        self.assertIn(":effect (and (x))", pddl_domain)
+
+        pddl_problem = self._normalized_pddl_str(w.get_problem())
+        self.assertIn("(:domain basic_exists-domain)", pddl_problem)
+        self.assertIn("(:objects o1 o2 - semaphore)", pddl_problem)
+        self.assertIn("(:init (y o1))", pddl_problem)
+        self.assertIn("(:goal (and (x)))", pddl_problem)
+
+    def test_basic_tils_writer(self):
+        problem = self.problems["basic_tils"].problem
+
+        w = PDDLWriter(problem)
+
+        pddl_domain = self._normalized_pddl_str(w.get_domain())
+        self.assertIn(
+            "(:requirements :strips :durative-actions :timed-initial-literals)",
+            pddl_domain,
+        )
+        self.assertIn("(:predicates (x) (y))", pddl_domain)
+        self.assertIn("(:durative-action a", pddl_domain)
+        self.assertIn(":parameters ()", pddl_domain)
+        self.assertIn(":duration (= ?duration 1)", pddl_domain)
+        self.assertIn(
+            ":condition (and (at start (y))(over all (y))(at end (y)))",
+            pddl_domain,
+        )
+        self.assertIn(":effect (and (at end (x)))", pddl_domain)
+
+        norm_pddl_problem = self._normalized_pddl_str(w.get_problem())
+        self.assertIn("(:domain basic_tils-domain)", norm_pddl_problem)
+        self.assertIn(
+            "(:init (at 5.0 (not (x))) (at 2.0 (y)) (at 8.0 (not (y))))",
+            norm_pddl_problem,
+        )
+        self.assertIn("(:goal (and (x)))", norm_pddl_problem)
+
+        pddl_problem = w.get_problem()
+        self.assertIn("(at 5.0 (not (x)))", pddl_problem)
+        self.assertIn("(at 2.0 (y))", pddl_problem)
+        self.assertIn("(at 8.0 (not (y)))", pddl_problem)
+
+    def test_robot_writer(self):
+        problem = self.problems["robot"].problem
+
+        w = PDDLWriter(problem)
+
+        pddl_domain = self._normalized_pddl_str(w.get_domain())
+        self.assertIn(
+            "(:requirements :strips :typing :negative-preconditions :equality :numeric-fluents)",
+            pddl_domain,
+        )
+        self.assertIn("(:types location)", pddl_domain)
+        self.assertIn("(:predicates (robot_at ?position - location))", pddl_domain)
+        self.assertIn("(:functions (battery_charge))", pddl_domain)
+        self.assertIn("(:action move", pddl_domain)
+        self.assertIn(":parameters (?l_from - location ?l_to - location)", pddl_domain)
+        self.assertIn(
+            ":precondition (and (<= 10 (battery_charge)) (not (= ?l_from ?l_to)) (robot_at ?l_from) (not (robot_at ?l_to)))",
+            pddl_domain,
+        )
+        self.assertIn(
+            ":effect (and (not (robot_at ?l_from)) (robot_at ?l_to) (assign (battery_charge) (- (battery_charge) 10)))",
+            pddl_domain,
+        )
+
+        pddl_problem = self._normalized_pddl_str(w.get_problem())
+        self.assertIn("(:domain robot-domain)", pddl_problem)
+        self.assertIn("(:objects", pddl_problem)
+        self.assertIn("l1 l2 - location", pddl_problem)
+        self.assertIn("(:init (robot_at l1) (= (battery_charge) 100))", pddl_problem)
+        self.assertIn("(:goal (and (robot_at l2)))", pddl_problem)
+
+    def test_robot_decrease_writer(self):
+        problem = self.problems["robot_decrease"].problem
+
+        w = PDDLWriter(problem)
+
+        pddl_domain = self._normalized_pddl_str(w.get_domain())
+        self.assertIn(
+            "(:requirements :strips :typing :negative-preconditions :equality :numeric-fluents)",
+            pddl_domain,
+        )
+        self.assertIn("(:types location)", pddl_domain)
+        self.assertIn("(:predicates (robot_at ?position - location))", pddl_domain)
+        self.assertIn("(:functions (battery_charge))", pddl_domain)
+        self.assertIn("(:action move", pddl_domain)
+        self.assertIn(":parameters (?l_from - location ?l_to - location)", pddl_domain)
+        self.assertIn(
+            ":precondition (and (<= 10 (battery_charge)) (not (= ?l_from ?l_to)) (robot_at ?l_from) (not (robot_at ?l_to)))",
+            pddl_domain,
+        )
+        self.assertIn(
+            ":effect (and (not (robot_at ?l_from)) (robot_at ?l_to) (decrease (battery_charge) 10))",
+            pddl_domain,
+        )
+
+        pddl_problem = self._normalized_pddl_str(w.get_problem())
+        self.assertIn("(:domain robot_decrease-domain)", pddl_problem)
+        self.assertIn("(:objects", pddl_problem)
+        self.assertIn("l1 l2 - location", pddl_problem)
+        self.assertIn("(:init (robot_at l1) (= (battery_charge) 100))", pddl_problem)
+        self.assertIn("(:goal (and (robot_at l2)))", pddl_problem)
+
+    def test_robot_loader_writer(self):
+        problem = self.problems["robot_loader"].problem
+
+        w = PDDLWriter(problem)
+
+        pddl_domain = self._normalized_pddl_str(w.get_domain())
+        self.assertIn(
+            "(:requirements :strips :typing :negative-preconditions :equality)",
+            pddl_domain,
+        )
+        self.assertIn("(:types location)", pddl_domain)
+        self.assertIn(
+            "(:predicates (robot_at ?position - location) (cargo_at ?position - location) (cargo_mounted))",
+            pddl_domain,
+        )
+        self.assertIn("(:action move", pddl_domain)
+        self.assertIn(":parameters (?l_from - location ?l_to - location)", pddl_domain)
+        self.assertIn(
+            ":precondition (and (not (= ?l_from ?l_to)) (robot_at ?l_from) (not (robot_at ?l_to)))",
+            pddl_domain,
+        )
+        self.assertIn(
+            ":effect (and (not (robot_at ?l_from)) (robot_at ?l_to))", pddl_domain
+        )
+        self.assertIn("(:action load", pddl_domain)
+        self.assertIn(":parameters (?loc - location)", pddl_domain)
+        self.assertIn(
+            ":precondition (and (cargo_at ?loc) (robot_at ?loc) (not (cargo_mounted)))",
+            pddl_domain,
+        )
+        self.assertIn(
+            ":effect (and (not (cargo_at ?loc)) (cargo_mounted))", pddl_domain
+        )
+        self.assertIn("(:action unload", pddl_domain)
+        self.assertIn(":parameters (?loc - location)", pddl_domain)
+        self.assertIn(
+            ":precondition (and (not (cargo_at ?loc)) (robot_at ?loc) (cargo_mounted))",
+            pddl_domain,
+        )
+        self.assertIn(
+            ":effect (and (cargo_at ?loc) (not (cargo_mounted)))", pddl_domain
+        )
+
+        pddl_problem = self._normalized_pddl_str(w.get_problem())
+        self.assertIn("(:domain robot_loader-domain)", pddl_problem)
+        self.assertIn("(:objects", pddl_problem)
+        self.assertIn("l1 l2 - location", pddl_problem)
+        self.assertIn("(:init (robot_at l1) (cargo_at l2))", pddl_problem)
+        self.assertIn("(:goal (and (cargo_at l1)))", pddl_problem)
+
+    def test_robot_loader_adv_writer(self):
+        problem = self.problems["robot_loader_adv"].problem
+
+        w = PDDLWriter(problem)
+
+        pddl_domain = self._normalized_pddl_str(w.get_domain())
+        self.assertIn(
+            "(:requirements :strips :typing :negative-preconditions :equality)",
+            pddl_domain,
+        )
+        self.assertIn("(:types robot location container)", pddl_domain)
+        self.assertIn(
+            "(:predicates (robot_at ?robot - robot ?position - location) (cargo_at ?cargo - container ?position - location) (cargo_mounted ?cargo - container ?robot - robot))",
+            pddl_domain,
+        )
+        self.assertIn("(:action move", pddl_domain)
+        self.assertIn(
+            ":parameters (?l_from - location ?l_to - location ?r - robot)", pddl_domain
+        )
+        self.assertIn(
+            ":precondition (and (not (= ?l_from ?l_to)) (robot_at ?r ?l_from) (not (robot_at ?r ?l_to)))",
+            pddl_domain,
+        )
+        self.assertIn(
+            ":effect (and (not (robot_at ?r ?l_from)) (robot_at ?r ?l_to))", pddl_domain
+        )
+        self.assertIn("(:action load", pddl_domain)
+        self.assertIn(
+            ":parameters (?loc - location ?r - robot ?c - container)", pddl_domain
+        )
+        self.assertIn(
+            ":precondition (and (cargo_at ?c ?loc) (robot_at ?r ?loc) (not (cargo_mounted ?c ?r)))",
+            pddl_domain,
+        )
+        self.assertIn(
+            ":effect (and (not (cargo_at ?c ?loc)) (cargo_mounted ?c ?r))", pddl_domain
+        )
+        self.assertIn("(:action unload", pddl_domain)
+        self.assertIn(
+            ":parameters (?loc - location ?r - robot ?c - container)", pddl_domain
+        )
+        self.assertIn(
+            ":precondition (and (not (cargo_at ?c ?loc)) (robot_at ?r ?loc) (cargo_mounted ?c ?r))",
+            pddl_domain,
+        )
+        self.assertIn(
+            ":effect (and (cargo_at ?c ?loc) (not (cargo_mounted ?c ?r)))", pddl_domain
+        )
+
+        pddl_problem = self._normalized_pddl_str(w.get_problem())
+        self.assertIn("(:domain robot_loader_adv-domain)", pddl_problem)
+        self.assertIn("(:objects", pddl_problem)
+        self.assertIn("r1 - robot", pddl_problem)
+        self.assertIn("l1 l2 l3 - location", pddl_problem)
+        self.assertIn("c1 - container", pddl_problem)
+        self.assertIn("(:init (robot_at r1 l1) (cargo_at c1 l2))", pddl_problem)
+        self.assertIn("(:goal (and (cargo_at c1 l3) (robot_at r1 l1)))", pddl_problem)
+
+    def test_matchcellar_writer(self):
+        problem = self.problems["matchcellar"].problem
+
+        w = PDDLWriter(problem)
+
+        pddl_domain = self._normalized_pddl_str(w.get_domain())
+        self.assertIn("(define (domain matchcellar-domain)", pddl_domain)
+        self.assertIn(
+            "(:requirements :strips :typing :negative-preconditions :durative-actions)",
+            pddl_domain,
+        )
+        self.assertIn("(:types match fuse)", pddl_domain)
+        self.assertIn(
+            "(:predicates (handfree) (light) (match_used ?match - match) (fuse_mended ?fuse - fuse))",
+            pddl_domain,
+        )
+        self.assertIn("(:durative-action light_match", pddl_domain)
+        self.assertIn(":parameters (?m - match)", pddl_domain)
+        self.assertIn(":duration (= ?duration 6)", pddl_domain)
+        self.assertIn(":condition (and (at start (not (match_used ?m))))", pddl_domain)
+        self.assertIn(
+            ":effect (and (at start (match_used ?m)) (at start (light)) (at end (not (light)))))",
+            pddl_domain,
+        )
+        self.assertIn("(:durative-action mend_fuse", pddl_domain)
+        self.assertIn(":parameters (?f - fuse)", pddl_domain)
+        self.assertIn(":duration (= ?duration 5)", pddl_domain)
+        self.assertIn(
+            ":condition (and (at start (handfree)) (at start (light))(over all (light))(at end (light)))",
+            pddl_domain,
+        )
+        self.assertIn(
+            ":effect (and (at start (not (handfree))) (at end (fuse_mended ?f)) (at end (handfree))))",
+            pddl_domain,
+        )
+
+    def test_renamings(self):
+        problem = self.problems["hierarchical_blocks_world"].problem
+        problem = problem.clone()
+        move = problem.action("move")
+        move.name = "move-move"
+
+        Block = problem.user_type("Block")
+        block_4 = Object("block-4", Block)
+        problem.add_object(block_4)
+
+        w = PDDLWriter(problem)
+        plan = SequentialPlan(
+            [move(block_4, problem.object("block_3"), problem.object("block_2"))]
+        )
+        plan_str = w.get_plan(plan)
+
+        r = UPPDDLReader()
+        test_plan = r.parse_plan_string(problem, plan_str, w.get_item_named)
+
+        self.assertEqual(plan, test_plan)
+
+    def test_depot_reader(self):
+        reader = UPPDDLReader()
+
+        domain_filename = os.path.join(PDDL_DOMAINS_PATH, "depot", "domain.pddl")
+        problem_filename = os.path.join(PDDL_DOMAINS_PATH, "depot", "problem.pddl")
+        problem = reader.parse_problem(domain_filename, problem_filename)
+
+        self.assertIsNotNone(problem)
+        self.assertEqual(len(problem.fluents), 15)
+        self.assertEqual(len(problem.actions), 5)
+        self.assertEqual(len(list(problem.objects(problem.user_type("object")))), 13)
+
+        with open(domain_filename, "r", encoding="utf-8") as file:
+            domain_str = file.read()
+        with open(problem_filename, "r", encoding="utf-8") as file:
+            problem_str = file.read()
+
+        problem_2 = reader.parse_problem_string(domain_str, problem_str)
+        self.assertEqual(problem, problem_2)
+
+    def test_counters_reader(self):
+        reader = UPPDDLReader()
+
+        domain_filename = os.path.join(PDDL_DOMAINS_PATH, "counters", "domain.pddl")
+        problem_filename = os.path.join(PDDL_DOMAINS_PATH, "counters", "problem.pddl")
+        problem = reader.parse_problem(domain_filename, problem_filename)
+
+        self.assertIsNotNone(problem)
+        self.assertEqual(len(problem.fluents), 2)
+        self.assertEqual(len(problem.actions), 2)
+        self.assertEqual(len(list(problem.objects(problem.user_type("counter")))), 4)
+
+        with open(domain_filename, "r", encoding="utf-8") as file:
+            domain_str = file.read()
+        with open(problem_filename, "r", encoding="utf-8") as file:
+            problem_str = file.read()
+
+        problem_2 = reader.parse_problem_string(domain_str, problem_str)
+        self.assertEqual(problem, problem_2)
+
+    def test_sailing_reader(self):
+        reader = UPPDDLReader()
+
+        domain_filename = os.path.join(PDDL_DOMAINS_PATH, "sailing", "domain.pddl")
+        problem_filename = os.path.join(PDDL_DOMAINS_PATH, "sailing", "problem.pddl")
+        problem = reader.parse_problem(domain_filename, problem_filename)
+
+        self.assertIsNotNone(problem)
+        self.assertEqual(len(problem.fluents), 4)
+        self.assertEqual(len(problem.actions), 8)
+        self.assertEqual(len(list(problem.objects(problem.user_type("boat")))), 2)
+        self.assertEqual(len(list(problem.objects(problem.user_type("person")))), 2)
+
+        with open(domain_filename, "r", encoding="utf-8") as file:
+            domain_str = file.read()
+        with open(problem_filename, "r", encoding="utf-8") as file:
+            problem_str = file.read()
+
+        problem_2 = reader.parse_problem_string(domain_str, problem_str)
+        self.assertEqual(problem, problem_2)
+
+    def test_non_linear_car(self):
+        reader = UPPDDLReader()
+
+        domain_filename = os.path.join(PDDL_DOMAINS_PATH, "car_nl", "d.pddl")
+        problem_filename = os.path.join(PDDL_DOMAINS_PATH, "car_nl", "p.pddl")
+        problem = reader.parse_problem(domain_filename, problem_filename)
+
+        self.assertIsNotNone(problem)
+        self.assertEqual(len(problem.fluents), 8)
+        n_proc = len(list([el for el in problem.processes if isinstance(el, Process)]))
+        n_eve = len(list([el for el in problem.events if isinstance(el, Event)]))
+        self.assertEqual(n_proc, 3)
+        self.assertEqual(n_eve, 1)
+        found_drag_ahead = False
+        for ele in problem.processes:
+            if isinstance(ele, Process):
+                for e in ele.effects:
+                    self.assertTrue(
+                        (e.kind == EffectKind.CONTINUOUS_INCREASE)
+                        or (e.kind == EffectKind.CONTINUOUS_DECREASE)
+                    )
+                if ele.name == "drag_ahead":
+                    found_drag_ahead = True
+                    self.assertTrue("engine_running" in str(ele))
+                    self.assertTrue("drag_coefficient" in str(ele))
+        self.assertTrue(found_drag_ahead)
+
+    def test_matchcellar_reader(self):
+        reader = UPPDDLReader()
+
+        domain_filename = os.path.join(PDDL_DOMAINS_PATH, "matchcellar", "domain.pddl")
+        problem_filename = os.path.join(
+            PDDL_DOMAINS_PATH, "matchcellar", "problem.pddl"
+        )
+        problem = reader.parse_problem(domain_filename, problem_filename)
+
+        self.assertIsNotNone(problem)
+        self.assertEqual(len(problem.fluents), 4)
+        self.assertEqual(len(problem.actions), 2)
+        self.assertEqual(len(list(problem.objects(problem.user_type("match")))), 3)
+        self.assertEqual(len(list(problem.objects(problem.user_type("fuse")))), 3)
+
+        with open(domain_filename, "r", encoding="utf-8") as file:
+            domain_str = file.read()
+        with open(problem_filename, "r", encoding="utf-8") as file:
+            problem_str = file.read()
+
+        problem_2 = reader.parse_problem_string(domain_str, problem_str)
+        self.assertEqual(problem, problem_2)
+
+    def test_parking_reader(self):
+        reader = UPPDDLReader()
+
+        domain_filename = os.path.join(
+            PDDL_DOMAINS_PATH, "parking_action_cost", "domain.pddl"
+        )
+        problem_filename = os.path.join(
+            PDDL_DOMAINS_PATH, "parking_action_cost", "problem.pddl"
+        )
+        problem = reader.parse_problem(domain_filename, problem_filename)
+
+        self.assertIsNotNone(problem)
+        self.assertEqual(len(problem.fluents), 5)
+        self.assertEqual(len(problem.actions), 4)
+        self.assertEqual(len(list(problem.objects(problem.user_type("car")))), 2)
+        self.assertEqual(len(list(problem.objects(problem.user_type("curb")))), 4)
+        self.assertEqual(len(problem.quality_metrics), 1)
+        self.assertTrue(problem.quality_metrics[0].is_minimize_action_costs())
+
+        with open(domain_filename, "r", encoding="utf-8") as file:
+            domain_str = file.read()
+        with open(problem_filename, "r", encoding="utf-8") as file:
+            problem_str = file.read()
+
+        problem_2 = reader.parse_problem_string(domain_str, problem_str)
+        self.assertEqual(problem, problem_2)
+
+    def _test_htn_transport_reader(self, problem):
+        assert isinstance(problem, up.model.htn.HierarchicalProblem)
+        self.assertEqual(5, len(problem.fluents))
+        self.assertEqual(4, len(problem.actions))
+        self.assertEqual(
+            ["deliver", "get-to", "load", "unload"],
+            [task.name for task in problem.tasks],
+        )
+        self.assertEqual(
+            [
+                "m-deliver",
+                "m-unload",
+                "m-load",
+                "m-drive-to",
+                "m-drive-to-via",
+                "m-i-am-there",
+            ],
+            [method.name for method in problem.methods],
+        )
+        self.assertEqual(1, len(problem.method("m-drive-to").subtasks))
+        self.assertEqual(2, len(problem.method("m-drive-to-via").subtasks))
+        self.assertEqual(2, len(problem.task_network.subtasks))
+
+    def test_htn_transport_reader(self):
+        reader = UPPDDLReader()
+
+        domain_filename = os.path.join(
+            PDDL_DOMAINS_PATH, "htn-transport", "domain.hddl"
+        )
+        problem_filename = os.path.join(
+            PDDL_DOMAINS_PATH, "htn-transport", "problem.hddl"
+        )
+        problem = reader.parse_problem(domain_filename, problem_filename)
+        self._test_htn_transport_reader(problem)
+
+        with open(domain_filename, "r", encoding="utf-8") as file:
+            domain_str = file.read()
+        with open(problem_filename, "r", encoding="utf-8") as file:
+            problem_str = file.read()
+
+        problem_2 = reader.parse_problem_string(domain_str, problem_str)
+        self._test_htn_transport_reader(problem_2)
+
+    def test_examples_io(self):
+        for example in self.problems.values():
+            problem = example.problem
+            kind = problem.kind
+            if (
+                kind.has_intermediate_conditions_and_effects()
+                or kind.has_object_fluents()
+                or kind.has_oversubscription()
+                or kind.has_timed_goals()
+                or kind.has_bool_fluent_parameters()
+                or kind.has_bounded_int_fluent_parameters()
+                or kind.has_bool_action_parameters()
+                or kind.has_bounded_int_action_parameters()
+                or kind.has_unbounded_int_action_parameters()
+                or kind.has_real_action_parameters()
+                or kind.has_scheduling()
+                or (  # pddl can't model interpreted functions
+                    kind.has_interpreted_functions_in_durations()
+                    or kind.has_interpreted_functions_in_boolean_assignments()
+                    or kind.has_interpreted_functions_in_numeric_assignments()
+                    or kind.has_interpreted_functions_in_object_assignments()
+                    or kind.has_interpreted_functions_in_conditions()
+                )
+            ):
+                continue
+            with tempfile.TemporaryDirectory() as tempdir:
+                domain_filename = os.path.join(tempdir, "domain.pddl")
+                problem_filename = os.path.join(tempdir, "problem.pddl")
+
+                w = PDDLWriter(problem)
+                w.write_domain(domain_filename)
+                w.write_problem(problem_filename)
+
+                with open(domain_filename, "r") as domain_file:
+                    domain_str = domain_file.read()
+
+                general_reader = PDDLReader(disable_warnings=True)
+
+                for i in range(3):
+                    if i == 0:
+                        parsed_problem = general_reader.parse_problem(
+                            domain_filename, problem_filename
+                        )
+                    elif i == 1:
+                        reader = UPPDDLReader()
+                        parsed_problem = reader.parse_problem(
+                            domain_filename, problem_filename
+                        )
+                    elif not check_ai_pddl_requirements(
+                        extract_pddl_requirements(domain_str)
+                    ):  # skip problems with ai_pddl that do not respect the requirements
+                        assert i == 2
+                        continue
+                    else:
+                        assert i == 2
+                        try:
+                            ai_problem = parse_domain(domain_filename)
+                            ai_domain = parse_problem(problem_filename)
+                        except Exception as _:
+                            # skip problems where ai_pddl parsing fails; they are out of the scope of this testing
+                            continue
+                        parsed_problem = convert_problem_from_ai_pddl(
+                            ai_problem, ai_domain
+                        )
+
+                    # Case where the reader does not convert the final_value back to actions_cost.
+                    if (
+                        kind.has_actions_cost()
+                        and parsed_problem.kind.has_final_value()
+                    ):
+                        self.assertEqual(
+                            len(problem.fluents) + 1, len(parsed_problem.fluents)
+                        )
+                    else:
+                        self.assertEqual(
+                            len(problem.fluents), len(parsed_problem.fluents)
+                        )
+
+                    self.assertTrue(
+                        _have_same_user_types_considering_renamings(
+                            problem, parsed_problem, w.get_item_named
+                        )
+                    )
+                    self.assertEqual(len(problem.actions), len(parsed_problem.actions))
+                    self.assertEqual(
+                        len(problem.processes),
+                        len(parsed_problem.processes),
+                    )
+                    self.assertEqual(
+                        len(problem.events),
+                        len(parsed_problem.events),
+                    )
+                    for a in problem.actions:
+                        parsed_a = parsed_problem.action(w.get_pddl_name(a))
+                        self.assertEqual(a, w.get_item_named(parsed_a.name))
+
+                        for param, parsed_param in zip(
+                            a.parameters, parsed_a.parameters
+                        ):
+                            self.assertEqual(
+                                param.type,
+                                w.get_item_named(
+                                    cast(_UserType, parsed_param.type).name
+                                ),
+                            )
+                        if isinstance(a, InstantaneousAction):
+                            assert isinstance(parsed_a, InstantaneousAction)
+                            if (
+                                kind.has_actions_cost()
+                                and parsed_problem.kind.has_final_value()
+                            ):
+                                self.assertEqual(
+                                    len(a.effects) + 1, len(parsed_a.effects)
+                                )
+                            else:
+                                self.assertEqual(len(a.effects), len(parsed_a.effects))
+                        elif isinstance(a, DurativeAction):
+                            assert isinstance(parsed_a, DurativeAction)
+                            self.assertEqual(str(a.duration), str(parsed_a.duration))
+                            for t, e in a.effects.items():
+                                self.assertEqual(len(e), len(parsed_a.effects[t]))
+                            for i, ce in a.continuous_effects.items():
+                                self.assertEqual(
+                                    len(ce), len(parsed_a.continuous_effects[i])
+                                )
+                    self.assertEqual(
+                        len(problem.trajectory_constraints),
+                        len(parsed_problem.trajectory_constraints),
+                    )
+                    self.assertEqual(
+                        set(map(str, problem.trajectory_constraints)),
+                        set(map(str, parsed_problem.trajectory_constraints)),
+                    )
+                    if problem.quality_metrics:
+                        self.assertTrue(
+                            parsed_problem.quality_metrics, f"{problem.name}, {i}"
+                        )
+                        self.assertEqual(
+                            type(problem.quality_metrics[0]),
+                            type(parsed_problem.quality_metrics[0]),
+                        )
+
+    def test_basic_with_object_constant(self):
+        problem = self.problems["basic_with_object_constant"].problem
+
+        w = PDDLWriter(problem)
+
+        pddl_domain = self._normalized_pddl_str(w.get_domain())
+        self.assertIn("(define (domain basic_with_object_constant-domain)", pddl_domain)
+        self.assertIn(
+            "(:requirements :strips :typing :negative-preconditions)",
+            pddl_domain,
+        )
+        self.assertIn("(:constants", pddl_domain)
+        self.assertIn("l1 - location)", pddl_domain)
+        self.assertIn("(:types location)", pddl_domain)
+        self.assertIn(
+            "(:predicates (is_at ?loc - location))",
+            pddl_domain,
+        )
+        self.assertIn("(:action move", pddl_domain)
+        self.assertIn(":parameters (?l_from - location ?l_to - location)", pddl_domain)
+        self.assertIn(
+            ":precondition (and (is_at ?l_from) (not (is_at ?l_to)))", pddl_domain
+        )
+        self.assertIn(
+            ":effect (and (not (is_at ?l_from)) (is_at ?l_to)))",
+            pddl_domain,
+        )
+        self.assertIn("(:action move_to_l1", pddl_domain)
+        self.assertIn(":parameters (?l_from - location)", pddl_domain)
+        self.assertIn(
+            ":precondition (and (is_at ?l_from) (not (is_at l1)))", pddl_domain
+        )
+        self.assertIn(
+            ":effect (and (not (is_at ?l_from)) (is_at l1)))",
+            pddl_domain,
+        )
+
+        pddl_problem = self._normalized_pddl_str(w.get_problem())
+        self.assertIn("(:domain basic_with_object_constant-domain)", pddl_problem)
+        self.assertIn("(:objects", pddl_problem)
+        self.assertIn("l2 - location)", pddl_problem)
+        self.assertIn("(:init (is_at l1))", pddl_problem)
+        self.assertIn("(:goal (and (is_at l2))))", pddl_problem)
+
+        expected_domain = """(define (domain basic_with_object_constant-domain)
+ (:requirements :strips :typing :negative-preconditions)
+ (:types location)
+ (:constants
+   l1 - location
+ )
+ (:predicates (is_at ?loc - location))
+ (:action move
+  :parameters ( ?l_from - location ?l_to - location)
+  :precondition (and (is_at ?l_from) (not (is_at ?l_to)))
+  :effect (and (not (is_at ?l_from)) (is_at ?l_to)))
+ (:action move_to_l1
+  :parameters ( ?l_from - location)
+  :precondition (and (is_at ?l_from) (not (is_at l1)))
+  :effect (and (not (is_at ?l_from)) (is_at l1)))
+)
+"""
+        expected_problem = """(define (problem basic_with_object_constant-problem)
+ (:domain basic_with_object_constant-domain)
+ (:objects
+   l2 - location
+ )
+ (:init (is_at l1))
+ (:goal (and (is_at l2)))
+)
+"""
+
+    def test_rationals(self):
+        problem = self.problems["robot_decrease"].problem.clone()
+
+        # Check perfect conversion
+        battery = problem.fluent("battery_charge")
+        problem.set_initial_value(battery, Fraction(5, 2))
+        w = PDDLWriter(problem)
+        pddl_txt = w.get_problem()
+        self.assertNotIn("5/2", pddl_txt)
+        self.assertIn("2.5", pddl_txt)
+
+        # Check imperfect conversion
+        with pytest.warns(UserWarning, match="cannot exactly represent") as warns:
+            battery = problem.fluent("battery_charge")
+            problem.set_initial_value(battery, Fraction(10, 3))
+            w = PDDLWriter(problem)
+            pddl_txt = w.get_problem()
+            self.assertNotIn("10/3", pddl_txt)
+            self.assertIn("3.333333333", pddl_txt)
+
+    def test_strict_reader_decimal_precision(self):
+        # NumericValue.value from the `pddl` package is a binary float, so converting
+        # it with `Fraction(value)` bakes in IEEE-754 rounding error (`Fraction(0.1)`
+        # is not exactly 1/10). The strict ai-pddl-parser path must build the Fraction
+        # from the literal's string instead, exactly like ANMLReader does for ANML's
+        # decimal literals.
+        problem = self.problems["robot_decrease"].problem
+        w = PDDLWriter(problem)
+        domain_str = w.get_domain()
+
+        problem_str = """(define (problem robot_decrease-problem)
+ (:domain robot_decrease-domain)
+ (:init (= (battery_charge) 0.1))
+ (:goal (and))
+)
+"""
+        reader = PDDLReader(force_ai_planning_reader=True)
+        parsed_problem = reader.parse_problem_string(domain_str, problem_str)
+        parsed_battery = parsed_problem.fluent("battery_charge")
+        self.assertEqual(
+            parsed_problem.initial_value(parsed_battery()), Real(Fraction(1, 10))
+        )
+
+        problem_str_small = problem_str.replace("0.1", "0.00001")
+        parsed_problem_small = reader.parse_problem_string(
+            domain_str, problem_str_small
+        )
+        parsed_battery_small = parsed_problem_small.fluent("battery_charge")
+        self.assertEqual(
+            parsed_problem_small.initial_value(parsed_battery_small()),
+            Real(Fraction(1, 100000)),
+        )
+
+    def test_small_rationals(self):
+        # A real constant whose magnitude makes Python's str()/repr() switch to
+        # scientific notation (below 1e-4) must still be written as a plain decimal:
+        # PDDL's numeric-literal grammar has no exponent notation, so e.g. "1e-05" is
+        # not valid PDDL and the strict ai-pddl-parser rejects it outright.
+        problem = self.problems["robot_decrease"].problem.clone()
+        battery = problem.fluent("battery_charge")
+        problem.set_initial_value(battery, Fraction(1, 100000))
+        w = PDDLWriter(problem)
+        pddl_txt = w.get_problem()
+        self.assertIsNone(re.search(r"\de[+-]?\d", pddl_txt))
+        self.assertIn("0.00001", pddl_txt)
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            domain_filename = os.path.join(tempdir, "domain.pddl")
+            problem_filename = os.path.join(tempdir, "problem.pddl")
+            w.write_domain(domain_filename)
+            w.write_problem(problem_filename)
+
+            for reader in (
+                PDDLReader(force_ai_planning_reader=True),
+                PDDLReader(force_up_pddl_reader=True),
+            ):
+                parsed_problem = reader.parse_problem(domain_filename, problem_filename)
+                parsed_battery = parsed_problem.fluent("battery_charge")
+                self.assertEqual(
+                    parsed_problem.initial_value(parsed_battery()),
+                    Real(Fraction(1, 100000)),
+                )
+
+    def test_time_triggered_plan_small_rationals(self):
+        # PDDLWriter._write_plan formatted TimeTriggeredPlan start times/durations
+        # with a raw float(...), bypassing convert_fraction entirely, so a small
+        # enough value (e.g. 1/100000) was written in scientific notation and
+        # UPPDDLReader's own plan-parsing regex (which only accepts plain decimals)
+        # could not read it back.
+        problem = self.problems["matchcellar"].problem
+        light_match = problem.action("light_match")
+        m1 = problem.object("m1")
+        w = PDDLWriter(problem)
+
+        plan = TimeTriggeredPlan(
+            [
+                (
+                    Fraction(1, 100000),
+                    up.plans.ActionInstance(light_match, (ObjectExp(m1),)),
+                    Fraction(1, 100000),
+                )
+            ]
+        )
+        plan_str = w.get_plan(plan)
+        self.assertIsNone(re.search(r"\de[+-]?\d", plan_str))
+        self.assertEqual(plan_str, "0.00001: (light_match m1)[0.00001]\n")
+        parsed_plan = UPPDDLReader().parse_plan_string(
+            problem, plan_str, w.get_item_named
+        )
+        self.assertEqual(parsed_plan, plan)
+
+        # Non-tiny values keep printing exactly as before.
+        plan_2 = TimeTriggeredPlan(
+            [
+                (
+                    Fraction(1, 2),
+                    up.plans.ActionInstance(light_match, (ObjectExp(m1),)),
+                    Fraction(3, 2),
+                )
+            ]
+        )
+        plan_str_2 = w.get_plan(plan_2)
+        self.assertEqual(plan_str_2, "0.5: (light_match m1)[1.5]\n")
+        parsed_plan_2 = UPPDDLReader().parse_plan_string(
+            problem, plan_str_2, w.get_item_named
+        )
+        self.assertEqual(parsed_plan_2, plan_2)
+
+    def test_ad_hoc_1(self):
+        when = UserType("when")
+        fl = Fluent("4ction")
+        obj_1 = Object("obj_1", when)
+        obj_2 = Object("OBJ_1", when)
+        act = InstantaneousAction("forall", AND=when)
+        fluent = act.parameter("AND")
+        act.add_effect(fl, True, Equals(fluent, obj_1))
+        problem = Problem("ad_hoc")
+        problem.add_fluent(fl)
+        problem.add_action(act)
+        problem.add_object(obj_1)
+        problem.add_object(obj_2)
+        problem.set_initial_value(fl, False)
+        w = PDDLWriter(problem)
+        pddl_domain = self._normalized_pddl_str(w.get_domain())
+        self.assertIn("(define (domain ad_hoc-domain)", pddl_domain)
+        self.assertIn(
+            "(:requirements :strips :typing :equality :conditional-effects)",
+            pddl_domain,
+        )
+        self.assertIn("(:types when_)", pddl_domain)
+        self.assertIn("(:constants obj_1 - when_)", pddl_domain)
+        self.assertIn("(:predicates (f_4ction))", pddl_domain)
+        self.assertIn("(:action forall_", pddl_domain)
+        self.assertIn(":parameters (?and_ - when_)", pddl_domain)
+        self.assertIn(":effect (and (when (= ?and_ obj_1) (f_4ction)))))", pddl_domain)
+
+        pddl_problem = self._normalized_pddl_str(w.get_problem())
+        self.assertIn("(define (problem ad_hoc-problem)", pddl_problem)
+        self.assertIn("(:domain ad_hoc-domain)", pddl_problem)
+        self.assertIn("(:objects obj_1_0 - when_)", pddl_problem)
+        self.assertIn("(:init)", pddl_problem)
+        self.assertIn("(:goal (and)))", pddl_problem)
+        expected_domain = """(define (domain ad_hoc-domain)
+ (:requirements :strips :typing :equality :conditional-effects)
+ (:types when_)
+ (:constants
+   obj_1 - when_
+ )
+ (:predicates (f_4ction))
+ (:action forall_
+  :parameters ( ?and_ - when_)
+  :effect (and (when (= ?and_ obj_1) (f_4ction))))
+)
+"""
+        expected_problem = """(define (problem ad_hoc-problem)
+ (:domain ad_hoc-domain)
+ (:objects
+   obj_1_0 - when_
+ )
+ (:init)
+ (:goal (and ))
+)
+"""
+
+    def test_miconic_reader(self):
+        reader = UPPDDLReader()
+
+        domain_filename = os.path.join(PDDL_DOMAINS_PATH, "miconic", "domain.pddl")
+        problem_filename = os.path.join(PDDL_DOMAINS_PATH, "miconic", "problem.pddl")
+        problem = reader.parse_problem(domain_filename, problem_filename)
+        self.assertIsNotNone(problem)
+        self.assertEqual(len(problem.fluents), 15)
+        self.assertEqual(len(problem.actions), 3)
+        self.assertEqual(len(list(problem.objects(problem.user_type("passenger")))), 2)
+        self.assertEqual(len(list(problem.objects(problem.user_type("floor")))), 4)
+
+    def test_citycar_reader(self):
+        reader = UPPDDLReader()
+
+        domain_filename = os.path.join(PDDL_DOMAINS_PATH, "citycar", "domain.pddl")
+        problem_filename = os.path.join(PDDL_DOMAINS_PATH, "citycar", "problem.pddl")
+        problems = [
+            reader.parse_problem(domain_filename, problem_filename),
+            PDDLReader(force_ai_planning_reader=True).parse_problem(
+                domain_filename, problem_filename
+            ),
+        ]
+
+        for problem in problems:
+            em = problem.environment.expression_manager
+            self.assertIsNotNone(problem)
+            self.assertEqual(len(problem.fluents), 10)
+            self.assertEqual(len(problem.actions), 7)
+            self.assertEqual(
+                len(list(problem.objects(problem.user_type("junction")))), 9
+            )
+            self.assertEqual(len(list(problem.objects(problem.user_type("car")))), 2)
+            self.assertEqual(len(list(problem.objects(problem.user_type("garage")))), 3)
+            self.assertEqual(len(list(problem.objects(problem.user_type("road")))), 5)
+            metric = problem.quality_metrics[0]
+            self.assertTrue(metric.is_minimize_action_costs())
+            assert isinstance(metric, MinimizeActionCosts)
+            action_costs = {
+                problem.action("move_car_in_road"): em.Int(1),
+                problem.action("move_car_out_road"): em.Int(1),
+                problem.action("build_diagonal_oneway"): em.Int(30),
+                problem.action("build_straight_oneway"): em.Int(20),
+                problem.action("destroy_road"): em.Int(10),
+            }
+            for action, cost in action_costs.items():
+                parsed_action = problem.action(action.name)
+                self.assertEqual(action, parsed_action)
+                parsed_cost = metric.costs[parsed_action]
+                self.assertEqual(cost, parsed_cost)
+
+    def test_visit_precedence_reader(self):
+        reader = UPPDDLReader()
+
+        domain_filename = os.path.join(
+            PDDL_DOMAINS_PATH, "visit_precedence", "domain.pddl"
+        )
+        problem_filename = os.path.join(
+            PDDL_DOMAINS_PATH, "visit_precedence", "problem.pddl"
+        )
+        problem = reader.parse_problem(domain_filename, problem_filename)
+        em = problem.environment.expression_manager
+
+        self.assertIsNotNone(problem)
+        self.assertEqual(len(problem.fluents), 2)
+        self.assertEqual(len(problem.actions), 1)
+        self.assertEqual(len(list(problem.objects(problem.user_type("location")))), 3)
+        self.assertEqual(len(problem.goals), 1)
+        self.assertEqual(len(problem.timed_goals), 0)
+        self.assertEqual(len(problem.timed_effects), 0)
+
+        visit = problem.action("visit")
+        assert isinstance(visit, DurativeAction)
+        to_visit = visit.parameter("to_visit")
+        location = problem.user_type("location")
+        precedes = problem.fluent("precedes")
+        visited = problem.fluent("visited")
+        p = Variable("p", location, problem.environment)
+        cond_test = em.Forall(
+            em.And(
+                em.Or(em.Not(precedes(p, to_visit)), visited(p)),
+                em.Not(visited(to_visit)),
+            ),
+            p,
+        )
+        l = Variable("l_0", location, problem.environment)
+        l2 = Variable("l2", location, problem.environment)
+        goal_test = em.Forall(
+            em.And(
+                visited(l), em.Forall(em.Or(em.Not(precedes(l2, l)), visited(l2)), l2)
+            ),
+            l,
+        )
+        self.assertEqual(
+            visit.duration,
+            FixedDuration(em.Int(3)),
+        )
+        for interval, cond_list in visit.conditions.items():
+            self.assertEqual(interval, TimePointInterval(StartTiming()))
+            self.assertEqual(len(cond_list), 1)
+            self.assertEqual(cond_test, cond_list[0])
+        for timing, effect_list in visit.effects.items():
+            if timing == EndTiming():
+                self.assertEqual(len(effect_list), 1)
+            else:
+                self.assertTrue(False)
+        for g in problem.goals:
+            self.assertEqual(g, goal_test)
+
+    def test_robot_fastener_reader(self):
+        reader = UPPDDLReader()
+
+        domain_filename = os.path.join(
+            PDDL_DOMAINS_PATH, "robot_fastener", "domain.pddl"
+        )
+        problem_filename = os.path.join(
+            PDDL_DOMAINS_PATH, "robot_fastener", "problem.pddl"
+        )
+        problem = reader.parse_problem(domain_filename, problem_filename)
+
+        self.assertIsNotNone(problem)
+        self.assertEqual(len(problem.fluents), 5)
+        self.assertEqual(len(problem.actions), 1)
+        self.assertEqual(len(list(problem.objects(problem.user_type("robot")))), 3)
+        self.assertEqual(len(list(problem.objects(problem.user_type("fastener")))), 3)
+
+    def test_safe_road_reader(self):
+        reader = UPPDDLReader()
+
+        domain_filename = os.path.join(PDDL_DOMAINS_PATH, "safe_road", "domain.pddl")
+        problem_filename = os.path.join(PDDL_DOMAINS_PATH, "safe_road", "problem.pddl")
+        problem = reader.parse_problem(domain_filename, problem_filename)
+
+        self.assertIsNotNone(problem)
+        self.assertEqual(len(problem.fluents), 1)
+        self.assertEqual(len(problem.actions), 2)
+        natural_disaster = problem.action("natural_disaster")
+        assert isinstance(natural_disaster, InstantaneousAction)
+        self.assertEqual(len(natural_disaster.effects), 1)
+        self.assertTrue(natural_disaster.effects[0].is_forall())
+        self.assertEqual(len(list(problem.objects(problem.user_type("location")))), 3)
+
+    @skipIfNoOneshotPlannerForProblemKind(
+        simple_numeric_kind, OptimalityGuarantee.SOLVED_OPTIMALLY
+    )
+    def test_reading_domain_only(self):
+        reader = UPPDDLReader()
+
+        domain_filename = os.path.join(PDDL_DOMAINS_PATH, "counters", "domain.pddl")
+        domain = reader.parse_problem(domain_filename)
+        counter_type = domain.user_type("counter")
+        domain.set_initial_value(domain.fluent("max_int"), 10)
+        value_fluent = domain.fluent("value")
+        expected_plan_length = 0
+        for i in range(5):
+            expected_plan_length += i
+            problem = (
+                domain.clone()
+            )  # Clone the parsed domain, then populate it and solve
+            for j in range(i + 1):
+                object_j = Object(f"c{str(j)}", counter_type)
+                problem.add_object(object_j)
+                problem.set_initial_value(value_fluent(object_j), 0)
+                if j > 0:
+                    previous_object = problem.object(f"c{str(j - 1)}")
+                    problem.add_goal(
+                        LE(
+                            Plus(value_fluent(previous_object), 1),
+                            value_fluent(object_j),
+                        )
+                    )
+            problem.add_quality_metric(MinimizeSequentialPlanLength())
+            with OneshotPlanner(
+                problem_kind=problem.kind, optimality_guarantee="SOLVED_OPTIMALLY"
+            ) as planner:
+                plan = planner.solve(problem).plan
+                self.assertEqual(len(plan.actions), expected_plan_length)
+
+    def test_writer_nested_and(self):
+        x, y, z = Fluent("x"), Fluent("y"), Fluent("z")
+        goals: List[FNode] = [
+            And(x, y),
+            And(x, And(y, z)),
+            And(Or(x, y), And(y, z)),
+        ]
+        expected_goals: List[str] = [
+            "(:goal (and (x) (y)))",
+            "(:goal (and (x) (y) (z)))",
+            "(:goal (and (or (x) (y)) (y) (z)))",
+        ]
+        assert len(goals) == len(expected_goals), (
+            "goals and expected_goals must have the same length"
+        )
+        for i, (goal, expected_goal) in enumerate(zip(goals, expected_goals)):
+            problem = Problem(f"test_{i}")
+            problem.add_fluent(x, default_initial_value=False)
+            problem.add_fluent(y, default_initial_value=False)
+            problem.add_fluent(z, default_initial_value=False)
+            problem.add_goal(goal)
+            writer = PDDLWriter(problem)
+            pddl_problem = self._normalized_pddl_str(writer.get_problem())
+            self.assertIn(expected_goal, pddl_problem)
+
+    def test_total_cost_metric_with_no_actions(self):
+        # use_plan_length was never initialised, so this raised UnboundLocalError
+        domain = """(define (domain d)
+         (:requirements :strips :action-costs :fluents)
+         (:functions (total-cost))
+        )"""
+        problem_str = """(define (problem p)
+         (:domain d)
+         (:init (= (total-cost) 0))
+         (:goal (and))
+         (:metric minimize (total-cost))
+        )"""
+        problem = UPPDDLReader().parse_problem_string(domain, problem_str)
+        self.assertEqual(len(problem.quality_metrics), 1)
+        # with no action contributing a cost, total-cost and plan length coincide
+        self.assertIsInstance(problem.quality_metrics[0], MinimizeSequentialPlanLength)
+
+    def test_unit_action_costs_parse_as_plan_length(self):
+        # `cost.value != 1` compared an FNode to an int, so this metric was unreachable
+        domain_template = """(define (domain d)
+         (:requirements :strips :action-costs :fluents)
+         (:predicates (p))
+         (:functions (total-cost))
+         (:action a :parameters () :precondition (and)
+          :effect (and (p) (increase (total-cost) {cost})))
+        )"""
+        problem_str = """(define (problem p)
+         (:domain d)
+         (:init (= (total-cost) 0))
+         (:goal (and (p)))
+         (:metric minimize (total-cost))
+        )"""
+
+        unit = UPPDDLReader().parse_problem_string(
+            domain_template.format(cost="1"), problem_str
+        )
+        self.assertIsInstance(unit.quality_metrics[0], MinimizeSequentialPlanLength)
+        self.assertTrue(unit.kind.has_plan_length())
+
+        # any other cost keeps the action-costs metric
+        non_unit = UPPDDLReader().parse_problem_string(
+            domain_template.format(cost="3"), problem_str
+        )
+        self.assertIsInstance(
+            non_unit.quality_metrics[0],
+            unified_planning.model.metrics.MinimizeActionCosts,
+        )
+        self.assertTrue(non_unit.kind.has_actions_cost())
+
+    def test_plan_length_metric_pddl_round_trip(self):
+        # the writer emits unit increase effects, so reading back must give plan length again
+        p = Fluent("p")
+        a = InstantaneousAction("a")
+        a.add_effect(p, True)
+        problem = Problem("plan_length_round_trip")
+        problem.add_fluent(p, default_initial_value=False)
+        problem.add_action(a)
+        problem.add_goal(p)
+        problem.add_quality_metric(MinimizeSequentialPlanLength())
+
+        writer = PDDLWriter(problem)
+        # UPPDDLReader directly: PDDLReader would fall back to it anyway
+        parsed = UPPDDLReader().parse_problem_string(
+            writer.get_domain(), writer.get_problem()
+        )
+        self.assertEqual(len(parsed.quality_metrics), 1)
+        self.assertIsInstance(parsed.quality_metrics[0], MinimizeSequentialPlanLength)
+
+    def test_grounding_tpp_metric(self):
+        reader = UPPDDLReader()
+
+        domain_filename = os.path.join(PDDL_DOMAINS_PATH, "tpp_metric", "domain.pddl")
+        problem_filename = os.path.join(PDDL_DOMAINS_PATH, "tpp_metric", "problem.pddl")
+        problem = reader.parse_problem(domain_filename, problem_filename)
+
+        self.assertIsNotNone(problem)
+
+        with Compiler(
+            name="up_grounder", compilation_kind=CompilationKind.GROUNDING
+        ) as grounder:
+            grounded_problem = grounder.compile(
+                problem, compilation_kind=CompilationKind.GROUNDING
+            ).problem
+        self.assertEqual(40, len(grounded_problem.actions))
+        self.assertEqual(3, len(problem.actions))
+
+    def test_robot_continuous(self):
+        problem = self.problems["robot_continuous"].problem
+
+        w = PDDLWriter(problem)
+
+        pddl_domain = self._normalized_pddl_str(w.get_domain())
+        self.assertIn(
+            "(:requirements :strips :typing :equality :numeric-fluents :durative-actions :continuous-effects)",
+            pddl_domain,
+        )
+        self.assertIn("(decrease (battery_charge) (* #t 1))", pddl_domain)
+
+    def test_robot_conditional_effects(self):
+        problem = self.problems["robot_conditional_effects"].problem
+
+        # NOTE conditional effects not fully supported for continuous change
+
+        w = PDDLWriter(problem)
+
+        pddl_domain = self._normalized_pddl_str(w.get_domain())
+        self.assertIn(
+            "(when (at end (<= 10 (battery_charge))) (at end (robot_at ?l_to)))",
+            pddl_domain,
+        )
+        # self.assertIn(
+        #    "(when (at start (<= 10 (battery_charge))) (decrease (battery_charge) (* #t 1)))",
+        #    pddl_domain,
+        # )
+
+    def test_continuous_forall(self):
+        process_domain = """
+(define
+    (domain continuous_forall)
+    (:requirements :continuous-effects :typing)
+    (:types car)
+
+    (:functions
+        (distance_traveled ?car - car)
+    )
+
+    (:process all_cars_travel
+        :parameters ()
+        :effect (forall (?c - car)
+        (increase (distance_traveled(?c)) (* #t (1.0))))
+    )
+)
+"""
+        durative_act_domain = """
+(define
+    (domain continuous_forall)
+    (:requirements :continuous-effects :typing)
+    (:types car)
+
+    (:functions
+        (distance_traveled ?car - car)
+    )
+
+    (:durative-action all_cars_travel
+        :parameters ()
+        :duration (and (>= ?duration 4) (<= ?duration 4))
+        :effect (
+            forall (?c - car)
+            (increase (distance_traveled(?c)) (* #t (1.0)))
+        )
+    )
+)
+"""
+        for domain in [process_domain, durative_act_domain]:
+            reader = PDDLReader()
+            with self.assertRaises(UPUnsupportedProblemTypeError) as e:
+                reader.parse_problem_string(domain)
+            self.assertEqual(
+                str(e.exception),
+                "Continuous change with forall effects is not supported",
+            )
+
+    def test_type_self_subtype(self):
+        domain = """
+(define (domain shape-stacking)
+    (:requirements :strips :typing)
+    (:types
+        shape
+        square triangle - shape
+    )
+)
+"""
+        reader = PDDLReader()
+        with self.assertRaises(SyntaxError) as e:
+            reader.parse_problem_string(
+                domain,
+            )
+        self.assertEqual(
+            str(e.exception),
+            "Type 'shape' is defined as a subtype of itself",
+        )
+
+    def test_object_fluents_reader(self):
+        """Test parsing a domain with object fluents (functions returning user types)."""
+        reader = UPPDDLReader()
+
+        domain_filename = os.path.join(
+            PDDL_DOMAINS_PATH, "object_fluents", "domain.pddl"
+        )
+        problem_filename = os.path.join(
+            PDDL_DOMAINS_PATH, "object_fluents", "problem.pddl"
+        )
+        problem = reader.parse_problem(domain_filename, problem_filename)
+
+        self.assertIsNotNone(problem)
+        # 1 predicate (connected) + 3 functions = 4 fluents
+        self.assertEqual(len(problem.fluents), 4)
+        self.assertEqual(len(problem.actions), 2)
+        self.assertEqual(len(list(problem.objects(problem.user_type("location")))), 3)
+        self.assertEqual(len(list(problem.objects(problem.user_type("vehicle")))), 1)
+        self.assertEqual(len(list(problem.objects(problem.user_type("package")))), 1)
+
+        # Verify object fluent return types
+        vehicle_at = problem.fluent("vehicle_at")
+        self.assertTrue(vehicle_at.type.is_user_type())
+        self.assertEqual(str(vehicle_at.type), "location")
+
+        package_at = problem.fluent("package_at")
+        self.assertTrue(package_at.type.is_user_type())
+        self.assertEqual(str(package_at.type), "location")
+
+        cargo = problem.fluent("cargo")
+        self.assertTrue(cargo.type.is_user_type())
+        self.assertEqual(str(cargo.type), "package")
+
+        # Verify predicate is still boolean
+        connected = problem.fluent("connected")
+        self.assertTrue(connected.type.is_bool_type())
+
+        # Verify string-based parsing produces the same result
+        with open(domain_filename, "r", encoding="utf-8") as file:
+            domain_str = file.read()
+        with open(problem_filename, "r", encoding="utf-8") as file:
+            problem_str = file.read()
+
+        problem_2 = reader.parse_problem_string(domain_str, problem_str)
+        self.assertEqual(problem, problem_2)
+
+    def test_object_fluents_mixed_with_numeric(self):
+        """Test parsing functions that mix object fluents and numeric fluents."""
+        reader = PDDLReader()
+        domain = """
+(define (domain mixed-fluents)
+    (:requirements :typing :object-fluents :numeric-fluents)
+    (:types city - object)
+    (:functions
+        (current_city) - city
+        (distance ?c1 - city ?c2 - city)
+    )
+    (:action travel
+        :parameters (?from - city ?to - city)
+        :precondition (= (current_city) ?from)
+        :effect (assign (current_city) ?to)
+    )
+)
+"""
+        problem_str = """
+(define (problem trip)
+    (:domain mixed-fluents)
+    (:objects paris london - city)
+    (:init
+        (= (current_city) paris)
+        (= (distance paris london) 450)
+    )
+    (:goal (= (current_city) london))
+)
+"""
+        problem = reader.parse_problem_string(domain, problem_str)
+        self.assertIsNotNone(problem)
+
+        current_city = problem.fluent("current_city")
+        self.assertTrue(current_city.type.is_user_type())
+        self.assertEqual(str(current_city.type), "city")
+
+        distance = problem.fluent("distance")
+        self.assertTrue(distance.type.is_real_type())
+
+    def test_object_fluents_no_type_annotation_defaults_to_real(self):
+        """Test that functions without a type annotation default to RealType."""
+        reader = PDDLReader()
+        domain = """
+(define (domain default-type)
+    (:requirements :typing :numeric-fluents)
+    (:types counter - object)
+    (:functions
+        (value ?c - counter)
+    )
+    (:action inc
+        :parameters (?c - counter)
+        :precondition ()
+        :effect (increase (value ?c) 1)
+    )
+)
+"""
+        problem_str = """
+(define (problem test-default)
+    (:domain default-type)
+    (:objects c1 - counter)
+    (:init (= (value c1) 0))
+    (:goal (>= (value c1) 1))
+)
+"""
+        problem = reader.parse_problem_string(domain, problem_str)
+        value_fluent = problem.fluent("value")
+        self.assertTrue(value_fluent.type.is_real_type())
+
+    def test_object_fluents_multiple_same_return_type(self):
+        """Test multiple object fluents returning the same user type."""
+        reader = PDDLReader()
+        domain = """
+(define (domain multi-loc-fluents)
+    (:requirements :typing :object-fluents)
+    (:types location - object robot - object)
+    (:functions
+        (robot_at ?r - robot) - location
+        (home_base ?r - robot) - location
+    )
+    (:action move
+        :parameters (?r - robot ?to - location)
+        :precondition ()
+        :effect (assign (robot_at ?r) ?to)
+    )
+)
+"""
+        problem_str = """
+(define (problem multi-loc)
+    (:domain multi-loc-fluents)
+    (:objects
+        loc1 loc2 - location
+        r1 - robot
+    )
+    (:init
+        (= (robot_at r1) loc1)
+        (= (home_base r1) loc2)
+    )
+    (:goal (= (robot_at r1) (home_base r1)))
+)
+"""
+        problem = reader.parse_problem_string(domain, problem_str)
+        robot_at = problem.fluent("robot_at")
+        home_base = problem.fluent("home_base")
+        self.assertTrue(robot_at.type.is_user_type())
+        self.assertTrue(home_base.type.is_user_type())
+        self.assertEqual(str(robot_at.type), "location")
+        self.assertEqual(str(home_base.type), "location")
+
+    def test_object_fluents_number_annotation_maps_to_real(self):
+        """Test that a function annotated with '- number' maps to RealType.
+
+        In standard PDDL, '- number' is the conventional type annotation for
+        numeric fluents. The parser explicitly recognises it and maps to RealType."""
+        reader = PDDLReader()
+        domain = """
+(define (domain number-ret-type)
+    (:requirements :typing :numeric-fluents)
+    (:types counter - object)
+    (:functions
+        (value ?c - counter) - number
+    )
+    (:action inc
+        :parameters (?c - counter)
+        :precondition ()
+        :effect (increase (value ?c) 1)
+    )
+)
+"""
+        problem_str = """
+(define (problem test-number)
+    (:domain number-ret-type)
+    (:objects c1 - counter)
+    (:init (= (value c1) 0))
+    (:goal (>= (value c1) 1))
+)
+"""
+        problem = reader.parse_problem_string(domain, problem_str)
+        value_fluent = problem.fluent("value")
+        self.assertTrue(value_fluent.type.is_real_type())
+
+    def test_object_fluents_undefined_return_type_raises_error(self):
+        """Negative test: a function annotated with a type not declared in :types
+        and not 'number' should raise a SyntaxError."""
+        reader = PDDLReader()
+        domain = """
+(define (domain bad-ret-type)
+    (:requirements :typing :object-fluents)
+    (:types robot - object)
+    (:functions
+        (robot_at ?r - robot) - nonexistent_type
+    )
+    (:action noop
+        :parameters (?r - robot)
+        :precondition ()
+        :effect ()
+    )
+)
+"""
+        problem_str = """
+(define (problem test-bad-ret)
+    (:domain bad-ret-type)
+    (:objects r1 - robot)
+    (:init )
+    (:goal ())
+)
+"""
+        with self.assertRaises(SyntaxError) as ctx:
+            reader.parse_problem_string(domain, problem_str)
+        self.assertIn("nonexistent_type", str(ctx.exception))
+
+    def test_ai_pddl_reader_custom_environment(self):
+        """The AI-PDDL fast path (`AIPDDLConverter`) must build every model object
+        (fluents, objects, actions/parameters, forall-effect variables, quality
+        metrics) in the `Environment` given to the `PDDLReader`, not the global one."""
+        domain = """
+(define (domain custom-env-d)
+    (:requirements :strips :typing :negative-preconditions :equality
+                   :existential-preconditions :universal-preconditions
+                   :conditional-effects :numeric-fluents :action-costs)
+    (:types loc item)
+    (:constants depot - loc)
+    (:predicates (at ?i - item ?l - loc) (clear ?l - loc))
+    (:functions (fuel ?l - loc) (total-cost))
+    (:action move
+        :parameters (?i - item ?from - loc ?to - loc)
+        :precondition (and
+            (at ?i ?from)
+            (not (= ?from ?to))
+            (exists (?j - item) (at ?j ?to))
+        )
+        :effect (and
+            (not (at ?i ?from))
+            (at ?i ?to)
+            (forall (?l - loc) (when (clear ?l) (at ?i ?l)))
+            (increase (fuel ?to) 1)
+            (increase (total-cost) 3)
+        )
+    )
+)
+"""
+        problem = """
+(define (problem custom-env-p) (:domain custom-env-d)
+    (:objects l1 - loc i1 - item)
+    (:init (at i1 l1) (clear l1) (clear depot)
+           (= (fuel l1) 0) (= (fuel depot) 0) (= (total-cost) 0))
+    (:goal (at i1 depot))
+    (:metric minimize (total-cost))
+)
+"""
+        env = Environment()
+        self.assertTrue(check_ai_pddl_requirements(extract_pddl_requirements(domain)))
+        up_problem = PDDLReader(
+            env, force_ai_planning_reader=True
+        ).parse_problem_string(domain, problem)
+
+        self.assertIs(up_problem.environment, env)
+        for fluent in up_problem.fluents:
+            self.assertIs(fluent.environment, env)
+        for obj in up_problem.all_objects:
+            self.assertIs(obj.environment, env)
+        for action in up_problem.actions:
+            self.assertIs(action.environment, env)
+            for param in action.parameters:
+                self.assertIs(param.environment, env)
+            assert isinstance(action, InstantaneousAction)
+            for effect in action.effects:
+                self.assertIs(effect.fluent.environment, env)
+                self.assertIs(effect.value.environment, env)
+                self.assertIs(effect.condition.environment, env)
+                for v in effect.forall:
+                    self.assertIs(v.environment, env)
+        for metric in up_problem.quality_metrics:
+            self.assertIs(metric.environment, env)
+
+        # parsing the same PDDL text into a second fresh environment must be
+        # semantics-preserving and environment-independent
+        up_problem_2 = PDDLReader(
+            Environment(), force_ai_planning_reader=True
+        ).parse_problem_string(domain, problem)
+        self.assertEqual(str(up_problem), str(up_problem_2))
+
+    def test_ai_pddl_reader_custom_environment_expression_metric(self):
+        """A `minimize`/`maximize` final-state-expression metric (as opposed to
+        the action-costs metric) must also be built in the given `Environment`."""
+        domain = """
+(define (domain custom-env-metric-d)
+    (:requirements :strips :typing :numeric-fluents)
+    (:types loc)
+    (:predicates (at ?l - loc))
+    (:functions (fuel))
+    (:action noop
+        :parameters (?l - loc)
+        :precondition (at ?l)
+        :effect (increase (fuel) 1)
+    )
+)
+"""
+        problem = """
+(define (problem custom-env-metric-p) (:domain custom-env-metric-d)
+    (:objects l1 - loc)
+    (:init (at l1) (= (fuel) 0))
+    (:goal (at l1))
+    (:metric minimize (fuel))
+)
+"""
+        env = Environment()
+        up_problem = PDDLReader(
+            env, force_ai_planning_reader=True
+        ).parse_problem_string(domain, problem)
+        self.assertEqual(len(up_problem.quality_metrics), 1)
+        metric = up_problem.quality_metrics[0]
+        assert isinstance(
+            metric, (MinimizeExpressionOnFinalState, MaximizeExpressionOnFinalState)
+        )
+        self.assertIs(metric.environment, env)
+        self.assertIs(metric.expression.environment, env)
+
+    def test_ai_pddl_reader_custom_environment_parameter_named_environment(self):
+        """A predicate/action parameter literally named `?environment` must not
+        collide with the `environment=` keyword used internally to forward the
+        converter's Environment to `Fluent`/`InstantaneousAction`."""
+        domain = """
+(define (domain custom-env-name-d)
+    (:requirements :strips :typing)
+    (:types loc)
+    (:predicates (p ?environment - loc))
+    (:action a
+        :parameters (?environment - loc)
+        :precondition (p ?environment)
+        :effect (p ?environment)
+    )
+)
+"""
+        problem = """
+(define (problem custom-env-name-p) (:domain custom-env-name-d)
+    (:objects l1 - loc)
+    (:init (p l1))
+    (:goal (p l1))
+)
+"""
+        env = Environment()
+        up_problem = PDDLReader(
+            env, force_ai_planning_reader=True
+        ).parse_problem_string(domain, problem)
+        self.assertEqual(
+            [p.name for p in up_problem.fluent("p").signature], ["environment"]
+        )
+        self.assertEqual(
+            [p.name for p in up_problem.action("a").parameters], ["environment"]
+        )
+
+
+def _have_same_user_types_considering_renamings(
+    original_problem: unified_planning.model.Problem,
+    tested_problem: unified_planning.model.Problem,
+    get_item_named,
+) -> bool:
+    for tested_type in tested_problem.user_types:
+        if (
+            get_item_named(cast(_UserType, tested_type).name)
+            not in original_problem.user_types
+        ):
+            return False
+    return True

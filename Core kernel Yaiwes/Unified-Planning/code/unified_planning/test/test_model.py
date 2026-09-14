@@ -1,0 +1,992 @@
+# Copyright 2021-2023 AIPlan4EU project
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+from collections import OrderedDict
+import unified_planning
+from unified_planning.shortcuts import *
+from unified_planning.exceptions import (
+    UPUsageError,
+    UPTypeError,
+    UPConflictingEffectsException,
+    UPProblemDefinitionError,
+    UPExpressionDefinitionError,
+)
+from unified_planning.test.examples import get_example_problems
+from unified_planning.test import unittest_TestCase, main
+from unified_planning.model.action import InstantaneousAction
+from unified_planning.model.multi_agent import Agent, MultiAgentProblem
+
+
+class TestModel(unittest_TestCase):
+    def setUp(self):
+        unittest_TestCase.setUp(self)
+        self.problems = get_example_problems()
+
+    def test_expression(self):
+        test_type = UserType("test_type")
+        identity = Fluent("identity", test_type, obj=test_type)
+        id = Fluent("id", test_type, obj_id=IntType(0, 10))
+        self.assertEqual(id(1).type, test_type)
+        env_2 = up.environment.Environment()
+        test_type_2 = env_2.type_manager.UserType("test_type")
+        it_2 = env_2.type_manager.IntType(0, 10)
+        id_2 = Fluent("id", test_type_2, obj_id=it_2, environment=env_2)
+        obj_2 = Object("obj", test_type_2, env_2)
+        self.assertEqual(id_2(1).type, test_type_2)
+        self.assertNotEqual(id_2(1).type, test_type)
+        with self.assertRaises(AssertionError) as e:
+            Equals(id_2(1), obj_2)
+        self.assertEqual(
+            str(e.exception),
+            "Expression has a different environment of the expression manager",
+        )
+        with self.assertRaises(AssertionError) as e:
+            identity(obj_2)
+        self.assertEqual(
+            str(e.exception),
+            "Object has a different environment of the expression manager",
+        )
+        with self.assertRaises(AssertionError) as e:
+            Object("obj", test_type_2)
+        self.assertEqual(
+            str(e.exception),
+            "type of the object does not belong to the same environment of the object",
+        )
+
+    def test_clone_problem_and_action(self):
+        for example in self.problems.values():
+            problem = example.problem
+            if problem.kind.has_scheduling():
+                continue
+            problem_clone_1 = problem.clone()
+            problem_clone_2 = problem.clone()
+            for action_1, action_2 in zip(
+                problem_clone_1.actions, problem_clone_2.actions
+            ):
+                if isinstance(action_2, InstantaneousAction):
+                    action_2._effects = []
+                    action_1_clone = action_1.clone()
+                    action_1_clone._effects = []
+                elif isinstance(action_2, DurativeAction):
+                    action_2._effects = {}
+                    action_2._continuous_effects = {}
+                    action_1_clone = action_1.clone()
+                    action_1_clone._effects = {}
+                    action_1_clone._continuous_effects = {}
+                elif isinstance(action_2, Process):
+                    action_2._effects = []
+                    action_1_clone = action_1.clone()
+                    action_1_clone._effects = []
+                elif isinstance(action_2, Event):
+                    action_2._effects = []
+                    action_1_clone = action_1.clone()
+                    action_1_clone._effects = []
+                else:
+                    raise NotImplementedError
+                self.assertEqual(action_2, action_1_clone)
+                self.assertEqual(action_1_clone, action_2)
+                self.assertNotEqual(action_1, action_1_clone)
+                self.assertNotEqual(action_1_clone, action_1)
+                self.assertNotEqual(action_1, action_1_clone.name)
+                self.assertNotEqual(action_1_clone.name, action_1)
+            self.assertEqual(problem_clone_1, problem)
+            self.assertEqual(problem, problem_clone_1)
+            self.assertNotEqual(problem_clone_2, problem)
+            self.assertNotEqual(problem, problem_clone_2)
+
+    def test_clone_preserves_timed_effect_conflict_tracking(self):
+        x = Fluent("x", RealType())
+        y = Fluent("y", RealType())
+        problem = Problem("p")
+        problem.add_fluent(x, default_initial_value=0)
+        problem.add_fluent(y, default_initial_value=0)
+        t = GlobalStartTiming()
+        problem.add_increase_effect(t, x, 1)
+
+        # sanity: the original detects the conflict
+        with self.assertRaises(UPConflictingEffectsException):
+            problem.add_timed_effect(t, x, 2)
+
+        problem_clone = problem.clone()
+        self.assertEqual(problem_clone._fluents_inc_dec, problem._fluents_inc_dec)
+        # the clone must detect the very same conflict
+        with self.assertRaises(UPConflictingEffectsException):
+            problem_clone.add_timed_effect(t, x, 2)
+
+        # ... and the copy must be independent from the original
+        problem_clone.add_increase_effect(t, y, 1)
+        problem.add_timed_effect(t, y, 2)  # no conflict on the original
+
+    def test_clone_to_without_actions_and_metrics_preserves_everything_else(self):
+        Location = UserType("Location")
+        l1 = Object("l1", Location)
+        l2 = Object("l2", Location)
+        at_l2 = Fluent("at_l2")
+        cost = Fluent("cost", IntType())
+        move = InstantaneousAction("move")
+        move.add_precondition(Not(at_l2))
+        move.add_effect(at_l2, True)
+
+        problem = Problem("clone_without_actions")
+        problem.add_object(l1)
+        problem.add_object(l2)
+        problem.add_fluent(at_l2, default_initial_value=False)
+        problem.add_fluent(cost, default_initial_value=0)
+        problem.add_action(move)
+        problem.add_goal(at_l2)
+        problem.add_timed_goal(GlobalStartTiming(5), at_l2)
+        problem.add_timed_effect(GlobalStartTiming(3), cost, 10)
+        problem.add_trajectory_constraint(Sometime(at_l2))
+        problem.add_process(Process("idle"))
+        problem.add_event(Event("tick"))
+        problem.add_quality_metric(MinimizeActionCosts({move: 1}))
+        problem.epsilon = Fraction(1, 100)
+        problem.discrete_time = True
+        problem.self_overlapping = True
+
+        new_problem = Problem("clone_without_actions_target", problem.environment)
+        problem._clone_to_without_actions_and_metrics(new_problem)
+
+        # actions and quality metrics are intentionally dropped, not cloned
+        self.assertEqual(new_problem.actions, [])
+        self.assertEqual(new_problem.quality_metrics, [])
+
+        # everything else survives the clone
+        self.assertEqual(set(new_problem.user_types), set(problem.user_types))
+        self.assertEqual(set(new_problem.all_objects), set(problem.all_objects))
+        self.assertEqual(set(new_problem.fluents), set(problem.fluents))
+        self.assertEqual(new_problem.initial_values, problem.initial_values)
+        self.assertEqual(new_problem.goals, problem.goals)
+        self.assertEqual(new_problem.timed_goals, problem.timed_goals)
+        self.assertEqual(new_problem.timed_effects, problem.timed_effects)
+        self.assertEqual(
+            new_problem.trajectory_constraints, problem.trajectory_constraints
+        )
+        self.assertEqual(
+            {p.name for p in new_problem.processes},
+            {p.name for p in problem.processes},
+        )
+        self.assertEqual(
+            {e.name for e in new_problem.events}, {e.name for e in problem.events}
+        )
+        self.assertEqual(new_problem.epsilon, problem.epsilon)
+        self.assertEqual(new_problem.discrete_time, problem.discrete_time)
+        self.assertEqual(new_problem.self_overlapping, problem.self_overlapping)
+        self.assertEqual(new_problem._fluents_assigned, problem._fluents_assigned)
+
+        # the original problem is untouched
+        self.assertEqual(len(problem.actions), 1)
+        self.assertEqual(len(problem.quality_metrics), 1)
+
+    def test_clone_remaps_minimize_action_costs_to_the_cloned_actions(self):
+        done = Fluent("done")
+        move = InstantaneousAction("move")
+        move.add_effect(done, True)
+
+        problem = Problem("clone_metrics")
+        problem.add_fluent(done, default_initial_value=False)
+        problem.add_action(move)
+        problem.add_quality_metric(MinimizeActionCosts({move: 5}))
+
+        problem_clone = problem.clone()
+
+        cloned_move = problem_clone.action("move")
+        self.assertIsNot(cloned_move, move)
+        self.assertEqual(len(problem_clone.quality_metrics), 1)
+        metric = problem_clone.quality_metrics[0]
+        assert isinstance(metric, MinimizeActionCosts)
+        self.assertEqual(metric.get_action_cost(cloned_move), Int(5))
+
+    def test_clone_action(self):
+        Location = UserType("Location")
+        with self.assertRaises(TypeError):
+            a = Action("move", l_from=Location, l_to=Location)  # type: ignore[abstract]
+
+    def test_clone_effect(self):
+        x = FluentExp(Fluent("x"))
+        y = FluentExp(Fluent("y"))
+        z = FluentExp(Fluent("z"))
+        e = Effect(x, z, y, unified_planning.model.EffectKind.ASSIGN)
+        e_clone_1 = e.clone()
+        e_clone_2 = e.clone()
+        e_clone_2._condition = TRUE()
+        self.assertEqual(e_clone_1, e)
+        self.assertEqual(e, e_clone_1)
+        self.assertNotEqual(e_clone_2, e)
+        self.assertNotEqual(e, e_clone_2)
+        self.assertNotEqual(e, e.value)
+        self.assertNotEqual(e.value, e)
+
+    def test_effect_target_arguments(self):
+        i_type = IntType(0, 5)
+
+        def choose_impl():
+            return 1
+
+        choose = InterpretedFunction("choose", i_type, OrderedDict(), choose_impl)
+        other = Fluent("other", i_type)
+        value = Fluent("value", IntType(), i=i_type)
+
+        # an interpreted function in the target's arguments is rejected...
+        a = InstantaneousAction("a")
+        with self.assertRaises(UPProblemDefinitionError):
+            a.add_effect(value(choose()), 9)
+        with self.assertRaises(UPProblemDefinitionError):
+            a.add_increase_effect(value(choose()), 9)
+
+        move = DurativeAction("move")
+        with self.assertRaises(UPProblemDefinitionError):
+            move.add_effect(EndTiming(), value(choose()), 9)
+
+        # ...exactly like a fluent in the target's arguments.
+        b = InstantaneousAction("b")
+        with self.assertRaises(UPProblemDefinitionError):
+            b.add_effect(value(other), 9)
+
+    def test_effect_dot_target(self):
+        Location = UserType("Location")
+        l1 = Object("l1", Location)
+        at = Fluent("at", BoolType(), l=Location)
+        home = Fluent("home", Location)
+        counter = Fluent("counter", IntType())
+
+        ma = MultiAgentProblem("ma")
+        ma.add_object(l1)
+        ag = Agent("a1", ma)
+        ag.add_fluent(at, default_initial_value=False)
+        ag.add_fluent(home, default_initial_value=l1)
+        ag.add_fluent(counter, default_initial_value=0)
+        ma.add_agent(ag)
+
+        # a Dot target with no other fluents nested in its arguments is accepted...
+        c = InstantaneousAction("c")
+        c.add_effect(Dot(ag, at(l1)), True)
+        self.assertEqual(c.effects[0].fluent, Dot(ag, at(l1)))
+
+        d = InstantaneousAction("d")
+        d.add_increase_effect(Dot(ag, counter()), 1)
+        self.assertEqual(d.effects[0].fluent, Dot(ag, counter()))
+
+        # ...but a Dot target with another fluent nested in its arguments is still rejected.
+        e = InstantaneousAction("e")
+        with self.assertRaises(UPProblemDefinitionError):
+            e.add_effect(Dot(ag, at(home())), True)
+
+    def test_interpreted_functions_in_numeric_assignments(self):
+        i_type = IntType(0, 5)
+
+        def choose_impl():
+            return 1
+
+        choose = InterpretedFunction("choose", i_type, OrderedDict(), choose_impl)
+        x = Fluent("x", i_type)
+
+        def problem_with_effect(add_effect_to_action):
+            a = InstantaneousAction("a")
+            add_effect_to_action(a)
+            p = Problem("p")
+            p.add_fluent(x, default_initial_value=0)
+            p.add_action(a)
+            return p
+
+        assign_kind = problem_with_effect(lambda a: a.add_effect(x, choose())).kind
+        increase_kind = problem_with_effect(
+            lambda a: a.add_increase_effect(x, choose())
+        ).kind
+        decrease_kind = problem_with_effect(
+            lambda a: a.add_decrease_effect(x, choose())
+        ).kind
+
+        # the assignment case was already correct; increase/decrease used to miss this flag
+        self.assertTrue(assign_kind.has_interpreted_functions_in_numeric_assignments())
+        self.assertTrue(
+            increase_kind.has_interpreted_functions_in_numeric_assignments()
+        )
+        self.assertTrue(
+            decrease_kind.has_interpreted_functions_in_numeric_assignments()
+        )
+
+    def test_interpreted_functions_in_continuous_effects(self):
+        def choose_impl():
+            return 1.0
+
+        choose = InterpretedFunction("choose", RealType(), OrderedDict(), choose_impl)
+        y = Fluent("y", RealType())
+
+        def problem_with_continuous_effect(add_effect_to_action):
+            move = DurativeAction("move")
+            move.set_fixed_duration(1)
+            add_effect_to_action(move)
+            p = Problem("p")
+            p.add_fluent(y, default_initial_value=0.0)
+            p.add_action(move)
+            return p
+
+        increase_kind = problem_with_continuous_effect(
+            lambda move: move.add_increase_continuous_effect(
+                ClosedTimeInterval(StartTiming(), EndTiming()), y, choose()
+            )
+        ).kind
+        decrease_kind = problem_with_continuous_effect(
+            lambda move: move.add_decrease_continuous_effect(
+                ClosedTimeInterval(StartTiming(), EndTiming()), y, choose()
+            )
+        ).kind
+
+        self.assertTrue(
+            increase_kind.has_interpreted_functions_in_numeric_assignments()
+        )
+        self.assertTrue(
+            decrease_kind.has_interpreted_functions_in_numeric_assignments()
+        )
+
+    def test_forall_effect_kind(self):
+        Base = UserType("Base")
+        Sub = UserType("Sub", father=Base)
+        # b is only ever typed over Base; the only Sub in the problem is the
+        # forall-quantified variable below.
+        b = Fluent("b", BoolType(), l=Base)
+
+        a = InstantaneousAction("a")
+        v = Variable("v", Sub)
+        a.add_effect(b(v), True, forall=[v])
+
+        problem = Problem("p")
+        problem.add_fluent(b, default_initial_value=False)
+        problem.add_action(a)
+
+        self.assertTrue(problem.kind.has_hierarchical_typing())
+
+    def test_minimize_action_costs_kind(self):
+        def choose_impl():
+            return 1
+
+        choose = InterpretedFunction(
+            "choose", IntType(0, 5), OrderedDict(), choose_impl
+        )
+        x = Fluent("x", IntType())
+
+        a = InstantaneousAction("a")
+        a.add_effect(x, 1)
+
+        interpreted_function_problem = Problem("p1")
+        interpreted_function_problem.add_fluent(x, default_initial_value=0)
+        interpreted_function_problem.add_action(a)
+        interpreted_function_problem.add_quality_metric(
+            MinimizeActionCosts({a: choose()})
+        )
+
+        non_linear_problem = Problem("p2")
+        non_linear_problem.add_fluent(x, default_initial_value=0)
+        non_linear_problem.add_action(a)
+        non_linear_problem.add_quality_metric(MinimizeActionCosts({a: Times(x, x)}))
+
+        self.assertTrue(
+            interpreted_function_problem.kind.has_interpreted_functions_in_conditions()
+        )
+        self.assertTrue(
+            interpreted_function_problem.kind.has_general_numeric_planning()
+        )
+        self.assertFalse(non_linear_problem.kind.has_simple_numeric_planning())
+        self.assertTrue(non_linear_problem.kind.has_general_numeric_planning())
+
+    def test_static_fluents_in_effect_value(self):
+        # a value that references ONLY a static fluent (never written by any action)
+        # must set STATIC_FLUENTS_IN_*_ASSIGNMENTS and must NOT set FLUENTS_IN_*_ASSIGNMENTS.
+        Location = UserType("Location")
+        static_num = Fluent("static_num", RealType())
+        static_bool = Fluent("static_bool", BoolType())
+        static_obj = Fluent("static_obj", Location)
+        l1 = Object("l1", Location)
+
+        x = Fluent("x", RealType())
+        b = Fluent("b", BoolType())
+        o = Fluent("o", Location)
+
+        def problem_with_effect(add_effect_to_action):
+            a = InstantaneousAction("a")
+            add_effect_to_action(a)
+            p = Problem("p")
+            p.add_object(l1)
+            p.add_fluent(static_num, default_initial_value=1.0)
+            p.add_fluent(static_bool, default_initial_value=True)
+            p.add_fluent(static_obj, default_initial_value=l1)
+            p.add_fluent(x, default_initial_value=0.0)
+            p.add_fluent(b, default_initial_value=False)
+            p.add_fluent(o, default_initial_value=l1)
+            p.add_action(a)
+            return p
+
+        assign_kind = problem_with_effect(lambda a: a.add_effect(x, static_num())).kind
+        increase_kind = problem_with_effect(
+            lambda a: a.add_increase_effect(x, static_num())
+        ).kind
+        decrease_kind = problem_with_effect(
+            lambda a: a.add_decrease_effect(x, static_num())
+        ).kind
+        bool_kind = problem_with_effect(lambda a: a.add_effect(b, static_bool())).kind
+        object_kind = problem_with_effect(lambda a: a.add_effect(o, static_obj())).kind
+
+        for kind in (assign_kind, increase_kind, decrease_kind):
+            self.assertTrue(kind.has_static_fluents_in_numeric_assignments())
+            self.assertFalse(kind.has_fluents_in_numeric_assignments())
+        self.assertTrue(bool_kind.has_static_fluents_in_boolean_assignments())
+        self.assertFalse(bool_kind.has_fluents_in_boolean_assignments())
+        self.assertTrue(object_kind.has_static_fluents_in_object_assignments())
+        self.assertFalse(object_kind.has_fluents_in_object_assignments())
+
+    def test_static_and_fluents_in_durations_can_both_be_set(self):
+        # a duration mixing a static fluent (never written) and a non-static one
+        # (written elsewhere) must set BOTH STATIC_FLUENTS_IN_DURATIONS and
+        # FLUENTS_IN_DURATIONS, not just one of the two.
+        static_f = Fluent("static_f", RealType())
+        dynamic_f = Fluent("dynamic_f", RealType())
+
+        move = DurativeAction("move")
+        move.set_fixed_duration(Plus(static_f(), dynamic_f()))
+        touch = InstantaneousAction("touch")
+        touch.add_effect(dynamic_f, 1.0)
+
+        problem = Problem("p")
+        problem.add_fluent(static_f, default_initial_value=1.0)
+        problem.add_fluent(dynamic_f, default_initial_value=0.0)
+        problem.add_action(move)
+        problem.add_action(touch)
+
+        kind = problem.kind
+        self.assertTrue(kind.has_static_fluents_in_durations())
+        self.assertTrue(kind.has_fluents_in_durations())
+
+    def test_fully_unused_numeric_fluent_sets_fluents_type(self):
+        # a fluent referenced nowhere at all (not even by a duration) still needs to be
+        # represented by any matched engine, so it must contribute REAL_FLUENTS.
+        x = Fluent("x", RealType())
+        problem = Problem("p")
+        problem.add_fluent(x, default_initial_value=1.0)
+        self.assertTrue(problem.kind.has_real_fluents())
+
+    def test_duration_only_fluent_still_excluded_from_fluents_type(self):
+        # a fluent whose only reference is a duration must NOT contribute REAL_FLUENTS:
+        # the duration-specific EXPRESSION_DURATION features already capture it, and
+        # forcing general numeric-fluent support here would be over-restrictive.
+        Location = UserType("Location")
+        distance = Fluent("distance", RealType(), l_from=Location, l_to=Location)
+        move = DurativeAction("move", l_from=Location, l_to=Location)
+        l_from = move.parameter("l_from")
+        l_to = move.parameter("l_to")
+        move.set_fixed_duration(distance(l_from, l_to))
+
+        problem = Problem("p")
+        problem.add_fluent(distance, default_initial_value=1.0)
+        problem.add_action(move)
+
+        kind = problem.kind
+        self.assertFalse(kind.has_real_fluents())
+        self.assertTrue(kind.has_static_fluents_in_durations())
+
+    def test_cost_only_fluent_excluded_from_fluents_type(self):
+        # a fluent whose only reference is a MinimizeActionCosts cost must NOT
+        # contribute REAL_FLUENTS: ACTIONS_COST_KIND's own features already capture
+        # it, and forcing general numeric-fluent support here would be over-restrictive.
+        Location = UserType("Location")
+        distance = Fluent("distance", RealType(), l_from=Location, l_to=Location)
+        l1 = Object("l1", Location)
+        l2 = Object("l2", Location)
+        move = InstantaneousAction("move", l_from=Location, l_to=Location)
+        l_from = move.parameter("l_from")
+        l_to = move.parameter("l_to")
+
+        problem = Problem("p")
+        problem.add_objects([l1, l2])
+        problem.add_fluent(distance, default_initial_value=1.0)
+        problem.add_action(move)
+        problem.add_quality_metric(MinimizeActionCosts({move: distance(l_from, l_to)}))
+
+        kind = problem.kind
+        self.assertFalse(kind.has_real_fluents())
+        self.assertTrue(kind.has_static_fluents_in_actions_cost())
+
+    def test_process(self):
+        Vehicle = UserType("Vehicle")
+        a = Fluent("a", BoolType())
+        x = Fluent("x", IntType())
+        move = Process("moving", car=Vehicle)
+        move.add_precondition(a)
+        move.add_increase_continuous_effect(x, 1)
+        e = Effect(
+            FluentExp(x),
+            Int(1),
+            TRUE(),
+            unified_planning.model.EffectKind.CONTINUOUS_INCREASE,
+        )
+        self.assertEqual(move.effects[0], e)
+        self.assertEqual(move.name, "moving")
+        self.assertEqual(isinstance(move, Process), True)
+
+    def test_event(self):
+        Vehicle = UserType("Vehicle")
+        a = Fluent("a", BoolType())
+        x = Fluent("x", IntType())
+        fell = Event("fell", car=Vehicle)
+        fell.add_precondition(a)
+        fell.add_effect(x, 1)
+        e = Effect(
+            FluentExp(x), Int(1), TRUE(), unified_planning.model.EffectKind.ASSIGN
+        )
+        self.assertEqual(fell.effects[0], e)
+        self.assertEqual(fell.name, "fell")
+        self.assertEqual(isinstance(fell, Event), True)
+        self.assertEqual(isinstance(fell, InstantaneousAction), False)
+
+    def test_event_kind(self):
+        a = Fluent("a", BoolType())
+        b = Fluent("b", BoolType())
+        x = Fluent("x", IntType())
+
+        ev = Event("ev")
+        ev.add_precondition(Or(a, b))
+        ev.add_increase_effect(x, 1)
+
+        p = Problem("p")
+        p.add_fluent(a, default_initial_value=False)
+        p.add_fluent(b, default_initial_value=False)
+        p.add_fluent(x, default_initial_value=0)
+        p.add_event(ev)
+
+        kind = p.kind
+        self.assertTrue(kind.has_disjunctive_conditions())
+        self.assertTrue(kind.has_increase_effects())
+
+    def test_iff_condition_kind(self):
+        a = Fluent("a", BoolType())
+        b = Fluent("b", BoolType())
+
+        act = InstantaneousAction("act")
+        act.add_precondition(Iff(a, b))
+        act.add_effect(a, True)
+
+        precondition_problem = Problem("p1")
+        precondition_problem.add_fluent(a, default_initial_value=False)
+        precondition_problem.add_fluent(b, default_initial_value=False)
+        precondition_problem.add_action(act)
+
+        goal_problem = Problem("p2")
+        goal_problem.add_fluent(a, default_initial_value=False)
+        goal_problem.add_fluent(b, default_initial_value=False)
+        goal_problem.add_action(act)
+        goal_problem.add_goal(Iff(a, b))
+
+        for problem in (precondition_problem, goal_problem):
+            kind = problem.kind
+            self.assertTrue(kind.has_disjunctive_conditions())
+            self.assertFalse(kind.has_negative_conditions())
+
+    def test_istantaneous_action(self):
+        Location = UserType("Location")
+        move = InstantaneousAction("move", l_from=Location, l_to=Location)
+        km = Fluent("km", IntType())
+        move.add_increase_effect(km, 10)
+        e = Effect(
+            FluentExp(km), Int(10), TRUE(), unified_planning.model.EffectKind.INCREASE
+        )
+        self.assertEqual(move.effects[0], e)
+
+        # variables used to test exceptions
+        Utl1 = UserType("UserTypeL1")
+        Utl2 = UserType("UserTypeL2")
+        is_at = Fluent("is_at", BoolType(), obj=Utl1)
+        int_fluent = Fluent("int", IntType())
+        test_exceptions = InstantaneousAction("test_exceptions")
+        l1 = ObjectExp(Object("l1", Utl1))
+        l2 = ObjectExp(Object("l2", Utl2))
+
+        # test add_effect exceptions
+        with self.assertRaises(UPUsageError) as usage_error:
+            test_exceptions.add_effect(l1, l2)
+        self.assertEqual(
+            str(usage_error.exception),
+            "fluent field of add_effect must be a Fluent or a FluentExp or a Dot.",
+        )
+        with self.assertRaises(UPTypeError) as type_error:
+            test_exceptions.add_effect(is_at(l1), l2, l1)
+        self.assertEqual(
+            str(type_error.exception), "Effect condition is not a Boolean condition!"
+        )
+        with self.assertRaises(UPTypeError) as type_error:
+            test_exceptions.add_effect(is_at(l1), l2)
+        self.assertEqual(
+            str(type_error.exception),
+            f"InstantaneousAction effect has an incompatible value type. Fluent type: {is_at(l1).type} // Value type: {l2.type}",
+        )
+        test_exceptions.add_effect(int_fluent, 5)
+        test_exceptions.add_effect(int_fluent, 5)
+        with self.assertRaises(UPConflictingEffectsException) as conf_error:
+            test_exceptions.add_effect(int_fluent, 6)
+        effect = Effect(int_fluent(), Int(6), TRUE())
+        self.assertEqual(
+            str(conf_error.exception),
+            f"The effect {effect} is in conflict with the effects already in the action.",
+        )
+
+        # test add_increase_effect exceptions
+        with self.assertRaises(UPUsageError) as usage_error:
+            test_exceptions.add_increase_effect(l1, l2)
+        self.assertEqual(
+            str(usage_error.exception),
+            "fluent field of add_increase_effect must be a Fluent or a FluentExp or a Dot.",
+        )
+        with self.assertRaises(UPTypeError) as type_error:
+            test_exceptions.add_increase_effect(is_at(l1), l2, l1)
+        self.assertEqual(
+            str(type_error.exception), "Effect condition is not a Boolean condition!"
+        )
+        with self.assertRaises(UPTypeError) as type_error:
+            test_exceptions.add_increase_effect(is_at(l1), l2)
+        self.assertEqual(
+            str(type_error.exception),
+            f"InstantaneousAction effect has an incompatible value type. Fluent type: {is_at(l1).type} // Value type: {l2.type}",
+        )
+        with self.assertRaises(UPTypeError) as type_error:
+            test_exceptions.add_increase_effect(is_at(l1), True)
+        self.assertEqual(
+            str(type_error.exception),
+            "Increase effects can be created only on numeric types!",
+        )
+        with self.assertRaises(UPConflictingEffectsException) as conf_error:
+            test_exceptions.add_increase_effect(int_fluent, 6)
+        effect = Effect(int_fluent(), Int(6), TRUE(), EffectKind.INCREASE)
+        self.assertEqual(
+            str(conf_error.exception),
+            f"The effect {effect} is in conflict with the effects already in the action.",
+        )
+        test_exceptions.clear_effects()
+        test_exceptions.add_increase_effect(int_fluent, 6)
+        sim_eff = SimulatedEffect([int_fluent()], lambda x, y, z: [Int(6)])
+        with self.assertRaises(UPConflictingEffectsException) as conf_error:
+            test_exceptions.set_simulated_effect(sim_eff)
+        self.assertEqual(
+            str(conf_error.exception),
+            f"The simulated effect {sim_eff} is in conflict with the effects already in the action.",
+        )
+
+        # test add_decrease_effect exceptions
+        with self.assertRaises(UPUsageError) as usage_error:
+            test_exceptions.add_decrease_effect(l1, l2)
+        self.assertEqual(
+            str(usage_error.exception),
+            "fluent field of add_decrease_effect must be a Fluent or a FluentExp or a Dot.",
+        )
+        with self.assertRaises(UPTypeError) as type_error:
+            test_exceptions.add_decrease_effect(is_at(l1), l2, l1)
+        self.assertEqual(
+            str(type_error.exception), "Effect condition is not a Boolean condition!"
+        )
+        with self.assertRaises(UPTypeError) as type_error:
+            test_exceptions.add_decrease_effect(is_at(l1), l2)
+        self.assertEqual(
+            str(type_error.exception),
+            f"InstantaneousAction effect has an incompatible value type. Fluent type: {is_at(l1).type} // Value type: {l2.type}",
+        )
+        with self.assertRaises(UPTypeError) as type_error:
+            test_exceptions.add_decrease_effect(is_at(l1), True)
+        self.assertEqual(
+            str(type_error.exception),
+            "Decrease effects can be created only on numeric types!",
+        )
+
+    def test_durative_action(self):
+        Location = UserType("Location")
+        x = Fluent("x")
+        move = DurativeAction("move", l_from=Location, l_to=Location)
+        km = Fluent("km", IntType())
+        move.add_decrease_effect(StartTiming(), km, 5)
+        move.add_increase_effect(EndTiming(), km, 20)
+        e_end = Effect(
+            FluentExp(km), Int(20), TRUE(), unified_planning.model.EffectKind.INCREASE
+        )
+        e_start = Effect(
+            FluentExp(km), Int(5), TRUE(), unified_planning.model.EffectKind.DECREASE
+        )
+        effects_test = {StartTiming(): [e_start], EndTiming(): [e_end]}
+        self.assertEqual(effects_test, move.effects)
+        move.set_closed_duration_interval(1, 2)
+        self.assertEqual(move.duration, ClosedDurationInterval(Int(1), Int(2)))
+        move.set_open_duration_interval(2, Fraction(7, 2))
+        self.assertEqual(
+            move.duration, OpenDurationInterval(Int(2), Real(Fraction(7, 2)))
+        )
+        move.set_left_open_duration_interval(1, 2)
+        self.assertEqual(move.duration, LeftOpenDurationInterval(Int(1), Int(2)))
+        move.set_right_open_duration_interval(1, 2)
+        self.assertEqual(move.duration, RightOpenDurationInterval(Int(1), Int(2)))
+        move.add_condition(StartTiming(), x)
+        move.add_condition(ClosedTimeInterval(StartTiming(), EndTiming()), x)
+        self.assertIn("duration = [1, 2)", str(move))
+
+        # variables used to test exceptions
+        Utl1 = UserType("UserTypeL1")
+        Utl2 = UserType("UserTypeL2")
+        is_at = Fluent("is_at", BoolType(), obj=Utl1)
+        int_fluent = Fluent("int", IntType())
+        test_exceptions = DurativeAction("test_exceptions")
+        l1 = ObjectExp(Object("l1", Utl1))
+        l2 = ObjectExp(Object("l2", Utl2))
+        t = StartTiming()
+
+        # test add_effect exceptions
+        with self.assertRaises(UPUsageError) as usage_error:
+            test_exceptions.add_effect(t, l1, l2)
+        self.assertEqual(
+            str(usage_error.exception),
+            "fluent field of add_effect must be a Fluent or a FluentExp",
+        )
+        with self.assertRaises(UPTypeError) as type_error:
+            test_exceptions.add_effect(t, is_at(l1), l2, l1)
+        self.assertEqual(
+            str(type_error.exception), "Effect condition is not a Boolean condition!"
+        )
+        with self.assertRaises(UPTypeError) as type_error:
+            test_exceptions.add_effect(t, is_at(l1), l2)
+        self.assertEqual(
+            str(type_error.exception),
+            f"DurativeAction effect has an incompatible value type. Fluent type: {is_at(l1).type} // Value type: {l2.type}",
+        )
+        test_exceptions.add_effect(t, int_fluent, 5)
+        test_exceptions.add_effect(t, int_fluent, 5)
+        with self.assertRaises(UPConflictingEffectsException) as conf_error:
+            test_exceptions.add_effect(t, int_fluent, 6)
+        effect = Effect(int_fluent(), Int(6), TRUE())
+        self.assertEqual(
+            str(conf_error.exception),
+            f"The effect {effect} at timing {t} is in conflict with the effects already in the action or problem: test_exceptions.",
+        )
+
+        # test add_increase_effect exceptions
+        with self.assertRaises(UPUsageError) as usage_error:
+            test_exceptions.add_increase_effect(t, l1, l2)
+        self.assertEqual(
+            str(usage_error.exception),
+            "fluent field of add_increase_effect must be a Fluent or a FluentExp",
+        )
+        with self.assertRaises(UPTypeError) as type_error:
+            test_exceptions.add_increase_effect(t, is_at(l1), l2, l1)
+        self.assertEqual(
+            str(type_error.exception), "Effect condition is not a Boolean condition!"
+        )
+        with self.assertRaises(UPTypeError) as type_error:
+            test_exceptions.add_increase_effect(t, is_at(l1), l2)
+        self.assertEqual(
+            str(type_error.exception),
+            f"DurativeAction effect has an incompatible value type. Fluent type: {is_at(l1).type} // Value type: {l2.type}",
+        )
+        with self.assertRaises(UPTypeError) as type_error:
+            test_exceptions.add_increase_effect(t, is_at(l1), True)
+        self.assertEqual(
+            str(type_error.exception),
+            "Increase effects can be created only on numeric types!",
+        )
+        with self.assertRaises(UPConflictingEffectsException) as conf_error:
+            test_exceptions.add_increase_effect(t, int_fluent, 6)
+        effect = Effect(int_fluent(), Int(6), TRUE(), EffectKind.INCREASE)
+        self.assertEqual(
+            str(conf_error.exception),
+            f"The effect {effect} at timing {t} is in conflict with the effects already in the action or problem: test_exceptions.",
+        )
+        test_exceptions.clear_effects()
+        test_exceptions.add_increase_effect(t, int_fluent, 6)
+        sim_eff = SimulatedEffect([int_fluent()], lambda x, y, z: [Int(6)])
+        with self.assertRaises(UPConflictingEffectsException) as conf_error:
+            test_exceptions.set_simulated_effect(t, sim_eff)
+        self.assertEqual(
+            str(conf_error.exception),
+            f"The simulated effect {sim_eff} at timing {t} is in conflict with the effects already in the action or problem: test_exceptions.",
+        )
+
+        # test add_decrease_effect exceptions
+        with self.assertRaises(UPUsageError) as usage_error:
+            test_exceptions.add_decrease_effect(t, l1, l2)
+        self.assertEqual(
+            str(usage_error.exception),
+            "fluent field of add_decrease_effect must be a Fluent or a FluentExp",
+        )
+        with self.assertRaises(UPTypeError) as type_error:
+            test_exceptions.add_decrease_effect(t, is_at(l1), l2, l1)
+        self.assertEqual(
+            str(type_error.exception), "Effect condition is not a Boolean condition!"
+        )
+        with self.assertRaises(UPTypeError) as type_error:
+            test_exceptions.add_decrease_effect(t, is_at(l1), l2)
+        self.assertEqual(
+            str(type_error.exception),
+            f"DurativeAction effect has an incompatible value type. Fluent type: {is_at(l1).type} // Value type: {l2.type}",
+        )
+        with self.assertRaises(UPTypeError) as type_error:
+            test_exceptions.add_decrease_effect(t, is_at(l1), True)
+        self.assertEqual(
+            str(type_error.exception),
+            "Decrease effects can be created only on numeric types!",
+        )
+
+        # test add_increase_continuous_effect exception
+        with self.assertRaises(UPTypeError) as type_error:
+            test_exceptions.add_increase_continuous_effect(
+                ClosedTimeInterval(StartTiming(), EndTiming()), km, 1
+            )
+        self.assertEqual(
+            str(type_error.exception),
+            f"Increase continuous effects can be created only on real type!",
+        )
+
+        # test add_decrease_continuous_effect exception
+        with self.assertRaises(UPTypeError) as type_error:
+            test_exceptions.add_decrease_continuous_effect(
+                ClosedTimeInterval(StartTiming(), EndTiming()), km, 1
+            )
+        self.assertEqual(
+            str(type_error.exception),
+            f"Decrease continuous effects can be created only on real type!",
+        )
+
+    def test_problem(self):
+        x = Fluent("x")
+        y = Fluent("y")
+        km = Fluent("km", IntType())
+        problem = Problem("problem_test")
+        problem.add_fluent(x, default_initial_value=True)
+        problem.add_fluent(y, default_initial_value=False)
+        problem.add_fluent(km, default_initial_value=Int(0))
+        problem.add_timed_effect(GlobalStartTiming(5), x, y)
+        problem.add_timed_goal(GlobalStartTiming(11), x)
+        problem.add_timed_goal(
+            TimeInterval(GlobalStartTiming(5), GlobalStartTiming(9)), x
+        )
+        problem.add_action(DurativeAction("move"))
+        problem.add_action(InstantaneousAction("stop_moving"))
+        stop_moving_list = [a for a in problem.instantaneous_actions]
+        self.assertEqual(len(stop_moving_list), 1)
+        stop_moving = stop_moving_list[0]
+        self.assertEqual(stop_moving.name, "stop_moving")
+        move_list = [a for a in problem.durative_actions]
+        self.assertEqual(len(move_list), 1)
+        move = move_list[0]
+        self.assertEqual(move.name, "move")
+        problem.add_increase_effect(GlobalStartTiming(5), km, 10)
+        problem.add_decrease_effect(GlobalStartTiming(10), km, 5)
+        self.assertIn(
+            str(
+                Effect(
+                    FluentExp(km),
+                    Int(10),
+                    TRUE(),
+                    unified_planning.model.EffectKind.INCREASE,
+                )
+            ),
+            str(problem),
+        )
+
+    def test_parameters(self):
+        int_5 = IntType(5)
+        with self.assertRaises(UPTypeError):
+            Fluent("x", p1=int_5)
+
+    def test_continuous_problem_kind(self):
+        problem = self.problems["robot_continuous"].problem
+        self.assertTrue(problem.kind.has_decrease_continuous_effects())
+        self.assertFalse(problem.kind.has_non_linear_continuous_effects())
+        move = problem.actions[0]
+        battery_charge = problem.fluents[2]
+        move.clear_continuous_effects()
+        move.add_increase_continuous_effect(
+            ClosedTimeInterval(StartTiming(), EndTiming()), battery_charge, 1
+        )
+        self.assertTrue(problem.kind.has_increase_continuous_effects())
+        self.assertFalse(problem.kind.has_non_linear_continuous_effects())
+        move.clear_continuous_effects()
+        move.add_decrease_continuous_effect(
+            ClosedTimeInterval(StartTiming(), EndTiming()),
+            battery_charge,
+            0.1 * battery_charge,
+        )
+        self.assertTrue(problem.kind.has_decrease_continuous_effects())
+        print(problem)
+        print(problem.kind)
+        self.assertTrue(problem.kind.has_non_linear_continuous_effects())
+
+    def test_non_linear_continuous_problem_kind(self):
+        problem = self.problems["robot_non_linear_continuous_1"].problem
+        print(problem)
+        print(problem.kind)
+        self.assertTrue(problem.kind.has_non_linear_continuous_effects())
+        self.assertTrue(problem.kind.has_increase_continuous_effects())
+        self.assertTrue(problem.kind.has_decrease_continuous_effects())
+
+    def test_type_singletons_pickle_identity(self):
+        # the boolean and time types are singletons compared by identity, so
+        # they must survive a pickle round-trip (e.g. when a problem is sent
+        # to another process by the parallel engine) as the same object
+        import pickle
+
+        from unified_planning.model.types import BOOL, TIME
+
+        tm = get_environment().type_manager
+        self.assertIs(pickle.loads(pickle.dumps(tm.BoolType())), tm.BoolType())
+        self.assertIs(pickle.loads(pickle.dumps(BOOL)), BOOL)
+        self.assertIs(pickle.loads(pickle.dumps(TIME)), TIME)
+
+    def test_problem_pickle_roundtrip_keeps_name_lookups(self):
+        # a problem is pickled whole when the parallel engine sends it to another process
+        # (with the `spawn` start method), so nothing reachable from it may be a closure;
+        # the by-name indexes must also still resolve on the unpickled copy
+        import pickle
+
+        problem = self.problems["robot"].problem
+        clone = pickle.loads(pickle.dumps(problem))
+
+        for fluent in problem.fluents:
+            self.assertTrue(clone.has_fluent(fluent.name))
+            self.assertEqual(clone.fluent(fluent.name).name, fluent.name)
+        for action in problem.actions:
+            self.assertTrue(clone.has_action(action.name))
+            self.assertEqual(clone.action(action.name).name, action.name)
+        for obj in problem.all_objects:
+            self.assertTrue(clone.has_object(obj.name))
+        for user_type in problem.user_types:
+            self.assertTrue(clone.has_type(user_type.name))
+
+        # the index must keep working for elements added after the round-trip
+        # (the `note_appended` fast path is keyed on the list it last saw)
+        clone.add_fluent(
+            Fluent("added_after_unpickling", BoolType(), environment=clone.environment),
+            default_initial_value=False,
+        )
+        self.assertTrue(clone.has_fluent("added_after_unpickling"))
+        self.assertFalse(problem.has_fluent("added_after_unpickling"))
+
+    def test_set_initial_value_rejects_non_constant_arguments(self):
+        # set_initial_value's own docstring says the fluent must be grounded; a fluent
+        # expression whose argument is itself a fluent (not a constant) must be rejected
+        # here just like initial_value() already rejects it when reading it back.
+        Loc = UserType("Loc")
+        at = Fluent("at", BoolType(), l=Loc)
+        other = Fluent("other", Loc)
+
+        problem = Problem("p")
+        problem.add_fluent(at, default_initial_value=False)
+        problem.add_fluent(other)
+
+        with self.assertRaises(UPExpressionDefinitionError):
+            problem.set_initial_value(at(other()), True)
+        with self.assertRaises(UPExpressionDefinitionError):
+            problem.initial_value(at(other()))
