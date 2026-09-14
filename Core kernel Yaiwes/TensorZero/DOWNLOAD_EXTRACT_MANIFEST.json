@@ -1,13 +1,12 @@
 {
   "archive_bytes": 28231036,
-  "archive_sha256": "0844cc4fec23296b2199a410f65563ee34994e58885010435b27d29bbbec2bad",
+  "archive_sha256": "84a632876f120622af6d3e1d7c7624c387ce563999940a5ebd7dcfbc595a9862",
   "extracted_tree": {
     "bytes": 80482280,
     "files": 3474,
     "sha256": "b72ecfa6ee4b6fda79c4aea89ee0287d2cde8dc5f90b75609fedce1bba4d0917"
   },
   "extraction_verified": true,
-  "lfs_fetch_attempted": false,
   "motor1_blob": "a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500",
   "normalizations": [
     {
@@ -119,7 +118,8 @@
       "target": "../dynamic-in-context-learning-dicl/ner.py"
     }
   ],
-  "schema": "yaiwes.kernel.catalog20.final-repair-manifest/v1",
+  "publish_policy": "git_add_force_all_verified_files",
+  "schema": "yaiwes.kernel.catalog20.forceadd-manifest/v1",
   "slug": "TensorZero",
   "source_commit": "62eb8f63e8ec62018d70420dbf1a8c5d1c026315",
   "source_repo": "tensorzero/tensorzero",
@@ -128,5 +128,5 @@
     "files": 3474,
     "sha256": "b72ecfa6ee4b6fda79c4aea89ee0287d2cde8dc5f90b75609fedce1bba4d0917"
   },
-  "unresolved_lfs_source_pointers": []
+  "unresolved_lfs_source_pointers_preserved": []
 }
