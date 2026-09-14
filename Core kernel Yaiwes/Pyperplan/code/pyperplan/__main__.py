@@ -1,0 +1,137 @@
+#! /usr/bin/env python3
+#
+# This file is part of pyperplan.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>
+#
+
+# TODO: Give searches and heuristics commandline options and reenable preferred
+# operators.
+
+import argparse
+import logging
+import os
+import sys
+
+from pyperplan import tools
+from pyperplan.planner import (
+    HEURISTICS,
+    SEARCHES,
+    find_domain,
+    search_plan,
+    validate_solution,
+    write_solution,
+)
+from pyperplan.successor_generator import SUCCESSOR_GENERATORS
+
+
+def main():
+    log_levels = ["debug", "info", "warning", "error"]
+
+    # Build pretty-printed names for the search algorithms by taking each
+    # function/class name and stripping off the "_search" suffix.
+    def get_callable_names(callables, omit_string):
+        names = [
+            c.__name__.replace(omit_string, "").replace("_", " ") for c in callables
+        ]
+        return ", ".join(names)
+
+    search_names = get_callable_names(SEARCHES.values(), "_search")
+
+    argparser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    argparser.add_argument(dest="domain", nargs="?")
+    argparser.add_argument(dest="problem")
+    argparser.add_argument("-l", "--loglevel", choices=log_levels, default="info")
+    argparser.add_argument(
+        "-H",
+        "--heuristic",
+        choices=HEURISTICS.keys(),
+        help="Select a heuristic",
+        default="hff",
+    )
+    argparser.add_argument(
+        "-s",
+        "--search",
+        choices=SEARCHES.keys(),
+        help=f"Select a search algorithm from {search_names}",
+        default="bfs",
+    )
+    argparser.add_argument(
+        "--successor-generator",
+        choices=SUCCESSOR_GENERATORS.keys(),
+        help="Select how applicable operators are found",
+        default="tree",
+    )
+    args = argparser.parse_args()
+
+    logging.basicConfig(
+        level=getattr(logging, args.loglevel.upper()),
+        format="%(asctime)s %(levelname)-8s %(message)s",
+        stream=sys.stdout,
+    )
+    logging.info(f"Python version: {sys.version}")
+
+    hffpo_searches = ["gbfs", "wastar", "ehs"]
+    if args.heuristic == "hffpo" and args.search not in hffpo_searches:
+        print(
+            f"ERROR: hffpo can currently only be used with {hffpo_searches}\n",
+            file=sys.stderr,
+        )
+        argparser.print_help()
+        sys.exit(2)
+
+    args.problem = os.path.abspath(args.problem)
+    if args.domain is None:
+        args.domain = find_domain(args.problem)
+    else:
+        args.domain = os.path.abspath(args.domain)
+
+    search = SEARCHES[args.search]
+    heuristic = HEURISTICS[args.heuristic]
+
+    if args.search in ["bfs", "ids", "sat"]:
+        heuristic = None
+
+    logging.info(f"using search: {search.__name__}")
+    logging.info(f"using heuristic: {heuristic.__name__ if heuristic else None}")
+    use_preferred_ops = args.heuristic == "hffpo"
+    solution = search_plan(
+        args.domain,
+        args.problem,
+        search,
+        heuristic,
+        use_preferred_ops=use_preferred_ops,
+        successor_generator=args.successor_generator,
+    )
+
+    if solution is None:
+        logging.warning("No solution could be found")
+    else:
+        solution_file = args.problem + ".soln"
+        logging.info(f"Plan length: {len(solution)}")
+        write_solution(solution, solution_file)
+        validate_solution(args.domain, args.problem, solution_file)
+
+    try:
+        peak_memory = tools.get_peak_memory_in_kb()
+    except Warning as warning:
+        logging.warning(warning)
+    else:
+        logging.info(f"Peak memory: {peak_memory} KB")
+
+
+if __name__ == "__main__":
+    main()
