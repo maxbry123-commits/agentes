@@ -1,0 +1,98 @@
+name: YAIWES V6 fast source discovery
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/yaiwes-v6-discover-fast.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  discover:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /📂coda workflow persistencias/*/INTERNAL-SURGICAL-MANIFEST-V5.json
+            /📂coda workflow persistencias/*/code/**/*.py
+            /📂coda workflow persistencias/*/code/**/*.js
+            /📂coda workflow persistencias/*/code/**/*.jsx
+            /📂coda workflow persistencias/*/code/**/*.ts
+            /📂coda workflow persistencias/*/code/**/*.tsx
+            /📂coda workflow persistencias/*/code/**/*.go
+            /📂coda workflow persistencias/*/code/**/*.rs
+            /📂coda workflow persistencias/*/code/**/*.java
+            /📂coda workflow persistencias/*/code/**/*.rb
+            /📂coda workflow persistencias/*/code/**/*.lua
+            /📂coda workflow persistencias/🏈 cancha deportiva de fútbol/*
+
+      - name: Map actual preserved control-flow source
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import ast,json,re,hashlib
+          R=Path('📂coda workflow persistencias'); F=R/'🏈 cancha deportiva de fútbol'
+          terms=('workflow','orchestr','planner','planning','plan','loop','memory','state','task','queue','scheduler','pipeline','runner','manager','agent','graph','session','dispatch','controller','coordinator','reason','conversation','checkpoint','retry','recover')
+          neg=('exploit','attack','payload','scanner','fuzz','nmap','sqlmap','metasploit','brute','credential','exfil','malware','phishing','privesc','vulnerability')
+          exts={'.py','.js','.jsx','.ts','.tsx','.go','.rs','.java','.rb','.lua'}
+          def ordn(n):
+            m=re.match(r'^🏈\s+(?:YAIWES\s+)?(\d{2})(?:[- ]|$)',n); return int(m.group(1)) if m else 999
+          def symbols(p,t):
+            if p.suffix=='.py':
+              try: tree=ast.parse(t)
+              except: return []
+              o=[]
+              for n in tree.body:
+                if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef)): o.append((n.name,'function',n.lineno))
+                elif isinstance(n,ast.ClassDef):
+                  o.append((n.name,'class',n.lineno))
+                  for c in n.body:
+                    if isinstance(c,(ast.FunctionDef,ast.AsyncFunctionDef)): o.append((f'{n.name}.{c.name}','method',c.lineno))
+              return o
+            pats={'.go':r'(?m)^func\s+(?:\([^)]*\)\s*)?([A-Za-z_]\w*)\s*\(','.rs':r'(?m)^(?:pub\s+)?(?:async\s+)?fn\s+([A-Za-z_]\w*)', '.java':r'(?m)(?:public\s+)?class\s+([A-Za-z_]\w*)', '.rb':r'(?m)^\s*def\s+([A-Za-z_]\w*)', '.lua':r'(?m)^\s*(?:local\s+)?function\s+([A-Za-z_]\w*)', '.js':r'(?m)^(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)', '.jsx':r'(?m)^(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)', '.ts':r'(?m)^(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)', '.tsx':r'(?m)^(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)'}
+            return [(m.group(1),'function',t.count('\n',0,m.start())+1) for m in re.finditer(pats.get(p.suffix,r'$.^'),t)]
+          comps=sorted([p for p in R.iterdir() if p.is_dir() and p.name.startswith('🏈 ') and p.name!='🏈 cancha deportiva de fútbol'],key=lambda p:(ordn(p.name),p.name))
+          assert len(comps)==24,len(comps)
+          out={'schema':'yaiwes.internal.workflow.discovery/v6.1','components':[]}
+          for i,c in enumerate(comps,1):
+            mp=c/'INTERNAL-SURGICAL-MANIFEST-V5.json'; m=json.loads(mp.read_text()) if mp.exists() else {'files':[]}
+            dec={x['path']:x['decision'] for x in m.get('files',[])}; cand=[]; code=c/'code'
+            for p in code.rglob('*') if code.exists() else []:
+              if not p.is_file() or p.suffix.lower() not in exts: continue
+              rel=p.relative_to(code).as_posix(); low=rel.lower()
+              if '_yaiwes_upstream_quarantine' in rel or '/yaiwes_internal/' in '/'+rel or '/coda_persistence/' in '/'+rel: continue
+              if dec.get(rel,'KEEP_UNCHANGED') not in {'RESTORE_BENIGN','KEEP_UNCHANGED'}: continue
+              if any(x in low for x in neg): continue
+              try:t=p.read_text(encoding='utf-8')
+              except:continue
+              for sym,kind,line in symbols(p,t):
+                sl=sym.lower(); score=4*sum(x in low for x in terms)+6*sum(x in sl for x in terms)+2*(kind!='class')
+                if sl in {'main','run','start','execute','process','resume','step'} or any(sl.endswith('.'+x) for x in ('run','start','execute','process','resume','step')):score+=10
+                if any(x in sl for x in neg):score-=50
+                if score>0:cand.append({'path':rel,'symbol':sym,'kind':kind,'line':line,'decision':dec.get(rel,'KEEP_UNCHANGED'),'score':score,'sha256':hashlib.sha256(t.encode()).hexdigest()})
+            cand.sort(key=lambda x:(-x['score'],x['path'],x['line']))
+            out['components'].append({'component':f'YAIWES {i:02d}','source_available':bool(m.get('source_code_available',cand)),'candidate_count':len(cand),'top_candidates':cand[:40]})
+          F.mkdir(parents=True,exist_ok=True); q=F/'YAIWES-INTERNAL-WORKFLOW-CANDIDATES-V6.json'; q.write_text(json.dumps(out,ensure_ascii=False,indent=2))
+          assert sum(bool(x['candidate_count']) for x in out['components'][:23])>=20
+          print([(x['component'],x['candidate_count'],x['top_candidates'][:2]) for x in out['components']])
+          PY
+
+      - name: Persist report
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -- '📂coda workflow persistencias/🏈 cancha deportiva de fútbol/YAIWES-INTERNAL-WORKFLOW-CANDIDATES-V6.json'
+          git commit -m 'audit(coda): source-only internal workflow map v6' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
