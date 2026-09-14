@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 7752,
+  "bundle_sha256": "4097ae791d426535afefb88e7e8ade19603fceabab9dd5474149c7af9d93b1ef",
+  "extracted_tree": {
+    "bytes": 13909,
+    "files": 6,
+    "sha256": "7a541a30496cb4b76168042e82c443e7afde57c7c3773bd817f91fc32e8f8ea5"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 7752,
+      "name": "24-Security-AI-Agent.bundle.zip.part-0001",
+      "sha256": "4097ae791d426535afefb88e7e8ade19603fceabab9dd5474149c7af9d93b1ef"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "24-Security-AI-Agent",
+  "source_bytes": 13909,
+  "source_commit": "19c84e7366edd0f0597550be6c58459371348ea4",
+  "source_files": 6,
+  "source_ref": "HEAD",
+  "source_repo": "sirspyr0/security-ai-agent-public",
+  "source_tree": {
+    "bytes": 13909,
+    "files": 6,
+    "sha256": "7a541a30496cb4b76168042e82c443e7afde57c7c3773bd817f91fc32e8f8ea5"
+  }
+}
