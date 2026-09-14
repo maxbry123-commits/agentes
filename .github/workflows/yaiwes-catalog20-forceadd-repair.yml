@@ -1,0 +1,159 @@
+name: YAIWES Catalog20 Force-Add Exact Tree Repair
+
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-catalog20-forceadd-repair.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-catalog20-forceadd-exact-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      MOTOR1: Motores/➡️📂 Motor de extracción zip/motor_1_extract_only.py
+      DEST_ROOT: Core kernel Yaiwes
+      STATE_FILE: Core kernel Yaiwes/Crack wall bitácora stated JSON/CATALOG20-FORCEADD-REPAIR-STATE-20260913.json
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-catalog20-forceadd-repair.yml
+            /Motores/➡️📂 Motor de extracción zip/motor_1_extract_only.py
+            /Core kernel Yaiwes/Crack wall bitácora stated JSON/
+
+      - name: Verify immutable Motor1
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object "$MOTOR1")" = 'a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500'
+
+      - name: Repair ignored-file and AutoGen publication GAPs
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, json, os, pathlib, shutil, subprocess, sys, tempfile, time, zipfile
+          ROOT=pathlib.Path.cwd(); MOTOR1=ROOT/os.environ['MOTOR1']; DEST_ROOT=os.environ['DEST_ROOT'].strip('/'); TOKEN=os.environ['GITHUB_TOKEN']
+          ITEMS=[('05-airflow','apache/airflow','Apache-Airflow'),('06-dagster','dagster-io/dagster','Dagster'),('07-litellm','BerriAI/litellm','LiteLLM'),('09-tensorzero','tensorzero/tensorzero','TensorZero'),('10-ray','ray-project/ray','Ray'),('15-autogen','microsoft/autogen','AutoGen-Core')]
+          LFS_PREFIX=b'version https://git-lfs.github.com/spec/v1\n'
+          state={'schema':'yaiwes.kernel.catalog20.forceadd-repair/v1','motor1_blob':'a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500','items':{}}
+          def run(a,cwd=None,env=None,check=True,binary=False):
+              p=subprocess.run(a,cwd=cwd,env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=not binary)
+              if check and p.returncode:
+                  s=p.stdout if isinstance(p.stdout,str) else p.stdout.decode('utf-8','replace'); raise RuntimeError(f'COMMAND_FAILED:{a[0]}:{p.returncode}:{s[-6000:]}')
+              return p.stdout
+          def sha(p):
+              h=hashlib.sha256()
+              with open(p,'rb') as f:
+                  for b in iter(lambda:f.read(1048576),b''): h.update(b)
+              return h.hexdigest()
+          def th(d):
+              h=hashlib.sha256(); n=0; z=0
+              for p in sorted((x for x in d.rglob('*') if x.is_file()),key=lambda x:x.relative_to(d).as_posix()):
+                  r=p.relative_to(d).as_posix(); s=p.stat().st_size; g=sha(p); h.update(r.encode()+b'\0'+g.encode()+b'\0'+str(s).encode()+b'\n'); n+=1; z+=s
+              return {'files':n,'bytes':z,'sha256':h.hexdigest()}
+          def auth():
+              e=dict(os.environ); b=base64.b64encode(f'x-access-token:{TOKEN}'.encode()).decode(); e.update({'GIT_CONFIG_COUNT':'1','GIT_CONFIG_KEY_0':'http.https://github.com/.extraheader','GIT_CONFIG_VALUE_0':f'AUTHORIZATION: basic {b}','GIT_TERMINAL_PROMPT':'0'}); return e
+          def nolfs(d):
+              run(['git','config','filter.lfs.clean','cat'],d); run(['git','config','filter.lfs.smudge','cat'],d); run(['git','config','--unset-all','filter.lfs.process'],d,check=False); run(['git','config','filter.lfs.required','false'],d)
+          def source(work,repo):
+              d=work/'source'; d.mkdir(); run(['git','init','-q'],d); run(['git','remote','add','origin',f'https://github.com/{repo}.git'],d); run(['git','fetch','--depth=1','origin','HEAD'],d); run(['git','checkout','-q','--detach','FETCH_HEAD'],d); return d,run(['git','rev-parse','HEAD'],d).strip()
+          def materialize(src,out):
+              out.mkdir(); norms=[]; lfs=[]; raw=run(['git','ls-files','-s','-z'],src,binary=True)
+              for rec in raw.split(b'\0'):
+                  if not rec: continue
+                  meta,pb=rec.split(b'\t',1); mode,oid,_=meta.decode().split(); rel=pb.decode('utf-8','surrogateescape'); sp=src/rel; dp=out/rel; dp.parent.mkdir(parents=True,exist_ok=True)
+                  if mode=='120000':
+                      target=run(['git','cat-file','-p',oid],src,binary=True).decode('utf-8','surrogateescape').strip(); rp=sp.parent/target
+                      if rp.exists() and rp.is_file(): shutil.copy2(rp,dp); action='dereference_file'
+                      else: dp.write_text('YAIWES_NORMALIZED_BROKEN_SYMLINK_TARGET='+target+'\n'); action='materialize_target_marker'
+                      norms.append({'path':rel,'from':'symlink','target':target,'action':action}); continue
+                  if not sp.exists() or not sp.is_file(): continue
+                  b=sp.read_bytes()
+                  if b.startswith(LFS_PREFIX): lfs.append(rel); norms.append({'path':rel,'from':'git-lfs-pointer','action':'preserve_exact_git_pointer'}); dp.write_bytes(b)
+                  else: shutil.copy2(sp,dp)
+              return norms,lfs
+          def zipit(src,zp):
+              with zipfile.ZipFile(zp,'w',zipfile.ZIP_DEFLATED,allowZip64=True) as z:
+                  for p in sorted((x for x in src.rglob('*') if x.is_file()),key=lambda x:x.relative_to(src).as_posix()): z.write(p,p.relative_to(src).as_posix())
+              with zipfile.ZipFile(zp) as z:
+                  bad=z.testzip()
+                  if bad: raise RuntimeError('ZIP_CRC_FAIL:'+bad)
+          def sparse(work,slug,name):
+              d=work/name; d.mkdir(); rel=f'{DEST_ROOT}/{slug}'; e=auth(); run(['git','init','-q'],d); nolfs(d); run(['git','remote','add','origin','https://github.com/maxbry123-commits/agentes.git'],d); run(['git','sparse-checkout','init','--no-cone'],d); (d/'.git/info/sparse-checkout').write_text('/'+rel+'/\n'); run(['git','fetch','--depth=1','--filter=blob:none','origin','main'],d,env=e); run(['git','checkout','-q','-B','main','FETCH_HEAD'],d); return d,rel,e
+          def publish(work,slug,ext,manifest):
+              d,rel,e=sparse(work,slug,'dest'); target=d/rel; target.mkdir(parents=True,exist_ok=True); code=target/'code'
+              if code.exists(): shutil.rmtree(code)
+              shutil.copytree(ext,code); (target/'DOWNLOAD_EXTRACT_MANIFEST.json').write_text(json.dumps(manifest,indent=2,sort_keys=True)+'\n'); nolfs(d); run(['git','config','user.name','yaiwes-forceadd-repair'],d); run(['git','config','user.email','yaiwes-forceadd-repair@users.noreply.github.com'],d)
+              run(['git','add','-f','--sparse','--',rel],d); p=subprocess.run(['git','diff','--cached','--quiet'],cwd=d)
+              if p.returncode: run(['git','commit','-m',f'build(forceadd-repair): exact verified tree {slug}'],d)
+              pushed=False; last=''
+              for i in range(1,16):
+                  run(['git','fetch','origin','main'],d,env=e); rb=run(['git','rebase','origin/main'],d,env=e,check=False)
+                  if 'CONFLICT' in rb: run(['git','rebase','--abort'],d,check=False); raise RuntimeError('NON_FAST_FORWARD_CONFLICT')
+                  last=run(['git','push','origin','HEAD:main'],d,env=e,check=False)
+                  if 'rejected' not in last.lower() and 'error:' not in last.lower() and 'fatal:' not in last.lower(): pushed=True; break
+                  time.sleep(min(i*2,12))
+              if not pushed: raise RuntimeError('PUSH_RETRIES_EXHAUSTED:'+last[-3000:])
+              commit=run(['git','rev-parse','HEAD'],d).strip(); rb,rr,ee=sparse(work,slug,'readback'); actual=th(rb/rr/'code'); remote=json.loads((rb/rr/'DOWNLOAD_EXTRACT_MANIFEST.json').read_text())
+              if actual!=remote['extracted_tree']: raise RuntimeError('DEEP_READBACK_HASH_GAP:'+json.dumps({'actual':actual,'expected':remote['extracted_tree']}))
+              return {'commit':commit,'verdict':'PUBLISHED_AND_DEEP_READBACK_VERIFIED','readback_tree':actual}
+          for iid,repo,slug in ITEMS:
+              r={'slug':slug,'source_repo':repo,'status':'RUNNING'}; state['items'][iid]=r
+              try:
+                  with tempfile.TemporaryDirectory(prefix='yaiwes-fa-') as t:
+                      w=pathlib.Path(t); src,sc=source(w,repo); norm=w/'norm'; norms,lfs=materialize(src,norm); st=th(norm); arc=w/(slug+'.zip'); zipit(norm,arc); ext=w/'ext'; ms=w/'motor.json'; env=dict(os.environ); env.update({'ARCHIVE_INPUT':str(arc),'DEST_DIR':str(ext),'STATE_FILE':str(ms),'BATCH_SIZE':'100','MAX_BATCHES':'0'}); out=run([sys.executable,str(MOTOR1)],env=env); pay=json.loads(out.splitlines()[-1]); et=th(ext)
+                      if pay.get('verdict')!='VERIFIED_CLOSED' or st!=et: raise RuntimeError('MOTOR1_OR_TREE_VERIFY_GAP')
+                      man={'schema':'yaiwes.kernel.catalog20.forceadd-manifest/v1','slug':slug,'source_repo':repo,'source_commit':sc,'motor1_blob':'a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500','archive_sha256':sha(arc),'archive_bytes':arc.stat().st_size,'normalizations':norms,'unresolved_lfs_source_pointers_preserved':lfs,'source_tree':st,'extracted_tree':et,'extraction_verified':True,'publish_policy':'git_add_force_all_verified_files'}; pub=publish(w,slug,ext,man); r.update({'status':'VERIFIED_CLOSED','source_commit':sc,'tree':et,'normalizations':norms,'lfs_pointers_preserved':lfs,'publish':pub})
+              except Exception as e: r.update({'status':'FAILED','error':str(e)})
+              print(json.dumps({'item':iid,**r},ensure_ascii=False))
+          f=ROOT/os.environ['STATE_FILE']; f.parent.mkdir(parents=True,exist_ok=True); f.write_text(json.dumps(state,indent=2,sort_keys=True)+'\n'); failed=[k for k,v in state['items'].items() if v['status']!='VERIFIED_CLOSED']; print('FORCEADD_FAILED='+json.dumps(failed));
+          if failed: raise SystemExit(2)
+          PY
+
+      - name: Persist state
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$STATE_FILE"
+          cp "$STATE_FILE" /tmp/fa-state.json
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin main; git reset --hard origin/main; mkdir -p "$(dirname "$STATE_FILE")"; cp /tmp/fa-state.json "$STATE_FILE"; git add -f --sparse -- "$STATE_FILE"
+          if ! git diff --cached --quiet; then git commit -m 'watchdog(yaiwes): persist catalog20 force-add repair state'; for i in 1 2 3 4 5; do git fetch origin main; git rebase origin/main; git push origin HEAD:main && break; sleep $((i*3)); done; fi
+
+      - name: Gate 20 of 20
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          python3 - <<'PY'
+          import json, subprocess
+          slugs=['Temporal','LangGraph','Prefect','NetworkX','Apache-Airflow','Dagster','LiteLLM','RouteLLM','TensorZero','Ray','Dask-Distributed','AgentScope','CAMEL','AutoGen-Core','Gymnasium','PettingZoo','Mesa','Graphiti','Letta']; bad=[]
+          for s in slugs:
+              p=subprocess.run(['git','show',f'origin/main:Core kernel Yaiwes/{s}/DOWNLOAD_EXTRACT_MANIFEST.json'],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+              if p.returncode: bad.append(s+':manifest_missing'); continue
+              try: d=json.loads(p.stdout)
+              except Exception: bad.append(s+':manifest_invalid'); continue
+              if d.get('extraction_verified') is not True: bad.append(s+':not_verified')
+          c=subprocess.run(['git','show','origin/main:Core kernel Yaiwes/Celery/SOURCE_COMMIT.txt'],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+          if c.returncode or not c.stdout.strip(): bad.append('Celery:source_commit_missing')
+          print('CATALOG20_FAILURES='+json.dumps(bad))
+          if bad: raise SystemExit(1)
+          print('CATALOG20_DOWNLOAD_EXTRACT=VERIFIED_CLOSED_20_OF_20')
+          PY
