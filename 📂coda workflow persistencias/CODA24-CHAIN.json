@@ -1,0 +1,36 @@
+{
+  "schema": "yaiwes.coda.persistence-chain/v1",
+  "mode": "FAIL_CLOSED",
+  "cycle": true,
+  "rule": "A link may advance only with HANDOFF_READY and its own safe tests passing. Offensive/external security execution is outside this chain.",
+  "fables_wiring": {
+    "status": "WAITING_FOR_PLUGIN_AUDIT",
+    "path": "📂coda workflow persistencias/Fables enchufe universal"
+  },
+  "links": [
+    {"id":"01-DeepAudit","next":"02-CyberStrikeAI","status":"TRANSFORMED_SAFE_LINK_PASS"},
+    {"id":"02-CyberStrikeAI","next":"03-LuaN1aoAgent","status":"TRANSFORMED_SAFE_LINK_PASS"},
+    {"id":"03-LuaN1aoAgent","next":"04-AI-Pentest","status":"TRANSFORMED_SAFE_LINK_PASS"},
+    {"id":"04-AI-Pentest","next":"05-AI-Infra-Guard","status":"PENDING_VERIFIED_SOURCE"},
+    {"id":"05-AI-Infra-Guard","next":"06-PentAGI","status":"PENDING_VERIFIED_SOURCE"},
+    {"id":"06-PentAGI","next":"07-Strix","status":"PENDING_VERIFIED_SOURCE"},
+    {"id":"07-Strix","next":"08-Redcell","status":"DOWNLOADED_VERIFIED_TRANSFORM_PENDING"},
+    {"id":"08-Redcell","next":"09-Shel","status":"PENDING_VERIFIED_SOURCE"},
+    {"id":"09-Shel","next":"10-Pentest-Swarm-AI","status":"DOWNLOADED_VERIFIED_TRANSFORM_PENDING"},
+    {"id":"10-Pentest-Swarm-AI","next":"11-LLM-CTF-Solver","status":"DOWNLOADED_VERIFIED_TRANSFORM_PENDING"},
+    {"id":"11-LLM-CTF-Solver","next":"12-PentestGPT","status":"DOWNLOADED_VERIFIED_TRANSFORM_PENDING"},
+    {"id":"12-PentestGPT","next":"13-Auto-Pentest-LLM","status":"DOWNLOADED_VERIFIED_TRANSFORM_PENDING"},
+    {"id":"13-Auto-Pentest-LLM","next":"14-Dark-Moon","status":"PENDING_VERIFIED_SOURCE"},
+    {"id":"14-Dark-Moon","next":"15-Pentdem","status":"DOWNLOADED_VERIFIED_TRANSFORM_PENDING"},
+    {"id":"15-Pentdem","next":"16-Autonomous-Pentest-Agent","status":"PENDING_VERIFIED_SOURCE"},
+    {"id":"16-Autonomous-Pentest-Agent","next":"17-AI-Red-Team-Agent","status":"PENDING_VERIFIED_SOURCE"},
+    {"id":"17-AI-Red-Team-Agent","next":"18-Agent-Smith","status":"DOWNLOADED_VERIFIED_TRANSFORM_PENDING"},
+    {"id":"18-Agent-Smith","next":"19-TPT-Agent","status":"DOWNLOADED_VERIFIED_TRANSFORM_PENDING"},
+    {"id":"19-TPT-Agent","next":"20-OpenWhale","status":"PENDING_VERIFIED_SOURCE"},
+    {"id":"20-OpenWhale","next":"21-H-Pentest","status":"PENDING_VERIFIED_SOURCE"},
+    {"id":"21-H-Pentest","next":"22-PHANTOM","status":"DOWNLOADED_VERIFIED_TRANSFORM_PENDING"},
+    {"id":"22-PHANTOM","next":"23-HackSynth","status":"PENDING_VERIFIED_SOURCE"},
+    {"id":"23-HackSynth","next":"24-Security-AI-Agent","status":"PENDING_VERIFIED_SOURCE"},
+    {"id":"24-Security-AI-Agent","next":"01-DeepAudit","status":"PENDING_VERIFIED_SOURCE"}
+  ]
+}
