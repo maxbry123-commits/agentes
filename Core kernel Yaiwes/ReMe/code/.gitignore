@@ -1,0 +1,82 @@
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+.qoder/
+*.code-workspace
+
+# Local environment
+.env
+.env.*
+!.env.example
+!example.env
+.venv/
+venv/
+env/
+private*/
+
+# Python caches / test artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.ipynb_checkpoints/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Packaging / build outputs
+build/
+dist/
+node_modules/
+*.egg-info/
+integrations/*/reports/
+
+# Logs / temporary files
+*.log
+nohup.out
+nohup*.out
+log/
+logs/
+runs/
+tmp*/
+temp*/
+.trash/
+
+# ReMe runtime data
+.reme/
+reme_workspace/
+reme_workspace_auto_fin_real_test*/
+vault/
+*.db
+*.sqlite
+*.sqlite3
+
+# Documentation build outputs
+docs/_build/
+site/
+
+evaluation/
+# The pi-Bench suite ships its own trace-history render config, which must
+# stay in git even though it lives under an evaluation/ directory.
+!benchmark/pibench/config/bench/evaluation/
+!benchmark/pibench/config/bench/evaluation/**
+datasets/
+
+# Claude Code skills (local only)
+.claude/skills/
+
+# Benchmark memory workspaces (created on demand by run.py via mkdir)
+benchmark/*/workspaces/
+
+# Benchmark datasets (LongMemEval via download.py, BEAM via git clone)
+benchmark/*/dataset/
+
+# Benchmark outputs (created on demand by run.py via mkdir)
+benchmark/*/results/
+
+# integration tests outputs
+tests/integration/logs/
+daily/

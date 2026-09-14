@@ -1,0 +1,20 @@
+{
+  "name": "reme-github-pages",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "content": "node scripts/generate-content.mjs",
+    "dev": "npm run content && vitepress dev .generated/site",
+    "build": "npm run content && vitepress build .generated/site --outDir dist && node scripts/verify-build.mjs",
+    "preview": "vitepress preview .generated/site --outDir dist",
+    "test": "npm run content && node --test tests/*.test.mjs"
+  },
+  "devDependencies": {
+    "vitepress": "1.6.4",
+    "yaml": "^2.8.1"
+  }
+}

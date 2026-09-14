@@ -1,0 +1,1427 @@
+"""Unit tests for workspace search Steps without embedding or LLM dependencies."""
+
+# pylint: disable=protected-access
+
+import asyncio
+import importlib.util
+from pathlib import Path
+
+from agentscope.message import Msg
+
+from reme.components.file_store import BaseFileStore
+from reme.components.file_store.local_file_store import LocalFileStore
+from reme.components.tag_index import LocalTagIndex
+from reme.components import ApplicationContext
+from reme.components.runtime_context import RuntimeContext
+from reme.enumeration import LinkScopeEnum
+from reme.schema import FileChunk, FileLink, FileNode, Response
+from reme.steps.index import (
+    AddDraftStep,
+    Bm25SearchStep,
+    ReadAllDraftStep,
+    SearchStep,
+    VectorSearchStep,
+)
+from reme.steps.index._source_format import ALL_RETURNED_MESSAGE, NO_RESULTS_MESSAGE
+
+_SEARCH_V2_PATH = Path(__file__).parents[2] / "plugins" / "beam" / "src" / "reme_beam" / "search_v2.py"
+_SEARCH_V2_SPEC = importlib.util.spec_from_file_location("reme_beam.search_v2", _SEARCH_V2_PATH)
+assert _SEARCH_V2_SPEC is not None and _SEARCH_V2_SPEC.loader is not None
+_SEARCH_V2_MODULE = importlib.util.module_from_spec(_SEARCH_V2_SPEC)
+_SEARCH_V2_SPEC.loader.exec_module(_SEARCH_V2_MODULE)
+SearchV2Step = _SEARCH_V2_MODULE.SearchV2Step
+
+
+class FakeSearchStore(BaseFileStore):
+    """Minimal file_store for SearchV2Step: static search results and empty graph links."""
+
+    def __init__(
+        self,
+        vector_results: list[FileChunk] | None = None,
+        keyword_results: list[FileChunk] | None = None,
+    ):
+        super().__init__(name="fake_search_store")
+        self.vector_results = vector_results or []
+        self.keyword_results = keyword_results or []
+        self.calls: list[tuple[str, str, int, dict]] = []
+
+    async def upsert(self, files: list[tuple[FileNode, list[FileChunk]]]) -> None:
+        """Ignore writes in this read-only search fixture."""
+        del files
+
+    async def delete(self, path: str | list[str]) -> None:
+        """Ignore deletes in this read-only search fixture."""
+        del path
+
+    async def clear(self) -> None:
+        """Clear the fixture's in-memory results and recorded calls."""
+        self.vector_results.clear()
+        self.keyword_results.clear()
+        self.calls.clear()
+
+    async def get_nodes(self, paths: list[str] | None = None) -> list[FileNode]:
+        """Return no graph nodes for search-only tests."""
+        del paths
+        return []
+
+    async def get_outlinks(
+        self,
+        path: str,
+        scope: LinkScopeEnum = LinkScopeEnum.REAL,
+    ) -> list[FileLink]:
+        """Return no outgoing links for search-only tests."""
+        del path, scope
+        return []
+
+    async def get_inlinks(
+        self,
+        path: str,
+        scope: LinkScopeEnum = LinkScopeEnum.REAL,
+    ) -> list[FileLink]:
+        """Return no incoming links for search-only tests."""
+        del path, scope
+        return []
+
+    async def vector_search(self, query: str, limit: int, search_filter: dict) -> list[FileChunk]:
+        """Return the configured vector results."""
+        self.calls.append(("vector", query, limit, search_filter))
+        return self.vector_results[:limit]
+
+    async def keyword_search(self, query: str, limit: int, search_filter: dict) -> list[FileChunk]:
+        """Return the configured keyword results."""
+        self.calls.append(("keyword", query, limit, search_filter))
+        return self.keyword_results[:limit]
+
+
+class TaggedFakeSearchStore(FakeSearchStore):
+    """Fake store with a tag index and ordinary file-store filtering."""
+
+    def __init__(self, *, chunks: list[FileChunk]):
+        super().__init__(vector_results=chunks, keyword_results=chunks)
+        self.file_chunks = {chunk.id: chunk for chunk in chunks}
+        self.tag_index = LocalTagIndex()
+
+    async def vector_search(self, query: str, limit: int, search_filter: dict) -> list[FileChunk]:
+        self.calls.append(("vector", query, limit, search_filter))
+        return [chunk for chunk in self.vector_results if LocalFileStore._matches_search_filter(chunk, search_filter)][
+            :limit
+        ]
+
+    async def keyword_search(self, query: str, limit: int, search_filter: dict) -> list[FileChunk]:
+        self.calls.append(("keyword", query, limit, search_filter))
+        return [chunk for chunk in self.keyword_results if LocalFileStore._matches_search_filter(chunk, search_filter)][
+            :limit
+        ]
+
+
+def _chunk(
+    chunk_id: str,
+    path: str,
+    text: str,
+    score_key: str,
+    score: float,
+    line: int = 1,
+) -> FileChunk:
+    return FileChunk(
+        id=chunk_id,
+        path=path,
+        text=text,
+        start_line=line,
+        end_line=line,
+        scores={score_key: score, "score": score},
+    )
+
+
+def test_search_v2_step_rrf_merges_vector_and_keyword_by_chunk_id():
+    """Hybrid search fuses same-id hits once and keeps per-branch scores in metadata."""
+
+    async def run():
+        shared_v = _chunk("shared", "daily/a.md", "shared vector text", "vector", 0.92, line=3)
+        vector_only = _chunk("vector-only", "daily/b.md", "vector text", "vector", 0.71)
+        keyword_only = _chunk("keyword-only", "digest/c.md", "keyword text", "keyword", 8.0)
+        shared_k = _chunk("shared", "daily/a.md", "shared keyword text", "keyword", 7.0, line=3)
+        store = FakeSearchStore(
+            vector_results=[shared_v, vector_only],
+            keyword_results=[keyword_only, shared_k],
+        )
+        step = SearchV2Step(file_store=store, vector_weight=0.5, candidate_multiplier=2, expand_links=False)
+        ctx = RuntimeContext(query="alpha", limit=3, search_filter={"path_prefix": "daily/"})
+
+        resp = await step(ctx)
+
+        assert resp.success is True
+        assert resp.metadata["counts"] == {"vector": 2, "keyword": 2, "returned": 3, "hybrid": True}
+        assert [r["id"] for r in resp.metadata["results"]] == ["shared", "keyword-only", "vector-only"]
+        shared = resp.metadata["results"][0]
+        assert shared["scores"]["vector"] == 0.92
+        assert shared["scores"]["keyword"] == 7.0
+        assert shared["scores"]["score"] > resp.metadata["results"][1]["scores"]["score"]
+        assert "daily/a.md:3-3" in resp.answer
+        assert "vector=0.9200" in resp.answer
+        assert "keyword=7.0000" in resp.answer
+        assert {call[0] for call in store.calls} == {"vector", "keyword"}
+        assert all(call[2] == 6 for call in store.calls)
+        assert all(call[3] == {"path_prefix": "daily/"} for call in store.calls)
+
+    asyncio.run(run())
+
+
+def test_lme_plain_search_steps_use_ten_times_limit_candidates():
+    """LME vector/bm25 tools fetch a wider candidate pool before truncating."""
+
+    async def run():
+        store = FakeSearchStore()
+
+        vector = VectorSearchStep(file_store=store, include_source=False)
+        bm25 = Bm25SearchStep(file_store=store, include_source=False)
+
+        await vector(RuntimeContext(query="alpha", limit=3))
+        await bm25(RuntimeContext(query="alpha", limit=3))
+
+        assert store.calls == [
+            ("vector", "alpha", 30, {}),
+            ("keyword", "alpha", 30, {}),
+        ]
+
+    asyncio.run(run())
+
+
+def test_draft_steps_accumulate_by_tool_context_id():
+    """Drafts are stored in app metadata and isolated by injected tool_context_id."""
+
+    async def run():
+        app_context = ApplicationContext()
+        add = AddDraftStep(app_context=app_context)
+        read = ReadAllDraftStep(app_context=app_context)
+
+        await add(RuntimeContext(text="first", tool_context_id="ctx-1"))
+        await add(RuntimeContext(text="second", tool_context_id="ctx-1"))
+        await add(RuntimeContext(text="other", tool_context_id="ctx-2"))
+
+        resp = await read(RuntimeContext(tool_context_id="ctx-1"))
+
+        assert resp.answer == "first\nsecond"
+        assert resp.metadata["draft_count"] == 2
+
+    asyncio.run(run())
+
+
+def test_search_v2_step_keyword_only_uses_keyword_scores_and_min_score():
+    """When vector has no hits, SearchV2Step returns keyword results directly and applies min_score."""
+
+    async def run():
+        high = _chunk("high", "daily/high.md", "strong keyword hit", "keyword", 4.0)
+        low = _chunk("low", "daily/low.md", "weak keyword hit", "keyword", 0.2)
+        store = FakeSearchStore(keyword_results=[high, low])
+        step = SearchV2Step(file_store=store, expand_links=False)
+        ctx = RuntimeContext(query="keyword", limit=5, min_score=1.0)
+
+        resp = await step(ctx)
+
+        assert resp.metadata["counts"] == {"vector": 0, "keyword": 2, "returned": 1, "hybrid": False}
+        assert [r["id"] for r in resp.metadata["results"]] == ["high"]
+        assert "keyword=4.0000" not in resp.answer
+        assert "score=4.0000" in resp.answer
+        assert "daily/low.md" not in resp.answer
+
+    asyncio.run(run())
+
+
+def test_plain_search_steps_apply_min_score_before_truncation():
+    """Vector-only and BM25-only tools should not return hits below ``min_score``."""
+
+    async def run():
+        vector_store = FakeSearchStore(
+            vector_results=[
+                _chunk("vector-high", "daily/high.md", "strong vector hit", "vector", 0.9),
+                _chunk("vector-low", "daily/low.md", "weak vector hit", "vector", 0.2),
+            ],
+        )
+        keyword_store = FakeSearchStore(
+            keyword_results=[
+                _chunk("keyword-high", "daily/high.md", "strong keyword hit", "keyword", 4.0),
+                _chunk("keyword-low", "daily/low.md", "weak keyword hit", "keyword", 0.2),
+            ],
+        )
+
+        vector = await VectorSearchStep(file_store=vector_store, include_source=False)(
+            RuntimeContext(query="alpha", limit=5, min_score=0.5),
+        )
+        keyword = await Bm25SearchStep(file_store=keyword_store, include_source=False)(
+            RuntimeContext(query="alpha", limit=5, min_score=1.0),
+        )
+
+        assert [result["id"] for result in vector.metadata["results"]] == ["vector-high"]
+        assert [result["id"] for result in keyword.metadata["results"]] == ["keyword-high"]
+        assert vector.answer == "strong vector hit"
+        assert keyword.answer == "strong keyword hit"
+
+    asyncio.run(run())
+
+
+def test_search_v2_step_tool_context_deduplicates_returned_chunks_only():
+    """When tool_context_id is supplied, repeated searches skip previously returned chunks."""
+
+    async def run():
+        chunks = [
+            _chunk("a", "daily/a.md", "first", "keyword", 5.0),
+            _chunk("b", "daily/b.md", "second", "keyword", 4.0),
+            _chunk("c", "daily/c.md", "third", "keyword", 3.0),
+        ]
+        store = FakeSearchStore(keyword_results=chunks)
+        step = SearchV2Step(file_store=store, expand_links=False)
+
+        first = await step(RuntimeContext(query="alpha", limit=2, tool_context_id="ctx-1"))
+        second = await step(RuntimeContext(query="alpha", limit=2, tool_context_id="ctx-1"))
+        third = await step(RuntimeContext(query="alpha", limit=2))
+
+        assert [r["id"] for r in first.metadata["results"]] == ["a", "b"]
+        assert first.metadata["dedup"] == {
+            "tool_context_id": "ctx-1",
+            "seen_before": 0,
+            "skipped_seen": 0,
+            "seen_after": 2,
+            "expired": 0,
+            "ttl_seconds": 86400.0,
+        }
+        assert [r["id"] for r in second.metadata["results"]] == ["c"]
+        assert second.metadata["dedup"]["seen_before"] == 2
+        assert second.metadata["dedup"]["skipped_seen"] == 2
+        assert second.metadata["dedup"]["seen_after"] == 3
+        assert [r["id"] for r in third.metadata["results"]] == ["a", "b"]
+        assert "dedup" not in third.metadata
+
+    asyncio.run(run())
+
+
+def test_search_v2_step_passes_metadata_filter_to_store():
+    """Search filters can target chunk metadata such as conversation_date."""
+
+    async def run():
+        hit = _chunk("hit", "daily/2023-01-19/event.md", "historical hit", "keyword", 3.0)
+        store = FakeSearchStore(keyword_results=[hit])
+        step = SearchV2Step(file_store=store, expand_links=False)
+        search_filter = {"metadata": {"conversation_date": "2023-01-19"}}
+
+        resp = await step(RuntimeContext(query="Jon job", limit=5, search_filter=search_filter))
+
+        assert resp.success is True
+        assert resp.metadata["results"][0]["id"] == "hit"
+        assert all(call[3] == search_filter for call in store.calls)
+
+    asyncio.run(run())
+
+
+def test_search_v2_step_tool_context_seen_chunks_expire_after_ttl():
+    """Seen chunk ids under a tool_context_id are reusable after the configured TTL."""
+
+    async def run():
+        now = 1000.0
+        chunks = [
+            _chunk("a", "daily/a.md", "first", "keyword", 5.0),
+            _chunk("b", "daily/b.md", "second", "keyword", 4.0),
+        ]
+        store = FakeSearchStore(keyword_results=chunks)
+        step = SearchV2Step(
+            file_store=store,
+            expand_links=False,
+            seen_ttl_hours=1,
+            clock=lambda: now,
+        )
+
+        first = await step(RuntimeContext(query="alpha", limit=1, tool_context_id="ctx-1"))
+        now = 4601.0
+        second = await step(RuntimeContext(query="alpha", limit=1, tool_context_id="ctx-1"))
+
+        assert [r["id"] for r in first.metadata["results"]] == ["a"]
+        assert [r["id"] for r in second.metadata["results"]] == ["a"]
+        assert second.metadata["dedup"]["expired"] == 1
+        assert second.metadata["dedup"]["seen_before"] == 0
+        assert second.metadata["dedup"]["ttl_seconds"] == 3600.0
+
+    asyncio.run(run())
+
+
+def test_search_v2_step_tool_context_dedup_uses_subset_matching():
+    """A chunk is skipped only when its line range is a subset of a seen entry.
+
+    Partial overlap (straddle/superset) and different paths are NOT skipped:
+    the chunk carries lines not yet returned.
+    """
+
+    async def run():
+        app_context = ApplicationContext()
+        wide = FileChunk(
+            id="wide",
+            path="daily/a.md",
+            text="wide",
+            start_line=1,
+            end_line=20,
+            scores={"keyword": 5.0, "score": 5.0},
+        )
+        store = FakeSearchStore(keyword_results=[wide])
+        step = SearchV2Step(
+            file_store=store,
+            app_context=app_context,
+            expand_links=False,
+        )
+
+        first = await step(RuntimeContext(query="alpha", limit=1, tool_context_id="ctx-1"))
+        assert [r["id"] for r in first.metadata["results"]] == ["wide"]
+
+        # subset (5-10)  -> subset of (1,20)  -> skipped
+        # straddle (15-30) -> not a subset (30>20) -> kept
+        # far (40-50)     -> not a subset       -> kept
+        # other (b.md 1-5) -> different path    -> kept
+        store.keyword_results = [
+            FileChunk(
+                id="subset",
+                path="daily/a.md",
+                text="subset",
+                start_line=5,
+                end_line=10,
+                scores={"keyword": 4.0, "score": 4.0},
+            ),
+            FileChunk(
+                id="straddle",
+                path="daily/a.md",
+                text="straddle",
+                start_line=15,
+                end_line=30,
+                scores={"keyword": 3.0, "score": 3.0},
+            ),
+            FileChunk(
+                id="far",
+                path="daily/a.md",
+                text="far",
+                start_line=40,
+                end_line=50,
+                scores={"keyword": 2.0, "score": 2.0},
+            ),
+            FileChunk(
+                id="other",
+                path="daily/b.md",
+                text="other",
+                start_line=1,
+                end_line=5,
+                scores={"keyword": 1.0, "score": 1.0},
+            ),
+        ]
+        second = await step(RuntimeContext(query="alpha", limit=10, tool_context_id="ctx-1"))
+
+        ids = [r["id"] for r in second.metadata["results"]]
+        assert "subset" not in ids
+        assert "straddle" in ids
+        assert "far" in ids
+        assert "other" in ids
+        assert second.metadata["dedup"]["skipped_seen"] == 1
+
+    asyncio.run(run())
+
+
+def test_search_v2_step_tool_context_dedup_merges_adjacent_seen_intervals():
+    """Multiple seen entries that jointly cover a new chunk cause it to be skipped.
+
+    Adjacent intervals (1,10) and (11,20) merge into (1,20); a new chunk
+    (5,15) — not covered by any single entry — is skipped because it is
+    covered by the merged range.
+    """
+
+    async def run():
+        app_context = ApplicationContext()
+        store = FakeSearchStore(
+            keyword_results=[
+                FileChunk(
+                    id="c1",
+                    path="daily/a.md",
+                    text="c1",
+                    start_line=1,
+                    end_line=10,
+                    scores={"keyword": 5.0, "score": 5.0},
+                ),
+            ],
+        )
+        step = SearchV2Step(
+            file_store=store,
+            app_context=app_context,
+            expand_links=False,
+        )
+        # Return (1,10) then (11,20) — adjacent, merge into (1,20).
+        await step(RuntimeContext(query="alpha", limit=1, tool_context_id="ctx-1"))
+        store.keyword_results = [
+            FileChunk(
+                id="c2",
+                path="daily/a.md",
+                text="c2",
+                start_line=11,
+                end_line=20,
+                scores={"keyword": 4.0, "score": 4.0},
+            ),
+        ]
+        await step(RuntimeContext(query="alpha", limit=1, tool_context_id="ctx-1"))
+
+        # (5,15)  -> covered by merged (1,20)  -> skipped
+        # (5,25)  -> NOT covered (25 > 20)      -> kept
+        # (0,5)   -> NOT covered (0 < 1)        -> kept
+        store.keyword_results = [
+            FileChunk(
+                id="bridge",
+                path="daily/a.md",
+                text="bridge",
+                start_line=5,
+                end_line=15,
+                scores={"keyword": 3.0, "score": 3.0},
+            ),
+            FileChunk(
+                id="overshoot",
+                path="daily/a.md",
+                text="overshoot",
+                start_line=5,
+                end_line=25,
+                scores={"keyword": 2.0, "score": 2.0},
+            ),
+            FileChunk(
+                id="undershoot",
+                path="daily/a.md",
+                text="undershoot",
+                start_line=0,
+                end_line=5,
+                scores={"keyword": 1.0, "score": 1.0},
+            ),
+        ]
+        resp = await step(RuntimeContext(query="alpha", limit=10, tool_context_id="ctx-1"))
+
+        ids = [r["id"] for r in resp.metadata["results"]]
+        assert "bridge" not in ids
+        assert "overshoot" in ids
+        assert "undershoot" in ids
+        assert resp.metadata["dedup"]["skipped_seen"] == 1
+
+    asyncio.run(run())
+
+
+def test_search_v2_step_empty_query_fails_before_store_calls():
+    """Empty queries fail fast and do not call file_store search methods."""
+
+    async def run():
+        store = FakeSearchStore()
+        step = SearchV2Step(file_store=store)
+        resp = await step(RuntimeContext(query="  ", limit=5))
+
+        assert resp.success is False
+        assert resp.answer == "Error: query cannot be empty"
+        assert not store.calls
+
+    asyncio.run(run())
+
+
+def test_search_v2_step_start_end_date_promoted_into_search_filter():
+    """start_date and end_date from context are promoted into search_filter passed to store."""
+
+    async def run():
+        hit = _chunk("hit", "daily/a.md", "some text", "keyword", 5.0)
+        store = FakeSearchStore(keyword_results=[hit])
+        step = SearchV2Step(file_store=store, expand_links=False)
+        ctx = RuntimeContext(
+            query="hello",
+            limit=5,
+            start_date="2024-01-01",
+            end_date="2024-06-30",
+        )
+
+        await step(ctx)
+
+        assert len(store.calls) == 2
+        for _, _, _, sf in store.calls:
+            assert sf["start_date"] == "2024-01-01"
+            assert sf["end_date"] == "2024-06-30"
+
+    asyncio.run(run())
+
+
+def test_search_v2_step_invalid_date_is_ignored():
+    """Invalid date strings are silently ignored (removed from filter) and search proceeds."""
+
+    async def run():
+        hit = _chunk("hit", "daily/a.md", "some text", "keyword", 5.0)
+        store = FakeSearchStore(keyword_results=[hit])
+        step = SearchV2Step(file_store=store, expand_links=False)
+        ctx = RuntimeContext(
+            query="hello",
+            limit=5,
+            start_date="abc",
+        )
+
+        resp = await step(ctx)
+
+        assert resp.success is True
+        assert len(store.calls) == 2
+        for _, _, _, sf in store.calls:
+            assert "start_date" not in sf
+
+    asyncio.run(run())
+
+
+def test_search_v2_step_non_normalized_date_is_canonicalized():
+    """Valid but non-canonical dates like '2024-1-5' are normalized to '2024-01-05'."""
+
+    async def run():
+        hit = _chunk("hit", "daily/a.md", "some text", "keyword", 5.0)
+        store = FakeSearchStore(keyword_results=[hit])
+        step = SearchV2Step(file_store=store, expand_links=False)
+        ctx = RuntimeContext(
+            query="hello",
+            limit=5,
+            start_date="2024-1-5",
+            end_date="2024-6-1",
+        )
+
+        await step(ctx)
+
+        for _, _, _, sf in store.calls:
+            assert sf["start_date"] == "2024-01-05"
+            assert sf["end_date"] == "2024-06-01"
+
+    asyncio.run(run())
+
+
+def test_search_v2_step_date_in_search_filter_not_overridden_by_context():
+    """Explicit search_filter dates take precedence over top-level context dates."""
+
+    async def run():
+        hit = _chunk("hit", "daily/a.md", "text", "keyword", 3.0)
+        store = FakeSearchStore(keyword_results=[hit])
+        step = SearchV2Step(file_store=store, expand_links=False)
+        ctx = RuntimeContext(
+            query="hello",
+            limit=5,
+            start_date="2024-01-01",
+            end_date="2024-06-30",
+            search_filter={"start_date": "2023-07-01", "end_date": "2023-12-31"},
+        )
+
+        await step(ctx)
+
+        for _, _, _, sf in store.calls:
+            assert sf["start_date"] == "2023-07-01"
+            assert sf["end_date"] == "2023-12-31"
+
+    asyncio.run(run())
+
+
+def test_search_v2_step_strict_date_filter_propagated_to_search_filter():
+    """strict_date_filter=True is passed through to file_store via search_filter."""
+
+    async def run():
+        hit = _chunk("hit", "daily/2024-03-01/a.md", "text", "keyword", 3.0)
+        store = FakeSearchStore(keyword_results=[hit])
+        step = SearchV2Step(file_store=store, expand_links=False, strict_date_filter=True)
+        ctx = RuntimeContext(
+            query="hello",
+            limit=5,
+            start_date="2024-01-01",
+            end_date="2024-06-30",
+        )
+
+        await step(ctx)
+
+        for _, _, _, sf in store.calls:
+            assert sf["strict_date_filter"] is True
+
+    asyncio.run(run())
+
+
+def test_search_v2_step_non_strict_date_filter_not_in_search_filter():
+    """strict_date_filter defaults to False and is not added to search_filter."""
+
+    async def run():
+        hit = _chunk("hit", "daily/2024-03-01/a.md", "text", "keyword", 3.0)
+        store = FakeSearchStore(keyword_results=[hit])
+        step = SearchV2Step(file_store=store, expand_links=False)
+        ctx = RuntimeContext(
+            query="hello",
+            limit=5,
+            start_date="2024-01-01",
+        )
+
+        await step(ctx)
+
+        for _, _, _, sf in store.calls:
+            assert "strict_date_filter" not in sf
+
+    asyncio.run(run())
+
+
+def test_search_v2_step_all_deduped_shows_all_returned_message():
+    """When tool_context dedup removes every result, the answer explains that all content was previously returned."""
+
+    async def run():
+        chunks = [
+            _chunk("a", "daily/a.md", "first", "keyword", 5.0),
+            _chunk("b", "daily/b.md", "second", "keyword", 4.0),
+        ]
+        store = FakeSearchStore(keyword_results=chunks)
+        step = SearchV2Step(file_store=store, expand_links=False)
+
+        first = await step(RuntimeContext(query="alpha", limit=5, tool_context_id="ctx-1"))
+        second = await step(RuntimeContext(query="alpha", limit=5, tool_context_id="ctx-1"))
+
+        assert [r["id"] for r in first.metadata["results"]] == ["a", "b"]
+        assert first.answer != ""
+
+        assert second.metadata["results"] == []
+        assert second.answer == ALL_RETURNED_MESSAGE
+        assert second.metadata["counts"]["returned"] == 0
+
+    asyncio.run(run())
+
+
+def test_plain_search_steps_all_deduped_shows_all_returned_message():
+    """VectorSearchStep and Bm25SearchStep show the all-returned message when dedup empties results."""
+
+    async def run():
+        vector_store = FakeSearchStore(
+            vector_results=[
+                _chunk("a", "daily/a.md", "first", "vector", 5.0),
+                _chunk("b", "daily/b.md", "second", "vector", 4.0),
+            ],
+        )
+        keyword_store = FakeSearchStore(
+            keyword_results=[
+                _chunk("a", "daily/a.md", "first", "keyword", 5.0),
+                _chunk("b", "daily/b.md", "second", "keyword", 4.0),
+            ],
+        )
+
+        vector = VectorSearchStep(file_store=vector_store, include_source=False)
+        bm25 = Bm25SearchStep(file_store=keyword_store, include_source=False)
+
+        v_first = await vector(RuntimeContext(query="alpha", limit=5, tool_context_id="ctx-v"))
+        v_second = await vector(RuntimeContext(query="alpha", limit=5, tool_context_id="ctx-v"))
+
+        b_first = await bm25(RuntimeContext(query="alpha", limit=5, tool_context_id="ctx-b"))
+        b_second = await bm25(RuntimeContext(query="alpha", limit=5, tool_context_id="ctx-b"))
+
+        assert v_first.answer != ""
+        assert v_second.metadata["results"] == []
+        assert v_second.answer == ALL_RETURNED_MESSAGE
+
+        assert b_first.answer != ""
+        assert b_second.metadata["results"] == []
+        assert b_second.answer == ALL_RETURNED_MESSAGE
+
+    asyncio.run(run())
+
+
+def test_search_step_and_range_dedup_states_coexist_in_both_call_orders():
+    """Chunk-id and range dedup keep independent state in a shared tool context."""
+
+    async def run_order(search_first: bool):
+        chunk = _chunk("a", "daily/a.md", "first", "keyword", 5.0)
+        shared_tool_contexts: dict = {}
+        search = SearchStep(
+            file_store=FakeSearchStore(keyword_results=[chunk]),
+            tool_contexts=shared_tool_contexts,
+            vector_weight=0,
+            expand_links=False,
+        )
+        bm25 = Bm25SearchStep(
+            file_store=FakeSearchStore(keyword_results=[chunk]),
+            tool_contexts=shared_tool_contexts,
+            include_source=False,
+        )
+        ordered_steps = (search, bm25) if search_first else (bm25, search)
+
+        for step in ordered_steps:
+            first = await step(RuntimeContext(query="alpha", limit=5, tool_context_id="ctx-1"))
+            assert [result["id"] for result in first.metadata["results"]] == ["a"]
+
+        state = shared_tool_contexts["ctx-1"]
+        assert set(state) == {"search_seen_chunk_ids", "search_seen_chunk_ranges"}
+        assert set(state["search_seen_chunk_ids"]) == {"a"}
+        assert set(state["search_seen_chunk_ranges"]) == {"daily/a.md"}
+
+        for step in ordered_steps:
+            second = await step(RuntimeContext(query="alpha", limit=5, tool_context_id="ctx-1"))
+            assert second.metadata["results"] == []
+
+    async def run():
+        await run_order(search_first=True)
+        await run_order(search_first=False)
+
+    asyncio.run(run())
+
+
+def test_search_steps_no_results_shows_no_results_message():
+    """When there are no results at all (before dedup), the answer explains that nothing was found."""
+
+    async def run():
+        empty_store = FakeSearchStore()
+
+        hybrid = SearchV2Step(file_store=empty_store, expand_links=False)
+        vector = VectorSearchStep(file_store=empty_store, include_source=False)
+        bm25 = Bm25SearchStep(file_store=empty_store, include_source=False)
+
+        # With tool_context_id set (dedup path, but nothing to dedup)
+        for step in (hybrid, vector, bm25):
+            resp = await step(RuntimeContext(query="alpha", limit=5, tool_context_id="ctx-1"))
+            assert resp.metadata["results"] == []
+            assert resp.answer == NO_RESULTS_MESSAGE
+
+        # Without tool_context_id (plain truncation path)
+        for step in (hybrid, vector, bm25):
+            resp = await step(RuntimeContext(query="alpha", limit=5))
+            assert resp.metadata["results"] == []
+            assert resp.answer == NO_RESULTS_MESSAGE
+
+    asyncio.run(run())
+
+
+# ---------------------------------------------------------------------------
+# SearchStep tests — exercise the SearchStep (simple chunk.id dedup,
+# inline answer formatting).
+# ---------------------------------------------------------------------------
+
+
+def test_search_step_rrf_merges_vector_and_keyword_by_chunk_id():
+    """Hybrid search fuses same-id hits once and keeps per-branch scores in metadata."""
+
+    async def run():
+        shared_v = _chunk("shared", "daily/a.md", "shared vector text", "vector", 0.92, line=3)
+        vector_only = _chunk("vector-only", "daily/b.md", "vector text", "vector", 0.71)
+        keyword_only = _chunk("keyword-only", "digest/c.md", "keyword text", "keyword", 8.0)
+        shared_k = _chunk("shared", "daily/a.md", "shared keyword text", "keyword", 7.0, line=3)
+        store = FakeSearchStore(
+            vector_results=[shared_v, vector_only],
+            keyword_results=[keyword_only, shared_k],
+        )
+        step = SearchStep(file_store=store, vector_weight=0.5, candidate_multiplier=2, expand_links=False)
+        ctx = RuntimeContext(query="alpha", limit=3, search_filter={"path_prefix": "daily/"})
+
+        resp = await step(ctx)
+
+        assert resp.success is True
+        assert resp.metadata["counts"] == {"vector": 2, "keyword": 2, "returned": 3, "hybrid": True}
+        assert [r["id"] for r in resp.metadata["results"]] == ["shared", "keyword-only", "vector-only"]
+        shared = resp.metadata["results"][0]
+        assert shared["scores"]["vector"] == 0.92
+        assert shared["scores"]["keyword"] == 7.0
+        assert shared["scores"]["score"] > resp.metadata["results"][1]["scores"]["score"]
+        assert "daily/a.md:3-3" in resp.answer
+        assert "vector=0.9200" in resp.answer
+        assert "keyword=7.0000" in resp.answer
+        assert {call[0] for call in store.calls} == {"vector", "keyword"}
+        assert all(call[2] == 6 for call in store.calls)
+        assert all(call[3] == {"path_prefix": "daily/"} for call in store.calls)
+
+    asyncio.run(run())
+
+
+def test_search_step_keyword_only_uses_keyword_scores_and_min_score():
+    """When vector has no hits, SearchStep returns keyword results directly and applies min_score."""
+
+    async def run():
+        high = _chunk("high", "daily/high.md", "strong keyword hit", "keyword", 4.0)
+        low = _chunk("low", "daily/low.md", "weak keyword hit", "keyword", 0.2)
+        store = FakeSearchStore(keyword_results=[high, low])
+        step = SearchStep(file_store=store, expand_links=False)
+        ctx = RuntimeContext(query="keyword", limit=5, min_score=1.0)
+
+        resp = await step(ctx)
+
+        assert resp.metadata["counts"] == {"vector": 0, "keyword": 2, "returned": 1, "hybrid": False}
+        assert [r["id"] for r in resp.metadata["results"]] == ["high"]
+        assert "keyword=4.0000" not in resp.answer
+        assert "score=4.0000" in resp.answer
+        assert "daily/low.md" not in resp.answer
+
+    asyncio.run(run())
+
+
+def test_search_step_tool_context_deduplicates_returned_chunks_only():
+    """When tool_context_id is supplied, repeated searches skip previously returned chunks."""
+
+    async def run():
+        chunks = [
+            _chunk("a", "daily/a.md", "first", "keyword", 5.0),
+            _chunk("b", "daily/b.md", "second", "keyword", 4.0),
+            _chunk("c", "daily/c.md", "third", "keyword", 3.0),
+        ]
+        store = FakeSearchStore(keyword_results=chunks)
+        step = SearchStep(file_store=store, expand_links=False)
+
+        first = await step(RuntimeContext(query="alpha", limit=2, tool_context_id="ctx-1"))
+        second = await step(RuntimeContext(query="alpha", limit=2, tool_context_id="ctx-1"))
+        third = await step(RuntimeContext(query="alpha", limit=2))
+
+        assert [r["id"] for r in first.metadata["results"]] == ["a", "b"]
+        assert first.metadata["dedup"] == {
+            "tool_context_id": "ctx-1",
+            "seen_before": 0,
+            "skipped_seen": 0,
+            "seen_after": 2,
+            "expired": 0,
+            "ttl_seconds": 86400.0,
+        }
+        assert [r["id"] for r in second.metadata["results"]] == ["c"]
+        assert second.metadata["dedup"]["seen_before"] == 2
+        assert second.metadata["dedup"]["skipped_seen"] == 2
+        assert second.metadata["dedup"]["seen_after"] == 3
+        assert [r["id"] for r in third.metadata["results"]] == ["a", "b"]
+        assert "dedup" not in third.metadata
+
+    asyncio.run(run())
+
+
+def test_search_step_passes_metadata_filter_to_store():
+    """Search filters can target chunk metadata such as conversation_date."""
+
+    async def run():
+        hit = _chunk("hit", "daily/2023-01-19/event.md", "historical hit", "keyword", 3.0)
+        store = FakeSearchStore(keyword_results=[hit])
+        step = SearchStep(file_store=store, expand_links=False)
+        search_filter = {"metadata": {"conversation_date": "2023-01-19"}}
+
+        resp = await step(RuntimeContext(query="Jon job", limit=5, search_filter=search_filter))
+
+        assert resp.success is True
+        assert resp.metadata["results"][0]["id"] == "hit"
+        assert all(call[3] == search_filter for call in store.calls)
+
+    asyncio.run(run())
+
+
+def test_search_step_tool_context_seen_chunks_expire_after_ttl():
+    """Seen chunk ids under a tool_context_id are reusable after the configured TTL."""
+
+    async def run():
+        now = 1000.0
+        chunks = [
+            _chunk("a", "daily/a.md", "first", "keyword", 5.0),
+            _chunk("b", "daily/b.md", "second", "keyword", 4.0),
+        ]
+        store = FakeSearchStore(keyword_results=chunks)
+        step = SearchStep(
+            file_store=store,
+            expand_links=False,
+            seen_ttl_hours=1,
+            clock=lambda: now,
+        )
+
+        first = await step(RuntimeContext(query="alpha", limit=1, tool_context_id="ctx-1"))
+        now = 4601.0
+        second = await step(RuntimeContext(query="alpha", limit=1, tool_context_id="ctx-1"))
+
+        assert [r["id"] for r in first.metadata["results"]] == ["a"]
+        assert [r["id"] for r in second.metadata["results"]] == ["a"]
+        assert second.metadata["dedup"]["expired"] == 1
+        assert second.metadata["dedup"]["seen_before"] == 0
+        assert second.metadata["dedup"]["ttl_seconds"] == 3600.0
+
+    asyncio.run(run())
+
+
+def test_search_step_empty_query_fails_before_store_calls():
+    """Empty queries fail fast and do not call file_store search methods."""
+
+    async def run():
+        store = FakeSearchStore()
+        step = SearchStep(file_store=store)
+        resp = await step(RuntimeContext(query="  ", limit=5))
+
+        assert resp.success is False
+        assert resp.answer == "Error: query cannot be empty"
+        assert not store.calls
+
+    asyncio.run(run())
+
+
+def test_search_step_falls_back_for_unavailable_index_and_rejects_invalid_tags():
+    """Unavailable optional indexes preserve search, while malformed tags still fail."""
+
+    async def run():
+        hit = _chunk("hit", "daily/a.md", "text", "keyword", 3.0)
+        missing = FakeSearchStore(keyword_results=[hit])
+        unhealthy = TaggedFakeSearchStore(chunks=[hit])
+        unhealthy.tag_index.set_healthy(False)
+
+        for store in (missing, unhealthy):
+            resp = await SearchStep(file_store=store, expand_links=False)(
+                RuntimeContext(query="hello", limit=5, tags=["python"]),
+            )
+            assert resp.success is True
+            assert [result["id"] for result in resp.metadata["results"]] == ["hit"]
+            assert {call[0] for call in store.calls} == {"vector", "keyword"}
+            assert all(call[3] == {} for call in store.calls)
+            assert resp.metadata["tag_filter"] == {
+                "requested": True,
+                "applied": False,
+                "reason": "tag_index_unavailable",
+            }
+
+        invalid = TaggedFakeSearchStore(chunks=[])
+        resp = await SearchStep(file_store=invalid, expand_links=False)(
+            RuntimeContext(query="hello", limit=5, tags=["!", "++", "x" * 65]),
+        )
+        assert resp.success is False
+        assert resp.answer == "Error: tags contained no valid values"
+        assert not invalid.calls
+
+    asyncio.run(run())
+
+
+def test_search_step_combines_tags_with_existing_chunk_filters():
+    """Tags use OR internally and are ANDed with existing path/date behavior."""
+
+    async def run():
+        matching = _chunk("a", "daily/2024-03-01/a.md", "match", "keyword", 3.0)
+        old = _chunk("b", "daily/2023-03-01/b.md", "old", "keyword", 2.0)
+        wrong_prefix = _chunk("c", "resource/2024-03-01/c.md", "resource", "keyword", 1.0)
+        store = TaggedFakeSearchStore(chunks=[matching, old, wrong_prefix])
+        await store.tag_index.rebuild(
+            [
+                FileNode(path=matching.path, st_mtime=1.0, front_matter={"memory_tags": ["Python"]}),
+                FileNode(path=old.path, st_mtime=1.0, front_matter={"memory_tags": ["ReMe"]}),
+                FileNode(path=wrong_prefix.path, st_mtime=1.0, front_matter={"memory_tags": ["python"]}),
+            ],
+        )
+        step = SearchStep(file_store=store, expand_links=False)
+
+        resp = await step(
+            RuntimeContext(
+                query="hello",
+                limit=5,
+                tags=[" PYTHON ", "REME"],
+                start_date="2024-01-01",
+                search_filter={"path_prefix": "daily/"},
+            ),
+        )
+
+        assert resp.success is True
+        assert [result["id"] for result in resp.metadata["results"]] == ["a"]
+        assert resp.metadata["tag_filter"] == {
+            "requested": True,
+            "applied": True,
+            "tags": ["python", "reme"],
+            "matched_paths": 3,
+        }
+        assert {call[0] for call in store.calls} == {"vector", "keyword"}
+        assert all(set(call[3]["paths"]) == {matching.path, old.path, wrong_prefix.path} for call in store.calls)
+        store.calls.clear()
+        resp = await step(RuntimeContext(query="hello", limit=5, tags=["missing"]))
+        assert resp.success is True
+        assert resp.metadata["results"] == []
+        assert resp.metadata["tag_filter"]["matched_paths"] == 0
+        assert all(call[3]["paths"] == [] for call in store.calls)
+
+    asyncio.run(run())
+
+
+def test_search_step_start_end_date_promoted_into_search_filter():
+    """start_date and end_date from context are promoted into search_filter passed to store."""
+
+    async def run():
+        hit = _chunk("hit", "daily/a.md", "some text", "keyword", 5.0)
+        store = FakeSearchStore(keyword_results=[hit])
+        step = SearchStep(file_store=store, expand_links=False)
+        ctx = RuntimeContext(
+            query="hello",
+            limit=5,
+            start_date="2024-01-01",
+            end_date="2024-06-30",
+        )
+
+        await step(ctx)
+
+        assert len(store.calls) == 2
+        for _, _, _, sf in store.calls:
+            assert sf["start_date"] == "2024-01-01"
+            assert sf["end_date"] == "2024-06-30"
+
+    asyncio.run(run())
+
+
+def test_search_step_invalid_date_is_ignored():
+    """Invalid date strings are silently ignored (removed from filter) and search proceeds."""
+
+    async def run():
+        hit = _chunk("hit", "daily/a.md", "some text", "keyword", 5.0)
+        store = FakeSearchStore(keyword_results=[hit])
+        step = SearchStep(file_store=store, expand_links=False)
+        ctx = RuntimeContext(
+            query="hello",
+            limit=5,
+            start_date="abc",
+        )
+
+        resp = await step(ctx)
+
+        assert resp.success is True
+        assert len(store.calls) == 2
+        for _, _, _, sf in store.calls:
+            assert "start_date" not in sf
+
+    asyncio.run(run())
+
+
+def test_search_step_non_normalized_date_is_canonicalized():
+    """Valid but non-canonical dates like '2024-1-5' are normalized to '2024-01-05'."""
+
+    async def run():
+        hit = _chunk("hit", "daily/a.md", "some text", "keyword", 5.0)
+        store = FakeSearchStore(keyword_results=[hit])
+        step = SearchStep(file_store=store, expand_links=False)
+        ctx = RuntimeContext(
+            query="hello",
+            limit=5,
+            start_date="2024-1-5",
+            end_date="2024-6-1",
+        )
+
+        await step(ctx)
+
+        for _, _, _, sf in store.calls:
+            assert sf["start_date"] == "2024-01-05"
+            assert sf["end_date"] == "2024-06-01"
+
+    asyncio.run(run())
+
+
+def test_search_step_date_in_search_filter_not_overridden_by_context():
+    """Explicit search_filter dates take precedence over top-level context dates."""
+
+    async def run():
+        hit = _chunk("hit", "daily/a.md", "text", "keyword", 3.0)
+        store = FakeSearchStore(keyword_results=[hit])
+        step = SearchStep(file_store=store, expand_links=False)
+        ctx = RuntimeContext(
+            query="hello",
+            limit=5,
+            start_date="2024-01-01",
+            end_date="2024-06-30",
+            search_filter={"start_date": "2023-07-01", "end_date": "2023-12-31"},
+        )
+
+        await step(ctx)
+
+        for _, _, _, sf in store.calls:
+            assert sf["start_date"] == "2023-07-01"
+            assert sf["end_date"] == "2023-12-31"
+
+    asyncio.run(run())
+
+
+def test_search_step_strict_date_filter_propagated_to_search_filter():
+    """strict_date_filter=True is passed through to file_store via search_filter."""
+
+    async def run():
+        hit = _chunk("hit", "daily/2024-03-01/a.md", "text", "keyword", 3.0)
+        store = FakeSearchStore(keyword_results=[hit])
+        step = SearchStep(file_store=store, expand_links=False, strict_date_filter=True)
+        ctx = RuntimeContext(
+            query="hello",
+            limit=5,
+            start_date="2024-01-01",
+            end_date="2024-06-30",
+        )
+
+        await step(ctx)
+
+        for _, _, _, sf in store.calls:
+            assert sf["strict_date_filter"] is True
+
+    asyncio.run(run())
+
+
+def test_search_step_non_strict_date_filter_not_in_search_filter():
+    """strict_date_filter defaults to False and is not added to search_filter."""
+
+    async def run():
+        hit = _chunk("hit", "daily/2024-03-01/a.md", "text", "keyword", 3.0)
+        store = FakeSearchStore(keyword_results=[hit])
+        step = SearchStep(file_store=store, expand_links=False)
+        ctx = RuntimeContext(
+            query="hello",
+            limit=5,
+            start_date="2024-01-01",
+        )
+
+        await step(ctx)
+
+        for _, _, _, sf in store.calls:
+            assert "strict_date_filter" not in sf
+
+    asyncio.run(run())
+
+
+def test_search_v2_step_compresses_session_bodies_when_injected_flag_set():
+    """With ``_search._compress.session`` truthy, session bodies are replaced by the
+    compressor job output while headers and non-session entries stay untouched."""
+
+    async def run():
+        session = _chunk("s1", "session/dialog/s1.jsonl", "hello world dialog text", "vector", 0.9, line=2)
+        note = _chunk("n1", "daily/a.md", "note text", "vector", 0.8)
+        store = FakeSearchStore(vector_results=[session, note])
+        step = SearchV2Step(file_store=store, expand_links=False)
+        calls: list[dict] = []
+
+        async def fake_run_job(name, /, **kwargs):
+            calls.append({"name": name, **kwargs})
+            return Response(success=True, answer="compressed!")
+
+        step.run_job = fake_run_job
+        ctx = RuntimeContext(
+            query="alpha",
+            limit=5,
+            _search={"_compress": {"session": "true"}, "queries": ["orig question"]},
+        )
+
+        resp = await step(ctx)
+
+        assert resp.success is True
+        assert "compressed!" in resp.answer
+        assert "hello world dialog text" not in resp.answer
+        assert "note text" in resp.answer
+        assert "session/dialog/s1.jsonl:2-2" in resp.answer
+        assert calls == [
+            {"name": "compressor", "text": "hello world dialog text", "queries": ["orig question", "alpha"]},
+        ]
+
+    asyncio.run(run())
+
+
+def test_search_v2_step_query_independent_compression_passes_no_queries():
+    """With ``_search.type`` = ``query-independent`` the compressor receives no queries;
+    any other (or missing) type keeps the query-aware behavior."""
+
+    async def run():
+        session = _chunk("s1", "session/dialog/s1.jsonl", "hello world dialog text", "vector", 0.9)
+        store = FakeSearchStore(vector_results=[session])
+        step = SearchV2Step(file_store=store, expand_links=False)
+        calls: list[dict] = []
+
+        async def fake_run_job(name, /, **kwargs):
+            calls.append({"name": name, **kwargs})
+            return Response(success=True, answer="compressed!")
+
+        step.run_job = fake_run_job
+        ctx = RuntimeContext(
+            query="alpha",
+            limit=5,
+            _search={"_compress": {"session": "true"}, "queries": ["orig question"], "type": "query-independent"},
+        )
+
+        resp = await step(ctx)
+
+        assert "compressed!" in resp.answer
+        assert calls == [{"name": "compressor", "text": "hello world dialog text", "queries": []}]
+
+        # Explicit query-aware type behaves exactly like the default.
+        calls.clear()
+        ctx = RuntimeContext(
+            query="alpha",
+            limit=5,
+            _search={"_compress": {"session": "true"}, "queries": ["orig question"], "type": "query-aware"},
+        )
+
+        await step(ctx)
+
+        assert calls == [
+            {"name": "compressor", "text": "hello world dialog text", "queries": ["orig question", "alpha"]},
+        ]
+
+    asyncio.run(run())
+
+
+def test_search_v2_step_keeps_original_body_when_compressed_is_longer():
+    """A compressed body longer than the original is rejected in favor of the original."""
+
+    async def run():
+        session = _chunk("s1", "session/dialog/s1.jsonl", "short", "vector", 0.9)
+        store = FakeSearchStore(vector_results=[session])
+        step = SearchV2Step(file_store=store, expand_links=False)
+
+        async def fake_run_job(name, /, **kwargs):  # pylint: disable=unused-argument
+            return Response(success=True, answer="a much longer compressed output")
+
+        step.run_job = fake_run_job
+        ctx = RuntimeContext(query="alpha", _search={"_compress": {"session": True}})
+
+        resp = await step(ctx)
+
+        assert "short" in resp.answer
+        assert "much longer" not in resp.answer
+
+    asyncio.run(run())
+
+
+def test_search_v2_step_compression_strips_input_and_adds_marker():
+    """The compressor receives the stripped rendered body; adopted output is
+    prefixed with the ``compressed session chunk:`` marker only (no line numbers)."""
+
+    async def run():
+        session = FileChunk(
+            id="s1",
+            path="session/dialog/s1.jsonl",
+            text="first message line\nsecond message line",
+            start_line=4,
+            end_line=5,
+            scores={"vector": 0.9, "score": 0.9},
+        )
+        store = FakeSearchStore(vector_results=[session])
+        step = SearchV2Step(file_store=store, expand_links=False)
+        calls: list[dict] = []
+
+        async def fake_run_job(name, /, **kwargs):
+            calls.append({"name": name, **kwargs})
+            return Response(success=True, answer="first compact\nsecond compact\n")
+
+        step.run_job = fake_run_job
+        ctx = RuntimeContext(query="alpha", _search={"_compress": {"session": "true"}})
+
+        resp = await step(ctx)
+
+        assert calls[0]["text"] == "first message line\nsecond message line"
+        assert "compressed session chunk:\nfirst compact\nsecond compact" in resp.answer
+
+    asyncio.run(run())
+
+
+def test_search_v2_step_compression_input_is_line_aligned_with_session_jsonl():
+    """Serialized Msg jsonl lines render one message per line (newlines flattened),
+    so compressor input line ``i`` maps to session file line ``start_line + i``."""
+
+    async def run():
+        m1 = Msg(name="user", role="user", content=[{"type": "text", "text": "line one\nline two"}])
+        m2 = Msg(name="assistant", role="assistant", content=[{"type": "text", "text": "long answer"}])
+        session = FileChunk(
+            id="s1",
+            path="session/dialog/s1.jsonl",
+            text=m1.model_dump_json() + "\n" + m2.model_dump_json(),
+            start_line=7,
+            end_line=8,
+            scores={"vector": 0.9, "score": 0.9},
+        )
+        store = FakeSearchStore(vector_results=[session])
+        step = SearchV2Step(file_store=store, expand_links=False)
+        calls: list[dict] = []
+
+        async def fake_run_job(name, /, **kwargs):
+            calls.append({"name": name, **kwargs})
+            return Response(success=True, answer="[user @ t] u\n[assistant @ t] a")
+
+        step.run_job = fake_run_job
+        ctx = RuntimeContext(query="alpha", _search={"_compress": {"session": "true"}})
+
+        resp = await step(ctx)
+
+        sent_lines = calls[0]["text"].splitlines()
+        assert len(sent_lines) == 2
+        assert sent_lines[0].startswith("[user @") and "line one line two" in sent_lines[0]
+        assert sent_lines[1].startswith("[assistant @") and "long answer" in sent_lines[1]
+        assert "compressed session chunk:\n[user @ t] u\n[assistant @ t] a" in resp.answer
+
+    asyncio.run(run())
+
+
+def test_search_v2_step_adopts_shorter_output_regardless_of_line_count():
+    """A shorter compressor output is adopted even when its line count differs."""
+
+    async def run():
+        session = FileChunk(
+            id="s1",
+            path="session/dialog/s1.jsonl",
+            text="first message line\nsecond message line",
+            start_line=4,
+            end_line=5,
+            scores={"vector": 0.9, "score": 0.9},
+        )
+        store = FakeSearchStore(vector_results=[session])
+        step = SearchV2Step(file_store=store, expand_links=False)
+
+        async def fake_run_job(name, /, **kwargs):  # pylint: disable=unused-argument
+            return Response(success=True, answer="merged into one line")
+
+        step.run_job = fake_run_job
+        ctx = RuntimeContext(query="alpha", _search={"_compress": {"session": "true"}})
+
+        resp = await step(ctx)
+
+        assert "compressed session chunk:\nmerged into one line" in resp.answer
+        assert "first message line" not in resp.answer
+
+    asyncio.run(run())
+
+
+def test_search_v2_step_skips_compression_without_injected_flag():
+    """Without the injected ``_search`` payload the compressor job is never invoked."""
+
+    async def run():
+        session = _chunk("s1", "session/dialog/s1.jsonl", "dialog text", "vector", 0.9)
+        store = FakeSearchStore(vector_results=[session])
+        step = SearchV2Step(file_store=store, expand_links=False)
+
+        async def fake_run_job(name, /, **kwargs):  # pylint: disable=unused-argument
+            raise AssertionError("compressor job must not be called")
+
+        step.run_job = fake_run_job
+        ctx = RuntimeContext(query="alpha")
+
+        resp = await step(ctx)
+
+        assert "dialog text" in resp.answer
+
+    asyncio.run(run())
+
+
+def test_search_v2_step_keeps_original_body_when_compression_fails():
+    """A failed compressor response (success=False) never replaces the body."""
+
+    async def run():
+        session = _chunk("s1", "session/dialog/s1.jsonl", "dialog text", "vector", 0.9)
+        store = FakeSearchStore(vector_results=[session])
+        step = SearchV2Step(file_store=store, expand_links=False)
+
+        async def fake_run_job(name, /, **kwargs):  # pylint: disable=unused-argument
+            return Response(success=False, answer="boom")
+
+        step.run_job = fake_run_job
+        ctx = RuntimeContext(query="alpha", _search={"_compress": {"session": "true"}})
+
+        resp = await step(ctx)
+
+        assert "dialog text" in resp.answer
+        assert "boom" not in resp.answer
+
+    asyncio.run(run())
+
+
+def test_search_v2_step_keeps_original_body_when_compression_raises():
+    """A compressor job that raises (e.g. temporary LLM outage) keeps the original
+    body for that entry while other entries are still compressed; the search itself
+    never fails."""
+
+    async def run():
+        failing = _chunk("s1", "session/dialog/s1.jsonl", "dialog text one", "vector", 0.9, line=2)
+        ok = _chunk("s2", "session/dialog/s2.jsonl", "dialog text two", "vector", 0.8, line=1)
+        store = FakeSearchStore(vector_results=[failing, ok])
+        step = SearchV2Step(file_store=store, expand_links=False)
+
+        async def fake_run_job(_name, /, **kwargs):
+            if "one" in kwargs.get("text", ""):
+                raise RuntimeError("temporary LLM outage")
+            return Response(success=True, answer="compressed!")
+
+        step.run_job = fake_run_job
+        ctx = RuntimeContext(query="alpha", _search={"_compress": {"session": "true"}})
+
+        resp = await step(ctx)
+
+        assert resp.success is True
+        # The failing entry keeps its original body.
+        assert "dialog text one" in resp.answer
+        # The healthy entry is still compressed.
+        assert "compressed!" in resp.answer
+        assert "dialog text two" not in resp.answer
+
+    asyncio.run(run())
