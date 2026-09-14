@@ -7,6 +7,7 @@ on:
       - '.github/workflows/yaiwes-real-internal-workflows-v6.yml'
       - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v6.py'
       - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v61.py'
+      - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v62.py'
   workflow_dispatch:
 
 permissions:
@@ -37,20 +38,22 @@ jobs:
             /📂coda workflow persistencias/*/code/**/*.js
             /📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v6.py
             /📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v61.py
+            /📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v62.py
             /📂coda workflow persistencias/🏈 cancha deportiva de fútbol/*
 
-      - name: Validate V6.1 runner syntax
+      - name: Validate V6.2 runner syntax
         run: |
           set -euo pipefail
           python3 -m py_compile '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v6.py'
           python3 -m py_compile '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v61.py'
+          python3 -m py_compile '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v62.py'
 
       - name: Execute real internal workflows and FABLES handoffs
         env:
           PYTHONUNBUFFERED: '1'
         run: |
           set -euo pipefail
-          python3 '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v61.py'
+          python3 '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v62.py'
 
       - name: Verify 23 real workflow executions plus closure node
         run: |
@@ -71,20 +74,21 @@ jobs:
           print('REAL_INTERNAL_WORKFLOW_PASS=23/23 SOURCE_AVAILABLE')
           PY
 
-      - name: Verify no quarantined source is wired
+      - name: Verify no historical quarantine file is read or imported
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          for name in ('yaiwes_real_workflow_chain_v6.py','yaiwes_real_workflow_chain_v61.py'):
-              t=(Path('📂coda workflow persistencias/Fables enchufe universal')/name).read_text(encoding='utf-8')
-              for line in t.splitlines():
-                  if '_yaiwes_upstream_quarantine' in line and 'never' not in line.lower() and 'quarantine' not in line.lower():
-                      raise AssertionError(line)
-          print('QUARANTINE_WIRING=DENIED')
+          root=Path('📂coda workflow persistencias/Fables enchufe universal')
+          files=[root/'yaiwes_real_workflow_chain_v6.py',root/'yaiwes_real_workflow_chain_v61.py',root/'yaiwes_real_workflow_chain_v62.py']
+          for p in files:
+              t=p.read_text(encoding='utf-8')
+              assert '/_yaiwes_upstream_quarantine/' not in t
+              assert 'code / "_yaiwes_upstream_quarantine"' not in t
+          print('HISTORICAL_QUARANTINE_EXECUTION=DENIED')
           PY
 
-      - name: Persist V6 evidence only
+      - name: Persist V6.2 evidence only
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
@@ -94,7 +98,7 @@ jobs:
           if git diff --cached --quiet; then
             echo NO_CHANGES
           else
-            git commit -m 'test(coda): prove real internal YAIWES workflows v6.1'
+            git commit -m 'test(coda): prove real internal YAIWES workflows v6.2'
             git pull --rebase origin main
             git push origin HEAD:main
           fi
