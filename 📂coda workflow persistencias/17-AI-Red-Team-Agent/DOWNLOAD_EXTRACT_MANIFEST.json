@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 24291,
+  "bundle_sha256": "9f1cc2fd4bac81dc6feb5b1d8d8b982c257f3bf66d9ea9e3fef829c28b41b71f",
+  "extracted_tree": {
+    "bytes": 71678,
+    "files": 10,
+    "sha256": "804f49a0916ecc65a5c50df54438b66f858717cd7c4ace6dbc881f8fab121ecc"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 24291,
+      "name": "17-AI-Red-Team-Agent.bundle.zip.part-0001",
+      "sha256": "9f1cc2fd4bac81dc6feb5b1d8d8b982c257f3bf66d9ea9e3fef829c28b41b71f"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "17-AI-Red-Team-Agent",
+  "source_bytes": 71678,
+  "source_commit": "b8ec294e6429545612d45a934b279fefe31025af",
+  "source_files": 10,
+  "source_ref": "HEAD",
+  "source_repo": "anaitik/red-team-ai-agent",
+  "source_tree": {
+    "bytes": 71678,
+    "files": 10,
+    "sha256": "804f49a0916ecc65a5c50df54438b66f858717cd7c4ace6dbc881f8fab121ecc"
+  }
+}
