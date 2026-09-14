@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Triggered after the v3 workflow was installed on main.
 from __future__ import annotations
 
 import json
