@@ -1,0 +1,34 @@
+{
+  "closed": [
+    {
+      "files": 667,
+      "id": "PD4-002",
+      "slug": "Unified-Planning",
+      "source_commit": "8921852c469970213da96f445d343461f504402a",
+      "tree_sha256": "f042d47d19db9bc14c0a2200d50b92e9b4a55c37236aedaece4c9874bbd6537f"
+    },
+    {
+      "files": 836,
+      "id": "PD4-003",
+      "slug": "Pyperplan",
+      "source_commit": "586b99f060bfe457f359aa8b4bae1a299fa4e8c7",
+      "tree_sha256": "d98b02ff888f9c4b0b898605f068b4411b453dca82a621de1271a91c4012c4b1"
+    },
+    {
+      "files": 31,
+      "id": "PD4-004",
+      "slug": "GTPyhop",
+      "source_commit": "1ca7773963443476d0e83d03f10efab325327565",
+      "tree_sha256": "5b7fbc716a417b88d83fce8973dc10bed81af7212f77e7c3ca0c75a9ca9cbfff"
+    }
+  ],
+  "gaps": [
+    {
+      "gap": "MANIFEST_MISSING",
+      "id": "PD4-001",
+      "slug": "Fast-Downward"
+    }
+  ],
+  "schema": "yaiwes.kernel.planner-decomposer4.aggregate/v1",
+  "total": 4
+}
