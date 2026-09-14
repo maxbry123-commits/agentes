@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# 虚拟环境（uv 管理）
+.venv/
+venv/
+env/
+
+# 环境变量（包含敏感信息，不提交）
+.env
+
+# 日志文件（运行时生成）
+logs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# 测试覆盖率
+.coverage
+htmlcov/
+.pytest_cache/
+
+# uv 锁文件（根据团队需求决定是否提交）
+# uv.lock

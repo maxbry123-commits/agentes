@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 149292,
+  "bundle_sha256": "e094cc9e0e288021d30acf5da4f3d45f51c1898204213f2da72e1211a316e8c8",
+  "extracted_tree": {
+    "bytes": 453869,
+    "files": 27,
+    "sha256": "a606b4046e06a494ee8f0e9e5a56111182d20871d1d818f7967ac94fcf3aec13"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 149292,
+      "name": "20-OpenWhale.bundle.zip.part-0001",
+      "sha256": "e094cc9e0e288021d30acf5da4f3d45f51c1898204213f2da72e1211a316e8c8"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "20-OpenWhale",
+  "source_bytes": 453869,
+  "source_commit": "54007d6be349a264ff7c8e37803b5ed1b4933da2",
+  "source_files": 27,
+  "source_ref": "HEAD",
+  "source_repo": "lonelyuan/OpenWhale",
+  "source_tree": {
+    "bytes": 453869,
+    "files": 27,
+    "sha256": "a606b4046e06a494ee8f0e9e5a56111182d20871d1d818f7967ac94fcf3aec13"
+  }
+}
