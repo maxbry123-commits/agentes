@@ -1,4 +1,4 @@
-# registered-trigger: 2
+# registered-trigger: 3
 name: YAIWES SOL2 BullMQ STEP3 Node2222
 
 on:
@@ -24,6 +24,11 @@ jobs:
       TARGET: 'Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/bullmq'
       YDIR: 'Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/bullmq/yaiwes'
       BUS: 'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py'
+      SOURCE_URL: 'https://github.com/taskforcesh/bullmq.git'
+      SOURCE_COMMIT: 'ad5b79c2a6d49275b760892382252f47f0bba1d7'
+      SOURCE_VERSION: '6.3.4'
+      SOURCE_PACKAGE_BLOB: '6c059cb46bd4b43f2462a3a5710b0408a5a4c280'
+      MOVE_COMMIT: 'f8b8d9f48925827ab98df5fc216842586c6c54a9'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,7 +43,7 @@ jobs:
             /Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/bullmq/
             /Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/
 
-      - name: Claim N33 exact Node2222 repair
+      - name: Claim or resume N33 exact Node2222 repair
         shell: bash
         run: |
           set -euo pipefail
@@ -48,16 +53,80 @@ jobs:
             python3 - <<'PY'
           import json,os
           from datetime import datetime,timezone
-          now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z'); p=os.environ['WALL']; d=json.load(open(p,encoding='utf-8')); n=next(x for x in d['nodes'] if x.get('id')==33 and x.get('component')=='BullMQ')
-          if n.get('current_step')!=3 or n.get('status') not in ('GAP_STEP3','GAP') or n.get('lock') not in ('FREE',None) or n.get('owner') not in (None,'SOL'): raise SystemExit(f"N33_NOT_FREE_GAP:{n.get('status')}:{n.get('owner')}:{n.get('lock')}")
-          n['owner']='SOL'; n['lock']='CLAIMED'; n['status']='PENDING_STEP3'; n['checkpoint']['before']=f"{now} SOL integración 2 exact STEP3 retry Node 22.22.2 satisfying commitlint/eslint/semantic-release engines; same BullMQ+Redis+FABLES microtest; no MOVE repeat"
-          n.setdefault('evidence',[]).append('step3:repair:node_runtime_22.13.0_to_22.22.2'); n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 2','event':'CLAIM_STEP3_NODE2222_REPAIR','prior_run':34720547406}); n['next_action']='REPAIR_EXACT_STEP3_GAP_AND_RETRY'; d['updated_at']=now
+          now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
+          p=os.environ['WALL']; d=json.load(open(p,encoding='utf-8'))
+          n=next(x for x in d['nodes'] if x.get('id')==33 and x.get('component')=='BullMQ')
+          if n.get('current_step')!=3:
+              raise SystemExit(f"N33_WRONG_STEP:{n.get('current_step')}")
+          fresh=(n.get('status') in ('GAP_STEP3','GAP') and n.get('lock') in ('FREE',None) and n.get('owner') in (None,'SOL'))
+          resume=(n.get('status')=='PENDING_STEP3' and n.get('lock')=='CLAIMED' and n.get('owner')=='SOL')
+          if not (fresh or resume):
+              raise SystemExit(f"N33_NOT_ELIGIBLE:{n.get('status')}:{n.get('owner')}:{n.get('lock')}")
+          n['owner']='SOL'; n['lock']='CLAIMED'; n['status']='PENDING_STEP3'
+          n['checkpoint']['before']=f"{now} SOL exact STEP3 Node 22.22.2; provenance remediation; resume_existing_claim={resume}; no MOVE repeat"
+          ev=n.setdefault('evidence',[])
+          for item in ('step3:repair:node_runtime_22.13.0_to_22.22.2','provenance:repair:SOURCE_URL+COMMIT+SHA256'):
+              if item not in ev: ev.append(item)
+          n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL GPT','event':'RESUME_STEP3_NODE2222_REPAIR' if resume else 'CLAIM_STEP3_NODE2222_REPAIR'})
+          n['next_action']='REPAIR_EXACT_STEP3_GAP_AND_RETRY'; d['updated_at']=now
           json.dump(d,open(p,'w',encoding='utf-8'),ensure_ascii=False,indent=2); open(p,'a',encoding='utf-8').write('\n')
           PY
-            git add -- "$WALL"; git commit -m 'crazy-wall: SOL2 claim BullMQ Node2222 STEP3 repair' || true
+            git add -- "$WALL"; git commit -m 'crazy-wall: SOL resume BullMQ Node2222 STEP3 repair' || true
             if git push origin HEAD:main; then exit 0; fi; sleep $((attempt*2))
           done
           exit 41
+
+      - name: STEP2 provenance remediation read-back
+        id: provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "$TARGET"
+          test "$(git hash-object "$TARGET/package.json")" = "$SOURCE_PACKAGE_BLOB"
+          test "$(python3 - <<'PY'
+          import json,os
+          p=os.path.join(os.environ['TARGET'],'package.json')
+          print(json.load(open(p,encoding='utf-8'))['version'])
+          PY
+          )" = "$SOURCE_VERSION"
+          python3 - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          target=Path(os.environ['TARGET'])
+          excluded={'SOURCE_URL.txt','SOURCE_COMMIT.txt','SOURCE_SHA256.txt','YAIWES_PROVENANCE.json'}
+          rows=[]
+          for p in sorted(target.rglob('*'), key=lambda x: x.as_posix()):
+              if not p.is_file():
+                  continue
+              rel=p.relative_to(target).as_posix()
+              if rel.startswith('yaiwes/') or rel in excluded:
+                  continue
+              digest=hashlib.sha256(p.read_bytes()).hexdigest()
+              rows.append(f"{digest}  {rel}")
+          manifest='\n'.join(rows)+'\n'
+          snapshot=hashlib.sha256(manifest.encode()).hexdigest()
+          (target/'SOURCE_URL.txt').write_text(os.environ['SOURCE_URL']+'\n',encoding='utf-8')
+          (target/'SOURCE_COMMIT.txt').write_text(os.environ['SOURCE_COMMIT']+'\n',encoding='utf-8')
+          (target/'SOURCE_SHA256.txt').write_text(snapshot+'\n',encoding='utf-8')
+          prov={
+            'schema':'yaiwes.provenance/v1',
+            'source_url':os.environ['SOURCE_URL'],
+            'source_commit':os.environ['SOURCE_COMMIT'],
+            'source_version':os.environ['SOURCE_VERSION'],
+            'source_package_git_blob':os.environ['SOURCE_PACKAGE_BLOB'],
+            'source_snapshot_sha256':snapshot,
+            'sha256_scope':'destination snapshot immediately after canonical MOVE, excluding yaiwes/ and provenance files',
+            'source_path_before':'Core kernel Yaiwes/Componentes recuperados B/BullMQ/',
+            'destination_path_after':'Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/bullmq/',
+            'move_commit':os.environ['MOVE_COMMIT'],
+            'evidence':{
+              'destination_package_blob_matches_upstream_release_commit':True,
+              'destination_package_blob':os.environ['SOURCE_PACKAGE_BLOB']
+            }
+          }
+          (target/'YAIWES_PROVENANCE.json').write_text(json.dumps(prov,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          print('YAIWES_PROVENANCE_SHA256='+snapshot)
+          PY
 
       - uses: actions/setup-node@v4
         with:
@@ -99,10 +168,11 @@ jobs:
           root=Path.cwd(); y=root/os.environ['YDIR']; a=y/'bullmq_adapter.py'; busp=root/os.environ['BUS']; digest='sha256:'+hashlib.sha256(a.read_bytes()).hexdigest()
           ficha={'artifact_id':'yaiwes.parallel_dispatch.bullmq','version':'1.0.0','estado':'active','contract_hash':digest,'tribunal_case_id':'YAIWES-N33-BULLMQ-STEP3','contrato':{'rol':'transform','consume':{'datatype':{'family':'json','type':'object','version':1}},'expone':{'datatype':{'family':'json','type':'object','version':1}}},'ejecucion':{'kind':'code','transport':'sdk','runtime_type':'compute','entry_point':str(a)+':run_microtest','idempotente':True},'seguridad':{'sandbox':'process','limites':{'timeout_ms':300000,'deadline_ms':300000}},'firma':{'gpg_key_id':'YAIWES-N33'},'categoria':'pipeline','etapa':'P','perfiles':{'n0':{'habilitada':True,'iteraciones':1,'simulaciones':0,'criticas':0,'muestras_k':1}},'repeticion':{'max':1,'condicion':'nunca'},'repite_en':[],'activacion':{'eventos':['kernel.v2.plugin.enchufed'],'wake_words':[],'condicion':''},'presupuesto':{'n0':{'max_tokens':1,'max_ms':300000,'max_costo_usd':0.0}},'telemetria':{'metricas':['tiempo','errores','health'],'span_otel':True},'evidencia':{'produce':['L2_build','L3_runtime','L4_feature'],'destino':str(y)+'/'},'failover':{'sustituible_por':[],'compensacion':'fail_closed'},'salud':{'metodo':'exec','heartbeat_interval_s':30}}
           (y/'ficha.bullmq.v2.json').write_text(json.dumps(ficha,ensure_ascii=False,indent=2)+'\n'); sys.path.insert(0,str(busp.parent)); import universal_plugin_bus_v2_integrated as b
-          bus=b.UniversalPluginBus(); bus.add_tribunal_approval(ficha['tribunal_case_id']); reg=bus.enchufar(ficha,b.ComponentCandidate(a.read_text(),'python',[str(a)]),b.TargetConventions('python','snake_case','sync','gradual'),registered_by='SOL integración 2'); assert reg.status==b.PluginStatus.ACTIVE; bus.health.heartbeat(reg.plugin_id); assert bus.check_plugin_health(reg.plugin_id)
+          bus=b.UniversalPluginBus(); bus.add_tribunal_approval(ficha['tribunal_case_id']); reg=bus.enchufar(ficha,b.ComponentCandidate(a.read_text(),'python',[str(a)]),b.TargetConventions('python','snake_case','sync','gradual'),registered_by='SOL GPT'); assert reg.status==b.PluginStatus.ACTIVE; bus.health.heartbeat(reg.plugin_id); assert bus.check_plugin_health(reg.plugin_id)
           sp=importlib.util.spec_from_file_location('ba',a); m=importlib.util.module_from_spec(sp); sp.loader.exec_module(m); result=m.run_microtest(root); assert result['input']==21 and result['output']==42
           bus.evidence.collect(reg.plugin_id,b.EvidenceLevel.L3,{'microtest':result}); bus.evidence.collect(reg.plugin_id,b.EvidenceLevel.L4,{'capability':'redis_distributed_queue_worker','verified':True}); levels=[e['level'] for e in bus.evidence.get(reg.plugin_id)]; assert all(x in levels for x in ('L2_build','L3_runtime','L4_feature'))
-          (y/'STEP3_EVIDENCE.json').write_text(json.dumps({'node':'BullMQ','worker':'SOL integración 2','status':'PASS','repair':'Node22.22.2','plugin_id':reg.plugin_id,'route':'FABLES->BullMQ->Redis->Queue->Worker','result':result,'evidence_levels':levels,'run':int(os.environ['GITHUB_RUN_ID']),'adapter_sha256':digest,'prune':'NOT_NEEDED'},ensure_ascii=False,indent=2)+'\n'); print('BULLMQ_REAL_PASS input=21 output=42',levels)
+          prov=json.load(open(root/os.environ['TARGET']/'YAIWES_PROVENANCE.json',encoding='utf-8'))
+          (y/'STEP3_EVIDENCE.json').write_text(json.dumps({'node':'BullMQ','worker':'SOL GPT','status':'PASS','repair':'Node22.22.2','plugin_id':reg.plugin_id,'route':'FABLES->BullMQ->Redis->Queue->Worker','result':result,'evidence_levels':levels,'run':int(os.environ['GITHUB_RUN_ID']),'adapter_sha256':digest,'source_snapshot_sha256':prov['source_snapshot_sha256'],'prune':'NOT_NEEDED'},ensure_ascii=False,indent=2)+'\n'); print('BULLMQ_REAL_PASS input=21 output=42',levels)
           PY
             trc=$?
           fi
@@ -111,15 +181,24 @@ jobs:
           detail="$(cat /tmp/install.log /tmp/build.log /tmp/test.log 2>/dev/null | tail -n 18 | tr '\n\r' ' ' | sed 's/=/ /g' | cut -c1-1800)"
           echo "rc=$rc" >> "$GITHUB_OUTPUT"; echo "stage=$stage" >> "$GITHUB_OUTPUT"; echo "detail=$detail" >> "$GITHUB_OUTPUT"; exit 0
 
-      - name: Publish STEP3 artifacts
+      - name: Publish STEP3 artifacts and provenance
         id: publish
         if: steps.exec.outputs.rc == '0'
         shell: bash
         run: |
-          set -euo pipefail; git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'; git add -- "$YDIR"; git commit -m 'test(yaiwes): SOL2 BullMQ Node2222 STEP3 PASS'
-          for attempt in 1 2 3 4 5; do git fetch origin main; if git rebase origin/main && git push origin HEAD:main; then echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"; exit 0; fi; git rebase --abort || true; sleep $((attempt*2)); done; exit 41
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$YDIR" "$TARGET/SOURCE_URL.txt" "$TARGET/SOURCE_COMMIT.txt" "$TARGET/SOURCE_SHA256.txt" "$TARGET/YAIWES_PROVENANCE.json"
+          git commit -m 'test(yaiwes): SOL BullMQ Node2222 STEP3 PASS + provenance'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            if git rebase origin/main && git push origin HEAD:main; then echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"; exit 0; fi
+            git rebase --abort || true; sleep $((attempt*2))
+          done
+          exit 41
 
       - name: Checkpoint and release N33
+        if: always()
         shell: bash
         env:
           RC: ${{ steps.exec.outputs.rc }}
@@ -127,22 +206,44 @@ jobs:
           DETAIL: ${{ steps.exec.outputs.detail }}
           ECOMMIT: ${{ steps.publish.outputs.commit }}
         run: |
-          set -euo pipefail; git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           for attempt in 1 2 3 4 5; do
             git fetch origin main; git reset --hard origin/main
             python3 - <<'PY'
           import json,os
           from datetime import datetime,timezone
-          now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z'); rc=int(os.environ.get('RC') or 99); stage=os.environ.get('STAGE') or 'UNKNOWN'; detail=(os.environ.get('DETAIL') or 'NO_OUTPUT')[:1800]; wp=os.environ['WALL']; ip=os.environ['INVENTORY']; d=json.load(open(wp,encoding='utf-8')); n=next(x for x in d['nodes'] if x.get('id')==33 and x.get('component')=='BullMQ')
+          now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
+          rc=int(os.environ.get('RC') or 99); stage=os.environ.get('STAGE') or 'SETUP_OR_EXEC_SKIPPED'
+          detail=(os.environ.get('DETAIL') or 'NO_OUTPUT')[:1800]; ecommit=os.environ.get('ECOMMIT') or ''
+          wp=os.environ['WALL']; ip=os.environ['INVENTORY']; d=json.load(open(wp,encoding='utf-8'))
+          n=next(x for x in d['nodes'] if x.get('id')==33 and x.get('component')=='BullMQ')
           if n.get('owner')!='SOL' or n.get('lock')!='CLAIMED': raise SystemExit('N33_LOCK_CHANGED')
           ev=n.setdefault('evidence',[])
-          if rc==0:
-              n['status']='PASS'; n['checkpoint']['after']=f"STEP3 PASS run={os.environ['GITHUB_RUN_ID']}: Node22.22.2 install/build PASS; canonical FABLES ACTIVE; real Redis Queue/Worker input21->output42; L2+L3+L4; evidence_commit={os.environ.get('ECOMMIT')}; prune NOT_NEEDED"; ev += [f"step3:run:{os.environ['GITHUB_RUN_ID']}",f"step3:evidence_commit:{os.environ.get('ECOMMIT')}",'step3:repair:Node22.22.2_engine_chain_closed','step3:microtest:PASS input=21 output=42','step3:evidence:L2_build+L3_runtime+L4_feature','step3:prune:NOT_NEEDED']; n['next_action']='COMPLETE'; event='STEP3_PASS_NODE2222_RELEASE'
+          if rc==0 and ecommit:
+              n['status']='PASS'
+              n['checkpoint']['after']=f"STEP3 PASS run={os.environ['GITHUB_RUN_ID']}: Node22.22.2 install/build PASS; canonical FABLES ACTIVE; real Redis Queue/Worker input21->output42; provenance SOURCE_URL+COMMIT+SHA256 persisted; L2+L3+L4; evidence_commit={ecommit}; prune NOT_NEEDED"
+              for item in (f"step3:run:{os.environ['GITHUB_RUN_ID']}",f"step3:evidence_commit:{ecommit}",'step3:repair:Node22.22.2_engine_chain_closed','step3:microtest:PASS input=21 output=42','step3:evidence:L2_build+L3_runtime+L4_feature','step3:prune:NOT_NEEDED',f"provenance:source_url:{os.environ['SOURCE_URL']}",f"provenance:source_commit:{os.environ['SOURCE_COMMIT']}",'provenance:sha256:Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/bullmq/SOURCE_SHA256.txt'):
+                  if item not in ev: ev.append(item)
+              n['next_action']='COMPLETE'; event='STEP3_PASS_NODE2222_RELEASE'
           else:
-              n['status']='GAP_STEP3'; n['checkpoint']['after']=f"STEP3 GAP {stage} Node22.22.2 run={os.environ['GITHUB_RUN_ID']} rc={rc}: {detail}"; ev.append(f"step3:gap:{stage}:Node22.22.2:run:{os.environ['GITHUB_RUN_ID']}:rc={rc}:{detail}"); n['next_action']='REPAIR_EXACT_STEP3_GAP_AND_RETRY'; event=f'STEP3_GAP_{stage}_NODE2222_RELEASE'
-          n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 2','event':event,'run':int(os.environ['GITHUB_RUN_ID']),'commit':os.environ.get('ECOMMIT')}); n['owner']=None; n['lock']='FREE'; d['updated_at']=now; d.setdefault('counts',{})['closed_current_contract']=sum(1 for x in d['nodes'] if x.get('next_action')=='COMPLETE'); inv=json.load(open(ip,encoding='utf-8')); c=next(x for x in inv['components'] if x.get('name')=='BullMQ'); c['wall_node_id']=33; c['wall_status']=n['status']; c['wall_current_step']=3; c['wall_target']=n['target']; json.dump(d,open(wp,'w',encoding='utf-8'),ensure_ascii=False,indent=2); open(wp,'a',encoding='utf-8').write('\n'); json.dump(inv,open(ip,'w',encoding='utf-8'),ensure_ascii=False,indent=2); open(ip,'a',encoding='utf-8').write('\n')
+              if rc==0 and not ecommit:
+                  stage='PUBLISH'
+                  detail='STEP3 runtime passed but artifact/provenance publication did not yield a commit'
+              n['status']='GAP_STEP3'
+              n['checkpoint']['after']=f"STEP3 GAP {stage} Node22.22.2 run={os.environ['GITHUB_RUN_ID']} rc={rc}: {detail}"
+              ev.append(f"step3:gap:{stage}:Node22.22.2:run:{os.environ['GITHUB_RUN_ID']}:rc={rc}:{detail}")
+              n['next_action']='REPAIR_EXACT_STEP3_GAP_AND_RETRY'; event=f'STEP3_GAP_{stage}_NODE2222_RELEASE'
+          n.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL GPT','event':event,'run':int(os.environ['GITHUB_RUN_ID']),'commit':ecommit or None})
+          n['owner']=None; n['lock']='FREE'; d['updated_at']=now
+          d.setdefault('counts',{})['closed_current_contract']=sum(1 for x in d['nodes'] if x.get('next_action')=='COMPLETE')
+          inv=json.load(open(ip,encoding='utf-8')); c=next(x for x in inv['components'] if x.get('name')=='BullMQ')
+          c['wall_node_id']=33; c['wall_status']=n['status']; c['wall_current_step']=3; c['wall_target']=n['target']
+          json.dump(d,open(wp,'w',encoding='utf-8'),ensure_ascii=False,indent=2); open(wp,'a',encoding='utf-8').write('\n')
+          json.dump(inv,open(ip,'w',encoding='utf-8'),ensure_ascii=False,indent=2); open(ip,'a',encoding='utf-8').write('\n')
           PY
-            git add -- "$WALL" "$INVENTORY"; git commit -m "crazy-wall: SOL2 BullMQ Node2222 checkpoint run $GITHUB_RUN_ID" || true
+            git add -- "$WALL" "$INVENTORY"; git commit -m "crazy-wall: SOL BullMQ Node2222 checkpoint run $GITHUB_RUN_ID" || true
             if git push origin HEAD:main; then break; fi; sleep $((attempt*2))
           done
           test "${RC:-99}" -eq 0
+          test -n "${ECOMMIT:-}"
