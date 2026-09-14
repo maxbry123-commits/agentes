@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/scripts/yaiwes_internal_surgical_transform_v5.py'
       - '.github/scripts/yaiwes_internal_surgical_transform_v5_runner.py'
+      - '.github/scripts/yaiwes_internal_surgical_transform_v52_runner.py'
       - '.github/workflows/yaiwes-coda-internal-surgical-v5.yml'
   workflow_dispatch:
 
@@ -31,6 +32,7 @@ jobs:
           sparse-checkout: |
             /.github/scripts/yaiwes_internal_surgical_transform_v5.py
             /.github/scripts/yaiwes_internal_surgical_transform_v5_runner.py
+            /.github/scripts/yaiwes_internal_surgical_transform_v52_runner.py
             /.github/workflows/yaiwes-coda-internal-surgical-v5.yml
             /📂coda workflow persistencias/
 
@@ -38,8 +40,8 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m py_compile .github/scripts/yaiwes_internal_surgical_transform_v5.py
-          python3 -m py_compile .github/scripts/yaiwes_internal_surgical_transform_v5_runner.py
-          python3 .github/scripts/yaiwes_internal_surgical_transform_v5_runner.py
+          python3 -m py_compile .github/scripts/yaiwes_internal_surgical_transform_v52_runner.py
+          python3 .github/scripts/yaiwes_internal_surgical_transform_v52_runner.py
 
       - name: Validate 24 manifests and policies
         run: |
@@ -51,6 +53,7 @@ jobs:
           comps=sorted(p for p in root.iterdir() if p.is_dir() and p.name.startswith('🏈 ') and p.name!='🏈 cancha deportiva de fútbol')
           assert len(comps)==24, len(comps)
           total=0
+          unavailable=[]
           for c in comps:
               p=c/'INTERNAL-SURGICAL-MANIFEST-V5.json'
               assert p.is_file(), p
@@ -59,8 +62,10 @@ jobs:
               assert d['policy']['offensive_execution'] is False
               assert d['policy']['ambiguous']=='FAIL_CLOSED'
               total += d['counts']['links']
-          assert total > 0, total
-          print('V5_MANIFESTS=24 LINKS=', total)
+              if not d.get('source_code_available'):
+                  unavailable.append(c.name)
+          assert unavailable == ['🏈 24-Security-AI-Agent'], unavailable
+          print('V52_MANIFESTS=24 LINKS=', total, 'SOURCE_GAP=', unavailable)
           PY
 
       - name: Parse all generated Python replacements
@@ -107,7 +112,7 @@ jobs:
           if git diff --cached --quiet; then
             echo 'NO_CHANGES'
           else
-            git commit -m 'feat(coda): surgical internal persistence transform v5'
+            git commit -m 'feat(coda): surgical internal persistence transform v5.2'
             git push origin HEAD:main
           fi
 
@@ -124,5 +129,7 @@ jobs:
           p=Path('📂coda workflow persistencias/🏈 cancha deportiva de fútbol/YAIWES-INTERNAL-SURGICAL-REPORT-V5.json')
           d=json.loads(p.read_text(encoding='utf-8'))
           assert d['components']==24 and not d['errors']
-          print('FINAL_V5_PASS', d['files_accounted'], d['links'])
+          assert d['source_code_components']==23
+          assert d['source_code_unavailable']==['🏈 24-Security-AI-Agent']
+          print('FINAL_V52_PASS', d['files_accounted'], d['links'], d['source_code_unavailable'])
           PY
