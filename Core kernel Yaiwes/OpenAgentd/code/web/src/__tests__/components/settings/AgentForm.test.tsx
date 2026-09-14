@@ -1,0 +1,357 @@
+/**
+ * AgentForm — focused tests for the MCP server picker, the server-prefixed tool
+ * filter, and the YAML round-trip of the new ``mcp:`` frontmatter field.
+ *
+ * The existing form already has broad coverage of identity / model /
+ * tools / skills via integration. These tests cover only the deltas
+ * introduced when MCP server membership moved into a dedicated picker.
+ */
+import { describe, it, expect, afterEach, mock } from 'bun:test'
+import { render, screen, cleanup, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+
+import { AgentForm } from '@/components/settings/AgentForm'
+import {
+  buildFrontmatter,
+  splitFrontmatter,
+  combine,
+  type AgentFrontmatter,
+} from '@/components/settings/frontmatter'
+
+// ── Module mocks ─────────────────────────────────────────────────────────────
+
+mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
+
+// Single source of truth for the registry + MCP servers fixture across the
+// test file. Tests can mutate the inner arrays freely; the mocked hooks
+// always return live references.
+const registryFixture: {
+  tools: { name: string; description: string }[]
+  skills: { name: string; description: string }[]
+  providers: string[]
+  models: { id: string; provider: string; model: string; vision: boolean; thinking_levels?: string[] }[]
+} = {
+  tools: [
+    { name: 'shell', description: 'Run a shell command' },
+    { name: 'read', description: 'Read a file' },
+    { name: 'skill', description: 'Load skill instructions' },
+    { name: 'todo_manage', description: 'Manage tasks' },
+    { name: 'schedule_task', description: 'Schedule reminders' },
+    { name: 'note', description: 'Record notes' },
+    // These should be hidden from the Tools picker — they belong to MCP
+    // servers and are granted via the MCP picker.
+    { name: 'context7_resolve_library_id', description: 'C7 resolve' },
+    { name: 'context7_get_library_docs', description: 'C7 docs' },
+  ],
+  skills: [{ name: 'self-healing', description: 'Repair the agent config' }],
+  providers: ['openai'],
+  models: [
+    { id: 'openai:gpt-5.4', provider: 'openai', model: 'gpt-5.4', vision: false, thinking_levels: [] },
+  ],
+}
+
+const mcpFixture = {
+  servers: [
+    {
+      name: 'context7',
+      transport: 'http' as const,
+      enabled: true,
+      state: 'ready' as const,
+      error: null,
+      tool_names: ['resolve_library_id', 'get_library_docs'],
+      started_at: null,
+      config: null,
+    },
+    {
+      name: 'filesystem',
+      transport: 'stdio' as const,
+      enabled: true,
+      state: 'error' as const,
+      error: 'spawn failed',
+      tool_names: [],
+      started_at: null,
+      config: null,
+    },
+  ],
+}
+
+mock.module('@/queries', () => ({
+  useRegistryQuery: () => ({
+    data: registryFixture,
+    isLoading: false,
+    isError: false,
+    error: null,
+  }),
+  useCodeAgentQuery: () => ({
+    data: {
+      config: {
+        tools: ['skill', 'todo_manage', 'schedule_task', 'note', 'shell', 'read', 'write'],
+      },
+    },
+    isLoading: false,
+    isError: false,
+    error: null,
+  }),
+  useMcpServersQuery: () => ({
+    data: mcpFixture,
+    isLoading: false,
+    isError: false,
+    error: null,
+  }),
+}))
+
+afterEach(cleanup)
+
+// ── frontmatter round-trip ───────────────────────────────────────────────────
+
+describe('frontmatter — mcp field', () => {
+  it('emits sorted mcp list under its own key', () => {
+    const fm: AgentFrontmatter = {
+      name: 'code',
+      role: 'lead',
+      model: 'openai:gpt-5.4',
+      mcp: ['filesystem', 'context7'],
+    }
+    const yaml = buildFrontmatter(fm)
+    // Sorted ascending, one entry per line, indented two spaces.
+    expect(yaml).toContain('mcp:\n  - context7\n  - filesystem')
+  })
+
+  it('omits the mcp key entirely when empty / undefined', () => {
+    const fm: AgentFrontmatter = {
+      name: 'a',
+      role: 'member',
+      model: 'openai:gpt-5.4',
+    }
+    expect(buildFrontmatter(fm)).not.toContain('mcp:')
+    expect(buildFrontmatter({ ...fm, mcp: [] })).not.toContain('mcp:')
+  })
+
+  it('survives a combine → split round-trip', () => {
+    const raw = combine(
+      {
+        name: 'code',
+        role: 'lead',
+        model: 'openai:gpt-5.4',
+        mcp: ['context7'],
+      },
+      'You are code.',
+    )
+    const { fm: fmText, body } = splitFrontmatter(raw)
+    expect(fmText).toContain('mcp:')
+    expect(fmText).toContain('- context7')
+    expect(body.trim()).toBe('You are code.')
+  })
+})
+
+// ── AgentForm — picker rendering & tool filtering ───────────────────────────
+
+const SAMPLE_RAW = `---
+name: code
+role: lead
+model: openai:gpt-5.4
+tools:
+  - shell
+  - read
+mcp:
+  - context7
+---
+
+You are code.
+`
+
+function renderForm(initial = SAMPLE_RAW) {
+  // Mocks are typed loosely; the real callbacks are typed via the AgentForm
+  // prop signature so this is purely a spy.
+  const onChange = mock(() => {})
+  const onModeChange = mock(() => {})
+  render(
+    <AgentForm
+      initial={initial}
+      onChange={onChange}
+      mode="form"
+      onModeChange={onModeChange}
+    />,
+  )
+  return { onChange, onModeChange }
+}
+
+/**
+ * Locate the ``Field`` wrapper for a given label. The form renders each
+ * field as ``<div class="flex flex-col gap-1.5"><span>Label</span> ...</div>``
+ * — the parent of the label span is the field root.
+ */
+function fieldFor(label: string): HTMLElement {
+  const span = screen.getByText(label, { selector: 'span' })
+  const root = span.parentElement
+  if (!root) throw new Error(`No field root for label ${label}`)
+  return root as HTMLElement
+}
+
+/** The MultiSelect trigger inside a given field. */
+function comboboxIn(label: string): HTMLElement {
+  const field = within(fieldFor(label))
+  return field.queryByRole('combobox') ?? field.getByRole('button')
+}
+
+describe('AgentForm — Capabilities card', () => {
+  it('hides MCP server-prefixed entries from the Tools picker', async () => {
+    const user = userEvent.setup()
+    renderForm()
+
+    await user.click(comboboxIn('Tools'))
+    // After opening, the search input is focused. Type a query that would
+    // otherwise match the context7_* entries.
+    const search = screen.getByLabelText('Search options')
+    await user.type(search, 'context7_')
+
+    // The list shows the empty state and the count only includes selectable
+    // non-MCP, non-implicit tools.
+    expect(screen.queryByText('context7_resolve_library_id')).toBeNull()
+    expect(screen.queryByText('context7_get_library_docs')).toBeNull()
+    expect(screen.getByText('0/2')).toBeTruthy()
+  })
+
+  it('does not render an MCP server picker', () => {
+    renderForm()
+
+    expect(screen.queryByText('MCP servers', { selector: 'span' })).toBeNull()
+  })
+
+  it('shows built-in tools separately from extra tool overrides', () => {
+    renderForm(SAMPLE_RAW)
+
+    const toolsField = fieldFor('Tools')
+    const builtInBox = within(toolsField).getByText('Built-in tools').parentElement
+    if (!builtInBox) throw new Error('missing built-in tools box')
+    expect(within(builtInBox).getByText('write')).toBeTruthy()
+    expect(within(builtInBox).getByText('skill')).toBeTruthy()
+    expect(within(builtInBox).getByText('todo_manage')).toBeTruthy()
+    expect(within(builtInBox).queryByText('shell')).toBeNull()
+    expect(within(builtInBox).queryByText('read')).toBeNull()
+    expect(screen.getByText(/2 extra selected/i)).toBeTruthy()
+  })
+
+  it('groups selected extra tools in a labelled selection list', () => {
+    renderForm(SAMPLE_RAW)
+
+    const selected = screen.getByLabelText('Selected tools')
+    expect(within(selected).getByText('shell')).toBeTruthy()
+    expect(within(selected).getByText('read')).toBeTruthy()
+    expect(within(selected).getByRole('button', { name: 'Remove shell' })).toBeTruthy()
+  })
+
+  it('does not offer implicit lead-only or skill tools in the extra picker', async () => {
+    const user = userEvent.setup()
+    renderForm(SAMPLE_RAW)
+
+    await user.click(comboboxIn('Tools'))
+    const listbox = screen.getByRole('listbox')
+    expect(within(listbox).queryByText('skill')).toBeNull()
+    expect(within(listbox).queryByText('todo_manage')).toBeNull()
+    expect(within(listbox).queryByText('schedule_task')).toBeNull()
+    expect(within(listbox).queryByText('note')).toBeNull()
+  })
+
+  it('treats the code profile as additive over built-in defaults', () => {
+    renderForm(`---
+name: code
+role: lead
+model: openai:gpt-5.4
+---
+`)
+
+    expect(screen.getByText('Built-in OpenAgentd profile')).toBeTruthy()
+    expect(screen.queryByText(/Extra prompt/)).toBeNull()
+    expect(screen.getByText(/Built-in tools are always included/i)).toBeTruthy()
+  })
+
+  it('shows only default and none when the selected model has no thinking metadata', async () => {
+    const user = userEvent.setup()
+    renderForm()
+
+    await user.click(comboboxIn('Thinking level'))
+
+    expect(screen.getAllByText('(default)').length).toBeGreaterThan(0)
+    expect(screen.getByText('none')).toBeTruthy()
+    expect(screen.queryByText('low')).toBeNull()
+    expect(screen.queryByText('medium')).toBeNull()
+    expect(screen.queryByText('high')).toBeNull()
+  })
+
+  it('uses per-model thinking levels when the selected model provides them', async () => {
+    const user = userEvent.setup()
+    const originalModels = [...registryFixture.models]
+    registryFixture.models.splice(0, registryFixture.models.length, {
+      id: 'openai:gpt-5.4',
+      provider: 'openai',
+      model: 'gpt-5.4',
+      vision: false,
+      thinking_levels: ['none', 'low', 'medium', 'high', 'xhigh'] as string[],
+    })
+
+    try {
+      renderForm()
+      await user.click(comboboxIn('Thinking level'))
+
+      expect(screen.getAllByText('(default)').length).toBeGreaterThan(0)
+      expect(screen.getByText('none')).toBeTruthy()
+      expect(screen.getByText('low')).toBeTruthy()
+      expect(screen.getByText('medium')).toBeTruthy()
+      expect(screen.getByText('high')).toBeTruthy()
+      expect(screen.getByText('xhigh')).toBeTruthy()
+    } finally {
+      registryFixture.models.splice(0, registryFixture.models.length, ...originalModels)
+    }
+  })
+
+  it('resets thinking level to default when switching from a model supporting xhigh to one that does not', async () => {
+    const user = userEvent.setup()
+    const originalModels = [...registryFixture.models]
+    registryFixture.models.splice(0, registryFixture.models.length,
+      {
+        id: 'anthropic:claude-3-7-sonnet',
+        provider: 'anthropic',
+        model: 'claude-3-7-sonnet',
+        vision: false,
+        thinking_levels: ['none', 'low', 'medium', 'high', 'xhigh'],
+      },
+      {
+        id: 'openai:gpt-4o',
+        provider: 'openai',
+        model: 'gpt-4o',
+        vision: false,
+        thinking_levels: [],
+      }
+    )
+
+    try {
+      const initialYaml = `---
+name: coder
+role: lead
+model: anthropic:claude-3-7-sonnet
+thinking_level: xhigh
+---
+System prompt here
+`
+      const { onChange } = renderForm(initialYaml)
+      onChange.mockClear()
+
+      const modelInput = comboboxIn('Model')
+      await user.click(modelInput)
+      await user.clear(modelInput)
+      await user.type(modelInput, 'openai:gpt-4o')
+
+      const option = await screen.findByText('openai:gpt-4o')
+      await user.click(option)
+
+      const lastCall = onChange.mock.calls.at(-1)
+      expect(lastCall).toBeDefined()
+      const nextRaw = lastCall![0] as string
+      expect(nextRaw).toContain('model: openai:gpt-4o')
+      expect(nextRaw).not.toContain('thinking_level: xhigh')
+    } finally {
+      registryFixture.models.splice(0, registryFixture.models.length, ...originalModels)
+    }
+  })
+})

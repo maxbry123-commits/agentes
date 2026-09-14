@@ -1,0 +1,2746 @@
+from datetime import UTC, datetime
+from uuid import UUID
+
+import pytest
+import pytest_asyncio
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlmodel import SQLModel, select
+from sqlmodel.ext.asyncio.session import AsyncSession
+from unittest.mock import AsyncMock
+
+from app.models.chat import ChatSession, SessionMessage
+from app.agent.schemas.chat import (
+    AssistantMessage,
+    FunctionCall,
+    HumanMessage,
+    SystemMessage,
+    ToolCall,
+    ToolMessage,
+)
+from app.services.chat_service import (
+    cancel_queued_user_message,
+    cleanup_reverted_tail,
+    create_chat_session,
+    delete_session,
+    get_messages,
+    get_messages_for_llm,
+    heal_orphaned_tool_calls,
+    hide_messages_before_summary,
+    redo_session_messages,
+    pop_queued_user_messages,
+    release_queued_user_messages,
+    save_queued_user_message,
+    undo_session_messages,
+    save_message,
+)
+from app.services.chat_service_revert import (
+    history_messages_stmt,
+    get_active_summary,
+    llm_window_stmt,
+)
+
+
+@pytest_asyncio.fixture
+async def engine():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+    yield engine
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.drop_all)
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def session(engine):
+    async_session = async_sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
+    async with async_session() as session:
+        yield session
+
+
+@pytest.mark.asyncio
+async def test_create_chat_session(session):
+    chat_session = await create_chat_session(session, title="Test Session")
+    assert chat_session.id is not None
+    assert chat_session.title == "Test Session"
+
+    # Verify it exists in DB
+    db_session = await session.get(ChatSession, chat_session.id)
+    assert db_session is not None
+
+
+@pytest.mark.asyncio
+async def test_save_and_get_messages(session):
+    chat_session = await create_chat_session(session)
+
+    messages = [
+        SystemMessage(content="system"),
+        HumanMessage(content="hello"),
+        AssistantMessage(
+            content="hi",
+            reasoning_content="thinking",
+            tool_calls=[
+                ToolCall(id="c1", function=FunctionCall(name="f", arguments="{}"))
+            ],
+        ),
+        ToolMessage(
+            role="tool", content="result", tool_call_id="call_1", name="tool_name"
+        ),
+    ]
+
+    for msg in messages:
+        await save_message(session, chat_session.id, msg)
+
+    fetched = await get_messages(session, chat_session.id)
+    assert len(fetched) == 4
+    assert isinstance(fetched[0], SystemMessage)
+    assert isinstance(fetched[1], HumanMessage)
+    assert isinstance(fetched[2], AssistantMessage)
+    assert fetched[2].reasoning_content == "thinking"
+    assert isinstance(fetched[2].tool_calls, list)
+    assert len(fetched[2].tool_calls) == 1
+    assert isinstance(fetched[3], ToolMessage)
+    assert fetched[3].tool_call_id == "call_1"
+    assert fetched[3].name == "tool_name"
+
+
+@pytest.mark.asyncio
+async def test_get_messages_unhandled_role(session):
+    chat_session = await create_chat_session(session)
+
+    # Manually insert a message with an unhandled role
+    db_msg = SessionMessage(
+        session_id=chat_session.id,
+        role="unknown",
+        content="something",
+    )
+    session.add(db_msg)
+    await session.commit()
+
+    fetched = await get_messages(session, chat_session.id)
+    assert len(fetched) == 0  # It should be skipped by the current loop
+
+
+@pytest.mark.asyncio
+async def test_delete_session_removes_descendants_messages_and_runtime_state(
+    session, monkeypatch, tmp_path
+):
+    """Deleting a lead removes its whole tree and post-commit runtime state."""
+    lead = await create_chat_session(session)
+    child = await create_chat_session(session, parent_session_id=lead.id)
+    grandchild = await create_chat_session(session, parent_session_id=child.id)
+    for chat_session in (lead, child, grandchild):
+        await save_message(session, chat_session.id, HumanMessage(content="message"))
+    await session.commit()
+
+    roots = {
+        "uploads": tmp_path / "uploads",
+        "workspace": tmp_path / "workspace",
+        "metadata": tmp_path / "metadata",
+    }
+    for root in roots.values():
+        root.mkdir()
+        for chat_session in (lead, child, grandchild):
+            path = root / str(chat_session.id)
+            path.mkdir()
+            (path / "data").write_text("data")
+    monkeypatch.setattr(
+        "app.services.chat_service.uploads_dir", lambda sid: roots["uploads"] / sid
+    )
+    monkeypatch.setattr(
+        "app.services.chat_service.workspace_dir", lambda sid: roots["workspace"] / sid
+    )
+    monkeypatch.setattr(
+        "app.services.chat_service.session_artifact_dir",
+        lambda sid: roots["metadata"] / sid,
+    )
+
+    evict = AsyncMock()
+    clear = AsyncMock()
+    snapshot = AsyncMock()
+    monkeypatch.setattr("app.services.agent_manager.evict_sessions", evict)
+    monkeypatch.setattr("app.services.memory_stream_store.clear", clear)
+    monkeypatch.setattr("app.services.snapshot_service.remove", snapshot)
+
+    assert await delete_session(session, lead.id) is True
+
+    assert await session.get(ChatSession, lead.id) is None
+    assert await session.get(ChatSession, child.id) is None
+    assert await session.get(ChatSession, grandchild.id) is None
+    assert not (await session.exec(select(SessionMessage))).all()
+    expected = {str(lead.id), str(child.id), str(grandchild.id)}
+    evict.assert_awaited_once_with(expected)
+    assert {call.args[0] for call in clear.await_args_list} == expected
+    assert {call.args[0] for call in snapshot.await_args_list} == expected
+    assert not any(roots["uploads"].iterdir())
+    assert not any(roots["metadata"].iterdir())
+    assert any(roots["workspace"].iterdir())
+
+
+@pytest.mark.asyncio
+async def test_delete_session_finds_all_descendants_with_one_recursive_query(
+    session, monkeypatch
+):
+    lead = await create_chat_session(session)
+    child = await create_chat_session(session, parent_session_id=lead.id)
+    await create_chat_session(session, parent_session_id=child.id)
+    await session.commit()
+
+    from app.core import db as core_db
+
+    statements = []
+    original_exec = core_db.AsyncSession.exec
+
+    async def recording_exec(self, statement, *args, **kwargs):
+        rendered = str(statement)
+        if "parent_session_id" in rendered:
+            statements.append(rendered)
+        return await original_exec(self, statement, *args, **kwargs)
+
+    monkeypatch.setattr(core_db.AsyncSession, "exec", recording_exec)
+    monkeypatch.setattr("app.services.agent_manager.evict_sessions", AsyncMock())
+    monkeypatch.setattr("app.services.memory_stream_store.clear", AsyncMock())
+    monkeypatch.setattr("app.services.snapshot_service.remove", AsyncMock())
+
+    assert await delete_session(session, lead.id) is True
+
+    assert len(statements) == 1
+    assert "WITH RECURSIVE" in statements[0]
+
+
+# ── Summarisation: save_message flags ────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_save_message_with_summary_flag(session):
+    """save_message maps is_summary=True to kind='summary' (a HumanMessage row)."""
+    chat_session = await create_chat_session(session)
+    msg = HumanMessage(content="Summary text.")
+    saved = await save_message(session, chat_session.id, msg, is_summary=True)
+    assert saved.kind == "summary"
+    assert saved.pinned is False
+    assert saved.role == "user"
+
+
+@pytest.mark.asyncio
+async def test_save_message_with_hidden_flag(session):
+    """save_message maps is_hidden=True to kind='note'."""
+    chat_session = await create_chat_session(session)
+    msg = HumanMessage(content="Old message.")
+    saved = await save_message(session, chat_session.id, msg, is_hidden=True)
+    assert saved.kind == "note"
+    assert saved.pinned is False
+
+
+@pytest.mark.asyncio
+async def test_save_message_flushes_returned_tool_row_without_refresh_select(
+    session, engine
+):
+    """Flush populates Python defaults and tool fields without a post-insert SELECT.
+
+    The single SELECT before the INSERT is the seq allocation (MAX(seq) point
+    lookup); what must never happen is a refresh SELECT *after* the insert.
+    """
+    chat_session = await create_chat_session(session)
+    statements: list[str] = []
+
+    def record_statement(_conn, _cursor, statement, _parameters, _context, _many):
+        statements.append(statement)
+
+    event.listen(engine.sync_engine, "before_cursor_execute", record_statement)
+    try:
+        saved = await save_message(
+            session,
+            chat_session.id,
+            ToolMessage(content="result", tool_call_id="call-1", name="search"),
+            extra={"duration_ms": 12.5},
+        )
+    finally:
+        event.remove(engine.sync_engine, "before_cursor_execute", record_statement)
+
+    insert_idx = next(i for i, s in enumerate(statements) if "INSERT" in s.upper())
+    assert not any("SELECT" in s.upper() for s in statements[insert_idx + 1 :]), (
+        statements
+    )
+    assert saved.id is not None
+    assert saved.created_at is not None
+    assert saved.session_id == chat_session.id
+    assert saved.role == "tool"
+    assert saved.content == "result"
+    assert saved.tool_call_id == "call-1"
+    assert saved.name == "search"
+    assert saved.extra == {"duration_ms": 12.5}
+    assert saved.kind == "chat"
+    assert saved.pinned is False
+
+
+@pytest.mark.asyncio
+async def test_cleanup_reverted_summary_restores_compacted_context(session):
+    chat_session = await create_chat_session(session)
+
+    u1 = await save_message(session, chat_session.id, HumanMessage(content="u1"))
+    a1 = await save_message(session, chat_session.id, AssistantMessage(content="a1"))
+    u2 = await save_message(session, chat_session.id, HumanMessage(content="u2"))
+    a2 = await save_message(session, chat_session.id, AssistantMessage(content="a2"))
+    summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="summary"),
+        is_summary=True,
+    )
+    await save_message(
+        session, chat_session.id, AssistantMessage(content="after summary")
+    )
+
+    # Coverage is positional: the summary was saved after u1..a2, so those
+    # rows are out of the derived window with no flag mutation at all.
+    assert (u1.seq, a1.seq, u2.seq, a2.seq) < (summary.seq,) * 4
+    await session.commit()
+
+    shift = await undo_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    assert shift.target and shift.target.id == summary.id
+    await session.commit()
+
+    await cleanup_reverted_tail(session, chat_session.id)
+    await session.commit()
+
+    visible = await get_messages_for_llm(session, chat_session.id)
+    assert [m.content for m in visible] == ["u1", "a1", "u2", "a2"]
+
+    refreshed_summary = await session.get(SessionMessage, summary.id)
+    assert refreshed_summary is not None
+    assert refreshed_summary.kind == "reverted"
+
+
+@pytest.mark.asyncio
+async def test_cleanup_reverted_summary_restores_only_to_previous_summary(session):
+    chat_session = await create_chat_session(session)
+
+    old_user = await save_message(
+        session, chat_session.id, HumanMessage(content="old u")
+    )
+    old_assistant = await save_message(
+        session, chat_session.id, AssistantMessage(content="old a")
+    )
+    first_summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="summary 1"),
+        is_summary=True,
+    )
+    await save_message(session, chat_session.id, HumanMessage(content="mid u"))
+    await save_message(session, chat_session.id, AssistantMessage(content="mid a"))
+    second_summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="summary 2"),
+        is_summary=True,
+    )
+    await save_message(session, chat_session.id, AssistantMessage(content="after s2"))
+
+    await session.commit()
+
+    shift = await undo_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    assert shift.target and shift.target.id == second_summary.id
+    await session.commit()
+
+    await cleanup_reverted_tail(session, chat_session.id)
+    await session.commit()
+
+    visible = await get_messages_for_llm(session, chat_session.id)
+    assert [m.content for m in visible] == ["summary 1", "mid u", "mid a"]
+
+    refreshed_old_user = await session.get(SessionMessage, old_user.id)
+    refreshed_old_assistant = await session.get(SessionMessage, old_assistant.id)
+    assert refreshed_old_user is not None
+    assert refreshed_old_assistant is not None
+    # Still covered by summary 1 (positional), untouched by the revert.
+    assert refreshed_old_user.kind == "chat"
+    assert refreshed_old_assistant.kind == "chat"
+    assert refreshed_old_user.seq < first_summary.seq
+    assert refreshed_old_assistant.seq < first_summary.seq
+
+
+@pytest.mark.asyncio
+async def test_redo_reapplies_second_summary_without_restoring_old_context(session):
+    chat_session = await create_chat_session(session)
+
+    old_user = await save_message(
+        session, chat_session.id, HumanMessage(content="old u")
+    )
+    old_assistant = await save_message(
+        session, chat_session.id, AssistantMessage(content="old a")
+    )
+    first_summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="summary 1"),
+        is_summary=True,
+    )
+    mid_user = await save_message(
+        session, chat_session.id, HumanMessage(content="mid u")
+    )
+    mid_assistant = await save_message(
+        session, chat_session.id, AssistantMessage(content="mid a")
+    )
+    second_summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="summary 2"),
+        is_summary=True,
+    )
+    after_summary = await save_message(
+        session, chat_session.id, AssistantMessage(content="after s2")
+    )
+
+    await session.commit()
+
+    undo_shift = await undo_session_messages(session, chat_session.id)
+    assert undo_shift.applied is True
+    assert undo_shift.target and undo_shift.target.id == second_summary.id
+    await session.commit()
+
+    redo_shift = await redo_session_messages(session, chat_session.id)
+    assert redo_shift.applied is True
+    assert redo_shift.target is None
+    await session.commit()
+
+    visible = await get_messages_for_llm(session, chat_session.id)
+    assert [m.content for m in visible] == ["summary 2", "after s2"]
+
+    # Everything before summary 2 stays covered by it positionally.
+    for row in (old_user, old_assistant, first_summary, mid_user, mid_assistant):
+        refreshed = await session.get(SessionMessage, row.id)
+        assert refreshed is not None
+        assert refreshed.seq < second_summary.seq
+    refreshed_second_summary = await session.get(SessionMessage, second_summary.id)
+    refreshed_after_summary = await session.get(SessionMessage, after_summary.id)
+    assert refreshed_second_summary is not None
+    assert refreshed_after_summary is not None
+    assert refreshed_second_summary.kind == "summary"
+    assert refreshed_after_summary.kind == "chat"
+
+
+@pytest.mark.asyncio
+async def test_cleanup_reverted_middle_summary_restores_previous_summary_window(
+    session,
+):
+    chat_session = await create_chat_session(session)
+
+    old_user = await save_message(
+        session, chat_session.id, HumanMessage(content="old u")
+    )
+    old_assistant = await save_message(
+        session, chat_session.id, AssistantMessage(content="old a")
+    )
+    first_summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="summary 1"),
+        is_summary=True,
+    )
+    await save_message(session, chat_session.id, HumanMessage(content="s1 window u"))
+    await save_message(
+        session, chat_session.id, AssistantMessage(content="s1 window a")
+    )
+    second_summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="summary 2"),
+        is_summary=True,
+    )
+    second_window_user = await save_message(
+        session, chat_session.id, HumanMessage(content="s2 window u")
+    )
+    second_window_assistant = await save_message(
+        session, chat_session.id, AssistantMessage(content="s2 window a")
+    )
+    third_summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="summary 3"),
+        is_summary=True,
+    )
+    await save_message(session, chat_session.id, AssistantMessage(content="after s3"))
+
+    await session.commit()
+
+    first_undo = await undo_session_messages(session, chat_session.id)
+    assert first_undo.applied is True
+    assert first_undo.target and first_undo.target.id == third_summary.id
+    await session.commit()
+
+    second_undo = await undo_session_messages(session, chat_session.id)
+    assert second_undo.applied is True
+    # Undoing summary 3 exposes summary 2's window, including its user turn.
+    assert second_undo.target and second_undo.target.id == second_window_user.id
+    await session.commit()
+
+    third_undo = await undo_session_messages(session, chat_session.id)
+    assert third_undo.applied is True
+    assert third_undo.target and third_undo.target.id == second_summary.id
+    await session.commit()
+
+    await cleanup_reverted_tail(session, chat_session.id)
+    await session.commit()
+
+    visible = await get_messages_for_llm(session, chat_session.id)
+    assert [m.content for m in visible] == [
+        "summary 1",
+        "s1 window u",
+        "s1 window a",
+    ]
+
+    # Rows before summary 1 stay positionally covered by it.
+    for row in (old_user, old_assistant):
+        refreshed = await session.get(SessionMessage, row.id)
+        assert refreshed is not None
+        assert refreshed.kind == "chat"
+        assert refreshed.seq < first_summary.seq
+    for row in (
+        second_summary,
+        second_window_user,
+        second_window_assistant,
+        third_summary,
+    ):
+        refreshed = await session.get(SessionMessage, row.id)
+        assert refreshed is not None
+        assert refreshed.kind == "reverted"
+
+
+@pytest.mark.asyncio
+async def test_cleanup_reverted_branched_summary_does_not_restore_old_branch(session):
+    chat_session = await create_chat_session(session)
+
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="summary 1"),
+        is_summary=True,
+    )
+    await save_message(session, chat_session.id, HumanMessage(content="s1 window"))
+
+    old_branch_summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="old branch summary"),
+        is_summary=True,
+    )
+    old_branch_message = await save_message(
+        session, chat_session.id, HumanMessage(content="old branch message")
+    )
+    # The old branch was reverted away (kind='reverted' is what
+    # cleanup_reverted_tail writes).
+    for row in (old_branch_summary, old_branch_message):
+        row.kind = "reverted"
+        session.add(row)
+
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="new summary 2"),
+        is_summary=True,
+    )
+    await save_message(session, chat_session.id, HumanMessage(content="new s2 window"))
+    new_third_summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="new summary 3"),
+        is_summary=True,
+    )
+    await save_message(
+        session, chat_session.id, AssistantMessage(content="after new s3")
+    )
+
+    await session.commit()
+
+    shift = await undo_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    assert shift.target and shift.target.id == new_third_summary.id
+    await session.commit()
+
+    await cleanup_reverted_tail(session, chat_session.id)
+    await session.commit()
+
+    visible = await get_messages_for_llm(session, chat_session.id)
+    assert [m.content for m in visible] == ["new summary 2", "new s2 window"]
+
+    refreshed_old_summary = await session.get(SessionMessage, old_branch_summary.id)
+    refreshed_old_message = await session.get(SessionMessage, old_branch_message.id)
+    assert refreshed_old_summary is not None
+    assert refreshed_old_message is not None
+    assert refreshed_old_summary.kind == "reverted"
+    assert refreshed_old_message.kind == "reverted"
+
+
+# ── get_messages excludes hidden ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_get_messages_excludes_hidden(session):
+    """get_messages must not return is_hidden=True messages."""
+    chat_session = await create_chat_session(session)
+
+    await save_message(session, chat_session.id, HumanMessage(content="visible"))
+    await save_message(
+        session, chat_session.id, HumanMessage(content="hidden"), is_hidden=True
+    )
+
+    fetched = await get_messages(session, chat_session.id)
+    assert len(fetched) == 1
+    assert fetched[0].content == "visible"
+
+
+@pytest.mark.asyncio
+async def test_get_messages_excludes_hidden_from_user_extra(session):
+    chat_session = await create_chat_session(session)
+
+    await save_message(session, chat_session.id, HumanMessage(content="visible"))
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="hidden from user"),
+        extra={"hidden_from_user": True},
+    )
+
+    fetched = await get_messages(session, chat_session.id)
+    assert [m.content for m in fetched] == ["visible"]
+
+    llm_messages = await get_messages_for_llm(session, chat_session.id)
+    assert [m.content for m in llm_messages] == ["visible", "hidden from user"]
+
+
+async def test_queued_user_messages_are_hidden_until_popped(session):
+    chat_session = await create_chat_session(session, "Queue")
+    queued = await save_queued_user_message(session, chat_session.id, "next")
+    await save_message(
+        session, chat_session.id, AssistantMessage(content="current response")
+    )
+    await session.commit()
+
+    visible = await get_messages(session, chat_session.id)
+    assert [msg.content for msg in visible] == ["next", "current response"]
+    assert visible[0].extra and visible[0].extra["queue_status"] == "queued"
+    assert isinstance(visible[0].extra.get("queued_at"), str)
+
+    popped = await pop_queued_user_messages(session, chat_session.id)
+    await session.commit()
+
+    assert [row.id for row in popped] == [queued.id]
+    assert popped[0].kind == "chat"
+    assert popped[0].extra is None
+    visible = await get_messages(session, chat_session.id)
+    assert [msg.content for msg in visible] == ["current response", "next"]
+
+
+async def test_queued_user_message_preserves_model_metadata_when_popped(session):
+    chat_session = await create_chat_session(session, "Queue")
+    queued = await save_queued_user_message(
+        session,
+        chat_session.id,
+        "next",
+        extra={"model": "openai:gpt-5.5", "thinking_level": "high"},
+    )
+    await session.commit()
+
+    assert queued.extra is not None
+    assert queued.extra["model"] == "openai:gpt-5.5"
+    assert queued.extra["thinking_level"] == "high"
+    assert queued.extra["queue_status"] == "queued"
+
+    popped = await pop_queued_user_messages(session, chat_session.id)
+    await session.commit()
+
+    assert [row.id for row in popped] == [queued.id]
+    assert popped[0].extra is not None
+    assert popped[0].extra["model"] == "openai:gpt-5.5"
+    assert popped[0].extra["thinking_level"] == "high"
+    assert "queued_at" not in popped[0].extra
+    assert "queue_status" not in popped[0].extra
+
+
+async def test_popped_queued_user_messages_keep_queue_order_after_response(session):
+    chat_session = await create_chat_session(session, "Queue")
+    first = await save_queued_user_message(session, chat_session.id, "first")
+    second = await save_queued_user_message(session, chat_session.id, "second")
+    await save_message(session, chat_session.id, AssistantMessage(content="response"))
+    await session.commit()
+
+    popped = await pop_queued_user_messages(session, chat_session.id)
+    await session.commit()
+
+    visible = await get_messages(session, chat_session.id)
+    assert [row.id for row in popped] == [first.id, second.id]
+    assert [msg.content for msg in visible] == ["response", "first", "second"]
+
+
+async def test_cancel_queued_user_message_skips_pop(session):
+    chat_session = await create_chat_session(session, "Queue")
+    queued = await save_queued_user_message(session, chat_session.id, "skip")
+    await session.commit()
+
+    cancelled = await cancel_queued_user_message(session, chat_session.id, queued.id)
+    await session.commit()
+
+    assert cancelled is True
+    # Row must be hard-deleted from the database.
+    assert await session.get(SessionMessage, queued.id) is None
+    popped = await pop_queued_user_messages(session, chat_session.id)
+    assert popped == []
+
+
+async def test_undo_and_redo_skip_team_messages(session):
+    chat_session = await create_chat_session(session)
+    first_user = await save_message(
+        session, chat_session.id, HumanMessage(content="first user turn")
+    )
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="[executor#1]: first result"),
+        extra={"from_agent": "executor#1", "is_broadcast": False},
+    )
+    second_user = await save_message(
+        session, chat_session.id, HumanMessage(content="second user turn")
+    )
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="[executor#1]: second result"),
+        extra={"from_agent": "executor#1", "is_broadcast": False},
+    )
+    await session.commit()
+
+    first_undo = await undo_session_messages(session, chat_session.id)
+    await session.commit()
+    second_undo = await undo_session_messages(session, chat_session.id)
+    await session.commit()
+
+    assert first_undo.target and first_undo.target.id == second_user.id
+    assert second_undo.target and second_undo.target.id == first_user.id
+
+    first_redo = await redo_session_messages(session, chat_session.id)
+    await session.commit()
+    second_redo = await redo_session_messages(session, chat_session.id)
+
+    assert first_redo.target and first_redo.target.id == second_user.id
+    assert second_redo.applied is True
+    assert second_redo.target is None
+
+
+async def test_repeated_undo_uses_summary_before_revert_boundary():
+    from app.core.db import async_session_factory
+
+    async with async_session_factory() as db:
+        chat = await create_chat_session(db)
+        user = await save_message(db, chat.id, HumanMessage(content="original"))
+        summary = await save_message(
+            db, chat.id, HumanMessage(content="summary"), is_summary=True
+        )
+        await db.commit()
+        first = await undo_session_messages(db, chat.id)
+        assert first.target.id == summary.id
+        second = await undo_session_messages(db, chat.id)
+        assert second.applied is True
+        assert second.target.id == user.id
+
+
+@pytest.mark.parametrize(
+    "activate", [pop_queued_user_messages, release_queued_user_messages]
+)
+async def test_queued_turn_snapshot_is_captured_on_activation(
+    tmp_path, monkeypatch, activate
+):
+    from app.core.config import settings
+    from app.core.db import async_session_factory
+
+    monkeypatch.setattr(settings, "OPENAGENTD_STATE_DIR", str(tmp_path / "state"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    file = workspace / "file.txt"
+    file.write_text("at enqueue")
+    async with async_session_factory() as db:
+        chat = await create_chat_session(db)
+        chat.workspace = str(workspace)
+        db.add(chat)
+        await save_queued_user_message(db, chat.id, "queued turn")
+        await db.commit()
+        file.write_text("at activation")
+        await activate(db, chat.id)
+        await db.commit()
+        file.write_text("after queued turn")
+        await undo_session_messages(db, chat.id)
+        assert file.read_text() == "at activation"
+        await redo_session_messages(db, chat.id)
+        assert file.read_text() == "after queued turn"
+
+
+@pytest.mark.asyncio
+async def test_undo_filters_non_targets_in_sql(session):
+    """Undo should not materialize excluded rows while finding its target."""
+    chat_session = await create_chat_session(session)
+    target = await save_message(
+        session, chat_session.id, HumanMessage(content="undo target")
+    )
+    for i in range(150):
+        await save_message(
+            session,
+            chat_session.id,
+            HumanMessage(content=f"note-{i}"),
+            is_hidden=True,
+        )
+    await session.commit()
+
+    fetched_message_rows = 0
+    original_exec = session.exec
+
+    async def counting_exec(stmt, *args, **kwargs):
+        nonlocal fetched_message_rows
+        result = await original_exec(stmt, *args, **kwargs)
+        if not getattr(result, "returns_rows", True):
+            # UPDATE/DELETE cursors (e.g. bump_history_revision) carry no rows.
+            return result
+        rows = result.all()
+        fetched_message_rows += sum(
+            1 for row in rows if isinstance(row, SessionMessage)
+        )
+
+        class _Result:
+            def all(self):
+                return rows
+
+            def first(self):
+                return rows[0] if rows else None
+
+        return _Result()
+
+    session.exec = counting_exec
+    try:
+        shift = await undo_session_messages(session, chat_session.id)
+    finally:
+        session.exec = original_exec
+
+    assert shift.target is not None
+    assert shift.target.id == target.id
+    assert fetched_message_rows == 1
+
+
+async def test_cleanup_reverted_tail_preserves_queued_messages(session):
+    chat_session = await create_chat_session(session, "Queue")
+    await save_message(session, chat_session.id, HumanMessage(content="first"))
+    await save_message(session, chat_session.id, AssistantMessage(content="response"))
+    queued = await save_queued_user_message(session, chat_session.id, "queued")
+    await session.commit()
+
+    shift = await undo_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    await session.commit()
+
+    cleaned = await cleanup_reverted_tail(session, chat_session.id)
+    await session.commit()
+
+    refreshed = await session.get(SessionMessage, queued.id)
+    assert cleaned == 2
+    assert refreshed is not None
+    assert refreshed.extra and refreshed.extra["queue_status"] == "queued"
+    assert isinstance(refreshed.extra.get("queued_at"), str)
+    assert refreshed.kind == "queued"
+    popped = await pop_queued_user_messages(session, chat_session.id)
+    assert [row.id for row in popped] == [queued.id]
+
+
+@pytest.mark.asyncio
+async def test_get_messages_includes_summary_message(session):
+    """Summary messages (HumanMessage) are visible so get_messages returns them."""
+    chat_session = await create_chat_session(session)
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="Summary."),
+        is_summary=True,
+    )
+
+    fetched = await get_messages(session, chat_session.id)
+    assert len(fetched) == 1
+    assert isinstance(fetched[0], HumanMessage)
+    assert fetched[0].content == "Summary."
+
+
+@pytest.mark.asyncio
+async def test_undo_summary_dynamically_restores_compacted_messages(session):
+    """Undoing a summary message dynamically restores the compacted messages before it."""
+    chat_session = await create_chat_session(session)
+
+    u1 = await save_message(session, chat_session.id, HumanMessage(content="u1"))
+    a1 = await save_message(session, chat_session.id, AssistantMessage(content="a1"))
+    summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="summary"),
+        is_summary=True,
+    )
+    await save_message(
+        session, chat_session.id, AssistantMessage(content="after summary")
+    )
+
+    # Compaction coverage is positional — the summary was saved after u1/a1.
+    assert u1.seq < summary.seq and a1.seq < summary.seq
+    await session.commit()
+
+    # Now verify that when no undo is applied, we only see the summary and messages after it
+    fetched = await get_messages(session, chat_session.id)
+    assert [m.content for m in fetched] == ["summary", "after summary"]
+
+    # Undo to the summary (meaning the summary itself is undone/hidden)
+    shift = await undo_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    assert shift.target and shift.target.id == summary.id
+    await session.commit()
+
+    # Verify that the messages before the summary are dynamically restored (WITHOUT calling cleanup_reverted_tail!)
+    fetched_after_undo = await get_messages(session, chat_session.id)
+    assert [m.content for m in fetched_after_undo] == ["u1", "a1"]
+
+    # Also verify that the LLM sees the restored messages
+    llm_fetched = await get_messages_for_llm(session, chat_session.id)
+    assert [m.content for m in llm_fetched] == ["u1", "a1"]
+
+
+@pytest.mark.asyncio
+async def test_undo_summary_llm_view_before_undo_excludes_compacted(session):
+    """Before undo: LLM sees only summary + post-summary messages, not compacted ones."""
+    chat_session = await create_chat_session(session)
+
+    u1 = await save_message(session, chat_session.id, HumanMessage(content="u1"))
+    a1 = await save_message(session, chat_session.id, AssistantMessage(content="a1"))
+    await save_message(
+        session, chat_session.id, HumanMessage(content="summary"), is_summary=True
+    )
+    await save_message(session, chat_session.id, AssistantMessage(content="after"))
+
+    await session.commit()
+    assert u1.seq < a1.seq
+
+    # No undo applied — LLM must not see the compacted messages.
+    llm_messages = await get_messages_for_llm(session, chat_session.id)
+    contents = [m.content for m in llm_messages]
+    assert contents == ["summary", "after"]
+
+
+@pytest.mark.asyncio
+async def test_undo_summary_does_not_over_restore_with_two_summaries(session):
+    """Undoing the *second* summary must not restore messages compacted by the first."""
+    chat_session = await create_chat_session(session)
+
+    # Phase 1: first round of messages, compacted by summary_1.
+    u1 = await save_message(session, chat_session.id, HumanMessage(content="u1"))
+    a1 = await save_message(session, chat_session.id, AssistantMessage(content="a1"))
+    summary_1 = await save_message(
+        session, chat_session.id, HumanMessage(content="summary_1"), is_summary=True
+    )
+
+    # Phase 2: messages after summary_1, then compacted by summary_2.
+    u2 = await save_message(session, chat_session.id, HumanMessage(content="u2"))
+    a2 = await save_message(session, chat_session.id, AssistantMessage(content="a2"))
+    summary_2 = await save_message(
+        session, chat_session.id, HumanMessage(content="summary_2"), is_summary=True
+    )
+    await save_message(session, chat_session.id, AssistantMessage(content="after_s2"))
+
+    # Everything before summary_2 (u1/a1/summary_1/u2/a2) is positionally
+    # covered by it; summary_1 is additionally superseded (older id).
+    assert summary_1.id < summary_2.id
+    assert all(r.seq < summary_2.seq for r in (u1, a1, u2, a2))
+    await session.commit()
+
+    # Undo summary_2 — boundary now points at summary_2.
+    shift = await undo_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    assert shift.target and shift.target.id == summary_2.id
+    await session.commit()
+
+    # User view: u2/a2 should be restored (compacted only by summary_2).
+    # u1/a1 must NOT be restored (they were compacted by summary_1, which is still active).
+    fetched = await get_messages(session, chat_session.id)
+    contents = [m.content for m in fetched]
+    assert "u2" in contents
+    assert "a2" in contents
+    assert "u1" not in contents
+    assert "a1" not in contents
+
+    # LLM view must match.
+    llm_fetched = await get_messages_for_llm(session, chat_session.id)
+    llm_contents = [m.content for m in llm_fetched]
+    assert "u2" in llm_contents
+    assert "a2" in llm_contents
+    assert "u1" not in llm_contents
+    assert "a1" not in llm_contents
+
+
+@pytest.mark.asyncio
+async def test_undo_first_summary_restores_all_compacted_messages(session):
+    """Undoing the only (first) summary restores all compacted messages."""
+    chat_session = await create_chat_session(session)
+
+    u1 = await save_message(session, chat_session.id, HumanMessage(content="u1"))
+    a1 = await save_message(session, chat_session.id, AssistantMessage(content="a1"))
+    u2 = await save_message(session, chat_session.id, HumanMessage(content="u2"))
+    summary = await save_message(
+        session, chat_session.id, HumanMessage(content="summary"), is_summary=True
+    )
+    await save_message(session, chat_session.id, AssistantMessage(content="after"))
+
+    await session.commit()
+    assert all(r.seq < summary.seq for r in (u1, a1, u2))
+
+    shift = await undo_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    assert shift.target and shift.target.id == summary.id
+    await session.commit()
+
+    fetched = await get_messages(session, chat_session.id)
+    contents = [m.content for m in fetched]
+    assert contents == ["u1", "a1", "u2"]
+
+    llm_fetched = await get_messages_for_llm(session, chat_session.id)
+    assert [m.content for m in llm_fetched] == ["u1", "a1", "u2"]
+
+
+@pytest.mark.asyncio
+async def test_get_dynamically_visible_messages_no_undo_no_summary(session):
+    """Without undo or summary, reverted rows stay out of both views."""
+    chat_session = await create_chat_session(session)
+
+    await save_message(session, chat_session.id, HumanMessage(content="visible"))
+    hidden = await save_message(
+        session, chat_session.id, AssistantMessage(content="hidden")
+    )
+    hidden.kind = "reverted"
+    session.add(hidden)
+    await session.commit()
+
+    fetched = await get_messages(session, chat_session.id)
+    assert [m.content for m in fetched] == ["visible"]
+
+    llm_fetched = await get_messages_for_llm(session, chat_session.id)
+    assert [m.content for m in llm_fetched] == ["visible"]
+
+
+@pytest.mark.asyncio
+async def test_queued_messages_always_visible_despite_exclude_flag(session):
+    """Queued messages are visible in both views while still queued."""
+    chat_session = await create_chat_session(session)
+
+    await save_message(session, chat_session.id, HumanMessage(content="normal"))
+    await save_queued_user_message(session, chat_session.id, "queued msg")
+    await session.commit()
+
+    fetched = await get_messages(session, chat_session.id)
+    contents = [m.content for m in fetched]
+    assert "normal" in contents
+    assert "queued msg" in contents
+
+
+# ── get_messages_for_llm ──────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_llm_history_query_without_revert_excludes_compacted_rows(session):
+    """The derived LLM window reads the active summary and everything after it."""
+    chat_session = await create_chat_session(session)
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="compacted"),
+    )
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="summary"),
+        is_summary=True,
+    )
+    await save_message(session, chat_session.id, HumanMessage(content="visible"))
+    await save_queued_user_message(session, chat_session.id, "queued")
+    await session.commit()
+
+    summary_row = await get_active_summary(session, chat_session.id)
+    rows = (await session.exec(llm_window_stmt(chat_session.id, summary_row))).all()
+
+    assert [row.content for row in rows] == ["summary", "visible", "queued"]
+
+
+@pytest.mark.asyncio
+async def test_get_messages_for_llm_no_summary_returns_all_visible(session):
+    """With no summary, get_messages_for_llm behaves like get_messages."""
+    chat_session = await create_chat_session(session)
+
+    await save_message(session, chat_session.id, HumanMessage(content="a"))
+    await save_message(session, chat_session.id, AssistantMessage(content="b"))
+
+    result = await get_messages_for_llm(session, chat_session.id)
+    assert len(result) == 2
+
+
+@pytest.mark.asyncio
+async def test_get_messages_for_llm_returns_summary_plus_newer_messages(session):
+    """With a summary present, only the summary and post-summary messages are returned."""
+    chat_session = await create_chat_session(session)
+
+    # Old messages that will be hidden
+    await save_message(
+        session, chat_session.id, HumanMessage(content="old 1"), is_hidden=True
+    )
+    await save_message(
+        session, chat_session.id, AssistantMessage(content="old 2"), is_hidden=True
+    )
+
+    # Summary is stored as HumanMessage
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="Summary of old conversation."),
+        is_summary=True,
+    )
+
+    # New messages after the summary
+    await save_message(session, chat_session.id, HumanMessage(content="new 1"))
+    await save_message(session, chat_session.id, AssistantMessage(content="new 2"))
+
+    result = await get_messages_for_llm(session, chat_session.id)
+
+    contents = [m.content for m in result]
+    # Must include the summary itself
+    assert "Summary of old conversation." in contents
+    # Summary must be a HumanMessage (not AssistantMessage) for valid role ordering
+    summary_msg = next(m for m in result if m.content == "Summary of old conversation.")
+    assert isinstance(summary_msg, HumanMessage)
+    # Must include post-summary messages
+    assert "new 1" in contents
+    assert "new 2" in contents
+    # Must NOT include hidden old messages
+    assert "old 1" not in contents
+    assert "old 2" not in contents
+    # Summary must be first
+    assert result[0].content == "Summary of old conversation."
+
+
+@pytest.mark.asyncio
+async def test_get_messages_for_llm_uses_most_recent_summary(session):
+    """When multiple summaries exist, only the latest one and messages after it are included."""
+    chat_session = await create_chat_session(session)
+
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="First summary."),
+        is_summary=True,
+        is_hidden=False,
+    )
+    await save_message(
+        session, chat_session.id, HumanMessage(content="middle"), is_hidden=True
+    )
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="Latest summary."),
+        is_summary=True,
+    )
+    await save_message(session, chat_session.id, HumanMessage(content="after latest"))
+
+    result = await get_messages_for_llm(session, chat_session.id)
+    contents = [m.content for m in result]
+    assert "Latest summary." in contents
+    assert "after latest" in contents
+    # First summary is older than latest_summary.created_at and is_hidden=False
+    # but created_at <= latest_summary.created_at so it won't be included via
+    # the "after" branch; it's also not the latest summary row selected
+    assert "First summary." not in contents
+    assert "middle" not in contents
+
+
+@pytest.mark.asyncio
+async def test_get_messages_for_llm_drops_orphan_tool_message(session):
+    """LLM context never includes tool rows without visible assistant calls."""
+    chat_session = await create_chat_session(session)
+    await save_message(session, chat_session.id, HumanMessage(content="hello"))
+    await save_message(
+        session,
+        chat_session.id,
+        ToolMessage(content="orphan", tool_call_id="missing_call", name="search"),
+    )
+    await session.commit()
+
+    result = await get_messages_for_llm(session, chat_session.id)
+
+    assert [m.role for m in result] == ["user"]
+
+
+@pytest.mark.asyncio
+async def test_get_messages_for_llm_summary_window_drops_orphan_tool_message(session):
+    """Summary + keep_last_n windows are sanitized after window selection."""
+    chat_session = await create_chat_session(session)
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="Summary of earlier context."),
+        is_summary=True,
+    )
+    await save_message(session, chat_session.id, HumanMessage(content="new turn"))
+    await save_message(
+        session,
+        chat_session.id,
+        ToolMessage(content="orphan", tool_call_id="missing_call", name="search"),
+    )
+    await session.commit()
+
+    result = await get_messages_for_llm(session, chat_session.id)
+
+    assert [m.role for m in result] == ["user", "user"]
+    assert [m.content for m in result] == ["Summary of earlier context.", "new turn"]
+
+
+# ── hide_messages_before_summary ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_hide_messages_before_summary(session):
+    """hide_messages_before_summary covers all older messages positionally."""
+    chat_session = await create_chat_session(session)
+
+    m1 = await save_message(session, chat_session.id, HumanMessage(content="msg 1"))
+    m2 = await save_message(session, chat_session.id, AssistantMessage(content="msg 2"))
+    summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="Summary"),
+        is_summary=True,
+    )
+    m4 = await save_message(session, chat_session.id, HumanMessage(content="msg 4"))
+
+    hidden_count = await hide_messages_before_summary(
+        session, chat_session.id, summary.id
+    )
+    await session.commit()
+
+    assert hidden_count == 2
+
+    # Reload from DB
+    from sqlmodel import col, select
+    from app.models.chat import SessionMessage
+
+    rows = (
+        await session.exec(
+            select(SessionMessage).where(
+                col(SessionMessage.session_id) == chat_session.id
+            )
+        )
+    ).all()
+    by_id = {r.id: r for r in rows}
+
+    # Coverage is positional: m1/m2 sit before the summary, m4 after it.
+    summary_pos = (by_id[summary.id].seq, by_id[summary.id].id)
+    assert (by_id[m1.id].seq, m1.id) < summary_pos
+    assert (by_id[m2.id].seq, m2.id) < summary_pos
+    assert (by_id[m4.id].seq, m4.id) > summary_pos
+    llm = await get_messages_for_llm(session, chat_session.id)
+    assert [m.content for m in llm] == ["Summary", "msg 4"]
+
+
+@pytest.mark.asyncio
+async def test_hide_messages_before_summary_missing_summary(session):
+    """Returns 0 when the summary message id does not exist."""
+    from uuid import uuid7
+
+    chat_session = await create_chat_session(session)
+    count = await hide_messages_before_summary(session, chat_session.id, uuid7())
+    assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_hide_messages_before_summary_keep_last_n_all_spare(session):
+    """When keep_last_n >= number of pre-summary messages, nothing is hidden."""
+    chat_session = await create_chat_session(session)
+
+    m1 = await save_message(session, chat_session.id, HumanMessage(content="msg 1"))
+    m2 = await save_message(session, chat_session.id, AssistantMessage(content="msg 2"))
+    summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="Summary"),
+        is_summary=True,
+    )
+
+    # keep_last_n=5 but only 2 pre-summary messages — all should be spared
+    hidden_count = await hide_messages_before_summary(
+        session, chat_session.id, summary.id, keep_last_n=5
+    )
+    await session.commit()
+    assert hidden_count == 0
+
+    from sqlmodel import col, select
+    from app.models.chat import SessionMessage
+
+    rows = (
+        await session.exec(
+            select(SessionMessage).where(
+                col(SessionMessage.session_id) == chat_session.id
+            )
+        )
+    ).all()
+    by_id = {r.id: r for r in rows}
+    # The summary was repositioned before both kept rows, so they stay in
+    # the LLM window after it.
+    summary_pos = (by_id[summary.id].seq, by_id[summary.id].id)
+    assert (by_id[m1.id].seq, m1.id) > summary_pos
+    assert (by_id[m2.id].seq, m2.id) > summary_pos
+    llm = await get_messages_for_llm(session, chat_session.id)
+    assert [m.content for m in llm] == ["Summary", "msg 1", "msg 2"]
+
+
+@pytest.mark.asyncio
+async def test_create_chat_session_error_propagates(session):
+    """create_chat_session re-raises on DB error."""
+    from unittest.mock import patch
+
+    with patch.object(session, "flush", side_effect=Exception("db error")):
+        with pytest.raises(Exception, match="db error"):
+            await create_chat_session(session, title="fail")
+
+
+@pytest.mark.asyncio
+async def test_save_message_error_propagates(session):
+    """save_message re-raises on DB error."""
+    from unittest.mock import patch
+
+    chat_session = await create_chat_session(session)
+    with patch.object(session, "flush", side_effect=Exception("write error")):
+        with pytest.raises(Exception, match="write error"):
+            await save_message(session, chat_session.id, HumanMessage(content="x"))
+
+
+@pytest.mark.asyncio
+async def test_get_messages_error_propagates(session):
+    """get_messages re-raises on DB error."""
+    from unittest.mock import patch
+    from uuid import uuid7
+
+    with patch.object(session, "exec", side_effect=Exception("read error")):
+        with pytest.raises(Exception, match="read error"):
+            await get_messages(session, uuid7())
+
+
+@pytest.mark.asyncio
+async def test_get_messages_for_llm_error_propagates(session):
+    """get_messages_for_llm re-raises on DB error."""
+    from unittest.mock import patch
+    from uuid import uuid7
+
+    with patch.object(session, "exec", side_effect=Exception("llm read error")):
+        with pytest.raises(Exception, match="llm read error"):
+            await get_messages_for_llm(session, uuid7())
+
+
+# ── Summarisation integration: full flow ────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_summary_flow_produces_valid_llm_context(session):
+    """Integration: save messages, insert summary, hide old ones, check get_messages_for_llm.
+
+    Verifies:
+    - Summary (HumanMessage) is first in the returned list.
+    - Post-summary messages follow in order.
+    - Hidden pre-summary messages are excluded.
+    - Exact count and types are correct.
+    """
+    chat_session = await create_chat_session(session)
+
+    # Initial conversation (will be hidden after summarization)
+    await save_message(session, chat_session.id, HumanMessage(content="Hello"))
+    await save_message(session, chat_session.id, AssistantMessage(content="Hi there"))
+    await save_message(
+        session, chat_session.id, HumanMessage(content="What is Python?")
+    )
+    await save_message(
+        session, chat_session.id, AssistantMessage(content="A programming language.")
+    )
+
+    # Summarization fires: save summary as HumanMessage with is_summary=True
+    summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(
+            content="[Summary] User asked about Python. Bot explained it is a programming language."
+        ),
+        is_summary=True,
+    )
+
+    # Hide all pre-summary messages (keep_last_n=0 for this test)
+    hidden_count = await hide_messages_before_summary(
+        session, chat_session.id, summary.id, keep_last_n=0
+    )
+    await session.commit()
+    assert hidden_count == 4
+
+    # New conversation turn after summarization
+    await save_message(session, chat_session.id, HumanMessage(content="Tell me more"))
+    await save_message(session, chat_session.id, AssistantMessage(content="Sure!"))
+    await session.commit()
+
+    result = await get_messages_for_llm(session, chat_session.id)
+
+    # Summary is first and is a HumanMessage
+    assert len(result) == 3
+    assert isinstance(result[0], HumanMessage)
+    assert result[0].content is not None
+    assert "[Summary]" in result[0].content
+
+    # Followed by the two new messages in order
+    assert isinstance(result[1], HumanMessage)
+    assert result[1].content == "Tell me more"
+    assert isinstance(result[2], AssistantMessage)
+    assert result[2].content == "Sure!"
+
+    # Hidden old messages not present
+    old_contents = {m.content for m in result}
+    assert "Hello" not in old_contents
+    assert "Hi there" not in old_contents
+    assert "What is Python?" not in old_contents
+    assert "A programming language." not in old_contents
+
+
+@pytest.mark.asyncio
+async def test_summary_flow_with_keep_last_n(session):
+    """Integration: keep_last_n=2 preserves last 2 messages before summary in LLM context.
+
+    After summarization with keep_last_n=2, get_messages_for_llm should return:
+    [summary, kept_msg_3, kept_msg_4, post_summary_msg]
+    """
+    chat_session = await create_chat_session(session)
+
+    await save_message(session, chat_session.id, HumanMessage(content="msg 1"))
+    await save_message(session, chat_session.id, AssistantMessage(content="msg 2"))
+    await save_message(session, chat_session.id, HumanMessage(content="msg 3"))
+    await save_message(session, chat_session.id, AssistantMessage(content="msg 4"))
+
+    summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="[Summary] First two messages covered greetings."),
+        is_summary=True,
+    )
+
+    hidden_count = await hide_messages_before_summary(
+        session, chat_session.id, summary.id, keep_last_n=2
+    )
+    await session.commit()
+    # Only msg 1 and msg 2 should be hidden; msg 3 and msg 4 are kept
+    assert hidden_count == 2
+
+    await save_message(session, chat_session.id, HumanMessage(content="msg 5"))
+    await session.commit()
+
+    result = await get_messages_for_llm(session, chat_session.id)
+
+    contents = [m.content for m in result]
+    # Summary first
+    assert result[0].content == "[Summary] First two messages covered greetings."
+    assert isinstance(result[0], HumanMessage)
+    # Kept messages and post-summary present
+    assert "msg 3" in contents
+    assert "msg 4" in contents
+    assert "msg 5" in contents
+    # Hidden messages excluded
+    assert "msg 1" not in contents
+    assert "msg 2" not in contents
+    assert len(result) == 4  # summary + msg3 + msg4 + msg5
+
+
+# ── exclude_messages_before_summary — old summaries excluded (lines 276-277) ─
+
+
+@pytest.mark.asyncio
+async def test_exclude_messages_before_summary_marks_old_summaries_excluded(session):
+    """A newer summary supersedes older ones with no row mutation at all."""
+    from app.services.chat_service import exclude_messages_before_summary
+
+    chat_session = await create_chat_session(session)
+
+    # Me first summary (older)
+    first_summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="[Summary] First summary."),
+        is_summary=True,
+    )
+
+    # Me some messages after first summary
+    await save_message(
+        session, chat_session.id, HumanMessage(content="msg after first")
+    )
+
+    # Me second (newer) summary
+    second_summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="[Summary] Second summary."),
+        is_summary=True,
+    )
+
+    # Anchor the second summary's coverage.
+    await exclude_messages_before_summary(session, chat_session.id, second_summary.id)
+    await session.commit()
+
+    # The second summary is active (newest id); the first never enters the
+    # LLM window even though its row was not touched.
+    active = await get_active_summary(session, chat_session.id)
+    assert active is not None and active.id == second_summary.id
+    llm = await get_messages_for_llm(session, chat_session.id)
+    contents = [m.content for m in llm]
+    assert "[Summary] Second summary." in contents
+    assert "[Summary] First summary." not in contents
+    refreshed_first = await session.get(SessionMessage, first_summary.id)
+    assert refreshed_first is not None and refreshed_first.kind == "summary"
+
+
+@pytest.mark.asyncio
+async def test_get_messages_for_llm_preserves_skill_tool_pair_after_summary(session):
+    """Skill tool call/result pairs remain visible after compaction.
+
+    The live SummarizationHook already preserves these rows in memory. This
+    verifies the persisted summary-window loader keeps the same invariant after
+    a compacted session is reloaded.
+    """
+    chat_session = await create_chat_session(session)
+
+    await save_message(session, chat_session.id, HumanMessage(content="load skill"))
+    await save_message(
+        session,
+        chat_session.id,
+        AssistantMessage(
+            content=None,
+            tool_calls=[
+                ToolCall(
+                    id="call_skill_1",
+                    function=FunctionCall(
+                        name="skill", arguments='{"skill_name":"guidelines"}'
+                    ),
+                )
+            ],
+        ),
+    )
+    await save_message(
+        session,
+        chat_session.id,
+        ToolMessage(
+            content="Guideline instructions body",
+            tool_call_id="call_skill_1",
+            name="skill",
+        ),
+    )
+    # The live SummarizationHook pins retained skill pairs before the
+    # checkpointer persists the summary; simulate that persisted state.
+    from sqlmodel import col, select as _select
+
+    skill_rows = (
+        await session.exec(
+            _select(SessionMessage).where(
+                col(SessionMessage.session_id) == chat_session.id
+            )
+        )
+    ).all()
+    for row in skill_rows:
+        if row.role in ("assistant", "tool"):
+            row.pinned = True
+            session.add(row)
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="Summary of previous non-skill work."),
+        is_summary=True,
+    )
+    await session.commit()
+
+    result = await get_messages_for_llm(session, chat_session.id)
+
+    skill_call = next(
+        m
+        for m in result
+        if isinstance(m, AssistantMessage)
+        and m.tool_calls
+        and m.tool_calls[0].function.name == "skill"
+    )
+    skill_result = next(
+        m for m in result if isinstance(m, ToolMessage) and m.name == "skill"
+    )
+
+    # Pinned rows keep their anchored position below the summary.
+    assert [m.role for m in result] == ["assistant", "tool", "user"]
+    assert result[-1].is_summary
+    assert skill_call.tool_calls[0].id == "call_skill_1"
+    assert skill_result.tool_call_id == "call_skill_1"
+    assert skill_result.content == "Guideline instructions body"
+
+
+async def _add_tied_message(
+    session, chat_session_id, message_id, content, created_at, **kwargs
+):
+    row = SessionMessage(
+        id=message_id,
+        session_id=chat_session_id,
+        role=kwargs.pop("role", "user"),
+        content=content,
+        created_at=created_at,
+        **kwargs,
+    )
+    session.add(row)
+    return row
+
+
+@pytest.mark.asyncio
+async def test_queued_messages_with_same_timestamp_keep_id_order_when_activated(
+    session,
+):
+    """Queue activation must keep a deterministic FIFO order for timestamp ties.
+
+    Rows are inserted in *descending* id order on purpose: id-ascending is the
+    opposite of insertion order here, so a query that fell back to SQLite's
+    incidental (insertion/rowid) order on a timestamp tie would return
+    ``["second", "first"]`` and fail this assertion.
+    """
+    chat_session = await create_chat_session(session)
+    queued_at = datetime.now(UTC)
+    second_id = UUID("00000000-0000-0000-0000-000000000002")
+    first_id = UUID("00000000-0000-0000-0000-000000000001")
+    for message_id, content in ((second_id, "second"), (first_id, "first")):
+        await _add_tied_message(
+            session,
+            chat_session.id,
+            message_id,
+            content,
+            queued_at,
+            kind="queued",
+            extra={"queue_status": "queued"},
+        )
+    await session.commit()
+
+    activated = await pop_queued_user_messages(session, chat_session.id)
+
+    assert [row.id for row in activated] == sorted((first_id, second_id))
+    assert [row.content for row in activated] == ["first", "second"]
+
+
+@pytest.mark.asyncio
+async def test_release_queued_messages_with_same_timestamp_keep_id_order(session):
+    """``release_queued_user_messages`` must break timestamp ties by id too.
+
+    Same insertion-order-vs-id-order inversion as the ``pop`` regression above.
+    """
+    chat_session = await create_chat_session(session)
+    queued_at = datetime.now(UTC)
+    second_id = UUID("00000000-0000-0000-0000-000000000002")
+    first_id = UUID("00000000-0000-0000-0000-000000000001")
+    for message_id, content in ((second_id, "second"), (first_id, "first")):
+        await _add_tied_message(
+            session,
+            chat_session.id,
+            message_id,
+            content,
+            queued_at,
+            kind="queued",
+            extra={"queue_status": "queued"},
+        )
+    await session.commit()
+
+    released = await release_queued_user_messages(session, chat_session.id)
+
+    assert [row.id for row in released] == sorted((first_id, second_id))
+    assert [row.content for row in released] == ["first", "second"]
+
+
+@pytest.mark.asyncio
+async def test_llm_history_query_with_same_timestamp_keeps_id_order(session):
+    """``llm_window_stmt`` must break seq ties by id."""
+    chat_session = await create_chat_session(session)
+    tied_at = datetime.now(UTC)
+    second_id = UUID("00000000-0000-0000-0000-000000000002")
+    first_id = UUID("00000000-0000-0000-0000-000000000001")
+    for message_id, content in ((second_id, "second"), (first_id, "first")):
+        await _add_tied_message(session, chat_session.id, message_id, content, tied_at)
+    await session.commit()
+
+    rows = (await session.exec(llm_window_stmt(chat_session.id, None))).all()
+
+    assert [row.id for row in rows] == sorted((first_id, second_id))
+    assert [row.content for row in rows] == ["first", "second"]
+
+
+@pytest.mark.asyncio
+async def test_history_messages_stmt_with_same_timestamp_keeps_id_order(session):
+    """``history_messages_stmt`` must break seq ties by id too."""
+    chat_session = await create_chat_session(session)
+    tied_at = datetime.now(UTC)
+    second_id = UUID("00000000-0000-0000-0000-000000000002")
+    first_id = UUID("00000000-0000-0000-0000-000000000001")
+    for message_id, content in ((second_id, "second"), (first_id, "first")):
+        await _add_tied_message(session, chat_session.id, message_id, content, tied_at)
+    await session.commit()
+
+    rows = (await session.exec(history_messages_stmt(chat_session.id))).all()
+
+    assert [row.id for row in rows] == sorted((first_id, second_id))
+    assert [row.content for row in rows] == ["first", "second"]
+
+
+@pytest.mark.asyncio
+async def test_get_messages_for_llm_summary_appears_exactly_once(session):
+    """The summary row appears exactly once even when other rows share its seq."""
+    from app.models.chat import SessionMessage
+
+    chat_session = await create_chat_session(session)
+
+    await save_message(session, chat_session.id, HumanMessage(content="before"))
+    summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="[Summary] Compact history."),
+        is_summary=True,
+    )
+    await session.commit()
+
+    # Force a non-summary message to share the summary's exact position; its
+    # newer uuid7 id sorts it directly after the summary.
+    same_ts_msg = SessionMessage(
+        session_id=chat_session.id,
+        role="user",
+        content="same-timestamp sibling",
+        seq=summary.seq,
+    )
+    same_ts_msg.created_at = summary.created_at
+    session.add(same_ts_msg)
+    await session.commit()
+
+    result = await get_messages_for_llm(session, chat_session.id)
+    contents = [m.content for m in result]
+
+    # Summary appears exactly once — never duplicated by the non-summary query
+    assert contents.count("[Summary] Compact history.") == 1
+    # "before" sits below the summary's position, so it is covered by it.
+    assert "before" not in contents
+    assert "same-timestamp sibling" in contents
+
+
+# ---------------------------------------------------------------------------
+# heal_orphaned_tool_calls
+# ---------------------------------------------------------------------------
+
+
+def _assistant_with_tool_calls(*ids_and_names: tuple[str, str]) -> AssistantMessage:
+    """Build an assistant message carrying ``tool_calls`` for each (id, name)."""
+    return AssistantMessage(
+        content="",
+        tool_calls=[
+            ToolCall(id=tcid, function=FunctionCall(name=tcname, arguments="{}"))
+            for tcid, tcname in ids_and_names
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_heal_noop_when_no_assistant_messages(session):
+    """No assistant message in the session → nothing to heal."""
+    chat_session = await create_chat_session(session)
+    await save_message(session, chat_session.id, HumanMessage(content="hi"))
+    await session.commit()
+
+    healed = await heal_orphaned_tool_calls(session, chat_session.id)
+    assert healed == 0
+
+
+@pytest.mark.asyncio
+async def test_heal_noop_when_last_assistant_has_no_tool_calls(session):
+    """Final-answer assistant message → nothing to heal."""
+    chat_session = await create_chat_session(session)
+    await save_message(session, chat_session.id, HumanMessage(content="hi"))
+    await save_message(session, chat_session.id, AssistantMessage(content="hello!"))
+    await session.commit()
+
+    healed = await heal_orphaned_tool_calls(session, chat_session.id)
+    assert healed == 0
+
+
+@pytest.mark.asyncio
+async def test_heal_noop_when_all_tool_calls_have_results(session):
+    """Healthy turn (assistant{tool_calls} + matching tool replies) → noop."""
+    chat_session = await create_chat_session(session)
+    await save_message(session, chat_session.id, HumanMessage(content="hi"))
+    await save_message(
+        session,
+        chat_session.id,
+        _assistant_with_tool_calls(("c1", "search"), ("c2", "fetch")),
+    )
+    await save_message(
+        session,
+        chat_session.id,
+        ToolMessage(content="r1", tool_call_id="c1", name="search"),
+    )
+    await save_message(
+        session,
+        chat_session.id,
+        ToolMessage(content="r2", tool_call_id="c2", name="fetch"),
+    )
+    await session.commit()
+
+    healed = await heal_orphaned_tool_calls(session, chat_session.id)
+    assert healed == 0
+
+
+@pytest.mark.asyncio
+async def test_heal_synthesises_stub_for_fully_orphaned_tool_calls(session):
+    """Crash mid-tool: assistant{tool_calls} with zero tool replies → all stubbed."""
+    chat_session = await create_chat_session(session)
+    await save_message(session, chat_session.id, HumanMessage(content="hi"))
+    await save_message(
+        session,
+        chat_session.id,
+        _assistant_with_tool_calls(("c1", "search"), ("c2", "fetch")),
+    )
+    await session.commit()
+
+    healed = await heal_orphaned_tool_calls(session, chat_session.id)
+    await session.commit()
+
+    assert healed == 2
+
+    # Both stubs should now be visible, with the canonical interrupted message.
+    msgs = await get_messages(session, chat_session.id)
+    tool_msgs = [m for m in msgs if isinstance(m, ToolMessage)]
+    assert {m.tool_call_id for m in tool_msgs} == {"c1", "c2"}
+    assert {m.name for m in tool_msgs} == {"search", "fetch"}
+    for tm in tool_msgs:
+        assert tm.content is not None and "interrupted" in tm.content.lower()
+
+
+@pytest.mark.asyncio
+async def test_heal_synthesises_stub_only_for_missing_ids(session):
+    """Partial orphan: one tool call has a result, the other doesn't.
+
+    Only the missing one is synthesised; the existing result is untouched.
+    """
+    chat_session = await create_chat_session(session)
+    await save_message(session, chat_session.id, HumanMessage(content="hi"))
+    await save_message(
+        session,
+        chat_session.id,
+        _assistant_with_tool_calls(("c1", "search"), ("c2", "fetch")),
+    )
+    await save_message(
+        session,
+        chat_session.id,
+        ToolMessage(content="real-result", tool_call_id="c1", name="search"),
+    )
+    await session.commit()
+
+    healed = await heal_orphaned_tool_calls(session, chat_session.id)
+    await session.commit()
+
+    assert healed == 1
+
+    msgs = await get_messages(session, chat_session.id)
+    tool_msgs = [m for m in msgs if isinstance(m, ToolMessage)]
+    assert len(tool_msgs) == 2
+    by_id = {m.tool_call_id: m for m in tool_msgs}
+    assert by_id["c1"].content == "real-result"
+    c2_content = by_id["c2"].content
+    assert c2_content is not None and "interrupted" in c2_content.lower()
+
+
+@pytest.mark.asyncio
+async def test_heal_is_idempotent(session):
+    """Running the heal twice in a row inserts stubs only the first time."""
+    chat_session = await create_chat_session(session)
+    await save_message(session, chat_session.id, HumanMessage(content="hi"))
+    await save_message(
+        session,
+        chat_session.id,
+        _assistant_with_tool_calls(("c1", "search")),
+    )
+    await session.commit()
+
+    first = await heal_orphaned_tool_calls(session, chat_session.id)
+    await session.commit()
+    second = await heal_orphaned_tool_calls(session, chat_session.id)
+    await session.commit()
+
+    assert first == 1
+    assert second == 0
+
+
+@pytest.mark.asyncio
+async def test_heal_orders_stubs_between_assistant_and_next_user_message(session):
+    """The synthesised tool replies must sit *between* the orphaned
+    assistant turn and the new user message in chronological order, so
+    that ``get_messages_for_llm`` returns
+    ``assistant{tool_calls} → tool → user`` instead of
+    ``assistant{tool_calls} → user → tool``.
+
+    OpenAI rejects the latter with ``"No tool output found for function
+    call …"``; this regression test pins the ordering invariant.
+    """
+    chat_session = await create_chat_session(session)
+    await save_message(session, chat_session.id, HumanMessage(content="first"))
+    await save_message(
+        session,
+        chat_session.id,
+        _assistant_with_tool_calls(("c1", "search"), ("c2", "fetch")),
+    )
+    await session.commit()
+
+    # Heal *before* persisting the new user message — same order as the
+    # production call site in ``team.handle_user_message``.
+    await heal_orphaned_tool_calls(session, chat_session.id)
+    await save_message(session, chat_session.id, HumanMessage(content="follow-up"))
+    await session.commit()
+
+    msgs = await get_messages_for_llm(session, chat_session.id)
+    roles = [m.role for m in msgs]
+    # first user, assistant{tool_calls}, two tool stubs, then the new user.
+    assert roles == ["user", "assistant", "tool", "tool", "user"]
+    # Tool stubs must reference the orphaned assistant's IDs.
+    stub_a, stub_b = msgs[2], msgs[3]
+    assert isinstance(stub_a, ToolMessage) and isinstance(stub_b, ToolMessage)
+    assert {stub_a.tool_call_id, stub_b.tool_call_id} == {"c1", "c2"}
+    # And the follow-up user message is the actual tail.
+    assert msgs[-1].content == "follow-up"
+
+
+@pytest.mark.asyncio
+async def test_heal_only_inspects_latest_assistant_message(session):
+    """An older healthy turn followed by a newer healthy turn must not
+    trigger heal even if the older turn has tool_calls.
+
+    Guards the ``LIMIT 1`` peek logic — we only care about the tail."""
+    chat_session = await create_chat_session(session)
+    await save_message(session, chat_session.id, HumanMessage(content="q1"))
+    await save_message(
+        session,
+        chat_session.id,
+        _assistant_with_tool_calls(("c1", "search")),
+    )
+    await save_message(
+        session,
+        chat_session.id,
+        ToolMessage(content="result", tool_call_id="c1", name="search"),
+    )
+    await save_message(session, chat_session.id, AssistantMessage(content="answer"))
+    await session.commit()
+
+    healed = await heal_orphaned_tool_calls(session, chat_session.id)
+    assert healed == 0
+
+
+@pytest.mark.asyncio
+async def test_heal_synthesises_stub_for_older_visible_orphan_after_summary(session):
+    """Compacted LLM windows can expose an older orphan before the tail.
+
+    Production regression: ``get_messages_for_llm`` returned
+    ``[summary] + keep_last_n`` where the latest assistant had no tool calls,
+    but an earlier visible assistant still had unmatched ``tool_calls``. OpenAI
+    validates the full message array and rejected the request.
+    """
+    chat_session = await create_chat_session(session)
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="[Summary] prior context"),
+        is_summary=True,
+    )
+    await save_message(session, chat_session.id, HumanMessage(content="q1"))
+    await save_message(
+        session,
+        chat_session.id,
+        _assistant_with_tool_calls(("c1", "search")),
+    )
+    await save_message(session, chat_session.id, HumanMessage(content="q2"))
+    await save_message(session, chat_session.id, AssistantMessage(content="answer"))
+    await session.commit()
+
+    healed = await heal_orphaned_tool_calls(session, chat_session.id)
+    await session.commit()
+
+    assert healed == 1
+    msgs = await get_messages_for_llm(session, chat_session.id)
+    roles = [m.role for m in msgs]
+    assert roles == ["user", "user", "assistant", "tool", "user", "assistant"]
+    stub = msgs[3]
+    assert isinstance(stub, ToolMessage)
+    assert stub.tool_call_id == "c1"
+    assert stub.name == "search"
+
+
+@pytest.mark.asyncio
+async def test_heal_skips_summary_messages_when_finding_latest_assistant(session):
+    """SystemMessage rows in between mustn't confuse the lookup.
+
+    The heal targets the latest *assistant* row specifically; system /
+    summary rows (which never carry tool_calls) are irrelevant."""
+    chat_session = await create_chat_session(session)
+    await save_message(session, chat_session.id, SystemMessage(content="sys"))
+    await save_message(session, chat_session.id, HumanMessage(content="hi"))
+    await save_message(
+        session,
+        chat_session.id,
+        _assistant_with_tool_calls(("c1", "search")),
+    )
+    await session.commit()
+
+    healed = await heal_orphaned_tool_calls(session, chat_session.id)
+    assert healed == 1
+
+
+@pytest.mark.asyncio
+async def test_heal_ignores_reverted_assistant_after_undo_cleanup(session):
+    """Undo + edited resend must not heal the hidden stopped tool-call branch.
+
+    Reproduction shape:
+    U1 -> A1 -> U2 -> A2(tool_calls, interrupted) -> undo U2 -> send edited U2.
+    ``cleanup_reverted_tail`` hides U2/A2 before the resend. The orphan healer
+    must not inspect hidden A2 and create a visible tool result with no visible
+    matching assistant function call, which the Responses API rejects.
+    """
+    chat_session = await create_chat_session(session)
+    await save_message(session, chat_session.id, HumanMessage(content="first"))
+    await save_message(session, chat_session.id, AssistantMessage(content="answer"))
+    second = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="second"),
+    )
+    await save_message(
+        session,
+        chat_session.id,
+        _assistant_with_tool_calls(("fc_hidden", "search")),
+        extra={"interrupted": True},
+    )
+    chat_session.revert = {"message_id": str(second.id)}
+    session.add(chat_session)
+    await session.commit()
+
+    hidden_count = await cleanup_reverted_tail(session, chat_session.id)
+    await save_message(session, chat_session.id, HumanMessage(content="edited second"))
+    healed = await heal_orphaned_tool_calls(session, chat_session.id)
+    await session.commit()
+
+    assert hidden_count == 2
+    assert healed == 0
+    msgs = await get_messages_for_llm(session, chat_session.id)
+    assert [m.role for m in msgs] == ["user", "assistant", "user"]
+    assert msgs[-1].content == "edited second"
+    assert not any(isinstance(m, ToolMessage) for m in msgs)
+
+
+@pytest.mark.asyncio
+async def test_undo_and_redo_use_workspace_snapshots(session, tmp_path, monkeypatch):
+    """/undo and /redo pass the right snapshot anchors to the workspace layer."""
+    from app.services import snapshot_service
+    from app.services.chat_service import (
+        redo_session_messages,
+        undo_session_messages,
+    )
+
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    doc = ws / "doc.md"
+    snapshots: dict[str, str] = {}
+
+    async def fake_track(session_id: str, workspace):
+        assert workspace == ws
+        snapshot = f"{len(snapshots) + 1:040x}"
+        snapshots[snapshot] = doc.read_text()
+        return snapshot
+
+    async def fake_restore(
+        session_id: str,
+        workspace,
+        snapshot: str,
+        *,
+        skip_stage: bool = False,
+    ):
+        assert workspace == ws
+        assert snapshot in snapshots
+        doc.write_text(snapshots[snapshot])
+        return snapshot_service.RestoreResult(ok=True, modified=["doc.md"])
+
+    monkeypatch.setattr(snapshot_service, "track", fake_track)
+    monkeypatch.setattr(snapshot_service, "restore", fake_restore)
+
+    import app.services.chat_service as cs
+
+    monkeypatch.setattr(cs, "session_workspace_dir", lambda sid, w: ws)
+
+    chat_session = await create_chat_session(session)
+
+    # ── Turn 1 ────────────────────────────────────────────────────────
+    doc = ws / "doc.md"
+    doc.write_text("v1")
+    snap_u1 = await snapshot_service.track(str(chat_session.id), ws)
+    assert snap_u1 is not None
+    u1 = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="hello"),
+        extra={"snapshot": snap_u1},
+    )
+    await save_message(session, chat_session.id, AssistantMessage(content="ok"))
+    # Simulate the assistant writing v2.
+    doc.write_text("v2")
+
+    # ── Turn 2 ────────────────────────────────────────────────────────
+    snap_u2 = await snapshot_service.track(str(chat_session.id), ws)
+    assert snap_u2 is not None
+    u2 = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="again"),
+        extra={"snapshot": snap_u2},
+    )
+    await save_message(session, chat_session.id, AssistantMessage(content="done"))
+    # Simulate the assistant writing v3 (current live state).
+    doc.write_text("v3")
+    await session.commit()
+
+    # ── /undo #1: boundary lands on U2, workspace rewinds to snap_u2 ──
+    shift = await undo_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    assert shift.target is not None
+    assert shift.target.id == u2.id
+    assert doc.read_text() == "v2"
+    # The restore reverted a modification — doc.md should appear in
+    # ``modified``, with empty ``added`` and ``removed``. The HTTP
+    # layer pipes this partition out to the client.
+    assert "doc.md" in shift.modified
+    assert shift.added == [] and shift.removed == []
+
+    refreshed = await session.get(ChatSession, chat_session.id)
+    assert refreshed is not None
+    assert refreshed.revert is not None
+    redo_anchor = refreshed.revert.get("snapshot")
+    assert isinstance(redo_anchor, str) and len(redo_anchor) == 40
+
+    # ── /undo #2: boundary moves to U1, workspace rewinds to snap_u1 ──
+    shift = await undo_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    assert shift.target is not None
+    assert shift.target.id == u1.id
+    assert doc.read_text() == "v1"
+
+    refreshed = await session.get(ChatSession, chat_session.id)
+    assert refreshed is not None
+    # Redo anchor must be the *same* hash captured on the first /undo —
+    # so /redo eventually returns to the live tip (v3), not the
+    # intermediate v2 state.
+    assert refreshed.revert is not None
+    assert refreshed.revert.get("snapshot") == redo_anchor
+
+    # ── /redo #1: boundary moves forward to U2, workspace = snap_u2 ───
+    shift = await redo_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    # The next-user pointer is plumbed back so /api/agent/commands can
+    # echo it to the client for local boundary application.
+    assert shift.target is not None
+    assert shift.target.id == u2.id
+    assert doc.read_text() == "v2"
+    assert "doc.md" in shift.modified
+
+    # ── /redo #2: no more user messages ahead → clear revert, restore
+    # the live tip via the preserved redo anchor.
+    shift = await redo_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    assert shift.target is None  # cleared, no boundary
+    assert doc.read_text() == "v3"
+    assert "doc.md" in shift.modified
+    refreshed = await session.get(ChatSession, chat_session.id)
+    assert refreshed is not None
+    assert refreshed.revert is None
+
+
+@pytest.mark.asyncio
+async def test_redo_all_restores_workspace_snapshot_in_one_step(
+    session, tmp_path, monkeypatch
+):
+    """redo_all_session_messages restores directly to anchor snapshot."""
+    from app.agent.schemas.chat import AssistantMessage, HumanMessage
+    from app.services import snapshot_service
+    from app.services.chat_service import (
+        create_chat_session,
+        redo_all_session_messages,
+        save_message,
+        undo_session_messages,
+    )
+
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    doc = ws / "doc.md"
+    snapshots: dict[str, str] = {}
+
+    async def fake_track(session_id: str, workspace):
+        snapshot = f"{len(snapshots) + 1:040x}"
+        snapshots[snapshot] = doc.read_text()
+        return snapshot
+
+    async def fake_restore(
+        session_id: str,
+        workspace,
+        snapshot: str,
+        *,
+        skip_stage: bool = False,
+    ):
+        assert snapshot in snapshots
+        doc.write_text(snapshots[snapshot])
+        return snapshot_service.RestoreResult(ok=True, modified=["doc.md"])
+
+    monkeypatch.setattr(snapshot_service, "track", fake_track)
+    monkeypatch.setattr(snapshot_service, "restore", fake_restore)
+
+    import app.services.chat_service as cs
+
+    monkeypatch.setattr(cs, "session_workspace_dir", lambda sid, w: ws)
+
+    chat_session = await create_chat_session(session, title="snap-test")
+    doc.write_text("v1")
+    snap_u1 = await snapshot_service.track(str(chat_session.id), ws)
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="u1"),
+        extra={"snapshot": snap_u1},
+    )
+    await save_message(session, chat_session.id, AssistantMessage(content="a1"))
+
+    doc.write_text("v2")
+    snap_u2 = await snapshot_service.track(str(chat_session.id), ws)
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="u2"),
+        extra={"snapshot": snap_u2},
+    )
+    await save_message(session, chat_session.id, AssistantMessage(content="a2"))
+
+    doc.write_text("v3")
+    await save_message(session, chat_session.id, AssistantMessage(content="a3"))
+
+    # Undo both turns
+    await undo_session_messages(session, chat_session.id)
+    await undo_session_messages(session, chat_session.id)
+    assert doc.read_text() == "v1"
+
+    # Redo all in one step
+    shift = await redo_all_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    assert shift.target is None
+    assert doc.read_text() == "v3"
+    assert "doc.md" in shift.modified
+    refreshed = await session.get(ChatSession, chat_session.id)
+    assert refreshed is not None
+    assert refreshed.revert is None
+
+
+# ---------------------------------------------------------------------------
+# get_agent_history — bounded member-page fetches
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_agent_history_pages_past_hidden_messages(session):
+    """Hidden rows must not consume the sentinel used to detect older history."""
+    from app.agent.schemas.chat import HumanMessage
+    from app.services.chat_service import _HISTORY_PAGE_SIZE, get_agent_history
+
+    lead = await create_chat_session(session, title="lead")
+    for i in range(_HISTORY_PAGE_SIZE + 1):
+        await save_message(session, lead.id, HumanMessage(content=f"visible-{i}"))
+    await save_message(
+        session,
+        lead.id,
+        HumanMessage(content="hidden"),
+        extra={"hidden_from_user": True},
+    )
+
+    data = await get_agent_history(session, lead.id)
+
+    assert data is not None
+    assert len(data.lead_messages) == _HISTORY_PAGE_SIZE
+    assert data.has_more is True
+    assert data.next_cursor is not None
+
+    older = await get_agent_history(
+        session, lead.id, before_seq=data.next_cursor, before_id=data.next_cursor_id
+    )
+    assert older is not None
+    assert [message.content for message in older.lead_messages] == ["visible-0"]
+    assert older.has_more is False
+
+
+@pytest.mark.asyncio
+async def test_get_agent_history_filters_hidden_lead_rows_in_sql(session):
+    """Hidden lead rows must not force additional history-page scans."""
+    from app.services.chat_service import _HISTORY_PAGE_SIZE, get_agent_history
+
+    lead = await create_chat_session(session, title="lead")
+    for i in range(_HISTORY_PAGE_SIZE + 1):
+        await save_message(session, lead.id, HumanMessage(content=f"visible-{i}"))
+    for i in range(_HISTORY_PAGE_SIZE * 2):
+        await save_message(
+            session,
+            lead.id,
+            HumanMessage(content=f"hidden-{i}"),
+            extra={"hidden_from_user": True},
+        )
+    await session.commit()
+
+    fetched_message_rows = 0
+    original_exec = session.exec
+
+    async def counting_exec(stmt, *args, **kwargs):
+        nonlocal fetched_message_rows
+        result = await original_exec(stmt, *args, **kwargs)
+        rows = result.all()
+        fetched_message_rows += sum(
+            1 for row in rows if isinstance(row, SessionMessage)
+        )
+
+        class _Result:
+            def all(self):
+                return rows
+
+            def first(self):
+                return rows[0] if rows else None
+
+        return _Result()
+
+    session.exec = counting_exec
+    try:
+        data = await get_agent_history(session, lead.id)
+    finally:
+        session.exec = original_exec
+
+    assert data is not None
+    assert len(data.lead_messages) == _HISTORY_PAGE_SIZE
+    assert data.has_more is True
+    assert fetched_message_rows == _HISTORY_PAGE_SIZE + 1
+
+
+@pytest.mark.asyncio
+async def test_session_usage_totals_sums_visible_messages_including_summaries(session):
+    """The authoritative session total must cover assistant rows and compaction
+    summaries (real billed calls) while excluding hidden note rows."""
+    from app.services.chat_service import session_usage_totals
+
+    lead = await create_chat_session(session, title="lead")
+    await save_message(
+        session,
+        lead.id,
+        AssistantMessage(content="a"),
+        extra={
+            "usage": {
+                "input": 100,
+                "output": 20,
+                "cost": {"estimated_usd": 0.001},
+            },
+        },
+    )
+    # Compaction summary row: the summariser is a billed model call.
+    await save_message(
+        session,
+        lead.id,
+        HumanMessage(content="summary", is_summary=True),
+        is_summary=True,
+        extra={
+            "usage": {
+                "input": 5000,
+                "output": 30,
+                "cost": {"estimated_usd": 0.002},
+            },
+        },
+    )
+    # Hidden note rows must not count toward the visible transcript total.
+    await save_message(
+        session,
+        lead.id,
+        HumanMessage(content="note"),
+        extra={"hidden_from_user": True},
+    )
+    await session.commit()
+
+    cost, completion = await session_usage_totals(session, lead.id)
+
+    assert cost == pytest.approx(0.003)
+    assert completion == 50
+
+
+@pytest.mark.asyncio
+async def test_session_usage_totals_empty_without_usage(session):
+    from app.services.chat_service import session_usage_totals
+
+    lead = await create_chat_session(session, title="lead")
+    await save_message(session, lead.id, HumanMessage(content="plain"))
+    await session.commit()
+
+    assert await session_usage_totals(session, lead.id) == (0.0, 0)
+
+
+@pytest.mark.asyncio
+async def test_get_agent_history_member_fetch_is_bounded(session):
+    """_fetch_member_pages must not materialize every member row.
+
+    Regression: the batched member-history query had no per-session LIMIT —
+    a member with a very long history pulled *all* its rows into memory and
+    trimmed in Python. The fetch must stay bounded per sub-session.
+    """
+    from app.services.chat_service import _HISTORY_PAGE_SIZE, get_agent_history
+    from app.agent.schemas.chat import HumanMessage
+
+    lead = await create_chat_session(session, title="lead")
+    member = await create_chat_session(session, title="member")
+    member.parent_session_id = lead.id
+    session.add(member)
+    await session.commit()
+
+    total = _HISTORY_PAGE_SIZE * 3
+    for i in range(total):
+        await save_message(session, member.id, HumanMessage(content=f"m{i}"))
+
+    fetched_message_rows = 0
+    original_exec = session.exec
+
+    async def counting_exec(stmt, *args, **kwargs):
+        nonlocal fetched_message_rows
+        result = await original_exec(stmt, *args, **kwargs)
+        rows = result.all()
+        fetched_message_rows += sum(1 for r in rows if isinstance(r, SessionMessage))
+
+        class _Result:
+            def all(self):
+                return rows
+
+            def first(self):
+                return rows[0] if rows else None
+
+        return _Result()
+
+    session.exec = counting_exec
+    try:
+        data = await get_agent_history(session, lead.id)
+    finally:
+        session.exec = original_exec
+
+    assert data is not None
+    assert len(data.members) == 1
+    member_msgs = data.members[0].messages
+    assert len(member_msgs) == _HISTORY_PAGE_SIZE
+    # Newest page, chronological order.
+    assert member_msgs[-1].content == f"m{total - 1}"
+    assert member_msgs[0].content == f"m{total - _HISTORY_PAGE_SIZE}"
+
+    # The lead page (empty) + member page must stay bounded — allow page+1
+    # sentinel per session, not the full 3x-page history.
+    assert fetched_message_rows <= (_HISTORY_PAGE_SIZE + 1) * 2, (
+        f"fetched {fetched_message_rows} message rows; member history fetch "
+        "is unbounded"
+    )
+
+
+# ---------------------------------------------------------------------------
+# get_agent_history_since — delta reconciliation for turn completion
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_agent_history_since_returns_only_newer_messages(session):
+    """The turn-completion reconcile must not re-download the whole page."""
+    from app.services.chat_service import get_agent_history, get_agent_history_since
+
+    lead = await create_chat_session(session, title="lead")
+    for i in range(5):
+        await save_message(session, lead.id, HumanMessage(content=f"old-{i}"))
+
+    full = await get_agent_history(session, lead.id)
+    assert full is not None
+    cursor = full.lead_messages[-1].id
+
+    await save_message(session, lead.id, HumanMessage(content="new-1"))
+    await save_message(session, lead.id, HumanMessage(content="new-2"))
+
+    delta = await get_agent_history_since(session, lead.id, since_id=cursor)
+
+    assert delta is not None
+    assert [m.content for m in delta.lead_messages] == ["new-1", "new-2"]
+    assert delta.truncated is False
+
+
+@pytest.mark.asyncio
+async def test_get_agent_history_since_is_chronological_and_excludes_cursor(session):
+    from app.services.chat_service import get_agent_history_since
+
+    lead = await create_chat_session(session, title="lead")
+    first = await save_message(session, lead.id, HumanMessage(content="a"))
+    await save_message(session, lead.id, HumanMessage(content="b"))
+
+    delta = await get_agent_history_since(session, lead.id, since_id=first.id)
+
+    # The cursor row itself is already on the client — strictly newer only.
+    assert [m.content for m in delta.lead_messages] == ["b"]
+
+
+@pytest.mark.asyncio
+async def test_get_agent_history_since_finds_newly_anchored_summary(session):
+    """Creation cursor must find a new row whose logical seq moved backward."""
+    from app.services.chat_service import get_agent_history_since
+
+    lead = await create_chat_session(session, title="lead")
+    first = await save_message(session, lead.id, HumanMessage(content="first"))
+    cursor = await save_message(session, lead.id, HumanMessage(content="tail"))
+    summary = await save_message(
+        session,
+        lead.id,
+        HumanMessage(content="summary"),
+        is_summary=True,
+        seq=first.seq,
+    )
+
+    delta = await get_agent_history_since(session, lead.id, since_id=cursor.id)
+
+    assert [m.id for m in delta.lead_messages] == [summary.id]
+
+
+@pytest.mark.asyncio
+async def test_get_agent_history_since_hides_hidden_rows(session):
+    """Undone rows stay hidden in a delta exactly as in a full page."""
+    from app.services.chat_service import get_agent_history_since
+
+    lead = await create_chat_session(session, title="lead")
+    anchor = await save_message(session, lead.id, HumanMessage(content="anchor"))
+    await save_message(session, lead.id, HumanMessage(content="visible"))
+    await save_message(
+        session,
+        lead.id,
+        HumanMessage(content="hidden"),
+        extra={"hidden_from_user": True},
+    )
+
+    delta = await get_agent_history_since(session, lead.id, since_id=anchor.id)
+
+    assert [m.content for m in delta.lead_messages] == ["visible"]
+
+
+@pytest.mark.asyncio
+async def test_get_agent_history_since_includes_member_sessions(session):
+    from app.services.chat_service import get_agent_history_since
+
+    lead = await create_chat_session(session, title="lead")
+    member = await create_chat_session(
+        session, title="member", parent_session_id=lead.id, agent_name="explorer#1"
+    )
+    anchor = await save_message(session, lead.id, HumanMessage(content="anchor"))
+    await save_message(session, member.id, HumanMessage(content="member-new"))
+
+    delta = await get_agent_history_since(session, lead.id, since_id=anchor.id)
+
+    assert len(delta.members) == 1
+    assert delta.members[0].session.agent_name == "explorer#1"
+    assert [m.content for m in delta.members[0].messages] == ["member-new"]
+
+
+@pytest.mark.asyncio
+async def test_get_agent_history_since_flags_oversized_delta(session):
+    """A delta larger than the cap tells the caller to do a full reload."""
+    from app.services.chat_service import get_agent_history_since
+
+    lead = await create_chat_session(session, title="lead")
+    anchor = await save_message(session, lead.id, HumanMessage(content="anchor"))
+    for i in range(6):
+        await save_message(session, lead.id, HumanMessage(content=f"m-{i}"))
+
+    delta = await get_agent_history_since(session, lead.id, since_id=anchor.id, limit=3)
+
+    assert delta.truncated is True
+
+
+@pytest.mark.asyncio
+async def test_get_agent_history_since_missing_session_returns_none(session):
+    from uuid import uuid4
+
+    from app.services.chat_service import get_agent_history_since
+
+    assert await get_agent_history_since(session, uuid4(), since_id=uuid4()) is None
+
+
+@pytest.mark.asyncio
+async def test_get_agent_history_member_page_skips_hidden_rows_in_sql(session):
+    """Hidden member rows must not consume the member page window.
+
+    Regression: the lead query filtered ``hidden_from_user`` in SQL, but
+    ``_fetch_member_pages`` applied only the Python filter under a
+    ``ROW_NUMBER() <= PAGE_SIZE + 1`` cap.  A member whose newest page-worth of
+    rows were all hidden returned an empty page, and because member histories
+    carry no cursor of their own the older visible rows were unreachable.
+    """
+    from app.services.chat_service import _HISTORY_PAGE_SIZE, get_agent_history
+
+    lead = await create_chat_session(session, title="lead")
+    member = await create_chat_session(session, title="member")
+    member.parent_session_id = lead.id
+    session.add(member)
+    await session.commit()
+
+    await save_message(session, lead.id, HumanMessage(content="lead-hello"))
+    for i in range(3):
+        await save_message(
+            session, member.id, HumanMessage(content=f"member-visible-{i}")
+        )
+    for i in range(_HISTORY_PAGE_SIZE + 1):
+        await save_message(
+            session,
+            member.id,
+            HumanMessage(content=f"member-hidden-{i}"),
+            extra={"hidden_from_user": True},
+        )
+    await session.commit()
+
+    history = await get_agent_history(session, lead.id)
+    assert history is not None
+    assert len(history.members) == 1
+    assert [m.content for m in history.members[0].messages] == [
+        "member-visible-0",
+        "member-visible-1",
+        "member-visible-2",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_get_agent_history_cursor_keeps_rows_tied_on_created_at(session):
+    """A row sharing the boundary ``seq`` must not vanish between pages.
+
+    The cursor is the compound ``(seq, id)`` pair; a bare-seq cursor would
+    skip rows tied on the boundary seq (anchored inserts produce such ties).
+    """
+    from sqlalchemy import update
+
+    from app.services.chat_service import _HISTORY_PAGE_SIZE, get_agent_history
+
+    lead = await create_chat_session(session, title="lead")
+    total = _HISTORY_PAGE_SIZE + 5
+    saved = [
+        await save_message(session, lead.id, HumanMessage(content=f"msg-{i:03}"))
+        for i in range(total)
+    ]
+    await session.commit()
+
+    page1 = await get_agent_history(session, lead.id)
+    assert page1 is not None
+    boundary = page1.lead_messages[0]
+
+    # Force the row immediately older than the boundary to tie with it on seq.
+    victim = max(
+        (m for m in saved if (m.seq, m.id) < (boundary.seq, boundary.id)),
+        key=lambda m: (m.seq, m.id),
+    )
+    await session.exec(
+        update(SessionMessage)
+        .where(SessionMessage.id == victim.id)
+        .values(seq=boundary.seq)
+    )
+    await session.commit()
+
+    page2 = await get_agent_history(
+        session,
+        lead.id,
+        before_seq=page1.next_cursor,
+        before_id=page1.next_cursor_id,
+    )
+    assert page2 is not None
+
+    seen = {m.content for m in page1.lead_messages} | {
+        m.content for m in page2.lead_messages
+    }
+    missing = sorted({f"msg-{i:03}" for i in range(total)} - seen)
+    assert missing == [], f"rows lost across pages: {missing}"
+
+
+# ── save_message logging is a single consolidated record ──────────────────────
+#
+# save_message used to emit up to three DEBUG lines per call (a pre-save
+# ``saving_message``, an optional ``assistant_message_has_tool_calls`` /
+# ``tool_message_with_result``, then ``message_saved``).  In production that was
+# ~11.7k lines / 2 days describing the same writes.  One post-save record now
+# carries the role-specific detail; these tests pin that contract so the
+# duplication cannot creep back.
+
+
+@pytest.fixture
+def caplog_loguru(caplog):
+    from loguru import logger
+
+    handler_id = logger.add(caplog.handler, format="{message}", level="DEBUG")
+    yield caplog
+    logger.remove(handler_id)
+
+
+@pytest.mark.asyncio
+async def test_save_message_emits_exactly_one_log_record(session, caplog_loguru):
+    chat_session = await create_chat_session(session)
+    caplog_loguru.clear()
+
+    await save_message(session, chat_session.id, HumanMessage(content="hi"))
+
+    records = [m for m in caplog_loguru.messages if m.startswith("message_saved")]
+    assert len(records) == 1
+    assert not any(m.startswith("saving_message") for m in caplog_loguru.messages)
+
+
+@pytest.mark.asyncio
+async def test_save_message_log_carries_tool_name_for_tool_message(
+    session, caplog_loguru
+):
+    """Detail from the removed ``tool_message_with_result`` line is preserved."""
+    chat_session = await create_chat_session(session)
+    caplog_loguru.clear()
+
+    await save_message(
+        session,
+        chat_session.id,
+        ToolMessage(content="out", tool_call_id="c1", name="ls"),
+    )
+
+    line = next(m for m in caplog_loguru.messages if m.startswith("message_saved"))
+    assert "tool=ls" in line
+    assert "role=tool" in line
+
+
+@pytest.mark.asyncio
+async def test_save_message_log_carries_tool_call_count_for_assistant(
+    session, caplog_loguru
+):
+    """Detail from the removed ``assistant_message_has_tool_calls`` line is kept."""
+    chat_session = await create_chat_session(session)
+    caplog_loguru.clear()
+
+    await save_message(
+        session,
+        chat_session.id,
+        AssistantMessage(
+            content="ok",
+            tool_calls=[
+                ToolCall(id="c1", function=FunctionCall(name="ls", arguments="{}"))
+            ],
+        ),
+    )
+
+    line = next(m for m in caplog_loguru.messages if m.startswith("message_saved"))
+    assert "tool_calls=1" in line

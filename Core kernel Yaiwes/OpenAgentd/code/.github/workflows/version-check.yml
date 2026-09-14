@@ -1,0 +1,42 @@
+name: Version sync check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/version.txt"
+      - "pyproject.toml"
+      - "web/package.json"
+      - "desktop/src-tauri/Cargo.toml"
+      - "desktop/src-tauri/tauri.conf.json"
+      - "desktop/src-tauri/tauri.dev.conf.json"
+      - "desktop/src-tauri/tauri.dev-bundled.conf.json"
+      - "mobile/src-tauri/Cargo.toml"
+      - "mobile/src-tauri/tauri.conf.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Opt JS actions into Node.js 24 ahead of the June 2026 forced switch.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  check:
+    name: Verify version consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check release versions match
+        run: scripts/check_version_consistency.sh
+
+      - name: Ensure release docs were updated too
+        run: |
+          VERSION=$(tr -d '[:space:]' < app/version.txt)
+          grep -F "**Latest release:** v${VERSION} ·" documents/docs/features.md
+          grep -E '^updated: [0-9]{4}-[0-9]{2}-[0-9]{2}$' documents/docs/features.md

@@ -1,0 +1,846 @@
+from __future__ import annotations
+
+import pytest
+from pydantic import SecretStr
+
+from app.agent.providers.anthropic import AnthropicProvider
+from app.agent.providers.anthropic.anthropic import (
+    _split_messages,
+    _uses_beta_messages_api,
+)
+from app.agent.schemas.chat import (
+    AssistantMessage,
+    FunctionCall,
+    HumanMessage,
+    SystemMessage,
+    ToolCall,
+    ToolMessage,
+)
+
+
+def test_anthropic_provider_requires_api_key() -> None:
+    try:
+        AnthropicProvider(api_key="", model="claude-sonnet-4-6")
+    except ValueError as exc:
+        assert "ANTHROPIC_API_KEY" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_anthropic_provider_accepts_secret_str() -> None:
+    provider = AnthropicProvider(
+        api_key=SecretStr("sk-ant-test"),
+        model="claude-sonnet-4-6",
+    )
+
+    assert provider.api_key == "sk-ant-test"
+    assert provider.base_url == "https://api.anthropic.com"
+
+
+def test_anthropic_provider_accepts_custom_timeout() -> None:
+    provider = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-sonnet-4-6",
+        timeout=None,
+    )
+
+    assert provider._timeout is None
+
+
+def test_anthropic_payload_converts_system_tools_and_thinking() -> None:
+    provider = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-sonnet-4-6",
+        model_kwargs={"thinking_level": "low", "max_tokens": 4096},
+    )
+
+    payload = provider._payload(
+        [
+            SystemMessage(content="be concise"),
+            HumanMessage(content="hi"),
+            AssistantMessage(content=None, tool_calls=[]),
+            ToolMessage(tool_call_id="toolu_1", content="ok"),
+        ],
+        [
+            {
+                "type": "function",
+                "function": {
+                    "name": "lookup",
+                    "description": "Lookup a value.",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            }
+        ],
+        provider._merged_kwargs(),
+    )
+
+    assert payload["system"] == [
+        {
+            "type": "text",
+            "text": "be concise",
+            "cache_control": {"type": "ephemeral"},
+        }
+    ]
+    assert payload["tools"][0]["name"] == "lookup"
+    assert payload["thinking"] == {
+        "type": "adaptive",
+        "display": "summarized",
+    }
+    assert payload["output_config"] == {"effort": "low"}
+
+
+@pytest.mark.parametrize(
+    ("model", "expected"),
+    [
+        ("claude-sonnet-4-6", False),
+        ("claude-opus-4-7", False),
+        ("claude-haiku-4-5", False),
+        ("claude-sonnet-4-5", False),
+    ],
+)
+def test_anthropic_messages_api_beta_disabled_by_default(
+    model: str, expected: bool
+) -> None:
+    assert _uses_beta_messages_api(model, {}) is expected
+
+
+@pytest.mark.parametrize("explicit", [True, False])
+def test_anthropic_messages_api_beta_respects_override(explicit: bool) -> None:
+    kwargs = {"anthropic_beta": explicit}
+
+    assert _uses_beta_messages_api("claude-sonnet-4-5", kwargs) is explicit
+    assert kwargs == {}
+
+
+def test_anthropic_payload_explicitly_disables_default_thinking_for_sonnet_5() -> None:
+    provider = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-sonnet-5",
+        model_kwargs={"thinking_level": "none"},
+    )
+
+    payload = provider._payload(
+        [HumanMessage(content="hi")],
+        None,
+        provider._merged_kwargs(),
+    )
+
+    assert payload["thinking"] == {"type": "disabled"}
+    assert "output_config" not in payload
+
+
+def test_anthropic_payload_does_not_disable_always_on_thinking() -> None:
+    provider = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-fable-5",
+        model_kwargs={"thinking_level": "none"},
+    )
+
+    payload = provider._payload(
+        [HumanMessage(content="hi")],
+        None,
+        provider._merged_kwargs(),
+    )
+
+    assert "thinking" not in payload
+    assert "output_config" not in payload
+
+
+def test_anthropic_payload_combines_manual_thinking_and_effort_for_opus_4_5() -> None:
+    provider = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-opus-4-5",
+        model_kwargs={"thinking_level": "medium", "max_tokens": 4096},
+    )
+
+    payload = provider._payload(
+        [HumanMessage(content="hi")],
+        None,
+        provider._merged_kwargs(),
+    )
+
+    assert payload["thinking"] == {
+        "type": "enabled",
+        "budget_tokens": 1638,
+        "display": "summarized",
+    }
+    assert payload["output_config"] == {"effort": "medium"}
+
+
+def test_anthropic_payload_uses_manual_thinking_for_older_models() -> None:
+    provider = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-sonnet-4-5",
+        model_kwargs={"thinking_level": "low", "max_tokens": 4096},
+    )
+
+    payload = provider._payload(
+        [HumanMessage(content="hi")],
+        None,
+        provider._merged_kwargs(),
+    )
+
+    assert payload["thinking"] == {
+        "type": "enabled",
+        "budget_tokens": 1024,
+        "display": "summarized",
+    }
+    assert "output_config" not in payload
+
+
+def test_anthropic_payload_never_includes_temperature_or_top_p() -> None:
+    """temperature/top_p are retired entirely — never sent to Anthropic,
+    regardless of model, thinking mode, or caller-supplied kwargs."""
+    provider = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-sonnet-4",
+        model_kwargs={
+            "thinking_level": "low",
+            "temperature": 0.2,
+            "top_p": 0.7,
+            "max_tokens": 4096,
+        },
+    )
+
+    payload = provider._payload(
+        [HumanMessage(content="hi")],
+        None,
+        provider._merged_kwargs(),
+    )
+
+    assert payload["thinking"] == {
+        "type": "enabled",
+        "budget_tokens": 1024,
+        "display": "summarized",
+    }
+    assert "temperature" not in payload
+    assert "top_p" not in payload
+
+
+@pytest.mark.parametrize(
+    ("thinking_level", "max_tokens", "expected_budget"),
+    [
+        ("low", 4096, 1024),
+        ("medium", 4096, 1638),
+        ("high", 4096, 2457),
+    ],
+)
+def test_anthropic_budget_based_thinking_levels_map_to_expected_budgets(
+    thinking_level: str, max_tokens: int, expected_budget: int
+) -> None:
+    provider = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-haiku-4-5-20251001",
+        model_kwargs={"thinking_level": thinking_level, "max_tokens": max_tokens},
+    )
+
+    payload = provider._payload(
+        [HumanMessage(content="hi")],
+        None,
+        provider._merged_kwargs(),
+    )
+
+    assert payload["thinking"] == {
+        "type": "enabled",
+        "budget_tokens": expected_budget,
+        "display": "summarized",
+    }
+
+
+def _make_assistant_with_tools(*tool_ids: str) -> AssistantMessage:
+    return AssistantMessage(
+        content="calling tools",
+        tool_calls=[
+            ToolCall(id=tid, function=FunctionCall(name="tool", arguments="{}"))
+            for tid in tool_ids
+        ],
+    )
+
+
+def test_split_messages_batches_parallel_tool_results_into_single_user_turn() -> None:
+    """Parallel tool results must land in one user turn, not N separate turns.
+
+    Anthropic rejects consecutive user-role messages; all tool_result blocks
+    from a single assistant turn must be merged into one {"role": "user"} turn.
+    """
+    assistant = _make_assistant_with_tools("t1", "t2", "t3")
+    tool_msgs = [
+        ToolMessage(content=f"result {i}", tool_call_id=f"t{i + 1}", name="tool")
+        for i in range(3)
+    ]
+    _, out = _split_messages([HumanMessage(content="go"), assistant, *tool_msgs])
+
+    user_turns = [m for m in out if m["role"] == "user"]
+    # First user turn is the human message; second is the batched tool results.
+    assert len(user_turns) == 2
+    tool_turn = user_turns[1]
+    assert len(tool_turn["content"]) == 3
+    assert all(b["type"] == "tool_result" for b in tool_turn["content"])
+    assert [b["tool_use_id"] for b in tool_turn["content"]] == ["t1", "t2", "t3"]
+
+
+def test_split_messages_cache_control_on_last_block_of_batched_turn() -> None:
+    """cache_control must land only on the last block of the merged tool turn."""
+    assistant = _make_assistant_with_tools("a", "b")
+    tool_msgs = [
+        ToolMessage(content="ok", tool_call_id="a", name="tool"),
+        ToolMessage(content="ok", tool_call_id="b", name="tool"),
+    ]
+    _, out = _split_messages([HumanMessage(content="go"), assistant, *tool_msgs])
+
+    tool_turn = next(
+        m
+        for m in out
+        if m["role"] == "user" and m["content"][0]["type"] == "tool_result"
+    )
+    first, last = tool_turn["content"][0], tool_turn["content"][-1]
+    assert "cache_control" not in first
+    assert last.get("cache_control") == {"type": "ephemeral"}
+
+
+def test_split_messages_sets_is_error_on_error_tool_results() -> None:
+    """Tool results whose content starts with 'Error:' must have is_error=True."""
+    assistant = _make_assistant_with_tools("ok_id", "err_id")
+    _, out = _split_messages(
+        [
+            HumanMessage(content="go"),
+            assistant,
+            ToolMessage(content="all good", tool_call_id="ok_id", name="tool"),
+            ToolMessage(
+                content="Error: File not found: foo.txt",
+                tool_call_id="err_id",
+                name="tool",
+            ),
+        ]
+    )
+
+    tool_turn = next(
+        m
+        for m in out
+        if m["role"] == "user" and m["content"][0]["type"] == "tool_result"
+    )
+    blocks = {b["tool_use_id"]: b for b in tool_turn["content"]}
+    assert "is_error" not in blocks["ok_id"]
+    assert blocks["err_id"].get("is_error") is True
+
+
+def test_split_messages_does_not_batch_tool_results_across_human_turn() -> None:
+    """A human message between two tool groups must keep them in separate user turns."""
+    a1 = _make_assistant_with_tools("t1")
+    a2 = _make_assistant_with_tools("t2")
+    _, out = _split_messages(
+        [
+            HumanMessage(content="first"),
+            a1,
+            ToolMessage(content="r1", tool_call_id="t1", name="tool"),
+            HumanMessage(content="second"),
+            a2,
+            ToolMessage(content="r2", tool_call_id="t2", name="tool"),
+        ]
+    )
+
+    tool_turns = [
+        m
+        for m in out
+        if m["role"] == "user"
+        and m["content"]
+        and m["content"][0]["type"] == "tool_result"
+    ]
+    assert len(tool_turns) == 2
+    assert tool_turns[0]["content"][0]["tool_use_id"] == "t1"
+    assert tool_turns[1]["content"][0]["tool_use_id"] == "t2"
+
+
+def test_split_messages_omits_assistant_tool_stub_without_matching_result() -> None:
+    """Incomplete assistant tool stubs must not be replayed to Anthropic.
+
+    A persisted assistant tool_use without the required following tool_result
+    block is what triggers Anthropic 400s on resumed turns.
+    """
+    assistant = _make_assistant_with_tools("t1")
+    _, out = _split_messages(
+        [HumanMessage(content="first"), assistant, HumanMessage(content="follow-up")]
+    )
+
+    assert out == [
+        {"role": "user", "content": [{"type": "text", "text": "first"}]},
+        {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "calling tools"}],
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "follow-up",
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+        },
+    ]
+
+
+def test_split_messages_skips_empty_human_message() -> None:
+    """HumanMessages with no content and no parts must be silently dropped.
+
+    Anthropic rejects text content blocks with empty strings (HTTP 400:
+    "text content blocks must be non-empty").
+    """
+    _, out = _split_messages(
+        [
+            HumanMessage(content=""),
+            HumanMessage(content="hello"),
+        ]
+    )
+
+    assert len(out) == 1
+    assert out[0]["content"][0]["text"] == "hello"
+
+
+def test_split_messages_skips_empty_assistant_message() -> None:
+    """AssistantMessages with no content (and no tool calls) must be dropped."""
+    _, out = _split_messages(
+        [
+            HumanMessage(content="hi"),
+            AssistantMessage(content=None, tool_calls=None),
+            AssistantMessage(content="", tool_calls=None),
+            AssistantMessage(content="ok", tool_calls=None),
+        ]
+    )
+
+    assistant_turns = [m for m in out if m["role"] == "assistant"]
+    assert len(assistant_turns) == 1
+    assert assistant_turns[0]["content"][0]["text"] == "ok"
+
+
+def test_split_messages_skips_empty_text_parts_in_human_message() -> None:
+    """Empty TextBlock parts inside a HumanMessage must not produce empty text blocks."""
+    from app.agent.schemas.chat import TextBlock
+
+    _, out = _split_messages(
+        [
+            HumanMessage(
+                content=None, parts=[TextBlock(text=""), TextBlock(text="hi")]
+            ),
+        ]
+    )
+
+    assert len(out) == 1
+    blocks = out[0]["content"]
+    assert all(b["text"] for b in blocks if b["type"] == "text")
+    assert blocks[0]["text"] == "hi"
+
+
+def test_split_messages_skips_human_message_with_only_empty_text_parts() -> None:
+    """A HumanMessage whose parts are all empty TextBlocks must be dropped entirely."""
+    from app.agent.schemas.chat import TextBlock
+
+    _, out = _split_messages(
+        [
+            HumanMessage(content=None, parts=[TextBlock(text=""), TextBlock(text="")]),
+            HumanMessage(content="keep"),
+        ]
+    )
+
+    assert len(out) == 1
+    assert out[0]["content"][0]["text"] == "keep"
+
+
+def test_split_messages_keeps_complete_assistant_tool_pair() -> None:
+    """Complete assistant tool_use + tool_result pairs are preserved."""
+    assistant = _make_assistant_with_tools("t1")
+    _, out = _split_messages(
+        [
+            HumanMessage(content="first"),
+            assistant,
+            ToolMessage(content="done", tool_call_id="t1", name="tool"),
+            HumanMessage(content="follow-up"),
+        ]
+    )
+
+    assert out[1]["role"] == "assistant"
+    assert out[1]["content"][1]["type"] == "tool_use"
+    assert out[2]["role"] == "user"
+    assert out[2]["content"][0]["type"] == "tool_result"
+
+
+# ---------------------------------------------------------------------------
+# thinking block round-trip (extended-thinking history contract)
+# ---------------------------------------------------------------------------
+
+
+def test_split_messages_echoes_thinking_block_with_tool_calls() -> None:
+    """An AssistantMessage with reasoning_content + signature + tool_calls must
+    include the thinking block first so Anthropic's extended-thinking history
+    contract is met.  The API requires both `thinking` and `signature`."""
+    assistant = AssistantMessage(
+        content=None,
+        reasoning_content="I should call the shell tool.",
+        reasoning_signature="sig-abc",
+        tool_calls=[
+            ToolCall(
+                id="t1",
+                function=FunctionCall(name="shell", arguments='{"command":"ls"}'),
+            )
+        ],
+    )
+    _, out = _split_messages(
+        [
+            HumanMessage(content="run ls"),
+            assistant,
+            ToolMessage(content="file.txt", tool_call_id="t1", name="shell"),
+        ]
+    )
+
+    assistant_turn = next(m for m in out if m["role"] == "assistant")
+    block_types = [b["type"] for b in assistant_turn["content"]]
+    assert block_types[0] == "thinking", "thinking block must come first"
+    assert "tool_use" in block_types
+    thinking_block = assistant_turn["content"][0]
+    assert thinking_block["thinking"] == "I should call the shell tool."
+    assert thinking_block["signature"] == "sig-abc"
+
+
+def test_split_messages_echoes_thinking_block_plain_assistant() -> None:
+    """An AssistantMessage with reasoning_content + signature but no tool_calls
+    must include the thinking block so history stays valid under extended thinking."""
+    _, out = _split_messages(
+        [
+            HumanMessage(content="think out loud"),
+            AssistantMessage(
+                content="Here is my answer.",
+                reasoning_content="Let me reason first.",
+                reasoning_signature="sig-xyz",
+                tool_calls=None,
+            ),
+            HumanMessage(content="follow up"),
+        ]
+    )
+
+    assistant_turn = next(m for m in out if m["role"] == "assistant")
+    block_types = [b["type"] for b in assistant_turn["content"]]
+    assert block_types == ["thinking", "text"]
+    assert assistant_turn["content"][0]["thinking"] == "Let me reason first."
+    assert assistant_turn["content"][0]["signature"] == "sig-xyz"
+    assert assistant_turn["content"][1]["text"] == "Here is my answer."
+
+
+def test_split_messages_echoes_thinking_block_when_content_empty() -> None:
+    """Max-token truncation can produce reasoning_content with empty content.
+    The thinking block alone must be emitted — not skipped — so the API
+    receives a valid non-empty content array instead of an empty one."""
+    _, out = _split_messages(
+        [
+            HumanMessage(content="hi"),
+            AssistantMessage(
+                content=None,
+                reasoning_content="Ran out of tokens mid-thought.",
+                reasoning_signature="sig-trunc",
+                tool_calls=None,
+            ),
+            HumanMessage(content="continue"),
+        ]
+    )
+
+    assistant_turns = [m for m in out if m["role"] == "assistant"]
+    assert len(assistant_turns) == 1, "truncated thinking-only turn must be kept"
+    blocks = assistant_turns[0]["content"]
+    assert len(blocks) == 1
+    assert blocks[0]["type"] == "thinking"
+    assert blocks[0]["thinking"] == "Ran out of tokens mid-thought."
+    assert blocks[0]["signature"] == "sig-trunc"
+
+
+# ---------------------------------------------------------------------------
+# signature guard — missing signature must silently drop the thinking block
+# ---------------------------------------------------------------------------
+
+
+def test_split_messages_drops_thinking_block_when_signature_missing_tool_calls() -> (
+    None
+):
+    """Pre-fix rows have reasoning_content but no reasoning_signature.
+    Sending an empty/missing signature triggers HTTP 400 'Invalid signature'.
+    The thinking block must be silently omitted; tool_use blocks are still sent."""
+    assistant = AssistantMessage(
+        content=None,
+        reasoning_content="some thoughts",
+        reasoning_signature=None,  # pre-fix row — no signature stored
+        tool_calls=[
+            ToolCall(
+                id="t1",
+                function=FunctionCall(name="shell", arguments='{"command":"ls"}'),
+            )
+        ],
+    )
+    _, out = _split_messages(
+        [
+            HumanMessage(content="run ls"),
+            assistant,
+            ToolMessage(content="file.txt", tool_call_id="t1", name="shell"),
+        ]
+    )
+
+    assistant_turn = next(m for m in out if m["role"] == "assistant")
+    block_types = [b["type"] for b in assistant_turn["content"]]
+    assert "thinking" not in block_types, (
+        "thinking block must be dropped without signature"
+    )
+    assert "tool_use" in block_types
+
+
+def test_split_messages_replays_interleaved_thinking_blocks_in_order() -> None:
+    """Adaptive/interleaved thinking (e.g. claude-sonnet-5) can emit multiple
+    thinking blocks in a single turn, each immediately preceding the tool_use
+    it justifies. Anthropic requires the exact original block order to be
+    replayed verbatim in history; collapsing to a single leading thinking
+    block (the legacy branch below) reorders/merges blocks and triggers
+    HTTP 400: 'thinking ... blocks ... cannot be modified'. When
+    raw_content_blocks was captured from the response, replay it as-is."""
+    assistant = AssistantMessage(
+        content=None,
+        tool_calls=[
+            ToolCall(id="t1", function=FunctionCall(name="read", arguments="{}")),
+            ToolCall(id="t2", function=FunctionCall(name="ls", arguments="{}")),
+        ],
+    )
+    assistant.raw_content_blocks = [
+        {"type": "thinking", "thinking": "check file first", "signature": "sig-1"},
+        {"type": "tool_use_ref", "id": "t1"},
+        {"type": "thinking", "thinking": "now list dir", "signature": "sig-2"},
+        {"type": "tool_use_ref", "id": "t2"},
+    ]
+
+    _, out = _split_messages(
+        [
+            HumanMessage(content="go"),
+            assistant,
+            ToolMessage(content="file contents", tool_call_id="t1", name="read"),
+            ToolMessage(content="dir listing", tool_call_id="t2", name="ls"),
+        ]
+    )
+
+    assistant_turn = next(m for m in out if m["role"] == "assistant")
+    blocks = assistant_turn["content"]
+    assert [b["type"] for b in blocks] == [
+        "thinking",
+        "tool_use",
+        "thinking",
+        "tool_use",
+    ]
+    assert blocks[0]["thinking"] == "check file first"
+    assert blocks[0]["signature"] == "sig-1"
+    assert blocks[1]["id"] == "t1"
+    assert blocks[2]["thinking"] == "now list dir"
+    assert blocks[2]["signature"] == "sig-2"
+    assert blocks[3]["id"] == "t2"
+
+
+def test_split_messages_drops_thinking_block_when_signature_missing_plain() -> None:
+    """Same guard for plain (non-tool-call) assistant turns without a signature."""
+    _, out = _split_messages(
+        [
+            HumanMessage(content="hi"),
+            AssistantMessage(
+                content="My answer.",
+                reasoning_content="some thoughts",
+                reasoning_signature=None,
+            ),
+        ]
+    )
+
+    assistant_turn = next(m for m in out if m["role"] == "assistant")
+    block_types = [b["type"] for b in assistant_turn["content"]]
+    assert "thinking" not in block_types
+    assert block_types == ["text"]
+    assert assistant_turn["content"][0]["text"] == "My answer."
+
+
+def test_anthropic_provider_uses_published_output_limits() -> None:
+    """Current models must use their real published cap, not a small fallback.
+
+    A too-small ``max_tokens`` truncates large ``write``/``patch`` tool calls
+    mid-JSON, so these limits are load-bearing rather than cosmetic.  The
+    unregistered-model fallback is covered in ``test_anthropic_max_tokens.py``.
+    """
+    for model in ("claude-sonnet-4-6", "claude-opus-4-8"):
+        provider = AnthropicProvider(api_key="test-key", model=model)
+        assert "anthropic-beta" not in provider.headers
+        payload = provider._payload([HumanMessage(content="hi")], None, {})
+        assert payload["max_tokens"] == 128000, model
+
+
+def test_anthropic_payload_service_tier_official_url() -> None:
+    provider = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-sonnet-4-6",
+        model_kwargs={"service_tier": "fast"},
+    )
+    payload = provider._payload(
+        [HumanMessage(content="hi")],
+        None,
+        provider._merged_kwargs(),
+    )
+    assert payload["service_tier"] == "auto"
+
+
+def test_anthropic_payload_service_tier_custom_url() -> None:
+    provider = AnthropicProvider(
+        api_key="[REDACTED]",
+        model="claude-sonnet-4-6",
+        base_url="https://some-proxy.com",
+        model_kwargs={"service_tier": "fast"},
+    )
+    payload = provider._payload(
+        [HumanMessage(content="hi")],
+        None,
+        provider._merged_kwargs(),
+    )
+    assert "service_tier" not in payload
+
+
+def test_parse_response_attaches_usage_with_cache_buckets() -> None:
+    """Non-streaming responses must report usage like the streaming path.
+
+    Anthropic returns three *disjoint* prompt buckets — `input_tokens` excludes
+    both cache buckets — so they are summed into a single `prompt_tokens` to
+    restore the `cached_tokens ⊆ prompt_tokens` invariant that cost estimation
+    depends on. `_parse_response` previously ignored `usage` entirely, so every
+    `provider.chat()` call (title generation, connectivity probes) recorded no
+    tokens at all.
+    """
+    provider = AnthropicProvider(
+        api_key="[REDACTED]",
+        model="claude-sonnet-4-6",
+    )
+
+    msg = provider._parse_response(
+        {
+            "content": [{"type": "text", "text": "A title"}],
+            "usage": {
+                "input_tokens": 100,
+                "cache_read_input_tokens": 1_000,
+                "cache_creation_input_tokens": 200,
+                "output_tokens": 50,
+            },
+        }
+    )
+
+    usage = (msg.extra or {}).get("usage")
+    assert usage is not None, "non-streaming response dropped usage"
+    assert usage["input"] == 1_300  # 100 fresh + 1000 cache read + 200 cache write
+    assert usage["cache"] == 1_000
+    assert usage["output"] == 50
+
+
+def test_parse_response_without_usage_omits_it() -> None:
+    provider = AnthropicProvider(
+        api_key="[REDACTED]",
+        model="claude-sonnet-4-6",
+    )
+
+    msg = provider._parse_response({"content": [{"type": "text", "text": "hi"}]})
+
+    assert (msg.extra or {}).get("usage") is None
+
+
+def test_split_messages_strips_thinking_blocks_from_trailing_assistant_prefill() -> (
+    None
+):
+    """Anthropic API rejects thinking/redacted_thinking blocks in the latest
+    assistant message (prefill). _split_messages must strip them from trailing
+    assistant turns."""
+    assistant_with_text = AssistantMessage(
+        content="Prefilled text",
+        reasoning_content="Thinking before answering",
+        reasoning_signature="sig-prefill",
+    )
+    _, out = _split_messages(
+        [
+            HumanMessage(content="Question"),
+            assistant_with_text,
+        ]
+    )
+
+    assert len(out) == 2
+    assert out[1]["role"] == "assistant"
+    assert len(out[1]["content"]) == 1
+    assert out[1]["content"][0]["type"] == "text"
+    assert out[1]["content"][0]["text"] == "Prefilled text"
+
+    assistant_thinking_only = AssistantMessage(
+        content=None,
+        reasoning_content="Interrupted thinking",
+        reasoning_signature="sig-prefill2",
+    )
+    _, out2 = _split_messages(
+        [
+            HumanMessage(content="Question"),
+            assistant_thinking_only,
+        ]
+    )
+
+    assert len(out2) == 1
+    assert out2[0]["role"] == "user"
+
+
+def test_blocks_from_raw_content_keeps_empty_thinking_string_with_signature() -> None:
+    """Thinking block with empty string thinking text must be preserved if signature is present."""
+    assistant = AssistantMessage(
+        content="ans",
+    )
+    assistant.raw_content_blocks = [
+        {"type": "thinking", "thinking": "", "signature": "sig-empty"},
+        {"type": "text", "text": "ans"},
+    ]
+    _, out = _split_messages(
+        [
+            HumanMessage(content="hi"),
+            assistant,
+            HumanMessage(content="next"),
+        ]
+    )
+
+    assistant_turn = out[1]
+    assert assistant_turn["content"][0]["type"] == "thinking"
+    assert assistant_turn["content"][0]["signature"] == "sig-empty"
+
+
+def test_anthropic_auth_plugin_reprefixes_assistant_tool_calls() -> None:
+    """The anthropic_auth plugin un-prefixes tool call names for execution,
+    but must re-prefix them back to mcp_ToolName when sending message history
+    to Anthropic to prevent 400 'thinking or redacted_thinking blocks in the latest assistant message cannot be modified'."""
+    import importlib.util
+    from pathlib import Path
+
+    auth_path = (
+        Path(__file__).parents[3]
+        / ".openagentd"
+        / "dev"
+        / "config"
+        / "plugins"
+        / "anthropic_auth.py"
+    )
+    if not auth_path.is_file():
+        pytest.skip("anthropic_auth.py dev plugin not present")
+
+    spec = importlib.util.spec_from_file_location(
+        "anthropic_auth_test_module", auth_path
+    )
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    assistant = AssistantMessage(
+        content="calling tool",
+        tool_calls=[
+            ToolCall(
+                id="t1",
+                function=FunctionCall(name="bash", arguments='{"command":"ls"}'),
+            )
+        ],
+    )
+    rewritten = mod._rewrite_messages([HumanMessage(content="hi"), assistant])
+    rewritten_assistant = rewritten[2]
+    assert rewritten_assistant.tool_calls[0].function.name == "mcp_Bash"

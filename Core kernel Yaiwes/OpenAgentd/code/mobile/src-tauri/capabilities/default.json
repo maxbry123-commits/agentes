@@ -1,0 +1,42 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capability set for the mobile shell.",
+  "windows": ["main"],
+  "local": true,
+  "remote": {
+    "urls": [
+      "http://localhost",
+      "http://localhost:*",
+      "http://127.*",
+      "http://127.*:*",
+      "http://10.*",
+      "http://10.*:*",
+      "http://172.*",
+      "http://172.*:*",
+      "http://192.168.*",
+      "http://192.168.*:*",
+      "https://*",
+      "https://*:*"
+    ]
+  },
+  "permissions": [
+    "core:default",
+    "core:webview:default",
+    "core:app:default",
+    "core:event:default",
+    "opener:default",
+    "notification:default",
+    "deep-link:default",
+    "haptics:allow-impact-feedback",
+    "haptics:allow-vibrate",
+    "allow-secure-get-access-key",
+    "allow-secure-set-access-key",
+    "allow-secure-delete-access-key",
+    "allow-app-backend-status",
+    "allow-app-save-backend-server",
+    "allow-app-use-external-backend",
+    "allow-app-remove-backend-server",
+    "allow-save-workspace-file"
+  ]
+}

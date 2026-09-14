@@ -1,0 +1,17 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discord Community
+    url: https://discord.gg/cz6GQHQUMg
+    about: Join the OpenAgentd Discord server to chat, ask questions, and discuss features.
+  - name: Facebook Community Group
+    url: https://www.facebook.com/groups/1256361676707935
+    about: Join the OpenAgentd Facebook Group to connect with users and maintainers.
+  - name: Security vulnerability
+    url: https://github.com/lthoangg/openagentd/security/advisories/new
+    about: Report vulnerabilities privately. Do not open public issues for security reports.
+  - name: Code of Conduct
+    url: https://github.com/lthoangg/openagentd/blob/main/CODE_OF_CONDUCT.md
+    about: Read the participation standards and reporting channels.
+  - name: Question or discussion
+    url: https://github.com/lthoangg/openagentd/issues?q=is%3Aissue%20label%3Aquestion
+    about: Ask a usage question. Please search existing issues first.

@@ -1,0 +1,151 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "openagentd"
+version = "2.15.0"  # keep in sync with app/version.txt
+description = "Self-hosted coding agent — streaming chat, tool use, and persistent memory"
+readme = "README.md"
+requires-python = ">=3.14"
+license = {text = "Apache-2.0"}
+authors = [{name = "openagentd contributors"}]
+keywords = ["ai", "agents", "llm", "fastapi", "self-hosted", "chat"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Framework :: FastAPI",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "pydantic-settings>=2.13.1",
+    "httpx>=0.28.1",
+    "sqlmodel>=0.0.22",
+    "loguru>=0.7.0",
+    "alembic>=1.13.1",
+    "aiosqlite>=0.20.0",
+    # Required at runtime by SQLAlchemy's async engine (sqlite+aiosqlite).
+    # Do NOT remove: sqlalchemy declares greenlet behind a platform_machine
+    # marker that misses macOS arm64 — the exact platform the desktop
+    # sidecar ships for. Without this explicit pin the async DB layer
+    # breaks on Apple Silicon.
+    "greenlet>=3.3.2",
+    "ddgs>=9.12.0",
+    # Binary documents (PDF/DOCX/office) for both `read` and `web_fetch`.
+    # A Rust library, 55-100x faster than markitdown on the same files, which
+    # releases the GIL so concurrent sessions convert in parallel and reports
+    # typed failures (encrypted, image-only) instead of an empty string.
+    "firecrawl-anydoc>=0.1.9",
+    # HTML for `web_fetch`. Extraction drops navigation, sidebars, and inline
+    # script/style bodies that a plain converter emits verbatim — on one real
+    # docs page markitdown returned 1,106,641 characters where this returns
+    # 10,655 for the same article.
+    # Imported lazily inside the web tools: the transitive chain (lxml, babel
+    # via courlan, dateparser) costs ~287ms to import and is only needed once
+    # a fetch actually runs.
+    "trafilatura>=2.2.0",
+    "pyyaml>=6.0.3",
+    "fastapi>=0.135.2",
+    "uvicorn>=0.42.0",
+    # Prefer Uvicorn's native HTTP parser on CPython. Uvicorn falls back to
+    # h11 on other Python implementations.
+    "httptools>=0.8.0; platform_python_implementation == 'CPython'",
+    # uvloop does not support Windows; Uvicorn's auto loop retains asyncio
+    # there and on non-CPython implementations.
+    "uvloop>=0.22.1; sys_platform != 'win32' and platform_python_implementation == 'CPython'",
+    # WebSocket protocol support for uvicorn (terminal PTY streaming).
+    # uvicorn is installed bare (no [standard] extra) and picks up the
+    # ws implementation only if importable — declare it explicitly so
+    # WS support never hinges on another package's transitive tree.
+    "websockets>=16.0",
+    "sse-starlette>=3.3.4",
+    "opentelemetry-api>=1.28.0",
+    "opentelemetry-sdk>=1.28.0",
+    "python-multipart>=0.0.24",
+    "croniter>=6.2.2",
+    # Pin the major: v1 -> v2 removed `streamablehttp_client` and renamed protocol
+    # fields to snake_case, so an unpinned floor lets a fresh resolve silently
+    # break the MCP client (the desktop sidecar builds from pyproject, not the lock).
+    "mcp>=2.0.0,<3",
+    # MCP v2 dropped httpx/httpx-sse for httpx2. Anything handed to the SDK
+    # (`http_client=`, `auth=`) must be an httpx2 type. Plain `httpx` stays a
+    # direct dependency above because the provider/agent-loop modules are still
+    # on it: their tests mock via `respx`, which is hard-bound to `httpx` and
+    # cannot intercept an `httpx2` client. `httpx2.alias_httpx()` would fix that
+    # but must run before any `import httpx`, which respx's own pytest plugin
+    # does first — so those modules migrate only when respx gains httpx2
+    # support (or the mocking layer is replaced).
+    "httpx2>=2.5.0",
+    "orjson>=3.10.0",
+    "pathspec>=1.1.1",
+]
+
+[project.optional-dependencies]
+# Pre-bundle Python diagnostics (ruff/ty) where shipping them is preferred
+# over the on-demand per-project install (app.services.lsp.managed). The
+# desktop sidecar omits this extra: its bundle stays ~22MB smaller and
+# downloads the project-pinned version into the user cache on first use.
+python-lsp = ["ruff==0.16.5", "ty==0.0.78"]
+
+[project.urls]
+Repository = "https://github.com/lthoangg/openagentd"
+"Bug Tracker" = "https://github.com/lthoangg/openagentd/issues"
+Discord = "https://discord.gg/cz6GQHQUMg"
+"Facebook Group" = "https://www.facebook.com/groups/1256361676707935"
+
+[project.scripts]
+openagentd = "app.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.1.0",
+    "pytest-env>=1.6.0",
+    "pytest-randomly>=4.1.0",
+    "pytest-xdist>=3.6.1",
+    "respx>=0.22.0",
+    "tiktoken>=0.12.0",
+    # Python diagnostics for this repo's own lint/type checks. The runtime
+    # installs them on demand per coding project instead of shipping them.
+    "ruff==0.16.5",
+    "ty==0.0.78",
+    "pytest-timeout>=2.4.0",
+    "pillow>=11.0.0",
+]
+experiment = [
+    "sentence-transformers>=5.6.0",
+    "turbovec>=0.8.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+# Include non-Python data files inside the package: alembic config
+# and migration scripts. The web UI is packaged by the desktop shell,
+# not embedded in the FastAPI server wheel.
+[tool.hatch.build.targets.wheel.force-include]
+"app/alembic.ini" = "app/alembic.ini"
+
+[tool.uv]
+package = true
+
+[tool.ty.src]
+include = ["app"]
+exclude = ["tests", "**/__pycache__", ".venv"]
+
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint]
+# Pin explicitly to ruff's pre-0.16 default rule set (E4, E7, E9, F). Ruff
+# 0.16 changed what an unconfigured project lints by default (adding ~350
+# rules from plugins like flake8-bugbear, pyupgrade, flake8-simplify,
+# tryceratops, pylint, etc.), which would otherwise turn a routine ruff
+# version bump into a ~1250-violation, whole-repo lint migration. Keep the
+# existing, deliberate rule set; opt into additional rule groups later as
+# their own reviewed change.
+select = ["E4", "E7", "E9", "F"]

@@ -1,0 +1,105 @@
+name: Core
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/core.yml"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/release-desktop.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/core.yml"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/release-desktop.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Opt JS actions into Node.js 24 ahead of the June 2026 forced switch.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  lint:
+    name: Lint & type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv & Python 3.14
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: ruff lint
+        run: uv run ruff check app/ tests/
+
+      - name: ruff format check
+        run: uv run ruff format --check app/ tests/
+
+      - name: ty
+        run: uv run ty check app/
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv & Python 3.14
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run pytest
+        run: uv run pytest -n 4 -q
+
+  windows-smoke:
+    name: Windows sidecar smoke
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv & Python 3.14
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Verify sidecar imports and Windows runtime helpers
+        run: >-
+          uv run pytest -q
+          tests/api/test_app_startup_imports.py
+          tests/scripts/test_build_sidecar.py
+          tests/agent/tools/test_shell_runtime.py
+          tests/agent/tools/test_shell.py::test_windows_subprocess_kwargs_create_new_process_group
+          tests/agent/tools/test_shell.py::test_windows_kill_terminates_entire_process_tree
+          tests/agent/tools/test_shell.py::test_windows_kill_falls_back_when_taskkill_fails
+          tests/agent/tools/test_shell.py::test_windows_shell_executes_native_command
+          tests/agent/test_denied_paths_commands.py::test_looks_path_like_positive
+          tests/agent/test_denied_paths_commands.py::test_blocks_quoted_windows_path_under_denied_root

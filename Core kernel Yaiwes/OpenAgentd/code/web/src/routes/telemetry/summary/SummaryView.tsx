@@ -1,0 +1,108 @@
+/**
+ * Aggregate summary panels (totals, latency, daily turns, by-model, by-tool).
+ * Renders the data shape returned by `useObservabilitySummaryQuery`.
+ */
+
+import { Info } from 'lucide-react'
+import type { ObservabilitySummary } from '@/api/client'
+import {
+  formatCompact,
+  formatInt,
+  formatPercent,
+  formatUsd,
+} from '@/utils/telemetryFormat'
+import { EmptyTable, SectionCard, SectionCardHeader, Stat, Table } from '../primitives'
+
+export function SummaryView({ data }: { data: ObservabilitySummary }) {
+  const sampled = data.sample_ratio < 1.0
+  const { totals } = data
+  const cacheMissTokens = Math.max(totals.input_tokens - totals.cached_tokens, 0)
+
+  return (
+    <div className="flex flex-col gap-5">
+      {sampled && (
+        <div className="flex items-start gap-2 rounded-sm border border-(--color-border) bg-(--bg-card) p-3">
+          <Info size={14} className="mt-0.5 shrink-0 text-(--color-accent)" />
+          <p className="text-xs text-(--color-text-2)">
+            Spans are sampled at <strong>{Math.round(data.sample_ratio * 100)}%</strong>.
+            Figures for non-error, non-slow spans are approximate. Set{' '}
+            <code className="rounded-sm bg-(--bg-card) px-1 py-0.5 text-[10px]">
+              OTEL_SPAN_SAMPLE_RATIO=1.0
+            </code>{' '}
+            to disable sampling.
+          </p>
+        </div>
+      )}
+
+      <SectionCard>
+        <SectionCardHeader>Usage</SectionCardHeader>
+        <div className="grid grid-cols-1 gap-3 p-3 min-[380px]:grid-cols-2 lg:grid-cols-5">
+          <Stat label="Input" value={formatCompact(totals.input_tokens)} />
+          <Stat label="Output" value={formatCompact(totals.output_tokens)} />
+          <Stat label="Cache read" value={formatCompact(totals.cached_tokens)} />
+          <Stat label="Cache write" value={formatCompact(totals.cache_write_tokens)} />
+          <Stat label="Est. cost" value={formatUsd(totals.estimated_cost_usd)} />
+          <Stat
+            label="Errors"
+            value={formatInt(totals.errors)}
+            tone={totals.errors > 0 ? 'danger' : undefined}
+          />
+        </div>
+      </SectionCard>
+
+      <SectionCard>
+        <SectionCardHeader>Provider:model</SectionCardHeader>
+        {data.by_model.length === 0 ? (
+          <EmptyTable label="No LLM calls recorded in this window." />
+        ) : (
+          <Table
+            headers={['Provider:model', 'Calls', 'Input', 'Output', 'Cache read', 'Cache write', 'Cost']}
+            rows={data.by_model.map((m) => [
+              m.provider_model,
+              formatInt(m.calls),
+              formatCompact(m.input_tokens),
+              formatCompact(m.output_tokens),
+              formatCompact(m.cached_tokens),
+              formatCompact(m.cache_write_tokens),
+              formatUsd(m.estimated_cost_usd),
+            ])}
+            align={['left', 'right', 'right', 'right', 'right', 'right', 'right']}
+          />
+        )}
+      </SectionCard>
+
+      <SectionCard>
+        <SectionCardHeader>Cache hit/miss</SectionCardHeader>
+        <div className="p-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Stat label="Read tokens" value={formatCompact(totals.cached_tokens)} />
+            <Stat label="Write tokens" value={formatCompact(totals.cache_write_tokens)} />
+            <Stat label="Miss tokens" value={formatCompact(cacheMissTokens)} />
+          </div>
+        </div>
+        <div className="border-t border-(--color-border)/60">
+          {data.cache_by_step.length === 0 ? (
+            <EmptyTable label="No cache usage recorded in this window." />
+          ) : (
+            <Table
+              headers={['Step', 'Provider:model', 'Calls', 'Read', 'Write', 'Miss', 'Read rate', 'Cost']}
+              rows={data.cache_by_step.map((step) => {
+                return [
+                  step.step,
+                  step.provider_model,
+                  formatInt(step.calls),
+                  formatCompact(step.cached_tokens),
+                  formatCompact(step.cache_write_tokens),
+                  formatCompact(step.miss_tokens),
+                  formatPercent(step.cache_percent),
+                  formatUsd(step.estimated_cost_usd),
+                ]
+              })}
+              align={['left', 'left', 'right', 'right', 'right', 'right', 'right', 'right']}
+            />
+          )}
+        </div>
+      </SectionCard>
+    </div>
+  )
+}

@@ -1,0 +1,60 @@
+repos:
+  # ---------------------------------------------------------------------------
+  # General file hygiene
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        files: ^.*\.(py|ts|tsx|md|yaml|yml|toml|ini)$
+      - id: end-of-file-fixer
+        files: ^.*\.(py|ts|tsx|md|yaml|yml|toml|ini)$
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+        exclude: ^documents/assets/
+
+  # ---------------------------------------------------------------------------
+  # Python – lint, format & type check
+  # ---------------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff check (python)
+        language: system
+        entry: uv run ruff check --fix --force-exclude
+        types: [python]
+        files: ^(app|cli|tests)/
+      - id: ruff-format
+        name: ruff format (python)
+        language: system
+        entry: uv run ruff format --force-exclude
+        types: [python]
+        files: ^(app|cli|tests)/
+      - id: ty
+        name: ty (app)
+        language: system
+        entry: uv run ty check app/
+        types: [python]
+        files: ^(app|cli)/
+        pass_filenames: false
+
+  # ---------------------------------------------------------------------------
+  # Frontend – lint (Oxlint) & type check (unified tsc -b)
+  # ---------------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: oxlint
+        name: oxlint (web)
+        language: system
+        entry: bash -c 'cd web && bun run lint'
+        files: ^web/src/.*\.(ts|tsx)$
+        pass_filenames: false
+      - id: tsc
+        name: tsc (web)
+        language: system
+        entry: bash -c 'cd web && bun run typecheck'
+        files: ^web/src/.*\.(ts|tsx)$
+        pass_filenames: false
