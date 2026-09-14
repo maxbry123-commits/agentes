@@ -1,0 +1,225 @@
+name: YAIWES Catalog47 Download Extract LOOP
+
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-catalog47-download-extract.yml'
+      - 'Core kernel Yaiwes/Crack wall bitácora stated JSON/CATALOG47-CONFIRMED-QUEUE-20260914.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-catalog47-download-extract
+  cancel-in-progress: false
+
+jobs:
+  download:
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        shard: [0, 1, 2, 3, 4]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      QUEUE_CANON: Core kernel Yaiwes/Crack wall bitácora stated JSON/CATALOG47-CONFIRMED-QUEUE-20260914.json
+      MOTOR2: Motores/📂Motor descarga de componentes y extracción de zip/motor_2_queue_download_extract.py
+      ENGINE: Motores/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py
+      DEST_ROOT: Core kernel Yaiwes
+    steps:
+      - name: Checkout queue and immutable motors
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-catalog47-download-extract.yml
+            /Motores/📂Motor descarga de componentes y extracción de zip/motor_2_queue_download_extract.py
+            /Motores/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py
+            /Core kernel Yaiwes/Crack wall bitácora stated JSON/CATALOG47-CONFIRMED-QUEUE-20260914.json
+
+      - name: Verify immutable motors
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object "$MOTOR2")" = '84d566e2ee4e98e42eb3a864026d067d48caabd9'
+          test "$(git hash-object "$ENGINE")" = '91e6e4486692eab314be5c7130d8310d3c855397'
+          echo 'MOTOR2_LOCK=PASS'
+          echo 'ENGINE_LOCK=PASS'
+
+      - name: Build fresh shard queue and filter verified destinations
+        id: preflight
+        shell: bash
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          q=json.loads(pathlib.Path(os.environ['QUEUE_CANON']).read_text())['queue']
+          shard=int(os.environ['SHARD'])
+          selected=[row for i,row in enumerate(q) if i % 5 == shard]
+          active=[]; skipped=[]
+          for row in selected:
+              path=f"Core kernel Yaiwes/{row['slug']}/DOWNLOAD_EXTRACT_MANIFEST.json"
+              p=subprocess.run(['git','show',f'origin/main:{path}'],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+              if p.returncode == 0:
+                  try:
+                      d=json.loads(p.stdout)
+                      if d.get('extraction_verified') is True:
+                          skipped.append({'id':row['id'],'slug':row['slug'],'status':'ALREADY_PRESENT_VERIFIED','manifest':path})
+                          continue
+                  except Exception:
+                      pass
+              active.append(row)
+          pathlib.Path('/tmp/catalog47-active.json').write_text(json.dumps({'queue':active},indent=2)+'\n')
+          pathlib.Path('/tmp/catalog47-preflight.json').write_text(json.dumps({'schema':'yaiwes.kernel.catalog47.preflight/v1','shard':shard,'selected':len(selected),'active':len(active),'skipped_verified':skipped},indent=2,sort_keys=True)+'\n')
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f: f.write(f"active={len(active)}\n")
+          print(json.dumps({'shard':shard,'selected':len(selected),'active':len(active),'skipped_verified':len(skipped)}))
+          PY
+
+      - name: Execute Motor2 queue LOOP
+        if: steps.preflight.outputs.active != '0'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          QUEUE_FILE: /tmp/catalog47-active.json
+          STATE_FILE: /tmp/catalog47-state.json
+          INDEX_PATH: /tmp/catalog47-index.md
+          ENGINE_PATH: ${{ github.workspace }}/Motores/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py
+          MAX_RETRIES: '3'
+          LOOP_SLEEP_SECONDS: '1'
+        run: |
+          set -euo pipefail
+          python3 "$MOTOR2" | tee /tmp/catalog47-motor2-result.jsonl
+
+      - name: Create empty state when shard already verified
+        if: steps.preflight.outputs.active == '0'
+        shell: bash
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python3 - <<'PY'
+          import json,os,pathlib,time
+          pathlib.Path('/tmp/catalog47-state.json').write_text(json.dumps({'schema':'yaiwes.frontend.download-extract-queue.v1','created_at':int(time.time()),'items':{}},indent=2)+'\n')
+          pathlib.Path('/tmp/catalog47-index.md').write_text('# Catalog47 shard\n\nNo active items; all selected destinations were already verified.\n')
+          PY
+
+      - name: Persist shard state to Crazy Wall
+        if: always()
+        shell: bash
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          test -f /tmp/catalog47-state.json
+          test -f /tmp/catalog47-preflight.json
+          cp /tmp/catalog47-state.json /tmp/state.keep.json
+          cp /tmp/catalog47-preflight.json /tmp/preflight.keep.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5 6 7 8; do
+            git fetch origin main
+            git reset --hard origin/main
+            out='Core kernel Yaiwes/Crack wall bitácora stated JSON'
+            mkdir -p "$out"
+            cp /tmp/state.keep.json "$out/CATALOG47-SHARD-${SHARD}-STATE-20260914.json"
+            cp /tmp/preflight.keep.json "$out/CATALOG47-SHARD-${SHARD}-PREFLIGHT-20260914.json"
+            git add -f --sparse -- "$out/CATALOG47-SHARD-${SHARD}-STATE-20260914.json" "$out/CATALOG47-SHARD-${SHARD}-PREFLIGHT-20260914.json"
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m "watchdog(yaiwes): persist catalog47 shard ${SHARD} state"
+            if git push origin HEAD:main; then exit 0; fi
+            sleep $((attempt * 3))
+          done
+          exit 1
+
+      - name: Fail shard on unresolved Motor2 items
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,pathlib
+          d=json.loads(pathlib.Path('/tmp/catalog47-state.json').read_text())
+          bad={k:v for k,v in d.get('items',{}).items() if v.get('status')!='VERIFIED_CLOSED'}
+          print('CATALOG47_SHARD_GAPS='+json.dumps(bad,ensure_ascii=False)[:12000])
+          if bad: raise SystemExit(1)
+          print('CATALOG47_SHARD=VERIFIED_CLOSED')
+          PY
+
+  aggregate-gate:
+    if: always()
+    needs: download
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout gate inputs
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /Core kernel Yaiwes/Crack wall bitácora stated JSON/CATALOG47-CONFIRMED-QUEUE-20260914.json
+
+      - name: Fresh global read-back gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          python3 - <<'PY'
+          import json,pathlib,subprocess
+          q=json.loads(pathlib.Path('Core kernel Yaiwes/Crack wall bitácora stated JSON/CATALOG47-CONFIRMED-QUEUE-20260914.json').read_text())['queue']
+          closed=[]; gaps=[]
+          for row in q:
+              path=f"Core kernel Yaiwes/{row['slug']}/DOWNLOAD_EXTRACT_MANIFEST.json"
+              p=subprocess.run(['git','show',f'origin/main:{path}'],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+              if p.returncode:
+                  gaps.append({'id':row['id'],'slug':row['slug'],'gap':'MANIFEST_MISSING'}); continue
+              try: d=json.loads(p.stdout)
+              except Exception:
+                  gaps.append({'id':row['id'],'slug':row['slug'],'gap':'MANIFEST_INVALID'}); continue
+              if d.get('extraction_verified') is not True:
+                  gaps.append({'id':row['id'],'slug':row['slug'],'gap':'EXTRACTION_NOT_VERIFIED'}); continue
+              closed.append(row['id'])
+          old='Core kernel Yaiwes/AutoGen-Core/DOWNLOAD_EXTRACT_MANIFEST.json'
+          a=subprocess.run(['git','show',f'origin/main:{old}'],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+          autogen_closed=False
+          if a.returncode==0:
+              try: autogen_closed=json.loads(a.stdout).get('extraction_verified') is True
+              except Exception: pass
+          result={'schema':'yaiwes.kernel.catalog47.aggregate-gate/v1','catalog47_total':len(q),'catalog47_closed':len(closed),'catalog47_gaps':gaps,'autogen_old20_closed':autogen_closed}
+          pathlib.Path('/tmp/catalog47-aggregate.json').write_text(json.dumps(result,indent=2,sort_keys=True)+'\n')
+          print(json.dumps(result,ensure_ascii=False))
+          if gaps: raise SystemExit(1)
+          print('CATALOG47_DOWNLOAD_EXTRACT=VERIFIED_CLOSED_47_OF_47')
+          PY
+
+      - name: Persist aggregate gate
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f /tmp/catalog47-aggregate.json
+          cp /tmp/catalog47-aggregate.json /tmp/aggregate.keep.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5 6; do
+            git fetch origin main
+            git reset --hard origin/main
+            out='Core kernel Yaiwes/Crack wall bitácora stated JSON/CATALOG47-AGGREGATE-STATE-20260914.json'
+            mkdir -p "$(dirname "$out")"
+            cp /tmp/aggregate.keep.json "$out"
+            git add -f --sparse -- "$out"
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m 'watchdog(yaiwes): persist catalog47 aggregate gate'
+            if git push origin HEAD:main; then exit 0; fi
+            sleep $((attempt * 3))
+          done
+          exit 1
