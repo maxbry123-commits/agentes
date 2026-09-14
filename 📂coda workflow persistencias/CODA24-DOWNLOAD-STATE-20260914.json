@@ -1,0 +1,936 @@
+{
+  "created_at": 1789364034,
+  "items": {
+    "01-deepaudit": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 63149371,
+        "bundle_sha256": "e519d6183818d0d096e5fde9b217f2782faddbdae58eeaeeb5e7e9fe1a8fcad0",
+        "elapsed_seconds": 56.39,
+        "extracted_tree": {
+          "bytes": 68435990,
+          "files": 507,
+          "sha256": "bcb29183c573e82813cfc2df623d20b2ad412b0abe6788de9607675f866a5f4c"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 12582912,
+            "name": "01-DeepAudit.bundle.zip.part-0001",
+            "sha256": "31e27764ed77afb77bd518ac42261bb2afa454af9b08bc1f2e06d292abcc5746"
+          },
+          {
+            "bytes": 12582912,
+            "name": "01-DeepAudit.bundle.zip.part-0002",
+            "sha256": "8a47ea0260432866146cbc9114a169dac5fb9d4fe170792323204802a5d29074"
+          },
+          {
+            "bytes": 12582912,
+            "name": "01-DeepAudit.bundle.zip.part-0003",
+            "sha256": "f38a83f97d9418b87734417031253d62635bd6ee8829a4f035d5a5255914c4f0"
+          },
+          {
+            "bytes": 12582912,
+            "name": "01-DeepAudit.bundle.zip.part-0004",
+            "sha256": "79275569ce7354b3d2ba0decfa587a6bb0afcad3c316dace8d92beec69c23fea"
+          },
+          {
+            "bytes": 12582912,
+            "name": "01-DeepAudit.bundle.zip.part-0005",
+            "sha256": "370cfd5d07d932ec39e9439c9796a613bea456b5bb08d918d070464a9cb3f728"
+          },
+          {
+            "bytes": 234811,
+            "name": "01-DeepAudit.bundle.zip.part-0006",
+            "sha256": "3ab77f2a3fe5da95f5d3ae0bb69613c44eda9a483836425c291da6d949a8604e"
+          }
+        ],
+        "publish": {
+          "commit": "230a494396664076aa9193c267dfe8944236dddb",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "01-DeepAudit",
+        "source_bytes": 68435990,
+        "source_commit": "324133fe60b540327d182fbb8c800aa65a613349",
+        "source_files": 507,
+        "source_ref": "HEAD",
+        "source_repo": "lintsinghua/DeepAudit",
+        "source_tree": {
+          "bytes": 68435990,
+          "files": 507,
+          "sha256": "bcb29183c573e82813cfc2df623d20b2ad412b0abe6788de9607675f866a5f4c"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "01-DeepAudit",
+      "source_repo": "lintsinghua/DeepAudit",
+      "status": "VERIFIED_CLOSED"
+    },
+    "02-cyberstrikeai": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 128, in publish\n    if target.exists(): raise RuntimeError('DESTINATION_EXISTS:'+rel)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: DESTINATION_EXISTS:\ud83d\udcc2coda workflow persistencias/02-CyberStrikeAI\n",
+      "slug": "02-CyberStrikeAI",
+      "source_repo": "AIPentest/CyberStrikeAI",
+      "status": "FAILED"
+    },
+    "03-luan1aoagent": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 2195739,
+        "bundle_sha256": "1bb5ca6241992577d86e127b33da9f6045aa341079f64c715fc47a3bc0f18ff3",
+        "elapsed_seconds": 27.07,
+        "extracted_tree": {
+          "bytes": 4929851,
+          "files": 220,
+          "sha256": "09910912fabc3176a14bde84144c226dbe03734b068fa533ab4bb93474d1227a"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 2195739,
+            "name": "03-LuaN1aoAgent.bundle.zip.part-0001",
+            "sha256": "1bb5ca6241992577d86e127b33da9f6045aa341079f64c715fc47a3bc0f18ff3"
+          }
+        ],
+        "publish": {
+          "commit": "6fe5664e1d174f320bbd49236ca1f37e43dd5bf0",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "03-LuaN1aoAgent",
+        "source_bytes": 4929851,
+        "source_commit": "2efe2c5020332d90ee82d108fc82a6604a6610eb",
+        "source_files": 220,
+        "source_ref": "HEAD",
+        "source_repo": "SanMuzZzZz/LuaN1aoAgent",
+        "source_tree": {
+          "bytes": 4929851,
+          "files": 220,
+          "sha256": "09910912fabc3176a14bde84144c226dbe03734b068fa533ab4bb93474d1227a"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "03-LuaN1aoAgent",
+      "source_repo": "SanMuzZzZz/LuaN1aoAgent",
+      "status": "VERIFIED_CLOSED"
+    },
+    "04-ai-pentest": {
+      "attempts": 2,
+      "result": {
+        "bundle_bytes": 245002,
+        "bundle_sha256": "713dd595a279e854354875a03887a94b87289033a69c1fed41a8c8a0968d43a3",
+        "elapsed_seconds": 25.29,
+        "extracted_tree": {
+          "bytes": 916202,
+          "files": 93,
+          "sha256": "abbe0288a25989adfd5a779c9b72a020f5eb5eb501716fb30d68fd84842ec4f2"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 245002,
+            "name": "04-AI-Pentest.bundle.zip.part-0001",
+            "sha256": "713dd595a279e854354875a03887a94b87289033a69c1fed41a8c8a0968d43a3"
+          }
+        ],
+        "publish": {
+          "commit": "b015572014a3437420f3d5135a5c4ae4cc56d577",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "04-AI-Pentest",
+        "source_bytes": 916202,
+        "source_commit": "de242f062a79afc2c61e3aaf2a877a3ceacc1644",
+        "source_files": 93,
+        "source_ref": "HEAD",
+        "source_repo": "yuanweipeifang/AI_Pentest",
+        "source_tree": {
+          "bytes": 916202,
+          "files": 93,
+          "sha256": "abbe0288a25989adfd5a779c9b72a020f5eb5eb501716fb30d68fd84842ec4f2"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "04-AI-Pentest",
+      "source_repo": "yuanweipeifang/AI_Pentest",
+      "status": "VERIFIED_CLOSED"
+    },
+    "05-ai-infra-guard": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 128, in publish\n    if target.exists(): raise RuntimeError('DESTINATION_EXISTS:'+rel)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: DESTINATION_EXISTS:\ud83d\udcc2coda workflow persistencias/05-AI-Infra-Guard\n",
+      "slug": "05-AI-Infra-Guard",
+      "source_repo": "Tencent/AI-Infra-Guard",
+      "status": "FAILED"
+    },
+    "06-pentagi": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 152, in main\n    work=pathlib.Path(td); src,commit=acquire(work); rows,src_bytes=scan_tree(src); src_tree=tree_hash(src)\n                                                                    ^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 57, in scan_tree\n    if special: raise RuntimeError('SOURCE_SPECIAL_FILE_GAP:'+','.join(special[:30]))\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: SOURCE_SPECIAL_FILE_GAP:backend/cmd/installer/files/links/.env,backend/cmd/installer/files/links/EULA.md,backend/cmd/installer/files/links/docker-compose-graphiti.yml,backend/cmd/installer/files/links/docker-compose-langfuse.yml,backend/cmd/installer/files/links/docker-compose-observability.yml,backend/cmd/installer/files/links/docker-compose.yml,backend/cmd/installer/files/links/example.custom.provider.yml,backend/cmd/installer/files/links/example.ollama.provider.yml,backend/cmd/installer/files/links/graphiti,backend/cmd/installer/files/links/neo4j,backend/cmd/installer/files/links/observability,backend/cmd/installer/files/links/providers-configs\n",
+      "slug": "06-PentAGI",
+      "source_repo": "vxcontrol/pentagi",
+      "status": "FAILED"
+    },
+    "07-strix": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 5327084,
+        "bundle_sha256": "720f59a74540ce7915689b4bf0ae7ccdd4283571a2688651c3236f9f3b1e22da",
+        "elapsed_seconds": 28.04,
+        "extracted_tree": {
+          "bytes": 9442517,
+          "files": 507,
+          "sha256": "ccac480353beb3d1abcf78c63808bd3a8c8211bde7bc458fe80f014c846ccfde"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 5327084,
+            "name": "07-Strix.bundle.zip.part-0001",
+            "sha256": "720f59a74540ce7915689b4bf0ae7ccdd4283571a2688651c3236f9f3b1e22da"
+          }
+        ],
+        "publish": {
+          "commit": "c8b154744f2b5728b0d07b0ad41d49dfec594caf",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "07-Strix",
+        "source_bytes": 9442517,
+        "source_commit": "84f4108195fb516d48745aa912ba8862c7360ebb",
+        "source_files": 507,
+        "source_ref": "HEAD",
+        "source_repo": "usestrix/strix",
+        "source_tree": {
+          "bytes": 9442517,
+          "files": 507,
+          "sha256": "ccac480353beb3d1abcf78c63808bd3a8c8211bde7bc458fe80f014c846ccfde"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "07-Strix",
+      "source_repo": "usestrix/strix",
+      "status": "VERIFIED_CLOSED"
+    },
+    "08-redcell": {
+      "attempts": 2,
+      "result": {
+        "bundle_bytes": 1046444,
+        "bundle_sha256": "da02efedca73afed04fd8804ec37b041b10681a4d2ca17d3f15a502bab5c91e2",
+        "elapsed_seconds": 26.41,
+        "extracted_tree": {
+          "bytes": 2400640,
+          "files": 357,
+          "sha256": "745ebea49fb4931ed59799d8b9599a93bb3d9943463bacc89734be9574787158"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 1046444,
+            "name": "08-Redcell.bundle.zip.part-0001",
+            "sha256": "da02efedca73afed04fd8804ec37b041b10681a4d2ca17d3f15a502bab5c91e2"
+          }
+        ],
+        "publish": {
+          "commit": "bf277766723fb19213752d4c387fcece399bc7c4",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "08-Redcell",
+        "source_bytes": 2400640,
+        "source_commit": "27b118b4e7f2171d7f70710720b9e5a07e978b8a",
+        "source_files": 357,
+        "source_ref": "HEAD",
+        "source_repo": "martian56/redcell",
+        "source_tree": {
+          "bytes": 2400640,
+          "files": 357,
+          "sha256": "745ebea49fb4931ed59799d8b9599a93bb3d9943463bacc89734be9574787158"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "08-Redcell",
+      "source_repo": "martian56/redcell",
+      "status": "VERIFIED_CLOSED"
+    },
+    "09-shel": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 373534,
+        "bundle_sha256": "1dfbeac9fde21c44e4f6196c9d1f301ced66d225a9b0e927bf68b2cefa8e93cc",
+        "elapsed_seconds": 36.4,
+        "extracted_tree": {
+          "bytes": 1389940,
+          "files": 70,
+          "sha256": "a6c5430bd4e30d56c322351357626f4e503ba80f973078214e4c3344d4cae4f1"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 373534,
+            "name": "09-Shel.bundle.zip.part-0001",
+            "sha256": "1dfbeac9fde21c44e4f6196c9d1f301ced66d225a9b0e927bf68b2cefa8e93cc"
+          }
+        ],
+        "publish": {
+          "commit": "65a8fd8b21e67b0d07f8e80ead57bb1a6f64f03f",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "09-Shel",
+        "source_bytes": 1389940,
+        "source_commit": "201b6576e2b4c3db0e3a0949859cf44768aa14b9",
+        "source_files": 70,
+        "source_ref": "HEAD",
+        "source_repo": "shri7-lab/Shel",
+        "source_tree": {
+          "bytes": 1389940,
+          "files": 70,
+          "sha256": "a6c5430bd4e30d56c322351357626f4e503ba80f973078214e4c3344d4cae4f1"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "09-Shel",
+      "source_repo": "shri7-lab/Shel",
+      "status": "VERIFIED_CLOSED"
+    },
+    "10-pentest-swarm-ai": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 6263072,
+        "bundle_sha256": "1a8f2dc85205dfaa57ba2e9ab8c6c3544ae07100654800e55e2a3924684f0119",
+        "elapsed_seconds": 28.61,
+        "extracted_tree": {
+          "bytes": 7626543,
+          "files": 511,
+          "sha256": "c3e2dd11b0dddd1e3342787c5ea74ef11d7ef81d601e1a4b1d554ba8de657ef6"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 6263072,
+            "name": "10-Pentest-Swarm-AI.bundle.zip.part-0001",
+            "sha256": "1a8f2dc85205dfaa57ba2e9ab8c6c3544ae07100654800e55e2a3924684f0119"
+          }
+        ],
+        "publish": {
+          "commit": "1c934a1553a62153f1da96378250134a408d8966",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "10-Pentest-Swarm-AI",
+        "source_bytes": 7626543,
+        "source_commit": "2ea816af4884f91524268c4ffd7e945f3f364425",
+        "source_files": 511,
+        "source_ref": "HEAD",
+        "source_repo": "Armur-Ai/Pentest-Swarm-AI",
+        "source_tree": {
+          "bytes": 7626543,
+          "files": 511,
+          "sha256": "c3e2dd11b0dddd1e3342787c5ea74ef11d7ef81d601e1a4b1d554ba8de657ef6"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "10-Pentest-Swarm-AI",
+      "source_repo": "Armur-Ai/Pentest-Swarm-AI",
+      "status": "VERIFIED_CLOSED"
+    },
+    "11-llm-ctf-solver": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 639770,
+        "bundle_sha256": "8611bd71495f18227b99f204f6ee344cf93f942d6e0e672c19abe40257c4e02a",
+        "elapsed_seconds": 26.03,
+        "extracted_tree": {
+          "bytes": 1624700,
+          "files": 361,
+          "sha256": "5aed10979bc6a51a2a787eea514487f2defb6a719ec82db192c88ab00d8052c9"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 639770,
+            "name": "11-LLM-CTF-Solver.bundle.zip.part-0001",
+            "sha256": "8611bd71495f18227b99f204f6ee344cf93f942d6e0e672c19abe40257c4e02a"
+          }
+        ],
+        "publish": {
+          "commit": "6466b234d1822ed2d2e3eaed85bd92ec5b31252a",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "11-LLM-CTF-Solver",
+        "source_bytes": 1624700,
+        "source_commit": "3170994bcff7b254f2fa7b7e5d6734ab70da0449",
+        "source_files": 361,
+        "source_ref": "HEAD",
+        "source_repo": "gehewu/LLM-CTF-Solver",
+        "source_tree": {
+          "bytes": 1624700,
+          "files": 361,
+          "sha256": "5aed10979bc6a51a2a787eea514487f2defb6a719ec82db192c88ab00d8052c9"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "11-LLM-CTF-Solver",
+      "source_repo": "gehewu/LLM-CTF-Solver",
+      "status": "VERIFIED_CLOSED"
+    },
+    "12-pentestgpt": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 414635,
+        "bundle_sha256": "58a0147a616cc2a21d5d182254bfbf179ae98c9537765b87c4673abf17c1afd5",
+        "elapsed_seconds": 25.89,
+        "extracted_tree": {
+          "bytes": 1246899,
+          "files": 154,
+          "sha256": "f493ecdb3cfbdd34f81e90a179cb931b5345137d77eed8cdabaeb861c5580a1a"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 414635,
+            "name": "12-PentestGPT.bundle.zip.part-0001",
+            "sha256": "58a0147a616cc2a21d5d182254bfbf179ae98c9537765b87c4673abf17c1afd5"
+          }
+        ],
+        "publish": {
+          "commit": "235d16ca83a54f741714b62c6fb51fad1757cb20",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "12-PentestGPT",
+        "source_bytes": 1246899,
+        "source_commit": "e8b1bb77d1ac00329675cec3b060aba971ec1ac8",
+        "source_files": 154,
+        "source_ref": "HEAD",
+        "source_repo": "GreyDGL/PentestGPT",
+        "source_tree": {
+          "bytes": 1246899,
+          "files": 154,
+          "sha256": "f493ecdb3cfbdd34f81e90a179cb931b5345137d77eed8cdabaeb861c5580a1a"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "12-PentestGPT",
+      "source_repo": "GreyDGL/PentestGPT",
+      "status": "VERIFIED_CLOSED"
+    },
+    "13-auto-pentest-llm": {
+      "attempts": 3,
+      "result": {
+        "bundle_bytes": 31273,
+        "bundle_sha256": "aaa9415071f9626b4499154ccca6c79463c373b53ca1afea55f5096594c9738a",
+        "elapsed_seconds": 25.71,
+        "extracted_tree": {
+          "bytes": 59194,
+          "files": 28,
+          "sha256": "815134d6186dbf61c321fd092423f1985de99208db42cc6fc79fd23645caf2cb"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 31273,
+            "name": "13-Auto-Pentest-LLM.bundle.zip.part-0001",
+            "sha256": "aaa9415071f9626b4499154ccca6c79463c373b53ca1afea55f5096594c9738a"
+          }
+        ],
+        "publish": {
+          "commit": "29d6877d54b121795e7120bab219a1dec2828252",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "13-Auto-Pentest-LLM",
+        "source_bytes": 59194,
+        "source_commit": "cd26463eb4dc288b43f3326587b115fcc8306ca0",
+        "source_files": 28,
+        "source_ref": "HEAD",
+        "source_repo": "knooob/Auto-Pentest-LLM",
+        "source_tree": {
+          "bytes": 59194,
+          "files": 28,
+          "sha256": "815134d6186dbf61c321fd092423f1985de99208db42cc6fc79fd23645caf2cb"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "13-Auto-Pentest-LLM",
+      "source_repo": "knooob/Auto-Pentest-LLM",
+      "status": "VERIFIED_CLOSED"
+    },
+    "14-dark-moon": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 128, in publish\n    if target.exists(): raise RuntimeError('DESTINATION_EXISTS:'+rel)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: DESTINATION_EXISTS:\ud83d\udcc2coda workflow persistencias/14-Dark-Moon\n",
+      "slug": "14-Dark-Moon",
+      "source_repo": "ASCIT31/Dark-Moon",
+      "status": "FAILED"
+    },
+    "15-pentdem": {
+      "attempts": 3,
+      "result": {
+        "bundle_bytes": 480835,
+        "bundle_sha256": "6757ba9c32bdcb77bc74b341ab228eef1198e4b9664a00b3e5ae7b1b6aca55c5",
+        "elapsed_seconds": 25.9,
+        "extracted_tree": {
+          "bytes": 1920770,
+          "files": 116,
+          "sha256": "54fc310244b076f66ff84455ac166240004ff572633199f3f1cf9434663e3485"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 480835,
+            "name": "15-Pentdem.bundle.zip.part-0001",
+            "sha256": "6757ba9c32bdcb77bc74b341ab228eef1198e4b9664a00b3e5ae7b1b6aca55c5"
+          }
+        ],
+        "publish": {
+          "commit": "c82124f0e0a279aa1c4a28b02c6e952aee93312f",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "15-Pentdem",
+        "source_bytes": 1920770,
+        "source_commit": "ac380807a158f6c4ba01b7ed35899c945d224041",
+        "source_files": 116,
+        "source_ref": "HEAD",
+        "source_repo": "Gabson0x/pentdem",
+        "source_tree": {
+          "bytes": 1920770,
+          "files": 116,
+          "sha256": "54fc310244b076f66ff84455ac166240004ff572633199f3f1cf9434663e3485"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "15-Pentdem",
+      "source_repo": "Gabson0x/pentdem",
+      "status": "VERIFIED_CLOSED"
+    },
+    "16-autonomous-pentest-agent": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 128, in publish\n    if target.exists(): raise RuntimeError('DESTINATION_EXISTS:'+rel)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: DESTINATION_EXISTS:\ud83d\udcc2coda workflow persistencias/16-Autonomous-Pentest-Agent\n",
+      "slug": "16-Autonomous-Pentest-Agent",
+      "source_repo": "deltaRed1a/autonomous-pentest-agent",
+      "status": "FAILED"
+    },
+    "17-red-team-ai-agent": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 24291,
+        "bundle_sha256": "9f1cc2fd4bac81dc6feb5b1d8d8b982c257f3bf66d9ea9e3fef829c28b41b71f",
+        "elapsed_seconds": 35.77,
+        "extracted_tree": {
+          "bytes": 71678,
+          "files": 10,
+          "sha256": "804f49a0916ecc65a5c50df54438b66f858717cd7c4ace6dbc881f8fab121ecc"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 24291,
+            "name": "17-AI-Red-Team-Agent.bundle.zip.part-0001",
+            "sha256": "9f1cc2fd4bac81dc6feb5b1d8d8b982c257f3bf66d9ea9e3fef829c28b41b71f"
+          }
+        ],
+        "publish": {
+          "commit": "8b27882e48b7ee591c7714816eaaf42e60b073bf",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "17-AI-Red-Team-Agent",
+        "source_bytes": 71678,
+        "source_commit": "b8ec294e6429545612d45a934b279fefe31025af",
+        "source_files": 10,
+        "source_ref": "HEAD",
+        "source_repo": "anaitik/red-team-ai-agent",
+        "source_tree": {
+          "bytes": 71678,
+          "files": 10,
+          "sha256": "804f49a0916ecc65a5c50df54438b66f858717cd7c4ace6dbc881f8fab121ecc"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "17-AI-Red-Team-Agent",
+      "source_repo": "anaitik/red-team-ai-agent",
+      "status": "VERIFIED_CLOSED"
+    },
+    "18-agent-smith": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 43590163,
+        "bundle_sha256": "924fd7476dbfc09cfdf4eecca4dbf1fcff93d65fa0099bf8698c3dd4b940d536",
+        "elapsed_seconds": 39.09,
+        "extracted_tree": {
+          "bytes": 49766631,
+          "files": 379,
+          "sha256": "5a77ae04775fbfe38fefc422230a69bcb8d88672239d119d8df9f713e331f254"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 12582912,
+            "name": "18-Agent-Smith.bundle.zip.part-0001",
+            "sha256": "f518fa0c65db5065f9f85ff145eb9308076dbdb8b73fbb9c518356f0e3eb9889"
+          },
+          {
+            "bytes": 12582912,
+            "name": "18-Agent-Smith.bundle.zip.part-0002",
+            "sha256": "8d849944c9a3672904b17477f00eabfd173cf697f9042ce015454b9cebca9c12"
+          },
+          {
+            "bytes": 12582912,
+            "name": "18-Agent-Smith.bundle.zip.part-0003",
+            "sha256": "dd3157502ee353610cfbf5f53140b6f7b2e6475685ba65d5d845f5f7107cc133"
+          },
+          {
+            "bytes": 5841427,
+            "name": "18-Agent-Smith.bundle.zip.part-0004",
+            "sha256": "b9d3d72613cf8b94ef2f1666947cff1c27f0336568e0315e238576779397565a"
+          }
+        ],
+        "publish": {
+          "commit": "fb122243bebc7790177cef0cbddc0e80983d69a0",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "18-Agent-Smith",
+        "source_bytes": 49766631,
+        "source_commit": "e06508920db6a41773381e42102daa0e75e21ece",
+        "source_files": 379,
+        "source_ref": "HEAD",
+        "source_repo": "0x0pointer/agent-smith",
+        "source_tree": {
+          "bytes": 49766631,
+          "files": 379,
+          "sha256": "5a77ae04775fbfe38fefc422230a69bcb8d88672239d119d8df9f713e331f254"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "18-Agent-Smith",
+      "source_repo": "0x0pointer/agent-smith",
+      "status": "VERIFIED_CLOSED"
+    },
+    "19-tpt-agent": {
+      "attempts": 3,
+      "result": {
+        "bundle_bytes": 1352593,
+        "bundle_sha256": "e8529f04a4326b472347486b77822500eb8cd0622101f34e81a25aec1a7335df",
+        "elapsed_seconds": 26.16,
+        "extracted_tree": {
+          "bytes": 1904309,
+          "files": 36,
+          "sha256": "8c4215501e4331f8d3f34a8ec3b340593792f2c29b181397dd8ab2d7c32a93ab"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 1352593,
+            "name": "19-TPT-Agent.bundle.zip.part-0001",
+            "sha256": "e8529f04a4326b472347486b77822500eb8cd0622101f34e81a25aec1a7335df"
+          }
+        ],
+        "publish": {
+          "commit": "f3c7a74c6b8f491a25d19631a66a7d672382ed2f",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "19-TPT-Agent",
+        "source_bytes": 1904309,
+        "source_commit": "4f798015269211e6454f00b6b9d733f12ce1f471",
+        "source_files": 36,
+        "source_ref": "HEAD",
+        "source_repo": "CloudEver-Team/TPT-Agent",
+        "source_tree": {
+          "bytes": 1904309,
+          "files": 36,
+          "sha256": "8c4215501e4331f8d3f34a8ec3b340593792f2c29b181397dd8ab2d7c32a93ab"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "19-TPT-Agent",
+      "source_repo": "CloudEver-Team/TPT-Agent",
+      "status": "VERIFIED_CLOSED"
+    },
+    "20-openwhale": {
+      "attempts": 2,
+      "result": {
+        "bundle_bytes": 149292,
+        "bundle_sha256": "e094cc9e0e288021d30acf5da4f3d45f51c1898204213f2da72e1211a316e8c8",
+        "elapsed_seconds": 36.78,
+        "extracted_tree": {
+          "bytes": 453869,
+          "files": 27,
+          "sha256": "a606b4046e06a494ee8f0e9e5a56111182d20871d1d818f7967ac94fcf3aec13"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 149292,
+            "name": "20-OpenWhale.bundle.zip.part-0001",
+            "sha256": "e094cc9e0e288021d30acf5da4f3d45f51c1898204213f2da72e1211a316e8c8"
+          }
+        ],
+        "publish": {
+          "commit": "7f9aa55358d9f130f99712dfc515d83ab058b359",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "20-OpenWhale",
+        "source_bytes": 453869,
+        "source_commit": "54007d6be349a264ff7c8e37803b5ed1b4933da2",
+        "source_files": 27,
+        "source_ref": "HEAD",
+        "source_repo": "lonelyuan/OpenWhale",
+        "source_tree": {
+          "bytes": 453869,
+          "files": 27,
+          "sha256": "a606b4046e06a494ee8f0e9e5a56111182d20871d1d818f7967ac94fcf3aec13"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "20-OpenWhale",
+      "source_repo": "lonelyuan/OpenWhale",
+      "status": "VERIFIED_CLOSED"
+    },
+    "21-h-pentest": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 1517507,
+        "bundle_sha256": "cd8189c2df4c54bbe2bc84522dd37c36dc26ecc0aa8270a4dc52ee15c421778a",
+        "elapsed_seconds": 26.49,
+        "extracted_tree": {
+          "bytes": 7089966,
+          "files": 132,
+          "sha256": "3eb96dae6fb6063d466170069955c6c4662620f9c499653edde4bc8d21d4ffbc"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 1517507,
+            "name": "21-H-Pentest.bundle.zip.part-0001",
+            "sha256": "cd8189c2df4c54bbe2bc84522dd37c36dc26ecc0aa8270a4dc52ee15c421778a"
+          }
+        ],
+        "publish": {
+          "commit": "125e29f7353de30066dfa7e7f5af0fd68302da09",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "21-H-Pentest",
+        "source_bytes": 7089966,
+        "source_commit": "1d775a2c787c740a4a99a925979c8a56c2f42e78",
+        "source_files": 132,
+        "source_ref": "HEAD",
+        "source_repo": "hexian2001/H-Pentest",
+        "source_tree": {
+          "bytes": 7089966,
+          "files": 132,
+          "sha256": "3eb96dae6fb6063d466170069955c6c4662620f9c499653edde4bc8d21d4ffbc"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "21-H-Pentest",
+      "source_repo": "hexian2001/H-Pentest",
+      "status": "VERIFIED_CLOSED"
+    },
+    "22-phantom": {
+      "attempts": 2,
+      "result": {
+        "bundle_bytes": 695442,
+        "bundle_sha256": "fda945e6070cc6c6ae5694e6aeb21784dea5e8fdc003f229e746af31deff723f",
+        "elapsed_seconds": 26.5,
+        "extracted_tree": {
+          "bytes": 2519043,
+          "files": 189,
+          "sha256": "f715764a1bd0fe6edc76b43257c146d50de6b6492330c85465f73fa2e70d7ab5"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 695442,
+            "name": "22-PHANTOM.bundle.zip.part-0001",
+            "sha256": "fda945e6070cc6c6ae5694e6aeb21784dea5e8fdc003f229e746af31deff723f"
+          }
+        ],
+        "publish": {
+          "commit": "22ca0509121222e8334ad1ec4c1c0432387c0c9f",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "22-PHANTOM",
+        "source_bytes": 2519043,
+        "source_commit": "107341b5beeb34ae916201a70b68a58f632722d9",
+        "source_files": 189,
+        "source_ref": "HEAD",
+        "source_repo": "Usta0x001/Phantom",
+        "source_tree": {
+          "bytes": 2519043,
+          "files": 189,
+          "sha256": "f715764a1bd0fe6edc76b43257c146d50de6b6492330c85465f73fa2e70d7ab5"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "22-PHANTOM",
+      "source_repo": "Usta0x001/Phantom",
+      "status": "VERIFIED_CLOSED"
+    },
+    "23-hacksynth": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 2223632,
+        "bundle_sha256": "659a7c8bf192e262183c8fb14bfaff3854c3a46a1de37140bb1b26657e80672b",
+        "elapsed_seconds": 27.77,
+        "extracted_tree": {
+          "bytes": 2633252,
+          "files": 172,
+          "sha256": "e90c35886cc7cb405fe57b66f22b2e131274535ac8e7511fe884a0b13146c3c9"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 2223632,
+            "name": "23-HackSynth.bundle.zip.part-0001",
+            "sha256": "659a7c8bf192e262183c8fb14bfaff3854c3a46a1de37140bb1b26657e80672b"
+          }
+        ],
+        "publish": {
+          "commit": "7c9ba039160dffb649e9a794026d371600fcdd92",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "23-HackSynth",
+        "source_bytes": 2633252,
+        "source_commit": "48a41f795dda186df66561c4fd2b58ae84e3e4f8",
+        "source_files": 172,
+        "source_ref": "HEAD",
+        "source_repo": "aielte-research/HackSynth",
+        "source_tree": {
+          "bytes": 2633252,
+          "files": 172,
+          "sha256": "e90c35886cc7cb405fe57b66f22b2e131274535ac8e7511fe884a0b13146c3c9"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "23-HackSynth",
+      "source_repo": "aielte-research/HackSynth",
+      "status": "VERIFIED_CLOSED"
+    },
+    "24-security-ai-agent": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 7752,
+        "bundle_sha256": "4097ae791d426535afefb88e7e8ade19603fceabab9dd5474149c7af9d93b1ef",
+        "elapsed_seconds": 35.91,
+        "extracted_tree": {
+          "bytes": 13909,
+          "files": 6,
+          "sha256": "7a541a30496cb4b76168042e82c443e7afde57c7c3773bd817f91fc32e8f8ea5"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 7752,
+            "name": "24-Security-AI-Agent.bundle.zip.part-0001",
+            "sha256": "4097ae791d426535afefb88e7e8ade19603fceabab9dd5474149c7af9d93b1ef"
+          }
+        ],
+        "publish": {
+          "commit": "ae22496fdab0e5d754f57d2550e49f45081836e6",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "24-Security-AI-Agent",
+        "source_bytes": 13909,
+        "source_commit": "19c84e7366edd0f0597550be6c58459371348ea4",
+        "source_files": 6,
+        "source_ref": "HEAD",
+        "source_repo": "sirspyr0/security-ai-agent-public",
+        "source_tree": {
+          "bytes": 13909,
+          "files": 6,
+          "sha256": "7a541a30496cb4b76168042e82c443e7afde57c7c3773bd817f91fc32e8f8ea5"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "24-Security-AI-Agent",
+      "source_repo": "sirspyr0/security-ai-agent-public",
+      "status": "VERIFIED_CLOSED"
+    }
+  },
+  "schema": "yaiwes.frontend.download-extract-queue.v1"
+}
