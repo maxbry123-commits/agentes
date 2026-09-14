@@ -2,6 +2,7 @@
 from __future__ import annotations
 import ast
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -14,19 +15,23 @@ sys.modules[spec.name] = mod
 spec.loader.exec_module(mod)
 mod.VERSION = 'YAIWES-INTERNAL-PERSISTENCE-v5.1'
 
-# A project/package brand such as "pentestgpt_agent" is not itself evidence that
-# every file below it is offensive. V5.1 classifies functional leaf/segments.
+# Project/package branding is not evidence that every child file is offensive.
+# Classification uses functional path segments and tokenized leaf names.
 STRONG_SEGMENTS = {
     'attack','attacks','attackchain','exploit','exploits','recon','redteam','red_team','red-team',
     'scanner','scanners','scanning','payload','payloads','fuzzer','fuzz','phishing','post_exploit',
     'privesc','privilege_escalation','c2','metasploit','nmap','sqlmap','nuclei','masscan','shellcode',
     'bruteforce','brute_force','exfil','malware','ransom','injection','ssrf','vulnerability','vulnerabilities'
 }
-STRONG_LEAF_TOKENS = (
-    'exploit','attack','recon','scanner','payload','fuzz','phishing','post_exploit','privesc',
-    'nmap','sqlmap','nuclei','metasploit','shellcode','bruteforce','brute_force','exfil','malware',
-    'injection','ssrf','run_code','command_exec','code_exec','reverse_shell','credential_dump'
-)
+STRONG_LEAF_WORDS = {
+    'exploit','attack','recon','scanner','scanning','payload','fuzz','fuzzer','phishing','privesc',
+    'nmap','sqlmap','nuclei','metasploit','shellcode','bruteforce','exfil','malware','injection','ssrf',
+    'vulnerability','vulnerabilities'
+}
+STRONG_LEAF_PHRASES = {
+    'post_exploit','brute_force','run_code','command_exec','code_exec','reverse_shell','credential_dump',
+    'privilege_escalation','red_team'
+}
 BENIGN_TOKENS = tuple(set(mod.BENIGN_TOKENS) | {
     'plan','planner','planning','loop','trace','report','orchestrat','multiagent','middleware','blackboard',
     'resource','reconnect','conversation','monitor','summar','graph_store','store','history','session',
@@ -34,30 +39,33 @@ BENIGN_TOKENS = tuple(set(mod.BENIGN_TOKENS) | {
 })
 
 
+def leaf_words(leaf: str):
+    return {x for x in re.split(r'[^a-z0-9]+', leaf) if x}
+
+
 def surgical_classify(rel: str, original: str, had_quarantine: bool):
     p = Path(rel)
     parts = [x.lower() for x in p.parts]
     leaf = p.stem.lower()
+    words = leaf_words(leaf)
     low = original.lower()
 
-    # Functional offensive leaf wins.
-    if any(tok in leaf for tok in STRONG_LEAF_TOKENS):
+    # Exact functional tokens avoid false matches such as reconciler -> recon.
+    if words & STRONG_LEAF_WORDS or any(phrase in leaf for phrase in STRONG_LEAF_PHRASES):
         return 'BLOCK_OFFENSIVE', 'offensive functional leaf'
-    # Exact operational attack/red-team segments win; brand namespaces such as
-    # pentestgpt_agent are intentionally not included here.
+    # Exact operational attack/red-team directory segments win. Brand namespaces
+    # such as pentestgpt_agent are intentionally not included here.
     if any(seg in STRONG_SEGMENTS for seg in parts[:-1]):
         return 'BLOCK_OFFENSIVE', 'offensive functional path segment'
     # Strong dangerous behavior plus an execution surface is blocked even when
     # the filename is neutral.
     if any(tok in low for tok in mod.STRONG_CONTENT_RISK) and any(m in low for m in mod.EXEC_MARKERS):
         return 'BLOCK_OFFENSIVE', 'offensive content plus execution surface'
-    # Preserve useful task/orchestration infrastructure from the quarantined
-    # original. These files are not converted to generic stubs.
+    # Preserve useful task/orchestration infrastructure from exact originals.
     low_path = rel.lower()
     if any(tok in low_path for tok in BENIGN_TOKENS):
         return 'RESTORE_BENIGN', 'benign planner/memory/orchestration/support semantics'
-    # Ambiguous previously-effectful code remains disabled until independently
-    # reviewed; do not silently restore it.
+    # Ambiguous previously-effectful code remains disabled until independently reviewed.
     if had_quarantine:
         return 'REVIEW_FAIL_CLOSED', 'previously effectful file without safe classification'
     return 'KEEP_UNCHANGED', 'no surgical transformation required'
