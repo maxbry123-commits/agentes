@@ -5,11 +5,14 @@ on:
     branches:
       - yaiwes-coda-v7
       - yaiwes-coda-v7-research-adapter
+      - yaiwes-coda-v71-canonical-entry
     paths:
       - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_coda_bus_v7.py'
       - '📂coda workflow persistencias/Fables enchufe universal/test_yaiwes_coda_bus_v7.py'
       - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_coda_research_gate_v71.py'
       - '📂coda workflow persistencias/Fables enchufe universal/test_yaiwes_coda_research_gate_v71.py'
+      - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_internal_swarm_chain_v5.py'
+      - '📂coda workflow persistencias/Fables enchufe universal/test_yaiwes_internal_swarm_chain_v5.py'
       - '.github/workflows/yaiwes-coda-bus-v7.yml'
   pull_request:
     branches:
@@ -19,6 +22,8 @@ on:
       - '📂coda workflow persistencias/Fables enchufe universal/test_yaiwes_coda_bus_v7.py'
       - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_coda_research_gate_v71.py'
       - '📂coda workflow persistencias/Fables enchufe universal/test_yaiwes_coda_research_gate_v71.py'
+      - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_internal_swarm_chain_v5.py'
+      - '📂coda workflow persistencias/Fables enchufe universal/test_yaiwes_internal_swarm_chain_v5.py'
       - '.github/workflows/yaiwes-coda-bus-v7.yml'
   workflow_dispatch:
 
@@ -38,7 +43,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Compile CODA bus and research gate
+      - name: Compile CODA canonical stack
         working-directory: '📂coda workflow persistencias/Fables enchufe universal'
         run: >-
           python -m py_compile
@@ -46,9 +51,12 @@ jobs:
           test_yaiwes_coda_bus_v7.py
           yaiwes_coda_research_gate_v71.py
           test_yaiwes_coda_research_gate_v71.py
-      - name: Run CODA bus and research gate unit tests
+          yaiwes_internal_swarm_chain_v5.py
+          test_yaiwes_internal_swarm_chain_v5.py
+      - name: Run CODA canonical stack unit tests
         working-directory: '📂coda workflow persistencias/Fables enchufe universal'
         run: >-
           python -m unittest -v
           test_yaiwes_coda_bus_v7.py
           test_yaiwes_coda_research_gate_v71.py
+          test_yaiwes_internal_swarm_chain_v5.py
