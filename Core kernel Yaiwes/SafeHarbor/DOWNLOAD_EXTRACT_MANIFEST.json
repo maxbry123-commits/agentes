@@ -1,0 +1,38 @@
+{
+  "bundle_bytes": 14104158,
+  "bundle_sha256": "fd88d973f49fadbb4b844bf6c2b4577452c273b127c35e43fdf505a368f8e2a2",
+  "extracted_tree": {
+    "bytes": 29771086,
+    "files": 961,
+    "sha256": "dcd6c81f64a8409c8970e93540a769e9a01399a673096e1bb1aa212e7d29c935"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "SafeHarbor.bundle.zip.part-0001",
+      "sha256": "8aaeb5d21fbfa81ac2a5c5047925a718fc1270f58f9461df403836d0eac454ef"
+    },
+    {
+      "bytes": 1521246,
+      "name": "SafeHarbor.bundle.zip.part-0002",
+      "sha256": "e1d2f57912ed5f5022d4a761071f06166afae0eb64a8d906d6e41339937cf899"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "SafeHarbor",
+  "source_bytes": 29771086,
+  "source_commit": "4aa2be3bce7117739950b0de8ad4a5cebd1f81d7",
+  "source_files": 961,
+  "source_ref": "HEAD",
+  "source_repo": "ljj-cyber/SafeHarbor",
+  "source_tree": {
+    "bytes": 29771086,
+    "files": 961,
+    "sha256": "dcd6c81f64a8409c8970e93540a769e9a01399a673096e1bb1aa212e7d29c935"
+  }
+}
