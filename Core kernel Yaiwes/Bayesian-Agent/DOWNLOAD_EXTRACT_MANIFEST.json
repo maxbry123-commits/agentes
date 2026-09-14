@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 10438291,
+  "bundle_sha256": "533ea0c3ee0241da8afb97caa0fccefe3e453d7024d929b92155b35bf7b6a451",
+  "extracted_tree": {
+    "bytes": 11483324,
+    "files": 107,
+    "sha256": "08de85093a35cd3677808e00e1a6df8814703c4daf2c1ae8148d56f5e5d1392d"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 10438291,
+      "name": "Bayesian-Agent.bundle.zip.part-0001",
+      "sha256": "533ea0c3ee0241da8afb97caa0fccefe3e453d7024d929b92155b35bf7b6a451"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Bayesian-Agent",
+  "source_bytes": 11483324,
+  "source_commit": "4b69b4ed02d166c8d1673ea67e2ac836ac377896",
+  "source_files": 107,
+  "source_ref": "HEAD",
+  "source_repo": "DataArcTech/Bayesian-Agent",
+  "source_tree": {
+    "bytes": 11483324,
+    "files": 107,
+    "sha256": "08de85093a35cd3677808e00e1a6df8814703c4daf2c1ae8148d56f5e5d1392d"
+  }
+}

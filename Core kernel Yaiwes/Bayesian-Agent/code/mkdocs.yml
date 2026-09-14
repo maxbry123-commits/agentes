@@ -1,0 +1,81 @@
+site_name: "Bayesian-Agent: A Bayesian Self-Evolving Agent Framework with Cross-Harness Adaptation"
+site_description: Bayesian-Agent is a Bayesian self-evolving agent framework with full-run evolution, incremental repair, and cross-harness adaptation.
+site_url: https://dataarctech.github.io/Bayesian-Agent/
+repo_name: DataArcTech/Bayesian-Agent
+repo_url: https://github.com/DataArcTech/Bayesian-Agent
+edit_uri: edit/main/docs/
+exclude_docs: |
+  superpowers/**
+
+theme:
+  name: material
+  language: en
+  logo: assets/logo.png
+  favicon: assets/logo.png
+  features:
+    - navigation.instant
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.action.edit
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: teal
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+
+nav:
+  - Overview: index.md
+  - Quick Start: quick-start.md
+  - Core Concepts: core-concepts.md
+  - Architecture: architecture.md
+  - Native Harness: native-harness.md
+  - CLI: cli.md
+  - Python API: python-api.md
+  - Adapters: adapters.md
+  - Schemas: schemas.md
+  - Experiments:
+      - Overview: experiments/index.md
+      - Bayesian vs Frequentist RealFin: experiments/bayesian-vs-frequentist-realfin.md
+      - Zero-Shot vs Catalog Skills: experiments/zero-shot-vs-catalog-skill-evolution.md
+      - RealFin Model Scaling: experiments/model-scaling-realfin.md
+      - Claude Code Backend: experiments/claude-code.md
+      - mini-swe-agent Backend: experiments/mini-swe-agent.md
+  - Articles:
+      - Zhihu Repo Introduction: articles/zhihu-bayesian-agent.md
+      - Bayesian Evidence and Acquired Learning: articles/bayesian-evidence-acquired-learning.md
+      - Complex Skill Rewrite Example: articles/complex-bayesian-rewrite-example.md
+      - Why Bayesian for Skill Evolution: articles/why-bayesian-for-skill-evolution.md
+  - Method Note: method.md
+  - Experiment Note: experiments.md
+  - Roadmap: roadmap.md
+  - Citation: citation.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/DataArcTech/Bayesian-Agent
+      name: Bayesian-Agent on GitHub
+
+copyright: Copyright &copy; 2026 DataArcTech

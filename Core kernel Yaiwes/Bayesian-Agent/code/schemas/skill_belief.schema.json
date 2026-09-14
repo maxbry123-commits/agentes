@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/DataArcTech/Bayesian-Agent/schemas/skill_belief.schema.json",
+  "title": "SkillBelief",
+  "type": "object",
+  "required": ["skill_id", "algorithm", "alpha", "beta", "posterior_success", "observations"],
+  "properties": {
+    "skill_id": {"type": "string"},
+    "algorithm": {"type": "string", "enum": ["categorical_bayes", "naive_bayes", "beta_bernoulli"]},
+    "alpha": {"type": "number", "minimum": 0},
+    "beta": {"type": "number", "minimum": 0},
+    "posterior_success": {"type": "number", "minimum": 0, "maximum": 1},
+    "beta_bernoulli": {
+      "type": "object",
+      "properties": {
+        "alpha": {"type": "number", "minimum": 0},
+        "beta": {"type": "number", "minimum": 0},
+        "posterior_success": {"type": "number", "minimum": 0, "maximum": 1}
+      },
+      "additionalProperties": true
+    },
+    "categorical_bayes": {
+      "type": "object",
+      "properties": {
+        "alpha": {"type": "number", "minimum": 0},
+        "class_counts": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+        "feature_counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {"type": "integer", "minimum": 0}
+            }
+          }
+        },
+        "feature_vocab": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {"type": "integer", "minimum": 0}
+          }
+        },
+        "observations": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": true
+    },
+    "naive_bayes": {
+      "type": "object",
+      "description": "Legacy alias accepted for registries written before categorical_bayes became the public backend name.",
+      "additionalProperties": true
+    },
+    "contexts": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+    "failure_modes": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+    "evidence": {"type": "array", "items": {"$ref": "trajectory.schema.json"}},
+    "observations": {"type": "integer", "minimum": 0},
+    "mean_tokens": {"type": "number", "minimum": 0},
+    "mean_input_tokens": {"type": "number", "minimum": 0},
+    "mean_output_tokens": {"type": "number", "minimum": 0},
+    "mean_elapsed_seconds": {"type": "number", "minimum": 0},
+    "last_updated": {"type": "string"}
+  },
+  "additionalProperties": true
+}
