@@ -1,9 +1,9 @@
 {
   "schema": "yaiwes.core-component-inventory/v1",
-  "generated_at": "2026-09-14T04:12:59.978776+00:00",
+  "generated_at": "2026-09-14T04:27:53.609983+00:00",
   "repository": "maxbry123-commits/agentes",
   "root": "Core kernel Yaiwes",
-  "component_count": 175,
+  "component_count": 179,
   "kernel_signal_count": 4,
   "components": [
     {
@@ -274,8 +274,8 @@
     },
     {
       "name": "Dagster",
-      "path": "Core kernel Yaiwes/Componentes recuperados A/Dagster",
-      "bucket": "Componentes recuperados A",
+      "path": "Core kernel Yaiwes/Dagster",
+      "bucket": "ROOT",
       "readme": null,
       "function_source": "README_FUNCTION_NOT_FOUND",
       "kernel_signal": false,
@@ -1172,6 +1172,48 @@
       "wall_target": null
     },
     {
+      "name": "Meta-Agent-Cookbook-2026",
+      "path": "Core kernel Yaiwes/Meta-Agent-Cookbook-2026",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
+      "wall_target": null
+    },
+    {
+      "name": "Meta-Muse-Code-SDK-2026",
+      "path": "Core kernel Yaiwes/Meta-Muse-Code-SDK-2026",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
+      "wall_target": null
+    },
+    {
+      "name": "Meta-Muse-Glimmer-Agent-2026",
+      "path": "Core kernel Yaiwes/Meta-Muse-Glimmer-Agent-2026",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
+      "wall_target": null
+    },
+    {
       "name": "Microsoft-Agent-Framework",
       "path": "Core kernel Yaiwes/Componentes recuperados A/Microsoft-Agent-Framework",
       "bucket": "Componentes recuperados A",
@@ -1277,6 +1319,20 @@
       "bucket": "Componentes recuperados A",
       "readme": "Core kernel Yaiwes/Componentes recuperados A/NeMo-Guardrails/README.md",
       "function_source": "📌 **The official NeMo Guardrails library documentation is available at docs.nvidia.com/nemo/guardrails.**",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
+      "wall_target": null
+    },
+    {
+      "name": "NetworkX",
+      "path": "Core kernel Yaiwes/NetworkX",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",

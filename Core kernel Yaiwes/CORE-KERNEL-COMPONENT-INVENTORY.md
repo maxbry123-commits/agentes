@@ -1,7 +1,7 @@
 # Core kernel YAIWES — inventario completo de componentes
 
-- Generado: `2026-09-14T04:12:59.978776+00:00`
-- Componentes únicos: **175**
+- Generado: `2026-09-14T04:27:53.609983+00:00`
+- Componentes únicos: **179**
 - Señal de kernel: **4**
 
 Regla aprobada: material de kernel => **HOLD solo de ese material**; el resto del componente sigue integración estricta de 3 pasos.
@@ -140,8 +140,8 @@ Regla aprobada: material de kernel => **HOLD solo de ese material**; el resto de
 - Crazy Wall: sin nodo registrado todavía.
 
 ## 20. Dagster
-- Ruta: `Core kernel Yaiwes/Componentes recuperados A/Dagster`
-- Grupo: `Componentes recuperados A`
+- Ruta: `Core kernel Yaiwes/Dagster`
+- Grupo: `ROOT`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
@@ -587,644 +587,672 @@ Regla aprobada: material de kernel => **HOLD solo de ese material**; el resto de
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 84. Microsoft-Agent-Framework
+## 84. Meta-Agent-Cookbook-2026
+- Ruta: `Core kernel Yaiwes/Meta-Agent-Cookbook-2026`
+- Grupo: `ROOT`
+- Función (extraída de README): README_FUNCTION_NOT_FOUND
+- Kernel: **NO**
+- Crazy Wall: sin nodo registrado todavía.
+
+## 85. Meta-Muse-Code-SDK-2026
+- Ruta: `Core kernel Yaiwes/Meta-Muse-Code-SDK-2026`
+- Grupo: `ROOT`
+- Función (extraída de README): README_FUNCTION_NOT_FOUND
+- Kernel: **NO**
+- Crazy Wall: sin nodo registrado todavía.
+
+## 86. Meta-Muse-Glimmer-Agent-2026
+- Ruta: `Core kernel Yaiwes/Meta-Muse-Glimmer-Agent-2026`
+- Grupo: `ROOT`
+- Función (extraída de README): README_FUNCTION_NOT_FOUND
+- Kernel: **NO**
+- Crazy Wall: sin nodo registrado todavía.
+
+## 87. Microsoft-Agent-Framework
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Microsoft-Agent-Framework`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): Microsoft Agent Framework (MAF) is an open, multi-language framework for building **production-grade AI agents and multi-agent workflows** in **.NET and Python**.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 85. Microsoft-AutoGen
+## 88. Microsoft-AutoGen
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/Microsoft-AutoGen`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 86. Microsoft-Presidio
+## 89. Microsoft-Presidio
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/Microsoft-Presidio`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 87. MINIX3
+## 90. MINIX3
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/MINIX3`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **HOLD_KERNEL_MATERIAL** — EXPLICIT_KERNEL_COMPONENT
 - Crazy Wall: sin nodo registrado todavía.
 
-## 88. Mixture-of-Agents
+## 91. Mixture-of-Agents
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/Mixture-of-Agents`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 89. mypy
+## 92. mypy
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/mypy`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): We are always happy to answer questions! Here are some good places to ask them:
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 90. n8n
+## 93. n8n
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/n8n`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 91. NeMo-Guardrails
+## 94. NeMo-Guardrails
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/NeMo-Guardrails`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): 📌 **The official NeMo Guardrails library documentation is available at docs.nvidia.com/nemo/guardrails.**
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 92. Nomad
+## 95. NetworkX
+- Ruta: `Core kernel Yaiwes/NetworkX`
+- Grupo: `ROOT`
+- Función (extraída de README): README_FUNCTION_NOT_FOUND
+- Kernel: **NO**
+- Crazy Wall: sin nodo registrado todavía.
+
+## 96. Nomad
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/Nomad`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 93. nsjail
+## 97. nsjail
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/nsjail`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): Linux process isolation tool using namespaces, resource limits, and seccomp-bpf syscall filters.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 94. NVIDIA-Garak
+## 98. NVIDIA-Garak
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/NVIDIA-Garak`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): *Generative AI Red-teaming & Assessment Kit*
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 95. Open-Policy-Agent
+## 99. Open-Policy-Agent
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Open-Policy-Agent`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): Open Policy Agent (OPA) is an open source, general-purpose policy engine that enables unified, context-aware policy enforcement across the entire stack.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 96. OpenAI-Evals
+## 100. OpenAI-Evals
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/OpenAI-Evals`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): Evals provide a framework for evaluating large language models (LLMs) or systems built using LLMs. We offer an existing registry of evals to test different dimensions of OpenAI models and the ability to write your own custom evals for use cases you care about. You can also use your data to build private evals which represent the common LLMs patterns in your workflow without exposing any of that data publicly.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 97. OpenAI-Guardrails
+## 101. OpenAI-Guardrails
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/OpenAI-Guardrails`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): This is the Python version of OpenAI Guardrails, a package for adding configurable safety and compliance guardrails to LLM applications. It provides a drop-in wrapper for OpenAI's Python client, enabling automatic input/output validation and moderation using a wide range of guardrails.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 98. OpenAI-Skills
+## 102. OpenAI-Skills
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/OpenAI-Skills`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): Agent Skills are folders of instructions, scripts, and resources that AI agents can discover and use to perform at specific tasks. Write once, use everywhere.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 99. OpenClaw
+## 103. OpenClaw
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/OpenClaw`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): OpenClaw is an AI assistant that runs on your devices and meets you in the channels you already use. It connects models, tools, messaging channels, and optional companion apps through one Gateway, for a single operator or for a team whose members trust each other: the same gateway runs as a personal assistant on one laptop or as a shared team deployment, and configuration is the only difference. The architecture case
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 100. OpenCoconut
+## 104. OpenCoconut
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/OpenCoconut`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): **UPDATE: Meta has finally released their code! It was fun to try and reproduce Coconut, but I am archiving this repository now that the original implementation is up. https://github.com/facebookresearch/coconut**
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 101. OpenHands
+## 105. OpenHands
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/OpenHands`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): Run OpenHands, Claude Code, Codex, Gemini, or any ACP-compatible agent across local, remote, and cloud backends.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 102. OpenLLMetry
+## 106. OpenLLMetry
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/OpenLLMetry`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): **🎉 New**: Our semantic conventions are now part of OpenTelemetry! Join the discussion and help us shape the future of LLM observability.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 103. OpenMythos
+## 107. OpenMythos
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/OpenMythos`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): OpenMythos is an open-source, theoretical implementation of the Claude Mythos model. It implements a Recurrent-Depth Transformer (RDT) with three stages: **Prelude** (transformer blocks), a looped **Recurrent Block** (up to `max_loop_iters`), and a final **Coda**. Attention is switchable between MLA and GQA, and the feed-forward uses a sparse MoE with routed and shared experts ideal for exploring compute-adaptive, de
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 104. OpenR
+## 108. OpenR
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/OpenR`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): *** Thanks for checking out the Best-README-Template. If you have a suggestion *** that would make this better, please fork the repo and create a pull request *** or simply open an issue with the tag "enhancement". *** Don't forget to give the project a star! *** Thanks again! Now go create something AMAZING! :D -->
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 105. OpenTelemetry-Collector
+## 109. OpenTelemetry-Collector
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/OpenTelemetry-Collector`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): &nbsp;&nbsp;&bull;&nbsp;&nbsp; &nbsp;&nbsp;&bull;&nbsp;&nbsp;
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 106. OpenTelemetry-Python
+## 110. OpenTelemetry-Python
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/OpenTelemetry-Python`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): See the OpenTelemetry Instrumentation for Python.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 107. OpenThoughts
+## 111. OpenThoughts
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/OpenThoughts`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): A collaboration led by Bespoke Labs and the DataComp community
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 108. OpenThoughts-Agent
+## 112. OpenThoughts-Agent
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/OpenThoughts-Agent`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): Welcome to OpenThoughts-Agent (OT-Agent for short), a large-scale research project dedicated to creating the best tooling and finding the best data for training small agentic models.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 109. Ouroboros
+## 113. Ouroboros
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Ouroboros`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): Ouroboros attaches a compact Controller hypernetwork to a recursive transformer block. The Controller observes the current hidden state and generates a per-step diagonal modulation vector applied to frozen SVD-initialized LoRA bases. Each recurrence step performs a different transformation depending on the input, rather than repeating the same operation.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 110. Outlines
+## 114. Outlines
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Outlines`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): 🗒️ *Structured outputs for LLMs* 🗒️
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 111. Pact-Python
+## 115. Pact-Python
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/Pact-Python`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): alt="Pact Python Mascot" height="250" width="225" align="left" hspace="20">
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 112. Pact-Specification
+## 116. Pact-Specification
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/Pact-Specification`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): To support consistency of matching logic, this specification has been developed as a benchmark that all pact libraries can check themselves against if they want to ensure consistency with other pact libraries.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 113. PettingZoo
+## 117. PettingZoo
 - Ruta: `Core kernel Yaiwes/PettingZoo`
 - Grupo: `ROOT`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 114. Phoenix
+## 118. Phoenix
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Phoenix`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): Arize Phoenix is Arize's open-source AI observability platform designed for experimentation, evaluation, and troubleshooting. For managed production workflows, Arize also offers Arize AX. Phoenix provides:
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 115. Portkey-AI-Gateway
+## 119. Portkey-AI-Gateway
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Portkey-AI-Gateway`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 116. PostHog
+## 120. PostHog
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/PostHog`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 117. Prefect
+## 121. Prefect
 - Ruta: `Core kernel Yaiwes/Prefect`
 - Grupo: `ROOT`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 118. PRM800K
+## 122. PRM800K
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/PRM800K`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): This repository accompanies the paper Let's Verify Step by Step and presents the PRM800K dataset introduced there. PRM800K is a process supervision dataset containing 800,000 step-level correctness labels for model-generated solutions to problems from the MATH dataset. More information on PRM800K and the project can be found in the paper.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 119. ProcessBench
+## 123. ProcessBench
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/ProcessBench`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): This is the official repository for **ACL 2025** paper "ProcessBench: Identifying Process Errors in Mathematical Reasoning"
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 120. Prometheus
+## 124. Prometheus
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Prometheus`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 121. Prometheus-Eval
+## 125. Prometheus-Eval
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/Prometheus-Eval`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 122. Prometheus-Evaluator-LM
+## 126. Prometheus-Evaluator-LM
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/Prometheus-Evaluator-LM`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 123. Promptfoo
+## 127. Promptfoo
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Promptfoo`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): Requires Node.js `>=22.22.0` for npm and npx usage. Node.js 24 LTS is recommended; see the runtime support guide.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 124. PurpleLlama
+## 128. PurpleLlama
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/PurpleLlama`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 125. Pydantic
+## 129. Pydantic
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Pydantic`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): Data validation using Python type hints.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 126. PydanticAI
+## 130. PydanticAI
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/PydanticAI`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 127. pymerkle
+## 131. pymerkle
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/pymerkle`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): Documentation at **pymerkle.readthedocs.org**.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 128. Pyright
+## 132. Pyright
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/Pyright`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): Pyright is a full-featured, standards-based static type checker for Python. It is designed for high performance and can be used with large Python source bases.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 129. pytest
+## 133. pytest
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/pytest`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): .. image:: https://github.com/pytest-dev/pytest/raw/main/doc/en/img/pytest_logo_curves.svg :target: https://docs.pytest.org/en/stable/ :align: center :height: 200 :alt: pytest
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 130. Python-jsonschema
+## 134. Python-jsonschema
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Python-jsonschema`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): |PyPI| |Pythons| |CI| |ReadTheDocs| |Precommit| |Zenodo|
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 131. Ragas
+## 135. Ragas
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/Ragas`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 132. Ray
+## 136. Ray
 - Ruta: `Core kernel Yaiwes/Ray`
 - Grupo: `ROOT`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 133. Reflexion
+## 137. Reflexion
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/Reflexion`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): This repo holds the code, demos, and log files for Reflexion: Language Agents with Verbal Reinforcement Learning by Noah Shinn, Federico Cassano, Edward Berman, Ashwin Gopinath, Karthik Narasimhan, Shunyu Yao.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 134. Restate
+## 138. Restate
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Restate`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): Restate provides a distributed durable version of your everyday building blocks, letting you build a wide range of use cases:
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 135. RouteLLM
+## 139. RouteLLM
 - Ruta: `Core kernel Yaiwes/RouteLLM`
 - Grupo: `ROOT`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 136. RQ
+## 140. RQ
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/RQ`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): RQ (_Redis Queue_) is a simple Python library for queueing jobs and processing them in the background with workers. It is backed by Redis/Valkey and is designed to have a low barrier to entry while scaling incredibly well for large applications. It can be integrated into your web stack easily, making it suitable for projects of any size—from simple applications to high-volume enterprise systems.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 137. Schemathesis
+## 141. Schemathesis
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/Schemathesis`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 138. seL4
+## 142. seL4
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/seL4`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): Copyright 2014, General Dynamics C4 Systems
 - Kernel: **HOLD_KERNEL_MATERIAL** — EXPLICIT_KERNEL_COMPONENT
 - Crazy Wall: sin nodo registrado todavía.
 
-## 139. Self-Refine
+## 143. Self-Refine
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Self-Refine`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 140. Semantic-Kernel
+## 144. Semantic-Kernel
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Semantic-Kernel`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): **Build intelligent AI agents and multi-agent systems with this enterprise-ready orchestration framework**
 - Kernel: **HOLD_KERNEL_MATERIAL** — EXPLICIT_KERNEL_COMPONENT
 - Crazy Wall: sin nodo registrado todavía.
 
-## 141. Semantic-Router
+## 145. Semantic-Router
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Semantic-Router`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 142. SOUL-md
+## 146. SOUL-md
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/SOUL-md`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): **Maintained by TotalMarkdown.ai** · License: CC0 1.0 Universal — Public Domain · Part of agent-md-specs · Discussions
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 143. Soul-Spec
+## 147. Soul-Spec
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/Soul-Spec`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 144. Soul-Spec-Antonio
+## 148. Soul-Spec-Antonio
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Soul-Spec-Antonio`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): **SOUL.md is an open file format for giving AI agents persistent identity.**
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 145. SoulSpec
+## 149. SoulSpec
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/SoulSpec`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): Every AI agent forgets who it is. Every session starts from zero. Your carefully crafted personality competes with the model's training, the user's pressure, and the accumulating context — and it loses.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 146. SoulSpec-clawsouls
+## 150. SoulSpec-clawsouls
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/SoulSpec-clawsouls`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): Every AI agent forgets who it is. Every session starts from zero. Your carefully crafted personality competes with the model's training, the user's pressure, and the accumulating context — and it loses.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 147. SQLite
+## 151. SQLite
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/SQLite`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 148. sqlite-vec
+## 152. sqlite-vec
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/sqlite-vec`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): An extremely small, "fast enough" vector search SQLite extension that runs anywhere! A successor to `sqlite-vss`
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 149. Stamina
+## 153. Stamina
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/Stamina`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): Transient failures are common in distributed systems. To make your systems resilient, you need to **retry** failed operations. But bad retries can make things *much worse*.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 150. SWE-agent
+## 154. SWE-agent
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/SWE-agent`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 151. Syft
+## 155. Syft
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/Syft`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): **A CLI tool and Go library for generating a Software Bill of Materials (SBOM) from container images and filesystems. Exceptional for vulnerability detection when used with a scanner like Grype.**
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 152. TaskWeaver
+## 156. TaskWeaver
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/TaskWeaver`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): TaskWeaver is A **code-first** agent framework for seamlessly planning and executing data analytics tasks. This innovative framework interprets user requests through code snippets and efficiently coordinates a variety of plugins in the form of functions to execute data analytics tasks in a stateful manner.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 153. Temporal
+## 157. Temporal
 - Ruta: `Core kernel Yaiwes/Temporal`
 - Grupo: `ROOT`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 154. Temporal-Python-SDK
+## 158. Temporal-Python-SDK
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/Temporal-Python-SDK`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): **📣 News: Integration between OpenAI Agents SDK and Temporal is now in public preview. Learn more.**
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 155. Tenacity
+## 159. Tenacity
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Tenacity`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): Tenacity :target: https://pypi.org/project/tenacity
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 156. TensorZero
+## 160. TensorZero
 - Ruta: `Core kernel Yaiwes/TensorZero`
 - Grupo: `ROOT`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 157. ThoughtSource
+## 161. ThoughtSource
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/ThoughtSource`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 158. Traefik
+## 162. Traefik
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/Traefik`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): Traefik (pronounced _traffic_) is a modern HTTP reverse proxy and load balancer that makes deploying microservices easy. Traefik integrates with your existing infrastructure components (Docker, Swarm mode, Kubernetes, Consul, Etcd, Rancher v2, Amazon ECS, ...) and configures itself automatically and dynamically. Pointing Traefik at your orchestrator should be the _only_ configuration step you need.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 159. transitions
+## 163. transitions
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/transitions`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): A lightweight, object-oriented state machine implementation in Python with many extensions. Compatible with Python 2.7+ and 3.0+.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 160. Tree-of-Thoughts
+## 164. Tree-of-Thoughts
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Tree-of-Thoughts`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): Official implementation for paper Tree of Thoughts: Deliberate Problem Solving with Large Language Models with code, prompts, model outputs. Also check its tweet thread in 1min.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 161. Trigger-dev
+## 165. Trigger-dev
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Trigger-dev`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): Trigger.dev is the open-source platform for building AI workflows in TypeScript. Long-running tasks with retries, queues, observability, and elastic scaling.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 162. TruLens
+## 166. TruLens
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/TruLens`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 163. txtai
+## 167. txtai
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/txtai`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): txtai is an all-in-one AI framework for semantic search, LLM orchestration and language model workflows.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 164. Typer
+## 168. Typer
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/Typer`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): **Documentation**: https://typer.tiangolo.com
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 165. UltraFeedback
+## 169. UltraFeedback
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/UltraFeedback`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): **A large-scale, fine-grained, diverse preference dataset**
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 166. Unleash
+## 170. Unleash
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Unleash`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): Unleash is a powerful open-source solution for feature management. It streamlines your development workflow, accelerates software delivery, and empowers teams to control how and when they roll out new features to end users. With Unleash, you can deploy code to production in smaller, more manageable releases at your own pace.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 167. VictoriaMetrics
+## 171. VictoriaMetrics
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/VictoriaMetrics`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): VictoriaMetrics is a fast, cost-effective, and scalable solution for monitoring and managing time series data. It delivers high performance and reliability, making it an ideal choice for businesses of all sizes.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 168. vLLM-Semantic-Router
+## 172. vLLM-Semantic-Router
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/vLLM-Semantic-Router`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 169. VM_logo
+## 173. VM_logo
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/VM_logo`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 170. Voyager
+## 174. Voyager
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/Voyager`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): ______________________________________________________________________
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 171. XState
+## 175. XState
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/XState`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): XState is a state management and orchestration solution for JavaScript and TypeScript apps. It has _zero_ dependencies, and is useful for frontend and backend application logic.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 172. Z3
+## 176. Z3
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Z3`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): Z3 is a theorem prover from Microsoft Research. It is licensed under the MIT license. Windows binary distributions include C++ runtime redistributables
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 173. Zen-Engine
+## 177. Zen-Engine
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Zen-Engine`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): **Business logic humans can read and machines can run.** One copy of your rules: the owner reads it, every system runs it.
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 174. Zep
+## 178. Zep
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Zep`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 175. Zod
+## 179. Zod
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Zod`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): TypeScript-first schema validation with static type inference by @colinhacks
