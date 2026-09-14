@@ -3,16 +3,7 @@
   "component": "🏈 20-OpenWhale",
   "mode": "TRANSFORM",
   "source_files": 19,
-  "candidates": 1,
-  "changed": 1,
-  "findings": [
-    {
-      "path": "src/openwhale/agents/deepagents_agent.py",
-      "source_id": "6681297d47a4dc7b4619007d6d72bda15e311fb88ab0b7602c2ff30a1622cc69",
-      "sha256": "8605c6424395d2c69835d465c3aa1b18d9dc8ad86456684f4c50818df5cb5cba",
-      "changed": true,
-      "kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
-      "quarantine": "_yaiwes_upstream_quarantine/src/openwhale/agents/deepagents_agent.py.original"
-    }
-  ]
+  "candidates": 0,
+  "changed": 0,
+  "findings": []
 }

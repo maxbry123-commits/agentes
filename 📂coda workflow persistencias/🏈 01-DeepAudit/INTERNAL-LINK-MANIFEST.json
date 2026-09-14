@@ -1,30 +1,223 @@
 {
-  "schema": "yaiwes.internal.link-manifest/v4",
+  "schema": "yaiwes.internal.link-manifest/v4.1",
   "component": "🏈 01-DeepAudit",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.0",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.1",
   "source_files_audited": 352,
-  "active_surfaces_transformed": 2,
-  "link_count": 3,
+  "last_delta_candidates": 0,
+  "last_delta_changed": 0,
+  "active_surfaces_transformed_cumulative": 23,
+  "link_count": 24,
   "links": [
     {
       "order": 1,
-      "path": "backend/app/services/llm/base_adapter.py",
-      "original_sha256": "6384418d8aaeedc27cd2ffa1dc8f6973b2dac29997cfaff1a2bdce8895844637",
-      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/llm/base_adapter.py.original",
-      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
+      "path": "backend/app/api/v1/endpoints/agent_tasks.py",
+      "original_sha256": "a9d38462735d987e13b94bc58b0c81165fd3003d97845fe136e013d0533c1ad4",
+      "active_sha256": "a369c5e61b84506273141f4aa8ab4817ea997b0520f342c755a78ef621a12ba8",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/api/v1/endpoints/agent_tasks.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
       "role": "TASK_PERSISTENCE_LINK"
     },
     {
       "order": 2,
-      "path": "backend/app/services/agent/core/rate_limiter.py",
-      "original_sha256": "b4c40d2ba6851f61db63c5907594c9eefc1797245c8df9d2388fc91bce752e68",
-      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/core/rate_limiter.py.original",
-      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:0",
+      "path": "backend/app/api/v1/endpoints/auth.py",
+      "original_sha256": "422d047c7fd5d87e1a0ab35733c6d13e7cc24b5097dbe3cb68077f6137567ab5",
+      "active_sha256": "ef7b3adaf429545e7491ad64ed3cbde530cfacbc09e16d223806b604b1b2f06f",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/api/v1/endpoints/auth.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
       "role": "TASK_PERSISTENCE_LINK"
     },
     {
       "order": 3,
+      "path": "backend/app/services/agent/agents/verification.py",
+      "original_sha256": "3a57f5447cb9f46a0992032f6262fc667705cec11432f8d95a0c1c4057750644",
+      "active_sha256": "70324a74372d71b0fc999cdcdf45262bca261517c89e592f5416afcf17b5d5fb",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/agents/verification.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 4,
+      "path": "backend/app/services/agent/core/rate_limiter.py",
+      "original_sha256": "6a5d5ddf544fb48bc39031244f01e65a7e0ceb4898c042ad547ec231477a514d",
+      "active_sha256": "dbc5f613a7ae90aad59657cf6c33d77fdd930ecc5da29fcfb6ef2fb350383eaa",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/core/rate_limiter.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 5,
+      "path": "backend/app/services/agent/knowledge/frameworks/express.py",
+      "original_sha256": "8e1406529b6dd5383f5fc192f9a60d736097ac10564f02c3f7a659021c18a8b2",
+      "active_sha256": "247bec821b07031092f140aa169719b4de1255ba31db33cacd3055e51c46e0e9",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/knowledge/frameworks/express.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 6,
+      "path": "backend/app/services/agent/knowledge/vulnerabilities/deserialization.py",
+      "original_sha256": "448276fda774156e01be968cfc916dd6895c7180606273a1ea8588e88913f4a8",
+      "active_sha256": "8a27987d8d607450575867f966a5fb1a7820975e0a53d400f417439a42f47fe3",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/knowledge/vulnerabilities/deserialization.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 7,
+      "path": "backend/app/services/agent/knowledge/vulnerabilities/injection.py",
+      "original_sha256": "75105cf50767386b1789c278a61c195b8c580c73327672597cc8b951a704e0bc",
+      "active_sha256": "24a8f37c70b4a33b7747aa58818b14cb31caaad09ecf7d993bbdece1b391541f",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/knowledge/vulnerabilities/injection.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 8,
+      "path": "backend/app/services/agent/knowledge/vulnerabilities/ssrf.py",
+      "original_sha256": "bb4e31a33a7e21fba4d860bdf97630b611b557ddc0a8ba4f7a0f306e7e7da551",
+      "active_sha256": "3dcba65cae811f8ed395ccaa99a528fd7c671a0d238e1362896f88ccf2020232",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/knowledge/vulnerabilities/ssrf.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 9,
+      "path": "backend/app/services/agent/prompts/system_prompts.py",
+      "original_sha256": "f947702bbbeaa7b3ad481635cf66b23993054123063cfec8bf21921d3df3ed7e",
+      "active_sha256": "5bf577aa497ec1fbdc67c76df6f72f64e00a58ffe40c1e711586b100c134ba81",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/prompts/system_prompts.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 10,
+      "path": "backend/app/services/agent/tools/kunlun_tool.py",
+      "original_sha256": "4b9031b481379cc12594d445f8828d5b66cb0a3bbcefb5d3a812d260ffa40c18",
+      "active_sha256": "26ce91ac988c90a6534727d2292dae2d3d82d28bcb1af1a244e7cc163f5988ee",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/tools/kunlun_tool.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 11,
+      "path": "backend/app/services/agent/tools/run_code.py",
+      "original_sha256": "4911341966f0c66f58c9330623097ff9d3a7cef6f669705c3514863ee7e195c5",
+      "active_sha256": "61fe0e73d38b4394078c9c71c1d2280e885f260abc308f8b8a816a82e0b8d7a4",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/tools/run_code.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 12,
+      "path": "backend/app/services/agent/tools/sandbox_language.py",
+      "original_sha256": "b434c358fd1ac84be8d3180293c2a6eaa192cad225aff2082a07551a727b426d",
+      "active_sha256": "11ad311c6202800fc89be6a5f3612fe0046918b6d4d6248fdd710a3e7f2e4796",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/tools/sandbox_language.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 13,
+      "path": "backend/app/services/agent/tools/smart_scan_tool.py",
+      "original_sha256": "7b3f3d725d32f7ccec02fb711f5be6bc84f45f4f0c855ed6d54b18b53323ecf2",
+      "active_sha256": "5936ea3370c74891d06f7ef9ccbf832942ce0c275163a14adc5244852f680712",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/tools/smart_scan_tool.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 14,
+      "path": "backend/app/services/git_ssh_service.py",
+      "original_sha256": "18edd47547527245ce31fad6614239869198587af68e516c63e5d2c2ecb83e93",
+      "active_sha256": "aaefb136cf3b7576597a19be914aa105f999bf74d32501d375a9ffd248a96d95",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/git_ssh_service.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 15,
+      "path": "backend/app/services/llm/adapters/baidu_adapter.py",
+      "original_sha256": "4fb4f2cdc8d3d80ce001a5514e6dc45afd8c7b90e22ce8891ed441ab65599d63",
+      "active_sha256": "dbcd4174a4246ab5a0ce1bb2e8dff312e2231f1d0b748c3e8188bc1a73b6653e",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/llm/adapters/baidu_adapter.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 16,
+      "path": "backend/app/services/llm/base_adapter.py",
+      "original_sha256": "bb7bb08b72fb9647fcbefabeda755d3e0ee71e2deea77b3911bbbb4fa4e01d57",
+      "active_sha256": "b38115f5a5bbc0bfbfe2340e56ccd7589d056d08d4e6efbaa278ef0d6004da3b",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/llm/base_adapter.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 17,
+      "path": "backend/app/services/rag/embeddings.py",
+      "original_sha256": "f46d11dc643633bf021819dc6c2fd3ff43342cacab54d69aac37e62ea7da460c",
+      "active_sha256": "0492bae1a3db2cc00bca57742e6092fdf789e5c4d4d30d2397cd5559f950593a",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/rag/embeddings.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 18,
+      "path": "backend/app/services/scanner.py",
+      "original_sha256": "8cd2805559a82b3664fd2a97e0f4922095e948b1efc4071f84d38459125fa337",
+      "active_sha256": "c56ed7c14a12bde4a76bc2b4b42c9c133b70acd4ddf8fd7690c8184a2f5642e2",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/scanner.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 19,
+      "path": "backend/scripts/create_agent_demo_data.py",
+      "original_sha256": "b7429f0b470038187bb414c010a84a9292cd519691b675519d58e5cac9e18f6a",
+      "active_sha256": "fc2d3ae7b4b4b7c1ab83bce2569e60afc8f255618d4b945d8275ce41088a2442",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/scripts/create_agent_demo_data.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 20,
+      "path": "frontend/src/pages/prompt-manager/testCodeSamples.ts",
+      "original_sha256": "46dfdd4e9b05e05f71c4fba9b86042f4a243e905e8650c05866db100f711b006",
+      "active_sha256": "0cd90c6855d880c0665806ebe868c5d1e3ffe3f30a6aa85085474e8dddb8eb4f",
+      "quarantine": "_yaiwes_upstream_quarantine/frontend/src/pages/prompt-manager/testCodeSamples.ts.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 21,
+      "path": "scripts/setup.js",
+      "original_sha256": "7d9588e854056d386d6377155797bc2def3803df9c5c6d6e3c5e732b3a458d1b",
+      "active_sha256": "379e0b86d7e1989396384b1a8529b3452581429ae2d8a1dee85ada34a2295c9d",
+      "quarantine": "_yaiwes_upstream_quarantine/scripts/setup.js.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 22,
+      "path": "scripts/setup_security_tools.ps1",
+      "original_sha256": "d9f01fb1eefacd44473bc648b8e718579cc09b94f9342098b404b689f9c922e0",
+      "active_sha256": "75b30cc4773e60226269aded953985c56556c8b1b8ae181f0110533fc060fd9d",
+      "quarantine": "_yaiwes_upstream_quarantine/scripts/setup_security_tools.ps1.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 23,
+      "path": "scripts/star_history.py",
+      "original_sha256": "8af98faa04c05fa39162ece2db1f4cefdf3c60ac604488444ad30f6bbaf52054",
+      "active_sha256": "f342b9ba6d19e70c48dacbf5624afd6eebffc7bf9946b5c32ab30009c7f5190f",
+      "quarantine": "_yaiwes_upstream_quarantine/scripts/star_history.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 24,
       "path": "yaiwes_internal/README.md",
       "role": "COMPONENT_PERSISTENCE_LINK",
       "transform_kind": "INTERNAL_RUNTIME"

@@ -1,22 +1,70 @@
 {
-  "schema": "yaiwes.internal.link-manifest/v4",
+  "schema": "yaiwes.internal.link-manifest/v4.1",
   "component": "🏈 14-Dark-Moon",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.0",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.1",
   "source_files_audited": 49,
-  "active_surfaces_transformed": 1,
-  "link_count": 2,
+  "last_delta_candidates": 0,
+  "last_delta_changed": 0,
+  "active_surfaces_transformed_cumulative": 6,
+  "link_count": 7,
   "links": [
     {
       "order": 1,
-      "path": "tools/lab-tests/privacy-gateway-lab.py",
-      "original_sha256": "968a97a88189a828283aeb126fd98886324c3906455dd9a0f342f1e3ef6f907d",
-      "quarantine": "_yaiwes_upstream_quarantine/tools/lab-tests/privacy-gateway-lab.py.original",
-      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:0",
+      "path": "conf/plugins/darkmoon-privacy.ts",
+      "original_sha256": "d1d6149245fa8c96bfe3bfc8f794a14ea3206364ebbc7a934216cfd0bcbb0bb2",
+      "active_sha256": "d60337798cc708679222045f964323476ae223668f069b03857b0723497d2cd0",
+      "quarantine": "_yaiwes_upstream_quarantine/conf/plugins/darkmoon-privacy.ts.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
       "role": "TASK_PERSISTENCE_LINK"
     },
     {
       "order": 2,
+      "path": "mcp/src/docker_client.py",
+      "original_sha256": "e2cc60b347eb97a09cb8f2c5920b04eb92ed85b200a20db6577c82a07e3866bc",
+      "active_sha256": "6915a2f9064f8f689165d558481d4932ca827f8d983872e022676985958d7a31",
+      "quarantine": "_yaiwes_upstream_quarantine/mcp/src/docker_client.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 3,
+      "path": "mcp/src/mcp_monitoring.py",
+      "original_sha256": "c04d369302c4fec1311253b61236722ab92d8566493d6034692f0a71af6a2dd4",
+      "active_sha256": "48db8d1b5368e1f47ac1c84652d313ffadaaf9b9f4016fcebbc63548d1ed1c2f",
+      "quarantine": "_yaiwes_upstream_quarantine/mcp/src/mcp_monitoring.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 4,
+      "path": "tools/lab-tests/pr42-repro/reproduce.sh",
+      "original_sha256": "641aef65ed296cb16260b38424bfafbf195f51d719aed269a6e7c0db7ed54169",
+      "active_sha256": "df65b063cb26a714d014c322bf890674a36a1f3b3ff9b7b4631685967d181d33",
+      "quarantine": "_yaiwes_upstream_quarantine/tools/lab-tests/pr42-repro/reproduce.sh.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 5,
+      "path": "tools/lab-tests/privacy-e2e-campaign.py",
+      "original_sha256": "3c7e59997de3e1196471ffc7c692ed8cd7faf33d02fed8bcf275dd268becd797",
+      "active_sha256": "75db38ce8b34b2ba5690ab1ade20156951824fb4a8049dfeb6b824915ff97935",
+      "quarantine": "_yaiwes_upstream_quarantine/tools/lab-tests/privacy-e2e-campaign.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 6,
+      "path": "tools/lab-tests/privacy-gateway-lab.py",
+      "original_sha256": "232af58395b0c79c2e13ba926f42c7d8b38599c4174cfaab9cf3df92a031c707",
+      "active_sha256": "bf9dce434569646579eb1faa75bd715e394ade44018bc3cb33c39c3b2380c327",
+      "quarantine": "_yaiwes_upstream_quarantine/tools/lab-tests/privacy-gateway-lab.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 7,
       "path": "yaiwes_internal/README.md",
       "role": "COMPONENT_PERSISTENCE_LINK",
       "transform_kind": "INTERNAL_RUNTIME"

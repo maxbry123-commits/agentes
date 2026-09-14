@@ -3,24 +3,7 @@
   "component": "🏈 03-LuaN1aoAgent",
   "mode": "TRANSFORM",
   "source_files": 145,
-  "candidates": 2,
-  "changed": 2,
-  "findings": [
-    {
-      "path": "network-image/index_server.py",
-      "source_id": "51402a45b93bff23528be92915eab72a8b65aa3d344107a22841f2e6c65e0f43",
-      "sha256": "56401fc7790ed2f4530009aeff5e5e3fcd78cff1988d01c563cbf193762ccf57",
-      "changed": true,
-      "kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
-      "quarantine": "_yaiwes_upstream_quarantine/network-image/index_server.py.original"
-    },
-    {
-      "path": "network-image/scope_dns.py",
-      "source_id": "a5314dd61bdc90bd6e17e927821ae3799ea107cc8a2d09b1fc5498afdb3ab85f",
-      "sha256": "9647e8d8e79597023befd7aa35d4bd27a31e175cf15a6c4bb7092f6010b9bf3c",
-      "changed": true,
-      "kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
-      "quarantine": "_yaiwes_upstream_quarantine/network-image/scope_dns.py.original"
-    }
-  ]
+  "candidates": 0,
+  "changed": 0,
+  "findings": []
 }

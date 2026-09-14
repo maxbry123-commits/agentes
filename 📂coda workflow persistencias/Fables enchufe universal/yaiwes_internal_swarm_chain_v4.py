@@ -18,10 +18,12 @@ def run_internal_chain(registry_path, state_root, task_id, payload):
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if manifest.get("component") != component["component"]:
             raise ValueError("manifest component mismatch")
+        internal_links = manifest.get("active_surfaces_transformed_cumulative", 0)
         state = {
-            "schema": "yaiwes.internal.chain-state/v4",
+            "schema": "yaiwes.internal.chain-state/v4.1",
             "task_id": task_id,
             "component": component["component"],
+            "transformed_links_closed": internal_links,
             "links_closed": manifest["link_count"],
             "payload": dict(payload),
             "status": "RELEASED",
@@ -32,4 +34,10 @@ def run_internal_chain(registry_path, state_root, task_id, payload):
         tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(target)
         evidence.append(state)
-    return {"chain_id": CHAIN, "task_id": task_id, "components_closed": len(evidence), "evidence": evidence}
+    return {
+        "chain_id": CHAIN,
+        "task_id": task_id,
+        "components_closed": len(evidence),
+        "transformed_files_closed": sum(x["transformed_links_closed"] for x in evidence),
+        "evidence": evidence,
+    }

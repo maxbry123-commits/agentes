@@ -3,56 +3,7 @@
   "component": "🏈 05-AI-Infra-Guard",
   "mode": "TRANSFORM",
   "source_files": 881,
-  "candidates": 6,
-  "changed": 6,
-  "findings": [
-    {
-      "path": "services/api_checker/ventor_qtest/runner/orchestrator.py",
-      "source_id": "209c6e507ee92506029e490476c491db724ccd41f81a64b00e412a1c7276a768",
-      "sha256": "95979658c309bad86f1c0e144b581d08fb74451ffbdb600b1144011e7d2e21ad",
-      "changed": true,
-      "kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
-      "quarantine": "_yaiwes_upstream_quarantine/services/api_checker/ventor_qtest/runner/orchestrator.py.original"
-    },
-    {
-      "path": "skills/aig-agent-redteam/scripts/common/http_probe.py",
-      "source_id": "c6140f16f0da7e8e712cfbb74a18daafc2dfc1cf77b91ecc3831a4f6a1f8fb4b",
-      "sha256": "e1b657b18ca58f43876ca58141456eb3d328d1daa112ba6a6105a8d4f5736353",
-      "changed": true,
-      "kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
-      "quarantine": "_yaiwes_upstream_quarantine/skills/aig-agent-redteam/scripts/common/http_probe.py.original"
-    },
-    {
-      "path": "Research/SkillJack/skilljack/llm_adapter.py",
-      "source_id": "854cf0ac5d911fffbfdd16b80f11353f7a2db5e08374f2912ecbd7e251771ace",
-      "sha256": "0702e6aa608005fe9ae0ee0a3da48cd939bb7cb0a4eb57e48a066defdf8dc515",
-      "changed": true,
-      "kind": "PY_FILE_STUB_AFTER_FUNCTIONS:0",
-      "quarantine": "_yaiwes_upstream_quarantine/Research/SkillJack/skilljack/llm_adapter.py.original"
-    },
-    {
-      "path": "agent-scan/testcase/case2/memory_heist_agent.py",
-      "source_id": "3fd2654fa753119068f01c6178f412461077e4aa4bb8278f0b14835f336fa256",
-      "sha256": "28d55728aa7a104b2f00ef8baaee36450bb5b55f0a96ea9aa7e901fc9fd5175f",
-      "changed": true,
-      "kind": "PY_FILE_STUB_AFTER_FUNCTIONS:0",
-      "quarantine": "_yaiwes_upstream_quarantine/agent-scan/testcase/case2/memory_heist_agent.py.original"
-    },
-    {
-      "path": "pkg/httpx/httpx.go",
-      "source_id": "62d5d02b5fb68465af5b470e9cd54c9d44c9d8b1719e2d5f2dfea64dc359c0da",
-      "sha256": "50a86f6528cdf979aecbc5f21d6ee252e50058f77ac4ffb6156fa54d5d66fac6",
-      "changed": true,
-      "kind": "SAFE_STUB",
-      "quarantine": "_yaiwes_upstream_quarantine/pkg/httpx/httpx.go.original"
-    },
-    {
-      "path": "common/websocket/websocket.go",
-      "source_id": "1a7656f34b1ed6787cf06eeded672aee34cc243552fd502972ef0cf6720cdee1",
-      "sha256": "d3bc13a9160a4b3b070d1fee26c3a4460aaeefeb863faee515130385ffe311a4",
-      "changed": true,
-      "kind": "SAFE_STUB",
-      "quarantine": "_yaiwes_upstream_quarantine/common/websocket/websocket.go.original"
-    }
-  ]
+  "candidates": 0,
+  "changed": 0,
+  "findings": []
 }

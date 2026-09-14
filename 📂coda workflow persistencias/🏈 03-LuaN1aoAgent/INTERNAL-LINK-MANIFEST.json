@@ -1,30 +1,187 @@
 {
-  "schema": "yaiwes.internal.link-manifest/v4",
+  "schema": "yaiwes.internal.link-manifest/v4.1",
   "component": "🏈 03-LuaN1aoAgent",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.0",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.1",
   "source_files_audited": 145,
-  "active_surfaces_transformed": 2,
-  "link_count": 3,
+  "last_delta_candidates": 0,
+  "last_delta_changed": 0,
+  "active_surfaces_transformed_cumulative": 19,
+  "link_count": 20,
   "links": [
     {
       "order": 1,
-      "path": "network-image/index_server.py",
-      "original_sha256": "56401fc7790ed2f4530009aeff5e5e3fcd78cff1988d01c563cbf193762ccf57",
-      "quarantine": "_yaiwes_upstream_quarantine/network-image/index_server.py.original",
-      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
+      "path": "network-image/gateway-tun/protocol_gateway.go",
+      "original_sha256": "008b57126580e75b9e6e8b334661038aaf13fadfe0e9375cc6b87e3e79e03525",
+      "active_sha256": "1e97c13e0c62d10d72c9969140f5495daf57a55c4f3bbf744907c18c708ac48a",
+      "quarantine": "_yaiwes_upstream_quarantine/network-image/gateway-tun/protocol_gateway.go.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
       "role": "TASK_PERSISTENCE_LINK"
     },
     {
       "order": 2,
-      "path": "network-image/scope_dns.py",
-      "original_sha256": "9647e8d8e79597023befd7aa35d4bd27a31e175cf15a6c4bb7092f6010b9bf3c",
-      "quarantine": "_yaiwes_upstream_quarantine/network-image/scope_dns.py.original",
-      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
+      "path": "network-image/index_server.py",
+      "original_sha256": "cd7eed79661c3deb0b9eb1dd4d8c8973c6492c160b9eaa5b845347cf75c27c73",
+      "active_sha256": "e3c6237d380737cae150ff328ac84e08c8a13f1a37571d5a90696f30a6dc6e29",
+      "quarantine": "_yaiwes_upstream_quarantine/network-image/index_server.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
       "role": "TASK_PERSISTENCE_LINK"
     },
     {
       "order": 3,
+      "path": "network-image/replay_client.py",
+      "original_sha256": "e3bef61af1bcc7c7c26d811317f24341d4db86e6c1658285a4376a4d8b191109",
+      "active_sha256": "f6ba4aa8c91323a87aeaad1a600b7208698890bbfa352784357f11fb4b4e2960",
+      "quarantine": "_yaiwes_upstream_quarantine/network-image/replay_client.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 4,
+      "path": "network-image/scope_dns.py",
+      "original_sha256": "a4503da7a52b14a93781d6d45bf5ea3772d6e8d8a142c72a706ad21ae040c9c7",
+      "active_sha256": "e3b22ae4eeaae44df7cc3e2f1ff3707999426eabe511529cca358df63cd75164",
+      "quarantine": "_yaiwes_upstream_quarantine/network-image/scope_dns.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 5,
+      "path": "network-image/test_index_server.py",
+      "original_sha256": "478f603bdb5b03e93bf5cdb1c18abef007d9cadafcf25c9a7298f03c14f5da55",
+      "active_sha256": "c05e211896bd13a475bdfb8718af02db8aa331d49f0a9862070bd8da22799d96",
+      "quarantine": "_yaiwes_upstream_quarantine/network-image/test_index_server.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 6,
+      "path": "network-image/test_replay_client.py",
+      "original_sha256": "0fa9fb806b322484ab439a0312c207ae05b40016c70ce0dcfd69d9499ae064c8",
+      "active_sha256": "036e4084b03a6d058aeda17b864b8a5979718712f84ba8090c2a8aa6515977b5",
+      "quarantine": "_yaiwes_upstream_quarantine/network-image/test_replay_client.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 7,
+      "path": "src/connectivity/host-egress-broker.ts",
+      "original_sha256": "f58a7718c0ab1b70aed15f173763bbd9c768f522fcb1db6d4651415094d769fd",
+      "active_sha256": "98ab69725c11f51a589599600028ebbfab99018a5b7349220714d079fa065aa9",
+      "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/host-egress-broker.ts.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 8,
+      "path": "src/connectivity/mitm-flow-client.ts",
+      "original_sha256": "5607b4ad6a9506753aa3d0284ccf8465ddc2145f468d8ec10b5237a22720b2d3",
+      "active_sha256": "bb464a50160f5aecbccdb51cc2b5383635353566038a968df744ead187bcb05d",
+      "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/mitm-flow-client.ts.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 9,
+      "path": "src/connectivity/network-sandbox-manager.ts",
+      "original_sha256": "697bbf464a7267c0aa696ad1b857f0d65a2092ed60e35b836260d9ca181bcb6d",
+      "active_sha256": "6994aef6d0032ee848b4f0db34a33769fd027a0f0398e2173f317aacfe7fa657",
+      "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/network-sandbox-manager.ts.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 10,
+      "path": "src/connectivity/replay-gateway-runtime.ts",
+      "original_sha256": "2c20201bd043af23f55915545bd26e9fa340724e43a720ed27e60868e4a131c8",
+      "active_sha256": "8f29cea36cbbc53b0e19a8b65dfbf3a1f4183763bf3b19566592890c7691b308",
+      "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/replay-gateway-runtime.ts.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 11,
+      "path": "src/connectivity/runtime-owner-lease.ts",
+      "original_sha256": "d7f3c174242232d404bd969245ef6749ef5376b0ebdd50fcc6ca5992ac805cc6",
+      "active_sha256": "48156e3ef112c5eb912986834879e4993430a42c3114147a608a18aee15a0c58",
+      "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/runtime-owner-lease.ts.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 12,
+      "path": "src/connectivity/traffic-proxy-client.ts",
+      "original_sha256": "992f72696aa32256b305526de701d105c0c7eef48d5586962330a2759765b89b",
+      "active_sha256": "d84b4233f9c65e50c81885c1bc2c8c087c797c76b8c1490b92df89b835cef83d",
+      "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/traffic-proxy-client.ts.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 13,
+      "path": "src/connectivity/traffic-proxy-manager.ts",
+      "original_sha256": "6a95dc06e0db67e8aa7bfe5512f8b1e9deaad655b32755a971339a3a2497184b",
+      "active_sha256": "20a4943389b349305c39319eaaa768c9a8bf2696b55f718344f70b4000fd94b5",
+      "quarantine": "_yaiwes_upstream_quarantine/src/connectivity/traffic-proxy-manager.ts.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 14,
+      "path": "src/controller.ts",
+      "original_sha256": "e1a3e11559247035c2e37ee77b116c1f3d4152f0d057bc7c152610f1347b650b",
+      "active_sha256": "a4f8dcbebef3a56fed7a51760ad57ee930b041758d415b71a39cac8b736a1d72",
+      "quarantine": "_yaiwes_upstream_quarantine/src/controller.ts.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 15,
+      "path": "src/executor-environment.ts",
+      "original_sha256": "70384bcb35790fa91b9ed5b80d9eec5e76123ea8306e0fa8e8c88793b406f6a4",
+      "active_sha256": "802d467844ccb8957cde0f84085cea7ce1e2dcecc4932a09af80900656682f36",
+      "quarantine": "_yaiwes_upstream_quarantine/src/executor-environment.ts.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 16,
+      "path": "src/executor-sandbox-docker.ts",
+      "original_sha256": "930371bef3299019c505e34435dec524282ccf7c59fe0c0f9e6b92118691e13c",
+      "active_sha256": "6120f1aa0035d0b6e7785e1c1dd2ffd66504803fed4130a4d9c60339e4fc2abc",
+      "quarantine": "_yaiwes_upstream_quarantine/src/executor-sandbox-docker.ts.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 17,
+      "path": "src/tools/browser-tools.ts",
+      "original_sha256": "367f02c1094d9b26488be0fcb01cc269906badf76ff312fd5cc8b6f9c6809222",
+      "active_sha256": "5363e2d10d2dd35f323c5c15d9e2aa12574d5036a5253b510787effb7cf4b369",
+      "quarantine": "_yaiwes_upstream_quarantine/src/tools/browser-tools.ts.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 18,
+      "path": "src/tools/research-tools.ts",
+      "original_sha256": "5a1cd46b05413ed50324e18558d53c8831708420d21cd017c41e5cf869f0d83f",
+      "active_sha256": "926081436e5039956bb9eb325805a0b6e05b07ba73b1aac4ab1cbaa52bf1ed3c",
+      "quarantine": "_yaiwes_upstream_quarantine/src/tools/research-tools.ts.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 19,
+      "path": "web/src/components/TrafficInspector.tsx",
+      "original_sha256": "0f222fb40a80bfd2a6b63d0fe3181997b982d3312359b214ca9adfa3559ef8f4",
+      "active_sha256": "6cded37ce7affe8ed152294f7b6c8b2ff7229c1236e4b7e822e1826d82ac994e",
+      "quarantine": "_yaiwes_upstream_quarantine/web/src/components/TrafficInspector.tsx.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 20,
       "path": "yaiwes_internal/README.md",
       "role": "COMPONENT_PERSISTENCE_LINK",
       "transform_kind": "INTERNAL_RUNTIME"

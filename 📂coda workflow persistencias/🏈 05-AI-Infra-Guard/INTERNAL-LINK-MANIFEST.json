@@ -1,62 +1,403 @@
 {
-  "schema": "yaiwes.internal.link-manifest/v4",
+  "schema": "yaiwes.internal.link-manifest/v4.1",
   "component": "🏈 05-AI-Infra-Guard",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.0",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.1",
   "source_files_audited": 881,
-  "active_surfaces_transformed": 6,
-  "link_count": 7,
+  "last_delta_candidates": 0,
+  "last_delta_changed": 0,
+  "active_surfaces_transformed_cumulative": 43,
+  "link_count": 44,
   "links": [
     {
       "order": 1,
-      "path": "services/api_checker/ventor_qtest/runner/orchestrator.py",
-      "original_sha256": "95979658c309bad86f1c0e144b581d08fb74451ffbdb600b1144011e7d2e21ad",
-      "quarantine": "_yaiwes_upstream_quarantine/services/api_checker/ventor_qtest/runner/orchestrator.py.original",
-      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
+      "path": "AIG-PromptSecurity/deepteam/attacks/single_turn/stratasword/template.py",
+      "original_sha256": "a86bea26bb66907ec4aeb2205090f808bc06897788d5016faea664f9c84a00c0",
+      "active_sha256": "4cff134fc5bbf841d6f8dc087ce3481f1934fe1cb780cd6dd7a3ab472ee609f4",
+      "quarantine": "_yaiwes_upstream_quarantine/AIG-PromptSecurity/deepteam/attacks/single_turn/stratasword/template.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
       "role": "TASK_PERSISTENCE_LINK"
     },
     {
       "order": 2,
-      "path": "skills/aig-agent-redteam/scripts/common/http_probe.py",
-      "original_sha256": "e1b657b18ca58f43876ca58141456eb3d328d1daa112ba6a6105a8d4f5736353",
-      "quarantine": "_yaiwes_upstream_quarantine/skills/aig-agent-redteam/scripts/common/http_probe.py.original",
-      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
+      "path": "AIG-PromptSecurity/deepteam/attacks/single_turn/system_override/template.py",
+      "original_sha256": "a42f2a70aab843e34fc67b12a1fa61461086575dcef4d099d288d7925b77dc19",
+      "active_sha256": "5b2e4174c684507f7802f21e0546c348c088ba5230658e7cb1700e6d60608fff",
+      "quarantine": "_yaiwes_upstream_quarantine/AIG-PromptSecurity/deepteam/attacks/single_turn/system_override/template.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
       "role": "TASK_PERSISTENCE_LINK"
     },
     {
       "order": 3,
-      "path": "Research/SkillJack/skilljack/llm_adapter.py",
-      "original_sha256": "0702e6aa608005fe9ae0ee0a3da48cd939bb7cb0a4eb57e48a066defdf8dc515",
-      "quarantine": "_yaiwes_upstream_quarantine/Research/SkillJack/skilljack/llm_adapter.py.original",
-      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:0",
+      "path": "AIG-PromptSecurity/deepteam/metrics/is_jailbreak/is_jailbreak.py",
+      "original_sha256": "f615691e53a9d27951380bc987682286a39c30491afda9bd4c7f91328e984257",
+      "active_sha256": "7c9eeb6d4485ffa98d6fcf22b7cdc158f5dafeed4117278b88291c9a94c1be66",
+      "quarantine": "_yaiwes_upstream_quarantine/AIG-PromptSecurity/deepteam/metrics/is_jailbreak/is_jailbreak.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
       "role": "TASK_PERSISTENCE_LINK"
     },
     {
       "order": 4,
-      "path": "agent-scan/testcase/case2/memory_heist_agent.py",
-      "original_sha256": "28d55728aa7a104b2f00ef8baaee36450bb5b55f0a96ea9aa7e901fc9fd5175f",
-      "quarantine": "_yaiwes_upstream_quarantine/agent-scan/testcase/case2/memory_heist_agent.py.original",
-      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:0",
+      "path": "AIG-PromptSecurity/deepteam/metrics/sql_injection/template.py",
+      "original_sha256": "533edd1c14978de7da57c44809acfad54ed334d0e778a0d06d3943ff55f15345",
+      "active_sha256": "b0c6309b2c3ce6b0078688baef0bfd31e5b7dd3d98b30013c492b66a46819412",
+      "quarantine": "_yaiwes_upstream_quarantine/AIG-PromptSecurity/deepteam/metrics/sql_injection/template.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
       "role": "TASK_PERSISTENCE_LINK"
     },
     {
       "order": 5,
-      "path": "pkg/httpx/httpx.go",
-      "original_sha256": "50a86f6528cdf979aecbc5f21d6ee252e50058f77ac4ffb6156fa54d5d66fac6",
-      "quarantine": "_yaiwes_upstream_quarantine/pkg/httpx/httpx.go.original",
-      "transform_kind": "SAFE_STUB",
+      "path": "AIG-PromptSecurity/deepteam/metrics/ssrf/template.py",
+      "original_sha256": "a02782c68393d97173f3d1c7996574fada4e4484aa6529a3294aa674f9b0dad7",
+      "active_sha256": "6c5494dbd1403845ffc21f9ab000a84124c874cc1c82561539663997b6f4602c",
+      "quarantine": "_yaiwes_upstream_quarantine/AIG-PromptSecurity/deepteam/metrics/ssrf/template.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
       "role": "TASK_PERSISTENCE_LINK"
     },
     {
       "order": 6,
-      "path": "common/websocket/websocket.go",
-      "original_sha256": "d3bc13a9160a4b3b070d1fee26c3a4460aaeefeb863faee515130385ffe311a4",
-      "quarantine": "_yaiwes_upstream_quarantine/common/websocket/websocket.go.original",
-      "transform_kind": "SAFE_STUB",
+      "path": "AIG-PromptSecurity/deepteam/plugin_system/remote_plugin_downloader.py",
+      "original_sha256": "1890ec97774640ae1e07502321fae30c74037d92180787d0130fee2b3d876352",
+      "active_sha256": "bcad9d159d879d2998a468d6c859e797c47df5955d0b0891bcebcdd42b84424f",
+      "quarantine": "_yaiwes_upstream_quarantine/AIG-PromptSecurity/deepteam/plugin_system/remote_plugin_downloader.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
       "role": "TASK_PERSISTENCE_LINK"
     },
     {
       "order": 7,
+      "path": "AIG-PromptSecurity/deepteam/telemetry.py",
+      "original_sha256": "2fde7a60332b3d4b308b21c7dce7c6997a5bcf3fd32d393f68c9023818b0abad",
+      "active_sha256": "20b16554d7c44f4ae659a9e8de42fdd73f04f224f312f6112611fd32589d2a96",
+      "quarantine": "_yaiwes_upstream_quarantine/AIG-PromptSecurity/deepteam/telemetry.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 8,
+      "path": "AIG-PromptSecurity/deepteam/vulnerabilities/personal_safety/template.py",
+      "original_sha256": "c067eba91b3f51bf6441a427f08c96d26889c7ee5d633701ade0da48a551351a",
+      "active_sha256": "204092c1542b102fee34dab012cb83b5d9ad4b4b211e6ae53f50095091d9c8a4",
+      "quarantine": "_yaiwes_upstream_quarantine/AIG-PromptSecurity/deepteam/vulnerabilities/personal_safety/template.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 9,
+      "path": "Research/SkillJack/skilljack/large_scale_generator.py",
+      "original_sha256": "ee733c9d57925a58cb5040b0604a5485b68e1133caeb8a6987b8280624cd8f77",
+      "active_sha256": "c3b452a14096eb590527b4f3c0c25cffa5057b36ae82efee960f9fe7b0abf0ad",
+      "quarantine": "_yaiwes_upstream_quarantine/Research/SkillJack/skilljack/large_scale_generator.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 10,
+      "path": "Research/SkillJack/skilljack/llm_adapter.py",
+      "original_sha256": "3f0beb8cfb3d26b89ef580d4abac519d2f5384ba6b977a04d8a79173f85123df",
+      "active_sha256": "f86c090372f14117931159d370b6a8d06eb28ae80b9d00e497c50965ddcb285a",
+      "quarantine": "_yaiwes_upstream_quarantine/Research/SkillJack/skilljack/llm_adapter.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 11,
+      "path": "Research/deepseek-harness-security-assessment/assessment/adapter/dsh_real_adapter.py",
+      "original_sha256": "0336bc0690bb971f888131f9c1f517b9b5085c6427a7fe60f3f1800ff3f9a1b3",
+      "active_sha256": "32413ceef9965116e680e33501fd66ff7feaf03eb1c20178b28844af6d27115a",
+      "quarantine": "_yaiwes_upstream_quarantine/Research/deepseek-harness-security-assessment/assessment/adapter/dsh_real_adapter.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 12,
+      "path": "agent-scan/agent_scan/core/agent_adapter/adapter.py",
+      "original_sha256": "5c57fd31f08515bac290c3f958df4289a2017d5a90b17cdf283b22dee2f79dca",
+      "active_sha256": "7d008f268f21f4b79951fce4f8c70ef28aaf44f7f251f2dbdf29170000098cec",
+      "quarantine": "_yaiwes_upstream_quarantine/agent-scan/agent_scan/core/agent_adapter/adapter.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 13,
+      "path": "agent-scan/agent_scan/utils/extract_vuln.py",
+      "original_sha256": "c420a69763bf5710b294604149e48e9864c3074796350a587da8d8032cd32a2b",
+      "active_sha256": "317078f9ec0e90544deb2aa47ae6faa9c580efa1e6336a502d384741870abaab",
+      "quarantine": "_yaiwes_upstream_quarantine/agent-scan/agent_scan/utils/extract_vuln.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 14,
+      "path": "agent-scan/testcase/case2/exfil_server.py",
+      "original_sha256": "8de2701d9df283a16fb6c374db247d7cf6aec0469ac34b133e380cd7590011e2",
+      "active_sha256": "3c1d9570613aabcf3bce350de59a3f4a86822f7777e479a648630e4f25b2792c",
+      "quarantine": "_yaiwes_upstream_quarantine/agent-scan/testcase/case2/exfil_server.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 15,
+      "path": "agent-scan/testcase/case2/memory_heist_agent.py",
+      "original_sha256": "18e162f1de9a02919737d57db4d2c7ab384d0aafbc8b59ac871300e4c0f994f4",
+      "active_sha256": "57a089c76c839f211f7af0bcefc8d8dcd871c4237f8c831557d8179369adab94",
+      "quarantine": "_yaiwes_upstream_quarantine/agent-scan/testcase/case2/memory_heist_agent.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 16,
+      "path": "cmd/cli/cmd/webserver.go",
+      "original_sha256": "c79dc1512fa3b600c2367f7f0394323a42e4cac6f7901e4f70f81de78e456a8d",
+      "active_sha256": "2c086441c7099e9fd4c57c7738f4b09210943ad2fd2e4b1795c20e0488094683",
+      "quarantine": "_yaiwes_upstream_quarantine/cmd/cli/cmd/webserver.go.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 17,
+      "path": "common/agent/agent.go",
+      "original_sha256": "712459a56788aa7e9da440a017b4e79adbad42c54031840ed6c82c4f6f6fb7cc",
+      "active_sha256": "a246516309f2c24bd78201c43cb96e256758d5b122866a9786a1b0801c3e04bf",
+      "quarantine": "_yaiwes_upstream_quarantine/common/agent/agent.go.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 18,
+      "path": "common/fingerprints/parser/parser_test.go",
+      "original_sha256": "88e6ee55e0e478d3f25a02a0e6f6674705d7355f87c210837bdd55296fc02afe",
+      "active_sha256": "6c75db961aac7e39e44911fa65696d2895fe888403fd00b58f73d444a7be20fe",
+      "quarantine": "_yaiwes_upstream_quarantine/common/fingerprints/parser/parser_test.go.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 19,
+      "path": "common/fingerprints/preload/mlfow.go",
+      "original_sha256": "6719932cfc99a386ba16c2878fa2f4d0d370f476d91272969820b6dba490af08",
+      "active_sha256": "91ab2b47b9715e721894a76f236ee21a8634d341c26f5370fb2daf5b4470ed9f",
+      "quarantine": "_yaiwes_upstream_quarantine/common/fingerprints/preload/mlfow.go.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 20,
+      "path": "common/fingerprints/preload/preload.go",
+      "original_sha256": "dccc711fe53603358ac67f8ce46605e7819df98037a25c179ba1e4d6a2549359",
+      "active_sha256": "927487979f6c3793a09f99a0c35e80be70ee0d9c873f19f21634ce844d5cf437",
+      "quarantine": "_yaiwes_upstream_quarantine/common/fingerprints/preload/preload.go.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 21,
+      "path": "common/fingerprints/preload/preload_test.go",
+      "original_sha256": "176335c700c545f0f8808ae70ba91d8d2bedf60b52d89e0a28c72f5a409170ef",
+      "active_sha256": "03b1df93e60f48dcd1d912791ad3f6b573a63f0520a1dcfce6bd8d598f6fac69",
+      "quarantine": "_yaiwes_upstream_quarantine/common/fingerprints/preload/preload_test.go.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 22,
+      "path": "common/fingerprints/preload/version_detection_test.go",
+      "original_sha256": "ce363848c963c6567fd66ee3be351e5c2fbe6f29f01874ff77c16c4cb8d052c9",
+      "active_sha256": "4e319e2502f508a1b5f9d11d27bc5d473d8d00a826e023298de5c9d0caef8f70",
+      "quarantine": "_yaiwes_upstream_quarantine/common/fingerprints/preload/version_detection_test.go.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 23,
+      "path": "common/runner/runner.go",
+      "original_sha256": "52fffe1010db67ada4cd7eceed6a46bd37897cdd2fbe819fc67acefb361e354c",
+      "active_sha256": "266e3ba34f4c447e3d65d71c663c842e80ee1d68b0e4f31f67c4e8f8735a1103",
+      "quarantine": "_yaiwes_upstream_quarantine/common/runner/runner.go.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 24,
+      "path": "common/utils/favicon.go",
+      "original_sha256": "cf465029edcdd2b10b0f8437258a9db15a392feac304b9b29c369afd98eb3c76",
+      "active_sha256": "2cc9fb0e69133bbfdd13c58e45d6655455991bc96cdcbfe4c1cf9dba37b84179",
+      "quarantine": "_yaiwes_upstream_quarantine/common/utils/favicon.go.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 25,
+      "path": "common/utils/nmap.go",
+      "original_sha256": "e7daf59b0a7dd53926a79169593f7ce7eeda8f7b7c9f4e729840c2213ab7ad4a",
+      "active_sha256": "204b5f6c0e7690f9190e80195fc0fc842073ad71be62ce4c2ba46e099093e509",
+      "quarantine": "_yaiwes_upstream_quarantine/common/utils/nmap.go.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 26,
+      "path": "common/utils/utils.go",
+      "original_sha256": "195cb13a544245b84dc821d5fd232e425d4ea6ce3939b154dabe89dedf8f80e6",
+      "active_sha256": "ef821a0a56b688f96e97ae8ab8e9dc89cad60b1e765144755e989e653c8be833",
+      "quarantine": "_yaiwes_upstream_quarantine/common/utils/utils.go.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 27,
+      "path": "common/utils/utils_test.go",
+      "original_sha256": "96aa4f09fbc4a0bd12d3d1aeed4316f71657d62b47a5dc2fda6a7cbf7e8197ec",
+      "active_sha256": "0967321344cb673842e7b326b5cb78f69f156168c94759c412b543f4d523f7c2",
+      "quarantine": "_yaiwes_upstream_quarantine/common/utils/utils_test.go.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 28,
+      "path": "common/websocket/agent.go",
+      "original_sha256": "377318340d8eec762d1e5110087c6e29b90c3c9f1539aa6346ebcc73d3865135",
+      "active_sha256": "36c172c5df388bdaf3912b8b645b6bf3554a68414d5ab3f64a4c346874353352",
+      "quarantine": "_yaiwes_upstream_quarantine/common/websocket/agent.go.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 29,
+      "path": "common/websocket/update_api.go",
+      "original_sha256": "03f1d11e054afcb26ffb9fb04d2b65a880adec66c578370c547a8ecf03ae157a",
+      "active_sha256": "3501aae6b07f5d8f244f07c8e8d4437dfd2f4d159e4ce3d820dc3661c940a082",
+      "quarantine": "_yaiwes_upstream_quarantine/common/websocket/update_api.go.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 30,
+      "path": "common/websocket/websocket.go",
+      "original_sha256": "3b98b4bf32f0a991e97e2e6d39c87e1d5cf47898c1d4b60739332de42ba273a1",
+      "active_sha256": "077f6981e808204303a791716e3ddf56158cb6e5e44be98f43eaa61c9e69ca26",
+      "quarantine": "_yaiwes_upstream_quarantine/common/websocket/websocket.go.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 31,
+      "path": "mcp-scan/mcp_scan/tools/execute/execute_actions.py",
+      "original_sha256": "36b8be8c3b43d4cb65b44be59f72553091a6f145b5b7ade5b225f88f747fce1b",
+      "active_sha256": "33d79c44db1e3c61000816d870c95d86ad7580f1657bbe7f97dd81ecffcea25e",
+      "quarantine": "_yaiwes_upstream_quarantine/mcp-scan/mcp_scan/tools/execute/execute_actions.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 32,
+      "path": "mcp-scan/mcp_scan/utils/extract_vuln.py",
+      "original_sha256": "68f2f93885cea15b955df7cc7326db41e6989b03f63ea3badf59ceb732408206",
+      "active_sha256": "8ef033dada7d40adf841aafecdbc0715f9c4784072f2f1ef86f2e9a66b3b6689",
+      "quarantine": "_yaiwes_upstream_quarantine/mcp-scan/mcp_scan/utils/extract_vuln.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 33,
+      "path": "mcp-scan/testcase/case1/main1.py",
+      "original_sha256": "1abebd7f741d3c51d7271038081da7238bbf6fa52acb8274dc10c2380b897bbc",
+      "active_sha256": "81ebcad77671a99f3f8c1a270d0a3345bd782e3b2339887a2f5f1a3bcac87c64",
+      "quarantine": "_yaiwes_upstream_quarantine/mcp-scan/testcase/case1/main1.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 34,
+      "path": "pkg/httpx/httpx.go",
+      "original_sha256": "4e841275655a9b4ddaae94a84b4954c1c640743d44da57d4646c5aa04803b1f1",
+      "active_sha256": "be1b189fab0bc4e7a692be9569b400f3967fc333933d22b69be50969a31681d1",
+      "quarantine": "_yaiwes_upstream_quarantine/pkg/httpx/httpx.go.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 35,
+      "path": "services/api_checker/algorithms/common.py",
+      "original_sha256": "89069222efdaeed5904e6c6f6e8e08ec456a69f623ecd32948f92181bdd1350a",
+      "active_sha256": "1c3ecbb5d88d4e145cf1326d32555941fb7d7b37e6ec07babedddf23bfad4b85",
+      "quarantine": "_yaiwes_upstream_quarantine/services/api_checker/algorithms/common.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 36,
+      "path": "services/api_checker/algorithms/signature.py",
+      "original_sha256": "512bfad46b69727d8eaad84b5cc084846962141def78d4431d131f21f3875faf",
+      "active_sha256": "e0002c1dfc15aa7ea6558cdb8269a5b8f1020f5d93d698e02ea87d7bd59f86ea",
+      "quarantine": "_yaiwes_upstream_quarantine/services/api_checker/algorithms/signature.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 37,
+      "path": "services/api_checker/server.py",
+      "original_sha256": "98c9ed8ca861f98bc3187a113c4f9b3bdc7677dd7655b57dbd459f537d108af6",
+      "active_sha256": "08e86af256cb6ab55a943df54aa172032ca29f6838974cc04b3ebf98e00142ce",
+      "quarantine": "_yaiwes_upstream_quarantine/services/api_checker/server.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 38,
+      "path": "services/api_checker/ventor_qtest/check.py",
+      "original_sha256": "e02daee0f241817a70250d122dbffd8d61c9959a4de4f6425b865563bb6fe5b4",
+      "active_sha256": "5aea4f9eb82b67c08465ba1430cecc1961f069323c1855ac0bee25d76f569b0e",
+      "quarantine": "_yaiwes_upstream_quarantine/services/api_checker/ventor_qtest/check.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 39,
+      "path": "services/api_checker/ventor_qtest/runner/openrouter.py",
+      "original_sha256": "8d5a3db386c94ab8f800372e7eeb74a9b89fd286d8a664aab332e119de4cc0f9",
+      "active_sha256": "a29761ca8507a5dc2fcf0df0d907c1814e40eeaa2944f87eb44ec1503748a5c2",
+      "quarantine": "_yaiwes_upstream_quarantine/services/api_checker/ventor_qtest/runner/openrouter.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 40,
+      "path": "services/api_checker/ventor_qtest/runner/orchestrator.py",
+      "original_sha256": "daaec2ac1d1a32c3997b41be90b10509675d96aa0a27f72d6a185b2bdd9f7b73",
+      "active_sha256": "68ab49ba981693ffb8d8e6c7aa7a09447c2694ad226d749d27ef2b589f3c0f6c",
+      "quarantine": "_yaiwes_upstream_quarantine/services/api_checker/ventor_qtest/runner/orchestrator.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 41,
+      "path": "skill-scan/pytests/test_hidden_content.py",
+      "original_sha256": "90af419fc7746674927bf1e34db0193c73da9c9f1855c47b84b38b7626e006bc",
+      "active_sha256": "af5b9d9c83888ae1e62582d66dda5f1fcb7f1d164ae9297c49e49977f1fefc6c",
+      "quarantine": "_yaiwes_upstream_quarantine/skill-scan/pytests/test_hidden_content.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 42,
+      "path": "skills/aig-agent-redteam/scripts/aig_data.py",
+      "original_sha256": "cd21fb08f6c8f9ea064f15c276f7f9bb1e0a8301469825d4bdbeae30a2affb52",
+      "active_sha256": "f79e587dcc12b534898ba0c59010ade1586bc2b8a4c08437472c6c835993f938",
+      "quarantine": "_yaiwes_upstream_quarantine/skills/aig-agent-redteam/scripts/aig_data.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 43,
+      "path": "skills/aig-agent-redteam/scripts/common/http_probe.py",
+      "original_sha256": "c8dd018500b2e6e26fd814231702916079f2bececf30dbf6028810eac5730514",
+      "active_sha256": "d04c0b2c562b524726035449290b673f29fa54942af1d01cac3f27b56f4ea810",
+      "quarantine": "_yaiwes_upstream_quarantine/skills/aig-agent-redteam/scripts/common/http_probe.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 44,
       "path": "yaiwes_internal/README.md",
       "role": "COMPONENT_PERSISTENCE_LINK",
       "transform_kind": "INTERNAL_RUNTIME"

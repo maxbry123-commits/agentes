@@ -3,16 +3,7 @@
   "component": "🏈 11-LLM-CTF-Solver",
   "mode": "TRANSFORM",
   "source_files": 138,
-  "candidates": 1,
-  "changed": 1,
-  "findings": [
-    {
-      "path": "frontend/src/utils/websocket.ts",
-      "source_id": "79037e6e835e20baf0cbe9a6c92310a36ff845ed85413bd4d7c18fe1bd614688",
-      "sha256": "be62010f831a9b39ae5ba9795376b0ebdad00864299b2855b3aceb9abba07f3b",
-      "changed": true,
-      "kind": "SAFE_STUB",
-      "quarantine": "_yaiwes_upstream_quarantine/frontend/src/utils/websocket.ts.original"
-    }
-  ]
+  "candidates": 0,
+  "changed": 0,
+  "findings": []
 }

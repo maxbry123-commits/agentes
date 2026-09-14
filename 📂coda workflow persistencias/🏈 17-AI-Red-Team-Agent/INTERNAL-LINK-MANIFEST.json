@@ -1,14 +1,34 @@
 {
-  "schema": "yaiwes.internal.link-manifest/v4",
+  "schema": "yaiwes.internal.link-manifest/v4.1",
   "component": "🏈 17-AI-Red-Team-Agent",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.0",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.1",
   "source_files_audited": 6,
-  "active_surfaces_transformed": 0,
-  "link_count": 1,
+  "last_delta_candidates": 0,
+  "last_delta_changed": 0,
+  "active_surfaces_transformed_cumulative": 2,
+  "link_count": 3,
   "links": [
     {
       "order": 1,
+      "path": "app.py",
+      "original_sha256": "2d335f5e52c1e76e5efb53fb979df412d5bc935953713dfbab3d35abd97e5f75",
+      "active_sha256": "a7fd85c301485e8529073e76c123ead1188fdd55486a390fa8a193a13a4bfe5c",
+      "quarantine": "_yaiwes_upstream_quarantine/app.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 2,
+      "path": "core/github_api.py",
+      "original_sha256": "490c200dd3569e6bd8abc4fd1f698f1378308b72a17218bea02568f2059c3858",
+      "active_sha256": "54e563506dc8f84b06cf9e23d084da366612bb1b269890d92542b0f3e838c2d6",
+      "quarantine": "_yaiwes_upstream_quarantine/core/github_api.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 3,
       "path": "yaiwes_internal/README.md",
       "role": "COMPONENT_PERSISTENCE_LINK",
       "transform_kind": "INTERNAL_RUNTIME"

@@ -3,24 +3,7 @@
   "component": "🏈 01-DeepAudit",
   "mode": "TRANSFORM",
   "source_files": 352,
-  "candidates": 2,
-  "changed": 2,
-  "findings": [
-    {
-      "path": "backend/app/services/llm/base_adapter.py",
-      "source_id": "8b91d9d38bcc09c2187376fad18d98114150c05ed2a7cf13fe2ae05fffd86d38",
-      "sha256": "6384418d8aaeedc27cd2ffa1dc8f6973b2dac29997cfaff1a2bdce8895844637",
-      "changed": true,
-      "kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
-      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/llm/base_adapter.py.original"
-    },
-    {
-      "path": "backend/app/services/agent/core/rate_limiter.py",
-      "source_id": "3b43e64862f7f724f55227842e7e42d854854deb8c755d1d2c5c62322ca1dbf0",
-      "sha256": "b4c40d2ba6851f61db63c5907594c9eefc1797245c8df9d2388fc91bce752e68",
-      "changed": true,
-      "kind": "PY_FILE_STUB_AFTER_FUNCTIONS:0",
-      "quarantine": "_yaiwes_upstream_quarantine/backend/app/services/agent/core/rate_limiter.py.original"
-    }
-  ]
+  "candidates": 0,
+  "changed": 0,
+  "findings": []
 }

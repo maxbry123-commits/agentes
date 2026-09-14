@@ -1,94 +1,286 @@
 {
-  "schema": "yaiwes.internal.link-manifest/v4",
+  "schema": "yaiwes.internal.link-manifest/v4.1",
   "component": "🏈 07-Strix",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.0",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.1",
   "source_files_audited": 254,
-  "active_surfaces_transformed": 10,
-  "link_count": 11,
+  "last_delta_candidates": 0,
+  "last_delta_changed": 0,
+  "active_surfaces_transformed_cumulative": 30,
+  "link_count": 31,
   "links": [
     {
       "order": 1,
-      "path": "strix/runtime/docker_client.py",
-      "original_sha256": "b9b282d46093ce3e3501117af07c83255b74081771e1b16b00238a43958bdbde",
-      "quarantine": "_yaiwes_upstream_quarantine/strix/runtime/docker_client.py.original",
-      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:0",
+      "path": "scripts/tui_sidecar_hook.py",
+      "original_sha256": "b14c8151558920a05dcdbadfbe8f3a0b364745fdff1aab288558fb0d28f73997",
+      "active_sha256": "429c501f23472c63785c0d5d186bbcf7ebb0125d9948e0657ba66fae1332216b",
+      "quarantine": "_yaiwes_upstream_quarantine/scripts/tui_sidecar_hook.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
       "role": "TASK_PERSISTENCE_LINK"
     },
     {
       "order": 2,
-      "path": "strix/interface/utils.py",
-      "original_sha256": "de7b2c0e41b21232ccb3027763b05fd40f08c5ccd35820cf3994b038db390af0",
-      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/utils.py.original",
-      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:2",
+      "path": "strix/config/codex.py",
+      "original_sha256": "59ce71271d90c6a60405d89d5ac07e16e9809e1b0a589326538acdb1ca4dffd7",
+      "active_sha256": "126ec2a6edbdda86b61442f0597483fa96f065fb8fc6f1b053e0945078f2ad65",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/config/codex.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
       "role": "TASK_PERSISTENCE_LINK"
     },
     {
       "order": 3,
-      "path": "strix/interface/platform_cli.py",
-      "original_sha256": "27572b803dac24a0b228745068fcd05bc31b92826acf62b5736b0b82ee592eda",
-      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/platform_cli.py.original",
-      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:5",
+      "path": "strix/interface/cloud/billing.py",
+      "original_sha256": "92f1bfffefff2b9aa4762dc4146fb7bc60d1bb95ed78bb072dde8dc50dbc0e08",
+      "active_sha256": "26f8eb00bf9a1423adbc233e0c6b5959a8679735e06d168b01a269346ec6dcd0",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/billing.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
       "role": "TASK_PERSISTENCE_LINK"
     },
     {
       "order": 4,
-      "path": "strix/tools/mcp/failures.py",
-      "original_sha256": "ed17064024509346b2762259a99c07c912a7e4b6afc7ddd63dbc9b83d179e6b6",
-      "quarantine": "_yaiwes_upstream_quarantine/strix/tools/mcp/failures.py.original",
-      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
+      "path": "strix/interface/cloud/http.py",
+      "original_sha256": "ccb00c9073264289d301715e11417748fa8d8a52baa747875bf2bd886185c3f2",
+      "active_sha256": "8c58025d501da1757bfe7693d4f61b2a253ab1739c61f5ad40e93e83c0664ca6",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/http.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
       "role": "TASK_PERSISTENCE_LINK"
     },
     {
       "order": 5,
-      "path": "strix/interface/tui/sidecar.py",
-      "original_sha256": "b05ede9fb3fa10d8efdb0ba7e37dea6f1b69f720f147654016aebd7e10851b20",
-      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/tui/sidecar.py.original",
-      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:8",
+      "path": "strix/interface/cloud/payment_proxy.py",
+      "original_sha256": "fbcb1676a940cdd7e3516b9b4c87e5c73bc7a10ca057259395ed8b05058722a6",
+      "active_sha256": "015956143f7f8a1bde12811f4d387a605655a5c406725de12edf93eb939b1c94",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/payment_proxy.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
       "role": "TASK_PERSISTENCE_LINK"
     },
     {
       "order": 6,
-      "path": "strix/interface/cloud/billing.py",
-      "original_sha256": "a95137dd0331a62a776c76335ec41e497ba67d70854c78235aecf724d4c131c3",
-      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/billing.py.original",
-      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:2",
+      "path": "strix/interface/cloud/runner.py",
+      "original_sha256": "92cd5b30101824d95f459d97e55a22899c454a1744cd0f4696d4eab0645fd7be",
+      "active_sha256": "c30caec317f71d73aeb17f55c37841c83ffbef9c1e5e333117cff6964c77e0f2",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/runner.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
       "role": "TASK_PERSISTENCE_LINK"
     },
     {
       "order": 7,
-      "path": "strix/interface/cloud/http.py",
-      "original_sha256": "b544678f70aa7f1fba5ef3391fa4efca8783e8490bf40f955d336273fe40d6ec",
-      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/http.py.original",
-      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:3",
+      "path": "strix/interface/cloud/source_upload.py",
+      "original_sha256": "1e1b6a2cca5d4a88f506c4844286d73b093203c127e37e721ac64df157c05b39",
+      "active_sha256": "caee17fa1c6cca980772b64b0372f606ecc65d4b4b60813b7cfdbdbe67bb4892",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/source_upload.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
       "role": "TASK_PERSISTENCE_LINK"
     },
     {
       "order": 8,
-      "path": "strix/interface/cloud/payment_proxy.py",
-      "original_sha256": "e6f40be303f36fc5947f69a3e8ebbe5d124bf3593c1f59287625fe291ef99ee5",
-      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/payment_proxy.py.original",
-      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
+      "path": "strix/interface/cloud/spec.py",
+      "original_sha256": "369f21c777537f46288553c9be09ee3c3199872fd7fe1286d33e62fa686088da",
+      "active_sha256": "64c8e8884cf76bc72c36a1f20e600a37f161bc51c1530c3cc80c3442406f639a",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/spec.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
       "role": "TASK_PERSISTENCE_LINK"
     },
     {
       "order": 9,
-      "path": "strix/interface/cloud/runner.py",
-      "original_sha256": "d3ea421e9a6ab7e6b1e1770b139ab81dc729b5699ca19ed4d31aeca3e67dfc73",
-      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/cloud/runner.py.original",
-      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:3",
+      "path": "strix/interface/platform_cli.py",
+      "original_sha256": "528fa1ff6bf9478d41c510c856ccdc4c64566a4e6768e25f3e319e4ddc79c33c",
+      "active_sha256": "d26589e235974d979eb482c096b01a59c8b6208931108491b0dc891b025b8c21",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/platform_cli.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
       "role": "TASK_PERSISTENCE_LINK"
     },
     {
       "order": 10,
       "path": "strix/interface/tui/backend/server.py",
-      "original_sha256": "f4f32b7038ac6152371b10234e4fa648c75177688b71b33bfffa361bea537bc6",
+      "original_sha256": "610311cfb1107ecfd90ef699f0acff452c8b75d915b222cf5b6a8cb65f64b953",
+      "active_sha256": "7367f97395ce0953a86efafa4763a04a09e0e7a7da561001c2b950d85dfce0e1",
       "quarantine": "_yaiwes_upstream_quarantine/strix/interface/tui/backend/server.py.original",
-      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
       "role": "TASK_PERSISTENCE_LINK"
     },
     {
       "order": 11,
+      "path": "strix/interface/tui/runtime.py",
+      "original_sha256": "2240d84a5e0f543182d97ea17046d3dbf22b1946522a07979c5896e1306dd13d",
+      "active_sha256": "e1e3140e5b6f62384c8bd52bf0838768b4c984273c4817e70856ea949ac27505",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/tui/runtime.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 12,
+      "path": "strix/interface/tui/sidecar.py",
+      "original_sha256": "ea530d9c4d9edcd27f13d005f3167591615b97ae2edf3977e4fdb7e89033fa99",
+      "active_sha256": "4424f292c70000e75171691e965d5964f725958c7dce687ce2274ae0a060ce66",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/tui/sidecar.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 13,
+      "path": "strix/interface/update_check.py",
+      "original_sha256": "d554d206effd46b59427ec50375f80bc3ddb9988ca81cfc630c0655633f314fb",
+      "active_sha256": "4bbe4c5036a826f735ad7cbaae9dd66ab57421967626b4748efd577f0734a46f",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/update_check.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 14,
+      "path": "strix/interface/utils.py",
+      "original_sha256": "cf5838f8b2f1d29e63e9fffa0633e0ea902e1d44e7c8885b5d585637e2b0a425",
+      "active_sha256": "a66e78bc6c913395a75ecdd26006f7ef04bd082aa4687ad636217cfdbbf10ef3",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/utils.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 15,
+      "path": "strix/interface/viewer/auth.py",
+      "original_sha256": "27439a44c2aad8baca3c5dc34a3246c0a6d86fcf192365f6b958bc020fa6e658",
+      "active_sha256": "f69ddfa3dba1be63c553b4925513937fa999bdf468bf063d60d07315a883bdcc",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/auth.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 16,
+      "path": "strix/interface/viewer/frontend/src/components/EmailReportView.tsx",
+      "original_sha256": "3f05304ad37afba6b4984bb3fca8523e06d428fb62984876e74d7322ea666ff7",
+      "active_sha256": "749fbd1c0c2358eb44570c5e99a866b9f40718028655b141a3a71f01056a67da",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/frontend/src/components/EmailReportView.tsx.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 17,
+      "path": "strix/interface/viewer/frontend/src/components/EmailVerifyInline.tsx",
+      "original_sha256": "2bc3cfa52cac8f9f2ff3c426332db64e239ef8157351d11b1cf42103e16f0fd6",
+      "active_sha256": "232ef20fa9f8c8e0f9baa3413b21f4821cb27f5d55af4979abd93d31ff42c0dd",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/frontend/src/components/EmailVerifyInline.tsx.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 18,
+      "path": "strix/interface/viewer/frontend/src/components/live/tool-renderers/ProxyRenderer.tsx",
+      "original_sha256": "c1cbfefdd73d022e3540174cdbd341286fa246cd6b9a07a475b22a439adc28af",
+      "active_sha256": "16b7cf9fdeecdbb979d799e1859d586ffc9a5e23acb823a757f962f18fe70569",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/frontend/src/components/live/tool-renderers/ProxyRenderer.tsx.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 19,
+      "path": "strix/interface/viewer/static/assets/index-B94ANU8d.js",
+      "original_sha256": "108fa90acc7f717ce763e5c2bfccfbe741e34a3ebf5b40147f292dad33313d8e",
+      "active_sha256": "1871e8e53e17ed11b5e146800ab666fed14dfad32c38400df4ce7ede8f1aed3e",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/interface/viewer/static/assets/index-B94ANU8d.js.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 20,
+      "path": "strix/report/state.py",
+      "original_sha256": "a946cfc1c94c7196165f827e8bdb9facb3c3f2c522a2ca99df483f8fa662b11a",
+      "active_sha256": "7d78652778854fce642c8eb433d110c866e1440f435a86966eb1ff6d20d667ba",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/report/state.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 21,
+      "path": "strix/runtime/docker_client.py",
+      "original_sha256": "081563d467cce5957818f50a7d4fce3df64a503d737d3b9332f56593178d8c4f",
+      "active_sha256": "5c9ded3939553a6c1959ebf6303a67163d5a11bf6e1fd902925cc60997d6e1c5",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/runtime/docker_client.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 22,
+      "path": "strix/telemetry/posthog.py",
+      "original_sha256": "122f80dd93db562b05179eb95fcdeea609337fe61a12afe1b24c49a326e1c33d",
+      "active_sha256": "7953012f9581815180c1a52d90ec31785bae34839cc09f9ed40fe7a28997dd87",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/telemetry/posthog.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 23,
+      "path": "strix/telemetry/scarf.py",
+      "original_sha256": "227766fd3ee094e0bed566c97fe7633930bd26da347107cb453171cad04f31c0",
+      "active_sha256": "62a93cd1cb2e5983d57933d5d958972af20e6bf70f3e5353e111d7756a12e4c4",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/telemetry/scarf.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 24,
+      "path": "strix/tools/mcp/client.py",
+      "original_sha256": "6e969fb64133bf5564e8de6d3d60f97aa4db680c2c30d6cbd86f248e3813167d",
+      "active_sha256": "7a98cbdc959c5aff0f8c4531185d95592120881d552ef11315f0a4d35c33bad5",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/tools/mcp/client.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 25,
+      "path": "strix/tools/mcp/config.py",
+      "original_sha256": "685a640666caa9761a12d55e333fa4932357f25fa7298dd49b752a13beed1669",
+      "active_sha256": "bfe44b5d12859adafbec04f410a18e453d8ecad8246823f4b7a6ae3427933317",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/tools/mcp/config.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 26,
+      "path": "strix/tools/mcp/failures.py",
+      "original_sha256": "abc73667b12b077489fdf6f65aa824fbde8af0af88a416d9c73589a57ce9dd55",
+      "active_sha256": "a87f3bf29b0436121d34d1accfe364453175bc19c1bf8515ceec20983ad3a09d",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/tools/mcp/failures.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 27,
+      "path": "strix/tools/proxy/tools.py",
+      "original_sha256": "2e0819fef34d45e0d09a58f08d0a3202f822638d7cd2b59f22337b3a5645d2f6",
+      "active_sha256": "c1636f190823555163becc26779834f86a88e6566741a294e91c3141341d404c",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/tools/proxy/tools.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 28,
+      "path": "strix/tools/threat_model/tools.py",
+      "original_sha256": "be7c5909ac7ef8558c2d0674d6054a06a921c89b21eaecb4dce66531c4adfd0e",
+      "active_sha256": "7e5a3d6bf8f81a28c176eb949dff66b1862c8e9ffc75427171174925818706e2",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/tools/threat_model/tools.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 29,
+      "path": "strix/tools/web_search/tool.py",
+      "original_sha256": "49963f4593f421d9db5578568d28874baa66766ba31c941937954c104cf3d7e5",
+      "active_sha256": "68dc0513dbec5e304fcdbabf12f94ccf2e8cc79e0d3b387a9881b1bb5799969e",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/tools/web_search/tool.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 30,
+      "path": "strix/utils/api_spec.py",
+      "original_sha256": "1552c47c9512714878ce26a50e87d2f2559c672a0e2351377cb87012ad8983ca",
+      "active_sha256": "7cb958db8dc48727a74c55171983c2af04803411f10cbec1d352924d8ebac9a6",
+      "quarantine": "_yaiwes_upstream_quarantine/strix/utils/api_spec.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 31,
       "path": "yaiwes_internal/README.md",
       "role": "COMPONENT_PERSISTENCE_LINK",
       "transform_kind": "INTERNAL_RUNTIME"

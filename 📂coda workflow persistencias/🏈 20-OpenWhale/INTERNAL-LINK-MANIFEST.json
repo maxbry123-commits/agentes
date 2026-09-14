@@ -1,22 +1,43 @@
 {
-  "schema": "yaiwes.internal.link-manifest/v4",
+  "schema": "yaiwes.internal.link-manifest/v4.1",
   "component": "🏈 20-OpenWhale",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.0",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.1",
   "source_files_audited": 19,
-  "active_surfaces_transformed": 1,
-  "link_count": 2,
+  "last_delta_candidates": 0,
+  "last_delta_changed": 0,
+  "active_surfaces_transformed_cumulative": 3,
+  "link_count": 4,
   "links": [
     {
       "order": 1,
-      "path": "src/openwhale/agents/deepagents_agent.py",
-      "original_sha256": "8605c6424395d2c69835d465c3aa1b18d9dc8ad86456684f4c50818df5cb5cba",
-      "quarantine": "_yaiwes_upstream_quarantine/src/openwhale/agents/deepagents_agent.py.original",
-      "transform_kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
+      "path": "scripts/delayed_autopilot.py",
+      "original_sha256": "93f8bd7939edf23897a411fddf78dd59d18f0595c368c22171bfb2d2cab73c01",
+      "active_sha256": "97e88df4f43bc6d825adbd816f35b6729961bb25c49d810a6afe5724eaa1f081",
+      "quarantine": "_yaiwes_upstream_quarantine/scripts/delayed_autopilot.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
       "role": "TASK_PERSISTENCE_LINK"
     },
     {
       "order": 2,
+      "path": "src/openwhale/agents/deepagents_agent.py",
+      "original_sha256": "c3e900374a08e18b0d61686aae084ae61601055ac4c2dc3edbcad8264b21491b",
+      "active_sha256": "3a1f34e64835d1861f58be70b0ead1c9c1c4e8c85dea964e44e74f1c0575f37d",
+      "quarantine": "_yaiwes_upstream_quarantine/src/openwhale/agents/deepagents_agent.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 3,
+      "path": "src/openwhale/main.py",
+      "original_sha256": "e1dfb9c2eb46995ca84d5968e676daa8c05e7a17c364de277d97de73a35a9b46",
+      "active_sha256": "8ac7aade9ecbf7724a71e3197819aabeb3fc45817f5d09f71437a56c07ac1e92",
+      "quarantine": "_yaiwes_upstream_quarantine/src/openwhale/main.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 4,
       "path": "yaiwes_internal/README.md",
       "role": "COMPONENT_PERSISTENCE_LINK",
       "transform_kind": "INTERNAL_RUNTIME"

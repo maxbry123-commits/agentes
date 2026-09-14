@@ -3,16 +3,7 @@
   "component": "🏈 14-Dark-Moon",
   "mode": "TRANSFORM",
   "source_files": 49,
-  "candidates": 1,
-  "changed": 1,
-  "findings": [
-    {
-      "path": "tools/lab-tests/privacy-gateway-lab.py",
-      "source_id": "76104368f8c9cc10ba9e037bfe0277bf8842497b0591a6b81c70a646a8cee4d4",
-      "sha256": "968a97a88189a828283aeb126fd98886324c3906455dd9a0f342f1e3ef6f907d",
-      "changed": true,
-      "kind": "PY_FILE_STUB_AFTER_FUNCTIONS:0",
-      "quarantine": "_yaiwes_upstream_quarantine/tools/lab-tests/privacy-gateway-lab.py.original"
-    }
-  ]
+  "candidates": 0,
+  "changed": 0,
+  "findings": []
 }

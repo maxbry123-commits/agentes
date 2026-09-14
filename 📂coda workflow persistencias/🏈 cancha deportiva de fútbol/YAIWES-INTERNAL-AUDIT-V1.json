@@ -4,38 +4,38 @@
   "mode": "AUDIT",
   "components": 24,
   "source_files": 4838,
-  "candidates": 32,
+  "candidates": 0,
   "changed": 0,
   "errors": [],
   "summary": [
     {
       "component": "🏈 01-DeepAudit",
       "source_files": 352,
-      "candidates": 2,
+      "candidates": 0,
       "changed": 0
     },
     {
       "component": "🏈 02-CyberStrikeAI",
       "source_files": 692,
-      "candidates": 2,
+      "candidates": 0,
       "changed": 0
     },
     {
       "component": "🏈 03-LuaN1aoAgent",
       "source_files": 145,
-      "candidates": 2,
+      "candidates": 0,
       "changed": 0
     },
     {
       "component": "🏈 04-AI-Pentest",
       "source_files": 42,
-      "candidates": 1,
+      "candidates": 0,
       "changed": 0
     },
     {
       "component": "🏈 05-AI-Infra-Guard",
       "source_files": 881,
-      "candidates": 6,
+      "candidates": 0,
       "changed": 0
     },
     {
@@ -47,13 +47,13 @@
     {
       "component": "🏈 07-Strix",
       "source_files": 254,
-      "candidates": 10,
+      "candidates": 0,
       "changed": 0
     },
     {
       "component": "🏈 08-Redcell",
       "source_files": 221,
-      "candidates": 2,
+      "candidates": 0,
       "changed": 0
     },
     {
@@ -71,7 +71,7 @@
     {
       "component": "🏈 11-LLM-CTF-Solver",
       "source_files": 138,
-      "candidates": 1,
+      "candidates": 0,
       "changed": 0
     },
     {
@@ -89,13 +89,13 @@
     {
       "component": "🏈 14-Dark-Moon",
       "source_files": 49,
-      "candidates": 1,
+      "candidates": 0,
       "changed": 0
     },
     {
       "component": "🏈 15-Pentdem",
       "source_files": 77,
-      "candidates": 1,
+      "candidates": 0,
       "changed": 0
     },
     {
@@ -125,7 +125,7 @@
     {
       "component": "🏈 20-OpenWhale",
       "source_files": 19,
-      "candidates": 1,
+      "candidates": 0,
       "changed": 0
     },
     {
@@ -137,7 +137,7 @@
     {
       "component": "🏈 22-PHANTOM",
       "source_files": 153,
-      "candidates": 3,
+      "candidates": 0,
       "changed": 0
     },
     {

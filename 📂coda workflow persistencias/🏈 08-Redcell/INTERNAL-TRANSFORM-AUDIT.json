@@ -3,24 +3,7 @@
   "component": "🏈 08-Redcell",
   "mode": "TRANSFORM",
   "source_files": 221,
-  "candidates": 2,
-  "changed": 2,
-  "findings": [
-    {
-      "path": "packages/core/redcell_core/engine/ngrok.py",
-      "source_id": "49595f3d67841f25e0bf21dcf1648af6ac578d0d6def52b0e495d20db2d23e4f",
-      "sha256": "4307a7b64b0d3d8e0e1ee4b8a86667614c161d172d9f04a11745c22eaac55187",
-      "changed": true,
-      "kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
-      "quarantine": "_yaiwes_upstream_quarantine/packages/core/redcell_core/engine/ngrok.py.original"
-    },
-    {
-      "path": "apps/api/app/routers/ws.py",
-      "source_id": "1ec14fcdd6652ed166ede22183cc8c8fe1c836c964453dca34d270eb833a8554",
-      "sha256": "b076963aa3be2df22cb72d08444feef0d00f77371ab55af9eaae4e4591d5954b",
-      "changed": true,
-      "kind": "PY_FILE_STUB_AFTER_FUNCTIONS:1",
-      "quarantine": "_yaiwes_upstream_quarantine/apps/api/app/routers/ws.py.original"
-    }
-  ]
+  "candidates": 0,
+  "changed": 0,
+  "findings": []
 }

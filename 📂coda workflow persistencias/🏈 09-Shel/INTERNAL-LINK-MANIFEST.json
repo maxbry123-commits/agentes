@@ -1,14 +1,133 @@
 {
-  "schema": "yaiwes.internal.link-manifest/v4",
+  "schema": "yaiwes.internal.link-manifest/v4.1",
   "component": "🏈 09-Shel",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.0",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.1",
   "source_files_audited": 50,
-  "active_surfaces_transformed": 0,
-  "link_count": 1,
+  "last_delta_candidates": 0,
+  "last_delta_changed": 0,
+  "active_surfaces_transformed_cumulative": 13,
+  "link_count": 14,
   "links": [
     {
       "order": 1,
+      "path": "agent/autopilot.py",
+      "original_sha256": "9e4e1d787394912ebfc08bb6a3b0683d5953d0e1903070b942e2a22ebed4249a",
+      "active_sha256": "1c85af2769654e1d355e2ab81826fadf1252c75bf75b04acf313b6a3de44b9a3",
+      "quarantine": "_yaiwes_upstream_quarantine/agent/autopilot.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 2,
+      "path": "agent/docker.py",
+      "original_sha256": "b55258d0f70be0d78d1566a811eb8395217c1e79ce2badd1542fb8d897f02733",
+      "active_sha256": "520f72d7e0688957ca7262bf0b880ece1fe6369244a690d7775301cc0336f26f",
+      "quarantine": "_yaiwes_upstream_quarantine/agent/docker.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 3,
+      "path": "agent/tool_matcher.py",
+      "original_sha256": "a8760de4ff921126f8bf20edd9e01534cf1f866f4c4a872893313f7f202cacf1",
+      "active_sha256": "1a32168ef2c5a780bdb4cba1909d721982f9341f5e37c4b44e25cbea01e83691",
+      "quarantine": "_yaiwes_upstream_quarantine/agent/tool_matcher.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 4,
+      "path": "agent/tools.py",
+      "original_sha256": "d15aaea34a7701477affee4679b6be396cb11bc49adb4f6a54adfd5f6e512b00",
+      "active_sha256": "50c74a2dbaeb03fd19ed58256057f2942c6eb5dbb61978bde0cb6b5502d77d8d",
+      "quarantine": "_yaiwes_upstream_quarantine/agent/tools.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 5,
+      "path": "benchmark/runner.py",
+      "original_sha256": "4cfc61f93674ff3853a51ea0176118be086e7566eb9ae160601908b80a4a575f",
+      "active_sha256": "4c82bd9f355650a6852fe7f15536049b6dbb8f01a09bb846da69b1d4a6f47ad3",
+      "quarantine": "_yaiwes_upstream_quarantine/benchmark/runner.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 6,
+      "path": "modules/evasion/edr.py",
+      "original_sha256": "b771c203aa63b6d9e19a44d00c1cea48bc016f9b939473d2051a7cb83d681f39",
+      "active_sha256": "b1fefbcd3207b226627afb4ad7ec0d5091434f71b214450bda5316c260531b78",
+      "quarantine": "_yaiwes_upstream_quarantine/modules/evasion/edr.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 7,
+      "path": "modules/evasion/lolbins.py",
+      "original_sha256": "dbd65aa19fe0dc8012307629732246ac52d4d189173dbc907732b408559e3b7f",
+      "active_sha256": "813a560d09ec6a9325f9b9fb2055ece3d02a98f64915ded1cb957ac894f3154d",
+      "quarantine": "_yaiwes_upstream_quarantine/modules/evasion/lolbins.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 8,
+      "path": "modules/low_hanging.py",
+      "original_sha256": "7a941a3c0b49649af7fce24fad7109ca2c8f1d4da435ed2f327efb302d1817a3",
+      "active_sha256": "31b4d1be3f6743156f8f67bd8676d12f86ae5b708c0d45b8ecacabaf2a776859",
+      "quarantine": "_yaiwes_upstream_quarantine/modules/low_hanging.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 9,
+      "path": "modules/osint.py",
+      "original_sha256": "0f7159dded58168637d4b622e20a6debc273be1419ee615e393079001ec41e7f",
+      "active_sha256": "fb1d7a3e0a0c1f35b99a9ed4ba847eae10d05f6f2e13a732c1e3f2169f6230a6",
+      "quarantine": "_yaiwes_upstream_quarantine/modules/osint.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 10,
+      "path": "modules/social/deepfake.py",
+      "original_sha256": "68e0802604787c184dba85ee294f50275e47c6b44847ddf47cdbd23f641f5b2b",
+      "active_sha256": "a1425a1987125811f8b9ff41b332105d8a0d3d6f57b6c6df205a1c962569a6a3",
+      "quarantine": "_yaiwes_upstream_quarantine/modules/social/deepfake.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 11,
+      "path": "modules/stego/c2.py",
+      "original_sha256": "e3eebcb476ffad9f8357e8acdba4b412820b23780bee30c038aa8409edab334b",
+      "active_sha256": "2979a87eac7c04ed177d82c9ba6b16352404e179f83c8f1e5575a71a1960ca58",
+      "quarantine": "_yaiwes_upstream_quarantine/modules/stego/c2.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 12,
+      "path": "modules/supplychain/poison.py",
+      "original_sha256": "f81869c530e513d21c5389b6c2dece15fd7aabfef2402f70fe0dc0618fadc0c6",
+      "active_sha256": "f346a60cb7e0b5e6fe205c7a48b19b79a84070f6d8691a4b46b92dc3288f57b2",
+      "quarantine": "_yaiwes_upstream_quarantine/modules/supplychain/poison.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 13,
+      "path": "modules/tool_db.py",
+      "original_sha256": "4c2c9bfb1639411b53b3005c53963222f43d06d4e69fd2fa8589223f17ace1d5",
+      "active_sha256": "2801b85ba06047265024f53b669cbd4221f418f4b21f125979a5d28d4317f90f",
+      "quarantine": "_yaiwes_upstream_quarantine/modules/tool_db.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 14,
       "path": "yaiwes_internal/README.md",
       "role": "COMPONENT_PERSISTENCE_LINK",
       "transform_kind": "INTERNAL_RUNTIME"

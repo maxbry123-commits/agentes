@@ -1,14 +1,142 @@
 {
-  "schema": "yaiwes.internal.link-manifest/v4",
+  "schema": "yaiwes.internal.link-manifest/v4.1",
   "component": "🏈 06-PentAGI",
   "team": "Swarm agent team Navy seals YAIWES",
-  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.0",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.1",
   "source_files_audited": 1044,
-  "active_surfaces_transformed": 0,
-  "link_count": 1,
+  "last_delta_candidates": 0,
+  "last_delta_changed": 0,
+  "active_surfaces_transformed_cumulative": 14,
+  "link_count": 15,
   "links": [
     {
       "order": 1,
+      "path": "backend/cmd/installer/checker/helpers.go",
+      "original_sha256": "08afd29106de72357a647aca84e2729ab02de13936ba963757e27c83c4d4b07a",
+      "active_sha256": "a65e459d8cb115ff34f36cfb1f1269a3bac21a29a7929047eff20ce077938a0e",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/cmd/installer/checker/helpers.go.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 2,
+      "path": "backend/cmd/installer/wizard/controller/controller.go",
+      "original_sha256": "a7f29cefe9379735a0aa4d30ec3bb008a29c57a70e1a0a2670a391a5dbbec542",
+      "active_sha256": "bc0acd85482f1361b6c0d8b382588ac5c2f8652c43272028ac8545916a6b8334",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/cmd/installer/wizard/controller/controller.go.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 3,
+      "path": "backend/cmd/installer/wizard/models/docker_form.go",
+      "original_sha256": "8603d3c7ea9d7fd8c4ee42d673283298afce64de6a20e5f64444cec8f016554e",
+      "active_sha256": "4c23917d48c84001e8c63c6e51d91aded55146afd7d4ceefacfefdb30597e37a",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/cmd/installer/wizard/models/docker_form.go.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 4,
+      "path": "backend/cmd/installer/wizard/terminal/terminal_test.go",
+      "original_sha256": "9b7d97fce9c72a00b2ee10aca2b9fd25c1f5dce0f09d5327ec43c79453643e4e",
+      "active_sha256": "3afb303366a796bafeef304f059f909906e870f440c59378271e547769e1709a",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/cmd/installer/wizard/terminal/terminal_test.go.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 5,
+      "path": "backend/pkg/server/services/graphql.go",
+      "original_sha256": "434854dd30349801755e332eb644ecf4dd4f91d36fead39f3cfdf50357332856",
+      "active_sha256": "c0c7cd3adcd7d71ced065449dfb39a3c451d1c2b0faf77cfc8c5f1f2ddc536e4",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/pkg/server/services/graphql.go.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 6,
+      "path": "backend/pkg/system/utils_darwin.go",
+      "original_sha256": "789b307a37cce08f9d5b6e38ec4b173fde8e467d48506d5ac9268b1628223a8c",
+      "active_sha256": "433eb7a05eccc074b58e764d196ad6ff2c799c4d04095d87612b17dc013b265b",
+      "quarantine": "_yaiwes_upstream_quarantine/backend/pkg/system/utils_darwin.go.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 7,
+      "path": "frontend/e2e/ci-codegen-gate.unit.test.ts",
+      "original_sha256": "e3eec966cf3d38e3ce862b39fb6f295c85ae58e4dd4107fa98b2aa793f7f542c",
+      "active_sha256": "ed13f5031052b644e5cc5d2f0402e725dd41491b7e3f326029d2090d8cc453e2",
+      "quarantine": "_yaiwes_upstream_quarantine/frontend/e2e/ci-codegen-gate.unit.test.ts.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 8,
+      "path": "frontend/e2e/mocks/world.ts",
+      "original_sha256": "f2ced6bc1f689fc6a54d013caf9d5b4caafb9b5fe0ab7cb6c34fa267ea02e047",
+      "active_sha256": "c63f3eb86ebb7da807e18e4ffa6d2265341d9397d6ea8e0049f41f63df70785a",
+      "quarantine": "_yaiwes_upstream_quarantine/frontend/e2e/mocks/world.ts.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 9,
+      "path": "frontend/e2e/mocks/ws-graphql.ts",
+      "original_sha256": "e72773a59dc587f691e3cf193c9f0d5bfc3814951da7045745b402bf24547013",
+      "active_sha256": "7cdef318b449cc33e26b1ab49149f4fe9ec750f4a9b3a0ca1bea26845964ac22",
+      "quarantine": "_yaiwes_upstream_quarantine/frontend/e2e/mocks/ws-graphql.ts.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 10,
+      "path": "frontend/e2e/mocks/ws-graphql.unit.test.ts",
+      "original_sha256": "05b655970508d657f4d0ad6e7340058c387735114e5a7339ca6d79d721d12c02",
+      "active_sha256": "df30f4c5597f655727efef752fc78aacbcf0c3e4c89df06d8916c5aeaee53cad",
+      "quarantine": "_yaiwes_upstream_quarantine/frontend/e2e/mocks/ws-graphql.unit.test.ts.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 11,
+      "path": "frontend/e2e/tools/affected.ts",
+      "original_sha256": "a0356a536c602546cbb3550dae43b1bf81414b9ce1292f0bdaa0d59cf5f20cf6",
+      "active_sha256": "5834165ca4c817334ee955b2518dedee22578abf0254830caae36652509f1f69",
+      "quarantine": "_yaiwes_upstream_quarantine/frontend/e2e/tools/affected.ts.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 12,
+      "path": "frontend/e2e/tools/review-sandbox.unit.test.ts",
+      "original_sha256": "4f6b279594ffe9e98c1edb32c5df112a47fb87ba08d3d4d1c9213b7947f918a4",
+      "active_sha256": "4448b95a181537c145d73857dc150063043484f4d576e67ddae0dfe4137c1c4c",
+      "quarantine": "_yaiwes_upstream_quarantine/frontend/e2e/tools/review-sandbox.unit.test.ts.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 13,
+      "path": "frontend/scripts/generate-ssl.ts",
+      "original_sha256": "246f4a35eeb4cca30c5f552e282aa21a172dfbf86d23df9630d4c9dbbaee828e",
+      "active_sha256": "a2b8b77abff85a0777626d95941900f7b7cdd7745d15c83f9b752d36d5266f17",
+      "quarantine": "_yaiwes_upstream_quarantine/frontend/scripts/generate-ssl.ts.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 14,
+      "path": "frontend/scripts/lib.ts",
+      "original_sha256": "161b6aa47cd6cab6a4bc6d3066cb116fed8e8a9c898b302afbd1a2fc8a0144e2",
+      "active_sha256": "477595404bc6f2e3787ac61348900b49a8d66139444b180d9d041618ad29bf7e",
+      "quarantine": "_yaiwes_upstream_quarantine/frontend/scripts/lib.ts.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 15,
       "path": "yaiwes_internal/README.md",
       "role": "COMPONENT_PERSISTENCE_LINK",
       "transform_kind": "INTERNAL_RUNTIME"
