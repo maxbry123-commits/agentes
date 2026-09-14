@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Trigger internal 24-component transform run.
+# Trigger internal 24-component transform run v2.
 from __future__ import annotations
 
 import ast
@@ -15,7 +15,7 @@ FIELD = ROOT / "🏈 cancha deportiva de fútbol"
 MODE = os.environ.get("YAIWES_MODE", "AUDIT").upper()
 TEAM = "Swarm agent team Navy seals YAIWES"
 EXTS = {".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".rs", ".java", ".rb", ".sh", ".ps1", ".php", ".lua"}
-SKIP = {".git", "node_modules", "vendor", "third_party", "dist", "build", ".venv", "venv", "__pycache__", "target", "_archives", "_yaiwes_upstream_quarantine", "coda_persistence", "yaiwes_internal"}
+SKIP = {".git", "node_modules", "vendor", "third_party", "dist", "build", ".venv", "venv", "__pycache__", "target", "_archives", "_yaiwes_upstream_quarantine", "coda_persistence", "yaiwes_internal", "tests", "test", "testing", "docs", "doc", "examples", "example", "fixtures"}
 SIDE_EFFECT_MARKERS = (
     "subprocess.", "os.system(", "os.popen(", "socket.", "requests.", "httpx.", "aiohttp.",
     "child_process", "exec.command(", "std::process::command", "runtime.getruntime().exec(",
@@ -58,7 +58,7 @@ def safe_python(original: str, rel: str):
     except SyntaxError:
         return original, 0
     lines = original.splitlines(keepends=True)
-    edits = []
+    candidates = []
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or not node.body:
             continue
@@ -67,6 +67,14 @@ def safe_python(original: str, rel: str):
             continue
         start = node.body[0].lineno - 1
         end = getattr(node.body[-1], "end_lineno", node.body[-1].lineno) or node.body[-1].lineno
+        candidates.append((start, end, node))
+    selected = []
+    for start, end, node in sorted(candidates, key=lambda x: (x[0], -x[1])):
+        if any(parent_start <= start and parent_end >= end for parent_start, parent_end, _ in selected):
+            continue
+        selected.append((start, end, node))
+    edits = []
+    for start, end, node in selected:
         indent = lines[start][: len(lines[start]) - len(lines[start].lstrip())]
         body = [
             f"{indent}from pathlib import Path as _YP\n",
