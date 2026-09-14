@@ -1,0 +1,87 @@
+name: Test Report
+
+on:
+  schedule:
+    # Run 2h after the daily tests.yaml
+    - cron: "0 8,20 * * *"
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  generate:
+    name: Generate report
+    # Do not run the report job on forks.
+    # On PRs, run only if the `test-report` label is set.
+    if: >
+      (github.event_name == 'pull_request'
+       && contains(github.event.pull_request.labels.*.name, 'test-report'))
+      || (github.event_name != 'pull_request'
+          && (github.repository == 'dask/distributed' || github.event_name == 'workflow_dispatch'))
+    runs-on: ubuntu-latest
+    permissions:
+      # Read the artifacts of the tests.yaml runs
+      actions: read
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - uses: prefix-dev/setup-pixi@v0.10.0
+        with:
+          pixi-version: v0.72.1
+          environments: test-report
+          cache: true
+          locked: true
+
+      - uses: actions/cache@v6.1.0
+        id: cache
+        with:
+          # Local databases of downloaded test results, created by test_report.py
+          path: test_report*.db
+          # Caches are immutable; use a fresh key to upload an updated database at
+          # the end of every run, and restore from the most recent one.
+          key: test-report-${{ hashFiles('continuous_integration/scripts/test_report.py') }}-${{ github.run_id }}
+          restore-keys: test-report-${{ hashFiles('continuous_integration/scripts/test_report.py') }}-
+
+      - name: Generate report
+        run: |
+          pixi run test-report dask/distributed
+          mkdir deploy
+          mv test_report.html test_short_report.html deploy/
+
+      - name: Upload report as workflow artifact
+        # Downloaded by the deploy job; also for debugging purposes
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: test-report
+          path: deploy
+
+      - name: Upload databases as workflow artifact
+        # For debugging purposes
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: test-report-db
+          path: test_report*.db
+
+  deploy:
+    name: Deploy report
+    needs: generate
+    # Never update GitHub Pages from PRs
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      # Push to the gh-pages branch
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          name: test-report
+          path: deploy
+
+      - name: Deploy 🚀
+        uses: JamesIves/github-pages-deploy-action@v4.8.0
+        with:
+          branch: gh-pages
+          folder: deploy

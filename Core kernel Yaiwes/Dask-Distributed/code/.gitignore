@@ -1,0 +1,45 @@
+*.pyc
+*.pyd
+*.py~
+
+build/
+dist/
+*.egg-info
+docs/build
+.DS_Store
+.cache
+.coverage
+.coverage.*
+coverage.xml
+pytest.xml
+pytest-stdout.log
+coverage_html_report/
+.#*
+.eggs/
+.idea/
+.vscode/
+.pytest_cache/
+dask-worker-space/
+.vscode/
+*.swp
+.ycm_extra_conf.py
+tags
+.ipynb_checkpoints
+.venv/
+.mypy_cache/
+
+# Project specific
+continuous_integration/hdfs-initialized
+distributed/scheduler.html
+distributed/_version.py
+
+# Test reports
+test_report*.html
+test_report*.db
+test_short_report.html
+
+# Test failures will dump the cluster state in here
+test_cluster_dump/
+# pixi environments
+.pixi/*
+!.pixi/config.toml

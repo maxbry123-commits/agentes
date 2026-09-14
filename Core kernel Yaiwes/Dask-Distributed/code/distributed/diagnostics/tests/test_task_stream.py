@@ -1,0 +1,170 @@
+from __future__ import annotations
+
+import pytest
+from tlz import frequencies
+
+from distributed import get_task_stream
+from distributed.client import wait
+from distributed.diagnostics.task_stream import TaskStreamPlugin
+from distributed.metrics import time
+from distributed.utils_test import div, gen_cluster, inc, slowinc
+
+
+@gen_cluster(client=True, nthreads=[("127.0.0.1", 1)] * 3)
+async def test_TaskStreamPlugin(c, s, *workers):
+    es = TaskStreamPlugin(s)
+    s.add_plugin(es)
+    assert not es.buffer
+
+    futures = c.map(div, [1] * 10, range(10))
+    total = c.submit(sum, futures[1:])
+    await wait(total)
+
+    assert len(es.buffer) == 11
+
+    workers = dict()
+
+    rects = es.rectangles(0, 10, workers)
+    assert workers
+    assert all(n == "div" for n in rects["name"])
+    assert all(d > 0 for d in rects["duration"])
+    counts = frequencies(rects["color"])
+    assert counts["black"] == 1
+    assert set(counts.values()) == {9, 1}
+    assert len(set(rects["y"])) == 3
+
+    rects = es.rectangles(2, 5, workers)
+    assert all(len(L) == 3 for L in rects.values())
+
+    starts = sorted(rects["start"])
+    rects = es.rectangles(
+        2, 5, workers=workers, start_boundary=(starts[0] + starts[1]) / 2000
+    )
+    assert set(rects["start"]).issubset(set(starts[1:]))
+
+
+@gen_cluster(client=True)
+async def test_maxlen(c, s, a, b):
+    tasks = TaskStreamPlugin(s, maxlen=5)
+    s.add_plugin(tasks)
+    futures = c.map(inc, range(10))
+    await wait(futures)
+    assert len(tasks.buffer) == 5
+
+
+@gen_cluster(client=True)
+async def test_collect(c, s, a, b):
+    tasks = TaskStreamPlugin(s)
+    s.add_plugin(tasks)
+    start = time()
+    futures = c.map(slowinc, range(10), delay=0.1)
+    await wait(futures)
+
+    L = tasks.collect()
+    assert len(L) == len(futures)
+    L = tasks.collect(start=start)
+    assert len(L) == len(futures)
+
+    L = tasks.collect(start=start + 0.2)
+    assert 4 <= len(L) <= len(futures)
+
+    L = tasks.collect(start="20 s")
+    assert len(L) == len(futures)
+
+    L = tasks.collect(start="500ms")
+    assert 0 < len(L) <= len(futures)
+
+    L = tasks.collect(count=3)
+    assert len(L) == 3
+    assert L == list(tasks.buffer)[-3:]
+
+    assert tasks.collect(stop=start + 100, count=3) == tasks.collect(count=3)
+    assert tasks.collect(start=start, count=3) == list(tasks.buffer)[:3]
+
+
+@gen_cluster(client=True)
+async def test_collect_start_index(c, s, a, b):
+    tasks = TaskStreamPlugin(s)
+    s.add_plugin(tasks)
+
+    futures = c.map(slowinc, range(5), delay=0.05)
+    await wait(futures)
+    midpoint = tasks.index
+
+    futures = c.map(slowinc, range(5, 10), delay=0.05)
+    await wait(futures)
+
+    # ``start_index`` selects by append position, not wall-clock time, so it
+    # returns exactly the records appended at or after the given index.
+    assert len(tasks.collect(start_index=0)) == 10
+    assert len(tasks.collect(start_index=midpoint)) == 5
+    assert len(tasks.collect(start_index=tasks.index)) == 0
+
+
+@gen_cluster(client=True)
+async def test_client(c, s, a, b):
+    await c.get_task_stream()
+
+    futures = c.map(inc, range(10))
+    await wait(futures)
+    data = await c.get_task_stream()
+    assert len(data) == 10
+
+
+def test_client_sync(client):
+    client.get_task_stream()
+
+    futures = client.map(inc, range(10))
+    wait(futures)
+    data = client.get_task_stream()
+    assert len(data) == 10
+
+
+@gen_cluster(client=True)
+async def test_client_ctx(c, s, a, b):
+    async with get_task_stream() as ts:
+        futures = c.map(inc, range(10))
+        await wait(futures)
+
+    assert len(ts.data) == 10
+
+
+def test_client_ctx_sync(client):
+    with get_task_stream() as ts:
+        futures = client.map(inc, range(10))
+        wait(futures)
+
+    assert len(ts.data) == 10
+
+
+@gen_cluster(client=True)
+async def test_get_task_stream_plot(c, s, a, b):
+    bkm = pytest.importorskip("bokeh.models")
+    await c.get_task_stream()
+
+    futures = c.map(inc, range(10))
+    await wait(futures)
+
+    data, figure = await c.get_task_stream(plot=True)
+    assert len(data) == 10
+    assert isinstance(figure, bkm.Plot)
+
+
+@gen_cluster(client=True)
+async def test_get_task_stream_save(c, s, a, b, tmp_path):
+    bkm = pytest.importorskip("bokeh.models")
+    await c.get_task_stream()
+
+    futures = c.map(inc, range(10))
+    await wait(futures)
+
+    fn = str(tmp_path / "foo.html")
+    data, figure = await c.get_task_stream(plot="save", filename=fn)
+    assert len(data) == 10
+
+    with open(fn) as f:
+        data = f.read()
+    assert "inc" in data
+    assert "bokeh" in data
+
+    assert isinstance(figure, bkm.Plot)

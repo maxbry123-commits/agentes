@@ -1,0 +1,43 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.16
+    hooks:
+      - id: ruff-check
+        # args: [--fix]
+      - id: ruff-format
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.2
+    hooks:
+      -   id: codespell
+          additional_dependencies:
+            - tomli
+          types_or: [rst, markdown]
+          files: docs
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.20.2
+    hooks:
+      - id: mypy
+        # Override default --ignore-missing-imports
+        # Use pyproject.toml if possible instead of adding command line parameters here
+        args: [--warn-unused-configs]
+        additional_dependencies:
+          # Type stubs
+          - pandas-stubs
+          - types-docutils
+          - types-requests
+          - types-paramiko
+          - types-PyYAML
+          - types-psutil
+          - types-setuptools
+          # Typed libraries
+          - click
+          - numpy<2.5  # type stubs for NumPy 2.5 contain Python >=3.12 syntax
+          - pytest
+          - tornado
+          - pyarrow
+          - git+https://github.com/dask/dask
+          - git+https://github.com/dask/zict
+
+# Increase this value to clear the cache on GitHub actions if nothing else in this file
+# has changed. See also same variable in .github/workflows/test.yaml
+# CACHE_NUMBER: 1
