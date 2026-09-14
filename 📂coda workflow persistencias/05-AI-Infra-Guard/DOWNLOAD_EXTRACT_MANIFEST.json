@@ -1,0 +1,73 @@
+{
+  "bundle_bytes": 109690376,
+  "bundle_sha256": "d01f9008024c0c86f9d7e95522ece77c7ce7029e79135e95a0e31c351314f76b",
+  "extracted_tree": {
+    "bytes": 138341483,
+    "files": 5878,
+    "sha256": "374b7c4ba8cb53888fffc885e9a172556686f1463f7d195dfeca5372b7d7cb9d"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "05-AI-Infra-Guard.bundle.zip.part-0001",
+      "sha256": "2678bc68dcfc6b438d7fd11e5a8e00a15bd853258e822b7317fb65aea650c5cb"
+    },
+    {
+      "bytes": 12582912,
+      "name": "05-AI-Infra-Guard.bundle.zip.part-0002",
+      "sha256": "5f07273b421451aa361cb8f7e9b0798549f6f77be4c4c83be677ab7d359e3d6d"
+    },
+    {
+      "bytes": 12582912,
+      "name": "05-AI-Infra-Guard.bundle.zip.part-0003",
+      "sha256": "e7a214744ca2f77770c4062778ad876d8f3ffb0a77c74e48afc0b9178e389fbd"
+    },
+    {
+      "bytes": 12582912,
+      "name": "05-AI-Infra-Guard.bundle.zip.part-0004",
+      "sha256": "080c719244b7547443284d3028635a782057caa3e75c16df0abfa3dbf40aed2c"
+    },
+    {
+      "bytes": 12582912,
+      "name": "05-AI-Infra-Guard.bundle.zip.part-0005",
+      "sha256": "03f43c17570fb507fcca4187d361f8660afa786c167bb2369cf97f58710c4e46"
+    },
+    {
+      "bytes": 12582912,
+      "name": "05-AI-Infra-Guard.bundle.zip.part-0006",
+      "sha256": "4addef992f0c29bd402d421bf49e3ae249e0921d8de4971e652ee2874dbf4f12"
+    },
+    {
+      "bytes": 12582912,
+      "name": "05-AI-Infra-Guard.bundle.zip.part-0007",
+      "sha256": "001f1e0bb7b20ff39d599af354d2e217fd4888115caebbaa6b9b87c9f1243027"
+    },
+    {
+      "bytes": 12582912,
+      "name": "05-AI-Infra-Guard.bundle.zip.part-0008",
+      "sha256": "7eda94c23834a8416d93c56734be8c8e4765aef8ff99a39c404b9ccc23e62ae0"
+    },
+    {
+      "bytes": 9027080,
+      "name": "05-AI-Infra-Guard.bundle.zip.part-0009",
+      "sha256": "7307db1f386835f55dd0db905539e764ef2da52afd78c485804e8fe6e26c178c"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "05-AI-Infra-Guard",
+  "source_bytes": 138341483,
+  "source_commit": "036c39bd03b39ce4a811f7f125bc3b8f47e39b7c",
+  "source_files": 5878,
+  "source_ref": "HEAD",
+  "source_repo": "Tencent/AI-Infra-Guard",
+  "source_tree": {
+    "bytes": 138341483,
+    "files": 5878,
+    "sha256": "374b7c4ba8cb53888fffc885e9a172556686f1463f7d195dfeca5372b7d7cb9d"
+  }
+}
