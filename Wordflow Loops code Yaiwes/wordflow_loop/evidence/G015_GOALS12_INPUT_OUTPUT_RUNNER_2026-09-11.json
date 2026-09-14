@@ -1,0 +1,51 @@
+{
+  "schema": "yaiwes.evidence/v1",
+  "gap": "G-015",
+  "status": "CLOSED_VERIFIED_LOCAL",
+  "scope": "GOALS12 input/output schema and deterministic evidence runner",
+  "source_of_requirements": "wordflow_loop/prompts/DIRECTOR-CODE-GRAPH-METHODS.md",
+  "implementation": {
+    "module": "runtime/src/core/goals12.py",
+    "blob": "480172f7c773e94d28904f6ee45dc1bfb1e718fe",
+    "schema": "runtime/schemas/goals12-v1.schema.json",
+    "schema_blob": "89971fdb8ea2bf984fa9348cc1b10ab6cfb3ce1c",
+    "tests": "runtime/tests/test_goals12_runner.py",
+    "tests_blob": "82f8e26a2e4aee9667733796cf3982eea4b8dc20"
+  },
+  "verified_contract": {
+    "input_goals": 12,
+    "output_goals": 12,
+    "council_questions": 12,
+    "simulations": ["NORMAL", "LIMIT", "ADVERSARIAL"],
+    "minimum_refutations": 3,
+    "cross_check_required": true,
+    "evidence_refs_required": true,
+    "canonical_evidence_sha256": true,
+    "execution_authorized_by_result": false
+  },
+  "execution": {
+    "kind": "REAL_LOCAL_PYTHON_DIRECT_TEST_EXECUTION",
+    "result": "PASS_6_OF_6",
+    "checks": [
+      "complete evidence-bound run",
+      "missing input/output evidence fails closed",
+      "Council/simulation/refutation/cross-check failures fail closed",
+      "canonical hash stability and evidence binding",
+      "published schema matches runner contract",
+      "legacy evaluator compatibility"
+    ],
+    "pytest_suite": "NOT_EXECUTED_MODULE_NOT_INSTALLED",
+    "external_providers": "NOT_EXECUTED"
+  },
+  "read_back": {
+    "branch": "main",
+    "module": "PASS",
+    "schema": "PASS",
+    "tests": "PASS"
+  },
+  "claims_not_made": [
+    "PASS_REAL external providers",
+    "full repository pytest suite",
+    "global Wordflow closure"
+  ]
+}

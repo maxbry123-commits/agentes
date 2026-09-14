@@ -1,0 +1,51 @@
+schema: tel.workflow/v3
+mode: fail-closed
+determinism:
+  target_ratio: 0.95
+  llm_max_ratio: 0.05
+  llm_default: disabled
+  llm_allowed_reasons:
+    - ambiguity_resolution
+    - semantic_ranking
+    - bounded_summary
+
+pipeline:
+  governance:
+    pre: [SHERIFF, VALIDATOR]
+    runtime: [SENTINEL]
+    post: [VERIFY, SUPERVISOR, JUDGE, GUARDIAN]
+  layers:
+    - id: L01_RESEARCH
+      file: wordflow_loop/layers/layer_01_research.py
+      mutation: false
+    - id: L02_XRAY_DOCUMENTS
+      file: wordflow_loop/layers/layer_02_xray_documents.py
+      depends_on: [L01_RESEARCH]
+      mutation: false
+    - id: L03_XRAY_CODE
+      file: wordflow_loop/layers/layer_03_xray_code.py
+      depends_on: [L01_RESEARCH]
+      mutation: false
+      repo_priority:
+        - maxbry123-commits/Agentes-motores-Wordflow-YAIWES
+        - router-inteligente
+        - maxbry123-commits/agentes
+    - id: L04_COPY_MOVE
+      file: wordflow_loop/layers/layer_04_copy_move.py
+      depends_on: [L02_XRAY_DOCUMENTS, L03_XRAY_CODE]
+      mutation: true
+      gate: DIRECTOR_APPROVAL_REQUIRED
+    - id: L05_DOWNLOAD_EXTRACT
+      file: wordflow_loop/layers/layer_05_download_extract.py
+      depends_on: [L03_XRAY_CODE]
+      mutation: true
+      gate: SOURCE_LOCK_AND_DIRECTOR_APPROVAL
+    - id: L06_SOURCE_EVOLUTION
+      file: wordflow_loop/layers/layer_06_source_evolution.py
+      depends_on: [L02_XRAY_DOCUMENTS, L03_XRAY_CODE]
+      mutation: false
+
+closure:
+  pass_requires: [code, wiring, test, evidence, destination_audit]
+  no_evidence: GAP
+  final: [VERIFIED_CLOSED, CLOSED_UNVERIFIED, INCONCLUSIVE]

@@ -1,0 +1,28 @@
+{
+  "schema": "yaiwes.wordflow.code-graph.evidence.v1",
+  "contract": "tel.workflow/v4",
+  "mode": "FAIL_CLOSED_EXECUTION_LOOP",
+  "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
+  "cycle": "CG-CYCLE-0002",
+  "date": "2026-09-10",
+  "findings": {
+    "source_of_truth_drift": {
+      "status": "DETECTED_AND_RECONCILIATION_REQUIRED",
+      "detail": "README and STATE opened CODE_GRAPH_ARCHITECTURE_PROGRAMMING_LOOP while CHECKPOINT/HANDOFF/PLAN/RECOVERY still described the previous 3-step closure. This cycle updates those sources to the active phase without invalidating historical closure evidence."
+    },
+    "G-010": {
+      "status": "CLOSED_VERIFIED",
+      "reason": "Hourly Wordflow CODE GRAPH watchdog is active, scoped exclusively to the authorized root, fail-closed, and instructed to reconcile GAPs, DAG, sandbox, agents, Fables, evidence and persistence without writing outside the root."
+    },
+    "G-020": {
+      "status": "CLOSED_VERIFIED",
+      "artifact": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/research/community_sources.json",
+      "artifact_blob_sha": "5c03a6a13b5df868f21eb6f744fcc20489c4d183",
+      "source_count": 12,
+      "validation": "Catalog contains URL, use_for, authority and policy; official/community sources were rechecked during this cycle."
+    }
+  },
+  "external_auth": "AUTH_PROVIDER_TEST_PENDING",
+  "no_external_pass_claimed": true,
+  "next_node": "CG01_REUSE_AUDIT"
+}

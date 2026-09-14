@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NCT — Especificación del PIPELINE (guía + ejemplo)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+  :root{
+    --fondo:#2B2926; --texto:#E4DFD3; --texto-tenue:#A39C8C;
+    --capsula:#17150F; --capsula-header:#0E0D09;
+    --azul:#5B9BD5; --rojo:#E0554F; --verde:#6FBF73;
+  }
+  *{box-sizing:border-box; margin:0}
+  body{background:var(--fondo); color:var(--texto);
+    font:16px/1.65 'IBM Plex Mono', ui-monospace, monospace;
+    padding:20px 16px; max-width:860px; margin:0 auto}
+  h1{font-family:'Fraunces',Georgia,serif; font-weight:800;
+    font-size:clamp(22px,4.5vw,32px); margin-bottom:6px}
+  h2{font-family:'Fraunces',Georgia,serif; font-weight:800;
+    font-size:19px; margin:32px 0 12px}
+  h2 .n{color:var(--azul)}
+  h3{font-size:14px; color:var(--azul); margin:18px 0 8px;
+    text-transform:uppercase; letter-spacing:.5px}
+  .meta{color:var(--texto-tenue); font-size:12.5px; margin-bottom:18px}
+  hr{border:0; border-top:1px solid #4A473F; margin:26px 0}
+  p{margin:8px 0}
+  code{background:var(--capsula); color:var(--verde); padding:1px 6px;
+    border-radius:4px; font-size:14px}
+  ul,ol{margin:8px 0 8px 20px}
+  li{margin-bottom:5px}
+
+  .json-header{background:var(--capsula-header); border:1px solid #3D3833;
+    border-radius:10px; padding:16px; margin:16px 0; overflow-x:auto}
+  .json-header pre{font-size:12px; color:#8FD3A0; white-space:pre}
+
+  .capsula{background:var(--capsula); border-radius:10px; margin:14px 0;
+    overflow:hidden}
+  .capsula-header{background:var(--capsula-header); padding:7px 14px;
+    font-size:12px; color:var(--texto-tenue)}
+  .capsula pre{padding:14px; font-size:13.5px; color:var(--texto);
+    white-space:pre-wrap; line-height:1.7; overflow-x:auto}
+
+  .paleta{display:flex; gap:10px; flex-wrap:wrap; margin:14px 0}
+  .swatch{width:100px}
+  .swatch .caja{height:56px; border-radius:8px; border:1px solid #4A473F}
+  .swatch .etiqueta{font-size:11px; color:var(--texto-tenue); margin-top:5px}
+  .swatch .hex{font-size:11px; color:var(--texto)}
+
+  table{width:100%; border-collapse:collapse; font-size:13px; margin:12px 0}
+  th,td{border:1px solid #4A473F; padding:7px 9px; text-align:left}
+  th{color:var(--azul); font-size:11px; text-transform:uppercase}
+
+  .aviso{border-left:3px solid var(--rojo); background:var(--capsula);
+    border-radius:8px; padding:12px 14px; margin:14px 0; font-size:14px}
+  .aviso b{color:var(--rojo)}
+  .destacado{border-left:3px solid var(--verde); background:var(--capsula);
+    border-radius:8px; padding:14px 16px; margin:16px 0; font-size:15px}
+
+  /* la fase de ejemplo: el molde exacto e inamovible */
+  .fase{border:1px dashed var(--azul); border-radius:10px;
+    padding:16px; margin:16px 0}
+  .fase-id{color:var(--texto-tenue); font-size:12px}
+  .fase-titulo{font-family:'Fraunces',Georgia,serif; font-weight:800;
+    font-size:17px; margin:4px 0 10px}
+  .fase-titulo .estado{font-size:13px; margin-left:8px}
+  .estado.v{color:var(--verde)} .estado.a{color:var(--azul)}
+  .estado.r{color:var(--rojo)}
+  .campo{margin:7px 0; font-size:14px}
+  .campo b{color:var(--azul)}
+  .barra{background:#0E0D09; border-radius:5px; height:8px; margin:4px 0;
+    overflow:hidden}
+  .barra-rellena{background:var(--verde); height:100%}
+
+  .par{display:grid; gap:10px; margin:12px 0}
+  @media(min-width:680px){.par{grid-template-columns:1fr 1fr}}
+  .bloque{background:var(--capsula); border-radius:8px; padding:12px 14px;
+    font-size:13.5px}
+  .bloque.tecnica{border-left:3px solid var(--azul)}
+  .bloque.simple{border-left:3px solid var(--verde)}
+  .bloque.fuente{border-left:3px solid var(--texto-tenue)}
+  .etq{font-size:11px; text-transform:uppercase; letter-spacing:1px;
+    font-weight:700; margin-bottom:6px}
+  .tecnica .etq{color:var(--azul)} .simple .etq{color:var(--verde)}
+  .fuente .etq{color:var(--texto-tenue)}
+
+  .antes-despues{display:grid; gap:10px; margin:14px 0}
+  @media(min-width:680px){.antes-despues{grid-template-columns:1fr 1fr}}
+  .col{background:var(--capsula); border-radius:8px; padding:12px 14px}
+  .col.antes{border-left:3px solid var(--rojo)}
+  .col.despues{border-left:3px solid var(--verde)}
+  .col-etq{font-size:11px; text-transform:uppercase; letter-spacing:1px;
+    font-weight:700; margin-bottom:8px}
+  .antes .col-etq{color:var(--rojo)} .despues .col-etq{color:var(--verde)}
+  .col pre{font-size:12.5px; white-space:pre-wrap; line-height:1.6}
+
+  .checklist{list-style:none; margin:10px 0}
+  .checklist li{margin-bottom:7px}
+  .checklist li::before{content:"☐ "; color:var(--azul)}
+</style>
+</head>
+<body>
+
+<h1>Especificación del PIPELINE — NCT</h1>
+<div class="meta">
+  Documento único para que cualquier sesión de Claude construya el
+  PIPELINE correctamente: índice de auditoría, estética inmutable,
+  lenguaje obligatorio, y un ejemplo real transformado
+</div>
+
+<div class="json-header">
+<pre>{
+  "documento": "ESPECIFICACION_PIPELINE_NCT",
+  "version": "1.0",
+  "para_ia": "este documento define, sin ambiguedad, como construir el PIPELINE del proyecto NCT. Leelo completo antes de escribir cualquier fase.",
+  "el_pipeline_es": "un documento vivo, tipo prompt ejecutable, que describe TODO el sistema fase por fase: que hace, como procesa, que debe y que no debe ejecutar, con gobierno propio (DSL/DAG/Schema + Sheriff/Sentinela/Juez/Supervisor/Validador/Verificador) a nivel de fase y de cada micro-proceso",
+  "regla_de_oro": "lo que esta DENTRO del PIPELINE = aprobado. Lo que falta = pendiente de auditoria. Nunca se asume, se audita.",
+  "fuente_de_verdad": "documentos de la bandeja del proyecto + codigo ya construido en el chat — nunca se inventa contenido",
+  "diseno": "FIJO E INMUTABLE — ver seccion 3. No se agregan colores, cajas o formatos nuevos sin aprobacion explicita del Director",
+  "lenguaje": "doble lexico (tecnico + simple), ambos hablando SOLO de programacion real — cero alegorias de temas no vinculantes (cocina, navidad, etc.)"
+}</pre>
+</div>
+
+<hr>
+
+<h2><span class="n">1.</span> EL ÍNDICE MAESTRO DE AUDITORÍA (paso previo obligatorio)</h2>
+<div class="destacado">
+Antes de escribir una sola fase del PIPELINE, hay que construir el
+índice: la lista completa de TODOS los documentos disponibles (bandeja
+del proyecto + archivos generados en el chat), cada uno con su ruta
+exacta y un resumen de una línea de qué contiene por dentro.
+</div>
+<p>Este índice cumple una función muy concreta: cuando una fase del
+PIPELINE afirma algo, la afirmación debe apuntar a una fila exacta de
+este índice — nunca a una fuente "recordada" o inferida.</p>
+
+<h3>Estructura mínima de una fila del índice</h3>
+<div class="capsula">
+  <div class="capsula-header"><span>Código</span></div>
+  <pre>ruta_exacta/archivo.py
+  contenido: que clases/funciones trae, en una frase
+  verificado: SI (se leyo el archivo) | NO (solo referenciado por otro doc)
+  usado_en_fase: 05, 06  (que fases del PIPELINE lo citan)</pre>
+</div>
+
+<h3>Cómo se construye (orden de pasos)</h3>
+<ol>
+  <li>Recorrer la bandeja del proyecto completa — sin omitir nada</li>
+  <li>Recorrer todo lo generado en el chat (código + documentos)</li>
+  <li>Por cada archivo: ruta, resumen, y si fue LEÍDO de verdad o solo
+  referenciado (campo "verificado")</li>
+  <li>Ordenar por las 21 fases reales del roadmap del proyecto — cada
+  archivo se etiqueta con la fase (o fases) donde aplica</li>
+</ol>
+<div class="aviso">
+  <b>Un archivo "referenciado" (visto solo de nombre, nunca leído por
+  dentro) NO puede usarse como fuente para afirmar que algo está
+  completo.</b> Debe marcarse como pendiente de verificación.
+</div>
+
+<hr>
+
+<h2><span class="n">2.</span> QUÉ LLEVA CADA FASE (el molde completo, campo por campo)</h2>
+<table>
+  <tr><th>Campo</th><th>Qué contiene</th></tr>
+  <tr><td>ID + nombre</td><td>Número de fase + nombre real (del roadmap oficial, no inventado)</td></tr>
+  <tr><td>Estado</td><td>Completo / En progreso / Pendiente — con % de cierre</td></tr>
+  <tr><td>Raíz estructural</td><td>Archivo(s) fuente exactos + con qué fase anterior/siguiente conecta</td></tr>
+  <tr><td>Proceso</td><td>Qué hace, qué debe ejecutar, qué NO debe ejecutar</td></tr>
+  <tr><td>Micro-diagrama horizontal</td><td>Flujo de pasos en línea recta</td></tr>
+  <tr><td>Micro-diagrama transversal</td><td>Qué sistemas la vigilan de forma cruzada (auditoría, recuperación, verificación)</td></tr>
+  <tr><td>Explicación técnica</td><td>Para ingeniero/IA — sin resumir</td></tr>
+  <tr><td>Explicación simple</td><td>Mismo contenido, sin jerga — nunca describe algo distinto</td></tr>
+  <tr><td>Fuentes</td><td>Fila exacta del índice maestro (sección 1)</td></tr>
+</table>
+
+<hr>
+
+<h2><span class="n">3.</span> DISEÑO — FIJO E INMUTABLE (no se cambia sin aprobación explícita)</h2>
+<div class="paleta">
+  <div class="swatch"><div class="caja" style="background:#2B2926"></div>
+    <div class="etiqueta">Fondo</div><div class="hex">#2B2926</div></div>
+  <div class="swatch"><div class="caja" style="background:#E4DFD3"></div>
+    <div class="etiqueta">Texto</div><div class="hex">#E4DFD3</div></div>
+  <div class="swatch"><div class="caja" style="background:#17150F"></div>
+    <div class="etiqueta">Cápsula</div><div class="hex">#17150F</div></div>
+  <div class="swatch"><div class="caja" style="background:#5B9BD5"></div>
+    <div class="etiqueta">Azul·técnica</div><div class="hex">#5B9BD5</div></div>
+  <div class="swatch"><div class="caja" style="background:#6FBF73"></div>
+    <div class="etiqueta">Verde·simple</div><div class="hex">#6FBF73</div></div>
+  <div class="swatch"><div class="caja" style="background:#E0554F"></div>
+    <div class="etiqueta">Rojo·crítico</div><div class="hex">#E0554F</div></div>
+</div>
+<p><b>Tipografía:</b> títulos <code>Fraunces</code>/Georgia serif 700-800.
+Cuerpo y código <code>IBM Plex Mono</code>.</p>
+<div class="aviso">
+  <b>Prohibido sin aprobación del Director:</b> agregar colores nuevos,
+  cajas/recuadros nuevos, iconos decorativos nuevos, o cualquier formato
+  de salida distinto a HTML con esta paleta exacta.
+</div>
+
+<hr>
+
+<h2><span class="n">4.</span> LENGUAJE OBLIGATORIO</h2>
+<ul>
+  <li>Doble léxico siempre: técnico (para ingeniero/IA) + simple (para
+  cualquier persona) — mismo contenido, distinto vocabulario</li>
+  <li>Ambos textos hablan SOLO de programación/software real</li>
+  <li>Cero alegorías de temas no vinculantes (cocina, navidad, u otros)
+  — esos temas se usaron antes solo para explicar sin activar bloqueos
+  de contenido al programar, pero el documento final no los lleva</li>
+</ul>
+
+<hr>
+
+<h2><span class="n">5.</span> EJEMPLO REAL — transformación del documento original</h2>
+<p>Así se ve la conversión de una fase real (tomada del primer borrador
+del proyecto) al formato final de esta especificación:</p>
+
+<div class="antes-despues">
+  <div class="col antes">
+    <div class="col-etq">Antes (borrador con alegoría)</div>
+    <pre>🏗️ FASE 1 · LA VÍA (ROUTER — prioridad 100%)
+estado: ❌
+Archivo raíz: nct-router/ (Cloudflare Workers)
+Proceso: Auth · balanceo · cola · logs ·
+selección modelo · LiteLLM · token/API
+autogenerado · MCP Gateway.
+Diagrama: todo_entra → ROUTER → decide
+destino (HF1|HF2|VPS|Docker) → todo_sale
+Regla intocable: agentes NUNCA hablan
+directo con HF; solo conocen el Router.</pre>
+  </div>
+  <div class="col despues">
+    <div class="col-etq">Después (formato final)</div>
+    <pre>FASE 05.03 · Módulo de enrutamiento (Router)
+estado: en progreso — 60%
+
+Raíz estructural:
+  fuente: router/core.py, auth.py, cola.py,
+  balanceo.py, seleccion.py (verificado: SI)
+  conecta_con: fase 03 (arquitectura) →
+  fase 05 (esta) → fase 08 (DevOps)
+
+Proceso:
+  DEBE: autenticar, balancear carga, encolar
+  por prioridad, seleccionar modelo, generar
+  tokens de API
+  NO DEBE: exponer URLs de proveedores a los
+  agentes; decidir despliegue (eso es DevOps)
+
+Diagrama horizontal:
+  solicitud → autenticación → cola → balanceo
+  → selección de modelo → proveedor → salida
+
+Diagrama transversal:
+  auditoria: registra cada solicitud (activo)
+  seguridad: valida token en cada paso (activo)
+  monitoreo: mide latencia cada 30s (pendiente)</pre>
+  </div>
+</div>
+
+<div class="par">
+  <div class="bloque tecnica"><div class="etq">Explicación técnica</div>
+    Implementa el patrón API Gateway: capa de autenticación por token,
+    cola de prioridades, balanceo round-robin con detección de nodos
+    caídos. Contrato: recibe una solicitud con task_id+trace_id,
+    devuelve un destino_id opaco sin exponer la URL real del proveedor.</div>
+  <div class="bloque simple"><div class="etq">Explicación simple</div>
+    Es el único punto por donde entra y sale todo. Nadie habla directo
+    con los proveedores de modelos — todos pasan primero por aquí, que
+    decide a quién mandar cada solicitud y guarda registro de todo.</div>
+</div>
+<div class="bloque fuente"><div class="etq">Fuentes (fila del índice)</div>
+  router/core.py — núcleo del Router, verificado ✓ ·
+  router/auth.py — autenticación, verificado ✓
+</div>
+
+<p>Nota sobre esta transformación: el nombre cambió ("La Vía" →
+"Módulo de enrutamiento"), se agregó el ID numérico de fase real
+(05.03), el porcentaje de cierre, la raíz estructural con conexión
+bidireccional, la separación explícita DEBE/NO DEBE, ambos diagramas
+(antes solo había uno), y el par técnica+simple con fuentes verificadas
+— nada del contenido original se perdió, solo se organizó sin alegoría.</p>
+
+<hr>
+
+<h2><span class="n">6.</span> CHECKLIST ANTES DE ENTREGAR CUALQUIER FASE</h2>
+<ul class="checklist">
+  <li>La fase existe en el índice maestro de auditoría (sección 1)</li>
+  <li>Usa el ID real del roadmap de 21 fases, no uno inventado</li>
+  <li>Los 9 campos del molde están completos (sección 2)</li>
+  <li>Fuentes marcadas como verificadas o pendientes, nunca asumidas</li>
+  <li>Diagrama horizontal Y transversal presentes</li>
+  <li>Explicación técnica + simple, mismo contenido</li>
+  <li>Cero alegorías — solo lenguaje de programación real</li>
+  <li>Paleta y tipografía exactas de la sección 3, sin agregados</li>
+</ul>
+
+</body>
+</html>

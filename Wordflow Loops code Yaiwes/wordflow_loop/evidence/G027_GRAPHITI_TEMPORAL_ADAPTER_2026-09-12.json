@@ -1,0 +1,60 @@
+{
+  "schema": "yaiwes.gap-evidence/v1",
+  "gap_id": "G-027",
+  "owner": "SOL_2",
+  "result": "CLOSED_VERIFIED_LOCAL_INTEGRATION",
+  "contract": "yaiwes.graphiti_temporal_adapter/v1",
+  "source_proof": {
+    "repository": "maxbry123-commits/osquestador-auditor",
+    "path": "graphiti/",
+    "license": "Apache-2.0",
+    "graphiti_core_tree_sha": "de7d3161dbbfa8ebfba88c0618277fcc4543dde1",
+    "graphiti_entry_blob": "7555a1f828c4b94970911876bfd257aaa4577d4c",
+    "graphiti_init_blob": "0ba72ffccb4b9060c6c49e6bf48fa9e07cedded2",
+    "license_blob": "5feb0d9d299a1107adfa8331306b13cc0eff2d78"
+  },
+  "implementation": {
+    "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/graphiti_temporal_adapter.py",
+    "module_blob": "35af83c1a8cd60ccaca4da15c1a8fa624b400b07",
+    "module_commit": "81bdb0522aa0bc6bb6c55f0336dc81d69b6dd2d8",
+    "tests": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_graphiti_temporal_adapter_g027.py",
+    "tests_blob": "f66c804d409350b6bb077be64a2aafdfdd6cbe77",
+    "tests_commit": "1c58fae8e5a6ad34d43ee9893a7607ee0cdff330",
+    "fables_gate_blob": "516e639fc64d048a6bc922a4021c933985867a4b",
+    "canonical_bus_reused": true,
+    "parallel_bus_created": false,
+    "graphiti_vendored_into_kernel": false
+  },
+  "step_1_research": {
+    "status": "PASS",
+    "decision": "ADAPT_THIN_EXTERNAL_COMPONENT",
+    "reason": "Graphiti already exists in osquestador-auditor and requires graph driver plus LLM/embedder clients; keep it external and expose deterministic temporal-memory envelopes."
+  },
+  "step_2_motor": {
+    "status": "PASS_NO_TRANSFER_REQUIRED",
+    "reason": "No Graphiti source copy/move/download is required; the patch requires canonical motor only when transfer is needed. Existing canonical motor gate remains unchanged."
+  },
+  "step_3_wire_test": {
+    "status": "PASS_LOCAL",
+    "local_behavioral_harness": "PASS_6_OF_6",
+    "verified_behaviors": [
+      "source proof mismatch fails closed",
+      "temporal add_episode envelope is timezone-normalized and non-executable",
+      "search limit is bounded",
+      "Ficha requires process sandbox",
+      "Fables registration requires canonical G-018 base",
+      "sandbox denial never authorizes execution"
+    ],
+    "repo_ci": "NOT_TRIGGERED",
+    "repo_ci_runs_for_test_commit": 0,
+    "external_graphiti_runtime_execution": "NOT_CLAIMED",
+    "physical_sandbox_execution": "BLOCKED_BY_G022_HOST_ISOLATION"
+  },
+  "closure": {
+    "g027_integration": "PASS",
+    "runtime_activation": "FAIL_CLOSED_UNTIL_G022",
+    "execution_authorized_by_adapter_default": false,
+    "no_lfs": true,
+    "force_used": false
+  }
+}

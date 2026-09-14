@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NCT — Especificación del PIPELINE v2 (completa)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+  :root{
+    --fondo:#2B2926; --texto:#E4DFD3; --texto-tenue:#A39C8C;
+    --capsula:#17150F; --capsula-header:#0E0D09;
+    --azul:#5B9BD5; --rojo:#E0554F; --verde:#6FBF73;
+  }
+  *{box-sizing:border-box; margin:0}
+  body{background:var(--fondo); color:var(--texto);
+    font:16px/1.65 'IBM Plex Mono', ui-monospace, monospace;
+    padding:20px 16px; max-width:880px; margin:0 auto}
+  h1{font-family:'Fraunces',Georgia,serif; font-weight:800;
+    font-size:clamp(22px,4.5vw,32px); margin-bottom:6px}
+  h2{font-family:'Fraunces',Georgia,serif; font-weight:800;
+    font-size:19px; margin:32px 0 12px}
+  h2 .n{color:var(--azul)}
+  h3{font-size:14px; color:var(--azul); margin:18px 0 8px;
+    text-transform:uppercase; letter-spacing:.5px}
+  .meta{color:var(--texto-tenue); font-size:12.5px; margin-bottom:18px}
+  hr{border:0; border-top:1px solid #4A473F; margin:26px 0}
+  p{margin:8px 0}
+  code{background:var(--capsula); color:var(--verde); padding:1px 6px;
+    border-radius:4px; font-size:14px}
+  ul,ol{margin:8px 0 8px 20px}
+  li{margin-bottom:5px}
+
+  .json-header{background:var(--capsula-header); border:1px solid #3D3833;
+    border-radius:10px; padding:16px; margin:16px 0; overflow-x:auto}
+  .json-header pre{font-size:11.5px; color:#8FD3A0; white-space:pre}
+
+  .capsula{background:var(--capsula); border-radius:10px; margin:14px 0;
+    overflow:hidden}
+  .capsula-header{background:var(--capsula-header); padding:7px 14px;
+    font-size:12px; color:var(--texto-tenue)}
+  .capsula pre{padding:14px; font-size:13px; color:var(--texto);
+    white-space:pre-wrap; line-height:1.7; overflow-x:auto}
+
+  .paleta{display:flex; gap:10px; flex-wrap:wrap; margin:14px 0}
+  .swatch{width:100px}
+  .swatch .caja{height:56px; border-radius:8px; border:1px solid #4A473F}
+  .swatch .etiqueta{font-size:11px; color:var(--texto-tenue); margin-top:5px}
+  .swatch .hex{font-size:11px; color:var(--texto)}
+
+  table{width:100%; border-collapse:collapse; font-size:12.5px; margin:12px 0}
+  th,td{border:1px solid #4A473F; padding:6px 8px; text-align:left}
+  th{color:var(--azul); font-size:10.5px; text-transform:uppercase}
+
+  .aviso{border-left:3px solid var(--rojo); background:var(--capsula);
+    border-radius:8px; padding:12px 14px; margin:14px 0; font-size:14px}
+  .aviso b{color:var(--rojo)}
+  .destacado{border-left:3px solid var(--verde); background:var(--capsula);
+    border-radius:8px; padding:14px 16px; margin:16px 0; font-size:15px}
+
+  /* SELLO DE GOBIERNO — los 10 roles aplicados a cada micro-proceso */
+  .sello{display:flex; flex-wrap:wrap; gap:5px; margin:10px 0}
+  .rol{font-size:10.5px; padding:3px 8px; border-radius:5px;
+    border:1px solid #4A473F; color:var(--texto-tenue)}
+  .rol.on{border-color:var(--verde); color:var(--verde)}
+  .rol.pend{border-color:var(--azul); color:var(--azul)}
+
+  .fase{border:1px dashed var(--azul); border-radius:10px;
+    padding:16px; margin:16px 0}
+  .fase-id{color:var(--texto-tenue); font-size:11.5px}
+  .fase-titulo{font-family:'Fraunces',Georgia,serif; font-weight:800;
+    font-size:16.5px; margin:4px 0 10px}
+  .estado{font-size:12.5px; margin-left:8px}
+  .estado.v{color:var(--verde)} .estado.a{color:var(--azul)}
+  .campo{margin:7px 0; font-size:13.5px}
+  .campo b{color:var(--azul)}
+  .barra{background:#0E0D09; border-radius:5px; height:7px; margin:4px 0 8px;
+    overflow:hidden}
+  .barra-r{background:var(--verde); height:100%}
+
+  .par{display:grid; gap:10px; margin:12px 0}
+  @media(min-width:680px){.par{grid-template-columns:1fr 1fr}}
+  .bloque{background:var(--capsula); border-radius:8px; padding:11px 13px;
+    font-size:13px}
+  .bloque.tecnica{border-left:3px solid var(--azul)}
+  .bloque.simple{border-left:3px solid var(--verde)}
+  .bloque.fuente{border-left:3px solid var(--texto-tenue)}
+  .etq{font-size:10.5px; text-transform:uppercase; letter-spacing:1px;
+    font-weight:700; margin-bottom:5px}
+  .tecnica .etq{color:var(--azul)} .simple .etq{color:var(--verde)}
+  .fuente .etq{color:var(--texto-tenue)}
+
+  .flecha-conexion{text-align:center; color:var(--texto-tenue);
+    font-size:12px; margin:6px 0}
+
+  .checklist{list-style:none; margin:10px 0}
+  .checklist li{margin-bottom:6px; font-size:14px}
+  .checklist li::before{content:"☐ "; color:var(--azul)}
+</style>
+</head>
+<body>
+
+<h1>Especificación del PIPELINE — NCT (v2, completa)</h1>
+<div class="meta">
+  Corrige la v1: audita literal la definición del Director + incluye el
+  ejemplo visual completo del PIPELINE renderizado
+</div>
+
+<div class="json-header">
+<pre>{
+  "documento": "ESPECIFICACION_PIPELINE_NCT",
+  "version": "2.0",
+  "para_ia": "lee completo antes de escribir cualquier fase. Este documento define, palabra por palabra, la definicion del Director.",
+  "definicion_literal_del_director": "un documento que muestra como funciona el software o un agente orquestador desde la fase 0 hasta el final. Funciona como un PROMPT VIVIENTE: DSL+DAG+Schema+Sheriff+Sentinela+Juez+Supervisor+Validador+Verificador+Orquestador (10 roles) aplicados tanto a cada fase como a cada micro-proceso dentro de ella. Cada fase puede tener de 3 a 100 tareas. Dice que debe y que NO debe ejecutar el software. Trae una raiz estructural EXTENDIDA: de donde sale la fuente y con que proceso anterior/siguiente conecta en cadena. Al leerlo, cualquier IA o persona entiende el sistema sin necesidad de interpretar nada mas. Es un borrador vivo que se actualiza segun se va cerrando. Se DIVIDE en documentos de POCA informacion cada uno, para evitar sintetizar — juntos representan el sistema completo. Tiene trazabilidad total de origen. Permite AUDITAR y REEMPLAZAR partes del sistema. Es la radiografia de un master proyecto moderno. Permite crear, en cadena, todos los documentos de codigo como guia, y convertir eso en UOOS Parte 1, luego Parte 2, luego el despliegue. Regla de oro: lo que esta DENTRO = aprobado; lo que falta = pendiente de auditoria.",
+  "fuente_de_verdad": "documentos de la bandeja del proyecto + codigo del chat — nunca se inventa",
+  "diseno": "fijo e inmutable, ver seccion 4",
+  "lenguaje": "doble lexico tecnico+simple, solo programacion real, cero alegorias no vinculantes"
+}</pre>
+</div>
+
+<hr>
+
+<h2><span class="n">1.</span> LOS 10 ROLES DE GOBIERNO (el "sello" que lleva cada micro-proceso)</h2>
+<p>No son solo del documento completo — se aplican a CADA micro-proceso
+dentro de cada fase, como un sello que muestra cuáles están activos
+para ese paso específico:</p>
+<div class="sello">
+  <span class="rol on">DSL</span><span class="rol on">DAG</span>
+  <span class="rol on">Schema</span><span class="rol on">Sheriff</span>
+  <span class="rol pend">Sentinela</span><span class="rol on">Juez</span>
+  <span class="rol pend">Supervisor</span><span class="rol on">Validador</span>
+  <span class="rol on">Verificador</span><span class="rol on">Orquestador</span>
+</div>
+<p style="font-size:12.5px; color:var(--texto-tenue)">
+  Verde = activo para este proceso · Azul = pendiente de activar ·
+  (ejemplo ilustrativo del sello, no de una fase real)
+</p>
+
+<hr>
+
+<h2><span class="n">2.</span> LAS 9 CARACTERÍSTICAS QUE EL DOCUMENTO DEBE CUMPLIR (literales)</h2>
+<ol>
+  <li><b>Es un prompt viviente</b> — no una explicación sobre el
+  sistema, sino algo que al leerse FUNCIONA como instrucción ejecutable</li>
+  <li><b>Cada fase: 3 a 100 tareas</b> — nunca menos de 3, nunca más de 100</li>
+  <li><b>Declara qué DEBE y qué NO DEBE ejecutar</b> el software en
+  cada fase, sin ambigüedad</li>
+  <li><b>Raíz estructural extendida</b> — fuente exacta + conexión con
+  el proceso anterior Y con el siguiente, en cadena</li>
+  <li><b>Se lee sin necesidad de interpretar</b> — cualquier IA o
+  persona entiende el sistema completo solo leyendo</li>
+  <li><b>Es un borrador vivo</b> — se actualiza según se cierran partes,
+  nunca es un documento "terminado y quieto"</li>
+  <li><b>Se divide en documentos de poca información</b> — nunca un
+  solo documento gigante; varios documentos pequeños que, juntos,
+  forman el sistema completo</li>
+  <li><b>Permite auditar Y reemplazar</b> partes del sistema, no solo
+  revisar</li>
+  <li><b>Es la radiografía de un proyecto maestro moderno</b> — desde
+  ahí se genera, en cadena, el código real → UOOS Parte 1 → Parte 2 →
+  despliegue</li>
+</ol>
+<div class="aviso">
+  <b>Corrección sobre la v1 de este documento:</b> esta misma
+  especificación es una guía única (correcto, porque es el MANUAL), pero
+  el PIPELINE en sí, cuando se construya, debe salir en VARIOS
+  documentos pequeños — nunca uno solo gigante. Ver sección 6.
+</div>
+
+<hr>
+
+<h2><span class="n">3.</span> EL ÍNDICE MAESTRO DE AUDITORÍA (paso previo obligatorio)</h2>
+<p>Antes de escribir cualquier fase: lista completa de todos los
+documentos disponibles (bandeja + chat), cada uno con ruta exacta,
+resumen de una línea, y si fue leído de verdad o solo referenciado.</p>
+<div class="capsula">
+  <div class="capsula-header"><span>Código</span></div>
+  <pre>ruta_exacta/archivo.py
+  contenido: que trae por dentro, en una frase
+  verificado: SI (leido) | NO (solo referenciado)
+  usado_en_fase: 05, 06</pre>
+</div>
+
+<hr>
+
+<h2><span class="n">4.</span> DISEÑO — FIJO E INMUTABLE</h2>
+<div class="paleta">
+  <div class="swatch"><div class="caja" style="background:#2B2926"></div>
+    <div class="etiqueta">Fondo</div><div class="hex">#2B2926</div></div>
+  <div class="swatch"><div class="caja" style="background:#E4DFD3"></div>
+    <div class="etiqueta">Texto</div><div class="hex">#E4DFD3</div></div>
+  <div class="swatch"><div class="caja" style="background:#17150F"></div>
+    <div class="etiqueta">Cápsula</div><div class="hex">#17150F</div></div>
+  <div class="swatch"><div class="caja" style="background:#5B9BD5"></div>
+    <div class="etiqueta">Azul</div><div class="hex">#5B9BD5</div></div>
+  <div class="swatch"><div class="caja" style="background:#6FBF73"></div>
+    <div class="etiqueta">Verde</div><div class="hex">#6FBF73</div></div>
+  <div class="swatch"><div class="caja" style="background:#E0554F"></div>
+    <div class="etiqueta">Rojo</div><div class="hex">#E0554F</div></div>
+</div>
+<p><b>Tipografía:</b> títulos <code>Fraunces</code>/Georgia serif
+700-800. Cuerpo/código <code>IBM Plex Mono</code>.</p>
+<div class="aviso">Prohibido agregar colores, cajas o formatos nuevos
+sin aprobación explícita del Director.</div>
+
+<hr>
+
+<h2><span class="n">5.</span> EJEMPLO VISUAL COMPLETO — así se ve el PIPELINE renderizado</h2>
+<p>Dos fases consecutivas, tal como saldrían en un documento real,
+mostrando la conexión en cadena entre ellas:</p>
+
+<div class="fase">
+  <div class="fase-id">FASE 05.02 · pertenece al roadmap: 05 Desarrollo</div>
+  <div class="fase-titulo">Generador de artefactos de código
+    <span class="estado v">estado: completo — 90%</span></div>
+  <div class="barra"><div class="barra-r" style="width:90%"></div></div>
+
+  <div class="campo"><b>Raíz estructural extendida:</b></div>
+  <div class="campo" style="margin-left:10px">
+    fuente: <code>escritor/escritor_core.py</code> (verificado ✓)<br>
+    conecta_con_anterior: FASE 03.04 (arquitectura validada)<br>
+    conecta_con_siguiente: FASE 05.03 (enrutamiento)
+  </div>
+
+  <div class="campo"><b>Proceso:</b></div>
+  <div class="campo" style="margin-left:10px">
+    DEBE: generar artefacto con autor + hash de nacimiento<br>
+    NO DEBE: certificar su propio trabajo (eso lo hace otro componente)
+  </div>
+
+  <div class="campo"><b>Micro-diagrama horizontal:</b></div>
+  <div class="capsula">
+    <div class="capsula-header"><span>Diagrama</span></div>
+    <pre>especificación → escritura → sello de autor →
+hash de nacimiento → artefacto listo</pre>
+  </div>
+
+  <div class="campo"><b>Micro-diagrama transversal (sello de gobierno de este proceso):</b></div>
+  <div class="sello">
+    <span class="rol on">DSL</span><span class="rol on">Schema</span>
+    <span class="rol on">Sheriff</span><span class="rol pend">Sentinela</span>
+    <span class="rol pend">Juez</span><span class="rol on">Validador</span>
+    <span class="rol on">Verificador</span>
+  </div>
+
+  <div class="par">
+    <div class="bloque tecnica"><div class="etq">Técnica</div>
+      Función pura: recibe especificación, devuelve un objeto
+      inmutable con ruta, código, autor y sha256 del contenido.</div>
+    <div class="bloque simple"><div class="etq">Simple</div>
+      Escribe el código y le pone una etiqueta con quién lo hizo y
+      una huella digital, para saber después si alguien lo cambió.</div>
+  </div>
+  <div class="bloque fuente"><div class="etq">Fuentes</div>
+    escritor/escritor_core.py — verificado ✓
+  </div>
+</div>
+
+<div class="flecha-conexion">↓ conecta en cadena con ↓</div>
+
+<div class="fase">
+  <div class="fase-id">FASE 05.03 · pertenece al roadmap: 05 Desarrollo</div>
+  <div class="fase-titulo">Módulo de enrutamiento
+    <span class="estado a">estado: en progreso — 60%</span></div>
+  <div class="barra"><div class="barra-r" style="width:60%"></div></div>
+
+  <div class="campo"><b>Raíz estructural extendida:</b></div>
+  <div class="campo" style="margin-left:10px">
+    fuente: <code>router/core.py, auth.py, cola.py</code> (verificado ✓)<br>
+    conecta_con_anterior: FASE 05.02 (generador de artefactos)<br>
+    conecta_con_siguiente: FASE 08.01 (DevOps — despliegue)
+  </div>
+
+  <div class="campo"><b>Proceso:</b></div>
+  <div class="campo" style="margin-left:10px">
+    DEBE: autenticar, balancear, encolar por prioridad<br>
+    NO DEBE: exponer URLs de proveedores a los agentes
+  </div>
+
+  <div class="campo"><b>Micro-diagrama horizontal:</b></div>
+  <div class="capsula">
+    <div class="capsula-header"><span>Diagrama</span></div>
+    <pre>solicitud → autenticación → cola → balanceo →
+selección de modelo → proveedor → salida</pre>
+  </div>
+
+  <div class="campo"><b>Micro-diagrama transversal (sello de gobierno):</b></div>
+  <div class="sello">
+    <span class="rol on">DSL</span><span class="rol on">DAG</span>
+    <span class="rol on">Sheriff</span><span class="rol on">Juez</span>
+    <span class="rol pend">Supervisor</span><span class="rol on">Verificador</span>
+    <span class="rol on">Orquestador</span>
+  </div>
+
+  <div class="par">
+    <div class="bloque tecnica"><div class="etq">Técnica</div>
+      Patrón API Gateway: token+cola+balanceo round-robin. Contrato:
+      recibe task_id+trace_id, devuelve destino_id opaco.</div>
+    <div class="bloque simple"><div class="etq">Simple</div>
+      Es el único punto de entrada y salida. Nadie habla directo con
+      los proveedores — todo pasa por aquí primero.</div>
+  </div>
+  <div class="bloque fuente"><div class="etq">Fuentes</div>
+    router/core.py, router/auth.py — verificado ✓
+  </div>
+</div>
+
+<hr>
+
+<h2><span class="n">6.</span> CÓMO SE DIVIDE (varios documentos pequeños, nunca uno gigante)</h2>
+<p>El PIPELINE final NO sale en un solo archivo. Sale en muchos
+documentos cortos, uno por tramo de fases, para no perder detalle
+sintetizando. Ejemplo de división:</p>
+<table>
+  <tr><th>Documento</th><th>Contiene</th></tr>
+  <tr><td>PIPELINE_00.md</td><td>Fase 00 completa (núcleo/gobernanza)</td></tr>
+  <tr><td>PIPELINE_01_02.md</td><td>Fases 01-02 (idea + requisitos)</td></tr>
+  <tr><td>PIPELINE_03.md</td><td>Fase 03 (arquitectura)</td></tr>
+  <tr><td>… uno o dos por documento, según su tamaño real</td><td>—</td></tr>
+</table>
+<p>Cada documento pequeño tiene su propia trazabilidad; juntos, forman
+el PIPELINE completo del proyecto.</p>
+
+<hr>
+
+<h2><span class="n">7.</span> DEL PIPELINE A UOOS PARTE 1, PARTE 2 Y DESPLIEGUE</h2>
+<div class="capsula">
+  <div class="capsula-header"><span>Código</span></div>
+  <pre>cada FASE del PIPELINE → se vuelve un NODO de UOOS Parte 1
+raíz estructural extendida → contrato input/output del nodo
+sello de gobierno de 10 roles → validaciones del nodo en el DAG
+cierre de todas las fases → UOOS Parte 2 (ejecución)
+                          → despliegue determinista (0% agente,
+                            solo script — ver especificación previa
+                            de despliegue ya aprobada)</pre>
+</div>
+
+<hr>
+
+<h2><span class="n">8.</span> CHECKLIST FINAL</h2>
+<ul class="checklist">
+  <li>Los 10 roles de gobierno considerados (no 9, no menos)</li>
+  <li>Cada fase entre 3 y 100 tareas</li>
+  <li>DEBE / NO DEBE explícito</li>
+  <li>Raíz estructural EXTENDIDA (anterior + siguiente en cadena)</li>
+  <li>Sello de gobierno visible en cada micro-proceso</li>
+  <li>Documento pequeño — nunca un solo archivo gigante para todo el PIPELINE</li>
+  <li>Explicación técnica + simple, mismo contenido</li>
+  <li>Fuentes marcadas verificado ✓ o pendiente</li>
+  <li>Cero alegorías — solo lenguaje de programación real</li>
+  <li>Paleta y tipografía exactas, sin agregados</li>
+</ul>
+
+</body>
+</html>

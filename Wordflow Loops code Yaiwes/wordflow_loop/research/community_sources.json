@@ -1,0 +1,110 @@
+{
+  "schema": "yaiwes.wordflow.community-sources.v1",
+  "verified_at": "2026-09-10",
+  "purpose": "Fuentes que los agentes de arquitectura/programación deben consultar antes de decisiones que requieran contexto externo. La presencia de una fuente no sustituye verificación ni gates locales.",
+  "sources": [
+    {
+      "id": "S01",
+      "name": "Graphiti / getzep",
+      "url": "https://github.com/getzep/graphiti",
+      "kind": "open_source_repository_and_issues",
+      "use_for": ["temporal_context_graph", "agent_memory", "provenance", "MCP"],
+      "authority": "upstream_project",
+      "notes": "Consultar README, releases/issues y diferencias entre source y MCP images antes de integrar. Issues recientes muestran riesgos de paridad MCP y costo/convergencia de comunidades."
+    },
+    {
+      "id": "S02",
+      "name": "Graphology Documentation",
+      "url": "https://graphology.github.io/",
+      "kind": "official_docs",
+      "use_for": ["graph_data_structure", "DAG_algorithms", "traversal", "layouts"],
+      "authority": "upstream_docs"
+    },
+    {
+      "id": "S03",
+      "name": "Sigma.js Documentation",
+      "url": "https://v4.sigmajs.org/",
+      "kind": "official_docs",
+      "use_for": ["interactive_graph_ui", "WebGL", "Graphology_rendering"],
+      "authority": "upstream_docs"
+    },
+    {
+      "id": "S04",
+      "name": "NetworkX DAG Algorithms",
+      "url": "https://networkx.org/documentation/stable/reference/algorithms/dag.html",
+      "kind": "official_docs",
+      "use_for": ["DAG_validation", "topological_sort", "generations", "dependency_analysis"],
+      "authority": "upstream_docs"
+    },
+    {
+      "id": "S05",
+      "name": "Temporal Community Forum",
+      "url": "https://community.temporal.io/",
+      "kind": "developer_community",
+      "use_for": ["durable_execution", "task_queues", "retries", "workflow_patterns", "agent_workflows"],
+      "authority": "project_community"
+    },
+    {
+      "id": "S06",
+      "name": "Temporal",
+      "url": "https://temporal.io/",
+      "kind": "official_docs_entry",
+      "use_for": ["durable_state", "retries", "signals", "timers", "sagas"],
+      "authority": "upstream_project"
+    },
+    {
+      "id": "S07",
+      "name": "Prefect Task Runners",
+      "url": "https://docs.prefect.io/v3/concepts/task-runners",
+      "kind": "official_docs",
+      "use_for": ["concurrency", "parallelism", "thread_pool", "process_pool", "distributed_runners"],
+      "authority": "upstream_docs"
+    },
+    {
+      "id": "S08",
+      "name": "Dagster Documentation",
+      "url": "https://docs.dagster.io/",
+      "kind": "official_docs_and_community_entry",
+      "use_for": ["asset_graphs", "lineage", "observability", "testability"],
+      "authority": "upstream_docs"
+    },
+    {
+      "id": "S09",
+      "name": "LangGraph Persistence",
+      "url": "https://docs.langchain.com/oss/python/langgraph/persistence",
+      "kind": "official_docs",
+      "use_for": ["checkpointing", "fault_tolerance", "human_in_loop", "pending_writes", "state_graphs"],
+      "authority": "upstream_docs"
+    },
+    {
+      "id": "S10",
+      "name": "Tree-sitter",
+      "url": "https://tree-sitter.github.io/",
+      "kind": "official_docs",
+      "use_for": ["AST", "incremental_parsing", "multi_language_code_analysis"],
+      "authority": "upstream_docs"
+    },
+    {
+      "id": "S11",
+      "name": "Semgrep",
+      "url": "https://semgrep.dev/solutions/static-application-security-testing/",
+      "kind": "security_docs",
+      "use_for": ["SAST", "malicious_patterns", "security_gates", "dataflow_analysis"],
+      "authority": "vendor_upstream_docs"
+    },
+    {
+      "id": "S12",
+      "name": "Software Engineering Stack Exchange",
+      "url": "https://softwareengineering.stackexchange.com/",
+      "kind": "developer_community",
+      "use_for": ["architecture_tradeoffs", "dependency_injection", "plugin_design", "design_patterns"],
+      "authority": "community_secondary"
+    }
+  ],
+  "policy": {
+    "official_sources_first": true,
+    "community_sources_for_tradeoffs_and_failure_modes": true,
+    "no_architecture_decision_from_single_source": true,
+    "local_code_and_contracts_override_external_examples": true
+  }
+}

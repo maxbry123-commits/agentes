@@ -1,0 +1,65 @@
+{
+  "schema": "yaiwes.crazy_wall.integration_workflow_readback/v1",
+  "agent": "SOL_INTEGRACION_1",
+  "scope": "WORKFLOW_FAIL_ONLY",
+  "preserved_closed_scope": ["N1-N27", "Temporal"],
+  "constraints": {
+    "lfs": false,
+    "step4": false,
+    "lateral_refactor": false,
+    "restore_noncanonical_logic": false
+  },
+  "fresh_readback": {
+    "acquisition_watchdog": {
+      "path": ".github/workflows/yaiwes-acquisition-watchdog-auditor-20260908.yml",
+      "blob": "8ae31bc5f4f776eb92cf7e6486e9d8833a72f4fb",
+      "state": "NEUTRALIZED_WORKFLOW_DISPATCH_VALID"
+    },
+    "acquisition_guardian": {
+      "path": ".github/workflows/yaiwes-acquisition-repair-guardian-20260908.yml",
+      "blob": "bf107039a6e671e5cc5d3b0688fe8cdbcf925011",
+      "state": "NEUTRALIZED_WORKFLOW_DISPATCH_VALID"
+    },
+    "backend_watchdog_yaiwes_34": {
+      "path": ".github/workflows/backend-watchdog-yaiwes-34-canonical-skill-20260908.yml",
+      "blob": "e48e67a2eeebc47e8be293a26a38fc43e1d10946",
+      "state": "RETIRED_MANUAL_ONLY_VALID"
+    },
+    "core_kernel_yaiwes_10": {
+      "path": ".github/workflows/core-kernel-yaiwes-10-canonical-skill-20260908.yml",
+      "blob": "4d1044c7ba89de6811bbaadd9e54076c3202570b",
+      "state": "RETIRED_MANUAL_ONLY_VALID"
+    },
+    "handoff_link_readme": {
+      "path": ".github/workflows/yaiwes-handoff-link-readme.yml",
+      "blob": "c71d9ff90b297c640235722388410fb077a84a73",
+      "state": "HEREDOC_READBACK_VALID"
+    },
+    "inventory_audit": {
+      "path": ".github/workflows/yaiwes-core-complete-inventory-audit.yml",
+      "blob": "143c19f919cce057b0cc15d7ff0d069444f8a6d0",
+      "repair_commit": "ee55d1ab11ddf81775903594eee05ce285382e49",
+      "run_id": 34640145547,
+      "run_number": 158,
+      "run_status": "completed",
+      "run_conclusion": "success",
+      "state": "WORKFLOW_PUBLISH_FAIL_CLOSED_VERIFIED"
+    }
+  },
+  "xray": {
+    "historical_failed_runs": "SUPERSEDED_BY_REPAIRED_SUCCESS_RUN",
+    "related_open_workflow_fail": false,
+    "component_fail": "NOT_INFERRED_AND_OUT_OF_SCOPE",
+    "result": "NO_RELATED_WORKFLOW_FAIL_OPEN"
+  },
+  "evidence_chain": {
+    "prior_readback_commit": "633baa8cbf40796a5a334bd75ec7f5e7aeaba4d7",
+    "prior_readback_artifact": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/INTEGRACION-SOL1-WORKFLOW-READBACK-20260911-1500.json",
+    "inventory_success_run": 34640145547
+  },
+  "final_read_back": {
+    "result": "PASS",
+    "statement": "Fresh main and Actions read-back found no additional related WORKFLOW_FAIL after the repaired inventory audit run. Historical workflow failures remain historical and are not COMPONENT_FAIL evidence. N1-N27 and Temporal were not reopened or modified."
+  },
+  "status": "VERIFIED_CLOSED_WORKFLOW_SCOPE"
+}

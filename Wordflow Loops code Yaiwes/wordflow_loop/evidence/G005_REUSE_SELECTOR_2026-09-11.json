@@ -1,0 +1,58 @@
+{
+  "contract": "tel.workflow/v4",
+  "gap": "G-005",
+  "status": "CLOSED_VERIFIED_LOCAL",
+  "policy": ["REUSE", "PATCH", "ADAPT", "GENERATE"],
+  "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/reuse_selector.py",
+  "module_blob": "bc7f4805fc7f13e6de0341b84c533d4b7fb6b044",
+  "tests": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_reuse_selector.py",
+  "tests_blob": "1bcd0fca22d1238d28add1880e882e7af863ad52",
+  "catalog": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/research/reuse_catalog_g005.json",
+  "catalog_blob": "2367f7ed8c7e1ece1d724f15f6494d5ff56543f8",
+  "catalog_count": 8,
+  "readback": "PASS",
+  "repo_pytest_execution": "NOT_CLAIMED",
+  "local_equivalent_simulation": {
+    "status": "PASS_3_OF_3_DECISIONS",
+    "cases": [
+      "dag: local native DAGEngine outranks external graph candidate => REUSE",
+      "agent_memory: external Graphiti-like candidate => ADAPT",
+      "unknown capability after researched catalog => GENERATE"
+    ]
+  },
+  "license_proofs": [
+    {
+      "candidate": "Graphiti",
+      "license": "Apache-2.0",
+      "license_blob": "5feb0d9d299a1107adfa8331306b13cc0eff2d78",
+      "source": "https://github.com/getzep/graphiti/blob/main/LICENSE"
+    },
+    {
+      "candidate": "Graphology",
+      "license": "MIT",
+      "license_blob": "158967c8da93f1ea5ab5ac8efa7d7269392a0737",
+      "source": "https://github.com/graphology/graphology/blob/master/LICENSE.txt"
+    },
+    {
+      "candidate": "NetworkX",
+      "license": "BSD-3-Clause",
+      "license_blob": "02547fc890c22287c5cacfc4ec6bfc384e6ce785",
+      "source": "https://github.com/networkx/networkx/blob/main/LICENSE.txt"
+    },
+    {
+      "candidate": "Tree-sitter",
+      "license": "MIT",
+      "license_blob": "971b81f9a86c0c91827e225aeac9159a13bfd3c1",
+      "source": "https://github.com/tree-sitter/tree-sitter/blob/master/LICENSE"
+    }
+  ],
+  "decisions": {
+    "dag": "REUSE_LOCAL_DAGENGINE",
+    "graphiti": "ADAPT_ONLY_FOR_TEMPORAL_CONTEXT_PROVENANCE_NOT_SCHEDULER",
+    "graphology": "ADAPT_ONLY_IF_VISUAL_GRAPH_CAPABILITY_IS_REQUIRED",
+    "tree_sitter": "ADAPT_ONLY_IF_EXISTING_FILE_AUDIT_PARSING_IS_INSUFFICIENT"
+  },
+  "external_install_or_copy": "NONE",
+  "write_scope": "ONLY_WORDflow_ROOT",
+  "auth_provider_test": "AUTH_PROVIDER_TEST_PENDING"
+}

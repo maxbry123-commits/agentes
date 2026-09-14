@@ -1,0 +1,54 @@
+{
+  "schema": "yaiwes.gap-evidence/v1",
+  "gap_id": "G-024",
+  "status": "CLOSED_VERIFIED_LOCAL",
+  "executor": "ASTRA_GPT_LOOP",
+  "base_main_sha": "b5e340e4ef79f1bee6b69bb496532087f6ddbca9",
+  "claim_commit_sha": "e15b4c19e2a6eda25cdd8d9c4c902c8afdc8a3e8",
+  "gap_reproduction": {
+    "module_blob_before": "52fc1af32b2395de8760b701b7f47237b838ec83",
+    "action": "promote_deployment",
+    "unexpected_allowed_actors": ["<empty>", "human"],
+    "result": "REPRODUCED_REAL_INPUT"
+  },
+  "implementation": {
+    "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/llm_boundary.py",
+    "module_blob": "d83c1face71ad84654264b287ef1286018b01c88",
+    "module_sha256": "2189abeb0f1a249bdc76db4d0b46f89aa03fa4fd11e2ff9bbbe4a181615968e8",
+    "test": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_llm_boundary_g024.py",
+    "test_blob": "6ed71952e43f0980ba7486aa16e0ced18870ed11",
+    "test_sha256": "d40730b407f9f708571f8020fa44377387de345122420e9594385b4c72f83d2f",
+    "controls": [
+      "immutable_action_matrix",
+      "unknown_action_fail_closed",
+      "unknown_actor_fail_closed",
+      "all_llm_actors_rejected_for_deterministic_actions",
+      "rejected_callback_not_invoked"
+    ]
+  },
+  "executions": [
+    {
+      "command": "python -m unittest -v runtime.tests.test_llm_boundary_g024",
+      "result": "PASS_7_OF_7",
+      "exit_code": 0
+    },
+    {
+      "command": "python -m unittest -v runtime.tests.test_file_audit_contract",
+      "result": "PASS_8_OF_8",
+      "exit_code": 0
+    },
+    {
+      "command": "python -m unittest -v runtime.tests.test_architecture_chat_bridge",
+      "result": "BLOCKED_MISSING_PYTEST",
+      "error": "ModuleNotFoundError: No module named 'pytest'"
+    }
+  ],
+  "claims_not_made": [
+    "repo_pytest_pass",
+    "github_actions_pass",
+    "authenticated_provider_pass",
+    "global_wordflow_pass"
+  ],
+  "no_lfs": true,
+  "no_force": true
+}

@@ -1,0 +1,35 @@
+{
+  "schema": "yaiwes.evidence/v1",
+  "gap": "G-009",
+  "owner": "SOL_1",
+  "result": "CLOSED_VERIFIED_LOCAL",
+  "contract": "yaiwes.no_value_gap/v1",
+  "research": {
+    "decision": "REUSE_PATCH_EXISTING_MODULE",
+    "existing_module_blob_before": "9408baf05ccad16aa8675f98212a3254515ce409",
+    "motor_required": false,
+    "reason": "existing local deterministic module found; no acquisition/copy/move required"
+  },
+  "implementation": {
+    "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/no_value_gap.py",
+    "module_blob": "4b7a9636656cc6cd756b7dbdd1316d502ee99e92",
+    "tests": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_no_value_gap.py",
+    "tests_blob": "5ca77357451c0d85d7765caf1cf92aecc48de2eb",
+    "template": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/templates/NO_VALUE_GAP.md",
+    "template_blob": "0ecbef2064caba7927a3ff5ba9c24c741a020a59"
+  },
+  "gates": [
+    "independent reviewer identity required",
+    "reviewer independence required",
+    "deterministic rejection signal required",
+    "NO_VALUE_GAP requires reviewer REJECT",
+    "NO_VALUE_GAP markdown requires at least one alternative",
+    "execution_authorized=false",
+    "deployment_authorized=false"
+  ],
+  "verification": {
+    "read_back": "PASS_MODULE_TESTS_TEMPLATE",
+    "local_equivalent_simulation": "PASS_5_OF_5",
+    "repo_pytest_execution": "NOT_CLAIMED"
+  }
+}

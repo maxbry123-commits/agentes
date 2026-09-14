@@ -1,0 +1,15 @@
+{
+  "proyecto": "PECP-MAXBRY-100x",
+  "version": "4.1.0-FINAL",
+  "fase": 3,
+  "nodos": {
+    "T-012": {"estado": "done", "checkpoint": "sha256_t012_789a2b", "intentos": 1, "recoveries": 0, "score_tribunal": 92},
+    "T-004": {"estado": "done", "checkpoint": "sha256_t004_123f4e", "intentos": 1, "recoveries": 0, "score_tribunal": 95}
+  },
+  "historial_eventos": [
+    {"evento": "node.start", "nodo_id": "T-012", "timestamp": "2026-08-18T22:20:00Z"},
+    {"evento": "node.done", "nodo_id": "T-012", "timestamp": "2026-08-18T22:21:00Z"},
+    {"evento": "node.start", "nodo_id": "T-004", "timestamp": "2026-08-18T22:21:01Z"},
+    {"evento": "node.done", "nodo_id": "T-004", "timestamp": "2026-08-18T22:22:00Z"}
+  ]
+}

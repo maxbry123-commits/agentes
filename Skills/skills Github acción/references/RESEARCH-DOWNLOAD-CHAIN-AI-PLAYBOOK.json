@@ -1,0 +1,219 @@
+{
+  "schema": "maxbry.research_download_chain.playbook/v1",
+  "title": "Research Download Chain FINAL — AI step-by-step contract",
+  "purpose": "Instrucciones deterministas para que una AI reproduzca EXACTO el proceso que descargó 20 repos. El código copiado es la única fuente de verdad. No reimplementar, no 'mejorar', no sustituir constantes, no cambiar paths, no inventar repos.",
+  "authority": {
+    "mode": "SOURCE_OF_TRUTH_LOCK",
+    "rule": "Si este JSON y el source divergen, GANA EL SOURCE. El JSON solo orquesta. Nunca reescribir algoritmo.",
+    "forbidden": [
+      "reescribir partition/zip en Python distinto",
+      "usar ZIP_LIMIT único en vez de SPLIT_TARGET+MAX_ZIP",
+      "usar el YAML inline pegado (ancestro, no el runner PASS)",
+      "checkout@v6 / concurrency research-download-chain-writer (HEAD posterior, no el PASS)",
+      "batch_no inicial = 1",
+      "clone sin --depth 1 --no-tags",
+      "push sin fetch+rebase retry 1..3",
+      "añadir/quitar repos",
+      "cambiar DEST o WORK"
+    ]
+  },
+  "forensic_lock": {
+    "repo": "maxbry123-commits/agentes",
+    "ref_pass": "f53145e2f86f6f948c4697a06bf1f3b707a71d5b",
+    "workflow_file": ".github/workflows/research-download-chain-final.yml",
+    "script_file": "scripts/research_download_chain.py",
+    "workflow_blob_sha1": "5950933bcf567a34e197e96c59e845451124eb35",
+    "script_blob_sha1": "bfc7634f500f6ded03b296ddfebc6dac35c56462",
+    "pass_run_id": 33134420445,
+    "pass_job_id": 98731080894,
+    "pass_job_url": "https://github.com/maxbry123-commits/agentes/actions/runs/33134420445/job/98731080894",
+    "pass_window_utc": "2026-08-28T01:57:19Z/2026-08-28T02:00:43Z",
+    "local_truth_copies": [
+      "artifacts/FORENSIC-PASS-research-download-chain-final.yml",
+      "artifacts/FORENSIC-PASS-research_download_chain.py"
+    ],
+    "preflight_gate": {
+      "action": "ANTES de ejecutar cualquier paso, hashear copies locales con git blob SHA1 = sha1('blob '+len+'\\0'+bytes) y exigir igualdad con workflow_blob_sha1 y script_blob_sha1. Si no match → STOP."
+    }
+  },
+  "runtime": {
+    "os": "ubuntu-latest",
+    "shell": "bash",
+    "python": "python3",
+    "tools_required": ["git", "python3", "zip", "zipsplit", "unzip", "stat", "grep", "find"],
+    "git_identity": {
+      "user.name": "github-actions[bot]",
+      "user.email": "41898282+github-actions[bot]@users.noreply.github.com"
+    },
+    "permissions": "contents: write",
+    "concurrency": {
+      "group": "research-download-chain-final",
+      "cancel-in-progress": false
+    },
+    "timeout_minutes": 330
+  },
+  "paths": {
+    "dest": "Download code/archivos",
+    "work": "_work/research-download",
+    "src": "_work/research-download/src",
+    "pack": "_work/research-download/pack",
+    "manifest": "Download code/archivos/RESEARCH_DOWNLOAD_MANIFEST.jsonl",
+    "argv": [
+      "python3",
+      "scripts/research_download_chain.py",
+      "Download code/archivos",
+      "_work/research-download"
+    ]
+  },
+  "constants_LOCK": {
+    "SPLIT_TARGET": 12000000,
+    "MAX_ZIP": 17000000,
+    "BATCH_LIMIT": 94371840,
+    "CHUNK": 8388608,
+    "notes": {
+      "SPLIT_TARGET": "12_000_000 bytes. Techo de zipsplit -n y de ZIP único sin split.",
+      "MAX_ZIP": "17*1000*1000 = 17_000_000 bytes. Safety gate post-zipsplit y audit YAML.",
+      "BATCH_LIMIT": "90*1024*1024. Si batch+size > este valor y batch>0 → commit/push antes de copiar el ZIP nuevo.",
+      "CHUNK": "8*1024*1024. Archivo source > CHUNK se parte en .chunks/*.part-NNNN antes del zip."
+    }
+  },
+  "repos_LOCK": [
+    {"number": "01", "slug": "SearchOS", "url": "https://github.com/antins-labs/SearchOS.git"},
+    {"number": "02", "slug": "SearXNG", "url": "https://github.com/searxng/searxng.git"},
+    {"number": "03", "slug": "OpenDeepResearch", "url": "https://github.com/langchain-ai/open_deep_research.git"},
+    {"number": "04", "slug": "GPT-Researcher", "url": "https://github.com/assafelovic/gpt-researcher.git"},
+    {"number": "05", "slug": "STORM", "url": "https://github.com/stanford-oval/storm.git"},
+    {"number": "06", "slug": "Shandu", "url": "https://github.com/jolovicdev/shandu.git"},
+    {"number": "07", "slug": "Vane", "url": "https://github.com/ItzCrazyKns/Vane.git"},
+    {"number": "08", "slug": "Haystack", "url": "https://github.com/deepset-ai/haystack.git"},
+    {"number": "09", "slug": "Crawl4AI", "url": "https://github.com/unclecode/crawl4ai.git"},
+    {"number": "10", "slug": "Perplexica", "url": "https://github.com/cognitive-builder/Perplexica.git"},
+    {"number": "11", "slug": "Dagu", "url": "https://github.com/dagucloud/dagu.git"},
+    {"number": "12", "slug": "Conductor", "url": "https://github.com/conductor-oss/conductor.git"},
+    {"number": "13", "slug": "Temporal", "url": "https://github.com/temporalio/temporal.git"},
+    {"number": "14", "slug": "Argo-Workflows", "url": "https://github.com/argoproj/argo-workflows.git"},
+    {"number": "15", "slug": "Kestra", "url": "https://github.com/kestra-io/kestra.git"},
+    {"number": "16", "slug": "LangGraph", "url": "https://github.com/langchain-ai/langgraph.git"},
+    {"number": "17", "slug": "Hatchet", "url": "https://github.com/hatchet-dev/hatchet.git"},
+    {"number": "18", "slug": "Windmill", "url": "https://github.com/windmill-labs/windmill.git"},
+    {"number": "19", "slug": "Dagster", "url": "https://github.com/dagster-io/dagster.git"},
+    {"number": "20", "slug": "Prefect", "url": "https://github.com/PrefectHQ/prefect.git"}
+  ],
+  "process": [
+    {
+      "id": "P00",
+      "name": "LOCK + preflight",
+      "must": [
+        "Leer FORENSIC-PASS yml + py. No el YAML inline histórico.",
+        "Verificar git-blob SHA1 de ambos archivos = forensic_lock.",
+        "Confirmar tools: git python3 zip zipsplit unzip.",
+        "NO avanzar si falta zipsplit (paquete zip) o si el py no contiene SPLIT_TARGET y MAX_ZIP a la vez."
+      ],
+      "stop_if": "blob mismatch OR tool missing OR REPOS != 20"
+    },
+    {
+      "id": "P01",
+      "name": "Checkout del source PASS",
+      "exact": {
+        "uses": "actions/checkout@v4",
+        "with": {"fetch-depth": 1}
+      },
+      "ai_equivalent": "Trabajar sobre copias byte-identical FORENSIC-PASS. Si se corre en repo: checkout SHA f53145e2 o depositar esos dos files en las rutas canónicas."
+    },
+    {
+      "id": "P02",
+      "name": "Invocar chain — no reinterpretar",
+      "exact_bash": [
+        "set -euo pipefail",
+        "python3 scripts/research_download_chain.py 'Download code/archivos' '_work/research-download'"
+      ],
+      "rule": "Una sola invocación. DEST=argv[1] WORK=argv[2]. El script hace TODO lo siguiente. La AI NO debe clonar/zip/commit a mano si puede ejecutar el py."
+    },
+    {
+      "id": "P03",
+      "name": "Init dirs + state",
+      "source_fn": "module top-level",
+      "does": [
+        "DEST.mkdir parents",
+        "SRC.mkdir parents",
+        "PACK.mkdir parents",
+        "batch=0",
+        "batch_no=0"
+      ]
+    },
+    {
+      "id": "P04",
+      "name": "Loop 20 repos en orden fijo",
+      "source_fn": "for number,slug,url in REPOS",
+      "order_is_law": true,
+      "per_repo": [
+        {"step": "R1_log", "print": "===== QUEUE {number}/20: {slug} ====="},
+        {"step": "R2_idempotent_skip", "source_fn": "done(slug)", "logic": "Si MANIFEST no existe → False. Si alguna línea JSONL tiene slug==slug AND status==COMPLETE → skip y print '{slug}: COMPLETE; skipping'."},
+        {"step": "R3_clone", "exact_cmd": ["git", "clone", "--depth", "1", "--no-tags", "{url}", "{WORK}/src/{slug}"], "then": "source_commit = git rev-parse HEAD (cwd=repo_root); shutil.rmtree(repo_root/.git)"},
+        {"step": "R4_stage", "source_fn": "stage_repo", "logic": ["stage = PACK/{slug}_stage ; wipe + mkdir", "rglob files only", "destino relativo: stage/{slug}/{rel}", "si size<=CHUNK: copy2", "si size>CHUNK: escribir stage/{slug}/{parent}/{name}.chunks/{name}.part-0000.. con bloques de CHUNK bytes", "si hubo chunks: escribir stage/SPLIT_FILES.json"]},
+        {"step": "R5_package", "source_fn": "package", "logic": ["zip -q -r -9 -y {PACK}/{slug}_full.zip .  (cwd=stage)", "SI full.size <= SPLIT_TARGET: rename a {slug}_0001.zip ; return 1 part", "SI NO: zipsplit -n SPLIT_TARGET -b PACK {full} ; borrar full", "recoger zips nuevos; rename ordenados a {slug}_{i:04d}.zip i=1..N", "SI size>MAX_ZIP: RuntimeError STOP", "unzip -tq cada part ; check=True"]},
+        {"step": "R6_batch_copy", "logic": ["para cada (zip,size):", "  si batch!=0 AND batch+size > BATCH_LIMIT → commit(batch, f'{batch_no:03d}'); batch=0; batch_no+=1", "  copy2 zip → DEST/{zip.name}", "  batch += size", "  print '  {name}: {size} bytes; batch={batch}'"]},
+        {"step": "R7_manifest_append", "file": "Download code/archivos/RESEARCH_DOWNLOAD_MANIFEST.jsonl", "record_sort_keys": true, "record": {"number": "int(number)", "slug": "slug", "source": "url", "source_commit": "sha clone", "parts": "len(parts)", "status": "COMPLETE"}, "then": "rmtree repo_root; rmtree PACK; PACK.mkdir"}
+      ]
+    },
+    {
+      "id": "P05",
+      "name": "Commit/push batch",
+      "source_fn": "commit + push",
+      "commit_message_template": "build(download): research queue batch {label} ({n} bytes)",
+      "label_rules": {"intermediate": "{batch_no:03d}  → 000,001,002...", "last_call_after_loop": "{batch_no:03d}-final"},
+      "commit_logic": ["si n==0 return", "git add DEST", "si git diff --cached --quiet → return (no commit)", "git config user.name/email bot", "git commit -m template"],
+      "push_logic": ["intentos 1..3", "git fetch origin main", "git rebase origin/main", "git push origin HEAD:main", "print PUSH PASS {label} attempt {n}", "backoff sleep(attempt*2) si fail; al 3er fail raise"]
+    },
+    {
+      "id": "P06",
+      "name": "Cierre loop",
+      "exact": "commit(batch, f'{batch_no:03d}-final'); print('===== QUEUE COMPLETE: 20/20 repositories processed =====')"
+    },
+    {
+      "id": "P07",
+      "name": "Final safety audit YAML — PASS solo si TODO true",
+      "exact_bash": [
+        "set -euo pipefail",
+        "test -f 'Download code/archivos/RESEARCH_DOWNLOAD_MANIFEST.jsonl'",
+        "count=$(grep -c '\"status\": \"COMPLETE\"' 'Download code/archivos/RESEARCH_DOWNLOAD_MANIFEST.jsonl' || true)",
+        "test \"$count\" -eq 20",
+        "find 'Download code/archivos' -type f -name '*.zip' -print0 | while IFS= read -r -d '' f; do",
+        "  size=$(stat -c '%s' \"$f\")",
+        "  test \"$size\" -le $((17*1000*1000))",
+        "  unzip -tq \"$f\"",
+        "done",
+        "echo 'AUDIT PASS: 20/20 repositories; all ZIP files valid and within safety limit.'"
+      ],
+      "gates": {"manifest_exists": true, "complete_count": 20, "every_zip_bytes_le": 17000000, "every_zip_unzip_tq": true},
+      "fail_policy": "set -e → cualquier test false aborta. NO declarar PASS verbal."
+    }
+  ],
+  "outputs": {
+    "dir": "Download code/archivos",
+    "zip_name_pattern": "{slug}_{part:04d}.zip",
+    "manifest_jsonl": "Download code/archivos/RESEARCH_DOWNLOAD_MANIFEST.jsonl",
+    "optional_inside_zip": ["{slug}/...", "SPLIT_FILES.json", "{file}.chunks/{file}.part-NNNN"],
+    "expected_slugs": ["SearchOS","SearXNG","OpenDeepResearch","GPT-Researcher","STORM","Shandu","Vane","Haystack","Crawl4AI","Perplexica","Dagu","Conductor","Temporal","Argo-Workflows","Kestra","LangGraph","Hatchet","Windmill","Dagster","Prefect"]
+  },
+  "ai_execution_protocol": {
+    "preferred": "Copiar FORENSIC-PASS files a rutas canónicas del repo y ejecutar P02+P07 sin tocar el py.",
+    "if_cannot_run_actions": [
+      "Usar el mismo py local con los mismos argv.",
+      "No paralelizar el loop.",
+      "No cambiar BATCH_LIMIT aunque el push sea lento.",
+      "No filtrar archivos del clone (el source rglob * files)."
+    ],
+    "verification_after": [
+      "grep -c '\"status\": \"COMPLETE\"' manifest == 20",
+      "20 slugs presentes",
+      "cada zip <= 17000000 y unzip -tq = 0",
+      "commits bot con mensaje template si se pushea"
+    ]
+  },
+  "known_non_sources": {
+    "pasted_inline_yaml": "ancestro 646597ad — ZIP_LIMIT=15MiB binary-search partition, batch_no=1, checkout@v4 inline python. NO es el PASS.",
+    "HEAD_research-download-chain.yml": "wrapper checkout@v6 + group research-download-chain-writer. Posterior al PASS.",
+    "script_at_8d746458": "ZIP_LIMIT único 12e6 sin MAX_ZIP 17e6. Run FINAL#8 falló."
+  }
+}

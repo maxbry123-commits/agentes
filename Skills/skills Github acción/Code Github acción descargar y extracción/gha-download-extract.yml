@@ -1,0 +1,51 @@
+# Ejemplo corregido: copiar este YAML y el extractor con sus locks.
+# Cambiar exclusivamente TASK_ID; PLAN.json contiene fuentes y destinos fijados.
+name: TASK_ID
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/workflows/TASK_ID.yml"]
+permissions:
+  contents: write
+env:
+  GIT_LFS_SKIP_SMUDGE: "1"
+  GIT_LFS_SKIP_PUSH: "1"
+  GIT_LFS_SKIP_DOWNLOAD: "1"
+  GIT_TERMINAL_PROMPT: "0"
+concurrency:
+  group: ${{ github.repository }}-main-componentes-open-soure-nct
+  cancel-in-progress: false
+jobs:
+  download-extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+      - name: Repair declared missing files
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GIT_LFS_SKIP_SMUDGE: "1"
+          GIT_LFS_SKIP_PUSH: "1"
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          git config --global filter.lfs.smudge ''
+          git config --global filter.lfs.clean ''
+          git config --global filter.lfs.process ''
+          git config --global filter.lfs.required false
+          git config --global core.compression 0
+          python3 scripts/TASK_ID/extract_existing_parts.py --queue scripts/TASK_ID/PLAN.json
+      - name: Preserve checkpoint even when a component is blocked
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TASK_ID-checkpoint
+          path: ${{ runner.temp }}/TASK_ID-checkpoint.json
+          if-no-files-found: warn

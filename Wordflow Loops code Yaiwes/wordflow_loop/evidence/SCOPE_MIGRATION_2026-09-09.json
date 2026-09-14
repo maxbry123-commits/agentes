@@ -1,0 +1,19 @@
+{
+  "contract": "tel.workflow/v4",
+  "status": "MIGRATED_TO_AUTHORIZED_ROOT",
+  "authorized_root": "➡️📂 Wordflow LOOP Yaiwes/",
+  "router": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/model_api_router_mvp.py",
+  "moved": [
+    ["Agente Yaiwes principal/execution-engine-pool/agent-bindings/agent_fleet_adapter.py", "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_adapter.py"],
+    ["Agente Yaiwes principal/execution-engine-pool/agent-bindings/agent_fleet_registry.json", "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_registry.json"],
+    ["Agente Yaiwes principal/execution-engine-pool/agent-bindings/agent_fleet_health.json", "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_health.json"],
+    ["Agente Yaiwes principal/execution-engine-pool/agent-bindings/AGENT_FLEET_READY_FOR_TEST.json", "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/AGENT_FLEET_READY_FOR_TEST.json"],
+    ["Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/wordflow-loop-contracts/ficha.agent_fleet.v2.json", "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/contracts/ficha.agent_fleet.v2.json"],
+    ["Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/wordflow-loop-evidence/STEP3_AGENT_FLEET_VERIFY.json", "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/STEP3_AGENT_FLEET_VERIFY.json"],
+    [".github/workflows/wordflow-agent-fleet-step3.yml", "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/workflows/wordflow-agent-fleet-step3.yml"],
+    ["maxbry123-commits/Agentes-motores-Wordflow-YAIWES/➡️📂 readme indice agentes.md", "➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme indice agentes.md"]
+  ],
+  "external_preexisting_registry_restored_to_blob": "ce40e9afd13fdbea22609fe57807566770dfc1b0",
+  "rule": "No new writes for this Wordflow block outside the authorized root. External source repositories are read-only unless explicit cleanup of our prior unauthorized write is required.",
+  "tests_executed_by_migration": false
+}

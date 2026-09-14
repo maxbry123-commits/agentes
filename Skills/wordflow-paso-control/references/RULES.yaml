@@ -1,0 +1,143 @@
+# ANCLA REGLA — este YAML manda sobre texto libre del SKILL.md
+version: "1.3.0"
+omit_steps: false
+llm_declares_pass: false
+runtime: [python, yaml]
+json_only: ficha_registrada
+
+roots:
+  download_code:
+    path: "Download code"
+    role: inbox de zips + bandeja de tarea
+    children:
+      archivos: "Download code/archivos"
+      download_n: "Download code/Download {N}"
+    hace:
+      - recibir zips del Action PASO 1
+      - elegir OP1 parte o OP2 tree completo
+      - extraer COPY a Download N
+    no_hace:
+      - editar origen
+      - mezclar N distintos
+  desplegar:
+    path: Desplegar
+    role: inbox lote NUEVO del plan N (docs/code que sube el Director)
+    children:
+      lote_n: "Desplegar/Desplegar {N}"
+      runtime_existente: "Desplegar/Desplegar 2"
+    hace:
+      - recibir docs del plan
+      - marcar estado por nombre
+      - inyectar estandares en prompt code
+      - cablear deploy tail
+    no_hace:
+      - editar original in-place
+      - hardcodear solo Desplegar 1
+    cable: "Plan X-N -> Desplegar/Desplegar N -> Refactoria/refactoria-plan-x-N"
+  refactoria:
+    path: Refactoria
+    role: sitio de la version VIEJA a modificar
+    children:
+      source: "Refactoria/{plan}/source"
+      new: "Refactoria/{plan}/new"
+      g_gaps: "Refactoria/G1..G7"
+    hace:
+      - copiar original a source/ (no editar)
+      - escribir new/
+      - cruzar x3 luego integrar canonico
+    no_hace:
+      - editar source/
+      - borrar viejo sin Director
+
+extract_zip:
+  same_root_as_zip: "Download code/archivos"
+  dest_rule: "Download code/archivos/{slug}/"
+  forbid_audit_per_part: true
+  parts_pattern: "{slug}_{NNNN}.zip"
+  reconstruct: sort parts then unzip all into one dest
+  strip_internal_slug_prefix: true
+  test: "unzip -tq {zip}"
+  unpack_tool: unzip
+  audit_tool: python zipfile + sha256
+  script: scripts/extract_reconstruct.sh
+  xray_script: scripts/xray_crosscheck.py
+  manifest_download: RESEARCH_DOWNLOAD_MANIFEST.jsonl
+  manifest_extract: EXTRACTION_MANIFEST.sha256
+  compare_against: source_commit
+  not_against: main HEAD
+  filter: ["__MACOSX", ".DS_Store", "Thumbs.db", ".git"]
+  rewrite_origin: false
+  live_root_after_reconstruct:
+    OP1: "Download code/Download {N}"
+    OP2: "{DEST_ROOT}"
+  convert:
+    json_or_prompt: ".py EXTRACT_LITERAL"
+    rules_or_skill: ".yaml"
+  plugin_io_required: true
+  chain:
+    - S1 QUEUE
+    - S2 DOWNLOAD
+    - S3 ZIP INTEGRITY
+    - S4 RECONSTRUCT
+    - S5 SOURCE COMMIT CHECKOUT
+    - S6 PATH INVENTORY
+    - S7 MISSING EXTRA
+    - S8 SIZE
+    - S9 SHA-256
+    - S10 FORENSIC X-RAY
+    - S11 EVIDENCE
+    - S12 GLOBAL GATE
+
+tokens:
+  A: {owner: maxbry123-commits, env: Maxbry_123_tokens}
+  B: {owner: abc1tienda-web, env: EXTERNAL_GH_B_TOKEN}
+  C: {owner: HOLD, env: EXTERNAL_GH_C_TOKEN}
+
+dag:
+  nodes:
+    - {id: p0, name: audit_fuentes}
+    - {id: p1, name: download_action}
+    - {id: p2, name: bandeja_download_n}
+    - {id: op1, name: extract_parcial}
+    - {id: op2, name: tree_completo_o_fork}
+    - {id: cross, name: sha_cruzado}
+    - {id: p3, name: extract_copy_fables}
+    - {id: p4, name: actions_copy_queue}
+    - {id: p5, name: estado_atomic}
+    - {id: p6, name: deploy_tail}
+    - {id: p7, name: prompt_estandares}
+    - {id: p8, name: router_abc}
+    - {id: xray, name: forensic_extract_literal}
+    - {id: council, name: goals12}
+    - {id: out1, name: chat_uoos}
+    - {id: out2, name: dest_remoto}
+    - {id: out3, name: raiz_cuenta_a}
+  edges:
+    - [p0, p1]
+    - [p1, p2]
+    - [p2, op1]
+    - [p2, op2]
+    - [op1, cross]
+    - [op2, cross]
+    - [cross, p3]
+    - [p3, p4]
+    - [p4, p5]
+    - [p5, p6]
+    - [p6, p7]
+    - [p7, p8]
+    - [p8, xray]
+    - [xray, council]
+    - [council, out1]
+    - [council, out2]
+    - [council, out3]
+  skip_forbidden: true
+
+cables:
+  skill_canonical: skills/wordflow-paso-control/
+  metodo: "Metodo de trabajo/wordflow-paso-control/"
+  download: "Download code/wordflow-paso-control/"
+  desplegar: "Desplegar/wordflow-paso-control/"
+  refactoria: "Refactoria/wordflow-paso-control/"
+  wordflow_patch: "Wordflow Code/Readme/Readme1/CABLE-PASO-CONTROL.md"
+  cable_a: Wordflow Code arquitectura
+  cable_b: apply_push deploy

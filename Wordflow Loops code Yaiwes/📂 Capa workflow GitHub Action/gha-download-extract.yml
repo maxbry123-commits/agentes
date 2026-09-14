@@ -1,0 +1,49 @@
+# Descargar + extraer. Copia de assets/FORENSIC-PASS-research-download-chain-final.yml
+# Editar solo DEST y WORK. Lista origen = PY copiado, no este YAML.
+name: Download extract
+on:
+  workflow_dispatch:
+    inputs:
+      dest:
+        description: 'Destino zip/extract bajo main'
+        required: true
+        default: 'DEST'
+      work:
+        description: 'Work temp'
+        required: true
+        default: '_work/research-download'
+permissions:
+  contents: write
+env:
+  GIT_LFS_SKIP_SMUDGE: "1"
+  GIT_LFS_SKIP_PUSH: "1"
+  GIT_LFS_SKIP_DOWNLOAD: "1"
+  GIT_TERMINAL_PROMPT: "0"
+concurrency:
+  group: download-extract
+  cancel-in-progress: false
+jobs:
+  download-extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+      - name: Execute download chain
+        shell: bash
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+          GIT_LFS_SKIP_PUSH: "1"
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          git config --global filter.lfs.smudge ''
+          git config --global filter.lfs.clean ''
+          git config --global filter.lfs.process ''
+          git config --global filter.lfs.required false
+          git config --global core.compression 0
+          python3 scripts/research_download_chain.py "${{ inputs.dest }}" "${{ inputs.work }}"

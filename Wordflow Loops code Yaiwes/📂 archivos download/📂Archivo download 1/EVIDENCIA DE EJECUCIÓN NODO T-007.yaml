@@ -1,0 +1,21 @@
+evidence:
+  nodo_id: "T-007"
+  timestamp: "2026-08-18T22:40:00Z"
+  que_se_hizo: "Implementación completa del Connection Manager, Secret Provider con cero exposición de credenciales y Rate Limit Governor."
+  archivos_tocados:
+    - "src/conn/manager.py"
+    - "src/conn/secrets.py"
+    - "src/conn/rate_limit.py"
+  tests:
+    - "test_connection_manager: PASS"
+    - "test_secret_provider: PASS"
+    - "test_rate_limit_governor: PASS"
+  score_tribunal: 92
+  delta_vs_anterior: "Nodo T-007 desplegado exitosamente con módulos desacoplados y limpios."
+  loc_generadas: 450
+  documentos_generados: 3
+  constitutional_pass: true
+  llm_budget_ok: true
+  cache_hit: false
+  execution_time_ms: 38
+  provider_compliance: true

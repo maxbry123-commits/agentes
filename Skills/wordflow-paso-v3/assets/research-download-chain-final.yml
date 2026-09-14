@@ -1,0 +1,27 @@
+name: Research Download Chain FINAL
+run-name: Research Download Chain FINAL • ${{ github.event_name }} • ${{ github.sha }}
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: research-download-chain-final
+  cancel-in-progress: false
+jobs:
+  download-20-in-queue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Execute deterministic download chain
+        run: |
+          set -euo pipefail
+          python3 scripts/research_download_chain.py 'Download code/archivos' '_work/research-download'
+      - name: Final safety audit
+        run: |
+          set -euo pipefail
+          test -f 'Download code/archivos/RESEARCH_DOWNLOAD_MANIFEST.jsonl'
+          count=$(grep -c '"status": "COMPLETE"' 'Download code/archivos/RESEARCH_DOWNLOAD_MANIFEST.jsonl' || true)
+          test "$count" -eq 20

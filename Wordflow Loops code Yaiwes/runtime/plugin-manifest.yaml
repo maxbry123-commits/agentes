@@ -1,0 +1,27 @@
+version: 1
+name: wordflow-loop-runtime-batch-01
+mode: COPY_THEN_WIRE
+source_ref: 2d1c718f28333ef4b77e9c362f757bb74ff9c5cc
+source_root: "➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 1"
+policy:
+  rewrite_business_logic: false
+  plugin_wiring_only: true
+  kernel_llm: 0
+layers:
+  core:
+    modules: [src.core.kernel, src.core.dag_engine, src.core.event_bus, src.core.state_machine]
+  recovery:
+    modules: [src.recovery.engine, src.recovery.classifier, src.recovery.checkpoint, src.recovery.reconciliation, src.recovery.circuit_breaker_sla]
+  governance:
+    modules: [src.tribunal.tribunal, src.tribunal.constitutional, src.tribunal.cross_validator, src.tribunal.budget_gate, src.tribunal.hmac_manager, src.governance.merkle_governance_core]
+  intake:
+    modules: [src.uek.boot_engine, src.uek.sandbox_manager, src.uek.uek_cluster, src.uek.sbom_adapter_factory, src.preflight.engine]
+  acquisition:
+    modules: [src.research.engine, src.install.installation_engine, src.storage.artifact_router]
+  execution:
+    modules: [src.agent.agent_router, src.parallel.mavis_parallel, src.conn.manager, src.conn.rate_limit, src.conn.secrets, src.observability.engine, src.mission.sharder]
+plugin_contract:
+  entrypoint: src.core.kernel:Kernel
+  fail_closed: true
+  evidence_required: true
+  source_blobs_immutable: true

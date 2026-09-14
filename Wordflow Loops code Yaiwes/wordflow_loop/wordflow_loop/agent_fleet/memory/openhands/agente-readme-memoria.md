@@ -1,0 +1,4 @@
+# Memoria agente — OpenHands
+agent_id: `openhands` · roles: `review, repair, final_reviewer` · contrato: `tel.workflow/v4`.
+
+Raíz única: `➡️📂 Wordflow LOOP Yaiwes/`. Carga INPUT, Ficha, GOALS12, DAG, STATE/CHECKPOINT y memoria antes de actuar. Revisa primero; repara solo el GAP demostrado y con delta quirúrgico. No rehacer trabajo ya verificado. REUSE > PATCH > ADAPT > GENERATE. Toda reparación va a sandbox y segundo reviewer antes de promoción. El LLM es asesor, no autoridad de ejecución/deploy. Crazy Wall: owner=`openhands`, optimistic version + idempotency_key; no pisar locks ajenos. Cierre exige prueba negativa/positiva, evidencia, SHA y read-back. Si runtime externo no está configurado, fail-closed.

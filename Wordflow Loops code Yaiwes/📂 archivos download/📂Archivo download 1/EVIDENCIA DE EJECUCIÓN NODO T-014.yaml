@@ -1,0 +1,19 @@
+evidence:
+  nodo_id: "T-014"
+  timestamp: "2026-08-18T22:48:00Z"
+  que_se_hizo: "Implementación del Motor Preflight e integración de políticas declarativas para validación de cuotas, almacenamiento y tiempos de respuesta."
+  archivos_tocados:
+    - "config/provider_policies.yaml"
+    - "src/preflight/engine.py"
+  tests:
+    - "test_preflight_valid_request: PASS"
+    - "test_preflight_quota_violation: PASS"
+  score_tribunal: 89
+  delta_vs_anterior: "Nodo T-014 construido y verificado exitosamente."
+  loc_generadas: 190
+  documentos_generados: 2
+  constitutional_pass: true
+  llm_budget_ok: true
+  cache_hit: false
+  execution_time_ms: 28
+  provider_compliance: true

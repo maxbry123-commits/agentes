@@ -1,0 +1,19 @@
+evidence:
+  nodo_id: "T-015"
+  timestamp: "2026-08-18T22:50:00Z"
+  que_se_hizo: "Implementación del Motor de Observabilidad con soporte para trazas JSONL, registro de métricas y auditoría por mission_id."
+  archivos_tocados:
+    - "src/observability/engine.py"
+  tests:
+    - "test_log_event_mandatory_mission_id: PASS"
+    - "test_metrics_aggregation: PASS"
+    - "test_export_jsonl: PASS"
+  score_tribunal: 89
+  delta_vs_anterior: "Nodo T-015 finalizado. Fase 1 completada con éxito."
+  loc_generadas: 160
+  documentos_generados: 1
+  constitutional_pass: true
+  llm_budget_ok: true
+  cache_hit: false
+  execution_time_ms: 25
+  provider_compliance: true

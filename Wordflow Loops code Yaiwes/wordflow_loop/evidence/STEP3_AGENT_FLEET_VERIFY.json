@@ -1,0 +1,44 @@
+{
+  "contract": "tel.workflow/v4",
+  "step": 3,
+  "status": "PASS_REAL",
+  "workflow": ".github/workflows/wordflow-agent-fleet-step3.yml",
+  "run_id": 34406268016,
+  "job_id": 102649876845,
+  "head_sha": "05ce5fc43a599da1ae9e80f485450d52aede07a1",
+  "conclusion": "success",
+  "fleet_count": 18,
+  "unique_agent_ids": "PASS_18_OF_18",
+  "council12": "PASS_12_OF_12",
+  "routing": {
+    "writer": "opencode",
+    "repair": "openhands",
+    "flow_review": "claude_code",
+    "research": "goose",
+    "fallback_coder": "opendev",
+    "status": "PASS_DETERMINISTIC"
+  },
+  "universal_plug_registration": "PASS_SINGLE_AGENT_FLEET_SLOT",
+  "fail_closed": {
+    "status": "PASS",
+    "runtimes_unconfigured": 18,
+    "opencode_without_command_env": "RUNTIME_UNAVAILABLE_EXPECTED"
+  },
+  "prior_programming_trigger": {
+    "run_id": 34179064259,
+    "status": "PASS_REAL",
+    "cases": "3_OF_3",
+    "idempotency": "PASS",
+    "invalid_profile_fail_closed": "PASS"
+  },
+  "stdout": [
+    "WORDFLOW_AGENT_FLEET_STEP3=PASS",
+    "fleet_count=18",
+    "council12=12",
+    "runtimes_unconfigured_fail_closed=18",
+    "prior_programming_trigger=PASS_REAL_3_3"
+  ],
+  "source_gaps_not_hidden": ["hermes", "muse_glimmer", "goose"],
+  "evidence_classification": "PASS_REAL_FOR_WIRING_AND_FAIL_CLOSED; EXTERNAL_AGENT_RUNTIME_EXECUTION_NOT_CLAIMED",
+  "run_url": "https://github.com/maxbry123-commits/agentes/actions/runs/34406268016"
+}
