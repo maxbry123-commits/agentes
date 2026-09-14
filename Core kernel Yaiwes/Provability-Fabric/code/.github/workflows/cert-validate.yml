@@ -1,0 +1,109 @@
+name: CERT-V1 Validation
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "evidence/**"
+      - "tests/replay/**"
+      - "specs/evidence/v0.2/schemas/trace-replay-cert.schema.json"
+      - "external/**"
+      - "tools/cert-validate/**"
+      - "Makefile"
+      - ".github/workflows/cert-validate.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "evidence/**"
+      - "tests/replay/**"
+      - "specs/evidence/v0.2/schemas/trace-replay-cert.schema.json"
+      - "external/**"
+      - "tools/cert-validate/**"
+      - "Makefile"
+      - ".github/workflows/cert-validate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: cert-validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-certs:
+    name: Validate CERT-V1 JSON Files
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Assert pull-request head checkout
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+
+      - name: Init external standards
+        env:
+          STANDARDS_GITHUB_TOKEN: ${{ secrets.STANDARDS_GITHUB_TOKEN }}
+        run: make submodules
+
+      - name: Require certificate schemas
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime_schema="external/CERT-V1/schema/cert-v1.schema.json"
+          replay_schema="specs/evidence/v0.2/schemas/trace-replay-cert.schema.json"
+          if [ ! -f "$runtime_schema" ]; then
+            echo "CERT-V1 schema missing at $runtime_schema"
+            echo "Clone per external/README.md (make submodules)."
+            exit 1
+          fi
+          if [ ! -f "$replay_schema" ]; then
+            echo "Trace replay schema missing at $replay_schema"
+            exit 1
+          fi
+
+      - name: Set up Python tests
+        uses: ./.github/actions/setup-python-tests
+        with:
+          python-version: "3.11"
+          requirements-file: tools/cert-validate/requirements.txt
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Generate replay CERTs
+        run: |
+          chmod +x tests/replay/run_replays.sh
+          export REPLAY_RUNS=2
+          export TRACE_REPLAY_SCHEMA_REQUIRED=1
+          bash tests/replay/run_replays.sh
+
+      - name: Validate CERT files (fail-closed)
+        run: make validate-certs
+
+      - name: Upload validation artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cert-validation-failures
+          path: |
+            evidence/**/*.cert.json
+            tests/replay/out/**/*.cert.json
+          retention-days: 7
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request' && failure()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: 'Certificate validation failed. Check workflow logs and ensure runtime certificates conform to external/CERT-V1/schema/cert-v1.schema.json and trace replay certificates conform to specs/evidence/v0.2/schemas/trace-replay-cert.schema.json.',
+            });

@@ -1,0 +1,119 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2025 Provability-Fabric Contributors
+
+name: Bundle Check
+
+on:
+  pull_request:
+    paths:
+      - 'bundles/**'
+
+jobs:
+  bundle-verification:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install cosign
+        run: |
+          wget -O cosign https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64
+          chmod +x cosign
+          sudo mv cosign /usr/local/bin/
+
+      - name: Verify Sigstore bundles
+        run: |
+          for bundle in bundles/*/spec.sig.bundle; do
+            if [ -f "$bundle" ]; then
+              echo "Verifying bundle: $bundle"
+              cosign verify-blob --bundle "$bundle" "${bundle%.bundle}" || exit 1
+            fi
+          done
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.23'
+
+      - name: Run trace checking
+        run: |
+          cd core/cli/pf
+          go run . check-trace
+
+      - name: Install PyYAML for bundle spec parsing
+        run: pip install pyyaml
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const { execSync } = require('child_process');
+            
+            let missingLinks = [];
+            
+            // Check for missing REQ to AC mappings
+            const specFiles = fs.readdirSync('bundles').filter(dir => 
+              fs.statSync(path.join('bundles', dir)).isDirectory()
+            );
+            
+            for (const specDir of specFiles) {
+              const specPath = path.join('bundles', specDir, 'spec.yaml');
+              if (fs.existsSync(specPath)) {
+                const specJson = execSync(
+                  `python3 -c "import yaml, json, sys; print(json.dumps(yaml.safe_load(open(sys.argv[1]))))" "${specPath}"`,
+                  { encoding: 'utf8' }
+                );
+                const spec = JSON.parse(specJson);
+                
+                // Check REQ to AC mappings
+                if (spec.trace) {
+                  for (const [reqId, acIds] of Object.entries(spec.trace)) {
+                    if (!Array.isArray(acIds) || acIds.length === 0) {
+                      missingLinks.push(`Missing AC mappings for ${reqId}`);
+                    }
+                  }
+                }
+                
+                // Check AC to test vector mappings
+                if (spec.acceptanceCriteria) {
+                  for (const [acId, ac] of Object.entries(spec.acceptanceCriteria)) {
+                    const testVectorPath = path.join('bundles', specDir, 'tests', `${acId}.json`);
+                    if (!fs.existsSync(testVectorPath)) {
+                      missingLinks.push(`Missing test vector for ${acId}`);
+                    }
+                  }
+                }
+              }
+            }
+            
+            const postComment = async (body) => {
+              try {
+                await github.rest.issues.createComment({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body
+                });
+              } catch (error) {
+                core.warning(`Could not post PR comment: ${error.message}`);
+              }
+            };
+
+            if (missingLinks.length > 0) {
+              const comment = `## Bundle Verification Failed
+              
+              The following traceability issues were found:
+              
+              ${missingLinks.map(link => `- ${link}`).join('\n')}
+              
+              Please ensure all requirements map to acceptance criteria and all acceptance criteria have corresponding test vectors.`;
+              
+              await postComment(comment);
+              core.setFailed('Bundle verification failed');
+            } else {
+              await postComment('✅ Bundle verification passed - all traceability links are present.');
+            } 

@@ -1,0 +1,37 @@
+# Optional / special-build crates:
+# - runtime/egress-firewall: in workspace; CI uses --no-default-features (regex fallback).
+#   Hyperscan (libhs) is feature-gated: cargo build -p egress-firewall --features hyperscan
+# - core/sdk/rust: needs protoc. Build: cargo build -p provability-fabric-core-sdk-rust
+# - runtime/sidecar-watcher/fuzz: fuzz targets; build with cargo build -p sidecar-watcher-fuzz (e.g. on Linux)
+#
+# Known dependency notes:
+# - redis: attestor/kms-proxy use redis-rs with tokio-comp (see their Cargo.toml).
+[workspace]
+members = [
+    "bench",
+    "core/crypto/dsse-rs",
+    "core/sdk/rust",
+    "runtime/attestor",
+    "runtime/kms-proxy",
+    "runtime/tool-broker",
+    "runtime/sidecar-watcher",
+    "runtime/retrieval-gateway",
+    "runtime/labeler",
+    "runtime/wasm-sandbox",
+    "runtime/telemetry-service",
+    "runtime/jwks-manager",
+    "runtime/mpc-fintech",
+    "runtime/egress-firewall",
+    "adapters/http-get",
+    "adapters/file-read",
+]
+resolver = "2"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+
+

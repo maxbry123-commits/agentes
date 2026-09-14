@@ -1,0 +1,94 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2025 Provability-Fabric Contributors
+
+name: Documentation Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "bundles/**/spec.yaml"
+      - "docs/**"
+      - "mkdocs.yml"
+      - ".markdown-link-check.json"
+      - "cmd/specdoc/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "bundles/**/spec.yaml"
+      - "docs/**"
+      - "mkdocs.yml"
+      - ".markdown-link-check.json"
+      - "cmd/specdoc/**"
+      - ".github/workflows/docs-build.yaml"
+  workflow_dispatch:
+
+jobs:
+  documentation-build:
+    name: Documentation Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Init external standards
+        env:
+          STANDARDS_GITHUB_TOKEN: ${{ secrets.STANDARDS_GITHUB_TOKEN }}
+        run: make submodules
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: |
+          npm install -g markdownlint-cli
+          python -m pip install --upgrade pip
+          pip install -r docs/requirements.txt
+
+      - name: Generate documentation
+        run: |
+          # Build specdoc tool
+          cd cmd/specdoc
+          go build -o specdoc .
+          cd ../..
+
+          # Create docs/generated directory
+          mkdir -p docs/generated
+
+          # Generate docs for all spec.yaml files
+          find bundles -name "spec.yaml" -exec sh -c '
+            dir=$$(dirname "$$1")
+            basename=$$(basename "$$dir")
+            output="docs/generated/$$basename.md"
+            cmd/specdoc/specdoc generate "$$1" --out "$$output"
+          ' sh {} \;
+
+      - name: Lint generated documentation
+        run: |
+          if compgen -G "docs/generated/*.md" > /dev/null; then
+            markdownlint docs/generated/*.md
+          else
+            echo "No docs/generated/*.md to lint"
+          fi
+
+      - name: Build MkDocs site
+        run: mkdocs build --strict
+
+      - name: Check for broken links
+        run: |
+          npm install -g markdown-link-check@3.11.2
+          find docs -name "*.md" -exec markdown-link-check -c .markdown-link-check.json -q {} \;

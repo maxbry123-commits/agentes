@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# Provability Fabric segment of PCS v0.1 clean-checkout chain.
+# Usage: pcs-pf-clean-chain.sh [workdir]
+#   workdir must contain science_claim_bundle.certified.json
+# Writes verification_result.json and signed_science_claim_bundle.json in workdir.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WORKDIR="${1:-.}"
+WORKDIR="$(cd "${WORKDIR}" && pwd)"
+CERTIFIED="${WORKDIR}/science_claim_bundle.certified.json"
+VR="${WORKDIR}/verification_result.json"
+SIGNED="${WORKDIR}/signed_science_claim_bundle.json"
+
+# shellcheck source=_resolve_pf.sh
+source "$(dirname "${BASH_SOURCE[0]}")/_resolve_pf.sh"
+if ! resolve_pf "${ROOT}"; then
+  echo "go or core/cli/pf/pf.exe not found; set PF=... or use scripts/pcs-pf-clean-chain.ps1" >&2
+  exit 2
+fi
+PCS="${PCS:-}"
+if [[ -z "${PCS}" ]]; then
+  if command -v pcs >/dev/null 2>&1; then
+    PCS="$(command -v pcs)"
+  elif [[ -x "${ROOT}/scripts/pcs" ]]; then
+    PCS="${ROOT}/scripts/pcs"
+  else
+    echo "pcs CLI not found on PATH; pip install -e pcs-core/python or set PCS=..." >&2
+    exit 2
+  fi
+fi
+
+RELEASE_FIXTURES="${ROOT}/tests/pcs/fixtures/labtrust-release"
+SEED_BUNDLE="${RELEASE_FIXTURES}/science_claim_bundle.certified.json"
+if [[ "${WORKDIR}" == *"release-run"* ]] || [[ ! -f "${CERTIFIED}" ]]; then
+  if [[ -f "${SEED_BUNDLE}" ]]; then
+    echo "seeding ${CERTIFIED} from labtrust-release fixtures"
+    cp "${SEED_BUNDLE}" "${CERTIFIED}"
+  elif [[ ! -f "${CERTIFIED}" ]]; then
+    echo "missing certified bundle: ${CERTIFIED}" >&2
+    exit 1
+  fi
+fi
+
+export PF_SOURCE_COMMIT="${PF_SOURCE_COMMIT:-$(git -C "${ROOT}" rev-parse HEAD 2>/dev/null)}"
+export PF_RELEASE_MODE="${PF_RELEASE_MODE:-1}"
+export PF_DETERMINISTIC="${PF_DETERMINISTIC:-1}"
+export PCS_DETERMINISTIC="${PCS_DETERMINISTIC:-1}"
+
+export PF_ADMISSION_PROFILE="${PF_ADMISSION_PROFILE:-labtrust_qc_release}"
+HANDOFF="${PF_HANDOFF:-${RELEASE_FIXTURES}/handoff_to_pf.json}"
+REGISTRY="${PF_REGISTRY:-${RELEASE_FIXTURES}/artifact_registry.json}"
+MANIFEST="${PF_MANIFEST:-${RELEASE_FIXTURES}/release_manifest.json}"
+
+PROOF_OBLIGATIONS="${RELEASE_FIXTURES}/proof_obligation.v0.json"
+LEAN_CHECK="${RELEASE_FIXTURES}/lean_check_result.v0.json"
+FORMAL_ARGS=()
+if [[ -f "${PROOF_OBLIGATIONS}" ]]; then
+  FORMAL_ARGS+=(--proof-obligations "${PROOF_OBLIGATIONS}")
+fi
+if [[ -f "${LEAN_CHECK}" ]]; then
+  FORMAL_ARGS+=(--lean-check-result "${LEAN_CHECK}")
+fi
+
+echo "== Provability Fabric: verify =="
+run_pf verify science-claim "${CERTIFIED}" \
+  --release-mode \
+  --handoff "${HANDOFF}" \
+  --registry "${REGISTRY}" \
+  "${FORMAL_ARGS[@]}" \
+  --out "${VR}"
+echo "== pcs-core: validate verification_result =="
+"${PCS}" validate "${VR}"
+echo "== Provability Fabric: sign =="
+run_pf sign science-claim "${CERTIFIED}" \
+  --release-mode \
+  --handoff "${HANDOFF}" \
+  --registry "${REGISTRY}" \
+  "${FORMAL_ARGS[@]}" \
+  --out "${SIGNED}"
+echo "== pcs-core: validate signed bundle =="
+"${PCS}" validate "${SIGNED}"
+echo "== Provability Fabric: inspect =="
+run_pf inspect science-claim "${SIGNED}" --strict
+echo "OK: PF clean-chain segment completed in ${WORKDIR}"

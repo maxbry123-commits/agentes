@@ -1,0 +1,57 @@
+name: Nightly Replay
+
+on:
+  schedule:
+    - cron: "0 2 * * *" # Nightly at 2 AM UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nightly-replay:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Init external standards
+        env:
+          STANDARDS_GITHUB_TOKEN: ${{ secrets.STANDARDS_GITHUB_TOKEN }}
+        run: make submodules
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install TRACE-REPLAY-KIT deps
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f external/TRACE-REPLAY-KIT/requirements.txt ]; then
+            pip install -r external/TRACE-REPLAY-KIT/requirements.txt
+          fi
+
+      - name: Run replay docker contract test (F10)
+        run: |
+          chmod +x tests/replay/test_docker_invocation.sh
+          bash tests/replay/test_docker_invocation.sh
+
+      - name: Run replay suites
+        run: bash tests/replay/run_replays.sh
+
+      - name: Upload replay artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-replay-artifacts
+          path: tests/replay/out
+          retention-days: 7
+
+      - name: Post summary
+        if: always()
+        run: |
+          echo "# Nightly Replay" >> "$GITHUB_STEP_SUMMARY"
+          echo "Artifacts: tests/replay/out" >> "$GITHUB_STEP_SUMMARY"

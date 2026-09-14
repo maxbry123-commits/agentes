@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pcs.sentinelops.ci/schemas/AdmissionBenchmarkCase.v0.schema.json",
+  "title": "AdmissionBenchmarkCase.v0",
+  "description": "Provability-Fabric admission benchmark case manifest (benchmarks/admission/<workflow>/valid|invalid/*.json).",
+  "type": "object",
+  "required": ["case_id", "expect", "verify_mode"],
+  "additionalProperties": false,
+  "properties": {
+    "case_id": { "type": "string", "minLength": 1 },
+    "workflow": { "type": "string", "minLength": 1 },
+    "kind": { "type": "string", "enum": ["valid", "invalid"] },
+    "profile_id": { "type": "string", "minLength": 1 },
+    "expect": { "type": "string", "enum": ["admit", "reject"] },
+    "expect_failure_codes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "verify_mode": {
+      "type": "string",
+      "enum": ["science_claim", "release_chain", "admission_gate"]
+    },
+    "inputs": { "$ref": "#/$defs/admission_benchmark_inputs" },
+    "localization": { "$ref": "#/$defs/admission_benchmark_localization" },
+    "explain_requirements": { "$ref": "#/$defs/admission_benchmark_explain_req" }
+  },
+  "$defs": {
+    "admission_benchmark_inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bundle": { "type": "string" },
+        "handoff": { "type": "string" },
+        "registry": { "type": "string" },
+        "manifest": { "type": "string" },
+        "artifact_dir": { "type": "string" },
+        "proof_obligations": { "type": "string" },
+        "lean_check_result": { "type": "string" },
+        "omit_handoff": { "type": "boolean" },
+        "omit_registry": { "type": "boolean" },
+        "omit_formal": { "type": "boolean" },
+        "omit_proof_obligations": { "type": "boolean" },
+        "omit_lean_check_result": { "type": "boolean" }
+      }
+    },
+    "admission_benchmark_localization": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "check_id": { "type": "string" },
+        "artifact_path": { "type": "string" }
+      }
+    },
+    "admission_benchmark_explain_req": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "failure_code": { "type": "boolean" },
+        "artifact_path": { "type": "boolean" },
+        "expected": { "type": "boolean" },
+        "actual": { "type": "boolean" },
+        "responsible_component": { "type": "boolean" },
+        "repair_hint": { "type": "boolean" },
+        "registry_check_ref": { "type": "boolean" },
+        "handoff_ref": { "type": "boolean" },
+        "formal_theorem": { "type": "boolean" }
+      }
+    }
+  }
+}

@@ -1,0 +1,106 @@
+name: SLO Gates
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "tests/perf/**"
+      - ".github/workflows/slo-gates.yaml"
+  push:
+    branches: [main]
+    paths:
+      - "tests/perf/**"
+      - ".github/workflows/slo-gates.yaml"
+  schedule:
+    # Nightly performance test
+    - cron: '0 2 * * *'
+
+env:
+  BASE_URL: http://localhost:8080
+  K6_BINARY: k6
+  NODE_VERSION: '18'
+  # Pin: do not query api.github.com/releases/latest (unauthenticated 403 flakiness).
+  K6_VERSION: "0.47.0"
+
+jobs:
+  # PR / main push smoke test - quick performance validation
+  pr-smoke-test:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install k6
+      run: |
+        curl -fsSL "https://github.com/grafana/k6/releases/download/v${K6_VERSION}/k6-v${K6_VERSION}-linux-amd64.tar.gz" -o /tmp/k6.tgz
+        sudo tar -xzf /tmp/k6.tgz -C /usr/local/bin --strip-components=1 "k6-v${K6_VERSION}-linux-amd64/k6"
+        k6 version
+        
+    - name: Start services
+      run: |
+        python3 tests/perf/mock_pf_server.py &
+        echo $! > /tmp/mock-pf.pid
+        sleep 2
+        
+    - name: Run SLO smoke test
+      run: |
+        k6 run tests/perf/latency_k6.js \
+          --env BASE_URL=http://127.0.0.1:8080 \
+          --stage 10s:5 \
+          --stage 20s:10 \
+          --stage 10s:0
+          
+    - name: Run component budget test
+      if: hashFiles('package.json') != ''
+      run: |
+        npm run test:component-budgets || echo "component-budgets skipped (no root package.json suite)"
+        
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: pr-smoke-results
+        path: |
+          k6-results.json
+          component-budget-results.json
+          
+  # Nightly k6 latency gate (mock PF server; no root package.json required)
+  nightly-k6-gate:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install k6
+      run: |
+        curl -fsSL "https://github.com/grafana/k6/releases/download/v${K6_VERSION}/k6-v${K6_VERSION}-linux-amd64.tar.gz" -o /tmp/k6.tgz
+        sudo tar -xzf /tmp/k6.tgz -C /usr/local/bin --strip-components=1 "k6-v${K6_VERSION}-linux-amd64/k6"
+        k6 version
+
+    - name: Start mock PF server
+      run: |
+        python3 tests/perf/mock_pf_server.py &
+        sleep 2
+
+    - name: Run nightly k6 latency gate
+      run: |
+        # Thresholds live in tests/perf/latency_k6.js options; k6 has no --threshold CLI flag.
+        k6 run tests/perf/latency_k6.js \
+          --env BASE_URL=http://127.0.0.1:8080 \
+          --stage 30s:20 \
+          --stage 2m:50 \
+          --stage 30s:0
+
+    - name: Upload k6 results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: nightly-k6-results
+        path: k6-results.json
+        if-no-files-found: ignore

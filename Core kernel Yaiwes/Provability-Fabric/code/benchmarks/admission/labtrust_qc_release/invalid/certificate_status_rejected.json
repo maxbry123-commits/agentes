@@ -1,0 +1,19 @@
+{
+  "case_id": "certificate_status_rejected",
+  "expect": "reject",
+  "verify_mode": "science_claim",
+  "expect_failure_codes": [
+    "PCS_CERTIFICATE_REJECTED"
+  ],
+  "inputs": {
+    "bundle": "invalid_rejected_certificate.json",
+    "omit_handoff": true
+  },
+  "explain_requirements": {
+    "failure_code": true,
+    "expected": true,
+    "actual": true,
+    "responsible_component": true,
+    "repair_hint": true
+  }
+}

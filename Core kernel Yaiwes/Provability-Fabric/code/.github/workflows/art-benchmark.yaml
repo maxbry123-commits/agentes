@@ -1,0 +1,63 @@
+name: ART Benchmark
+
+# CI-sized ART smoke: deterministic Python suite (no Lean offline, no missing
+# aggregate/dashboard tools). Full sharded bench remains available via
+# workflow_dispatch with --full.
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "scripts/art_runner.py"
+      - ".github/workflows/art-benchmark.yaml"
+      - "bundles/art/**"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "scripts/art_runner.py"
+      - ".github/workflows/art-benchmark.yaml"
+      - "bundles/art/**"
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      full:
+        description: "Run full generated suite (heavy)"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: art-benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  art-smoke:
+    name: ART Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run ART smoke
+        run: |
+          mkdir -p tests/art_results
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.full }}" = "true" ]; then
+            python scripts/art_runner.py --full --shard 1 --total-shards 1 \
+              --output tests/art_results/run_full.json
+          else
+            python scripts/art_runner.py --smoke --seed 42 \
+              --output tests/art_results/run_smoke.json
+          fi
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: art-smoke-results
+          path: tests/art_results/*.json
+          retention-days: 14

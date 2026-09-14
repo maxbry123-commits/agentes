@@ -1,0 +1,57 @@
+name: Egress Determinism (EGRESS-DET-P1)
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "scripts/check-egress.sh"
+      - ".github/workflows/egress.yml"
+      - "external/**"
+      - "tests/replay/**"
+      - "specs/evidence/v0.2/schemas/trace-replay-cert.schema.json"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "scripts/check-egress.sh"
+      - ".github/workflows/egress.yml"
+      - "external/**"
+      - "tests/replay/**"
+      - "specs/evidence/v0.2/schemas/trace-replay-cert.schema.json"
+  workflow_dispatch:
+
+jobs:
+  egress:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Assert pull-request head checkout
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+
+      - name: Init external standards
+        env:
+          STANDARDS_GITHUB_TOKEN: ${{ secrets.STANDARDS_GITHUB_TOKEN }}
+        run: make submodules
+
+      - name: Generate replay outputs for egress analysis
+        run: |
+          chmod +x tests/replay/run_replays.sh
+          # Pairwise low-view needs >=2 CERT runs per bundle
+          export REPLAY_RUNS=2
+          export TRACE_REPLAY_SCHEMA_REQUIRED=1
+          export TRACE_REPLAY_SCHEMA_PATH=/work/specs/evidence/v0.2/schemas/trace-replay-cert.schema.json
+          bash tests/replay/run_replays.sh
+
+      - name: Run EGRESS-DET-P1 harness
+        run: |
+          bash scripts/check-egress.sh
+
+      - name: Upload egress report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: egress-report
+          path: evidence/egress/

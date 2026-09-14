@@ -1,0 +1,31 @@
+{
+  "schema_version": "v0",
+  "handoff_id": "handoff-computation-to-pf",
+  "handoff_kind": "bundle_to_verifier",
+  "from_component": "CertifyEdge",
+  "to_component": "Provability Fabric",
+  "created_at": "2026-05-18T12:00:00Z",
+  "source_repo": "https://github.com/fraware/CertifyEdge",
+  "source_commit": "b222222222222222222222222222222222222222",
+  "input_artifacts": {
+    "science_claim_bundle.certified.json": {
+      "artifact_type": "ScienceClaimBundle.v0",
+      "sha256": "sha256:5a6a675d23354d219e85daec27a89443d8648d158249e86c48b99528b4412643"
+    }
+  },
+  "expected_outputs": {
+    "verification_result.json": {
+      "artifact_type": "VerificationResult.v0"
+    },
+    "signed_science_claim_bundle.json": {
+      "artifact_type": "SignedScienceClaimBundle.v0"
+    }
+  },
+  "invariants": {
+    "witness_id": "witness-sci-comp-repro-001",
+    "run_receipt_hash": "sha256:9c74749d2ad46c6a60394db676e5527929f9b7bef9a012439d6d14b26d960828",
+    "certified_bundle_hash": "sha256:5a6a675d23354d219e85daec27a89443d8648d158249e86c48b99528b4412643"
+  },
+  "status": "Validated",
+  "signature_or_digest": "sha256:91f0cdb6ab949b0ab706bcbf64281bac53f48083476944d1ef3a09a29d4e5a0e"
+}

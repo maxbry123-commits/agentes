@@ -1,0 +1,23 @@
+name: "Provability-Fabric Security Analysis"
+
+paths:
+  - "core/cli/pf"
+  - "runtime/admission-controller"
+  - "runtime/sidecar-watcher"
+  - "runtime/attestor"
+  - "runtime/ledger"
+  - "console"
+  - "tools/specgraph"
+
+paths-ignore:
+  - "vendor"
+  - "node_modules"
+  - "target"
+  - ".lake"
+  - "tests"
+  - "docs"
+
+queries:
+  # Prefer security-extended over security-and-quality to keep JS analysis
+  # within GitHub-hosted runner disk limits (quality suite previously OOM'd disk).
+  - uses: security-extended
