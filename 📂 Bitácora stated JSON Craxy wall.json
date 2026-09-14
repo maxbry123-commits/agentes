@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-14T14:15:52Z",
+  "updated_at": "2026-09-14T14:18:53Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -93,11 +93,11 @@
       "component": "APScheduler",
       "source": "Core kernel Yaiwes/APScheduler/",
       "current_step": 2,
-      "status": "GAP_STEP2_PROVENANCE",
+      "status": "IN_PROGRESS_STEP2_PROVENANCE",
       "abc": "B",
       "target": "Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler/",
-      "owner": null,
-      "lock": "FREE",
+      "owner": "SOL",
+      "lock": "CLAIMED",
       "checkpoint": {
         "before": "2026-09-10T21:35:30Z fresh main physical read-back: target populated; WIRING.json blob 22e3ab9892f56924a70305a7f9d2e9d94a105076 and adapter.py blob 09f0d09f4f67478cc68c452c4464ec54955779df present; execute STEP3 only",
         "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=34537194559"
@@ -144,6 +144,12 @@
           "event": "REOPEN_PRIOR_CLOSE_FOR_REQUIRED_PROVENANCE",
           "previous_status": "PASS_STEP3",
           "source_tree": "8c2f5ea5e068507258a460757c43ea76e305954e"
+        },
+        {
+          "at": "2026-09-14T14:18:53Z",
+          "actor": "SOL",
+          "label": "SOL GPT",
+          "event": "CLAIM_STEP2_PROVENANCE_REPAIR"
         }
       ],
       "next_action": "STEP2_PROVENANCE_REPAIR_NO_MOVE_REPEAT"
@@ -237,11 +243,11 @@
       "component": "Apache-Airflow",
       "source": "Core kernel Yaiwes/Apache-Airflow/",
       "current_step": 2,
-      "status": "GAP_STEP2_PROVENANCE",
+      "status": "IN_PROGRESS_STEP2_PROVENANCE",
       "abc": "B",
       "target": "Agente Yaiwes principal/execution-orchestration/dag-executor/apache-airflow/",
-      "owner": null,
-      "lock": "FREE",
+      "owner": "SOL",
+      "lock": "CLAIMED",
       "checkpoint": {
         "before": "2026-09-10T19:42:00Z prior STEP3 run 34472888878 failed: Airflow source probe missing dependency pathspec; adapter sha e74467c51ea5b211b28d0f0887d6031649201c49",
         "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=34537194559"
@@ -280,6 +286,12 @@
           "event": "REOPEN_PRIOR_CLOSE_FOR_REQUIRED_PROVENANCE",
           "previous_status": "PASS_STEP3",
           "source_tree": "86a08993bd480b2f2f0e7f4aaf31a03481d7215b"
+        },
+        {
+          "at": "2026-09-14T14:18:53Z",
+          "actor": "SOL",
+          "label": "SOL GPT",
+          "event": "CLAIM_STEP2_PROVENANCE_REPAIR"
         }
       ],
       "next_action": "STEP2_PROVENANCE_REPAIR_NO_MOVE_REPEAT"
@@ -513,11 +525,11 @@
       "component": "Celery",
       "source": "Core kernel Yaiwes/Celery/",
       "current_step": 2,
-      "status": "GAP_STEP2_PROVENANCE",
+      "status": "IN_PROGRESS_STEP2_PROVENANCE",
       "abc": "B",
       "target": "Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery/",
-      "owner": null,
-      "lock": "FREE",
+      "owner": "SOL",
+      "lock": "CLAIMED",
       "checkpoint": {
         "before": null,
         "after": "2026-09-10T22:31:41.010979+00:00 STEP3 PASS run=34537194559"
@@ -541,6 +553,12 @@
           "event": "REOPEN_PRIOR_CLOSE_FOR_REQUIRED_PROVENANCE",
           "previous_status": "PASS_STEP3",
           "source_tree": "890f76f918b6895fd39bd10ee178e41fe4f5f725"
+        },
+        {
+          "at": "2026-09-14T14:18:53Z",
+          "actor": "SOL",
+          "label": "SOL GPT",
+          "event": "CLAIM_STEP2_PROVENANCE_REPAIR"
         }
       ],
       "next_action": "STEP2_PROVENANCE_REPAIR_NO_MOVE_REPEAT"
@@ -768,11 +786,11 @@
       "component": "Dagu",
       "source": "Core kernel Yaiwes/Dagu/",
       "current_step": 2,
-      "status": "GAP_STEP2_PROVENANCE",
+      "status": "IN_PROGRESS_STEP2_PROVENANCE",
       "abc": "B",
       "target": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/dagu/",
-      "owner": null,
-      "lock": "FREE",
+      "owner": "SOL",
+      "lock": "CLAIMED",
       "checkpoint": {
         "before": "2026-09-11T03:34:36.570625+00:00 SOL integración 1 STEP3 retry: same real DAG; surgical adapter escape correction only",
         "after": "2026-09-11T03:37:26.190733+00:00 STEP3 PASS: FABLES ACTIVE; moved Dagu CLI executed real two-step dependency DAG first->second; L2+L3+L4 evidence; prune NOT_NEEDED; origin/main read-back PASS"
@@ -888,6 +906,12 @@
           "event": "REOPEN_PRIOR_CLOSE_FOR_REQUIRED_PROVENANCE",
           "previous_status": "PASS",
           "source_tree": "22c52f4a4be5535a0df7d396c8d17b5124b61648"
+        },
+        {
+          "at": "2026-09-14T14:18:53Z",
+          "actor": "SOL",
+          "label": "SOL GPT",
+          "event": "CLAIM_STEP2_PROVENANCE_REPAIR"
         }
       ],
       "next_action": "STEP2_PROVENANCE_REPAIR_NO_MOVE_REPEAT"
@@ -897,11 +921,11 @@
       "component": "Hatchet",
       "source": "Core kernel Yaiwes/Hatchet/",
       "current_step": 2,
-      "status": "GAP_STEP2_PROVENANCE",
+      "status": "IN_PROGRESS_STEP2_PROVENANCE",
       "abc": "B",
       "target": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/hatchet/",
-      "owner": null,
-      "lock": "FREE",
+      "owner": "SOL",
+      "lock": "CLAIMED",
       "checkpoint": {
         "before": "2026-09-10T19:23:23Z source_exists:Core kernel Yaiwes/Hatchet/; physical read-back confirms populated upstream tree on main",
         "after": "STEP3 PASS: FABLES UniversalPluginBus wired yaiwes.orchestration.hatchet; real Hatchet embedded engine executed same DAG double->plus_one from real adapter file with input 20 and outputs 40/41; evidence committed and origin/main read-back PASS; prune NOT_NEEDED."
@@ -984,6 +1008,12 @@
           "event": "REOPEN_PRIOR_CLOSE_FOR_REQUIRED_PROVENANCE",
           "previous_status": "PASS",
           "source_tree": "489e7025f3605b77b06486ef94a7183c649f7af0"
+        },
+        {
+          "at": "2026-09-14T14:18:53Z",
+          "actor": "SOL",
+          "label": "SOL GPT",
+          "event": "CLAIM_STEP2_PROVENANCE_REPAIR"
         }
       ],
       "next_action": "STEP2_PROVENANCE_REPAIR_NO_MOVE_REPEAT"
@@ -1284,11 +1314,11 @@
       "component": "gVisor",
       "source": "Core kernel Yaiwes/gVisor/",
       "current_step": 2,
-      "status": "GAP_STEP2_PROVENANCE",
+      "status": "IN_PROGRESS_STEP2_PROVENANCE",
       "abc": "C",
       "target": "Agente Yaiwes principal/execution-orchestration/container-pod-isolation/gvisor/",
-      "owner": null,
-      "lock": "FREE",
+      "owner": "SOL",
+      "lock": "CLAIMED",
       "checkpoint": {
         "before": "2026-09-11T04:28:57.839533+00:00 SOL integración 1 N26 STEP3: STEP2 Motor4/read-back PASS; build moved runsc and execute real rootless ptrace sandbox command",
         "after": "2026-09-11T05:32:58.058785+00:00 STEP3 PASS: FABLES ACTIVE; identical moved gVisor tree built in no-space ephemeral workspace with canonical Makefile/Bazel; real runsc ptrace network-none sandbox executed /bin/sh printf 41 inside privileged ephemeral CI outer container because GitHub host blocks rootless self-reexec; stdout/stderr separated; L2+L3+L4; prune NOT_NEEDED; origin/main read-back PASS"
@@ -1408,6 +1438,12 @@
           "event": "REOPEN_PRIOR_CLOSE_FOR_REQUIRED_PROVENANCE",
           "previous_status": "PASS",
           "source_tree": "456292b5801b543f838f58cfe3e8e3451425eaaa"
+        },
+        {
+          "at": "2026-09-14T14:18:53Z",
+          "actor": "SOL",
+          "label": "SOL GPT",
+          "event": "CLAIM_STEP2_PROVENANCE_REPAIR"
         }
       ],
       "next_action": "STEP2_PROVENANCE_REPAIR_NO_MOVE_REPEAT"
