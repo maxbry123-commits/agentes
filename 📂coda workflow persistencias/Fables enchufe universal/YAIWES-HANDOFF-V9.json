@@ -1,0 +1,95 @@
+{
+  "schema": "yaiwes.handoff/v9",
+  "name": "YAIWES 24 CODA Hybrid Hive",
+  "entrypoints": {
+    "linear": "yaiwes_coda_bus_v8.run_coda_chain",
+    "independent_parallel_queue": "yaiwes_coda_hybrid_v9.run_independent_queue",
+    "same_problem_hive": "yaiwes_coda_hybrid_v9.run_hive_candidates",
+    "escalation_gate": "yaiwes_coda_hybrid_v9.escalation_decision",
+    "activation_contract": "yaiwes_coda_hybrid_v9.activation_contract"
+  },
+  "component_order": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24],
+  "subagent_capable": [1, 4, 9, 12, 16, 19, 20, 23],
+  "service_stages": [2, 3, 5, 6, 7, 8, 10, 11, 13, 14, 15, 17, 18, 21, 22, 24],
+  "component_modes": {
+    "01": "subagent",
+    "02": "state_service",
+    "03": "planner_gate",
+    "04": "subagent",
+    "05": "task_service",
+    "06": "persistence_service",
+    "07": "mcp_connection_service",
+    "08": "coordination_service",
+    "09": "subagent",
+    "10": "deterministic_planner",
+    "11": "memory_service",
+    "12": "subagent",
+    "13": "audit_service",
+    "14": "local_adapter",
+    "15": "memory_learning_service",
+    "16": "subagent",
+    "17": "model_gateway",
+    "18": "control_plane",
+    "19": "subagent",
+    "20": "subagent",
+    "21": "dag_planner",
+    "22": "state_hygiene_service",
+    "23": "subagent",
+    "24": "finalizer"
+  },
+  "normal_mode": {
+    "execution": "durable_linear_24_coda",
+    "research_each_coda": true,
+    "final_handoff": "UNIVERSAL_PLUG"
+  },
+  "parallel_mode": {
+    "independent_tasks": "parallel_full_24_coda_chains",
+    "same_problem_candidates": "bounded_fan_out_then_deterministic_fan_in",
+    "max_workers": 24
+  },
+  "escalation": {
+    "policy": "structured-state-only",
+    "statuses": ["BLOCKED", "FAILED", "UNRESOLVED", "LOW_CONFIDENCE", "NO_PROGRESS", "CONFLICT"],
+    "also_on": ["incomplete_component_chain", "incomplete_research_cycle", "universal_plug_missing", "no_progress", "conflicting_evidence"],
+    "minimum_candidates": 2,
+    "winner_required_status": "RESOLVED_VERIFIED"
+  },
+  "selection": {
+    "policy": "durable-evidence-vector-then-lexical-id",
+    "llm_vote": false,
+    "stable_tie_break": "candidate_id_ascending",
+    "partial_result_can_win": false
+  },
+  "persistence": {
+    "engine": "reuse_v8",
+    "sqlite": true,
+    "wal": true,
+    "transactional_component_commits": true,
+    "idempotency": true,
+    "durable_queue": true,
+    "lease_recovery": true
+  },
+  "connections": {
+    "allowed": ["MCP", "API"],
+    "unknown_plugin_auto_execution": false
+  },
+  "activation_sequence": [
+    "validate_component_catalog_01_24",
+    "run_normal_v8_chain",
+    "evaluate_structured_escalation_gate",
+    "continue_linear_if_not_escalated",
+    "fan_out_two_or_more_candidates_if_escalated",
+    "deterministic_fan_in",
+    "persist_verified_result",
+    "resume_handoff",
+    "finalize_component_24",
+    "handoff_universal_plug"
+  ],
+  "fail_closed": [
+    "do_not_select_unverified_candidate",
+    "do_not_mix_independent_tasks_in_same_problem_fan_in",
+    "do_not_use_component_24_as_problem_solver",
+    "do_not_execute_unknown_plugins",
+    "do_not_claim_external_research_without_executed_api_or_mcp_connector"
+  ]
+}
