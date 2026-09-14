@@ -1,0 +1,9 @@
+networkx>=3.2
+faiss-cpu>=1.7.4
+sentence-transformers>=2.7.0
+openai>=1.30.0
+numpy>=1.26.0
+pydantic>=2.7.0
+python-dotenv>=1.0.0
+tqdm>=4.66.0
+pytest>=8.0.0
