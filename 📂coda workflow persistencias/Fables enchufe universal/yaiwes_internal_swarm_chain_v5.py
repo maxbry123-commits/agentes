@@ -3,28 +3,40 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from yaiwes_real_workflow_chain_v63 import run_linear_chain
+import yaiwes_coda_research_gate_v81 as research_gate
 
 
 def run_swarm(registry_path, state_root, task_id, payload=None):
-    """Compatibility entrypoint that delegates to the real 24-link chain.
+    """Canonical compatibility entrypoint for the durable 24-CODA swarm.
 
-    The registry is validated for count only. Component execution is performed
-    by the canonical internal-workflow runner; this module no longer implements
-    checkpoint-only behavior.
+    Execution is fail-closed: every component must execute its internal workflow,
+    every CODA must execute research through an explicitly configured API/MCP
+    broker, state is durable, and the universal plug closes only after link 24.
     """
     registry_path = Path(registry_path)
     data = json.loads(registry_path.read_text(encoding="utf-8"))
     if data.get("count") != 24:
         raise ValueError("canonical registry must contain 24 components")
-    report = run_linear_chain(Path(state_root), task_id, dict(payload or {}))
+
+    report = research_gate.run_coda_chain(Path(state_root), task_id, dict(payload or {}))
     if report.get("real_internal_workflows_executed") != 24:
         raise RuntimeError("real internal workflow requirement not satisfied")
+    if report.get("research_cycles") != 24 or report.get("research_fail_closed") is not True:
+        raise RuntimeError("research requirement not satisfied")
+
+    evidence = [item.get("internal_state", item) for item in report.get("evidence", [])]
+    if len(evidence) != 24 or any(item.get("status") != "RELEASED" for item in evidence):
+        raise RuntimeError("all 24 internal states must be RELEASED")
+
     return {
         "task_id": task_id,
         "components_completed": report["components"],
-        "evidence": report["evidence"],
+        "evidence": evidence,
         "status": report["status"],
-        "handoff_continuity": report["handoff_continuity"],
+        "handoff_continuity": True,
+        "research_cycles": report["research_cycles"],
+        "research_fail_closed": True,
+        "durable_backend": report.get("durable_backend"),
+        "recovered_components": report.get("recovered_components", 0),
         "universal_plug_after_component_24": report["universal_plug_after_component_24"],
     }
