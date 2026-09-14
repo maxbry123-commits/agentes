@@ -1,0 +1,389 @@
+name: YAIWES Catalog47 Final Gap Repair
+
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-catalog47-final-gap-repair.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-catalog47-final-gap-repair
+  cancel-in-progress: false
+
+jobs:
+  race-repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      MOTOR2: Motores/📂Motor descarga de componentes y extracción de zip/motor_2_queue_download_extract.py
+      ENGINE: Motores/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py
+      DEST_ROOT: Core kernel Yaiwes
+    steps:
+      - name: Checkout immutable motors
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-catalog47-final-gap-repair.yml
+            /Motores/📂Motor descarga de componentes y extracción de zip/motor_2_queue_download_extract.py
+            /Motores/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py
+
+      - name: Verify immutable motors
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object "$MOTOR2")" = '84d566e2ee4e98e42eb3a864026d067d48caabd9'
+          test "$(git hash-object "$ENGINE")" = '91e6e4486692eab314be5c7130d8310d3c855397'
+          echo MOTOR2_LOCK=PASS
+          echo ENGINE_LOCK=PASS
+
+      - name: Repair four push-race gaps serially with Motor2
+        id: motor2
+        continue-on-error: true
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ENGINE_PATH: ${{ github.workspace }}/Motores/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py
+          QUEUE_FILE: /tmp/catalog47-race-queue.json
+          STATE_FILE: /tmp/catalog47-race-state.json
+          INDEX_PATH: /tmp/catalog47-race-index.md
+          MAX_RETRIES: '8'
+          LOOP_SLEEP_SECONDS: '2'
+        run: |
+          set -euo pipefail
+          cat > "$QUEUE_FILE" <<'JSON'
+          {
+            "queue": [
+              {"id":"C47-003","source_repo":"NousResearch/hermes-agent","slug":"Hermes-Agent","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+              {"id":"C47-007","source_repo":"DataArcTech/Bayesian-Agent","slug":"Bayesian-Agent","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+              {"id":"C47-011","source_repo":"younatics/zera-agent","slug":"ZERA","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+              {"id":"C47-028","source_repo":"angelnicolasc/graymatter","slug":"GrayMatter","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true}
+            ]
+          }
+          JSON
+          python3 "$MOTOR2"
+
+      - name: Persist Motor2 repair state
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f /tmp/catalog47-race-state.json ]; then
+            printf '%s\n' '{"schema":"yaiwes.kernel.catalog47.race-repair/v1","status":"STATE_MISSING"}' > /tmp/catalog47-race-state.json
+          fi
+          cp /tmp/catalog47-race-state.json /tmp/race.keep.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          out='Core kernel Yaiwes/Crack wall bitácora stated JSON/CATALOG47-RACE-REPAIR-STATE-20260914.json'
+          for attempt in 1 2 3 4 5 6 7 8; do
+            git fetch origin +refs/heads/main:refs/remotes/origin/main
+            git reset --hard origin/main
+            mkdir -p "$(dirname "$out")"
+            cp /tmp/race.keep.json "$out"
+            git add -f --sparse -- "$out"
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m 'watchdog(yaiwes): persist catalog47 race repair state'
+            if git push origin HEAD:main; then exit 0; fi
+            sleep $((attempt * 2))
+          done
+          exit 1
+
+      - name: Gate four push-race gaps
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin +refs/heads/main:refs/remotes/origin/main
+          python3 - <<'PY'
+          import json,subprocess
+          items=[('C47-003','Hermes-Agent'),('C47-007','Bayesian-Agent'),('C47-011','ZERA'),('C47-028','GrayMatter')]
+          gaps=[]
+          for i,slug in items:
+              path=f'Core kernel Yaiwes/{slug}/DOWNLOAD_EXTRACT_MANIFEST.json'
+              p=subprocess.run(['git','show',f'origin/main:{path}'],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+              if p.returncode:
+                  gaps.append({'id':i,'slug':slug,'gap':'MANIFEST_MISSING'}); continue
+              try: d=json.loads(p.stdout)
+              except Exception:
+                  gaps.append({'id':i,'slug':slug,'gap':'MANIFEST_INVALID'}); continue
+              if d.get('extraction_verified') is not True:
+                  gaps.append({'id':i,'slug':slug,'gap':'EXTRACTION_NOT_VERIFIED'})
+          print(json.dumps({'race_repair_gaps':gaps},ensure_ascii=False))
+          if gaps: raise SystemExit(1)
+          print('CATALOG47_RACE_REPAIR=VERIFIED_CLOSED_4_OF_4')
+          PY
+
+  normalized-repair:
+    if: always()
+    needs: race-repair
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      MOTOR1: Motores/➡️📂 Motor de extracción zip/motor_1_extract_only.py
+      DEST_ROOT: Core kernel Yaiwes
+    steps:
+      - name: Checkout immutable Motor1
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-catalog47-final-gap-repair.yml
+            /Motores/➡️📂 Motor de extracción zip/motor_1_extract_only.py
+
+      - name: Verify immutable Motor1
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object "$MOTOR1")" = 'a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500'
+          echo MOTOR1_LOCK=PASS
+
+      - name: Normalize in-repo symlinks extract with Motor1 publish and deep-readback
+        id: normalize
+        continue-on-error: true
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, json, os, pathlib, shutil, stat, subprocess, sys, tempfile, time, zipfile
+          ROOT=pathlib.Path.cwd(); MOTOR1=ROOT/os.environ['MOTOR1']; TOKEN=os.environ['GITHUB_TOKEN']; DEST_ROOT=os.environ['DEST_ROOT']
+          ITEMS=[
+              {'id':'C47-004','slug':'OpenClaw','repo':'openclaw/openclaw'},
+              {'id':'C47-009','slug':'Life-Harness','repo':'Tianshi-Xu/Life-Harness'},
+              {'id':'C47-036','slug':'LlamaFirewall','repo':'meta-llama/PurpleLlama'},
+              {'id':'OLD20-AUTOGEN','slug':'AutoGen-Core','repo':'microsoft/autogen'},
+          ]
+          def run(a,cwd=None,env=None,check=True):
+              p=subprocess.run(a,cwd=cwd,env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+              if check and p.returncode: raise RuntimeError(f"COMMAND_FAILED:{a[0]}:{p.returncode}:{p.stdout[-6000:]}")
+              return p
+          def sha(p):
+              h=hashlib.sha256()
+              with open(p,'rb') as f:
+                  for b in iter(lambda:f.read(1024*1024),b''): h.update(b)
+              return h.hexdigest()
+          def tree_hash(d):
+              h=hashlib.sha256(); n=0; total=0
+              for p in sorted((x for x in d.rglob('*') if x.is_file()),key=lambda x:x.relative_to(d).as_posix()):
+                  rel=p.relative_to(d).as_posix(); s=p.stat().st_size; dg=sha(p)
+                  h.update(rel.encode()+b'\0'+dg.encode()+b'\0'+str(s).encode()+b'\n'); n+=1; total+=s
+              return {'files':n,'bytes':total,'sha256':h.hexdigest()}
+          def auth_env():
+              e=dict(os.environ); raw=base64.b64encode(f'x-access-token:{TOKEN}'.encode()).decode()
+              e.update({'GIT_CONFIG_COUNT':'1','GIT_CONFIG_KEY_0':'http.https://github.com/.extraheader','GIT_CONFIG_VALUE_0':f'AUTHORIZATION: basic {raw}','GIT_TERMINAL_PROMPT':'0','GIT_LFS_SKIP_SMUDGE':'1'})
+              return e
+          def disable_lfs(d):
+              hooks=d/'.yaiwes-empty-hooks'; hooks.mkdir(exist_ok=True)
+              run(['git','config','core.hooksPath',str(hooks)],d); run(['git','config','filter.lfs.clean','cat'],d); run(['git','config','filter.lfs.smudge','cat'],d); run(['git','config','--unset-all','filter.lfs.process'],d,check=False); run(['git','config','filter.lfs.required','false'],d)
+          def remote_manifest(slug):
+              run(['git','fetch','origin','+refs/heads/main:refs/remotes/origin/main'],ROOT)
+              path=f'{DEST_ROOT}/{slug}/DOWNLOAD_EXTRACT_MANIFEST.json'; p=run(['git','show',f'origin/main:{path}'],ROOT,check=False)
+              if p.returncode: return None
+              try: return json.loads(p.stdout)
+              except Exception: return None
+          def acquire(repo,work):
+              src=work/'source'; src.mkdir(); run(['git','init','-q'],src); run(['git','remote','add','origin',f'https://github.com/{repo}.git'],src)
+              env=dict(os.environ); env['GIT_LFS_SKIP_SMUDGE']='1'; run(['git','fetch','--depth=1','--filter=blob:none','origin','HEAD'],src,env=env); run(['git','checkout','-q','--detach','FETCH_HEAD'],src,env=env)
+              return src,run(['git','rev-parse','HEAD'],src).stdout.strip()
+          def materialize(src,norm):
+              root=src.resolve(); normalizations=[]; lfs=[]
+              def copy_node(s,d,stack):
+                  if s.name=='.git': return
+                  st=s.lstat()
+                  if stat.S_ISLNK(st.st_mode):
+                      target=os.readlink(s); resolved=(s.parent/target).resolve()
+                      try: resolved.relative_to(root)
+                      except Exception: raise RuntimeError(f'SYMLINK_OUTSIDE_REPO:{s.relative_to(src)}->{target}')
+                      if not resolved.exists(): raise RuntimeError(f'BROKEN_SYMLINK:{s.relative_to(src)}->{target}')
+                      rr=str(resolved)
+                      if rr in stack: raise RuntimeError(f'SYMLINK_CYCLE:{s.relative_to(src)}->{target}')
+                      normalizations.append({'path':s.relative_to(src).as_posix(),'target':target,'action':'materialized_in_repo_target'})
+                      copy_node(resolved,d,stack+[rr]); return
+                  if stat.S_ISDIR(st.st_mode):
+                      d.mkdir(parents=True,exist_ok=True); rr=str(s.resolve())
+                      for child in sorted(s.iterdir(),key=lambda p:p.name):
+                          if child.name=='.git': continue
+                          copy_node(child,d/child.name,stack+[rr])
+                      return
+                  if stat.S_ISREG(st.st_mode):
+                      d.parent.mkdir(parents=True,exist_ok=True); shutil.copyfile(s,d)
+                      if d.stat().st_size<=1024 and d.read_bytes().startswith(b'version https://git-lfs.github.com/spec/v1\n'): lfs.append(d.relative_to(norm).as_posix())
+                      return
+                  raise RuntimeError(f'UNSUPPORTED_SPECIAL_FILE:{s.relative_to(src)}')
+              norm.mkdir()
+              for child in sorted(src.iterdir(),key=lambda p:p.name):
+                  if child.name=='.git': continue
+                  copy_node(child,norm/child.name,[str(root)])
+              return normalizations,lfs
+          def build_zip(norm,archive):
+              with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED,allowZip64=True) as z:
+                  for p in sorted((x for x in norm.rglob('*') if x.is_file()),key=lambda x:x.relative_to(norm).as_posix()): z.write(p,p.relative_to(norm).as_posix())
+              with zipfile.ZipFile(archive) as z:
+                  bad=z.testzip()
+                  if bad: raise RuntimeError('ZIP_CRC_FAIL:'+bad)
+          def extract_motor1(archive,ext,state_path):
+              env=dict(os.environ); env.update({'ARCHIVE_INPUT':str(archive),'DEST_DIR':str(ext),'STATE_FILE':str(state_path),'BATCH_SIZE':'100','MAX_BATCHES':'0'})
+              p=run([sys.executable,str(MOTOR1)],env=env); payload=None
+              for line in reversed([x.strip() for x in p.stdout.splitlines() if x.strip()]):
+                  try:
+                      obj=json.loads(line)
+                      if isinstance(obj,dict): payload=obj; break
+                  except Exception: pass
+              if not payload or payload.get('verdict')!='VERIFIED_CLOSED': raise RuntimeError('MOTOR1_NOT_CLOSED:'+p.stdout[-3000:])
+              return payload
+          def publish(slug,ext,manifest,work):
+              e=auth_env(); rel=f'{DEST_ROOT}/{slug}'; dest=work/'dest'; dest.mkdir(); run(['git','init','-q'],dest); disable_lfs(dest)
+              run(['git','remote','add','origin','https://github.com/maxbry123-commits/agentes.git'],dest); run(['git','sparse-checkout','init','--no-cone'],dest); (dest/'.git/info/sparse-checkout').write_text('/'+rel+'/\n')
+              run(['git','fetch','--depth=20','--filter=blob:none','origin','+refs/heads/main:refs/remotes/origin/main'],dest,env=e); run(['git','checkout','-q','-B','main','origin/main'],dest,env=e); target=dest/rel
+              if target.exists():
+                  existing=target/'DOWNLOAD_EXTRACT_MANIFEST.json'
+                  if existing.exists():
+                      try:
+                          d=json.loads(existing.read_text())
+                          if d.get('extraction_verified') is True: return {'verdict':'ALREADY_PRESENT_VERIFIED'}
+                      except Exception: pass
+                  raise RuntimeError('DESTINATION_COLLISION_UNVERIFIED:'+rel)
+              target.mkdir(parents=True); shutil.copytree(ext,target/'code'); (target/'DOWNLOAD_EXTRACT_MANIFEST.json').write_text(json.dumps(manifest,indent=2,sort_keys=True)+'\n'); disable_lfs(dest)
+              run(['git','config','user.name','yaiwes-final-gap-repair'],dest); run(['git','config','user.email','yaiwes-final-gap-repair@users.noreply.github.com'],dest); run(['git','add','-f','--sparse','--',rel],dest); run(['git','commit','-m',f'build(yaiwes): repair {slug} normalized source bundle'],dest)
+              pushed=False; last=''
+              for attempt in range(1,13):
+                  p=run(['git','-c','core.hooksPath=/dev/null','push','origin','HEAD:main'],dest,env=e,check=False); last=p.stdout
+                  if p.returncode==0: pushed=True; break
+                  run(['git','fetch','--depth=20','--filter=blob:none','origin','+refs/heads/main:refs/remotes/origin/main'],dest,env=e); rb=run(['git','rebase','origin/main'],dest,env=e,check=False)
+                  if rb.returncode:
+                      run(['git','rebase','--abort'],dest,check=False); raise RuntimeError('REBASE_CONFLICT:'+rb.stdout[-3000:])
+                  time.sleep(min(attempt*2,12))
+              if not pushed: raise RuntimeError('PUSH_RETRIES_EXHAUSTED:'+last[-3000:])
+              commit=run(['git','rev-parse','HEAD'],dest).stdout.strip(); rb=work/'readback'; rb.mkdir(); run(['git','init','-q'],rb); disable_lfs(rb); run(['git','remote','add','origin','https://github.com/maxbry123-commits/agentes.git'],rb); run(['git','sparse-checkout','init','--no-cone'],rb); (rb/'.git/info/sparse-checkout').write_text('/'+rel+'/\n'); run(['git','fetch','--depth=1','--filter=blob:none','origin','+refs/heads/main:refs/remotes/origin/main'],rb,env=e); run(['git','checkout','-q','--detach','origin/main'],rb,env=e)
+              remote=json.loads((rb/rel/'DOWNLOAD_EXTRACT_MANIFEST.json').read_text()); actual=tree_hash(rb/rel/'code')
+              if actual!=remote['extracted_tree']: raise RuntimeError('DEEP_READBACK_HASH_GAP:'+json.dumps({'actual':actual,'expected':remote['extracted_tree']}))
+              return {'verdict':'PUBLISHED_AND_DEEP_READBACK_VERIFIED','commit':commit,'tree':actual}
+          state={'schema':'yaiwes.kernel.catalog47.normalized-repair-state/v1','items':{}}; any_fail=False
+          for item in ITEMS:
+              row={'slug':item['slug'],'source_repo':item['repo']}
+              try:
+                  existing=remote_manifest(item['slug'])
+                  if existing and existing.get('extraction_verified') is True:
+                      row.update({'status':'VERIFIED_CLOSED','publish':{'verdict':'ALREADY_PRESENT_VERIFIED'}}); state['items'][item['id']]=row; continue
+                  with tempfile.TemporaryDirectory(prefix='yaiwes-normalized-gap-') as td:
+                      work=pathlib.Path(td); src,source_commit=acquire(item['repo'],work); norm=work/'normalized'; normalizations,lfs=materialize(src,norm); source_tree=tree_hash(norm); archive=work/f"{item['slug']}.zip"; build_zip(norm,archive); ext=work/'extracted'; motor_state=work/'motor1-state.json'; motor=extract_motor1(archive,ext,motor_state); ext_tree=tree_hash(ext)
+                      if ext_tree!=source_tree: raise RuntimeError('NORMALIZED_EXTRACTED_TREE_MISMATCH')
+                      manifest={'schema':'yaiwes.kernel.normalized-download-extract/v1','slug':item['slug'],'source_repo':item['repo'],'source_commit':source_commit,'motor1_blob':'a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500','normalization_policy':'materialize_in_repo_symlink_targets_before_zip','normalizations':normalizations,'lfs_pointer_count':len(lfs),'lfs_pointers_preserved':lfs,'archive_sha256':sha(archive),'archive_bytes':archive.stat().st_size,'source_tree':source_tree,'extracted_tree':ext_tree,'extraction_verified':True,'reconstruction_verified':True,'motor1':motor}; pub=publish(item['slug'],ext,manifest,work); row.update({'status':'VERIFIED_CLOSED','source_commit':source_commit,'source_tree':source_tree,'extracted_tree':ext_tree,'normalizations':len(normalizations),'lfs_pointer_count':len(lfs),'publish':pub})
+              except Exception as exc:
+                  any_fail=True; row.update({'status':'FAILED','error':str(exc)})
+              state['items'][item['id']]=row; pathlib.Path('/tmp/catalog47-normalized-repair-state.json').write_text(json.dumps(state,indent=2,sort_keys=True)+'\n')
+          pathlib.Path('/tmp/catalog47-normalized-repair-state.json').write_text(json.dumps(state,indent=2,sort_keys=True)+'\n'); print(json.dumps(state,ensure_ascii=False))
+          if any_fail: raise SystemExit(1)
+          print('CATALOG47_NORMALIZED_REPAIR=VERIFIED_CLOSED_4_OF_4')
+          PY
+
+      - name: Persist normalized repair state
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f /tmp/catalog47-normalized-repair-state.json ]; then
+            printf '%s\n' '{"schema":"yaiwes.kernel.catalog47.normalized-repair-state/v1","status":"STATE_MISSING"}' > /tmp/catalog47-normalized-repair-state.json
+          fi
+          cp /tmp/catalog47-normalized-repair-state.json /tmp/norm.keep.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          out='Core kernel Yaiwes/Crack wall bitácora stated JSON/CATALOG47-NORMALIZED-REPAIR-STATE-20260914.json'
+          for attempt in 1 2 3 4 5 6 7 8; do
+            git fetch origin +refs/heads/main:refs/remotes/origin/main
+            git reset --hard origin/main
+            mkdir -p "$(dirname "$out")"
+            cp /tmp/norm.keep.json "$out"
+            git add -f --sparse -- "$out"
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m 'watchdog(yaiwes): persist catalog47 normalized repair state'
+            if git push origin HEAD:main; then exit 0; fi
+            sleep $((attempt * 2))
+          done
+          exit 1
+
+  final-gate:
+    if: always()
+    needs: [race-repair, normalized-repair]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout canonical queue
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /Core kernel Yaiwes/Crack wall bitácora stated JSON/CATALOG47-CONFIRMED-QUEUE-20260914.json
+
+      - name: Verify all 47 plus AutoGen old20
+        id: gate
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin +refs/heads/main:refs/remotes/origin/main
+          python3 - <<'PY'
+          import json,pathlib,subprocess
+          q=json.loads(pathlib.Path('Core kernel Yaiwes/Crack wall bitácora stated JSON/CATALOG47-CONFIRMED-QUEUE-20260914.json').read_text())['queue']; closed=[]; gaps=[]
+          for row in q:
+              path=f"Core kernel Yaiwes/{row['slug']}/DOWNLOAD_EXTRACT_MANIFEST.json"; p=subprocess.run(['git','show',f'origin/main:{path}'],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+              if p.returncode: gaps.append({'id':row['id'],'slug':row['slug'],'gap':'MANIFEST_MISSING'}); continue
+              try: d=json.loads(p.stdout)
+              except Exception: gaps.append({'id':row['id'],'slug':row['slug'],'gap':'MANIFEST_INVALID'}); continue
+              if d.get('extraction_verified') is not True: gaps.append({'id':row['id'],'slug':row['slug'],'gap':'EXTRACTION_NOT_VERIFIED'}); continue
+              closed.append(row['id'])
+          autogen='Core kernel Yaiwes/AutoGen-Core/DOWNLOAD_EXTRACT_MANIFEST.json'; p=subprocess.run(['git','show',f'origin/main:{autogen}'],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE); autogen_closed=False
+          if p.returncode==0:
+              try: autogen_closed=json.loads(p.stdout).get('extraction_verified') is True
+              except Exception: pass
+          result={'schema':'yaiwes.kernel.catalog47.final-gap-gate/v1','catalog47_total':len(q),'catalog47_closed':len(closed),'catalog47_gaps':gaps,'autogen_old20_closed':autogen_closed,'global_verified':len(gaps)==0 and autogen_closed}; pathlib.Path('/tmp/catalog47-final-gap-gate.json').write_text(json.dumps(result,indent=2,sort_keys=True)+'\n'); print(json.dumps(result,ensure_ascii=False))
+          if not result['global_verified']: raise SystemExit(1)
+          print('CATALOG47_DOWNLOAD_EXTRACT=VERIFIED_CLOSED_47_OF_47'); print('CATALOG20_AUTOGEN=VERIFIED_CLOSED_20_OF_20')
+          PY
+
+      - name: Persist final gate
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f /tmp/catalog47-final-gap-gate.json
+          cp /tmp/catalog47-final-gap-gate.json /tmp/gate.keep.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          out='Core kernel Yaiwes/Crack wall bitácora stated JSON/CATALOG47-FINAL-GAP-GATE-20260914.json'
+          for attempt in 1 2 3 4 5 6 7 8; do
+            git fetch origin +refs/heads/main:refs/remotes/origin/main
+            git reset --hard origin/main
+            mkdir -p "$(dirname "$out")"
+            cp /tmp/gate.keep.json "$out"
+            git add -f --sparse -- "$out"
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m 'watchdog(yaiwes): persist catalog47 final gap gate'
+            if git push origin HEAD:main; then exit 0; fi
+            sleep $((attempt * 2))
+          done
+          exit 1
+
+      - name: Enforce final gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,pathlib
+          d=json.loads(pathlib.Path('/tmp/catalog47-final-gap-gate.json').read_text())
+          if not d.get('global_verified'): raise SystemExit('FINAL_GAPS_PENDING:'+json.dumps(d,ensure_ascii=False))
+          print('YAIWES_DOWNLOAD_GAPS=VERIFIED_CLOSED')
+          PY
