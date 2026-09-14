@@ -1,30 +1,33 @@
-name: YAIWES real internal workflows V6
+name: YAIWES internal workflows V6 compatibility strict
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - yaiwes-v6-strict-redirect
     paths:
       - '.github/workflows/yaiwes-real-internal-workflows-v6.yml'
       - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v6.py'
       - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v61.py'
       - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v62.py'
+      - '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v63.py'
+      - '📂coda workflow persistencias/🏈 YAIWES 24/code/workflow.py'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: yaiwes-real-internal-workflows-v6
+  group: yaiwes-v6-compat-strict-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  real-workflows:
+  strict-compatibility:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout active YAIWES source only
+      - name: Checkout active YAIWES internal sources
         uses: actions/checkout@v4
         with:
-          ref: main
           fetch-depth: 1
           lfs: false
           filter: blob:none
@@ -39,74 +42,47 @@ jobs:
             /📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v6.py
             /📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v61.py
             /📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v62.py
+            /📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v63.py
+            /📂coda workflow persistencias/🏈 YAIWES 24/code/workflow.py
             /📂coda workflow persistencias/🏈 cancha deportiva de fútbol/*
 
-      - name: Validate V6.2 runner syntax
+      - name: Validate strict runner syntax
         run: |
           set -euo pipefail
           python3 -m py_compile '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v6.py'
           python3 -m py_compile '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v61.py'
           python3 -m py_compile '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v62.py'
+          python3 -m py_compile '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v63.py'
+          python3 -m py_compile '📂coda workflow persistencias/🏈 YAIWES 24/code/workflow.py'
 
-      - name: Execute real internal workflows and FABLES handoffs
+      - name: Execute strict 24-link compatibility chain
         env:
           PYTHONUNBUFFERED: '1'
         run: |
           set -euo pipefail
-          python3 '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v62.py'
+          python3 '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v63.py'
 
-      - name: Verify 23 real workflow executions plus closure node
+      - name: Verify strict 24 of 24 only
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import json
           from pathlib import Path
-          p=Path('📂coda workflow persistencias/🏈 cancha deportiva de fútbol/YAIWES-REAL-INTERNAL-WORKFLOW-REPORT-V6.json')
+          p=Path('📂coda workflow persistencias/🏈 cancha deportiva de fútbol/YAIWES-LINEAR-WORKFLOW-REPORT-V63.json')
           d=json.loads(p.read_text(encoding='utf-8'))
-          assert d['components']==24
-          assert d['real_internal_workflows_executed']==23, d
-          assert d['source_unavailable_closures']==1, d
-          assert d['status']=='CLOSED'
-          assert all(x['real_internal_workflow'] for x in d['evidence'][:23])
-          assert all(x['source'] and x['symbol'] and x['sha256'] for x in d['evidence'][:23])
-          assert d['evidence'][23]['workflow_status']=='SOURCE_UNAVAILABLE_CLOSURE'
-          assert d['evidence'][23]['handoff']=='CLOSE'
-          print('REAL_INTERNAL_WORKFLOW_PASS=23/23 SOURCE_AVAILABLE')
+          assert d['components'] == 24, d
+          assert d['real_internal_workflows_executed'] == 24, d
+          assert d['completed_internal_workflows'] == 24, d
+          assert d['handoff_continuity'] is True, d
+          assert d['universal_plug_after_component_24'] is True, d
+          assert d['status'] == 'CLOSED_24_OF_24', d
+          assert all(x['status'] == 'RELEASED' for x in d['evidence'])
+          assert all(x['real_internal_workflow'] is True for x in d['evidence'])
+          assert all(x['workflow_status'] == 'COMPLETED' for x in d['evidence'])
+          assert not any(x.get('workflow_status') == 'SOURCE_UNAVAILABLE_CLOSURE' for x in d['evidence'])
+          assert not any(x.get('checkpoint') == 'CLOSURE_ONLY' for x in d['evidence'])
+          for i in range(1,24):
+              assert d['evidence'][i]['input_hash'] == d['evidence'][i-1]['output_hash']
+          assert d['evidence'][-1]['handoff'] == 'UNIVERSAL_PLUG'
+          print('LEGACY_COMPAT_STRICT_PASS=24/24')
           PY
-
-      - name: Verify no historical quarantine file is read or imported
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          root=Path('📂coda workflow persistencias/Fables enchufe universal')
-          files=[root/'yaiwes_real_workflow_chain_v6.py',root/'yaiwes_real_workflow_chain_v61.py',root/'yaiwes_real_workflow_chain_v62.py']
-          for p in files:
-              t=p.read_text(encoding='utf-8')
-              assert '/_yaiwes_upstream_quarantine/' not in t
-              assert 'code / "_yaiwes_upstream_quarantine"' not in t
-          print('HISTORICAL_QUARANTINE_EXECUTION=DENIED')
-          PY
-
-      - name: Persist V6.2 evidence only
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add --sparse -- '📂coda workflow persistencias/🏈 cancha deportiva de fútbol/YAIWES-REAL-INTERNAL-WORKFLOW-REPORT-V6.json'
-          git add --sparse -- '📂coda workflow persistencias/🏈 cancha deportiva de fútbol/.yaiwes_v6_runtime'
-          if git diff --cached --quiet; then
-            echo NO_CHANGES
-          else
-            git commit -m 'test(coda): prove real internal YAIWES workflows v6.2'
-            git pull --rebase origin main
-            git push origin HEAD:main
-          fi
-
-      - name: Final readback
-        run: |
-          set -euo pipefail
-          git fetch origin main --depth=1
-          git rev-parse HEAD
-          git rev-parse origin/main
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
