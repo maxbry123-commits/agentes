@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Trigger internal 24-component transform run v3.
+# Trigger internal 24-component transform run v4.
 from __future__ import annotations
 
 import ast
@@ -21,6 +21,10 @@ SIDE_EFFECT_MARKERS = (
     "child_process", "exec.command(", "std::process::command", "runtime.getruntime().exec(",
     "invoke-expression", "start-process"
 )
+
+
+def source_id(rel: str) -> str:
+    return hashlib.sha256(rel.encode("utf-8")).hexdigest()
 
 
 def components():
@@ -74,12 +78,13 @@ def safe_python(original: str, rel: str):
             continue
         selected.append((start, end, node))
     edits = []
+    sid = source_id(rel)
     for start, end, node in selected:
         indent = lines[start][: len(lines[start]) - len(lines[start].lstrip())]
         body = [
             f"{indent}from pathlib import Path as _YP\n",
             f"{indent}import json as _YJ\n",
-            f"{indent}_ye = {{'schema':'yaiwes.internal.persistence/v1','source':{rel!r},'step':{node.name!r},'status':'CHECKPOINTED'}}\n",
+            f"{indent}_ye = {{'schema':'yaiwes.internal.persistence/v1','source_id':{sid!r},'step':{node.name!r},'status':'CHECKPOINTED'}}\n",
             f"{indent}_yp = _YP(__file__).with_name('.yaiwes_internal_state.jsonl')\n",
             f"{indent}with _yp.open('a', encoding='utf-8') as _yf:\n",
             f"{indent}    _yf.write(_YJ.dumps(_ye, ensure_ascii=False) + '\\n')\n",
@@ -92,29 +97,30 @@ def safe_python(original: str, rel: str):
 
 
 def stub(ext: str, rel: str, original: str):
+    sid = source_id(rel)
     if ext == ".py":
-        return f"from __future__ import annotations\n\ndef yaiwes_persistence_step(payload=None):\n    return {{'schema':'yaiwes.internal.persistence/v1','source':{rel!r},'payload':dict(payload or {{}}),'status':'CHECKPOINTED'}}\n"
+        return f"from __future__ import annotations\n\ndef yaiwes_persistence_step(payload=None):\n    return {{'schema':'yaiwes.internal.persistence/v1','source_id':{sid!r},'payload':dict(payload or {{}}),'status':'CHECKPOINTED'}}\n"
     if ext == ".sh":
-        return f"#!/usr/bin/env bash\nset -euo pipefail\necho '{{\"schema\":\"yaiwes.internal.persistence/v1\",\"source\":{json.dumps(rel)},\"status\":\"CHECKPOINTED\"}}' >> \"$(dirname \"$0\")/.yaiwes_internal_state.jsonl\"\n"
+        return f"#!/usr/bin/env bash\nset -euo pipefail\necho '{{\"schema\":\"yaiwes.internal.persistence/v1\",\"source_id\":\"{sid}\",\"status\":\"CHECKPOINTED\"}}' >> \"$(dirname \"$0\")/.yaiwes_internal_state.jsonl\"\n"
     if ext == ".ps1":
-        return f"$e = '{{\"schema\":\"yaiwes.internal.persistence/v1\",\"source\":{json.dumps(rel)},\"status\":\"CHECKPOINTED\"}}'\nAdd-Content -Path (Join-Path $PSScriptRoot '.yaiwes_internal_state.jsonl') -Value $e\n"
+        return f"$e = '{{\"schema\":\"yaiwes.internal.persistence/v1\",\"source_id\":\"{sid}\",\"status\":\"CHECKPOINTED\"}}'\nAdd-Content -Path (Join-Path $PSScriptRoot '.yaiwes_internal_state.jsonl') -Value $e\n"
     if ext in {".js", ".jsx", ".ts", ".tsx"}:
-        return f"export function yaiwesPersistenceStep(payload = {{}}) {{ return {{schema:'yaiwes.internal.persistence/v1',source:{json.dumps(rel)},payload,status:'CHECKPOINTED'}}; }}\nexport default yaiwesPersistenceStep;\n"
+        return f"export function yaiwesPersistenceStep(payload = {{}}) {{ return {{schema:'yaiwes.internal.persistence/v1',source_id:'{sid}',payload,status:'CHECKPOINTED'}}; }}\nexport default yaiwesPersistenceStep;\n"
     if ext == ".rb":
-        return f"def yaiwes_persistence_step(payload = {{}})\n  {{schema: 'yaiwes.internal.persistence/v1', source: {rel!r}, payload: payload, status: 'CHECKPOINTED'}}\nend\n"
+        return f"def yaiwes_persistence_step(payload = {{}})\n  {{schema: 'yaiwes.internal.persistence/v1', source_id: '{sid}', payload: payload, status: 'CHECKPOINTED'}}\nend\n"
     if ext == ".lua":
-        return f"local M={{}}\nfunction M.yaiwes_persistence_step(payload) return {{schema='yaiwes.internal.persistence/v1',source={json.dumps(rel)},payload=payload or {{}},status='CHECKPOINTED'}} end\nreturn M\n"
+        return f"local M={{}}\nfunction M.yaiwes_persistence_step(payload) return {{schema='yaiwes.internal.persistence/v1',source_id='{sid}',payload=payload or {{}},status='CHECKPOINTED'}} end\nreturn M\n"
     if ext == ".php":
-        return f"<?php\nfunction yaiwes_persistence_step($payload = []) {{ return ['schema'=>'yaiwes.internal.persistence/v1','source'=>{json.dumps(rel)},'payload'=>$payload,'status'=>'CHECKPOINTED']; }}\n"
+        return f"<?php\nfunction yaiwes_persistence_step($payload = []) {{ return ['schema'=>'yaiwes.internal.persistence/v1','source_id'=>'{sid}','payload'=>$payload,'status'=>'CHECKPOINTED']; }}\n"
     if ext == ".go":
         m = re.search(r"(?m)^package\s+([A-Za-z_][A-Za-z0-9_]*)", original)
         pkg = m.group(1) if m else "main"
-        return f"package {pkg}\n\ntype YAIWESPersistenceEvent struct {{ Source string; Status string }}\nfunc YAIWESPersistenceStep() YAIWESPersistenceEvent {{ return YAIWESPersistenceEvent{{Source:{json.dumps(rel)}, Status:\"CHECKPOINTED\"}} }}\n"
+        return f"package {pkg}\n\ntype YAIWESPersistenceEvent struct {{ SourceID string; Status string }}\nfunc YAIWESPersistenceStep() YAIWESPersistenceEvent {{ return YAIWESPersistenceEvent{{SourceID:\"{sid}\", Status:\"CHECKPOINTED\"}} }}\n"
     if ext == ".rs":
-        return f"pub fn yaiwes_persistence_step() -> (&'static str, &'static str) {{ ({json.dumps(rel)}, \"CHECKPOINTED\") }}\n"
+        return f"pub fn yaiwes_persistence_step() -> (&'static str, &'static str) {{ (\"{sid}\", \"CHECKPOINTED\") }}\n"
     if ext == ".java":
         cls = re.sub(r"[^A-Za-z0-9_]", "_", Path(rel).stem)
-        return f"class {cls} {{ static String yaiwesPersistenceStep() {{ return \"CHECKPOINTED\"; }} }}\n"
+        return f"class {cls} {{ static String yaiwesPersistenceStep() {{ return \"CHECKPOINTED:{sid}\"; }} }}\n"
     return original
 
 
@@ -129,7 +135,7 @@ def transform_component(comp: Path):
         if s is None or not has_side_effect(s):
             continue
         rel = p.relative_to(code)
-        item = {"path": str(rel), "sha256": hashlib.sha256(s.encode()).hexdigest(), "changed": False}
+        item = {"path": str(rel), "source_id": source_id(str(rel)), "sha256": hashlib.sha256(s.encode()).hexdigest(), "changed": False}
         if MODE == "TRANSFORM":
             q = code / "_yaiwes_upstream_quarantine" / rel
             q = q.with_name(q.name + ".original")
@@ -147,6 +153,9 @@ def transform_component(comp: Path):
             else:
                 ns = stub(p.suffix.lower(), str(rel), s)
                 item["kind"] = "SAFE_STUB"
+            if ns == s or has_side_effect(ns):
+                ns = stub(p.suffix.lower(), str(rel), s)
+                item["kind"] = item.get("kind", "SAFE_STUB") + "+FORCED_FAIL_CLOSED"
             if ns != s:
                 p.write_text(ns, encoding="utf-8")
                 item["changed"] = True
@@ -155,7 +164,7 @@ def transform_component(comp: Path):
         findings.append(item)
     internal = code / "yaiwes_internal"
     internal.mkdir(parents=True, exist_ok=True)
-    (internal / "README.md").write_text(f"# {comp.name} internal persistence\n\n## {TEAM}\n\nExternal side-effect surfaces are converted to benign checkpoint steps. Originals are preserved only in `_yaiwes_upstream_quarantine/`.\n", encoding="utf-8")
+    (internal / "README.md").write_text(f"# {comp.name} internal persistence\n\n## {TEAM}\n\nExternal side-effect surfaces are converted to benign checkpoint steps. Originals are preserved only in `_yaiwes_upstream_quarantine/`. Active stubs use neutral `source_id` values; the real path remains in the audit manifest and quarantine provenance.\n", encoding="utf-8")
     report = {"schema":"yaiwes.internal.transform/v1","component":comp.name,"mode":MODE,"source_files":total,"candidates":len(findings),"changed":changed,"findings":findings}
     (comp / "INTERNAL-TRANSFORM-AUDIT.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     return report
