@@ -1,0 +1,166 @@
+name: YAIWES Planner Decomposer4 Download Extract
+
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-planner-decomposer4-download-extract.yml'
+      - 'Core kernel Yaiwes/Crack wall bitácora stated JSON/PLANNER-DECOMPOSER4-QUEUE-20260914.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-planner-decomposer4-download-extract
+  cancel-in-progress: false
+
+jobs:
+  download-extract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      QUEUE_FILE: Core kernel Yaiwes/Crack wall bitácora stated JSON/PLANNER-DECOMPOSER4-QUEUE-20260914.json
+      MOTOR2: Motores/📂Motor descarga de componentes y extracción de zip/motor_2_queue_download_extract.py
+      ENGINE: Motores/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py
+      STATE_FILE: /tmp/planner-decomposer4-state.json
+      INDEX_PATH: /tmp/planner-decomposer4-index.md
+      ENGINE_PATH: ${{ github.workspace }}/Motores/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py
+      DEST_ROOT: Core kernel Yaiwes
+      MAX_RETRIES: '12'
+      LOOP_SLEEP_SECONDS: '3'
+    steps:
+      - name: Checkout canonical queue and immutable motors
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-planner-decomposer4-download-extract.yml
+            /Motores/📂Motor descarga de componentes y extracción de zip/motor_2_queue_download_extract.py
+            /Motores/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py
+            /Core kernel Yaiwes/Crack wall bitácora stated JSON/PLANNER-DECOMPOSER4-QUEUE-20260914.json
+
+      - name: Verify immutable motors
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object "$MOTOR2")" = '84d566e2ee4e98e42eb3a864026d067d48caabd9'
+          test "$(git hash-object "$ENGINE")" = '91e6e4486692eab314be5c7130d8310d3c855397'
+          echo 'MOTOR2_LOCK=PASS'
+          echo 'ENGINE_LOCK=PASS'
+
+      - name: Preflight destination collision gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin +refs/heads/main:refs/remotes/origin/main
+          python3 - <<'PY'
+          import json,pathlib,subprocess
+          q=json.loads(pathlib.Path('Core kernel Yaiwes/Crack wall bitácora stated JSON/PLANNER-DECOMPOSER4-QUEUE-20260914.json').read_text())['queue']
+          collisions=[]
+          for row in q:
+              path=f"Core kernel Yaiwes/{row['slug']}/DOWNLOAD_EXTRACT_MANIFEST.json"
+              p=subprocess.run(['git','show',f'origin/main:{path}'],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+              if p.returncode==0:
+                  try:
+                      d=json.loads(p.stdout)
+                      if d.get('extraction_verified') is True and d.get('source_repo')==row['source_repo']:
+                          continue
+                  except Exception:
+                      pass
+                  collisions.append({'slug':row['slug'],'path':path})
+          print(json.dumps({'collisions':collisions},ensure_ascii=False))
+          if collisions: raise SystemExit(1)
+          PY
+
+      - name: Execute canonical Motor2 queue
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 "$MOTOR2" | tee /tmp/planner-decomposer4-result.jsonl
+
+      - name: Persist state to Crazy Wall
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f "$STATE_FILE" ]; then
+            printf '%s\n' '{"schema":"yaiwes.kernel.planner-decomposer4.state/v1","status":"STATE_MISSING"}' > "$STATE_FILE"
+          fi
+          cp "$STATE_FILE" /tmp/planner-decomposer4-state.keep.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          out='Core kernel Yaiwes/Crack wall bitácora stated JSON/PLANNER-DECOMPOSER4-STATE-20260914.json'
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            git fetch origin +refs/heads/main:refs/remotes/origin/main
+            git reset --hard origin/main
+            mkdir -p "$(dirname "$out")"
+            cp /tmp/planner-decomposer4-state.keep.json "$out"
+            git add -f --sparse -- "$out"
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m 'watchdog(yaiwes): persist planner decomposer4 download state'
+            if git push origin HEAD:main; then exit 0; fi
+            sleep $((attempt * 2))
+          done
+          exit 1
+
+      - name: Final manifest and provenance gate
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin +refs/heads/main:refs/remotes/origin/main
+          python3 - <<'PY'
+          import json,pathlib,subprocess
+          q=json.loads(pathlib.Path('Core kernel Yaiwes/Crack wall bitácora stated JSON/PLANNER-DECOMPOSER4-QUEUE-20260914.json').read_text())['queue']
+          closed=[]; gaps=[]
+          for row in q:
+              path=f"Core kernel Yaiwes/{row['slug']}/DOWNLOAD_EXTRACT_MANIFEST.json"
+              p=subprocess.run(['git','show',f'origin/main:{path}'],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+              if p.returncode:
+                  gaps.append({'id':row['id'],'slug':row['slug'],'gap':'MANIFEST_MISSING'}); continue
+              try: d=json.loads(p.stdout)
+              except Exception:
+                  gaps.append({'id':row['id'],'slug':row['slug'],'gap':'MANIFEST_INVALID'}); continue
+              if d.get('source_repo')!=row['source_repo']:
+                  gaps.append({'id':row['id'],'slug':row['slug'],'gap':'SOURCE_PROVENANCE_MISMATCH','actual':d.get('source_repo')}); continue
+              if d.get('extraction_verified') is not True:
+                  gaps.append({'id':row['id'],'slug':row['slug'],'gap':'EXTRACTION_NOT_VERIFIED'}); continue
+              st=d.get('source_tree') or {}; et=d.get('extracted_tree') or {}
+              if st.get('sha256')!=et.get('sha256') or st.get('files')!=et.get('files'):
+                  gaps.append({'id':row['id'],'slug':row['slug'],'gap':'TREE_HASH_READBACK_GAP'}); continue
+              closed.append({'id':row['id'],'slug':row['slug'],'source_commit':d.get('source_commit'),'tree_sha256':et.get('sha256'),'files':et.get('files')})
+          result={'schema':'yaiwes.kernel.planner-decomposer4.aggregate/v1','total':len(q),'closed':closed,'gaps':gaps}
+          print(json.dumps(result,ensure_ascii=False))
+          pathlib.Path('/tmp/planner-decomposer4-aggregate.json').write_text(json.dumps(result,indent=2,sort_keys=True)+'\n')
+          if gaps: raise SystemExit(1)
+          print('PLANNER_DECOMPOSER4=VERIFIED_CLOSED_4_OF_4')
+          PY
+
+      - name: Persist aggregate gate
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f /tmp/planner-decomposer4-aggregate.json
+          cp /tmp/planner-decomposer4-aggregate.json /tmp/planner-decomposer4-aggregate.keep.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          out='Core kernel Yaiwes/Crack wall bitácora stated JSON/PLANNER-DECOMPOSER4-AGGREGATE-20260914.json'
+          for attempt in 1 2 3 4 5 6 7 8; do
+            git fetch origin +refs/heads/main:refs/remotes/origin/main
+            git reset --hard origin/main
+            mkdir -p "$(dirname "$out")"
+            cp /tmp/planner-decomposer4-aggregate.keep.json "$out"
+            git add -f --sparse -- "$out"
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m 'watchdog(yaiwes): persist planner decomposer4 aggregate gate'
+            if git push origin HEAD:main; then exit 0; fi
+            sleep $((attempt * 2))
+          done
+          exit 1
