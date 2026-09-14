@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 4542805,
+  "bundle_sha256": "f41a51931c0b12a2267c915a7a15d369a567559540a63157cf789e0ca40dae66",
+  "extracted_tree": {
+    "bytes": 18663019,
+    "files": 246,
+    "sha256": "e6784cf74718f0e046b8b6dc323b670dde65928d04bc43c4dda81ee341f0706c"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 4542805,
+      "name": "MemRL.bundle.zip.part-0001",
+      "sha256": "f41a51931c0b12a2267c915a7a15d369a567559540a63157cf789e0ca40dae66"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "MemRL",
+  "source_bytes": 18663019,
+  "source_commit": "c1b322ca43de36ddf64c6712f89d0095bfc35ce0",
+  "source_files": 246,
+  "source_ref": "HEAD",
+  "source_repo": "MemTensor/MemRL",
+  "source_tree": {
+    "bytes": 18663019,
+    "files": 246,
+    "sha256": "e6784cf74718f0e046b8b6dc323b670dde65928d04bc43c4dda81ee341f0706c"
+  }
+}
