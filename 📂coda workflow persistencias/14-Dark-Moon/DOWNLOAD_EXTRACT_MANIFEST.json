@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 2179389,
+  "bundle_sha256": "443967b2813d691f37391d8dc8bb0dce9fe315cc28f377666333310c5ee0734e",
+  "extracted_tree": {
+    "bytes": 4014792,
+    "files": 168,
+    "sha256": "3f95ab9278b2cf7a8c239d17539895c5fe79b5530bb383316c508579a0bf51e0"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 2179389,
+      "name": "14-Dark-Moon.bundle.zip.part-0001",
+      "sha256": "443967b2813d691f37391d8dc8bb0dce9fe315cc28f377666333310c5ee0734e"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "14-Dark-Moon",
+  "source_bytes": 4014792,
+  "source_commit": "a5fc031677bea0eb109123273bfe5095a5b6745b",
+  "source_files": 168,
+  "source_ref": "HEAD",
+  "source_repo": "ASCIT31/Dark-Moon",
+  "source_tree": {
+    "bytes": 4014792,
+    "files": 168,
+    "sha256": "3f95ab9278b2cf7a8c239d17539895c5fe79b5530bb383316c508579a0bf51e0"
+  }
+}
