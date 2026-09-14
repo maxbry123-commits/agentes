@@ -1,0 +1,43 @@
+{
+  "bundle_bytes": 35517063,
+  "bundle_sha256": "b282821c1c785533072b6486d6933d94838e3893156fdab1faa1a339f673de47",
+  "extracted_tree": {
+    "bytes": 42878473,
+    "files": 642,
+    "sha256": "a6e546a73cafe55a606475f0309ddc136d4ce16a26acef2387862f3138739aa7"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "PettingZoo.bundle.zip.part-0001",
+      "sha256": "f629dfa14db7a01e2e1d6b727e0cd721bff469c88b7e926a0b78ce011e2ded12"
+    },
+    {
+      "bytes": 12582912,
+      "name": "PettingZoo.bundle.zip.part-0002",
+      "sha256": "50593618dfe42aee0f467de509a45a79ff15177d62bbb64ca461c0d3108ba380"
+    },
+    {
+      "bytes": 10351239,
+      "name": "PettingZoo.bundle.zip.part-0003",
+      "sha256": "4f769cb2303e43f70fe6074fdfedb090f5a1570315eb0a29d64cbe23c9a27148"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "PettingZoo",
+  "source_bytes": 42878473,
+  "source_commit": "a865c24671b269e4091ee16069901cfa6e88efc5",
+  "source_files": 642,
+  "source_ref": "HEAD",
+  "source_repo": "Farama-Foundation/PettingZoo",
+  "source_tree": {
+    "bytes": 42878473,
+    "files": 642,
+    "sha256": "a6e546a73cafe55a606475f0309ddc136d4ce16a26acef2387862f3138739aa7"
+  }
+}

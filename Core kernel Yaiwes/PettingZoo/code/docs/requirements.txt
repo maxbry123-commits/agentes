@@ -1,0 +1,5 @@
+sphinx
+sphinx-autobuild
+myst-parser
+celshast
+sphinx_github_changelog

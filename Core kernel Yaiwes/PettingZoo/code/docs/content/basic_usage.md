@@ -1,0 +1,242 @@
+---
+title: API
+---
+# Basic Usage
+
+## Installation
+
+To install the base PettingZoo library: `pip install pettingzoo`.
+
+This does not include dependencies for all families of environments (some environments can be problematic to install on certain systems).
+
+To install the dependencies for one family, use `pip install 'pettingzoo[atari]'`, or use `pip install 'pettingzoo[all]'` to install all dependencies.
+
+We support and maintain PettingZoo for Python 3.10, 3.11, 3.12, 3.13, and 3.14 on Linux and macOS. We will accept PRs related to Windows, but do not officially support it.
+
+## Initializing Environments
+
+Using environments in PettingZoo is very similar to using them in Gymnasium. You initialize an environment via the `make` function:
+
+```python
+from pettingzoo import make
+
+env = make("aec", "butterfly/pistonball-v6")
+```
+
+Use `"aec"` for the [Agent Environment Cycle](../api/aec.md) API and `"parallel"` for the [Parallel](../api/parallel.md) API:
+
+```python
+from pettingzoo import make
+
+penv = make("parallel", "butterfly/pistonball-v6")
+```
+
+Not every environment provides a parallel version. Check whether an ID is available with `parallel_registry`:
+
+```python
+from pettingzoo import parallel_registry
+
+"classic/chess-v6" in parallel_registry  # False — chess is AEC-only
+"butterfly/pistonball-v6" in parallel_registry  # True
+```
+
+Third-party environments can be added with `pettingzoo.register`:
+
+```python notest
+from pettingzoo import register
+from custom_pettingzoo_env import env, parallel_env
+
+register("aec", "custom/my-awesome-env-v0", env)
+register("parallel", "custom/my-awesome-env-v0", parallel_env)
+```
+
+Environments are generally highly configurable via arguments at creation, i.e.:
+
+```python
+from pettingzoo import make
+
+make(
+    "aec",
+    "butterfly/cooperative_pong-v6",
+    ball_speed=18,
+    left_paddle_speed=25,
+    right_paddle_speed=25,
+    cake_paddle=True,
+    max_cycles=900,
+    bounce_randomness=False,
+)
+```
+
+```{warning}
+The old environment creation API (`from pettingzoo.<namespace> import <game>` then `<game>.env()` / `<game>.parallel_env()`) is deprecated in favor of the Gymnasium-like registry (`pettingzoo.make`). The old API may be removed in a future release.
+```
+
+## Interacting With Environments
+
+Environments can be interacted with using a similar interface to Gymnasium:
+
+```python
+from pettingzoo import make
+
+env = make("aec", "butterfly/cooperative_pong-v6", render_mode="human")
+env.reset(seed=42)
+
+for agent in env.agent_iter():
+    observation, reward, termination, truncation, info = env.last()
+
+    if termination or truncation:
+        action = None
+    else:
+        # this is where you would insert your policy
+        action = env.action_space(agent).sample()
+
+    env.step(action)
+env.close()
+```
+
+The commonly used methods are:
+
+`agent_iter(max_iter=2**63)` returns an iterator that yields the current agent of the environment. It terminates when all agents in the environment are done or when `max_iter` (steps have been executed).
+
+`last(observe=True)` returns observation, reward, done, and info for the agent currently able to act. The returned reward is the cumulative reward that the agent has received since it last acted. If `observe` is set to False, the observation will not be computed, and None will be returned in its place. Note that a single agent being done does not imply the environment is done.
+
+`reset()` resets the environment and sets it up for use when called the first time. This method must be called before any other method.
+
+`step(action)` takes and executes the action of the agent in the environment, automatically switches control to the next agent.
+
+## Additional Environment API
+
+PettingZoo models games as *Agent Environment Cycle* (AEC) games, and thus can support any game multi-agent RL can consider, allowing for fantastically weird cases. Because of this, our API includes lower level functions and attributes that you probably won't need but are very important when you do. Their functionality is used to implement the high-level functions above though, so including them is just a matter of code factoring.
+
+`agents`: A list of the names of all current agents, typically integers. These may be changed as an environment progresses (i.e. agents can be added or removed).
+
+`num_agents`: The length of the agents list.
+
+`agent_selection` an attribute of the environment corresponding to the currently selected agent that an action can be taken for.
+
+`observation_space(agent)` a function that retrieves the observation space for a particular agent. This space should never change for a particular agent ID.
+
+`action_space(agent)` a function that retrieves the action space for a particular agent. This space should never change for a particular agent ID.
+
+`terminations`: A dict of the termination state of every current agent at the time called, keyed by name. `last()` accesses this attribute. Note that agents can be added or removed from this dict. The returned dict looks like:
+
+`terminations = {0:[first agent's termination state], 1:[second agent's termination state] ... n-1:[nth agent's termination state]}`
+
+`truncations`: A dict of the truncation state of every current agent at the time called, keyed by name. `last()` accesses this attribute. Note that agents can be added or removed from this dict. The returned dict looks like:
+
+`truncations = {0:[first agent's truncation state], 1:[second agent's truncation state] ... n-1:[nth agent's truncation state]}`
+
+`infos`: A dict of info for each current agent, keyed by name. Each agent's info is also a dict. Note that agents can be added or removed from this attribute. `last()` accesses this attribute. The returned dict looks like:
+
+`infos = {0:[first agent's info], 1:[second agent's info] ... n-1:[nth agent's info]}`
+
+`observe(agent)`: Returns the observation an agent currently can make. `last()` calls this function.
+
+`rewards`: A dict of the rewards of every current agent at the time called, keyed by name. Rewards the instantaneous reward generated after the last step. Note that agents can be added or removed from this attribute. `last()` does not directly access this attribute, rather the returned reward is stored in an internal variable. The rewards structure looks like:
+
+`{0:[first agent's reward], 1:[second agent's reward] ... n-1:[nth agent's reward]}`
+
+`seed(seed=None)`: Reseeds the environment. `reset()` must be called after `seed()`, and before `step()`.
+
+`render()`: Returns a rendered frame from the environment using render mode specified at initialization. In the case render mode is`'rgb_array'`, returns a numpy array, while with `'ansi'` returns the strings printed. There is no need to call `render()` with `human` mode.
+
+`close()`: Closes the rendering window.
+
+### Optional API Components
+
+While not required by the base API, most downstream wrappers and utilities depend on the following attributes and methods, and they should be added to new environments except in special circumstances where adding one or more is not possible.
+
+`possible_agents`: A list of all possible_agents the environment could generate. Equivalent to the list of agents in the observation and action spaces. This cannot be changed through play or resetting.
+
+`max_num_agents`: The length of the possible_agents list.
+
+`observation_spaces`: A dict of the observation spaces of every agent, keyed by name. This cannot be changed through play or resetting.
+
+`action_spaces`: A dict of the action spaces of every agent, keyed by name. This cannot be changed through play or resetting.
+
+`state()`: Returns a global observation of the current state of the environment. Not all environments will support this feature.
+
+`state_space`: The space of a global observation of the environment. Not all environments will support this feature.
+
+## Notable Idioms
+
+### Checking if the entire environment is done
+
+Nothing in the base `AECEnv` class updates `agents`; each environment maintains it. Environments are expected to follow the convention described in [Variable Numbers of Agents (Death)](#variable-numbers-of-agents-death) below: a terminated or truncated agent stays in `agents` until it has taken one final vacuous step with action `None`, and that step removes it from `agents` and the other changeable attributes. Every PettingZoo environment follows this convention, and `api_test` checks that a custom environment does too.
+
+For such an environment:
+
+* Right after `last()` first returns `termination=True` or `truncation=True` for an agent, that agent is **still** in `env.agents`. Checking `not env.agents` at that moment is incorrect and will fail (for example on `classic/connect_four`).
+* After every terminated/truncated agent has been stepped with `None`, `env.agents` becomes an empty list. At that point `not env.agents` is a simple condition for the environment being done.
+
+In the usual `agent_iter` loop you do not need an extra done check: the iterator stops once all agents have been removed. If you step without `agent_iter`, keep calling `step(None)` for dead agents until `not env.agents`.
+
+```python
+from pettingzoo import make
+
+env = make("aec", "classic/connect_four-v3")
+env.reset(seed=42)
+
+for agent in env.agent_iter():
+    observation, reward, termination, truncation, info = env.last()
+
+    if termination or truncation:
+        # Agent is still listed in env.agents here.
+        # Removal happens only after this None step.
+        action = None
+    else:
+        mask = observation["action_mask"]
+        action = env.action_space(agent).sample(mask)
+
+    env.step(action)
+
+assert not env.agents  # environment is done
+env.close()
+```
+
+### Unwrapping an environment
+
+If you have a wrapped environment, and you want to get the unwrapped environment underneath all the layers of wrappers (so that you can manually call a function or change some underlying aspect of the environment), you can use the `.unwrapped` attribute. If the environment is already a base environment, the `.unwrapped` attribute will just return itself.
+
+```python
+from pettingzoo import make
+
+base_env = make("aec", "butterfly/knights_archers_zombies-v11").unwrapped
+```
+
+### Variable Numbers of Agents (Death)
+
+Agents can die and generate during the course of an environment. If an agent dies, then its entry in the `terminations` (or `truncations`) dictionary is set to `True`, it becomes the next selected agent (or after another agent that is also terminated or truncated), and the action it takes is required to be `None`. Until that vacuous step runs, the agent is still present in `env.agents` (so `not env.agents` is false even though `last()` already reported done for that agent). After the vacuous step is taken, the agent is removed from `agents` and other changeable attributes. Agent generation can just be done with appending it to `agents` and the other changeable attributes (with it already being in the possible agents and action/observation spaces), and transitioning to it at some point with agent_iter.
+
+This extra "dead step" exists so that a dying agent still gets one final turn: the user calls `last()` on it and sees its final observation, accumulated reward and termination/truncation flag before it disappears. If the environment removed the agent as soon as it died, `agent_iter` would never select it again and that last transition would be lost.
+
+This is a convention that environment authors have to implement, not behaviour the base `AECEnv` class provides. The [`_was_dead_step`](https://pettingzoo.farama.org/api/aec/#pettingzoo.utils.env.AECEnv._was_dead_step) helper does the retirement bookkeeping, and is meant to be called at the top of `step()`:
+
+```python notest
+def step(self, action):
+    if self.terminations[self.agent_selection] or self.truncations[self.agent_selection]:
+        # the only valid action for a dead agent is None; this removes it from
+        # agents/terminations/truncations/rewards/_cumulative_rewards/infos and
+        # advances agent_selection
+        self._was_dead_step(action)
+        return
+    # main contents of step
+```
+
+An environment that skips this will leave dead agents in `agents` forever, which breaks the `not env.agents` done check above and can make `agent_iter` loop indefinitely. `api_test` checks both halves of the convention: that a dead agent is still listed when `last()` reports it done, and that it is gone after its `step(None)`.
+
+### Environment as an Agent
+
+In certain cases, separating agent from environment actions is helpful for studying. This can be done by treating the environment as an agent. We encourage calling the environment actor `env` in env.agents, and having it take `None` as an action.
+
+
+## Raw Environments
+
+Environments are by default wrapped in a handful of lightweight wrappers that handle error messages and ensure reasonable behavior given incorrect usage (i.e. playing illegal moves or stepping before resetting). However, these add a very small amount of overhead. If you want to create an environment without them, you can do so by using the environment's `raw_env` constructor directly:
+
+```python
+from pettingzoo.butterfly.knights_archers_zombies import knights_archers_zombies
+
+environment_parameters = {}  # any parameters to pass to the environment
+env = knights_archers_zombies.raw_env(**environment_parameters)
+```

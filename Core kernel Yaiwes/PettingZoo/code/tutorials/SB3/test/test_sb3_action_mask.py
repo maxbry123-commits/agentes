@@ -1,0 +1,118 @@
+"""Tests that action masking code works properly with all PettingZoo classic environments."""
+
+from importlib.util import find_spec
+
+import pytest
+
+from pettingzoo import make
+
+pytest.importorskip("stable_baselines3")
+pytest.importorskip("sb3_contrib")
+
+# Note: Connect Four is tested in sb3_connect_four_action_mask.py
+# Note: Rock-Paper-Scissors has no action masking and does not seem to learn well playing against itself
+
+# These environments do better than random even after the minimum number of timesteps
+EASY_ENVS = [
+    "classic/texas_holdem_no_limit-v6",  # texas holdem human rendered game ends instantly, but with random actions it works fine
+    "classic/tictactoe-v3",
+    "classic/leduc_holdem-v4",
+]
+
+# More difficult environments which will likely take more training time
+MEDIUM_ENVS = [
+    "classic/hanabi-v5",  # even with 10x as many steps, total score seems to always be tied between the two agents
+    "classic/texas_holdem-v4",  # this performs poorly with updates to SB3 wrapper
+    "classic/chess-v6",  # difficult to train because games take so long, performance varies heavily
+]
+
+if find_spec("pyspiel") is None:  # Hanabi needs open_spiel (Python >= 3.11)
+    MEDIUM_ENVS = [e for e in MEDIUM_ENVS if e != "classic/hanabi-v5"]
+
+# Most difficult environments to train agents for (and longest games
+# TODO: test board_size to see if smaller go board is more easily solvable
+HARD_ENVS = [
+    "classic/go-v5",  # difficult to train because games take so long, may be another issue causing poor performance
+]
+
+
+@pytest.mark.parametrize("env_id", EASY_ENVS)
+def test_action_mask_easy(env_id):
+    from tutorials.SB3.connect_four.sb3_connect_four_action_mask import (
+        eval_action_mask,
+        train_action_mask,
+    )
+
+    env_kwargs = {}
+
+    steps = 8192 * 4
+
+    # Train a model against itself (takes ~2 minutes on GPU)
+    train_action_mask(env_id, steps=steps, seed=0, **env_kwargs)
+
+    # Evaluate 2 games against a random agent
+    round_rewards, total_rewards, winrate, scores = eval_action_mask(
+        env_id, num_games=100, render_mode=None, **env_kwargs
+    )
+
+    agents = make("aec", env_id).possible_agents
+    assert winrate > 0.5 or (total_rewards[agents[1]] > total_rewards[agents[0]]), (
+        "Trained policy should outperform random actions"
+    )
+
+    # Watch two games (disabled by default)
+    # eval_action_mask(env_id, num_games=2, render_mode="human", **env_kwargs)
+
+
+# @pytest.mark.skip(
+#     reason="training is compute intensive and hyperparameters have not been tuned, disabled for CI"
+# )
+@pytest.mark.parametrize("env_id", MEDIUM_ENVS)
+def test_action_mask_medium(env_id):
+    from tutorials.SB3.connect_four.sb3_connect_four_action_mask import (
+        eval_action_mask,
+        train_action_mask,
+    )
+
+    env_kwargs = {}
+
+    # Train a model against itself
+    train_action_mask(env_id, steps=8192, seed=0, **env_kwargs)
+
+    # Evaluate 2 games against a random agent
+    round_rewards, total_rewards, winrate, scores = eval_action_mask(
+        env_id, num_games=100, render_mode=None, **env_kwargs
+    )
+
+    assert winrate < 0.75, (
+        "Policy should not perform better than 75% winrate"
+    )  # 30-40% for leduc, 0% for hanabi
+
+    # Watch two games (disabled by default)
+    # eval_action_mask(env_id, num_games=2, render_mode="human", **env_kwargs)
+
+
+# @pytest.mark.skip(
+#     reason="training is compute intensive and hyperparameters have not been tuned, disabled for CI"
+# )
+@pytest.mark.parametrize("env_id", HARD_ENVS)
+def test_action_mask_hard(env_id):
+    from tutorials.SB3.connect_four.sb3_connect_four_action_mask import (
+        eval_action_mask,
+        train_action_mask,
+    )
+
+    env_kwargs = {}
+
+    # Train a model against itself
+    train_action_mask(env_id, steps=8192, seed=0, **env_kwargs)
+
+    # Evaluate 2 games against a random agent
+    round_rewards, total_rewards, winrate, scores = eval_action_mask(
+        env_id, num_games=100, render_mode=None, **env_kwargs
+    )
+
+    assert winrate > 0, "Policy should not perform better than 50% winrate"  # 0% for go
+
+    # Watch two games (disabled by default)
+    # eval_action_mask(env_id, num_games=2, render_mode="human", **env_kwargs)

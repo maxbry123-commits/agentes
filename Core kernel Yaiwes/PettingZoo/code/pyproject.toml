@@ -1,0 +1,207 @@
+# Package ######################################################################
+
+[build-system]
+requires = ["setuptools >= 61.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pettingzoo"
+description = "Gymnasium for multi-agent reinforcement learning."
+readme = "README.md"
+requires-python = ">= 3.10, <3.15"
+authors = [{ name = "Farama Foundation", email = "contact@farama.org" }]
+license = { text = "MIT License" }
+keywords = ["Reinforcement Learning", "game", "RL", "AI", "gymnasium"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "numpy>=1.21.0",
+    "gymnasium>=1.0.0",
+    "typing-extensions >=4.4.0",
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+# Update dependencies in `all` if any are added or removed
+atari = ["multi_agent_ale_py>=0.1.11", "pygame-ce>=2.3.0"]
+classic = [
+    "chess>=1.9.4",
+    "rlcard>=1.0.5",
+    "pygame-ce>=2.3.0",
+    "shimmy>=1.2.0",
+    "open_spiel>=1.6.15; python_version >= '3.11'"
+]
+butterfly = ["pygame-ce>=2.3.0", "pymunk>=6.2.0"]
+sisl = [
+    "pygame-ce>=2.3.0",
+    "pymunk>=6.2.0",
+    "scipy>=1.4.1",
+    "box2d==2.3.10; python_version < '3.14'",
+    "box2d-py==2.3.8; python_version >= '3.14'",
+    "swig==4.*; python_version >= '3.14'",
+]
+other = ["pillow>=8.0.1", "moviepy>=2.2.1"]
+testing = [
+    "pynput>=1.7.6",
+    "pytest>=8.0.0",
+    "AutoROM>=0.6.1",
+    "pytest-cov>=4.1.0",
+    "pytest-xdist>=3.5.0",
+    "pre-commit>=3.5.0",
+    "pytest-markdown-docs>=0.5.0"
+]
+all = [
+    "pettingzoo[atari, classic, butterfly, sisl, other]"
+]
+
+[project.urls]
+Homepage = "https://farama.org"
+Repository = "https://github.com/Farama-Foundation/PettingZoo"
+Documentation = "https://pettingzoo.farama.org"
+"Bug Report" = "https://github.com/Farama-Foundation/PettingZoo/issues"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["pettingzoo", "pettingzoo.*"]
+
+# Linters and Test tools #######################################################
+
+[tool.ruff]
+# Match the historical black line length (88) so `ruff format` reproduces it.
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+# Strictness ratchet. On top of the default set (pyflakes `F`, pycodestyle
+# `E4/E7/E9`) plus `I` (import sorting; replaces the standalone isort), we
+# enable additional rules using two strategies:
+#   - Families that are mostly useful (B, C4, FURB, PERF, PIE, RET, RSE, RUF,
+#     UP) are selected whole; the few rules whose autofix would change runtime
+#     behavior, regress performance, or only rewrite style are deferred via
+#     `ignore` below (each with a reason) so the family still catches *new*
+#     violations of its useful rules.
+#   - Families that are mostly stylistic (SIM) are selected rule-by-rule, so a
+#     new rule added to such a family upstream is not auto-activated as a CI
+#     error.
+extend-select = [
+    "I",    # isort (import sorting; replaces the standalone isort hook)
+    "B",    # flake8-bugbear (likely bugs)
+    "C4",   # flake8-comprehensions
+    "D",    # pydocstyle (replaces the standalone pydocstyle hook)
+    "FURB", # refurb (modernization)
+    "PERF", # perflint (performance)
+    "PIE",  # flake8-pie (misc lints)
+    "RET",  # flake8-return
+    "RSE",  # flake8-raise
+    "RUF",  # ruff-specific rules
+    "UP",   # pyupgrade
+    # flake8-simplify (`SIM`): selected rule-by-rule rather than as a family.
+    # Most of its rules are stylistic (ternaries, collapsed ifs) or perf-negative
+    # (SIM105), so we opt in only to the few we want instead of selecting the
+    # whole family and ignoring the majority.
+    "SIM118", # `key in dict` instead of `key in dict.keys()`
+    "SIM201", # `a != b` instead of `not a == b`
+    "SIM300", # yoda condition (`var == literal`)
+    "SIM401", # `dict.get(k, default)` instead of an if/else block
+    "SIM905", # split a static string into a list literal
+]
+extend-ignore = [
+    "E203",   # whitespace before ':' (conflicts with the formatter)
+    # -- pydocstyle -- (same add-ignore set as the previous pydocstyle hook)
+    "D100",   # missing module docstring: existing envs/tests omit these
+    "D101",   # missing class docstring
+    "D102",   # missing public method docstring
+    "D103",   # missing public function docstring
+    "D105",   # missing magic method docstring
+    "D107",   # missing __init__ docstring
+    # -- pyupgrade --
+    "UP031",  # printf-string -> format: no autofix, fiddly (some nested in f-strings), low value
+    # -- flake8-bugbear -- (deferred: need per-site judgement, not mechanical)
+    "B006",   # mutable default arg: fixing changes signature/behavior; review case-by-case
+    "B008",   # function call in default arg: often intentional framework patterns
+    "B019",   # cached method: PettingZoo intentionally caches observation/action spaces
+    "B028",   # warnings.warn without stacklevel: noisy, alters reported location, low value
+    "B905",   # zip() without strict=: no autofix; strict=True/False is a per-call judgement
+    # -- flake8-return -- (stylistic; can hurt readability/debuggability)
+    "RET503", # implicit return None: manual, stylistic
+    "RET504", # unnecessary assign before return: intermediate vars aid debugging
+    # -- perflint --
+    "PERF203", # try/except in loop: no clean mechanical fix
+    "PERF401", # build list via comprehension/extend: risky in env state-vector builders
+    # -- ruff-specific -- (deferred: noisy / behavior-or-type-sensitive / own pass)
+    "RUF002", # ambiguous unicode in docstring: usually intentional
+    "RUF005", # collection concat: no autofix, manual
+    "RUF012", # mutable ClassVar default: large annotation-only sweep, defer
+    "RUF015", # iterable allocation for first element: empty-handling differs
+    "RUF046", # int(round(x)): on numpy scalars this changes result type
+    "RUF059", # unused unpacked variable: noisy, no autofix
+]
+
+[tool.ruff.lint.per-file-ignores]
+"*/__init__.py" = ["F401"]  # allow re-exports without explicit __all__
+"test/all_parameter_combs_test.py" = ["F405"]
+# Canonical env-authoring templates embedded in the docs and copied verbatim by
+# users. Keep the explicit `{agent: x for agent in self.agents}` comprehension
+# (clearer per-agent intent, and safe to copy with a mutable value) rather than
+# the `dict.fromkeys` form C420 would prefer.
+"docs/code_examples/*.py" = ["C420"]
+# Match the previous pydocstyle hook exclude: __init__.py$|^pettingzoo.test|^docs
+"__init__.py" = ["D"]
+"docs/**" = ["D"]
+"pettingzoo/test/**" = ["D"]
+"test/**" = ["D"]
+# Env families keep the D212/D415 suppression that used to live as a file-level noqa.
+"pettingzoo/atari/**" = ["D212", "D415"]
+"pettingzoo/butterfly/**" = ["D212", "D415"]
+"pettingzoo/classic/**" = ["D212", "D415"]
+"pettingzoo/sisl/**" = ["D212", "D415"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["pettingzoo"]
+
+[tool.ty.src]
+# add any files/directories with type declaration to include
+include = [
+    "pettingzoo/",
+]
+exclude = [
+    "pettingzoo/atari/",
+    "pettingzoo/butterfly/",
+    "pettingzoo/classic/",
+    "pettingzoo/sisl/",
+    "pettingzoo/test/",
+]
+
+[tool.ty.rules]
+# Every enabled rule is an error so type-checking failures fail CI. The set of
+# enabled rules is unchanged from the forgiving baseline (no new strictness);
+# we only promoted the existing diagnostics from "warn" to "error".
+all = "error"
+# Missing imports are not reported (third-party deps lack stubs).
+unresolved-import = "ignore"
+
+[tool.ty.terminal]
+# Fail (exit non-zero) on warning-level diagnostics too.
+error-on-warning = true
+
+[tool.pytest.ini_options]
+addopts = [ "--ignore-glob=*/__init__.py", "-n=auto", "--ignore=tutorials", "--ignore=docs/_scripts", "--ignore=conf.py"]
+filterwarnings = [
+    "ignore::DeprecationWarning:pygame.*",
+    "ignore::DeprecationWarning:pkg_resources.*"
+]
