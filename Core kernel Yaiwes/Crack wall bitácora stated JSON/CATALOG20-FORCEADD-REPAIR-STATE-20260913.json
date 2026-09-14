@@ -1,0 +1,697 @@
+{
+  "items": {
+    "05-airflow": {
+      "lfs_pointers_preserved": [],
+      "normalizations": [
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": ".claude/skills/aip-user-stories",
+          "target": "../../.agents/skills/aip-user-stories"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": ".claude/skills/airflow-translations",
+          "target": "../../.agents/skills/airflow-translations"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": ".claude/skills/prepare-providers-documentation",
+          "target": "../../.agents/skills/prepare-providers-documentation"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": ".claude/skills/upgrade-fab-provider",
+          "target": "../../.agents/skills/upgrade-fab-provider"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": ".github/skills/aip-user-stories",
+          "target": "../../.agents/skills/aip-user-stories"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": ".github/skills/airflow-translations",
+          "target": "../../.agents/skills/airflow-translations"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": ".github/skills/prepare-providers-documentation",
+          "target": "../../.agents/skills/prepare-providers-documentation"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": ".github/skills/upgrade-fab-provider",
+          "target": "../../.agents/skills/upgrade-fab-provider"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "CLAUDE.md",
+          "target": "AGENTS.md"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "airflow-core/src/airflow/_shared/configuration",
+          "target": "../../../../shared/configuration/src/airflow_shared/configuration"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "airflow-core/src/airflow/_shared/dagnode",
+          "target": "../../../../shared/dagnode/src/airflow_shared/dagnode"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "airflow-core/src/airflow/_shared/listeners",
+          "target": "../../../../shared/listeners/src/airflow_shared/listeners"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "airflow-core/src/airflow/_shared/logging",
+          "target": "../../../../shared/logging/src/airflow_shared/logging"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "airflow-core/src/airflow/_shared/module_loading",
+          "target": "../../../../shared/module_loading/src/airflow_shared/module_loading"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "airflow-core/src/airflow/_shared/observability",
+          "target": "../../../../shared/observability/src/airflow_shared/observability"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "airflow-core/src/airflow/_shared/plugins_manager",
+          "target": "../../../../shared/plugins_manager/src/airflow_shared/plugins_manager"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "airflow-core/src/airflow/_shared/providers_discovery",
+          "target": "../../../../shared/providers_discovery/src/airflow_shared/providers_discovery"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "airflow-core/src/airflow/_shared/secrets_backend",
+          "target": "../../../../shared/secrets_backend/src/airflow_shared/secrets_backend"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "airflow-core/src/airflow/_shared/secrets_masker",
+          "target": "../../../../shared/secrets_masker/src/airflow_shared/secrets_masker"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "airflow-core/src/airflow/_shared/serialization",
+          "target": "../../../../shared/serialization/src/airflow_shared/serialization"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "airflow-core/src/airflow/_shared/state",
+          "target": "../../../../shared/state/src/airflow_shared/state"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "airflow-core/src/airflow/_shared/template_rendering",
+          "target": "../../../../shared/template_rendering/src/airflow_shared/template_rendering"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "airflow-core/src/airflow/_shared/timezones",
+          "target": "../../../../shared/timezones/src/airflow_shared/timezones"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "java-sdk/example/gradle.properties",
+          "target": "../gradle.properties"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "java-sdk/scala_spark_example/gradle.properties",
+          "target": "../gradle.properties"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "registry/CLAUDE.md",
+          "target": "AGENTS.md"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "task-sdk/src/airflow/sdk/_shared/AGENTS.md",
+          "target": "../../../../../airflow-core/src/airflow/_shared/AGENTS.md"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "task-sdk/src/airflow/sdk/_shared/README.md",
+          "target": "../../../../../airflow-core/src/airflow/_shared/README.md"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "task-sdk/src/airflow/sdk/_shared/configuration",
+          "target": "../../../../../shared/configuration/src/airflow_shared/configuration"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "task-sdk/src/airflow/sdk/_shared/dagnode",
+          "target": "../../../../../shared/dagnode/src/airflow_shared/dagnode"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "task-sdk/src/airflow/sdk/_shared/listeners",
+          "target": "../../../../../shared/listeners/src/airflow_shared/listeners"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "task-sdk/src/airflow/sdk/_shared/logging",
+          "target": "../../../../../shared/logging/src/airflow_shared/logging/"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "task-sdk/src/airflow/sdk/_shared/module_loading",
+          "target": "../../../../../shared/module_loading/src/airflow_shared/module_loading"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "task-sdk/src/airflow/sdk/_shared/observability",
+          "target": "../../../../../shared/observability/src/airflow_shared/observability"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "task-sdk/src/airflow/sdk/_shared/plugins_manager",
+          "target": "../../../../../shared/plugins_manager/src/airflow_shared/plugins_manager"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "task-sdk/src/airflow/sdk/_shared/providers_discovery",
+          "target": "../../../../../shared/providers_discovery/src/airflow_shared/providers_discovery"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "task-sdk/src/airflow/sdk/_shared/secrets_backend",
+          "target": "../../../../../shared/secrets_backend/src/airflow_shared/secrets_backend"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "task-sdk/src/airflow/sdk/_shared/secrets_masker",
+          "target": "../../../../../shared/secrets_masker/src/airflow_shared/secrets_masker"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "task-sdk/src/airflow/sdk/_shared/serialization",
+          "target": "../../../../../shared/serialization/src/airflow_shared/serialization"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "task-sdk/src/airflow/sdk/_shared/state",
+          "target": "../../../../../shared/state/src/airflow_shared/state"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "task-sdk/src/airflow/sdk/_shared/template_rendering",
+          "target": "../../../../../shared/template_rendering/src/airflow_shared/template_rendering"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "task-sdk/src/airflow/sdk/_shared/timezones",
+          "target": "../../../../../shared/timezones/src/airflow_shared/timezones"
+        }
+      ],
+      "publish": {
+        "commit": "ac14a5ce35cce28595940329b1f51fe650eb701a",
+        "readback_tree": {
+          "bytes": 186519472,
+          "files": 14078,
+          "sha256": "c159830377b1dd50c68567af05456f26a59f86a9d799858447ed5e70f57f48c9"
+        },
+        "verdict": "PUBLISHED_AND_DEEP_READBACK_VERIFIED"
+      },
+      "slug": "Apache-Airflow",
+      "source_commit": "1f5d7691663016c898718768991a2dae522b4475",
+      "source_repo": "apache/airflow",
+      "status": "VERIFIED_CLOSED",
+      "tree": {
+        "bytes": 186519472,
+        "files": 14078,
+        "sha256": "c159830377b1dd50c68567af05456f26a59f86a9d799858447ed5e70f57f48c9"
+      }
+    },
+    "06-dagster": {
+      "lfs_pointers_preserved": [],
+      "normalizations": [
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": ".github/styles",
+          "target": "docs/vale/styles/"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "README.md",
+          "target": "python_modules/dagster/README.md"
+        }
+      ],
+      "publish": {
+        "commit": "eb459e14e530fbde8ce1e0a2567900f6f14a9c68",
+        "readback_tree": {
+          "bytes": 318700091,
+          "files": 14373,
+          "sha256": "e17545ac0ffe3756fac2998ecd7ee010452d86418876daecbe7701031878c262"
+        },
+        "verdict": "PUBLISHED_AND_DEEP_READBACK_VERIFIED"
+      },
+      "slug": "Dagster",
+      "source_commit": "249fbedf4d81541bf83b8e2727ae2fb6332a243d",
+      "source_repo": "dagster-io/dagster",
+      "status": "VERIFIED_CLOSED",
+      "tree": {
+        "bytes": 318700091,
+        "files": 14373,
+        "sha256": "e17545ac0ffe3756fac2998ecd7ee010452d86418876daecbe7701031878c262"
+      }
+    },
+    "07-litellm": {
+      "lfs_pointers_preserved": [],
+      "normalizations": [
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "litellm/proxy/enterprise",
+          "target": "../../enterprise"
+        }
+      ],
+      "publish": {
+        "commit": "87bff9bb21a5996782a3b08189c8f6e972601b4d",
+        "readback_tree": {
+          "bytes": 194212141,
+          "files": 10707,
+          "sha256": "e79591b81a29d11b3f54c635ebbacaa04e016b5fc446009749938e1356a2229e"
+        },
+        "verdict": "PUBLISHED_AND_DEEP_READBACK_VERIFIED"
+      },
+      "slug": "LiteLLM",
+      "source_commit": "30f33a949b8a2bb890a2baee18e2ab7ab015a4f7",
+      "source_repo": "BerriAI/litellm",
+      "status": "VERIFIED_CLOSED",
+      "tree": {
+        "bytes": 194212141,
+        "files": 10707,
+        "sha256": "e79591b81a29d11b3f54c635ebbacaa04e016b5fc446009749938e1356a2229e"
+      }
+    },
+    "09-tensorzero": {
+      "lfs_pointers_preserved": [],
+      "normalizations": [
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "crates/tensorzero-core/tests/e2e/config-in-db/cache-clickhouse.gateway.toml",
+          "target": "../config/cache-clickhouse.gateway.toml"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "crates/tensorzero-core/tests/e2e/config-in-db/cache-valkey.gateway.toml",
+          "target": "../config/cache-valkey.gateway.toml"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "crates/tensorzero-core/tests/e2e/config-in-db/postgres.gateway.toml",
+          "target": "../config/postgres.gateway.toml"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.evaluations.toml",
+          "target": "../config/tensorzero.evaluations.toml"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.anthropic_beta.toml",
+          "target": "../config/tensorzero.functions.anthropic_beta.toml"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.cache_test.toml",
+          "target": "../config/tensorzero.functions.cache_test.toml"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.dynamic_json.toml",
+          "target": "../config/tensorzero.functions.dynamic_json.toml"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.extract_entities.toml",
+          "target": "../config/tensorzero.functions.extract_entities.toml"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.image_judger.toml",
+          "target": "../config/tensorzero.functions.image_judger.toml"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.json_math.toml",
+          "target": "../config/tensorzero.functions.json_math.toml"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.json_mode_tool.toml",
+          "target": "../config/tensorzero.functions.json_mode_tool.toml"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.json_success.toml",
+          "target": "../config/tensorzero.functions.json_success.toml"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.weather_helper.toml",
+          "target": "../config/tensorzero.functions.weather_helper.toml"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.write_haiku.toml",
+          "target": "../config/tensorzero.functions.write_haiku.toml"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.models.toml",
+          "target": "../config/tensorzero.models.toml"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.provider_types.toml",
+          "target": "../config/tensorzero.provider_types.toml"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "crates/tensorzero-python/.sqlx",
+          "target": "../.sqlx"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "examples/docs/guides/optimization/supervised-fine-tuning-sft/ner.py",
+          "target": "../dynamic-in-context-learning-dicl/ner.py"
+        }
+      ],
+      "publish": {
+        "commit": "0ba744ef42e9eed98444aa49fae38230609b9652",
+        "readback_tree": {
+          "bytes": 80482280,
+          "files": 3474,
+          "sha256": "b72ecfa6ee4b6fda79c4aea89ee0287d2cde8dc5f90b75609fedce1bba4d0917"
+        },
+        "verdict": "PUBLISHED_AND_DEEP_READBACK_VERIFIED"
+      },
+      "slug": "TensorZero",
+      "source_commit": "62eb8f63e8ec62018d70420dbf1a8c5d1c026315",
+      "source_repo": "tensorzero/tensorzero",
+      "status": "VERIFIED_CLOSED",
+      "tree": {
+        "bytes": 80482280,
+        "files": 3474,
+        "sha256": "b72ecfa6ee4b6fda79c4aea89ee0287d2cde8dc5f90b75609fedce1bba4d0917"
+      }
+    },
+    "10-ray": {
+      "lfs_pointers_preserved": [],
+      "normalizations": [
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": ".buildkite/macos.rayci.yml",
+          "target": "macos/macos.rayci.yml"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": ".buildkite/macos/always.rules.test.txt",
+          "target": "../always.rules.test.txt"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": ".buildkite/macos/always.rules.txt",
+          "target": "../always.rules.txt"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": ".buildkite/macos/test.rules.test.txt",
+          "target": "../test.rules.test.txt"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": ".buildkite/macos/test.rules.txt",
+          "target": "../test.rules.txt"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": ".buildkite/release/_forge.rayci.yml",
+          "target": "../_forge.rayci.yml"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": ".buildkite/release/_images.rayci.yml",
+          "target": "../_images.rayci.yml"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": ".buildkite/release/_wheel-build.rayci.yml",
+          "target": "../_wheel-build.rayci.yml"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "ci/ray_ci/bisect/macos_ci.sh",
+          "target": "../macos/macos_ci.sh"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "doc/requirements-doc.lock.txt",
+          "target": "../python/deplocks/docs/docbuild_depset_py3.11.lock"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "python/ray/rllib",
+          "target": "../../rllib"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "python/requirements_compiled_py3.10.txt",
+          "target": "requirements_compiled.txt"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "python/requirements_compiled_py3.11.txt",
+          "target": "requirements_compiled.txt"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "python/requirements_compiled_py3.12.txt",
+          "target": "requirements_compiled.txt"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "python/requirements_compiled_py3.13.txt",
+          "target": "requirements_compiled.txt"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "release/air_examples/dolly_v2_lightning_fsdp_finetuning/lightning-llm-finetuning-7b.ipynb",
+          "target": "../../../doc/source/train/examples/lightning/dolly_lightning_fsdp_finetuning.ipynb"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "release/air_examples/dolly_v2_lightning_fsdp_finetuning/test_myst_doc.py",
+          "target": "../../../doc/test_myst_doc.py"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "release/air_examples/dreambooth/dreambooth",
+          "target": "../../../doc/source/templates/05_dreambooth_finetuning/dreambooth"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "release/air_examples/dreambooth/dreambooth_run.sh",
+          "target": "../../../doc/source/templates/05_dreambooth_finetuning/dreambooth_run.sh"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "release/air_examples/gptj_deepspeed_finetuning/gptj_deepspeed_fine_tuning.ipynb",
+          "target": "../../../doc/source/train/examples/deepspeed/gptj_deepspeed_fine_tuning.ipynb"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "release/air_examples/opt_deepspeed_batch_inference/test_myst_doc.py",
+          "target": "../../../doc/test_myst_doc.py"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "release/air_examples/vicuna_13b_lightning_deepspeed_finetuning/test_myst_doc.py",
+          "target": "../../../doc/test_myst_doc.py"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "release/air_examples/vicuna_13b_lightning_deepspeed_finetuning/vicuna_13b_lightning_deepspeed_finetune.ipynb",
+          "target": "../../../doc/source/train/examples/lightning/vicuna_13b_lightning_deepspeed_finetune.ipynb"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "release/nightly_tests/multimodal_inference_benchmarks/benchmark.py",
+          "target": "../dataset/benchmark.py"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "release/ray_release/byod/requirements_compiled.txt",
+          "target": "../../../python/requirements_compiled.txt"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "release/ray_release/configs/oss_config.yaml",
+          "target": "../../../ci/ray_ci/oss_config.yaml"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "release/requirements-doc.txt",
+          "target": "../doc/requirements-doc.txt"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "release/rllib_tests/example_algorithms",
+          "target": "../../rllib/examples/algorithms"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "release/train_tests/benchmark/setup_chaos.py",
+          "target": "../../nightly_tests/setup_chaos.py"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "release/train_tests/multinode_persistence/test_v1_persistence.py",
+          "target": "../../../python/ray/train/tests/test_new_persistence.py"
+        },
+        {
+          "action": "dereference_file",
+          "from": "symlink",
+          "path": "release/train_tests/multinode_persistence/test_v2_persistence.py",
+          "target": "../../../python/ray/train/v2/tests/test_persistence.py"
+        },
+        {
+          "action": "materialize_target_marker",
+          "from": "symlink",
+          "path": "release/workspace_templates",
+          "target": "../doc/source/templates/"
+        }
+      ],
+      "publish": {
+        "commit": "82355d5e276a96be73d0667afa86ab9a8e244677",
+        "readback_tree": {
+          "bytes": 372689017,
+          "files": 10411,
+          "sha256": "749775ff9a834c2b8da7a6a959c327eec4c4b3d8a7f70fa9b2e8faba4e02972a"
+        },
+        "verdict": "PUBLISHED_AND_DEEP_READBACK_VERIFIED"
+      },
+      "slug": "Ray",
+      "source_commit": "3f785c0711b94f93f97fea2a438abcd6a9738655",
+      "source_repo": "ray-project/ray",
+      "status": "VERIFIED_CLOSED",
+      "tree": {
+        "bytes": 372689017,
+        "files": 10411,
+        "sha256": "749775ff9a834c2b8da7a6a959c327eec4c4b3d8a7f70fa9b2e8faba4e02972a"
+      }
+    },
+    "15-autogen": {
+      "error": "PUSH_RETRIES_EXHAUSTED:Git LFS upload failed:\n  (missing) Core kernel Yaiwes/AutoGen-Core/code/dotnet/website/images/articles/SequentialGroupChat/SearcherSummarizer.gif (c6d8a5a534efaf49ecc796ad3ca8e62fb7a236b55d894bda7a0c258564195b5d)\nhint: Your push was rejected due to missing or corrupt local objects.\nhint: You can disable this check with: `git config lfs.allowincompletepush true`\nUploading LFS objects:   0% (0/47), 0 B | 0 B/s, done.\nerror: failed to push some refs to 'https://github.com/maxbry123-commits/agentes.git'\n",
+      "slug": "AutoGen-Core",
+      "source_repo": "microsoft/autogen",
+      "status": "FAILED"
+    }
+  },
+  "motor1_blob": "a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500",
+  "schema": "yaiwes.kernel.catalog20.forceadd-repair/v1"
+}
