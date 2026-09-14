@@ -35,38 +35,25 @@ jobs:
             /.github/workflows/yaiwes-coda-internal-transform-v4.yml
             /📂coda workflow persistencias/
 
-      - name: Audit internal source 24 components
+      - name: Audit and transform internal runtime source
         shell: bash
         run: |
           set -euo pipefail
           YAIWES_MODE=AUDIT python3 .github/scripts/yaiwes_internal_safe_transform.py
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          p=Path('📂coda workflow persistencias/🏈 cancha deportiva de fútbol/YAIWES-INTERNAL-AUDIT-V1.json')
-          d=json.loads(p.read_text(encoding='utf-8'))
-          assert d['components']==24
-          print('AUDIT_SOURCE_FILES=',d['source_files'])
-          print('AUDIT_CANDIDATES=',d['candidates'])
-          PY
-
-      - name: Transform internal code surfaces
-        shell: bash
-        run: |
-          set -euo pipefail
           YAIWES_MODE=TRANSFORM python3 .github/scripts/yaiwes_internal_safe_transform.py
           python3 - <<'PY'
           import json
           from pathlib import Path
-          p=Path('📂coda workflow persistencias/🏈 cancha deportiva de fútbol/YAIWES-INTERNAL-TRANSFORM-V1.json')
-          d=json.loads(p.read_text(encoding='utf-8'))
-          assert d['components']==24
-          assert d['errors']==[]
-          assert d['changed']==d['candidates']
-          print('TRANSFORMED_DELTA=',d['changed'])
+          field=Path('📂coda workflow persistencias/🏈 cancha deportiva de fútbol')
+          a=json.loads((field/'YAIWES-INTERNAL-AUDIT-V1.json').read_text(encoding='utf-8'))
+          t=json.loads((field/'YAIWES-INTERNAL-TRANSFORM-V1.json').read_text(encoding='utf-8'))
+          assert a['components']==24 and t['components']==24
+          assert t['errors']==[] and t['changed']==t['candidates']
+          print('AUDIT_SOURCE_FILES=',a['source_files'])
+          print('TRANSFORMED_DELTA=',t['changed'])
           PY
 
-      - name: Verify no detected external side-effect surface remains active
+      - name: Verify residual zero
         shell: bash
         run: |
           set -euo pipefail
@@ -76,22 +63,20 @@ jobs:
           m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
           residual=[]
           for comp in m.components():
-              code=comp/'code'
-              for p in m.sources(code):
+              for p in m.sources(comp/'code'):
                   s=m.text(p)
                   if s is not None and m.has_side_effect(s): residual.append(str(p))
           print('RESIDUAL=',len(residual))
-          if residual:
-              raise SystemExit('RESIDUAL_ACTIVE_SURFACES:'+ '|'.join(residual[:20]))
+          if residual: raise SystemExit('RESIDUAL_ACTIVE_SURFACES:'+ '|'.join(residual[:20]))
           PY
 
-      - name: Build per-file links and final Fables wiring
+      - name: Build cumulative links and Fables v4.2
         shell: bash
         run: |
           set -euo pipefail
           python3 .github/scripts/yaiwes_internal_finalize_fables.py
 
-      - name: Test Fables internal chain 24 of 24
+      - name: Test Fables 24 component runtimes
         shell: bash
         env:
           PYTHONDONTWRITEBYTECODE: '1'
@@ -100,67 +85,66 @@ jobs:
           F='📂coda workflow persistencias/Fables enchufe universal'
           PYTHONPATH="$F" python3 "$F/test_yaiwes_internal_swarm_chain_v4.py"
 
-      - name: Verify 24 READMEs cumulative manifests audits and quarantine
+      - name: Verify 24 runtimes 299 cumulative links hashes READMEs
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import hashlib
-          import json
+          import hashlib, json
           from pathlib import Path
           root=Path('📂coda workflow persistencias')
           field=root/'🏈 cancha deportiva de fútbol'
           comps=sorted(p for p in root.iterdir() if p.is_dir() and p.name.startswith('🏈 ') and p.name!='🏈 cancha deportiva de fútbol')
           assert len(comps)==24
           cumulative=0
+          runtimes=0
           for c in comps:
-              r=json.loads((c/'INTERNAL-TRANSFORM-AUDIT.json').read_text(encoding='utf-8'))
               m=json.loads((c/'INTERNAL-LINK-MANIFEST.json').read_text(encoding='utf-8'))
               readme=(c/'README.md').read_text(encoding='utf-8')
-              assert r['mode']=='TRANSFORM'
-              assert r['candidates']==r['changed']
-              assert m['schema']=='yaiwes.internal.link-manifest/v4.1'
-              assert m['version']=='YAIWES-INTERNAL-PERSISTENCE-v4.1'
+              assert m['schema']=='yaiwes.internal.link-manifest/v4.2'
+              assert m['version']=='YAIWES-INTERNAL-PERSISTENCE-v4.2'
+              assert 'Swarm agent team Navy seals YAIWES' in readme
+              assert 'YAIWES-INTERNAL-PERSISTENCE-v4.2' in readme
+              runtime=c/'code'/m['component_runtime']
+              assert runtime.is_file()
+              runtime_links=[x for x in m['links'] if x.get('role')=='COMPONENT_PERSISTENCE_LINK']
+              assert len(runtime_links)==1
+              assert hashlib.sha256(runtime.read_bytes()).hexdigest()==runtime_links[0]['active_sha256']
+              runtimes += 1
               n=m['active_surfaces_transformed_cumulative']
               assert m['link_count']==n+1
               cumulative += n
-              assert 'Swarm agent team Navy seals YAIWES' in readme
-              assert 'YAIWES-INTERNAL-PERSISTENCE-v4.1' in readme
               for link in m['links']:
-                  if link.get('role')!='TASK_PERSISTENCE_LINK':
-                      continue
+                  if link.get('role')!='TASK_PERSISTENCE_LINK': continue
                   active=c/'code'/link['path']
                   quarantine=c/'code'/link['quarantine']
-                  assert active.is_file(), active
-                  assert quarantine.is_file(), quarantine
+                  assert active.is_file() and quarantine.is_file()
                   assert hashlib.sha256(active.read_bytes()).hexdigest()==link['active_sha256']
                   assert hashlib.sha256(quarantine.read_bytes()).hexdigest()==link['original_sha256']
           master=json.loads((field/'YAIWES-INTERNAL-SWARM-REGISTRY-V4.json').read_text(encoding='utf-8'))
-          cumulative_manifest=json.loads((field/'YAIWES-INTERNAL-CUMULATIVE-MANIFEST-V4.json').read_text(encoding='utf-8'))
-          assert master['schema']=='yaiwes.internal.swarm-registry/v4.1'
-          assert master['component_count']==24
+          cumulative_doc=json.loads((field/'YAIWES-INTERNAL-CUMULATIVE-MANIFEST-V4.json').read_text(encoding='utf-8'))
+          assert master['schema']=='yaiwes.internal.swarm-registry/v4.2'
+          assert master['component_count']==24 and master['component_runtime_count']==24
           assert master['transformed_files_cumulative']==cumulative
-          assert cumulative_manifest['transformed_files_cumulative']==cumulative
-          assert cumulative>=299, cumulative
-          print('COMPONENTS=24 TRANSFORMED_CUMULATIVE=',cumulative)
+          assert cumulative_doc['component_runtime_count']==24
+          assert cumulative_doc['transformed_files_cumulative']==cumulative
+          assert runtimes==24 and cumulative>=299
+          print('COMPONENTS=24 RUNTIMES=24 TRANSFORMED_CUMULATIVE=',cumulative)
           PY
 
-      - name: Persist internal transformation
+      - name: Persist internal transformation v4.2
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf -- '📂coda workflow persistencias/Fables enchufe universal/__pycache__'
+          find '📂coda workflow persistencias' -type d -name '__pycache__' -prune -exec rm -rf {} +
+          find '📂coda workflow persistencias' -type f -name '*.pyc' -delete
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- '📂coda workflow persistencias'
-          if git diff --cached --quiet; then
-            echo 'NO_CHANGES=1'
-            exit 0
-          fi
-          git commit -m 'feat(coda): publish cumulative 24-component internal persistence v4.1'
+          if git diff --cached --quiet; then echo 'NO_CHANGES=1'; exit 0; fi
+          git commit -m 'feat(coda): finalize 24 executable internal persistence runtimes v4.2'
           for n in 1 2 3; do
             if git push origin HEAD:main; then exit 0; fi
-            echo "PUSH_RETRY=$n"
             git fetch origin main --depth=1
             git rebase origin/main
           done
@@ -176,5 +160,13 @@ jobs:
           echo "TESTED_SHA=$LOCAL"
           echo "PUBLISHED_SHA=$REMOTE"
           test "$LOCAL" = "$REMOTE"
-          test -f '📂coda workflow persistencias/🏈 cancha deportiva de fútbol/YAIWES-INTERNAL-SWARM-REGISTRY-V4.json'
-          test -f '📂coda workflow persistencias/🏈 cancha deportiva de fútbol/YAIWES-INTERNAL-CUMULATIVE-MANIFEST-V4.json'
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          field=Path('📂coda workflow persistencias/🏈 cancha deportiva de fútbol')
+          d=json.loads((field/'YAIWES-INTERNAL-SWARM-REGISTRY-V4.json').read_text(encoding='utf-8'))
+          assert d['component_count']==24
+          assert d['component_runtime_count']==24
+          assert d['transformed_files_cumulative']>=299
+          print('READBACK_COMPONENTS=24 RUNTIMES=24 TRANSFORMED=',d['transformed_files_cumulative'])
+          PY
