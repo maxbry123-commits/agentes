@@ -1,0 +1,159 @@
+name: YAIWES CODA Internal Transform V4
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/yaiwes_internal_safe_transform.py'
+      - '.github/scripts/yaiwes_internal_finalize_fables.py'
+      - '.github/workflows/yaiwes-coda-internal-transform-v4.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-coda-internal-transform-v4
+  cancel-in-progress: false
+
+jobs:
+  transform-internal-code:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout CODA internal scope
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/scripts/yaiwes_internal_safe_transform.py
+            /.github/scripts/yaiwes_internal_finalize_fables.py
+            /.github/workflows/yaiwes-coda-internal-transform-v4.yml
+            /📂coda workflow persistencias/
+
+      - name: Audit internal source 24 components
+        shell: bash
+        run: |
+          set -euo pipefail
+          YAIWES_MODE=AUDIT python3 .github/scripts/yaiwes_internal_safe_transform.py
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('📂coda workflow persistencias/🏈 cancha deportiva de fútbol/YAIWES-INTERNAL-AUDIT-V1.json')
+          d=json.loads(p.read_text(encoding='utf-8'))
+          assert d['components']==24
+          print('AUDIT_SOURCE_FILES=',d['source_files'])
+          print('AUDIT_CANDIDATES=',d['candidates'])
+          PY
+
+      - name: Transform internal code surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          YAIWES_MODE=TRANSFORM python3 .github/scripts/yaiwes_internal_safe_transform.py
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('📂coda workflow persistencias/🏈 cancha deportiva de fútbol/YAIWES-INTERNAL-TRANSFORM-V1.json')
+          d=json.loads(p.read_text(encoding='utf-8'))
+          assert d['components']==24
+          assert d['errors']==[]
+          assert d['changed']==d['candidates']
+          print('TRANSFORMED=',d['changed'])
+          PY
+
+      - name: Verify no detected external side-effect surface remains active
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import importlib.util
+          from pathlib import Path
+          spec=importlib.util.spec_from_file_location('t','.github/scripts/yaiwes_internal_safe_transform.py')
+          m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+          residual=[]
+          for comp in m.components():
+              code=comp/'code'
+              for p in m.sources(code):
+                  s=m.text(p)
+                  if s is not None and m.has_side_effect(s): residual.append(str(p))
+          print('RESIDUAL=',len(residual))
+          if residual:
+              raise SystemExit('RESIDUAL_ACTIVE_SURFACES:'+ '|'.join(residual[:20]))
+          PY
+
+      - name: Build per-file links and final Fables wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/yaiwes_internal_finalize_fables.py
+
+      - name: Test Fables internal chain 24 of 24
+        shell: bash
+        run: |
+          set -euo pipefail
+          F='📂coda workflow persistencias/Fables enchufe universal'
+          PYTHONPATH="$F" python3 "$F/test_yaiwes_internal_swarm_chain_v4.py"
+
+      - name: Verify 24 READMEs manifests audits and quarantine
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('📂coda workflow persistencias')
+          comps=sorted(p for p in root.iterdir() if p.is_dir() and p.name.startswith('🏈 ') and p.name!='🏈 cancha deportiva de fútbol')
+          assert len(comps)==24
+          changed=0
+          for c in comps:
+              r=json.loads((c/'INTERNAL-TRANSFORM-AUDIT.json').read_text(encoding='utf-8'))
+              m=json.loads((c/'INTERNAL-LINK-MANIFEST.json').read_text(encoding='utf-8'))
+              readme=(c/'README.md').read_text(encoding='utf-8')
+              assert r['mode']=='TRANSFORM'
+              assert r['candidates']==r['changed']
+              assert m['link_count']>=1
+              assert 'Swarm agent team Navy seals YAIWES' in readme
+              assert 'YAIWES-INTERNAL-PERSISTENCE-v4.0' in readme
+              changed += r['changed']
+              for f in r['findings']:
+                  if f.get('changed'):
+                      assert (c/'code'/f['quarantine']).is_file()
+          print('COMPONENTS=24 INTERNAL_CHANGED=',changed)
+          PY
+
+      - name: Persist internal transformation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- '📂coda workflow persistencias'
+          if git diff --cached --quiet; then
+            echo 'NO_CHANGES=1'
+            exit 0
+          fi
+          git commit -m 'feat(coda): surgically transform 24 internal components to persistence v4'
+          for n in 1 2 3; do
+            if git push origin HEAD:main; then exit 0; fi
+            echo "PUSH_RETRY=$n"
+            git fetch origin main --depth=1
+            git rebase origin/main
+          done
+          exit 1
+
+      - name: Final readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          LOCAL="$(git rev-parse HEAD)"
+          REMOTE="$(git rev-parse origin/main)"
+          echo "TESTED_SHA=$LOCAL"
+          echo "PUBLISHED_SHA=$REMOTE"
+          test "$LOCAL" = "$REMOTE"
+          test -f '📂coda workflow persistencias/🏈 cancha deportiva de fútbol/YAIWES-INTERNAL-SWARM-REGISTRY-V4.json'
