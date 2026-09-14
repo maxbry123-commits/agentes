@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 11458389,
+  "bundle_sha256": "f21828ddaeca4763874ad3bb39e80caf63236296e9bc5429f6d2f13f6b9ad583",
+  "extracted_tree": {
+    "bytes": 31122110,
+    "files": 2014,
+    "sha256": "b0a9adf70bb2e7b649c8b6b600fa5713810937ff9c725af1a0dc0473fa42fead"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 11458389,
+      "name": "MemOS.bundle.zip.part-0001",
+      "sha256": "f21828ddaeca4763874ad3bb39e80caf63236296e9bc5429f6d2f13f6b9ad583"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "MemOS",
+  "source_bytes": 31122110,
+  "source_commit": "de8069428a9247bfa7a3d35f59a9b39fa8f231d2",
+  "source_files": 2014,
+  "source_ref": "HEAD",
+  "source_repo": "MemTensor/MemOS",
+  "source_tree": {
+    "bytes": 31122110,
+    "files": 2014,
+    "sha256": "b0a9adf70bb2e7b649c8b6b600fa5713810937ff9c725af1a0dc0473fa42fead"
+  }
+}
