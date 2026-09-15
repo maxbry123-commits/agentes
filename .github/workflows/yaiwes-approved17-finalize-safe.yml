@@ -1,0 +1,115 @@
+name: YAIWES approved17 finalize safe
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Core kernel Yaiwes/Download code Yaiwes/APPROVED17-FINALIZE-SAFE-20260914.json'
+permissions:
+  contents: write
+concurrency:
+  group: yaiwes-approved17-finalize-safe
+  cancel-in-progress: false
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      QUEUE: Core kernel Yaiwes/Download code Yaiwes/APPROVED17-QUEUE-20260914.json
+      CENTRAL: Core kernel Yaiwes/Download code Yaiwes/RESEARCH_DOWNLOAD_MANIFEST.jsonl
+      WALL: 📂 Bitácora stated JSON Craxy wall.json
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /Core kernel Yaiwes/Download code Yaiwes/APPROVED17-QUEUE-20260914.json
+            /Core kernel Yaiwes/Download code Yaiwes/RESEARCH_DOWNLOAD_MANIFEST.jsonl
+            /Core kernel Yaiwes/mabwiser/DOWNLOAD_EXTRACT_MANIFEST.json
+            /Core kernel Yaiwes/openevolve/DOWNLOAD_EXTRACT_MANIFEST.json
+            /Core kernel Yaiwes/gpt-researcher/DOWNLOAD_EXTRACT_MANIFEST.json
+            /Core kernel Yaiwes/deer-flow/DOWNLOAD_EXTRACT_MANIFEST.json
+            /Core kernel Yaiwes/faiss/DOWNLOAD_EXTRACT_MANIFEST.json
+            /Core kernel Yaiwes/py-trees/DOWNLOAD_EXTRACT_MANIFEST.json
+            /Core kernel Yaiwes/simple-pid/DOWNLOAD_EXTRACT_MANIFEST.json
+            /Core kernel Yaiwes/pybreaker/DOWNLOAD_EXTRACT_MANIFEST.json
+            /Core kernel Yaiwes/detect-secrets/DOWNLOAD_EXTRACT_MANIFEST.json
+            /Core kernel Yaiwes/semgrep/DOWNLOAD_EXTRACT_MANIFEST.json
+            /Core kernel Yaiwes/deepeval/DOWNLOAD_EXTRACT_MANIFEST.json
+            /Core kernel Yaiwes/gatekeeper/DOWNLOAD_EXTRACT_MANIFEST.json
+            /Core kernel Yaiwes/great-expectations/DOWNLOAD_EXTRACT_MANIFEST.json
+            /Core kernel Yaiwes/detoxify/DOWNLOAD_EXTRACT_MANIFEST.json
+            /Core kernel Yaiwes/llm-guard/DOWNLOAD_EXTRACT_MANIFEST.json
+            /Core kernel Yaiwes/ipyhop/DOWNLOAD_EXTRACT_MANIFEST.json
+            /Core kernel Yaiwes/nats-server/DOWNLOAD_EXTRACT_MANIFEST.json
+            /📂 Bitácora stated JSON Craxy wall.json
+      - name: Build fresh-state finalizer
+        shell: bash
+        run: |
+          cat >/tmp/finalize_approved17.py <<'PY'
+          import json, os, pathlib, re
+          from datetime import datetime, timezone
+          qpath=pathlib.Path(os.environ['QUEUE']); cpath=pathlib.Path(os.environ['CENTRAL']); wpath=pathlib.Path(os.environ['WALL'])
+          queue=json.loads(qpath.read_text(encoding='utf-8'))['queue']
+          if len(queue)!=17: raise SystemExit(f'QUEUE_COUNT_GAP:{len(queue)}')
+          allowed={'number','parts','slug','source','source_commit','status'}
+          rows=[json.loads(x) for x in cpath.read_text(encoding='utf-8').splitlines() if x.strip()]
+          if any(set(r)!=allowed for r in rows): raise SystemExit('CENTRAL_SCHEMA_DRIFT')
+          by_slug={str(r['slug']).casefold():r for r in rows}
+          next_number=max([int(r['number']) for r in rows if isinstance(r.get('number'),int)] or [0])+1
+          wall=json.loads(wpath.read_text(encoding='utf-8'))
+          if wall.get('schema')!='yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps': raise SystemExit('WALL_SCHEMA_DRIFT')
+          nodes=wall.get('nodes')
+          if not isinstance(nodes,list): raise SystemExit('WALL_NODES_GAP')
+          by_component={str(n.get('component','')).casefold():n for n in nodes if isinstance(n,dict)}
+          ids=[int(n.get('id')) for n in nodes if isinstance(n,dict) and isinstance(n.get('id'),int)]
+          next_id=max(ids or [0])+1
+          now=datetime.now(timezone.utc).isoformat().replace('+00:00','Z')
+          def norm(v): return str(v or '').strip().removesuffix('.git').rstrip('/').casefold()
+          verified=[]
+          for item in queue:
+              slug=item['slug']; source=item['source_repo']; p=pathlib.Path('Core kernel Yaiwes')/slug/'DOWNLOAD_EXTRACT_MANIFEST.json'
+              if not p.is_file(): raise SystemExit('PHYSICAL_PATH_GAP:'+slug)
+              d=json.loads(p.read_text(encoding='utf-8')); sha=str(d.get('source_commit',''))
+              if d.get('slug')!=slug: raise SystemExit('SLUG_MISMATCH:'+slug)
+              if norm(d.get('source_repo'))!=norm(source): raise SystemExit('SOURCE_MISMATCH:'+slug)
+              if not re.fullmatch(r'[0-9a-f]{40}',sha): raise SystemExit('SOURCE_COMMIT_GAP:'+slug)
+              if d.get('extraction_verified') is not True or d.get('reconstruction_verified') is not True: raise SystemExit('VERIFY_GAP:'+slug)
+              parts=d.get('parts') or []
+              row={'number':None,'parts':len(parts),'slug':slug,'source':source,'source_commit':sha,'status':'COMPLETE'}
+              key=slug.casefold()
+              if key in by_slug:
+                  old=by_slug[key]; row['number']=old['number']; rows[rows.index(old)]=row; by_slug[key]=row
+              else:
+                  row['number']=next_number; next_number+=1; rows.append(row); by_slug[key]=row
+              if key not in by_component:
+                  node={'id':next_id,'component':slug,'source':f'Core kernel Yaiwes/{slug}/','current_step':1,'status':'PENDING_STEP1','abc':None,'target':None,'owner':None,'lock':'FREE','checkpoint':{'before':None,'after':None},'evidence':[f'download:source:{source}',f'download:source_commit:{sha}',f'download:path:Core kernel Yaiwes/{slug}/'],'history':[{'at':now,'actor':'SOL','label':'SOL GPT','event':'REGISTER_NEW_COMPONENT_PENDING_STEP1'}],'next_action':'STEP_1_ANALYZE_ABC_DESTINATION'}
+                  nodes.append(node); by_component[key]=node; next_id+=1
+              verified.append({'slug':slug,'source_commit':sha,'parts':len(parts),'path':f'Core kernel Yaiwes/{slug}/'})
+          if len(verified)!=17 or any(set(r)!=allowed for r in rows): raise SystemExit('FINAL_SCHEMA_OR_COUNT_GAP')
+          cpath.write_text(''.join(json.dumps(r,separators=(',',':'),ensure_ascii=False)+'\n' for r in rows),encoding='utf-8')
+          wall['updated_at']=now
+          wpath.write_text(json.dumps(wall,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          pathlib.Path('/tmp/approved17-evidence.json').write_text(json.dumps(verified,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          print(json.dumps({'verified':17,'manifest_rows':len(rows)},ensure_ascii=False))
+          PY
+      - name: Rebase-safe finalize from fresh main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5 6 7 8; do
+            git fetch origin +refs/heads/main:refs/remotes/origin/main
+            git reset --hard origin/main
+            python3 /tmp/finalize_approved17.py
+            git add -- "$CENTRAL" "$WALL"
+            if git diff --cached --quiet; then echo 'FINALIZE_ALREADY_APPLIED=PASS'; exit 0; fi
+            git commit -m 'build(yaiwes): register approved17 manifest and pending-step1 nodes'
+            if git push origin HEAD:main; then echo 'FINALIZE_PUSH=PASS'; exit 0; fi
+            sleep $((attempt*2))
+          done
+          echo 'FINALIZE_PUSH_GAP' >&2
+          exit 1
