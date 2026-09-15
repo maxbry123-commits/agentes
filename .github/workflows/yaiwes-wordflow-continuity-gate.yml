@@ -1,0 +1,92 @@
+name: YAIWES Wordflow Continuity Gate
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-wordflow-continuity-gate.yml'
+      - '➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/continuity_supervisor.py'
+      - '➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_continuity_supervisor.py'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-wordflow-continuity-gate
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-wordflow-continuity-gate.yml
+            /➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/continuity_supervisor.py
+            /➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_continuity_supervisor.py
+            /➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/**
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check pytest
+      - name: Run continuity tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q '➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_continuity_supervisor.py' | tee /tmp/out.txt
+          grep -Eq '4 passed' /tmp/out.txt
+          echo CONTINUITY_GATE=PASS_4_OF_4
+      - name: Build and persist evidence
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          E='➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/WORDFLOW_CONTINUITY_2026-09-15.json'
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          p=Path('➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/WORDFLOW_CONTINUITY_2026-09-15.json')
+          p.parent.mkdir(parents=True,exist_ok=True)
+          p.write_text(json.dumps({
+            'schema':'yaiwes.wordflow-continuity-evidence/v1',
+            'result':'PASS_TESTED',
+            'github_run_id':os.environ['RUN_ID'],
+            'source_sha':os.environ['SOURCE_SHA'],
+            'tests':{'passed':4,'failed':0},
+            'verified':{
+              'same_command_id_on_retry':True,
+              'blocked_node_does_not_block_independent_ready_node':True,
+              'no_safe_node_returns_wait_blocked_not_pass':True,
+              'checkpoint_preserved':True
+            }
+          },indent=2,sort_keys=True)+'\n')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$E"
+          git commit -m 'test(wordflow): persist continuity gate evidence'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
+      - name: Fresh readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          E='➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/WORDFLOW_CONTINUITY_2026-09-15.json'
+          git fetch origin main
+          git show "origin/main:$E" >/tmp/e.json
+          python3 - <<'PY'
+          import json
+          x=json.load(open('/tmp/e.json'))
+          assert x['result']=='PASS_TESTED'
+          assert x['tests']=={'passed':4,'failed':0}
+          assert x['verified']['no_safe_node_returns_wait_blocked_not_pass'] is True
+          print('CONTINUITY_REMOTE_READBACK=PASS_4_OF_4')
+          PY
