@@ -19,8 +19,10 @@ jobs:
     timeout-minutes: 15
     env:
       EVIDENCE: '➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/HF_SKILL_LIBRARY_DISCOVERY_2026-09-15.json'
-      HF_TOKEN_PRIMARY: ${{ secrets.HF_TOKEN }}
-      HF_TOKEN_FALLBACK: ${{ secrets.HF_API_TOKEN }}
+      HF_SECRET_PRIMARY: ${{ secrets.HF_TOKEN }}
+      HF_SECRET_FALLBACK: ${{ secrets.HF_API_TOKEN }}
+      HF_VAR_PRIMARY: ${{ vars.HF_TOKEN }}
+      HF_VAR_FALLBACK: ${{ vars.HF_API_TOKEN }}
     steps:
       - name: Checkout minimal surfaces
         uses: actions/checkout@v4
@@ -32,16 +34,21 @@ jobs:
             /.github/workflows/yaiwes-wordflow-hf-skills-discovery.yml
             /➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/
 
-      - name: Resolve auth without exposing secret
+      - name: Resolve auth without exposing credential
         shell: bash
         run: |
           set -euo pipefail
-          token="${HF_TOKEN_PRIMARY:-}"
-          if [ -z "$token" ]; then token="${HF_TOKEN_FALLBACK:-}"; fi
-          if [ -z "$token" ]; then echo 'HF_AUTH_SECRET_GAP' >&2; exit 21; fi
+          token=''
+          source_name=''
+          if [ -n "${HF_SECRET_PRIMARY:-}" ]; then token="$HF_SECRET_PRIMARY"; source_name='secrets.HF_TOKEN'; fi
+          if [ -z "$token" ] && [ -n "${HF_SECRET_FALLBACK:-}" ]; then token="$HF_SECRET_FALLBACK"; source_name='secrets.HF_API_TOKEN'; fi
+          if [ -z "$token" ] && [ -n "${HF_VAR_PRIMARY:-}" ]; then token="$HF_VAR_PRIMARY"; source_name='vars.HF_TOKEN'; fi
+          if [ -z "$token" ] && [ -n "${HF_VAR_FALLBACK:-}" ]; then token="$HF_VAR_FALLBACK"; source_name='vars.HF_API_TOKEN'; fi
+          if [ -z "$token" ]; then echo 'HF_AUTH_CREDENTIAL_GAP' >&2; exit 21; fi
           echo "::add-mask::$token"
-          echo "HF_TOKEN=$token" >> "$GITHUB_ENV"
-          echo 'HF_AUTH_SECRET_PRESENT=PASS'
+          printf 'HF_TOKEN=%s\n' "$token" >> "$GITHUB_ENV"
+          printf 'HF_CREDENTIAL_SOURCE=%s\n' "$source_name" >> "$GITHUB_ENV"
+          echo "HF_AUTH_CREDENTIAL_PRESENT=PASS source=$source_name"
 
       - name: Install Hugging Face client
         run: python3 -m pip install --disable-pip-version-check --no-input 'huggingface_hub>=0.30,<2'
@@ -100,7 +107,8 @@ jobs:
               'schema':'yaiwes.hf-skill-library-discovery/v1',
               'generated_at':datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z'),
               'account':account,
-              'auth':'GITHUB_SECRET_PRESENT_AND_WHOAMI_PASS',
+              'auth':'GITHUB_CREDENTIAL_PRESENT_AND_WHOAMI_PASS',
+              'credential_source':os.environ.get('HF_CREDENTIAL_SOURCE','UNKNOWN'),
               'token_persisted':False,
               'candidate_count':len(candidates),
               'total_skill_files':sum(r['skill_count'] for r in candidates),
@@ -109,7 +117,7 @@ jobs:
           }
           p=Path(os.environ['EVIDENCE']);p.parent.mkdir(parents=True,exist_ok=True)
           p.write_text(json.dumps(evidence,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-          print(f"HF_SKILL_DISCOVERY={verdict} candidates={len(candidates)} skills={evidence['total_skill_files']}")
+          print(f"HF_SKILL_DISCOVERY={verdict} candidates={len(candidates)} skills={evidence['total_skill_files']} source={evidence['credential_source']}")
           if not candidates:
               raise SystemExit(22)
           PY
@@ -144,5 +152,6 @@ jobs:
           assert x['candidate_count']>=1
           assert x['total_skill_files']>=1
           assert x['token_persisted'] is False
+          assert x['credential_source'] in {'secrets.HF_TOKEN','secrets.HF_API_TOKEN','vars.HF_TOKEN','vars.HF_API_TOKEN'}
           print('HF_SKILL_DISCOVERY_READBACK=PASS')
           PY
