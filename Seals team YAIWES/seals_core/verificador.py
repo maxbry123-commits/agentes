@@ -1,22 +1,31 @@
 """
-verificador.py - Gate final de baja frecuencia, unico lugar donde SI
+verificador.py - Gate final de baja frecuencia. Unico lugar donde SI
 puede pasar por Claude (bajo volumen). Nunca decide flujo por si solo,
 solo devuelve un veredicto que el ejecutor determinista aplica.
+Codigo real, no placeholder. Requiere: pip install claude-agent-sdk
 """
+import os
 
 
 def verificar_con_claude(tarea: dict) -> dict:
-    """
-    Placeholder de integracion: aqui se conecta el Claude Agent SDK
-    (claude_agent_sdk.query) SOLO para verificacion final antes de cerrar
-    un nodo de tipo diseno_arquitectura. Bajo volumen, nunca para tareas
-    masivas de instalacion/movimiento.
-    """
-    # from claude_agent_sdk import query
-    # resultado = query(
-    #     prompt=f"Verifica si este cambio de arquitectura es correcto: {tarea}",
-    #     model="claude-sonnet-5",
-    # )
-    # status = "PASS" if "CORRECTO" in resultado.upper() else "GAP"
-    # return {"status": status, "detalle": resultado}
-    return {"status": "PENDIENTE_INTEGRACION_SDK", "detalle": "conectar claude_agent_sdk aqui"}
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        return {"status": "GAP", "detalle": "ANTHROPIC_API_KEY no configurada como variable de entorno"}
+
+    try:
+        from claude_agent_sdk import query
+    except ImportError:
+        return {"status": "GAP", "detalle": "claude-agent-sdk no instalado. pip install claude-agent-sdk"}
+
+    prompt = (
+        f"Verifica si este cambio de arquitectura es correcto para YAIWES.\n"
+        f"Tarea: {tarea}\n"
+        f"Responde SOLO con la palabra CORRECTO o INCORRECTO, seguida de una linea de motivo."
+    )
+    try:
+        resultado = query(prompt=prompt, model="claude-sonnet-5")
+        texto = str(resultado)
+        status = "PASS" if "CORRECTO" in texto.upper() and "INCORRECTO" not in texto.upper() else "GAP"
+        return {"status": status, "detalle": texto}
+    except Exception as e:
+        return {"status": "GAP", "detalle": f"ERROR_CLAUDE_SDK: {e}"}
