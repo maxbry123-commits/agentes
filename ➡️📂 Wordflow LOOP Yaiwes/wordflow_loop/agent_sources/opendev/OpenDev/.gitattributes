@@ -1,0 +1,3 @@
+# Force LF line endings for all text files to ensure consistent behavior
+# across platforms (especially for include_str! embedded content).
+* text=auto eol=lf

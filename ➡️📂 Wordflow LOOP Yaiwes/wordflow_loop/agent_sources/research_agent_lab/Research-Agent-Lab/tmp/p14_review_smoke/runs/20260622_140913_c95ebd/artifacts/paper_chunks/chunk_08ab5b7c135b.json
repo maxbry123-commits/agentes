@@ -1,0 +1,8 @@
+{
+  "paper_id": "paper_8e3ea4f00612",
+  "text": "Ablation Study\nTo assess the impact of different model components, we con-\nduct ablation studies on the following aspects.\nPedestrian motion intentions are modeled from both long-\nterm and short-term perspectives, with a softmask mecha-\nnism and residual noise refinement jointly regulating their\ninfluence during the diffusion process. This ablation study\nevaluates the contribution of each component. As shown in\nTable 3, removing any of them degrades performance, high-\nlighting their critical role in accurate trajectory prediction.\nSimilarly, an ablation study on the number of candidate\nendpoints M was conducted, as shown in Table 4. Results\nindicate that prediction performance is sensitive to M, and\nthe relationship is not linear. Overall performance across\nscenarios is maximized when M is 5. A possible explana-\ntion is that too many candidates may dilute the model’s fo-",
+  "chunk_id": "chunk_08ab5b7c135b",
+  "page_start": null,
+  "page_end": null,
+  "section": "Ablation"
+}

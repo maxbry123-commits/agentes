@@ -1,0 +1,44 @@
+{"ts": "2026-06-22T06:09:13.581747+00:00", "event": "workflow_started", "payload": {"name": "full_research_loop_v1"}}
+{"ts": "2026-06-22T06:09:13.582756+00:00", "event": "agent_started", "payload": {"agent": "research_manager"}}
+{"ts": "2026-06-22T06:09:13.589845+00:00", "event": "agent_finished", "payload": {"agent": "research_manager", "artifacts": {"briefs": ["research_brief"]}}}
+{"ts": "2026-06-22T06:09:13.589845+00:00", "event": "agent_started", "payload": {"agent": "local_paper_library"}}
+{"ts": "2026-06-22T06:09:13.669356+00:00", "event": "agent_finished", "payload": {"agent": "local_paper_library", "artifacts": {"local_papers": ["paper_8e3ea4f00612", "paper_5bd0be79ab7f", "paper_3b0d5582dd2a", "paper_8508882e4dac", "paper_0b73e80fa1fd", "paper_1b9a76b33804", "paper_b801cc069417", "paper_faab44d9a104", "paper_217e20e4741e", "paper_1491b9b67f58", "paper_56cca013f640", "paper_889a9795db60", "paper_29ef6164639e", "paper_a4b08cf40b0b", "paper_e4c96de3acd8", "paper_99f9becb0b30", "paper_bef53b29b4dd", "paper_5f54ce7ba8ff", "paper_a890f1911ff8", "paper_66cd972f4dc5", "paper_6dfe136bd9e8", "paper_f4a7194c7282", "paper_33137405edac", "paper_a91b4dd53b86", "paper_160edfdc06c5", "paper_9262255ce28a", "paper_a4ae49076987", "paper_6681cf981eca", "paper_ae2b6a5db79c", "paper_0ed6cd9bf414", "paper_bde31c84f3e1", "paper_deca003fc3e3", "paper_a3da643e3ca1", "paper_9a9ce9bac9f6", "paper_25aab0476196", "paper_2175352b707d", "paper_f7173c8b51ba", "paper_262eba38403c", "paper_8be5423c44e1", "paper_04191a3a9d16", "paper_12bcdfdf1c13", "paper_8957b1f2fd46", "paper_8880bd2002e9", "paper_98cd9de69280", "paper_797c11fa7988", "paper_c5e7c6881da4", "paper_21047b69ffc8"]}}}
+{"ts": "2026-06-22T06:09:13.669356+00:00", "event": "agent_started", "payload": {"agent": "literature_search"}}
+{"ts": "2026-06-22T06:09:13.675058+00:00", "event": "agent_finished", "payload": {"agent": "literature_search", "artifacts": {"papers": ["paper_8e3ea4f00612", "paper_5bd0be79ab7f"]}}}
+{"ts": "2026-06-22T06:09:13.676096+00:00", "event": "agent_started", "payload": {"agent": "paper_triage"}}
+{"ts": "2026-06-22T06:09:13.679098+00:00", "event": "agent_finished", "payload": {"agent": "paper_triage", "artifacts": {"triage": ["paper_triage"]}}}
+{"ts": "2026-06-22T06:09:13.680098+00:00", "event": "agent_started", "payload": {"agent": "retrieval_evaluator"}}
+{"ts": "2026-06-22T06:09:13.685738+00:00", "event": "agent_finished", "payload": {"agent": "retrieval_evaluator", "artifacts": {"retrieval_evaluations": ["retrieval_eval_4dae4d130094"]}}}
+{"ts": "2026-06-22T06:09:13.685738+00:00", "event": "agent_started", "payload": {"agent": "local_paper_parser"}}
+{"ts": "2026-06-22T06:09:16.086385+00:00", "event": "agent_finished", "payload": {"agent": "local_paper_parser", "artifacts": {"parsed_papers": ["parsed_a811bd619373", "parsed_8505e9b955cd"], "paper_chunks": ["chunk_8f4773f4edee", "chunk_767a492d4903", "chunk_2cacb4566183", "chunk_f379e9fb16fc", "chunk_df12152925f9", "chunk_5545e6accf82", "chunk_d09c0a219b13", "chunk_95eae875447b", "chunk_a93ea47a916e", "chunk_08ab5b7c135b", "chunk_7620c93af347", "chunk_401664f4027e", "chunk_005ca66514dc", "chunk_ec52f8f6f5e7", "chunk_f1734e82c75b", "chunk_fa197292c682", "chunk_6f444cdb79e3", "chunk_6239c5e98932", "chunk_fb44bb58db8c", "chunk_973c4c6c8cfa", "chunk_67ef611803e8", "chunk_0b725d1cea40", "chunk_a4aa943831b2", "chunk_faa67ab58724", "chunk_e13ab83b4d62", "chunk_696a171b0484", "chunk_3bbdf197887f", "chunk_2ca2a6d64b62", "chunk_d66b23a4edd2", "chunk_03a74843f04b", "chunk_8045276343a6", "chunk_c12b1d72dbfa", "chunk_5992a81e9e35", "chunk_b2fd892ec064", "chunk_46e89b388424", "chunk_fb2cd0fd69dd", "chunk_bc14804eedfc"]}}}
+{"ts": "2026-06-22T06:09:16.087722+00:00", "event": "agent_started", "payload": {"agent": "paper_reader"}}
+{"ts": "2026-06-22T06:09:16.095841+00:00", "event": "agent_finished", "payload": {"agent": "paper_reader", "artifacts": {"evidence": ["evidence_81f2d18bc5da", "evidence_e7b091a9cd07", "evidence_61b01104a979"]}}}
+{"ts": "2026-06-22T06:09:16.096842+00:00", "event": "agent_started", "payload": {"agent": "reference_extractor"}}
+{"ts": "2026-06-22T06:09:16.112084+00:00", "event": "agent_finished", "payload": {"agent": "reference_extractor", "artifacts": {"extracted_references": ["ref_ae062a176e2c", "ref_ce839ac9b462", "ref_048615e2bfc3", "ref_45ef9b1525ea", "ref_6514b6686f6e"]}}}
+{"ts": "2026-06-22T06:09:16.112603+00:00", "event": "agent_started", "payload": {"agent": "evidence_checker"}}
+{"ts": "2026-06-22T06:09:16.117317+00:00", "event": "agent_finished", "payload": {"agent": "evidence_checker", "artifacts": {"evidence_checks": ["evidence_checks"]}}}
+{"ts": "2026-06-22T06:09:16.118642+00:00", "event": "agent_started", "payload": {"agent": "method_card_extractor"}}
+{"ts": "2026-06-22T06:09:16.133453+00:00", "event": "agent_finished", "payload": {"agent": "method_card_extractor", "artifacts": {"method_cards": ["method_3f96a41605de", "method_fe5f4dc138fe"], "selected_contexts": ["context_aad79c7c7cdb", "context_3dc803dfb071"]}}}
+{"ts": "2026-06-22T06:09:16.133958+00:00", "event": "agent_started", "payload": {"agent": "synthesis"}}
+{"ts": "2026-06-22T06:09:16.140821+00:00", "event": "agent_finished", "payload": {"agent": "synthesis", "artifacts": {"reports": ["synthesis_report"]}}}
+{"ts": "2026-06-22T06:09:16.141365+00:00", "event": "agent_started", "payload": {"agent": "codebase_analyzer"}}
+{"ts": "2026-06-22T06:09:16.159102+00:00", "event": "agent_finished", "payload": {"agent": "codebase_analyzer", "artifacts": {"codebase_reports": ["codebase_c19229bf640a"], "reports": ["codebase_report"]}}}
+{"ts": "2026-06-22T06:09:16.159666+00:00", "event": "agent_started", "payload": {"agent": "method_card_retriever"}}
+{"ts": "2026-06-22T06:09:16.166772+00:00", "event": "agent_finished", "payload": {"agent": "method_card_retriever", "artifacts": {}}}
+{"ts": "2026-06-22T06:09:16.166772+00:00", "event": "agent_started", "payload": {"agent": "opportunity_agent"}}
+{"ts": "2026-06-22T06:09:16.174239+00:00", "event": "agent_finished", "payload": {"agent": "opportunity_agent", "artifacts": {"opportunities": ["opportunity_57163acc1663"]}}}
+{"ts": "2026-06-22T06:09:16.175237+00:00", "event": "agent_started", "payload": {"agent": "experiment_planner"}}
+{"ts": "2026-06-22T06:09:16.180747+00:00", "event": "agent_finished", "payload": {"agent": "experiment_planner", "artifacts": {"experiment_plans": ["experiment_29f8eb5eb785"]}}}
+{"ts": "2026-06-22T06:09:16.182255+00:00", "event": "agent_started", "payload": {"agent": "developer_agent"}}
+{"ts": "2026-06-22T06:09:16.188944+00:00", "event": "agent_finished", "payload": {"agent": "developer_agent", "artifacts": {"code_tasks": ["codetask_45be01610b9a"]}}}
+{"ts": "2026-06-22T06:09:16.188944+00:00", "event": "agent_started", "payload": {"agent": "autonomous_experiment"}}
+{"ts": "2026-06-22T06:09:16.194176+00:00", "event": "agent_finished", "payload": {"agent": "autonomous_experiment", "artifacts": {}}}
+{"ts": "2026-06-22T06:09:16.194176+00:00", "event": "agent_started", "payload": {"agent": "experiment_decision"}}
+{"ts": "2026-06-22T06:09:16.201446+00:00", "event": "agent_finished", "payload": {"agent": "experiment_decision", "artifacts": {"experiment_decisions": ["decision_e8a7b2a3b05f"]}}}
+{"ts": "2026-06-22T06:09:16.201964+00:00", "event": "agent_started", "payload": {"agent": "reviewer_agent"}}
+{"ts": "2026-06-22T06:09:16.208240+00:00", "event": "agent_finished", "payload": {"agent": "reviewer_agent", "artifacts": {"reviews": ["review_c127ba7ff6ea"]}}}
+{"ts": "2026-06-22T06:09:16.209246+00:00", "event": "agent_started", "payload": {"agent": "run_evaluator"}}
+{"ts": "2026-06-22T06:09:16.215591+00:00", "event": "agent_finished", "payload": {"agent": "run_evaluator", "artifacts": {"run_evaluations": ["runeval_6f9d2fa8d682"]}}}
+{"ts": "2026-06-22T06:09:16.215591+00:00", "event": "agent_started", "payload": {"agent": "literature_memory_persistence"}}
+{"ts": "2026-06-22T06:09:16.413808+00:00", "event": "agent_finished", "payload": {"agent": "literature_memory_persistence", "artifacts": {}}}
+{"ts": "2026-06-22T06:09:16.418841+00:00", "event": "workflow_finished", "payload": {}}

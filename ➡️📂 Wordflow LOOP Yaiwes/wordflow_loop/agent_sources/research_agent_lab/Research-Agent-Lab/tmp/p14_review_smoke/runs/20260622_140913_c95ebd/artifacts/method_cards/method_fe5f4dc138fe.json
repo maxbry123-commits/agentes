@@ -1,0 +1,42 @@
+{
+  "paper_id": "paper_5bd0be79ab7f",
+  "task": "pedestrian_trajectory_prediction",
+  "method_card_id": "method_fe5f4dc138fe",
+  "problem_setting": "Use the copied LED/VIRAT codebase to explore intention or language-conditioned trajectory prediction on top of the validated baseline.",
+  "input_modalities": [
+    "trajectory",
+    "intention",
+    "scene"
+  ],
+  "output": "future trajectory",
+  "model_architecture": {
+    "encoder": "transformer/social encoder",
+    "decoder": "diffusion denoiser",
+    "fusion_module": "to be extracted from full paper"
+  },
+  "temporal_modeling": "",
+  "fusion_strategy": {
+    "type": "unknown",
+    "description": "requires full-text parsing or human notes"
+  },
+  "training_objective": "",
+  "datasets": [],
+  "metrics": [
+    "ADE",
+    "FDE",
+    "miss_rate",
+    "multimodal_diversity"
+  ],
+  "main_results": "",
+  "limitations": [],
+  "reusable_ideas_for_current_topic": [
+    "Investigate relevance of Using a Diffusion Model for Pedestrian Trajectory Prediction in Semi-Open Autonomous Driving Environments to current topic"
+  ],
+  "implementation_difficulty": "medium",
+  "risk": [
+    "auto-extracted hints require human verification against full paper"
+  ],
+  "evidence_ids": [
+    "evidence_61b01104a979"
+  ]
+}

@@ -1,0 +1,116 @@
+{
+  "topic_name": "intent_conditioned_led_virat",
+  "goal": {
+    "short": "Use the copied LED/VIRAT codebase to explore intention or language-conditioned trajectory prediction on top of the validated baseline.",
+    "long": "Build a controlled multi-agent research workflow around the copied Intent-LED-mul-agent project, preserving the LED VIRAT baseline while planning small, reviewable modifications for intention-conditioned trajectory forecasting."
+  },
+  "domain": {
+    "primary_area": "pedestrian_trajectory_prediction",
+    "secondary_areas": [
+      "Leapfrog Diffusion Model",
+      "VIRAT trajectory prediction",
+      "intention conditioning",
+      "multimodal trajectory forecasting"
+    ]
+  },
+  "metrics": [
+    "ADE",
+    "FDE",
+    "miss_rate",
+    "multimodal_diversity"
+  ],
+  "keywords": [
+    "language conditioned pedestrian trajectory prediction",
+    "intention conditioned trajectory prediction",
+    "diffusion pedestrian trajectory forecasting",
+    "Leapfrog diffusion trajectory prediction",
+    "VIRAT pedestrian trajectory forecasting"
+  ],
+  "model_routing": {
+    "policy": "no_current_codex_agent_tasks",
+    "routes": {
+      "paper_triage": {
+        "agent": "paper_triage",
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash",
+        "api_key_env": "DEEPSEEK_API_KEY",
+        "task_difficulty": "simple",
+        "enabled": true
+      },
+      "local_paper_parser": {
+        "agent": "local_paper_parser",
+        "provider": "offline",
+        "model": "rule_based",
+        "api_key_env": "",
+        "task_difficulty": "simple",
+        "enabled": true
+      },
+      "synthesis": {
+        "agent": "synthesis",
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash",
+        "api_key_env": "DEEPSEEK_API_KEY",
+        "task_difficulty": "simple",
+        "enabled": true
+      },
+      "method_card_extractor": {
+        "agent": "method_card_extractor",
+        "provider": "deepseek",
+        "model": "deepseek-v4-pro",
+        "api_key_env": "DEEPSEEK_API_KEY",
+        "task_difficulty": "hard",
+        "enabled": true
+      },
+      "experiment_planner": {
+        "agent": "experiment_planner",
+        "provider": "deepseek",
+        "model": "deepseek-v4-pro",
+        "api_key_env": "DEEPSEEK_API_KEY",
+        "task_difficulty": "hard",
+        "enabled": true
+      },
+      "reviewer_agent": {
+        "agent": "reviewer_agent",
+        "provider": "deepseek",
+        "model": "deepseek-v4-pro",
+        "api_key_env": "DEEPSEEK_API_KEY",
+        "task_difficulty": "hard",
+        "enabled": true
+      },
+      "result_parser": {
+        "agent": "result_parser",
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash",
+        "api_key_env": "DEEPSEEK_API_KEY",
+        "task_difficulty": "simple",
+        "enabled": true
+      },
+      "default": {
+        "agent": "default",
+        "provider": "offline",
+        "model": "rule_based",
+        "api_key_env": "",
+        "task_difficulty": "",
+        "enabled": true
+      }
+    }
+  },
+  "literature": {
+    "local_paper_dirs": [
+      "C:/Users/duyul/Desktop/work/Essay/轨迹预测/EPC",
+      "C:/Users/duyul/Desktop/work/Essay/轨迹预测/SPK"
+    ],
+    "include_patterns": [
+      "*.pdf",
+      "*.md",
+      "*.txt"
+    ],
+    "max_files": 300,
+    "max_parse_pages": 20,
+    "max_parse_chars": 40000,
+    "chunk_chars": 1800,
+    "prefer_local_first": true,
+    "cache_dir": "data/local_literature/intent_led_virat"
+  },
+  "human_review_policy": "human approval required before external repo edits"
+}

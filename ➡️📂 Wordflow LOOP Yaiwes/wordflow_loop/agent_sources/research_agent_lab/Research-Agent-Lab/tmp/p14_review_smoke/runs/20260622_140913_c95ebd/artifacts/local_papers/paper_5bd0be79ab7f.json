@@ -1,0 +1,21 @@
+{
+  "title": "Using a Diffusion Model for Pedestrian Trajectory Prediction in Semi-Open Autonomous Driving Environments",
+  "abstract": "Local library file: C:\\Users\\duyul\\Desktop\\work\\Essay\\轨迹预测\\SPK\\2025.12\\Using_a_Diffusion_Model_for_Pedestrian_Trajectory_Prediction_in_Semi-Open_Autonomous_Driving_Environments.pdf",
+  "paper_id": "paper_5bd0be79ab7f",
+  "authors": [],
+  "year": null,
+  "venue": "",
+  "url": "",
+  "pdf_path": "C:\\Users\\duyul\\Desktop\\work\\Essay\\轨迹预测\\SPK\\2025.12\\Using_a_Diffusion_Model_for_Pedestrian_Trajectory_Prediction_in_Semi-Open_Autonomous_Driving_Environments.pdf",
+  "local_path": "C:\\Users\\duyul\\Desktop\\work\\Essay\\轨迹预测\\SPK\\2025.12\\Using_a_Diffusion_Model_for_Pedestrian_Trajectory_Prediction_in_Semi-Open_Autonomous_Driving_Environments.pdf",
+  "library": "SPK",
+  "keywords": [
+    "diffusion",
+    "trajectory",
+    "pedestrian"
+  ],
+  "citation_count": 0,
+  "source": "local_paper",
+  "relevance_score": 0.3899999999999999,
+  "triage_reason": "local paper library match"
+}

@@ -1,0 +1,45 @@
+[
+  {
+    "title": "Intention-Aware Diffusion Model for Pedestrian Trajectory Prediction",
+    "abstract": "Local library file: C:\\Users\\duyul\\Desktop\\work\\Essay\\轨迹预测\\SPK\\2025.12\\Intention-Aware Diffusion Model for Pedestrian Trajectory Prediction.pdf",
+    "paper_id": "paper_8e3ea4f00612",
+    "authors": [],
+    "year": null,
+    "venue": "",
+    "url": "",
+    "pdf_path": "C:\\Users\\duyul\\Desktop\\work\\Essay\\轨迹预测\\SPK\\2025.12\\Intention-Aware Diffusion Model for Pedestrian Trajectory Prediction.pdf",
+    "local_path": "C:\\Users\\duyul\\Desktop\\work\\Essay\\轨迹预测\\SPK\\2025.12\\Intention-Aware Diffusion Model for Pedestrian Trajectory Prediction.pdf",
+    "library": "SPK",
+    "keywords": [
+      "diffusion",
+      "trajectory",
+      "pedestrian",
+      "intention"
+    ],
+    "citation_count": 0,
+    "source": "local_paper",
+    "relevance_score": 0.4,
+    "triage_reason": "selected by keyword overlap"
+  },
+  {
+    "title": "Using a Diffusion Model for Pedestrian Trajectory Prediction in Semi-Open Autonomous Driving Environments",
+    "abstract": "Local library file: C:\\Users\\duyul\\Desktop\\work\\Essay\\轨迹预测\\SPK\\2025.12\\Using_a_Diffusion_Model_for_Pedestrian_Trajectory_Prediction_in_Semi-Open_Autonomous_Driving_Environments.pdf",
+    "paper_id": "paper_5bd0be79ab7f",
+    "authors": [],
+    "year": null,
+    "venue": "",
+    "url": "",
+    "pdf_path": "C:\\Users\\duyul\\Desktop\\work\\Essay\\轨迹预测\\SPK\\2025.12\\Using_a_Diffusion_Model_for_Pedestrian_Trajectory_Prediction_in_Semi-Open_Autonomous_Driving_Environments.pdf",
+    "local_path": "C:\\Users\\duyul\\Desktop\\work\\Essay\\轨迹预测\\SPK\\2025.12\\Using_a_Diffusion_Model_for_Pedestrian_Trajectory_Prediction_in_Semi-Open_Autonomous_Driving_Environments.pdf",
+    "library": "SPK",
+    "keywords": [
+      "diffusion",
+      "trajectory",
+      "pedestrian"
+    ],
+    "citation_count": 0,
+    "source": "local_paper",
+    "relevance_score": 0.4,
+    "triage_reason": "selected by keyword overlap"
+  }
+]

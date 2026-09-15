@@ -1,0 +1,4179 @@
+{
+  "batches": 7,
+  "completed": {
+    ".dockerignore": "COPIED_VERIFIED",
+    ".flake8": "COPIED_VERIFIED",
+    ".github/ISSUE_TEMPLATE/issue.yml": "COPIED_VERIFIED",
+    ".github/workflows/check_pypi_version.yml": "COPIED_VERIFIED",
+    ".github/workflows/docker-build-test.yml": "COPIED_VERIFIED",
+    ".github/workflows/docker-release.yml": "COPIED_VERIFIED",
+    ".github/workflows/issues.yml": "COPIED_VERIFIED",
+    ".github/workflows/pages.yml": "COPIED_VERIFIED",
+    ".github/workflows/pre-commit.yml": "COPIED_VERIFIED",
+    ".github/workflows/release.yml": "COPIED_VERIFIED",
+    ".github/workflows/ubuntu-tests.yml": "COPIED_VERIFIED",
+    ".github/workflows/windows-tests.yml": "COPIED_VERIFIED",
+    ".github/workflows/windows_check_pypi_version.yml": "COPIED_VERIFIED",
+    ".gitignore": "COPIED_VERIFIED",
+    ".pre-commit-config.yaml": "COPIED_VERIFIED",
+    "CNAME": "COPIED_VERIFIED",
+    "CONTRIBUTING.md": "COPIED_VERIFIED",
+    "HISTORY.md": "COPIED_VERIFIED",
+    "LICENSE.txt": "COPIED_VERIFIED",
+    "MANIFEST.in": "COPIED_VERIFIED",
+    "README.md": "COPIED_VERIFIED",
+    "aider/__init__.py": "COPIED_VERIFIED",
+    "aider/__main__.py": "COPIED_VERIFIED",
+    "aider/analytics.py": "COPIED_VERIFIED",
+    "aider/args.py": "COPIED_VERIFIED",
+    "aider/args_formatter.py": "COPIED_VERIFIED",
+    "aider/coders/__init__.py": "COPIED_VERIFIED",
+    "aider/coders/architect_coder.py": "COPIED_VERIFIED",
+    "aider/coders/architect_prompts.py": "COPIED_VERIFIED",
+    "aider/coders/ask_coder.py": "COPIED_VERIFIED",
+    "aider/coders/ask_prompts.py": "COPIED_VERIFIED",
+    "aider/coders/base_coder.py": "COPIED_VERIFIED",
+    "aider/coders/base_prompts.py": "COPIED_VERIFIED",
+    "aider/coders/chat_chunks.py": "COPIED_VERIFIED",
+    "aider/coders/context_coder.py": "COPIED_VERIFIED",
+    "aider/coders/context_prompts.py": "COPIED_VERIFIED",
+    "aider/coders/editblock_coder.py": "COPIED_VERIFIED",
+    "aider/coders/editblock_fenced_coder.py": "COPIED_VERIFIED",
+    "aider/coders/editblock_fenced_prompts.py": "COPIED_VERIFIED",
+    "aider/coders/editblock_func_coder.py": "COPIED_VERIFIED",
+    "aider/coders/editblock_func_prompts.py": "COPIED_VERIFIED",
+    "aider/coders/editblock_prompts.py": "COPIED_VERIFIED",
+    "aider/coders/editor_diff_fenced_coder.py": "COPIED_VERIFIED",
+    "aider/coders/editor_diff_fenced_prompts.py": "COPIED_VERIFIED",
+    "aider/coders/editor_editblock_coder.py": "COPIED_VERIFIED",
+    "aider/coders/editor_editblock_prompts.py": "COPIED_VERIFIED",
+    "aider/coders/editor_whole_coder.py": "COPIED_VERIFIED",
+    "aider/coders/editor_whole_prompts.py": "COPIED_VERIFIED",
+    "aider/coders/help_coder.py": "COPIED_VERIFIED",
+    "aider/coders/help_prompts.py": "COPIED_VERIFIED",
+    "aider/coders/patch_coder.py": "COPIED_VERIFIED",
+    "aider/coders/patch_prompts.py": "COPIED_VERIFIED",
+    "aider/coders/search_replace.py": "COPIED_VERIFIED",
+    "aider/coders/shell.py": "COPIED_VERIFIED",
+    "aider/coders/single_wholefile_func_coder.py": "COPIED_VERIFIED",
+    "aider/coders/single_wholefile_func_prompts.py": "COPIED_VERIFIED",
+    "aider/coders/udiff_coder.py": "COPIED_VERIFIED",
+    "aider/coders/udiff_prompts.py": "COPIED_VERIFIED",
+    "aider/coders/udiff_simple.py": "COPIED_VERIFIED",
+    "aider/coders/udiff_simple_prompts.py": "COPIED_VERIFIED",
+    "aider/coders/wholefile_coder.py": "COPIED_VERIFIED",
+    "aider/coders/wholefile_func_coder.py": "COPIED_VERIFIED",
+    "aider/coders/wholefile_func_prompts.py": "COPIED_VERIFIED",
+    "aider/coders/wholefile_prompts.py": "COPIED_VERIFIED",
+    "aider/commands.py": "COPIED_VERIFIED",
+    "aider/copypaste.py": "COPIED_VERIFIED",
+    "aider/deprecated.py": "COPIED_VERIFIED",
+    "aider/diffs.py": "COPIED_VERIFIED",
+    "aider/dump.py": "COPIED_VERIFIED",
+    "aider/editor.py": "COPIED_VERIFIED",
+    "aider/exceptions.py": "COPIED_VERIFIED",
+    "aider/format_settings.py": "COPIED_VERIFIED",
+    "aider/gui.py": "COPIED_VERIFIED",
+    "aider/help.py": "COPIED_VERIFIED",
+    "aider/help_pats.py": "COPIED_VERIFIED",
+    "aider/history.py": "COPIED_VERIFIED",
+    "aider/io.py": "COPIED_VERIFIED",
+    "aider/linter.py": "COPIED_VERIFIED",
+    "aider/llm.py": "COPIED_VERIFIED",
+    "aider/main.py": "COPIED_VERIFIED",
+    "aider/mdstream.py": "COPIED_VERIFIED",
+    "aider/models.py": "COPIED_VERIFIED",
+    "aider/onboarding.py": "COPIED_VERIFIED",
+    "aider/openrouter.py": "COPIED_VERIFIED",
+    "aider/prompts.py": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/README.md": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/arduino-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/bash-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/c-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/chatito-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/clojure-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/commonlisp-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/cpp-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/csharp-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/d-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/dart-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/elisp-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/elixir-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/elm-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/gleam-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/go-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/java-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/javascript-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/lua-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/matlab-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/ocaml-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/ocaml_interface-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/pony-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/properties-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/python-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/r-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/racket-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/ruby-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/rust-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/solidity-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/swift-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-language-pack/udev-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/README.md": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/bash-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/c-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/c_sharp-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/cpp-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/dart-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/elisp-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/elixir-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/elm-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/fortran-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/go-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/haskell-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/hcl-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/java-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/javascript-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/julia-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/kotlin-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/matlab-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/ocaml-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/ocaml_interface-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/php-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/python-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/ql-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/ruby-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/rust-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/scala-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/typescript-tags.scm": "COPIED_VERIFIED",
+    "aider/queries/tree-sitter-languages/zig-tags.scm": "COPIED_VERIFIED",
+    "aider/reasoning_tags.py": "COPIED_VERIFIED",
+    "aider/repo.py": "COPIED_VERIFIED",
+    "aider/repomap.py": "COPIED_VERIFIED",
+    "aider/report.py": "COPIED_VERIFIED",
+    "aider/resources/__init__.py": "COPIED_VERIFIED",
+    "aider/resources/model-metadata.json": "COPIED_VERIFIED",
+    "aider/resources/model-settings.yml": "COPIED_VERIFIED",
+    "aider/run_cmd.py": "COPIED_VERIFIED",
+    "aider/scrape.py": "COPIED_VERIFIED",
+    "aider/sendchat.py": "COPIED_VERIFIED",
+    "aider/special.py": "COPIED_VERIFIED",
+    "aider/urls.py": "COPIED_VERIFIED",
+    "aider/utils.py": "COPIED_VERIFIED",
+    "aider/versioncheck.py": "COPIED_VERIFIED",
+    "aider/voice.py": "COPIED_VERIFIED",
+    "aider/waiting.py": "COPIED_VERIFIED",
+    "aider/watch.py": "COPIED_VERIFIED",
+    "aider/watch_prompts.py": "COPIED_VERIFIED",
+    "aider/website/Gemfile": "COPIED_VERIFIED",
+    "aider/website/HISTORY.md": "COPIED_VERIFIED",
+    "aider/website/_config.yml": "COPIED_VERIFIED",
+    "aider/website/_data/architect.yml": "COPIED_VERIFIED",
+    "aider/website/_data/blame.yml": "COPIED_VERIFIED",
+    "aider/website/_data/code-in-json.yml": "COPIED_VERIFIED",
+    "aider/website/_data/deepseek-down.yml": "COPIED_VERIFIED",
+    "aider/website/_data/edit_leaderboard.yml": "COPIED_VERIFIED",
+    "aider/website/_data/o1_polyglot_leaderboard.yml": "COPIED_VERIFIED",
+    "aider/website/_data/o1_results.yml": "COPIED_VERIFIED",
+    "aider/website/_data/polyglot_leaderboard.yml": "COPIED_VERIFIED",
+    "aider/website/_data/quant.yml": "COPIED_VERIFIED",
+    "aider/website/_data/qwen3_leaderboard.yml": "COPIED_VERIFIED",
+    "aider/website/_data/qwq.yml": "COPIED_VERIFIED",
+    "aider/website/_data/r1_architect.yml": "COPIED_VERIFIED",
+    "aider/website/_data/refactor_leaderboard.yml": "COPIED_VERIFIED",
+    "aider/website/_data/sonnet-fine.yml": "COPIED_VERIFIED",
+    "aider/website/_includes/blame.md": "COPIED_VERIFIED",
+    "aider/website/_includes/code-in-json-benchmark.js": "COPIED_VERIFIED",
+    "aider/website/_includes/code-in-json-syntax.js": "COPIED_VERIFIED",
+    "aider/website/_includes/footer_custom.html": "COPIED_VERIFIED",
+    "aider/website/_includes/get-started.md": "COPIED_VERIFIED",
+    "aider/website/_includes/head_custom.html": "COPIED_VERIFIED",
+    "aider/website/_includes/help-tip.md": "COPIED_VERIFIED",
+    "aider/website/_includes/help.md": "COPIED_VERIFIED",
+    "aider/website/_includes/install.md": "COPIED_VERIFIED",
+    "aider/website/_includes/keys.md": "COPIED_VERIFIED",
+    "aider/website/_includes/leaderboard.js": "COPIED_VERIFIED",
+    "aider/website/_includes/leaderboard_graph.html": "COPIED_VERIFIED",
+    "aider/website/_includes/leaderboard_table.js": "COPIED_VERIFIED",
+    "aider/website/_includes/model-warnings.md": "COPIED_VERIFIED",
+    "aider/website/_includes/multi-line.md": "COPIED_VERIFIED",
+    "aider/website/_includes/nav_footer_custom.html": "COPIED_VERIFIED",
+    "aider/website/_includes/python-m-aider.md": "COPIED_VERIFIED",
+    "aider/website/_includes/quant-chart.js": "COPIED_VERIFIED",
+    "aider/website/_includes/qwq-chart.js": "COPIED_VERIFIED",
+    "aider/website/_includes/recording.css": "COPIED_VERIFIED",
+    "aider/website/_includes/recording.js": "COPIED_VERIFIED",
+    "aider/website/_includes/recording.md": "COPIED_VERIFIED",
+    "aider/website/_includes/replit-pipx.md": "COPIED_VERIFIED",
+    "aider/website/_includes/works-best.md": "COPIED_VERIFIED",
+    "aider/website/_layouts/redirect.html": "COPIED_VERIFIED",
+    "aider/website/_posts/2023-05-25-ctags.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2023-07-02-benchmarks.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2023-10-22-repomap.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2023-11-06-benchmarks-1106.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2023-11-06-benchmarks-speed-1106.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2023-12-21-unified-diffs.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2024-01-25-benchmarks-0125.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2024-03-08-claude-3.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2024-04-09-gpt-4-turbo.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2024-05-02-browser.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2024-05-13-models-over-time.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2024-05-22-draft.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2024-05-22-linting.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2024-05-22-swe-bench-lite.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2024-05-24-self-assembly.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2024-06-02-main-swe-bench.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2024-07-01-sonnet-not-lazy.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2024-07-25-new-models.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2024-08-14-code-in-json.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2024-08-26-sonnet-seems-fine.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2024-09-12-o1.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2024-09-26-architect.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2024-11-21-quantization.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2024-12-03-qwq.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2024-12-21-polyglot.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2025-01-15-uv.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2025-01-24-r1-sonnet.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2025-01-28-deepseek-down.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2025-05-07-gemini-cost.md": "COPIED_VERIFIED",
+    "aider/website/_posts/2025-05-08-qwen3.md": "COPIED_VERIFIED",
+    "aider/website/_sass/custom/custom.scss": "COPIED_VERIFIED",
+    "aider/website/assets/2024-03-07-claude-3.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/2024-03-07-claude-3.svg": "COPIED_VERIFIED",
+    "aider/website/assets/2024-04-09-gpt-4-turbo-laziness.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/2024-04-09-gpt-4-turbo-laziness.svg": "COPIED_VERIFIED",
+    "aider/website/assets/2024-04-09-gpt-4-turbo.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/2024-04-09-gpt-4-turbo.svg": "COPIED_VERIFIED",
+    "aider/website/assets/2024-07-new-models.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/2025-05-08-qwen3.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/Glass_TTY_VT220.ttf": "COPIED_VERIFIED",
+    "aider/website/assets/aider-browser-social.mp4.chunks/aider-browser-social.mp4.part-0000": "COPIED_VERIFIED",
+    "aider/website/assets/aider-browser-social.mp4.chunks/aider-browser-social.mp4.part-0001": "COPIED_VERIFIED",
+    "aider/website/assets/aider-square.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/aider.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/architect.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/asciinema/asciinema-player.css": "COPIED_VERIFIED",
+    "aider/website/assets/asciinema/asciinema-player.min.js": "COPIED_VERIFIED",
+    "aider/website/assets/audio/auto-accept-architect/00-01.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/auto-accept-architect/00-11.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/auto-accept-architect/00-40.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/auto-accept-architect/00-48.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/auto-accept-architect/01-00.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/auto-accept-architect/01-28.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/auto-accept-architect/01-42.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/auto-accept-architect/02-00.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/auto-accept-architect/02-05.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/auto-accept-architect/metadata.json": "COPIED_VERIFIED",
+    "aider/website/assets/audio/dont-drop-original-read-files/00-01.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/dont-drop-original-read-files/00-10.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/dont-drop-original-read-files/00-20.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/dont-drop-original-read-files/01-20.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/dont-drop-original-read-files/01-30.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/dont-drop-original-read-files/01-45.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/dont-drop-original-read-files/02-10.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/dont-drop-original-read-files/02-19.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/dont-drop-original-read-files/02-50.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/dont-drop-original-read-files/metadata.json": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/00-01.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/00-25.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/01-30.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/01-45.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/02-00.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/03-00.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/03-45.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/04-45.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/05-00.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/05-10.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/06-00.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/07-43.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/09-20.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/10-20.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/10-41.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/10-55.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/11-28.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/12-00.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/12-32.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/12-48.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/13-00.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/14-30.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/14-45.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/14-59.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/15-09.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/15-34.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/15-44.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/16-04.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/16-14.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/16-29.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/16-47.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/16-55.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/17-59.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/18-35.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/19-44.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/19-54.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/20-25.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/20-55.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/21-10.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/22-32.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/24-25.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/24-56.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/25-35.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/26-20.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/model-accepts-settings/metadata.json": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/00-01.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/00-10.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/01-00.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/01-10.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/01-29.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/01-45.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/02-05.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/03-37.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/04-19.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/05-02.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/05-55.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/06-12.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/06-30.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/09-02.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/09-45.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/10-15.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/11-15.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/12-00.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/13-00.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/14-00.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/16-07.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/16-16.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/16-33.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/17-01.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/17-12.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/19-04.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/19-28.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/20-20.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/20-50.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/21-30.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/24-39.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/26-55.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/27-10.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/27-19.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/27-50.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/28-12.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/28-52.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/29-27.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/30-25.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/30-37.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/31-52.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/32-27.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/32-36.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/32-42.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/32-54.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/33-05.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/33-20.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/34-10.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/35-00.mp3": "COPIED_VERIFIED",
+    "aider/website/assets/audio/tree-sitter-language-pack/metadata.json": "COPIED_VERIFIED",
+    "aider/website/assets/azure-deployment.png": "COPIED_VERIFIED",
+    "aider/website/assets/benchmarks-0125.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/benchmarks-0125.svg": "COPIED_VERIFIED",
+    "aider/website/assets/benchmarks-1106.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/benchmarks-1106.svg": "COPIED_VERIFIED",
+    "aider/website/assets/benchmarks-speed-1106.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/benchmarks-speed-1106.svg": "COPIED_VERIFIED",
+    "aider/website/assets/benchmarks-udiff.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/benchmarks-udiff.svg": "COPIED_VERIFIED",
+    "aider/website/assets/benchmarks.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/benchmarks.svg": "COPIED_VERIFIED",
+    "aider/website/assets/blame.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/browser.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/code-in-json.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/codespaces.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/codespaces.mp4": "COPIED_VERIFIED",
+    "aider/website/assets/copypaste.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/copypaste.mp4.chunks/copypaste.mp4.part-0000": "COPIED_VERIFIED",
+    "aider/website/assets/copypaste.mp4.chunks/copypaste.mp4.part-0001": "COPIED_VERIFIED",
+    "aider/website/assets/figure.png": "COPIED_VERIFIED",
+    "aider/website/assets/home.css": "COPIED_VERIFIED",
+    "aider/website/assets/icons/android-chrome-192x192.png": "COPIED_VERIFIED",
+    "aider/website/assets/icons/android-chrome-384x384.png": "COPIED_VERIFIED",
+    "aider/website/assets/icons/apple-touch-icon.png": "COPIED_VERIFIED",
+    "aider/website/assets/icons/brain.svg": "COPIED_VERIFIED",
+    "aider/website/assets/icons/browserconfig.xml": "COPIED_VERIFIED",
+    "aider/website/assets/icons/check-all.svg": "COPIED_VERIFIED",
+    "aider/website/assets/icons/code-tags.svg": "COPIED_VERIFIED",
+    "aider/website/assets/icons/content-copy.svg": "COPIED_VERIFIED",
+    "aider/website/assets/icons/favicon-16x16.png": "COPIED_VERIFIED",
+    "aider/website/assets/icons/favicon-32x32.png": "COPIED_VERIFIED",
+    "aider/website/assets/icons/favicon.ico": "COPIED_VERIFIED",
+    "aider/website/assets/icons/image-multiple.svg": "COPIED_VERIFIED",
+    "aider/website/assets/icons/map-outline.svg": "COPIED_VERIFIED",
+    "aider/website/assets/icons/microphone.svg": "COPIED_VERIFIED",
+    "aider/website/assets/icons/monitor.svg": "COPIED_VERIFIED",
+    "aider/website/assets/icons/mstile-150x150.png": "COPIED_VERIFIED",
+    "aider/website/assets/icons/safari-pinned-tab.svg": "COPIED_VERIFIED",
+    "aider/website/assets/icons/site.webmanifest": "COPIED_VERIFIED",
+    "aider/website/assets/icons/source-branch.svg": "COPIED_VERIFIED",
+    "aider/website/assets/install.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/install.mp4": "COPIED_VERIFIED",
+    "aider/website/assets/leaderboard.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/linting.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/llms.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/logo.svg": "COPIED_VERIFIED",
+    "aider/website/assets/models-over-time.png": "COPIED_VERIFIED",
+    "aider/website/assets/models-over-time.svg": "COPIED_VERIFIED",
+    "aider/website/assets/o1-polyglot.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/prompt-caching.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/quantization.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/qwq.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/r1-sonnet-sota.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/recordings.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/robot-ast.png": "COPIED_VERIFIED",
+    "aider/website/assets/robot-flowchart.png": "COPIED_VERIFIED",
+    "aider/website/assets/sample-analytics.jsonl": "COPIED_VERIFIED",
+    "aider/website/assets/sample.aider.conf.yml": "COPIED_VERIFIED",
+    "aider/website/assets/sample.env": "COPIED_VERIFIED",
+    "aider/website/assets/screencast.svg": "COPIED_VERIFIED",
+    "aider/website/assets/screenshot.png": "COPIED_VERIFIED",
+    "aider/website/assets/self-assembly.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/shell-cmds-small.mp4.chunks/shell-cmds-small.mp4.part-0000": "COPIED_VERIFIED",
+    "aider/website/assets/shell-cmds-small.mp4.chunks/shell-cmds-small.mp4.part-0001": "COPIED_VERIFIED",
+    "aider/website/assets/shell-cmds.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/sonnet-not-lazy.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/sonnet-seems-fine.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/swe_bench.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/swe_bench.svg": "COPIED_VERIFIED",
+    "aider/website/assets/swe_bench_lite.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/swe_bench_lite.svg": "COPIED_VERIFIED",
+    "aider/website/assets/thinking.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/udiffs.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/watch.jpg": "COPIED_VERIFIED",
+    "aider/website/assets/watch.mp4.chunks/watch.mp4.part-0000": "COPIED_VERIFIED",
+    "aider/website/assets/watch.mp4.chunks/watch.mp4.part-0001": "COPIED_VERIFIED",
+    "aider/website/blog/index.html": "COPIED_VERIFIED",
+    "aider/website/docs/benchmarks-0125.md": "COPIED_VERIFIED",
+    "aider/website/docs/benchmarks-1106.md": "COPIED_VERIFIED",
+    "aider/website/docs/benchmarks-speed-1106.md": "COPIED_VERIFIED",
+    "aider/website/docs/benchmarks.md": "COPIED_VERIFIED",
+    "aider/website/docs/config.md": "COPIED_VERIFIED",
+    "aider/website/docs/config/adv-model-settings.md": "COPIED_VERIFIED",
+    "aider/website/docs/config/aider_conf.md": "COPIED_VERIFIED",
+    "aider/website/docs/config/api-keys.md": "COPIED_VERIFIED",
+    "aider/website/docs/config/dotenv.md": "COPIED_VERIFIED",
+    "aider/website/docs/config/editor.md": "COPIED_VERIFIED",
+    "aider/website/docs/config/model-aliases.md": "COPIED_VERIFIED",
+    "aider/website/docs/config/options.md": "COPIED_VERIFIED",
+    "aider/website/docs/config/reasoning.md": "COPIED_VERIFIED",
+    "aider/website/docs/ctags.md": "COPIED_VERIFIED",
+    "aider/website/docs/faq.md": "COPIED_VERIFIED",
+    "aider/website/docs/git.md": "COPIED_VERIFIED",
+    "aider/website/docs/index.md": "COPIED_VERIFIED",
+    "aider/website/docs/install.md": "COPIED_VERIFIED",
+    "aider/website/docs/install/codespaces.md": "COPIED_VERIFIED",
+    "aider/website/docs/install/docker.md": "COPIED_VERIFIED",
+    "aider/website/docs/install/optional.md": "COPIED_VERIFIED",
+    "aider/website/docs/install/replit.md": "COPIED_VERIFIED",
+    "aider/website/docs/languages.md": "COPIED_VERIFIED",
+    "aider/website/docs/leaderboards/by-release-date.md": "COPIED_VERIFIED",
+    "aider/website/docs/leaderboards/contrib.md": "COPIED_VERIFIED",
+    "aider/website/docs/leaderboards/edit.md": "COPIED_VERIFIED",
+    "aider/website/docs/leaderboards/index.md": "COPIED_VERIFIED",
+    "aider/website/docs/leaderboards/notes.md": "COPIED_VERIFIED",
+    "aider/website/docs/leaderboards/refactor.md": "COPIED_VERIFIED",
+    "aider/website/docs/legal/contributor-agreement.md": "COPIED_VERIFIED",
+    "aider/website/docs/legal/privacy.md": "COPIED_VERIFIED",
+    "aider/website/docs/llms.md": "COPIED_VERIFIED",
+    "aider/website/docs/llms/anthropic.md": "COPIED_VERIFIED",
+    "aider/website/docs/llms/azure.md": "COPIED_VERIFIED",
+    "aider/website/docs/llms/bedrock.md": "COPIED_VERIFIED",
+    "aider/website/docs/llms/cohere.md": "COPIED_VERIFIED",
+    "aider/website/docs/llms/deepseek.md": "COPIED_VERIFIED",
+    "aider/website/docs/llms/gemini.md": "COPIED_VERIFIED",
+    "aider/website/docs/llms/github.md": "COPIED_VERIFIED",
+    "aider/website/docs/llms/groq.md": "COPIED_VERIFIED",
+    "aider/website/docs/llms/lm-studio.md": "COPIED_VERIFIED",
+    "aider/website/docs/llms/ollama.md": "COPIED_VERIFIED",
+    "aider/website/docs/llms/openai-compat.md": "COPIED_VERIFIED",
+    "aider/website/docs/llms/openai.md": "COPIED_VERIFIED",
+    "aider/website/docs/llms/openrouter.md": "COPIED_VERIFIED",
+    "aider/website/docs/llms/other.md": "COPIED_VERIFIED",
+    "aider/website/docs/llms/vertex.md": "COPIED_VERIFIED",
+    "aider/website/docs/llms/warnings.md": "COPIED_VERIFIED",
+    "aider/website/docs/llms/xai.md": "COPIED_VERIFIED",
+    "aider/website/docs/more-info.md": "COPIED_VERIFIED",
+    "aider/website/docs/more/analytics.md": "COPIED_VERIFIED",
+    "aider/website/docs/more/edit-formats.md": "COPIED_VERIFIED",
+    "aider/website/docs/more/infinite-output.md": "COPIED_VERIFIED",
+    "aider/website/docs/recordings/auto-accept-architect.md": "COPIED_VERIFIED",
+    "aider/website/docs/recordings/dont-drop-original-read-files.md": "COPIED_VERIFIED",
+    "aider/website/docs/recordings/index.md": "COPIED_VERIFIED",
+    "aider/website/docs/recordings/model-accepts-settings.md": "COPIED_VERIFIED",
+    "aider/website/docs/recordings/tree-sitter-language-pack.md": "COPIED_VERIFIED",
+    "aider/website/docs/repomap.md": "COPIED_VERIFIED",
+    "aider/website/docs/scripting.md": "COPIED_VERIFIED",
+    "aider/website/docs/troubleshooting.md": "COPIED_VERIFIED",
+    "aider/website/docs/troubleshooting/aider-not-found.md": "COPIED_VERIFIED",
+    "aider/website/docs/troubleshooting/edit-errors.md": "COPIED_VERIFIED",
+    "aider/website/docs/troubleshooting/imports.md": "COPIED_VERIFIED",
+    "aider/website/docs/troubleshooting/models-and-keys.md": "COPIED_VERIFIED",
+    "aider/website/docs/troubleshooting/support.md": "COPIED_VERIFIED",
+    "aider/website/docs/troubleshooting/token-limits.md": "COPIED_VERIFIED",
+    "aider/website/docs/troubleshooting/warnings.md": "COPIED_VERIFIED",
+    "aider/website/docs/unified-diffs.md": "COPIED_VERIFIED",
+    "aider/website/docs/usage.md": "COPIED_VERIFIED",
+    "aider/website/docs/usage/browser.md": "COPIED_VERIFIED",
+    "aider/website/docs/usage/caching.md": "COPIED_VERIFIED",
+    "aider/website/docs/usage/commands.md": "COPIED_VERIFIED",
+    "aider/website/docs/usage/conventions.md": "COPIED_VERIFIED",
+    "aider/website/docs/usage/copypaste.md": "COPIED_VERIFIED",
+    "aider/website/docs/usage/images-urls.md": "COPIED_VERIFIED",
+    "aider/website/docs/usage/lint-test.md": "COPIED_VERIFIED",
+    "aider/website/docs/usage/modes.md": "COPIED_VERIFIED",
+    "aider/website/docs/usage/not-code.md": "COPIED_VERIFIED",
+    "aider/website/docs/usage/notifications.md": "COPIED_VERIFIED",
+    "aider/website/docs/usage/tips.md": "COPIED_VERIFIED",
+    "aider/website/docs/usage/tutorials.md": "COPIED_VERIFIED",
+    "aider/website/docs/usage/voice.md": "COPIED_VERIFIED",
+    "aider/website/docs/usage/watch.md": "COPIED_VERIFIED",
+    "aider/website/examples/2048-game.md": "COPIED_VERIFIED",
+    "aider/website/examples/README.md": "COPIED_VERIFIED",
+    "aider/website/examples/add-test.md": "COPIED_VERIFIED",
+    "aider/website/examples/asciinema.md": "COPIED_VERIFIED",
+    "aider/website/examples/census.md": "COPIED_VERIFIED",
+    "aider/website/examples/chat-transcript-css.md": "COPIED_VERIFIED",
+    "aider/website/examples/complex-change.md": "COPIED_VERIFIED",
+    "aider/website/examples/css-exercises.md": "COPIED_VERIFIED",
+    "aider/website/examples/hello-world-flask.md": "COPIED_VERIFIED",
+    "aider/website/examples/hello.md": "COPIED_VERIFIED",
+    "aider/website/examples/no-color.md": "COPIED_VERIFIED",
+    "aider/website/examples/pong.md": "COPIED_VERIFIED",
+    "aider/website/examples/semantic-search-replace.md": "COPIED_VERIFIED",
+    "aider/website/examples/update-docs.md": "COPIED_VERIFIED",
+    "aider/website/index.html": "COPIED_VERIFIED",
+    "aider/website/install.ps1": "COPIED_VERIFIED",
+    "aider/website/install.sh": "COPIED_VERIFIED",
+    "aider/website/share/index.md": "COPIED_VERIFIED",
+    "benchmark/Dockerfile": "COPIED_VERIFIED",
+    "benchmark/README.md": "COPIED_VERIFIED",
+    "benchmark/__init__.py": "COPIED_VERIFIED",
+    "benchmark/benchmark.py": "COPIED_VERIFIED",
+    "benchmark/clone-exercism.sh": "COPIED_VERIFIED",
+    "benchmark/cpp-test.sh": "COPIED_VERIFIED",
+    "benchmark/docker.sh": "COPIED_VERIFIED",
+    "benchmark/docker_build.sh": "COPIED_VERIFIED",
+    "benchmark/install-docker-ubuntu.sh": "COPIED_VERIFIED",
+    "benchmark/npm-test.sh": "COPIED_VERIFIED",
+    "benchmark/over_time.py": "COPIED_VERIFIED",
+    "benchmark/plot.sh": "COPIED_VERIFIED",
+    "benchmark/plots.py": "COPIED_VERIFIED",
+    "benchmark/problem_stats.py": "COPIED_VERIFIED",
+    "benchmark/prompts.py": "COPIED_VERIFIED",
+    "benchmark/refactor_tools.py": "COPIED_VERIFIED",
+    "benchmark/rsync.sh": "COPIED_VERIFIED",
+    "benchmark/rungrid.py": "COPIED_VERIFIED",
+    "benchmark/swe-bench-lite.txt": "COPIED_VERIFIED",
+    "benchmark/swe-bench.txt": "COPIED_VERIFIED",
+    "benchmark/swe_bench.py": "COPIED_VERIFIED",
+    "benchmark/test_benchmark.py": "COPIED_VERIFIED",
+    "docker/Dockerfile": "COPIED_VERIFIED",
+    "pyproject.toml": "COPIED_VERIFIED",
+    "pytest.ini": "COPIED_VERIFIED",
+    "requirements.txt": "COPIED_VERIFIED",
+    "requirements/common-constraints.txt": "COPIED_VERIFIED",
+    "requirements/pydub.in": "COPIED_VERIFIED",
+    "requirements/python-compat.in": "COPIED_VERIFIED",
+    "requirements/requirements-browser.in": "COPIED_VERIFIED",
+    "requirements/requirements-browser.txt": "COPIED_VERIFIED",
+    "requirements/requirements-dev.in": "COPIED_VERIFIED",
+    "requirements/requirements-dev.txt": "COPIED_VERIFIED",
+    "requirements/requirements-help.in": "COPIED_VERIFIED",
+    "requirements/requirements-help.txt": "COPIED_VERIFIED",
+    "requirements/requirements-playwright.in": "COPIED_VERIFIED",
+    "requirements/requirements-playwright.txt": "COPIED_VERIFIED",
+    "requirements/requirements.in": "COPIED_VERIFIED",
+    "requirements/tree-sitter.in": "COPIED_VERIFIED",
+    "scripts/30k-image.py": "COPIED_VERIFIED",
+    "scripts/Dockerfile.jekyll": "COPIED_VERIFIED",
+    "scripts/__init__.py": "COPIED_VERIFIED",
+    "scripts/blame.py": "COPIED_VERIFIED",
+    "scripts/clean_metadata.py": "COPIED_VERIFIED",
+    "scripts/dl_icons.py": "COPIED_VERIFIED",
+    "scripts/history_prompts.py": "COPIED_VERIFIED",
+    "scripts/homepage.py": "COPIED_VERIFIED",
+    "scripts/issues.py": "COPIED_VERIFIED",
+    "scripts/jekyll_build.sh": "COPIED_VERIFIED",
+    "scripts/jekyll_run.sh": "COPIED_VERIFIED",
+    "scripts/logo_svg.py": "COPIED_VERIFIED",
+    "scripts/my_models.py": "COPIED_VERIFIED",
+    "scripts/pip-compile.sh": "COPIED_VERIFIED",
+    "scripts/recording_audio.py": "COPIED_VERIFIED",
+    "scripts/redact-cast.py": "COPIED_VERIFIED",
+    "scripts/tmux_record.sh": "COPIED_VERIFIED",
+    "scripts/tsl_pack_langs.py": "COPIED_VERIFIED",
+    "scripts/update-blame.sh": "COPIED_VERIFIED",
+    "scripts/update-docs.sh": "COPIED_VERIFIED",
+    "scripts/update-history.py": "COPIED_VERIFIED",
+    "scripts/versionbump.py": "COPIED_VERIFIED",
+    "scripts/yank-old-versions.py": "COPIED_VERIFIED",
+    "tests/__init__.py": "COPIED_VERIFIED",
+    "tests/basic/__init__.py": "COPIED_VERIFIED",
+    "tests/basic/test_analytics.py": "COPIED_VERIFIED",
+    "tests/basic/test_aws_credentials.py": "COPIED_VERIFIED",
+    "tests/basic/test_coder.py": "COPIED_VERIFIED",
+    "tests/basic/test_commands.py": "COPIED_VERIFIED",
+    "tests/basic/test_deprecated.py": "COPIED_VERIFIED",
+    "tests/basic/test_editblock.py": "COPIED_VERIFIED",
+    "tests/basic/test_editor.py": "COPIED_VERIFIED",
+    "tests/basic/test_exceptions.py": "COPIED_VERIFIED",
+    "tests/basic/test_find_or_blocks.py": "COPIED_VERIFIED",
+    "tests/basic/test_history.py": "COPIED_VERIFIED",
+    "tests/basic/test_io.py": "COPIED_VERIFIED",
+    "tests/basic/test_linter.py": "COPIED_VERIFIED",
+    "tests/basic/test_main.py": "COPIED_VERIFIED",
+    "tests/basic/test_model_info_manager.py": "COPIED_VERIFIED",
+    "tests/basic/test_models.py": "COPIED_VERIFIED",
+    "tests/basic/test_onboarding.py": "COPIED_VERIFIED",
+    "tests/basic/test_openrouter.py": "COPIED_VERIFIED",
+    "tests/basic/test_reasoning.py": "COPIED_VERIFIED",
+    "tests/basic/test_repo.py": "COPIED_VERIFIED",
+    "tests/basic/test_repomap.py": "COPIED_VERIFIED",
+    "tests/basic/test_run_cmd.py": "COPIED_VERIFIED",
+    "tests/basic/test_sanity_check_repo.py": "COPIED_VERIFIED",
+    "tests/basic/test_scripting.py": "COPIED_VERIFIED",
+    "tests/basic/test_sendchat.py": "COPIED_VERIFIED",
+    "tests/basic/test_special.py": "COPIED_VERIFIED",
+    "tests/basic/test_ssl_verification.py": "COPIED_VERIFIED",
+    "tests/basic/test_udiff.py": "COPIED_VERIFIED",
+    "tests/basic/test_urls.py": "COPIED_VERIFIED",
+    "tests/basic/test_utils.py": "COPIED_VERIFIED",
+    "tests/basic/test_voice.py": "COPIED_VERIFIED",
+    "tests/basic/test_watch.py": "COPIED_VERIFIED",
+    "tests/basic/test_wholefile.py": "COPIED_VERIFIED",
+    "tests/browser/test_browser.py": "COPIED_VERIFIED",
+    "tests/fixtures/chat-history-search-replace-gold.txt": "COPIED_VERIFIED",
+    "tests/fixtures/chat-history.md": "COPIED_VERIFIED",
+    "tests/fixtures/languages/arduino/test.ino": "COPIED_VERIFIED",
+    "tests/fixtures/languages/bash/test.sh": "COPIED_VERIFIED",
+    "tests/fixtures/languages/c/test.c": "COPIED_VERIFIED",
+    "tests/fixtures/languages/chatito/test.chatito": "COPIED_VERIFIED",
+    "tests/fixtures/languages/clojure/test.clj": "COPIED_VERIFIED",
+    "tests/fixtures/languages/commonlisp/test.lisp": "COPIED_VERIFIED",
+    "tests/fixtures/languages/cpp/test.cpp": "COPIED_VERIFIED",
+    "tests/fixtures/languages/csharp/test.cs": "COPIED_VERIFIED",
+    "tests/fixtures/languages/d/test.d": "COPIED_VERIFIED",
+    "tests/fixtures/languages/dart/test.dart": "COPIED_VERIFIED",
+    "tests/fixtures/languages/elisp/test.el": "COPIED_VERIFIED",
+    "tests/fixtures/languages/elixir/test.ex": "COPIED_VERIFIED",
+    "tests/fixtures/languages/elm/test.elm": "COPIED_VERIFIED",
+    "tests/fixtures/languages/gleam/test.gleam": "COPIED_VERIFIED",
+    "tests/fixtures/languages/go/test.go": "COPIED_VERIFIED",
+    "tests/fixtures/languages/haskell/test.hs": "COPIED_VERIFIED",
+    "tests/fixtures/languages/hcl/test.tf": "COPIED_VERIFIED",
+    "tests/fixtures/languages/java/test.java": "COPIED_VERIFIED",
+    "tests/fixtures/languages/javascript/test.js": "COPIED_VERIFIED",
+    "tests/fixtures/languages/kotlin/test.kt": "COPIED_VERIFIED",
+    "tests/fixtures/languages/lua/test.lua": "COPIED_VERIFIED",
+    "tests/fixtures/languages/matlab/test.m": "COPIED_VERIFIED",
+    "tests/fixtures/languages/ocaml/test.ml": "COPIED_VERIFIED",
+    "tests/fixtures/languages/ocaml_interface/test.mli": "COPIED_VERIFIED",
+    "tests/fixtures/languages/php/test.php": "COPIED_VERIFIED",
+    "tests/fixtures/languages/pony/test.pony": "COPIED_VERIFIED",
+    "tests/fixtures/languages/properties/test.properties": "COPIED_VERIFIED",
+    "tests/fixtures/languages/python/test.py": "COPIED_VERIFIED",
+    "tests/fixtures/languages/ql/test.ql": "COPIED_VERIFIED",
+    "tests/fixtures/languages/r/test.r": "COPIED_VERIFIED",
+    "tests/fixtures/languages/racket/test.rkt": "COPIED_VERIFIED",
+    "tests/fixtures/languages/ruby/test.rb": "COPIED_VERIFIED",
+    "tests/fixtures/languages/rust/test.rs": "COPIED_VERIFIED",
+    "tests/fixtures/languages/scala/test.scala": "COPIED_VERIFIED",
+    "tests/fixtures/languages/solidity/test.sol": "COPIED_VERIFIED",
+    "tests/fixtures/languages/swift/test.swift": "COPIED_VERIFIED",
+    "tests/fixtures/languages/tsx/test.tsx": "COPIED_VERIFIED",
+    "tests/fixtures/languages/typescript/test.ts": "COPIED_VERIFIED",
+    "tests/fixtures/languages/udev/test.rules": "COPIED_VERIFIED",
+    "tests/fixtures/languages/zig/test.zig": "COPIED_VERIFIED",
+    "tests/fixtures/sample-code-base-repo-map.txt": "COPIED_VERIFIED",
+    "tests/fixtures/sample-code-base/sample.js": "COPIED_VERIFIED",
+    "tests/fixtures/sample-code-base/sample.py": "COPIED_VERIFIED",
+    "tests/fixtures/watch.js": "COPIED_VERIFIED",
+    "tests/fixtures/watch.lisp": "COPIED_VERIFIED",
+    "tests/fixtures/watch.py": "COPIED_VERIFIED",
+    "tests/fixtures/watch_question.js": "COPIED_VERIFIED",
+    "tests/help/test_help.py": "COPIED_VERIFIED",
+    "tests/scrape/test_playwright_disable.py": "COPIED_VERIFIED",
+    "tests/scrape/test_scrape.py": "COPIED_VERIFIED"
+  },
+  "failed": {},
+  "manifest": [
+    {
+      "bytes": 61,
+      "rel": ".dockerignore",
+      "sha256": "9058f0b58c26b45a6d52a6bf9f2f571deec866739e47bb34a7a213d2159e4bed"
+    },
+    {
+      "bytes": 50,
+      "rel": ".flake8",
+      "sha256": "d28fb110601fcc2795c46951af4dcf59c9e4b9a7b9941bdbe71990f558946891"
+    },
+    {
+      "bytes": 703,
+      "rel": ".github/ISSUE_TEMPLATE/issue.yml",
+      "sha256": "cfc643d2741497ff6c0d96d0be77984fab22c833cfd11bcc1067c49c1cc49124"
+    },
+    {
+      "bytes": 3182,
+      "rel": ".github/workflows/check_pypi_version.yml",
+      "sha256": "c1b80ef2bff58d19a83b69500af2b0b32c76604380b2ab25fcfcd9f80bcbf6e4"
+    },
+    {
+      "bytes": 2246,
+      "rel": ".github/workflows/docker-build-test.yml",
+      "sha256": "6b49b8405f77d22b4c00dbec9cabb7091902ef4babedc2634b59372ce772fd53"
+    },
+    {
+      "bytes": 1357,
+      "rel": ".github/workflows/docker-release.yml",
+      "sha256": "b918efeb27a97f80a7fb053b88676cd8e7bea3c4c09f79a57bea5a9c31af3b56"
+    },
+    {
+      "bytes": 735,
+      "rel": ".github/workflows/issues.yml",
+      "sha256": "1d464a5a0d94fa0f67a15f2e3e449c218e4f5743855a8c40690c381f5bbacaa1"
+    },
+    {
+      "bytes": 2464,
+      "rel": ".github/workflows/pages.yml",
+      "sha256": "0e78b38f28e01b7449c71f51adf760b65004341afb085b5ba86413bb2b97b803"
+    },
+    {
+      "bytes": 1509,
+      "rel": ".github/workflows/pre-commit.yml",
+      "sha256": "b77f13297326bfb5da99414a896fb9316f37522f223ce7927ea743b4da128a70"
+    },
+    {
+      "bytes": 718,
+      "rel": ".github/workflows/release.yml",
+      "sha256": "8f96e704d75ed47aa1fafd8d4276a7907a3204f1c908bf11ed7b957eb2002e32"
+    },
+    {
+      "bytes": 1199,
+      "rel": ".github/workflows/ubuntu-tests.yml",
+      "sha256": "c0576896c9e22b19dbd11ebc122b4cdaa19e90d8139da4bc0b12f5282b1fb948"
+    },
+    {
+      "bytes": 1084,
+      "rel": ".github/workflows/windows-tests.yml",
+      "sha256": "27b8d8a89d916144ce08b454d008733f0170975e850e86ce1edb8477f08a43a3"
+    },
+    {
+      "bytes": 3485,
+      "rel": ".github/workflows/windows_check_pypi_version.yml",
+      "sha256": "5689b61fc4ec6789fdbed61afa2947fc5423a265cca798b353a15240f67e5461"
+    },
+    {
+      "bytes": 239,
+      "rel": ".gitignore",
+      "sha256": "93357fe614d76d51e777b287958dabf6e2494a868df7997a19692bd6f029137e"
+    },
+    {
+      "bytes": 602,
+      "rel": ".pre-commit-config.yaml",
+      "sha256": "9b27fdbc31f2014573f7d02ab387f425e49fc0ad50cd2ac101baf4518baaae3d"
+    },
+    {
+      "bytes": 10,
+      "rel": "CNAME",
+      "sha256": "47679f84ae85351a322e89ed94d2a87311e9a288ab5f36ba32e2159e7c24977b"
+    },
+    {
+      "bytes": 7863,
+      "rel": "CONTRIBUTING.md",
+      "sha256": "aaaafd32db23af352ffdd277425021a2bc738480d321b2b20b1b252e7e811ee0"
+    },
+    {
+      "bytes": 77044,
+      "rel": "HISTORY.md",
+      "sha256": "d190836f7ef818ef5f224c5c605ce748205fce95dfea19f45d44e4e8d93799b3"
+    },
+    {
+      "bytes": 11358,
+      "rel": "LICENSE.txt",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "bytes": 588,
+      "rel": "MANIFEST.in",
+      "sha256": "1137af662c229d4ae9bceea2bb5c905734028207cdc6824e007e9f14af9362a8"
+    },
+    {
+      "bytes": 12406,
+      "rel": "README.md",
+      "sha256": "e40e05367ceacf7138a2605484bf7d1cb5a262d2dba03f52a5327c023b3cd0dc"
+    },
+    {
+      "bytes": 496,
+      "rel": "aider/__init__.py",
+      "sha256": "2d49cdf776f9392fd7e30ad70cec22e81df1de84c388f840618a087775ebc831"
+    },
+    {
+      "bytes": 62,
+      "rel": "aider/__main__.py",
+      "sha256": "55d870f180352b7c0f3256c94182f95aabd1cc0295799d7a9994053bd551982a"
+    },
+    {
+      "bytes": 7507,
+      "rel": "aider/analytics.py",
+      "sha256": "739ba368270c737c86fbdaf3ff4a12b2a070995411c499ee8ba884ff20f263f3"
+    },
+    {
+      "bytes": 30298,
+      "rel": "aider/args.py",
+      "sha256": "bc38cb83d33435f7cfd8dc160cd4b1b3aeb607590334997e5ff90c26f0d41270"
+    },
+    {
+      "bytes": 6369,
+      "rel": "aider/args_formatter.py",
+      "sha256": "081467cc7c9993e7c508ad1e900cdbe82e0f3c9394f954e958822c25edea5219"
+    },
+    {
+      "bytes": 1038,
+      "rel": "aider/coders/__init__.py",
+      "sha256": "a48ae22b11cd652bf4bc0c5f2b602508ac3c5d065d48c442921ccc1acf81776a"
+    },
+    {
+      "bytes": 1622,
+      "rel": "aider/coders/architect_coder.py",
+      "sha256": "6fb2aab62be79653ddc8c7f16e711477d1b40b56456a26a9a55db9473d0390cb"
+    },
+    {
+      "bytes": 1469,
+      "rel": "aider/coders/architect_prompts.py",
+      "sha256": "4cf04aa8819a4f4d7ad46d5e2d463c13505df3af6b5a8e7eaf724b27b3993e4c"
+    },
+    {
+      "bytes": 210,
+      "rel": "aider/coders/ask_coder.py",
+      "sha256": "3a6938221f3ea6b79f90c67f8e7452ddf6a85b909051a9073af67eb3ba623375"
+    },
+    {
+      "bytes": 1395,
+      "rel": "aider/coders/ask_prompts.py",
+      "sha256": "fcc5f36ae0ed900c6a9b140768b7d8dd29baea062cb53a941d07e877a15f05b5"
+    },
+    {
+      "bytes": 86302,
+      "rel": "aider/coders/base_coder.py",
+      "sha256": "04a7b38c4f1d2b1684ac958f40bcd81a28b00139eae88afed59d2c970bef1ee1"
+    },
+    {
+      "bytes": 2384,
+      "rel": "aider/coders/base_prompts.py",
+      "sha256": "a333bb8ef8443bb12cfe7d390026dc0dda09cc4cfa92a57c7ad16f619d8aeffd"
+    },
+    {
+      "bytes": 1981,
+      "rel": "aider/coders/chat_chunks.py",
+      "sha256": "f073deb7a72641d816bda03fb46a629cee0048cb2de77b9371212d3554d80d71"
+    },
+    {
+      "bytes": 1571,
+      "rel": "aider/coders/context_coder.py",
+      "sha256": "6392dd21a607cb0301d37957b261d362c0e7c8720727a14d64b3166bdc2302bb"
+    },
+    {
+      "bytes": 3082,
+      "rel": "aider/coders/context_prompts.py",
+      "sha256": "9671d96a5d5d68e5acc889893bcaa4f4aaa28b88853714d177f0ae1d5fa5949d"
+    },
+    {
+      "bytes": 19616,
+      "rel": "aider/coders/editblock_coder.py",
+      "sha256": "244df08f5ccd19928bcdac1901ae591a7a786d12a6f70d31400baaefb5a136a3"
+    },
+    {
+      "bytes": 346,
+      "rel": "aider/coders/editblock_fenced_coder.py",
+      "sha256": "65a538de4e30e231f5a1000aabe2c9dcea4b4b22ef4f6b7d6a9c2ca588e3aaf8"
+    },
+    {
+      "bytes": 4415,
+      "rel": "aider/coders/editblock_fenced_prompts.py",
+      "sha256": "d98c872adf5168dd4aa42896f67f24181a7ca11c4fd6753b28b760b8cd9c09b5"
+    },
+    {
+      "bytes": 5317,
+      "rel": "aider/coders/editblock_func_coder.py",
+      "sha256": "8554a34b3e95cffbea990aadd9e85e50062d60c63b395d52f412e23d3aae519b"
+    },
+    {
+      "bytes": 886,
+      "rel": "aider/coders/editblock_func_prompts.py",
+      "sha256": "b7934b1e48200b164f2ce030a37e5f9a5d2162d2039fe9e6214ee74690419674"
+    },
+    {
+      "bytes": 5723,
+      "rel": "aider/coders/editblock_prompts.py",
+      "sha256": "b1a024c3af7450d76500d144f2ae5ef2821cf9f1bcba009f20c4332db3ed9a28"
+    },
+    {
+      "bytes": 338,
+      "rel": "aider/coders/editor_diff_fenced_coder.py",
+      "sha256": "c6bbf46c20815f0766cb50a95a6aa2d5fae5498b27a40d1342fdbd33b8604fde"
+    },
+    {
+      "bytes": 272,
+      "rel": "aider/coders/editor_diff_fenced_prompts.py",
+      "sha256": "da98757ed8ab88c10e568d59eb7a1a20aa1fcf06f4a42e3c196290df397333a9"
+    },
+    {
+      "bytes": 306,
+      "rel": "aider/coders/editor_editblock_coder.py",
+      "sha256": "c7e0dfe6adf18182312be38851b9a0cd1056f3f8603e63f8ab5c1c653ff4f640"
+    },
+    {
+      "bytes": 547,
+      "rel": "aider/coders/editor_editblock_prompts.py",
+      "sha256": "3ce61de908a1d10e2516a6cdf1b9c396748bf2e1a7adaf536ea6926b393399b7"
+    },
+    {
+      "bytes": 301,
+      "rel": "aider/coders/editor_whole_coder.py",
+      "sha256": "d9f8b702e8c44aeb319cd2d370aadd6edd5886428d3fb848ad11929970c9b23d"
+    },
+    {
+      "bytes": 279,
+      "rel": "aider/coders/editor_whole_prompts.py",
+      "sha256": "03bfbdf0c8c42d5d1ae7417ce98d99b25a05c54aaec6bf8715a7d2ef30a9d74d"
+    },
+    {
+      "bytes": 355,
+      "rel": "aider/coders/help_coder.py",
+      "sha256": "6901fb5934c20d454d20e840e7e692534d24697eace8a680d67014a2a94cd8b5"
+    },
+    {
+      "bytes": 1524,
+      "rel": "aider/coders/help_prompts.py",
+      "sha256": "5784d69ae6e4334bd0b7833596e5528c61d7370d05c35b533cf521ec7ccea513"
+    },
+    {
+      "bytes": 30288,
+      "rel": "aider/coders/patch_coder.py",
+      "sha256": "7fafbb56294c68c79871915080855617271e3e8e887d9eabf43413e43a528411"
+    },
+    {
+      "bytes": 6012,
+      "rel": "aider/coders/patch_prompts.py",
+      "sha256": "7523acec53e782514920a22eec594c07580bdb5378cfe670bfab0cb9c4025d45"
+    },
+    {
+      "bytes": 19813,
+      "rel": "aider/coders/search_replace.py",
+      "sha256": "e50ce26fb8386edf36b08db2c827fb869979f7dc24a1bc598151a7ac20a01247"
+    },
+    {
+      "bytes": 1801,
+      "rel": "aider/coders/shell.py",
+      "sha256": "8d22a8979202adaa25ee9007999bbee7c9e1263235dffbc789ebb1a8db291626"
+    },
+    {
+      "bytes": 2967,
+      "rel": "aider/coders/single_wholefile_func_coder.py",
+      "sha256": "9b7b9f86ecfcf38dcff479529bb4682ce350d402bca51aeff96e28c86d94e39b"
+    },
+    {
+      "bytes": 867,
+      "rel": "aider/coders/single_wholefile_func_prompts.py",
+      "sha256": "8a9cd13b3621599a2599b1d2c70e56fb5d50da2369c969d6029e353ac09dac8a"
+    },
+    {
+      "bytes": 11041,
+      "rel": "aider/coders/udiff_coder.py",
+      "sha256": "c6d39502b2e358daa09f3da7bd0d62b24f94368de27166bc463774e6ab822592"
+    },
+    {
+      "bytes": 3320,
+      "rel": "aider/coders/udiff_prompts.py",
+      "sha256": "bcfb75b9d33acfd38c84a3b078149f3cb186564fecf75a72a15237d38eb1b2e4"
+    },
+    {
+      "bytes": 452,
+      "rel": "aider/coders/udiff_simple.py",
+      "sha256": "523a2f10cfa3e7580b4593a910bfdd1715533ecd023304c924d7d421a30a884f"
+    },
+    {
+      "bytes": 888,
+      "rel": "aider/coders/udiff_simple_prompts.py",
+      "sha256": "b7a93c9c50d068a8ddc572b032248d49ed412fa900694ae069320f3ce12be3f3"
+    },
+    {
+      "bytes": 5131,
+      "rel": "aider/coders/wholefile_coder.py",
+      "sha256": "b8fa0d35e4a26b5c2b978a223e3c2762bb557a3ee15dad8e7a91ac242f6dd52f"
+    },
+    {
+      "bytes": 4249,
+      "rel": "aider/coders/wholefile_func_coder.py",
+      "sha256": "44a1f33cd35d4aec28809e6b244bc2ce64a86b12b1f3394f6c23ad5af5eff7c2"
+    },
+    {
+      "bytes": 868,
+      "rel": "aider/coders/wholefile_func_prompts.py",
+      "sha256": "339f9deaa45851e4537a52b9c3699062455f155fdc68f73ea867cd1e599b989b"
+    },
+    {
+      "bytes": 1869,
+      "rel": "aider/coders/wholefile_prompts.py",
+      "sha256": "72ad268a25b498d0daeab2d32ba8cdf8b896947f426c6225a7a8fc67ce1e7a42"
+    },
+    {
+      "bytes": 62230,
+      "rel": "aider/commands.py",
+      "sha256": "4457e9da5ac3d89003648d68f596aa9857a7e76e36dcff8ebd10f4b59ccd77e7"
+    },
+    {
+      "bytes": 2095,
+      "rel": "aider/copypaste.py",
+      "sha256": "27df50ad720b5040ff18f744ab1b7b5a3199e627fcb1fcb45504f3b15da306b1"
+    },
+    {
+      "bytes": 4277,
+      "rel": "aider/deprecated.py",
+      "sha256": "48d780591ee287cec5e40c85a42e29c51a0901ac3c99e6ac056e7cdf0d04513f"
+    },
+    {
+      "bytes": 3028,
+      "rel": "aider/diffs.py",
+      "sha256": "cbafebc4829edc53c222c572fd14641dda1f82e60e85806bd8ecadaf902a8c72"
+    },
+    {
+      "bytes": 653,
+      "rel": "aider/dump.py",
+      "sha256": "fa76969c64dcd3e9407bff775b1053a6e9cf45fccd9542bb439ce05cea6b1df0"
+    },
+    {
+      "bytes": 4364,
+      "rel": "aider/editor.py",
+      "sha256": "fd6022a496043b1faaebd98fa7f847010db27dea199250588d2d2b4cbc421c40"
+    },
+    {
+      "bytes": 4218,
+      "rel": "aider/exceptions.py",
+      "sha256": "7807c5ee5fb1ace98adaf2e701892610dc748d35ebf3b3dbb9479fe4407ccd7b"
+    },
+    {
+      "bytes": 1041,
+      "rel": "aider/format_settings.py",
+      "sha256": "c075b86cb4cac2a50a0c65f8a27c62ac2e1c360789fa51cfb92d47d38fd1e38e"
+    },
+    {
+      "bytes": 17573,
+      "rel": "aider/gui.py",
+      "sha256": "2671ef962d494c2187020b0e67c1e401638a005c669e06f2be264825e62f8ecc"
+    },
+    {
+      "bytes": 4434,
+      "rel": "aider/help.py",
+      "sha256": "43c292d06d3921c93662c55eb698fd94094d1f75a32531e0dedf2c7f9670942d"
+    },
+    {
+      "bytes": 376,
+      "rel": "aider/help_pats.py",
+      "sha256": "b329fba5254975c7fcb8c293c6765464142efabf093008beaeb0be9367abd459"
+    },
+    {
+      "bytes": 4769,
+      "rel": "aider/history.py",
+      "sha256": "5c9377875d6c9268ba16ec6cfd3cc30c7d3d8c23d42ffb2a5c3bc375aefc7e79"
+    },
+    {
+      "bytes": 42853,
+      "rel": "aider/io.py",
+      "sha256": "7f62a79c8202f2a3793410bac4c983e417fb886513b90faf0e0579d5bb7d047b"
+    },
+    {
+      "bytes": 7998,
+      "rel": "aider/linter.py",
+      "sha256": "b798f0599d5dbc8cd1b628359134a3ce5eaed4b45fc347b5f6ac0d21e9f68c08"
+    },
+    {
+      "bytes": 1103,
+      "rel": "aider/llm.py",
+      "sha256": "7c609e98fd57f4c070ac37ec4ca189ff5b31fb22b3dc3ca83afc5960e92f19a9"
+    },
+    {
+      "bytes": 43965,
+      "rel": "aider/main.py",
+      "sha256": "a93787156610c3f03cdcc0c9c096a7140dfa208986bd739b64a745533bee9c71"
+    },
+    {
+      "bytes": 7594,
+      "rel": "aider/mdstream.py",
+      "sha256": "7d2f624144262093c4328ee8d69b0f184db2623df5308de6de6b1d37e8c4cd4c"
+    },
+    {
+      "bytes": 46342,
+      "rel": "aider/models.py",
+      "sha256": "37784de662eeafacf17cbc4eb656246aadee20477b8ad43768caf7d373ab6e0d"
+    },
+    {
+      "bytes": 16105,
+      "rel": "aider/onboarding.py",
+      "sha256": "5dd08fb22ea276c46f5744ec9da04e9344281fe8372a072d69f48cc68c6fc7a9"
+    },
+    {
+      "bytes": 4641,
+      "rel": "aider/openrouter.py",
+      "sha256": "75093207e758be3b98b57b64a7821f1510fc8af79c832dacfa81bcd08addc020"
+    },
+    {
+      "bytes": 2354,
+      "rel": "aider/prompts.py",
+      "sha256": "4b9ce2dda19a2e5ff6c115e015615b0b4ca9d5287ede480f78521a07783931a2"
+    },
+    {
+      "bytes": 291,
+      "rel": "aider/queries/tree-sitter-language-pack/README.md",
+      "sha256": "8af65212e5aa61f5152d99760196464659b46d0b1a1be55304a070002c8cd3b9"
+    },
+    {
+      "bytes": 177,
+      "rel": "aider/queries/tree-sitter-language-pack/arduino-tags.scm",
+      "sha256": "1db81da2d853f498e4e7a08e5d3b5491501d675e2b64d9eaccb6d654b791b395"
+    },
+    {
+      "bytes": 249,
+      "rel": "aider/queries/tree-sitter-language-pack/bash-tags.scm",
+      "sha256": "69bcaead0c191480ceb738248d0126ef448724bd8abac0dd5cd9f6642a290b4d"
+    },
+    {
+      "bytes": 461,
+      "rel": "aider/queries/tree-sitter-language-pack/c-tags.scm",
+      "sha256": "108cf8e68e61061f3212e724e5947fe08a5c1b259278daf3c459ad90a646b769"
+    },
+    {
+      "bytes": 338,
+      "rel": "aider/queries/tree-sitter-language-pack/chatito-tags.scm",
+      "sha256": "212926ae9e60215c686083e7a2ac71a819598f91bdb7387024cc7a6f47442a74"
+    },
+    {
+      "bytes": 194,
+      "rel": "aider/queries/tree-sitter-language-pack/clojure-tags.scm",
+      "sha256": "091bc848cf5e29a99980d4d29303003974c6df297ef76bd9bd11458399b0172f"
+    },
+    {
+      "bytes": 4713,
+      "rel": "aider/queries/tree-sitter-language-pack/commonlisp-tags.scm",
+      "sha256": "19826596e4cf11daf19f88e96135f961002a935ef5ad5070ec80620b280c82dc"
+    },
+    {
+      "bytes": 809,
+      "rel": "aider/queries/tree-sitter-language-pack/cpp-tags.scm",
+      "sha256": "d9f4aa4d471cd35001307900d09786f1ac443845d17c422e97c50a73dfed2862"
+    },
+    {
+      "bytes": 1162,
+      "rel": "aider/queries/tree-sitter-language-pack/csharp-tags.scm",
+      "sha256": "28e45f2b77a12a8afa3dfe93e629e2ba842bd7a11c1ed51ed2add722c0a33c9b"
+    },
+    {
+      "bytes": 1420,
+      "rel": "aider/queries/tree-sitter-language-pack/d-tags.scm",
+      "sha256": "2c33f7a2ba99f7c4d3152915fcf38312cf0bb294dc0aa50cbca70b759c2d8247"
+    },
+    {
+      "bytes": 2267,
+      "rel": "aider/queries/tree-sitter-language-pack/dart-tags.scm",
+      "sha256": "3dafe57998f1c5740eee61ffcc5e68fa467996a57182f6f2a7ca106ff9d9f4a0"
+    },
+    {
+      "bytes": 246,
+      "rel": "aider/queries/tree-sitter-language-pack/elisp-tags.scm",
+      "sha256": "d6bf2238c33f0c4a5712f940d6b13b2a584613372a6b65ba787e05d9dd62bbb6"
+    },
+    {
+      "bytes": 1682,
+      "rel": "aider/queries/tree-sitter-language-pack/elixir-tags.scm",
+      "sha256": "7e0f530e96c28b12ebf145cd70d9df805951dd8edddefb732d16f72caf3851a4"
+    },
+    {
+      "bytes": 953,
+      "rel": "aider/queries/tree-sitter-language-pack/elm-tags.scm",
+      "sha256": "5a9d43e70106cc56bfd9b88159168a6e0843b39ee50c6aaab1977b0db3e4767e"
+    },
+    {
+      "bytes": 1416,
+      "rel": "aider/queries/tree-sitter-language-pack/gleam-tags.scm",
+      "sha256": "c1d1550247a93c0675d3ee6c0485504a5e39bfde7064ff45a22fe262f3386082"
+    },
+    {
+      "bytes": 1339,
+      "rel": "aider/queries/tree-sitter-language-pack/go-tags.scm",
+      "sha256": "4c4e1f43b3ed42f1ca3deb6b847783aa3333d35285285b31163ca99c932ff292"
+    },
+    {
+      "bytes": 624,
+      "rel": "aider/queries/tree-sitter-language-pack/java-tags.scm",
+      "sha256": "5e277c72738f2f5bf948eb717eaf1d3a2f7c6d6ad43cbed778ef3f236a81adf1"
+    },
+    {
+      "bytes": 2306,
+      "rel": "aider/queries/tree-sitter-language-pack/javascript-tags.scm",
+      "sha256": "d2a9592300ddb2fa0418cd1c603decd9ecf6ec56d8bb3f1ea59028f9c2cfd6e2"
+    },
+    {
+      "bytes": 945,
+      "rel": "aider/queries/tree-sitter-language-pack/lua-tags.scm",
+      "sha256": "96a842567eca9c15615bca28ff063d99ed799c4053bbd052e58945d7351338fb"
+    },
+    {
+      "bytes": 309,
+      "rel": "aider/queries/tree-sitter-language-pack/matlab-tags.scm",
+      "sha256": "1aa17b401cad53ec4691c51690694c8bb889ed79e69a830507f9ad30a5da260c"
+    },
+    {
+      "bytes": 2695,
+      "rel": "aider/queries/tree-sitter-language-pack/ocaml-tags.scm",
+      "sha256": "340732ce642e40f52391c86b42f71f86cbcaa9d72a6c0b797856f57217c484c0"
+    },
+    {
+      "bytes": 2009,
+      "rel": "aider/queries/tree-sitter-language-pack/ocaml_interface-tags.scm",
+      "sha256": "d95b69f68f44810d3f90b5242035cb380917f70a79723fcdc1da2f97086289d4"
+    },
+    {
+      "bytes": 2191,
+      "rel": "aider/queries/tree-sitter-language-pack/pony-tags.scm",
+      "sha256": "8063569a21f3bfc19ed07668f35b5ebfec48a87210aa34713d1e761b4e3cfb3b"
+    },
+    {
+      "bytes": 135,
+      "rel": "aider/queries/tree-sitter-language-pack/properties-tags.scm",
+      "sha256": "01b723c611a91ba17a969087b3cdc74570f6db76fec2b1d062ffa2f63d3dc2d7"
+    },
+    {
+      "bytes": 437,
+      "rel": "aider/queries/tree-sitter-language-pack/python-tags.scm",
+      "sha256": "2830ab33b89a5305d9fe16f6c151eb136fc4542abf012a37f8199bcec2ed164d"
+    },
+    {
+      "bytes": 461,
+      "rel": "aider/queries/tree-sitter-language-pack/r-tags.scm",
+      "sha256": "ddc6f65adfbc4edd511813433e0a389c8f6a44e7f4d0e34d56a3c7bfc4e1f8c9"
+    },
+    {
+      "bytes": 224,
+      "rel": "aider/queries/tree-sitter-language-pack/racket-tags.scm",
+      "sha256": "8ab8b668511a6e28a6fa079bfaddc2943569d598bc4ffad7d47f4bd2d969a8af"
+    },
+    {
+      "bytes": 1290,
+      "rel": "aider/queries/tree-sitter-language-pack/ruby-tags.scm",
+      "sha256": "bc889db02784d80d2f745375f325caa945a6a5732b197ca8e2e9ffd0cc6aafab"
+    },
+    {
+      "bytes": 1451,
+      "rel": "aider/queries/tree-sitter-language-pack/rust-tags.scm",
+      "sha256": "debcf55ea29a38f28f59150d3d35b9397fd36040e3e6d4197ccc411f710c07a8"
+    },
+    {
+      "bytes": 1395,
+      "rel": "aider/queries/tree-sitter-language-pack/solidity-tags.scm",
+      "sha256": "dee089b1b870a7e7554e24acac62edf8f434b809e39aa51e1c53d211777626f3"
+    },
+    {
+      "bytes": 1439,
+      "rel": "aider/queries/tree-sitter-language-pack/swift-tags.scm",
+      "sha256": "66f25c7e39940d9f70d780172923cfc5fe20be9744feacc1c438df09ccd8ac84"
+    },
+    {
+      "bytes": 417,
+      "rel": "aider/queries/tree-sitter-language-pack/udev-tags.scm",
+      "sha256": "6af8f7bb8a6b211ee8f21ca61decceb2aaceaa33d22c6628ec2fe538be03c658"
+    },
+    {
+      "bytes": 2610,
+      "rel": "aider/queries/tree-sitter-languages/README.md",
+      "sha256": "0af1ee868ab46d83ae21face42d07e0a213aaa13e11201cc4bf8f1efa09c419a"
+    },
+    {
+      "bytes": 249,
+      "rel": "aider/queries/tree-sitter-languages/bash-tags.scm",
+      "sha256": "69bcaead0c191480ceb738248d0126ef448724bd8abac0dd5cd9f6642a290b4d"
+    },
+    {
+      "bytes": 461,
+      "rel": "aider/queries/tree-sitter-languages/c-tags.scm",
+      "sha256": "108cf8e68e61061f3212e724e5947fe08a5c1b259278daf3c459ad90a646b769"
+    },
+    {
+      "bytes": 1025,
+      "rel": "aider/queries/tree-sitter-languages/c_sharp-tags.scm",
+      "sha256": "c0ac85b4e14893e92a205076c8905bbb554645485d9009c3a71a3cb17b9b923c"
+    },
+    {
+      "bytes": 803,
+      "rel": "aider/queries/tree-sitter-languages/cpp-tags.scm",
+      "sha256": "700170b5093764ab2f0955aba757e6852c0e3fc5864c2103451e4242eccb958e"
+    },
+    {
+      "bytes": 2251,
+      "rel": "aider/queries/tree-sitter-languages/dart-tags.scm",
+      "sha256": "023c69c89217b8b8cfe6edd4f3d6e159eae0c6eb347db50a935c75b881c228fc"
+    },
+    {
+      "bytes": 332,
+      "rel": "aider/queries/tree-sitter-languages/elisp-tags.scm",
+      "sha256": "c239b56180f5be08c16e1d04d82cd49e66a097cd94abaf8b704a239af8622646"
+    },
+    {
+      "bytes": 1605,
+      "rel": "aider/queries/tree-sitter-languages/elixir-tags.scm",
+      "sha256": "78edb49cf23023bfefab81686fa5394635f5c0b2a09fa1a0963e35213a44e9e8"
+    },
+    {
+      "bytes": 951,
+      "rel": "aider/queries/tree-sitter-languages/elm-tags.scm",
+      "sha256": "e2a4c458908077bfc139fc32932d2afcd63300cb46762abbab0a3518885799a8"
+    },
+    {
+      "bytes": 419,
+      "rel": "aider/queries/tree-sitter-languages/fortran-tags.scm",
+      "sha256": "043e8ce4256132920d94b47b53d6cbe924d1c062d806b326be695d3877b5fbd5"
+    },
+    {
+      "bytes": 848,
+      "rel": "aider/queries/tree-sitter-languages/go-tags.scm",
+      "sha256": "987b52e4d12ec562467d5cf5aeae1894944c6150c0979b5fee26279ba4629151"
+    },
+    {
+      "bytes": 143,
+      "rel": "aider/queries/tree-sitter-languages/haskell-tags.scm",
+      "sha256": "9a8a646763f2dff565df1be999aaf2cd457061603397a19a62098c6fda8a0f74"
+    },
+    {
+      "bytes": 2137,
+      "rel": "aider/queries/tree-sitter-languages/hcl-tags.scm",
+      "sha256": "c8e54205e1780b766b146fa083469d5a0d90931ca53dc23675b55e1200fb10f1"
+    },
+    {
+      "bytes": 627,
+      "rel": "aider/queries/tree-sitter-languages/java-tags.scm",
+      "sha256": "ed629bf9d8c6bf421e7fa5c45903d8a5f2e98091ed30f3ee908522e793de82f1"
+    },
+    {
+      "bytes": 2251,
+      "rel": "aider/queries/tree-sitter-languages/javascript-tags.scm",
+      "sha256": "b2f55cb7aa716dc60fffec44070cc6cbab754a537b6a39045028af5240599ff4"
+    },
+    {
+      "bytes": 1719,
+      "rel": "aider/queries/tree-sitter-languages/julia-tags.scm",
+      "sha256": "39d643a145258e1998e609ca9513de6db03a961e0e0b746e37892926aa4a086b"
+    },
+    {
+      "bytes": 632,
+      "rel": "aider/queries/tree-sitter-languages/kotlin-tags.scm",
+      "sha256": "ba093cbfb3abdcf5e2064fbf1df6739f02ee57e6feb374d89b4dd69b7ab687fa"
+    },
+    {
+      "bytes": 309,
+      "rel": "aider/queries/tree-sitter-languages/matlab-tags.scm",
+      "sha256": "1aa17b401cad53ec4691c51690694c8bb889ed79e69a830507f9ad30a5da260c"
+    },
+    {
+      "bytes": 2695,
+      "rel": "aider/queries/tree-sitter-languages/ocaml-tags.scm",
+      "sha256": "340732ce642e40f52391c86b42f71f86cbcaa9d72a6c0b797856f57217c484c0"
+    },
+    {
+      "bytes": 2009,
+      "rel": "aider/queries/tree-sitter-languages/ocaml_interface-tags.scm",
+      "sha256": "d95b69f68f44810d3f90b5242035cb380917f70a79723fcdc1da2f97086289d4"
+    },
+    {
+      "bytes": 714,
+      "rel": "aider/queries/tree-sitter-languages/php-tags.scm",
+      "sha256": "be6139087d8de3a1e243152947f14be358a542ab16b228288e269c597b704ee1"
+    },
+    {
+      "bytes": 325,
+      "rel": "aider/queries/tree-sitter-languages/python-tags.scm",
+      "sha256": "ebe9e954933acba0b5abb77a56071fa2137be7f8aeed0b6b2e7bf03bf2f61260"
+    },
+    {
+      "bytes": 707,
+      "rel": "aider/queries/tree-sitter-languages/ql-tags.scm",
+      "sha256": "f6a5690464a0142f5f48ae04ff9b0eda061ee3f8cfbcdf83d7c483e92e65351f"
+    },
+    {
+      "bytes": 1290,
+      "rel": "aider/queries/tree-sitter-languages/ruby-tags.scm",
+      "sha256": "bc889db02784d80d2f745375f325caa945a6a5732b197ca8e2e9ffd0cc6aafab"
+    },
+    {
+      "bytes": 1451,
+      "rel": "aider/queries/tree-sitter-languages/rust-tags.scm",
+      "sha256": "f658ccd67ce17cfb3f653470edcaf63fd4e83b284670a902a0de3f1cf5d25a2e"
+    },
+    {
+      "bytes": 1761,
+      "rel": "aider/queries/tree-sitter-languages/scala-tags.scm",
+      "sha256": "531423cfcd0922bac9ecf9b9eae5274324e17e640dbf093b690ccf372a41f80a"
+    },
+    {
+      "bytes": 1253,
+      "rel": "aider/queries/tree-sitter-languages/typescript-tags.scm",
+      "sha256": "38c74279e74f880db8932f360e981330a5cafe5db2493b85db3ad0d9f2408bd1"
+    },
+    {
+      "bytes": 124,
+      "rel": "aider/queries/tree-sitter-languages/zig-tags.scm",
+      "sha256": "04f828bff9c3fcbaa92f7eec6ddc2c3186c5987c2304eb919bbea078aa36f5db"
+    },
+    {
+      "bytes": 2288,
+      "rel": "aider/reasoning_tags.py",
+      "sha256": "54e839c0cec94ab328e3b3b24b5145b8baebd9ca762b2bad102e3fcec52c09b6"
+    },
+    {
+      "bytes": 22954,
+      "rel": "aider/repo.py",
+      "sha256": "a49343d63d3faa684003f9e59306215e6f3d77b7b944a71b88b132e0c78c5df0"
+    },
+    {
+      "bytes": 27306,
+      "rel": "aider/repomap.py",
+      "sha256": "a5d4befe70445114b9f62da47b0eeb2a5384f9e84a0c083c77a4b339caf61ecd"
+    },
+    {
+      "bytes": 5899,
+      "rel": "aider/report.py",
+      "sha256": "5a86d50c42ba6310741a91eb179b704df5181f976c3561481c5b01f6576cec4f"
+    },
+    {
+      "bytes": 142,
+      "rel": "aider/resources/__init__.py",
+      "sha256": "d3d9e9999169b63e9747a65e12e7a4a5c2b6b2d79c2848c8e7dcd1d15cf6254f"
+    },
+    {
+      "bytes": 28342,
+      "rel": "aider/resources/model-metadata.json",
+      "sha256": "4dd7c0041c2c4e0423c162e401eeb544a2b7ba49df2a616c01b516cba6ad08fe"
+    },
+    {
+      "bytes": 86370,
+      "rel": "aider/resources/model-settings.yml",
+      "sha256": "bbf044db3e1609fd58740c96450fedde80eb994792e43fa0dbfe59ff1de7e915"
+    },
+    {
+      "bytes": 4223,
+      "rel": "aider/run_cmd.py",
+      "sha256": "f7e36948be2196a22775ffc43758e79967e35fbbc83db0e02a018f19102bd91c"
+    },
+    {
+      "bytes": 8325,
+      "rel": "aider/scrape.py",
+      "sha256": "3d22a70734de8b2a824d45580816430bca27437f46567c69074116c2fed006cf"
+    },
+    {
+      "bytes": 1854,
+      "rel": "aider/sendchat.py",
+      "sha256": "1aae40e44da4120d0c3c4ded4caba5850b1eae85c2c2c1ad2c31ff3841c1dbee"
+    },
+    {
+      "bytes": 4415,
+      "rel": "aider/special.py",
+      "sha256": "3a1b0159633e0d6c2359b8ba904ec4a91e028947f227aa89b8281c9b2c194807"
+    },
+    {
+      "bytes": 1122,
+      "rel": "aider/urls.py",
+      "sha256": "5b438be296a14886406925073ef9fd28f3756889171399c029c8b330acb810a8"
+    },
+    {
+      "bytes": 9151,
+      "rel": "aider/utils.py",
+      "sha256": "cf706e83faf72bc29bc54405741246ad96e995db0afefe20f11fc75b59ef8ae7"
+    },
+    {
+      "bytes": 2977,
+      "rel": "aider/versioncheck.py",
+      "sha256": "47d47581425880eb6653272927862ac429023b2950052899fe9fc10271c9f07e"
+    },
+    {
+      "bytes": 6150,
+      "rel": "aider/voice.py",
+      "sha256": "24a57e219ed9c0bef522d7d7e783a624eccf4aae593e51ad78122e9cd7149025"
+    },
+    {
+      "bytes": 7646,
+      "rel": "aider/waiting.py",
+      "sha256": "e79bb0e8562524d9df09565a39034a8bf7f4b70cc0e717094b7f1faf2abe6a06"
+    },
+    {
+      "bytes": 10641,
+      "rel": "aider/watch.py",
+      "sha256": "ce709984708195c326fb849124ff81d2659fb25e6adba0c077ece5936cf2910f"
+    },
+    {
+      "bytes": 556,
+      "rel": "aider/watch_prompts.py",
+      "sha256": "2479973d950a9b56f5a20db642895ba14f9789ee9b25686695b2818b64ad91d2"
+    },
+    {
+      "bytes": 196,
+      "rel": "aider/website/Gemfile",
+      "sha256": "4c44631e0fc337c3de33077263cc6acb9e4847e3ea738edf7d11e89dea3ae105"
+    },
+    {
+      "bytes": 77470,
+      "rel": "aider/website/HISTORY.md",
+      "sha256": "7b8e1ad5b03485e48044680a761f1fa9a594a393885ac35d6e0bfc1912030216"
+    },
+    {
+      "bytes": 1223,
+      "rel": "aider/website/_config.yml",
+      "sha256": "e105447457a3d124218940e641de1221d164a529afa422ef34363c61eae38f4e"
+    },
+    {
+      "bytes": 12253,
+      "rel": "aider/website/_data/architect.yml",
+      "sha256": "4e873014b748ee9a95672f8ef0b48e06514d9989f9898d489cc44a8d5cf79a01"
+    },
+    {
+      "bytes": 127447,
+      "rel": "aider/website/_data/blame.yml",
+      "sha256": "97fccb70296019f08857bfced0d9dc49c17a2da439d67358a08f2f947cb23e8e"
+    },
+    {
+      "bytes": 24557,
+      "rel": "aider/website/_data/code-in-json.yml",
+      "sha256": "085fcdd6a0a8b34e8cb24be2cba5aa919051508f5b66bac2651ecfffdb0b04d0"
+    },
+    {
+      "bytes": 3194,
+      "rel": "aider/website/_data/deepseek-down.yml",
+      "sha256": "30780da4288073f952ded98bffd9e94fc660e5b4ef61b8b84239b5ab2813047d"
+    },
+    {
+      "bytes": 56178,
+      "rel": "aider/website/_data/edit_leaderboard.yml",
+      "sha256": "4c437c9e22c7fff8b0d61cb8fd4bf9bdf44370783ac9b00a840a80c81319d36e"
+    },
+    {
+      "bytes": 6299,
+      "rel": "aider/website/_data/o1_polyglot_leaderboard.yml",
+      "sha256": "e1a7b7afac56a133e3e5ceb7eb766597cd973a189537e6c0b2e16f8c4010c6de"
+    },
+    {
+      "bytes": 4619,
+      "rel": "aider/website/_data/o1_results.yml",
+      "sha256": "7e862db1afa0a6cf52982d50ad0d2ca5182a0030c3e5f9c40bd266d893708944"
+    },
+    {
+      "bytes": 45725,
+      "rel": "aider/website/_data/polyglot_leaderboard.yml",
+      "sha256": "85a50b25953512d18ba4bb0c23c0b8e626fcf9a5b52d287644b8a0b44b9535de"
+    },
+    {
+      "bytes": 8821,
+      "rel": "aider/website/_data/quant.yml",
+      "sha256": "5c58a9862dac016e1a96be820915cae047c7d4f7b57950df804937d7aaad5b3b"
+    },
+    {
+      "bytes": 7123,
+      "rel": "aider/website/_data/qwen3_leaderboard.yml",
+      "sha256": "5f576ead87539e5254328ec9b26d77f6f412021876496cf829ded8e1f03255a6"
+    },
+    {
+      "bytes": 4587,
+      "rel": "aider/website/_data/qwq.yml",
+      "sha256": "c96a61656b12b44b5cde3743b48121e27209b2400fd90a56819665c30054579b"
+    },
+    {
+      "bytes": 3113,
+      "rel": "aider/website/_data/r1_architect.yml",
+      "sha256": "46204259f4f55f18792e136918b49105f423008b299caffc2edc968ad7a3500e"
+    },
+    {
+      "bytes": 7441,
+      "rel": "aider/website/_data/refactor_leaderboard.yml",
+      "sha256": "e01b88adf869b88501d48f9b041dbbb37e77e464e1bed886bb62f6b335c60561"
+    },
+    {
+      "bytes": 12232,
+      "rel": "aider/website/_data/sonnet-fine.yml",
+      "sha256": "9e1043c2e157a3bb6bc319e4db3b6545bc05522b6ea8b8705a86d1ee33bf1a88"
+    },
+    {
+      "bytes": 5377,
+      "rel": "aider/website/_includes/blame.md",
+      "sha256": "adf37d1299925b8732b5d89f39dd81f86ee071f63e4a0b579ed932bdacbca576"
+    },
+    {
+      "bytes": 5516,
+      "rel": "aider/website/_includes/code-in-json-benchmark.js",
+      "sha256": "3e86f70a1bb0181523c9264a8a727e2758c4a2dc184da7c3743a8391535314da"
+    },
+    {
+      "bytes": 4546,
+      "rel": "aider/website/_includes/code-in-json-syntax.js",
+      "sha256": "9d75154151db87ba9e6ec8d81514fe02947284cb7723030dc645d6b89bc5cc77"
+    },
+    {
+      "bytes": 0,
+      "rel": "aider/website/_includes/footer_custom.html",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 435,
+      "rel": "aider/website/_includes/get-started.md",
+      "sha256": "23121008ca309d0343a2e45b0e41c7cec97aabbc1f8767becca2c42b746929fc"
+    },
+    {
+      "bytes": 6637,
+      "rel": "aider/website/_includes/head_custom.html",
+      "sha256": "a75c320cb603d5bbc9666c39328af3b15a789642b29f9f8039368ce2378fd66c"
+    },
+    {
+      "bytes": 164,
+      "rel": "aider/website/_includes/help-tip.md",
+      "sha256": "629546a2df9c0db53eb147de3c6f5b731ec0ae755a4fc41cdce8ff00cc68104d"
+    },
+    {
+      "bytes": 618,
+      "rel": "aider/website/_includes/help.md",
+      "sha256": "dcae54072c3111db0b860d14ff0659248a6b8a48217894598835bf7274fca9fe"
+    },
+    {
+      "bytes": 63,
+      "rel": "aider/website/_includes/install.md",
+      "sha256": "5385255293b9d7254b0883acc1549eb96297b3e0ae566d50eab0a5e3ff5525c4"
+    },
+    {
+      "bytes": 137,
+      "rel": "aider/website/_includes/keys.md",
+      "sha256": "b2c6966bdbdc6e95fa670a30c1119831618126bc83d5171b86d6080eed76b5f9"
+    },
+    {
+      "bytes": 8578,
+      "rel": "aider/website/_includes/leaderboard.js",
+      "sha256": "00112374fc524552e1dbdf4059b04280f7db9a9c93565fb1a3c67bfcc84435a7"
+    },
+    {
+      "bytes": 6091,
+      "rel": "aider/website/_includes/leaderboard_graph.html",
+      "sha256": "cfebefcdbf9f4be1c55cf6adad1571ff0519b82571bc584709ea825925ebcfa9"
+    },
+    {
+      "bytes": 21832,
+      "rel": "aider/website/_includes/leaderboard_table.js",
+      "sha256": "1d613b68f684fabd1f1868297c96b9b543b7360eb975664f48edb88461ecdc0f"
+    },
+    {
+      "bytes": 1943,
+      "rel": "aider/website/_includes/model-warnings.md",
+      "sha256": "ba6257172f1a67aa9dcf66437b4eb95ff4a0aa817e01b120b16fbdac26189211"
+    },
+    {
+      "bytes": 1305,
+      "rel": "aider/website/_includes/multi-line.md",
+      "sha256": "5264f142c29077d5838499d49733c43b70892cc74d17cd0a84c0c183e7142699"
+    },
+    {
+      "bytes": 230,
+      "rel": "aider/website/_includes/nav_footer_custom.html",
+      "sha256": "85b02ac2e6bad68e7ea71169d63f466609ae48d1daf357dd3129552a1053ea7f"
+    },
+    {
+      "bytes": 182,
+      "rel": "aider/website/_includes/python-m-aider.md",
+      "sha256": "586906d09f245edd18a73c400699612f39791484dd6267edafe1225f90632a5f"
+    },
+    {
+      "bytes": 2342,
+      "rel": "aider/website/_includes/quant-chart.js",
+      "sha256": "e1da227a48df7ae549b8583eef8899af68478796ba8a9066402de9375a1b6592"
+    },
+    {
+      "bytes": 3731,
+      "rel": "aider/website/_includes/qwq-chart.js",
+      "sha256": "a71996574513b3ac385c130f2a71b14587f03508d32ec7cb2ebcc873d1485eff"
+    },
+    {
+      "bytes": 5290,
+      "rel": "aider/website/_includes/recording.css",
+      "sha256": "7138062f47720b7f701cd6663d68bd740fca0f5109c2cf823a5cf75c11e62a81"
+    },
+    {
+      "bytes": 14364,
+      "rel": "aider/website/_includes/recording.js",
+      "sha256": "663d8817834a38457a29f545d5acced71efab89c06481ed75ea6ee964eb80b2b"
+    },
+    {
+      "bytes": 939,
+      "rel": "aider/website/_includes/recording.md",
+      "sha256": "762ea4693a07e41dfa247740e21241b5e2bbe451db114fcaac42b6385ee0e7e3"
+    },
+    {
+      "bytes": 289,
+      "rel": "aider/website/_includes/replit-pipx.md",
+      "sha256": "f4ad3a13653b013e1f4641b4d0232fa0e2350e834f46829f6e939fa02aba29c7"
+    },
+    {
+      "bytes": 191,
+      "rel": "aider/website/_includes/works-best.md",
+      "sha256": "6d95348a716484735165c473e834156eebabab6fa4461f99612cc05e31778d87"
+    },
+    {
+      "bytes": 392,
+      "rel": "aider/website/_layouts/redirect.html",
+      "sha256": "1c948f5fdc874d782222012aefd3828a1b7f37e0d8c65a1fa980fe4c0f0254e4"
+    },
+    {
+      "bytes": 10600,
+      "rel": "aider/website/_posts/2023-05-25-ctags.md",
+      "sha256": "9dd05206d2f42f935d7c1463b541649b9a258cfb293ede7a11735f8d96e61039"
+    },
+    {
+      "bytes": 14966,
+      "rel": "aider/website/_posts/2023-07-02-benchmarks.md",
+      "sha256": "9a51e7200f672b532c9ebbf177646ac453ebe0dc35cff754c13f28c65c6aa521"
+    },
+    {
+      "bytes": 12025,
+      "rel": "aider/website/_posts/2023-10-22-repomap.md",
+      "sha256": "89a9b7a90e75cc2ad427327f7c9f3357f36a302f0240a876793b84270fa61c37"
+    },
+    {
+      "bytes": 4876,
+      "rel": "aider/website/_posts/2023-11-06-benchmarks-1106.md",
+      "sha256": "75ed7cba97f943d2793524ba8300be0c7b83ffe3f20d2f22030da34def8fa71e"
+    },
+    {
+      "bytes": 2779,
+      "rel": "aider/website/_posts/2023-11-06-benchmarks-speed-1106.md",
+      "sha256": "376fccf9563eb92dcea1648f31687847396fff02516bbc49d3234478a2691149"
+    },
+    {
+      "bytes": 15885,
+      "rel": "aider/website/_posts/2023-12-21-unified-diffs.md",
+      "sha256": "16b627c7e09beb169494b32ea4b5177008f72e96daaa2bed1e43cac180c7d0c1"
+    },
+    {
+      "bytes": 2190,
+      "rel": "aider/website/_posts/2024-01-25-benchmarks-0125.md",
+      "sha256": "c20592e5d0592eccd93912beabda8097da2dc996d8d515af887f70de328281ea"
+    },
+    {
+      "bytes": 4563,
+      "rel": "aider/website/_posts/2024-03-08-claude-3.md",
+      "sha256": "d37f7881007db35f8a28d32101a668f745f4017da0c845823f402c9d0e81baf3"
+    },
+    {
+      "bytes": 2999,
+      "rel": "aider/website/_posts/2024-04-09-gpt-4-turbo.md",
+      "sha256": "9e2cf0f029ff3828ce854c086ecdee12713a61b511f58fc355eea870df7b1a4b"
+    },
+    {
+      "bytes": 1393,
+      "rel": "aider/website/_posts/2024-05-02-browser.md",
+      "sha256": "bd617fcaeaa33bd5681ba92da612852eae3fad0af9637a95f3ee475328510bba"
+    },
+    {
+      "bytes": 10857,
+      "rel": "aider/website/_posts/2024-05-13-models-over-time.md",
+      "sha256": "a4091a0a664261176b644ca70fab50d688c9d750fc7bad874c0901f7d4c4e6f4"
+    },
+    {
+      "bytes": 249,
+      "rel": "aider/website/_posts/2024-05-22-draft.md",
+      "sha256": "adee17ea9f9a840cf1722e47d8f11ffa6d7de1db044ab375c26b9efaccfe74ba"
+    },
+    {
+      "bytes": 5115,
+      "rel": "aider/website/_posts/2024-05-22-linting.md",
+      "sha256": "3762dc83aabe873d6680aedd1ffded75fd63f1e750c58e5bf805540e24dde3b6"
+    },
+    {
+      "bytes": 19077,
+      "rel": "aider/website/_posts/2024-05-22-swe-bench-lite.md",
+      "sha256": "3d48ceef43579d9ae93228e75fd8db78240c6f3e729b030b3380bacc88beac78"
+    },
+    {
+      "bytes": 2840,
+      "rel": "aider/website/_posts/2024-05-24-self-assembly.md",
+      "sha256": "37b503700a55a763448916a4fa1c6732a3919548fc35b8c78a7bc2eea0cbc0ff"
+    },
+    {
+      "bytes": 12228,
+      "rel": "aider/website/_posts/2024-06-02-main-swe-bench.md",
+      "sha256": "924f7b490e8ce7f44689d8aa54c15c0162eb2dac23ab52d2d6dd5be2cf04eff9"
+    },
+    {
+      "bytes": 4731,
+      "rel": "aider/website/_posts/2024-07-01-sonnet-not-lazy.md",
+      "sha256": "630e8d661aa19c271a4a644652f193efa45ee6c8e565a797024dfe85bf49875e"
+    },
+    {
+      "bytes": 3074,
+      "rel": "aider/website/_posts/2024-07-25-new-models.md",
+      "sha256": "aab5b30e40fb025a9f116e0b61293e4fde9ceeb38a2c591302b172963e924852"
+    },
+    {
+      "bytes": 8812,
+      "rel": "aider/website/_posts/2024-08-14-code-in-json.md",
+      "sha256": "1d0bf2c98a91d523027caa41640a2b04876ab97783648fa8261bfd9832b84a71"
+    },
+    {
+      "bytes": 5123,
+      "rel": "aider/website/_posts/2024-08-26-sonnet-seems-fine.md",
+      "sha256": "85e22a86b7260369495a91f6f76a6c1e8c6c65c227a865115eae024531e5d67b"
+    },
+    {
+      "bytes": 3648,
+      "rel": "aider/website/_posts/2024-09-12-o1.md",
+      "sha256": "8336c0a4c7939b968969cbf52d708e1912bbefefc247343d7fc758abe7443204"
+    },
+    {
+      "bytes": 14717,
+      "rel": "aider/website/_posts/2024-09-26-architect.md",
+      "sha256": "39d04275c25031742ef2d458a8214479f7c96a3b56921b474c75e14bc637011f"
+    },
+    {
+      "bytes": 8074,
+      "rel": "aider/website/_posts/2024-11-21-quantization.md",
+      "sha256": "7b1bdc60c083fdbbaa518883bd6dbd40358ad4b858c851ad9f44fa298bb64c70"
+    },
+    {
+      "bytes": 5227,
+      "rel": "aider/website/_posts/2024-12-03-qwq.md",
+      "sha256": "223f2745de6551db884ca17aa9ff16401d3a90f5598fa1446f32dbc75e781612"
+    },
+    {
+      "bytes": 7031,
+      "rel": "aider/website/_posts/2024-12-21-polyglot.md",
+      "sha256": "0ecb68014e42862a38f13a066f37b657a1dae369fea2dcd71367a49a3624dcf6"
+    },
+    {
+      "bytes": 3608,
+      "rel": "aider/website/_posts/2025-01-15-uv.md",
+      "sha256": "954a094201f16c3f35d9f9717aef9c73976b627386a4e2fcbd8ed09e7055f8b7"
+    },
+    {
+      "bytes": 4486,
+      "rel": "aider/website/_posts/2025-01-24-r1-sonnet.md",
+      "sha256": "f7fc241afd322253cca2063e98cf51ac87eaa2f9b9033fe1e3dcdf0b47befaeb"
+    },
+    {
+      "bytes": 8379,
+      "rel": "aider/website/_posts/2025-01-28-deepseek-down.md",
+      "sha256": "b46d65b3d2de817dacacaac4421262299a3b049e442abd554294cf4c0f93430f"
+    },
+    {
+      "bytes": 6367,
+      "rel": "aider/website/_posts/2025-05-07-gemini-cost.md",
+      "sha256": "4e409d9799b05b2561c60d4041f25ba12a4ba0c99c9197a61cc170933927e4e7"
+    },
+    {
+      "bytes": 14421,
+      "rel": "aider/website/_posts/2025-05-08-qwen3.md",
+      "sha256": "b8c3e75cb120ef5613905942f6243f3afb7069b76ed1306ce65c7899aaa0ca14"
+    },
+    {
+      "bytes": 1957,
+      "rel": "aider/website/_sass/custom/custom.scss",
+      "sha256": "1bf08daf640d1698b271fffbe29afa433f1cc56b704ddd31b29913a17c37fbb0"
+    },
+    {
+      "bytes": 34457,
+      "rel": "aider/website/assets/2024-03-07-claude-3.jpg",
+      "sha256": "ed4c63d5c8e57c58dad7f36c77e71f6e51fbf75973b782c819af324c19f757d2"
+    },
+    {
+      "bytes": 56002,
+      "rel": "aider/website/assets/2024-03-07-claude-3.svg",
+      "sha256": "0ddf3ecb51275f03784c153662963f9b11317b97bf77eff697d9bf642386e3e4"
+    },
+    {
+      "bytes": 19685,
+      "rel": "aider/website/assets/2024-04-09-gpt-4-turbo-laziness.jpg",
+      "sha256": "c4dbbe54ab96efb3647837be6dfb29c176ca98be3336223c08a912c054af517b"
+    },
+    {
+      "bytes": 37886,
+      "rel": "aider/website/assets/2024-04-09-gpt-4-turbo-laziness.svg",
+      "sha256": "030f59d88e86f2bdacff41bfc5d8abf7182aa0c9b737fe5e8725b7346fe61a82"
+    },
+    {
+      "bytes": 25398,
+      "rel": "aider/website/assets/2024-04-09-gpt-4-turbo.jpg",
+      "sha256": "c93698de2441fbedd890f3301b9a4a2252ca39ac80e44deeacbb6dfa71987d66"
+    },
+    {
+      "bytes": 46104,
+      "rel": "aider/website/assets/2024-04-09-gpt-4-turbo.svg",
+      "sha256": "ee04bcd6d65d5d6b1bb187107f2da4ddab7cabb5b16335fa8fe05f33d7a2a6e6"
+    },
+    {
+      "bytes": 149486,
+      "rel": "aider/website/assets/2024-07-new-models.jpg",
+      "sha256": "354b3c90403c4069d6d69c1f5b1c03b265e09e9430310cc94e3fdf4696d30682"
+    },
+    {
+      "bytes": 226001,
+      "rel": "aider/website/assets/2025-05-08-qwen3.jpg",
+      "sha256": "ac6f703a88723b6a105ba98b95cc96cc3d6f2da4202306e831ac50eab2998365"
+    },
+    {
+      "bytes": 88228,
+      "rel": "aider/website/assets/Glass_TTY_VT220.ttf",
+      "sha256": "d8d60969258daf549ebaa75dee72e303bb4032cfd202f977b807b7b83a0b2cee"
+    },
+    {
+      "bytes": 8388608,
+      "rel": "aider/website/assets/aider-browser-social.mp4.chunks/aider-browser-social.mp4.part-0000",
+      "sha256": "e9cdbcc9fc0151d31cf6e58a39dedea6fa2d24a8fe6a6270bf1c4d39111959e1"
+    },
+    {
+      "bytes": 4556438,
+      "rel": "aider/website/assets/aider-browser-social.mp4.chunks/aider-browser-social.mp4.part-0001",
+      "sha256": "76f8614f0c047fba3912ec8f2fcd75718bd074324c0ac7051978c83acf5600a7"
+    },
+    {
+      "bytes": 194472,
+      "rel": "aider/website/assets/aider-square.jpg",
+      "sha256": "c75c6c72a8d6dc54b3cf9f61b7d72901696715acf633e5c4fdc7c85bacd8b6e9"
+    },
+    {
+      "bytes": 399224,
+      "rel": "aider/website/assets/aider.jpg",
+      "sha256": "9c491653f8913c7708ca9457d7cb6a2bb2c8346aea02f19c952c67aeb16a1ec8"
+    },
+    {
+      "bytes": 344882,
+      "rel": "aider/website/assets/architect.jpg",
+      "sha256": "96cd78d604061deeda6407946723eb29ad431d4e22f41d0b0c2a36797d22ba02"
+    },
+    {
+      "bytes": 43948,
+      "rel": "aider/website/assets/asciinema/asciinema-player.css",
+      "sha256": "db0ebe40f044a8aaa4cac4d1c909c3ebae41414512b5895173e007d6492058ee"
+    },
+    {
+      "bytes": 193531,
+      "rel": "aider/website/assets/asciinema/asciinema-player.min.js",
+      "sha256": "e98fb59b935a5a466540146857fdeaa62d760deb51c69723e0ff1f2217dcb1e5"
+    },
+    {
+      "bytes": 22700,
+      "rel": "aider/website/assets/audio/auto-accept-architect/00-01.mp3",
+      "sha256": "68c3749c9d77f352521e45fc4bae9e0832c082134538ec9670cd2db29cbdb836"
+    },
+    {
+      "bytes": 7916,
+      "rel": "aider/website/assets/audio/auto-accept-architect/00-11.mp3",
+      "sha256": "d24bc7086d85a153c4489ca9709530439ae40b04f04fc12845554ada3d371700"
+    },
+    {
+      "bytes": 14444,
+      "rel": "aider/website/assets/audio/auto-accept-architect/00-40.mp3",
+      "sha256": "0388e27cd821dce2ce079c2d82b956859cbabef9f7978fa7548c17d4659ac088"
+    },
+    {
+      "bytes": 11084,
+      "rel": "aider/website/assets/audio/auto-accept-architect/00-48.mp3",
+      "sha256": "8ff5b2535d6569050f6aabd0b28ab48b232351469b2e296914b14387eb9bf886"
+    },
+    {
+      "bytes": 7340,
+      "rel": "aider/website/assets/audio/auto-accept-architect/01-00.mp3",
+      "sha256": "a8d2cb09caf97779cd135e3a2717cc4717a38ec0e1a3b58c96a9156883d4cd85"
+    },
+    {
+      "bytes": 13004,
+      "rel": "aider/website/assets/audio/auto-accept-architect/01-28.mp3",
+      "sha256": "ccb0ccd0b889f0392efa36367496f4f9a6ce5c2eb0e9e0862b1fa85029c758ce"
+    },
+    {
+      "bytes": 21644,
+      "rel": "aider/website/assets/audio/auto-accept-architect/01-42.mp3",
+      "sha256": "f0a1b9a338ca87608c849cd3ccda34bdd739bab85cf6192d0308e136088d5271"
+    },
+    {
+      "bytes": 10124,
+      "rel": "aider/website/assets/audio/auto-accept-architect/02-00.mp3",
+      "sha256": "8a690d68adcb704fd82fa6d5ff6adf1f2d1ad373ec53f361fba6036eae551d0c"
+    },
+    {
+      "bytes": 2636,
+      "rel": "aider/website/assets/audio/auto-accept-architect/02-05.mp3",
+      "sha256": "dff820bdf4daf64d79eeaeaa3abd881cf228c85422907ab0419b312f3caf3491"
+    },
+    {
+      "bytes": 590,
+      "rel": "aider/website/assets/audio/auto-accept-architect/metadata.json",
+      "sha256": "e919937b6f8d554cd955fbefa5e8f40a0cc52b04a5ca59f116d6720632af3260"
+    },
+    {
+      "bytes": 24332,
+      "rel": "aider/website/assets/audio/dont-drop-original-read-files/00-01.mp3",
+      "sha256": "a5f8fb01dd883f0902eb4871a645a892a6bdedc7ef5e823843ad875270a547a5"
+    },
+    {
+      "bytes": 20972,
+      "rel": "aider/website/assets/audio/dont-drop-original-read-files/00-10.mp3",
+      "sha256": "cee9be0003437b20a47902d44d5a269fc6133da6bbe732cc167fb267c7c64fd0"
+    },
+    {
+      "bytes": 10796,
+      "rel": "aider/website/assets/audio/dont-drop-original-read-files/00-20.mp3",
+      "sha256": "5dcaca765b711d70d36c0e0b4dee810c87ca12616dee928ea77bcf39196e12c8"
+    },
+    {
+      "bytes": 7052,
+      "rel": "aider/website/assets/audio/dont-drop-original-read-files/01-20.mp3",
+      "sha256": "132538b30ef5eff3955e831adacd8af729178d2bdf4002a56b2adf6122eb74fe"
+    },
+    {
+      "bytes": 15404,
+      "rel": "aider/website/assets/audio/dont-drop-original-read-files/01-30.mp3",
+      "sha256": "20953a3b48702210d00bd7d0ea364271c493a167412a823437825341a54e2c04"
+    },
+    {
+      "bytes": 8012,
+      "rel": "aider/website/assets/audio/dont-drop-original-read-files/01-45.mp3",
+      "sha256": "dd2d29e250d8d0b72e9d2d6171a3e04490efee2271138551286b37584d26c0c5"
+    },
+    {
+      "bytes": 19340,
+      "rel": "aider/website/assets/audio/dont-drop-original-read-files/02-10.mp3",
+      "sha256": "540ac2f3ca2cc54421e00115570dded6984454701b14d0d50bbe1f85c916532b"
+    },
+    {
+      "bytes": 9932,
+      "rel": "aider/website/assets/audio/dont-drop-original-read-files/02-19.mp3",
+      "sha256": "6bf40092c5553c4810a89d06294977b4e187ab47fa77d8f0f1695ab1b564b3af"
+    },
+    {
+      "bytes": 8780,
+      "rel": "aider/website/assets/audio/dont-drop-original-read-files/02-50.mp3",
+      "sha256": "2af438e899d464c74e87b2507fc90c7cc67aa8813c63675de6ef4333570b5336"
+    },
+    {
+      "bytes": 644,
+      "rel": "aider/website/assets/audio/dont-drop-original-read-files/metadata.json",
+      "sha256": "7612ffbfb009eb1a181b34199b52f0924558797f4969c765113d1dedac92732e"
+    },
+    {
+      "bytes": 64652,
+      "rel": "aider/website/assets/audio/model-accepts-settings/00-01.mp3",
+      "sha256": "2f5fb4403141452749a13534d1243e9e1ee2dfd256f56ada9484c9ab07a023d5"
+    },
+    {
+      "bytes": 44876,
+      "rel": "aider/website/assets/audio/model-accepts-settings/00-25.mp3",
+      "sha256": "86075c71672d3f6ae34c3a92f36ae5f53c182bead5632c2d386d50cdbfd5416e"
+    },
+    {
+      "bytes": 12908,
+      "rel": "aider/website/assets/audio/model-accepts-settings/01-30.mp3",
+      "sha256": "2bb09f82087246198906f6aaa4178e726575c8664370607f1d5547baa9ee692a"
+    },
+    {
+      "bytes": 13964,
+      "rel": "aider/website/assets/audio/model-accepts-settings/01-45.mp3",
+      "sha256": "2924a07293b12379845566d6e47e7b772baa783594764375642c36adafa47728"
+    },
+    {
+      "bytes": 30764,
+      "rel": "aider/website/assets/audio/model-accepts-settings/02-00.mp3",
+      "sha256": "1e62293fcf6754c76ba59531cbfd4640c87a6078b2234b861239164b4898d702"
+    },
+    {
+      "bytes": 28172,
+      "rel": "aider/website/assets/audio/model-accepts-settings/03-00.mp3",
+      "sha256": "0a2b8ef71ffcd5a2d35591c221dc23d970d4720db195cf1fb1ca20059ae33ad2"
+    },
+    {
+      "bytes": 51404,
+      "rel": "aider/website/assets/audio/model-accepts-settings/03-45.mp3",
+      "sha256": "578037bf66a455ef973a169cde0d543e89296a7d5c3f7b6cc1d0958f885edd00"
+    },
+    {
+      "bytes": 20300,
+      "rel": "aider/website/assets/audio/model-accepts-settings/04-45.mp3",
+      "sha256": "d9e789b95f0d2947eadcea6293d97499305376788976da2253583fe6c092c0b8"
+    },
+    {
+      "bytes": 17708,
+      "rel": "aider/website/assets/audio/model-accepts-settings/05-00.mp3",
+      "sha256": "ebd1f17b4469e26d518696fcfaac20080e1ca6e681aaa78008d4f0939b8a3d24"
+    },
+    {
+      "bytes": 13196,
+      "rel": "aider/website/assets/audio/model-accepts-settings/05-10.mp3",
+      "sha256": "bbc3619240ada2b9fe770753817c117936d8d1e0358770ff8b5c050364005a36"
+    },
+    {
+      "bytes": 49388,
+      "rel": "aider/website/assets/audio/model-accepts-settings/06-00.mp3",
+      "sha256": "ca6bff4631b68a2ebc25de6d58405c928006afc6026969019fafb2e100c1d834"
+    },
+    {
+      "bytes": 18188,
+      "rel": "aider/website/assets/audio/model-accepts-settings/07-43.mp3",
+      "sha256": "72620e69f92b0e893068969a07c158fccac06886c96a3230023833224491ce72"
+    },
+    {
+      "bytes": 18956,
+      "rel": "aider/website/assets/audio/model-accepts-settings/09-20.mp3",
+      "sha256": "5abde0912d3e849a22d2ac792c0133447eb994fab6e3b9ac68f88d1232660808"
+    },
+    {
+      "bytes": 8684,
+      "rel": "aider/website/assets/audio/model-accepts-settings/10-20.mp3",
+      "sha256": "99b9bf3cb34ba5e2d2d483831df718285b08ddd258a7cad6cedc52dc2f195b68"
+    },
+    {
+      "bytes": 21452,
+      "rel": "aider/website/assets/audio/model-accepts-settings/10-41.mp3",
+      "sha256": "91cc39e9e6c72dd99461e9722760e2849e67c9dee919521651edd412120e3d6a"
+    },
+    {
+      "bytes": 10796,
+      "rel": "aider/website/assets/audio/model-accepts-settings/10-55.mp3",
+      "sha256": "64f8834e46679527601598da96534fa0e99366af9b56bd004fb5071d82659fa9"
+    },
+    {
+      "bytes": 27212,
+      "rel": "aider/website/assets/audio/model-accepts-settings/11-28.mp3",
+      "sha256": "792b6ac3c483242949c6c67df910d511f0933527ed61e960d307fb6ca1241e8c"
+    },
+    {
+      "bytes": 10412,
+      "rel": "aider/website/assets/audio/model-accepts-settings/12-00.mp3",
+      "sha256": "57bd1630a4eb9a43ac1f22dc8e0de2c417be9644c0a0504921a56372b87b35e4"
+    },
+    {
+      "bytes": 19724,
+      "rel": "aider/website/assets/audio/model-accepts-settings/12-32.mp3",
+      "sha256": "7e2e37a7c856eed62b12d69b83c14b1ceaa12fe7dfb104075d7d5f07e35e8198"
+    },
+    {
+      "bytes": 8972,
+      "rel": "aider/website/assets/audio/model-accepts-settings/12-48.mp3",
+      "sha256": "9eee5580a966f5be9ff56b6874dc4243dfd58174816ba16844a077e2ea41e9f2"
+    },
+    {
+      "bytes": 14636,
+      "rel": "aider/website/assets/audio/model-accepts-settings/13-00.mp3",
+      "sha256": "a7157658fa6b0e74b448fc96ba0e4cc9fb483cf048b501f4d7cf46aa1f8134fd"
+    },
+    {
+      "bytes": 38732,
+      "rel": "aider/website/assets/audio/model-accepts-settings/14-30.mp3",
+      "sha256": "5bc8db853590563bdc085d1c33349028329744e88a739d7c5d93e5e4ad5ac721"
+    },
+    {
+      "bytes": 9644,
+      "rel": "aider/website/assets/audio/model-accepts-settings/14-45.mp3",
+      "sha256": "c8f0bbbc3af7f22c64b77e4f1b5bb1bec708c6b94697a918b6ca60b5de24deb7"
+    },
+    {
+      "bytes": 11948,
+      "rel": "aider/website/assets/audio/model-accepts-settings/14-59.mp3",
+      "sha256": "407a4e27a735ffb054bd8d02f42e9c3d8d3065797003d6bcbc48b88de93a9994"
+    },
+    {
+      "bytes": 21164,
+      "rel": "aider/website/assets/audio/model-accepts-settings/15-09.mp3",
+      "sha256": "ed7d2210cceb99a89a12d2d8fe861254084dc6a508862ea4abb68163eec15a28"
+    },
+    {
+      "bytes": 11372,
+      "rel": "aider/website/assets/audio/model-accepts-settings/15-34.mp3",
+      "sha256": "b66f3d8c3e730020e2ef78a9528f54cf66959b6bea693bc3f6ff7b6eaa05c4c9"
+    },
+    {
+      "bytes": 14924,
+      "rel": "aider/website/assets/audio/model-accepts-settings/15-44.mp3",
+      "sha256": "a54683e78c875c4771069f855b6d66b308536dc104a690f7af3958ae971f078c"
+    },
+    {
+      "bytes": 10796,
+      "rel": "aider/website/assets/audio/model-accepts-settings/16-04.mp3",
+      "sha256": "36c7d694d282c0d8606c96f611985b9b503ae3ae19e51f3f41de1cd4aa59632f"
+    },
+    {
+      "bytes": 13388,
+      "rel": "aider/website/assets/audio/model-accepts-settings/16-14.mp3",
+      "sha256": "f9610ed9d8a674435f75443978b2ad46abedb77ad77ffed61a9dd721df486f68"
+    },
+    {
+      "bytes": 20204,
+      "rel": "aider/website/assets/audio/model-accepts-settings/16-29.mp3",
+      "sha256": "90ea5fe1cf8729fa3ae9d6abbb54d603713f0d50125205876092273303f877ed"
+    },
+    {
+      "bytes": 5804,
+      "rel": "aider/website/assets/audio/model-accepts-settings/16-47.mp3",
+      "sha256": "dba1b0003765d6fd124356fcdb2c2c92bb39257a7e1cf0bd770910afdae6232f"
+    },
+    {
+      "bytes": 28844,
+      "rel": "aider/website/assets/audio/model-accepts-settings/16-55.mp3",
+      "sha256": "5e45f6521a7f73af6bad40ace4fe3a1d70f3e6b8fd3fd3ae85309d2854512b96"
+    },
+    {
+      "bytes": 10412,
+      "rel": "aider/website/assets/audio/model-accepts-settings/17-59.mp3",
+      "sha256": "9a54ff17f98347f435a4693b0ca0f5450cf94182e6cea459f5b1551cfff08d08"
+    },
+    {
+      "bytes": 15020,
+      "rel": "aider/website/assets/audio/model-accepts-settings/18-35.mp3",
+      "sha256": "bccfdecfa5a10229b0f806abffdab44dd6d318b18ba8fbe9784b07796bcedac9"
+    },
+    {
+      "bytes": 18572,
+      "rel": "aider/website/assets/audio/model-accepts-settings/19-44.mp3",
+      "sha256": "66bd76af963cca1e262a51b9b519bdbf2d9ce273d2c992fc499b6c8c6fa58cb9"
+    },
+    {
+      "bytes": 9068,
+      "rel": "aider/website/assets/audio/model-accepts-settings/19-54.mp3",
+      "sha256": "f695c084180bc7b5f4a0239336748cf0060150226c4f807879071a95c4c5e2cb"
+    },
+    {
+      "bytes": 10412,
+      "rel": "aider/website/assets/audio/model-accepts-settings/20-25.mp3",
+      "sha256": "cb416915e204a1289b7101608b60f460767d06b8b29a1159e5b40e8ab4846f5b"
+    },
+    {
+      "bytes": 12236,
+      "rel": "aider/website/assets/audio/model-accepts-settings/20-55.mp3",
+      "sha256": "5f56041bf2aee8856e2bdbdf6d8599db21e4dd3cbc913f86db4d2af06ab4f9c3"
+    },
+    {
+      "bytes": 15980,
+      "rel": "aider/website/assets/audio/model-accepts-settings/21-10.mp3",
+      "sha256": "a81f9e0a9d863f02a8facb27d4cb50e92551d90bbfe7fd39be16b02990916515"
+    },
+    {
+      "bytes": 10700,
+      "rel": "aider/website/assets/audio/model-accepts-settings/22-32.mp3",
+      "sha256": "e179493c07d9cd17c01ab3d341c58efcee69f7da8d45c30a4e423cffd8e82d98"
+    },
+    {
+      "bytes": 15596,
+      "rel": "aider/website/assets/audio/model-accepts-settings/24-25.mp3",
+      "sha256": "d1eb4e24d535859043f3d639dcd6ff692cf1108ae3eafe930de117dc22a7c753"
+    },
+    {
+      "bytes": 12620,
+      "rel": "aider/website/assets/audio/model-accepts-settings/24-56.mp3",
+      "sha256": "27c7703c0ae9479551e4d7209452ce30ada3fc9bd56da9c9e009141cdf076ab8"
+    },
+    {
+      "bytes": 9356,
+      "rel": "aider/website/assets/audio/model-accepts-settings/25-35.mp3",
+      "sha256": "b4a3b3a1febaf1c5e01dfd6e626475f43139496d1a70b746472592de4b0017a1"
+    },
+    {
+      "bytes": 2828,
+      "rel": "aider/website/assets/audio/model-accepts-settings/26-20.mp3",
+      "sha256": "6063765d4802983a506f46798c6f2051fe1f5366f863b363dbd793ad720dae1c"
+    },
+    {
+      "bytes": 4072,
+      "rel": "aider/website/assets/audio/model-accepts-settings/metadata.json",
+      "sha256": "8c40143bf536215464771bfc1c443608879b7435981a4be12a3e6595e5d6c34e"
+    },
+    {
+      "bytes": 18764,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/00-01.mp3",
+      "sha256": "067711cc727e2e9c1333bf486cfeb1c4e8754cfc949f0566b8f681f7cbab092e"
+    },
+    {
+      "bytes": 13100,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/00-10.mp3",
+      "sha256": "7fac60e7a5d713f60679a0989ca9c3e44cf8b47e4fd2c0a6da44587df6f3e08f"
+    },
+    {
+      "bytes": 11564,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/01-00.mp3",
+      "sha256": "7b7074bc586c85288d72c8393c307c5dfe6169c6550cf35677707154fd98f95c"
+    },
+    {
+      "bytes": 12236,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/01-10.mp3",
+      "sha256": "71f61f38fbf4061cbabdd5252cc969167d4ad0174631a9404e3b5ba0dd732703"
+    },
+    {
+      "bytes": 6284,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/01-29.mp3",
+      "sha256": "c2d38cb4d325c8de5e785f7513ad282e40c3c4c00e2b037ce8939234113d5393"
+    },
+    {
+      "bytes": 29996,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/01-45.mp3",
+      "sha256": "7f76c1457f00d140e6f6ca69daf11452f53eadc09846eabd4e0ccde00a859fca"
+    },
+    {
+      "bytes": 13196,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/02-05.mp3",
+      "sha256": "cb7f8a9283432bf431e4eca9ffaec0d20489bf7176ae87947b6229f212e1bae1"
+    },
+    {
+      "bytes": 13772,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/03-37.mp3",
+      "sha256": "d832e999cdeabaac23ee1c9b6094fcaf70d0182cfefab0fd5aca8db6fd064638"
+    },
+    {
+      "bytes": 12332,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/04-19.mp3",
+      "sha256": "d5f58b4699adebfc370e87082fca89d97bd6d43c14300592b2c36d79de81a793"
+    },
+    {
+      "bytes": 10124,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/05-02.mp3",
+      "sha256": "b4b4929cb2e817dbba73da0a3415369afeb44036a36513e8bee8eda21a53dd4b"
+    },
+    {
+      "bytes": 21260,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/05-55.mp3",
+      "sha256": "5bcf8214429091d78ec1441d217256bfdd2dff97ca96958db7112895211314a1"
+    },
+    {
+      "bytes": 10508,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/06-12.mp3",
+      "sha256": "b26da4bb6cf5d24b562ac3bf085ac9778c706a247eb5135d87008a534931e511"
+    },
+    {
+      "bytes": 19532,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/06-30.mp3",
+      "sha256": "d31cb1465769a0f15abad6ff28f94f717036c71ebf90c41f3375f99c55d6b338"
+    },
+    {
+      "bytes": 16172,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/09-02.mp3",
+      "sha256": "cbdbc869558a177eb07cf8997b951924b79e5f1ff1161e5c925ab6ff79f46ab8"
+    },
+    {
+      "bytes": 22220,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/09-45.mp3",
+      "sha256": "7ffea25f44bbd4f7eade0dd759bd4b318e4e91a91c934146be8fd7eef3f554a1"
+    },
+    {
+      "bytes": 21452,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/10-15.mp3",
+      "sha256": "b082dd4746701910a486847c7ff8d502be8882d2429e594783020392197e63e6"
+    },
+    {
+      "bytes": 18956,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/11-15.mp3",
+      "sha256": "2fee93639b211642e554ef002e3c1736857a9a5e5609c25b1c6ee776d0c31307"
+    },
+    {
+      "bytes": 9068,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/12-00.mp3",
+      "sha256": "02813eb2dbbeb8d99e8e29a70c120f030655f6d145ededcc9df23a59a35789d6"
+    },
+    {
+      "bytes": 19532,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/13-00.mp3",
+      "sha256": "9d5e97906577655560582b5134aa030e0c1c987fb6e6cf605a7a9018619e472f"
+    },
+    {
+      "bytes": 6956,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/14-00.mp3",
+      "sha256": "57d5c4e8b44fb3b181f8988c238319fd344efef19c7582cee502a11fd467142f"
+    },
+    {
+      "bytes": 9932,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/16-07.mp3",
+      "sha256": "04472b4f74a9eb66dcb2847d2f9d1c199e9c296b7a834605186f14f9fc1038c7"
+    },
+    {
+      "bytes": 10508,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/16-16.mp3",
+      "sha256": "90c1f26515b511a3fac304b213418043f15851bed220cf11a4a79fdfa94383f6"
+    },
+    {
+      "bytes": 27884,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/16-33.mp3",
+      "sha256": "7699f8ceb7eb1b0a9f4b6e0a875d6fcb0b4fc2745e584a022a26ca7a0a47c7d4"
+    },
+    {
+      "bytes": 16076,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/17-01.mp3",
+      "sha256": "e735dd88b4413b30e8ddd363e92068e366408407d974cfb47e53b03877e20ff5"
+    },
+    {
+      "bytes": 22796,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/17-12.mp3",
+      "sha256": "5220312f55b0332f1256928f21414f6981de9737079fc5291759af1dc6d760bd"
+    },
+    {
+      "bytes": 13388,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/19-04.mp3",
+      "sha256": "fa3b66a6967c8a224ce430314d43769a4e75ace533c28b65c64dfba0aaaeb000"
+    },
+    {
+      "bytes": 15404,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/19-28.mp3",
+      "sha256": "8dfaf9f66ce632035528901646eef6e9de592d701d04890fd10f4c0eef1ad9f1"
+    },
+    {
+      "bytes": 9836,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/20-20.mp3",
+      "sha256": "b0fdf9e0156599919bf07eaa041fb0ddc97b6ee8992628d464525e790fd99547"
+    },
+    {
+      "bytes": 5324,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/20-50.mp3",
+      "sha256": "a5d7cada3f51285a79c39505d670230e96acbc9bb78f5e22433b12fcc052dc8d"
+    },
+    {
+      "bytes": 10220,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/21-30.mp3",
+      "sha256": "986f7ed9b65e2168c86f2131035d9f29dcbaa5f1454d7b7665d03d9233e5f3ea"
+    },
+    {
+      "bytes": 14060,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/24-39.mp3",
+      "sha256": "83611377d378f49e17bbf9538c33b4a400c471e61c5d15c93d6e89dba532cb57"
+    },
+    {
+      "bytes": 23948,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/26-55.mp3",
+      "sha256": "92f374be91e1472e233805091a862162cb6d7cbc12e6f7df2d49f8873e94ad67"
+    },
+    {
+      "bytes": 16076,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/27-10.mp3",
+      "sha256": "859456e65dc89a1fbfe88848551f6f07e1b9a39b790b108ab5de52eb8b209603"
+    },
+    {
+      "bytes": 32684,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/27-19.mp3",
+      "sha256": "2b5dccbb4dec67d16224f1fd59ca3079ab796cbf358abbfcc5bebf26613b7b6d"
+    },
+    {
+      "bytes": 17612,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/27-50.mp3",
+      "sha256": "a3a44b7fb2fc9ce2c43e1eea14f838096c91a21b62dfe3c4cdf01e2eca19886a"
+    },
+    {
+      "bytes": 11276,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/28-12.mp3",
+      "sha256": "f5a038785db538475a37acde7043650eb782a504b7372ef59bade9274951230c"
+    },
+    {
+      "bytes": 18188,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/28-52.mp3",
+      "sha256": "241d580b40acca3d5a4b641301f388f2c2a940e9cc0f9e2c3522a45bb7a0e4f6"
+    },
+    {
+      "bytes": 20876,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/29-27.mp3",
+      "sha256": "ba84ca6b7c05ca3bdce8fe596fda45da05d25bd19ff2fe6dfaf87e90d8d37988"
+    },
+    {
+      "bytes": 16172,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/30-25.mp3",
+      "sha256": "8a3f2c618dc2784c1de9ab13752670e2d77b2586bd5b6298b87a312e312f9f7d"
+    },
+    {
+      "bytes": 20012,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/30-37.mp3",
+      "sha256": "9dd333e2180aabe73f965f1c96c9858bfdee0bd92e3f14cd47ae520f7aca97d6"
+    },
+    {
+      "bytes": 8108,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/31-52.mp3",
+      "sha256": "4cfacd9cc86364c5dc49779fa91a220cab2c6a0d0e93d9f565ea93c92be16362"
+    },
+    {
+      "bytes": 15788,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/32-27.mp3",
+      "sha256": "8b12958bd29122eca85f20003973094ff7714d313c6cf9e298c82e836e80735e"
+    },
+    {
+      "bytes": 16844,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/32-36.mp3",
+      "sha256": "51de8f052d4236fa06df207482112ece260ee5e6dfb9686c4a5235b5ec89154c"
+    },
+    {
+      "bytes": 19820,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/32-42.mp3",
+      "sha256": "631973292ec4b3d47895dce20e69e84d744ba7c537f0055738c237ef53581df6"
+    },
+    {
+      "bytes": 18572,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/32-54.mp3",
+      "sha256": "d23607acaf7c4a6573a23de26ddd0e8285eccf272302f99651f54e7b92200479"
+    },
+    {
+      "bytes": 17132,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/33-05.mp3",
+      "sha256": "08333da81358c246b392b5412ae8071afaa16b84b442b762e3b915c3fe75fd83"
+    },
+    {
+      "bytes": 6764,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/33-20.mp3",
+      "sha256": "998ce4f57af98b5d49085a68c269d4a5b39a9335e98cada97d424544855d6182"
+    },
+    {
+      "bytes": 6572,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/34-10.mp3",
+      "sha256": "5e5417d3ada51faa584ffb7ce0f03ae1d415ebe69d05419697e0514aa8d37317"
+    },
+    {
+      "bytes": 36428,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/35-00.mp3",
+      "sha256": "478be79eaa8da8386d91287cdd91d52dedfc509c826f907ef1886c88cd4b0023"
+    },
+    {
+      "bytes": 3954,
+      "rel": "aider/website/assets/audio/tree-sitter-language-pack/metadata.json",
+      "sha256": "f9bb9c74a4865e01989177e19d85f5398698f72242bf31130798d6660bd727cf"
+    },
+    {
+      "bytes": 266096,
+      "rel": "aider/website/assets/azure-deployment.png",
+      "sha256": "b24d85927a8c7f8d40d671843ef845c6b550f3b531401ad7cbfeb577a6014bf4"
+    },
+    {
+      "bytes": 22129,
+      "rel": "aider/website/assets/benchmarks-0125.jpg",
+      "sha256": "2979dd80610ad46b7065fa05e556fc81ead7fcb1bf3840b7b2594f5b7f005ba5"
+    },
+    {
+      "bytes": 39298,
+      "rel": "aider/website/assets/benchmarks-0125.svg",
+      "sha256": "6a72de7b67bd695090029da4f8e4f46ce187d835bcfca140ae9b631001883a63"
+    },
+    {
+      "bytes": 31405,
+      "rel": "aider/website/assets/benchmarks-1106.jpg",
+      "sha256": "cc25832f13e13f7b373312e6c86e307d11ab010d6a97ad6b71bc902f1ab02a58"
+    },
+    {
+      "bytes": 55076,
+      "rel": "aider/website/assets/benchmarks-1106.svg",
+      "sha256": "53878147db4abd8b9e33aaa7bce4018d275e8b9554c3b816f4cdec8fe0a66092"
+    },
+    {
+      "bytes": 25984,
+      "rel": "aider/website/assets/benchmarks-speed-1106.jpg",
+      "sha256": "4246ff253a93fffde090879e305b4f1fee1f2b65b6c7d8c6c6e17d94572e234a"
+    },
+    {
+      "bytes": 48157,
+      "rel": "aider/website/assets/benchmarks-speed-1106.svg",
+      "sha256": "370518e33dcee86acbbcfc746c3a4b7f1cdb8030dc36c71c81df147b867c6448"
+    },
+    {
+      "bytes": 147076,
+      "rel": "aider/website/assets/benchmarks-udiff.jpg",
+      "sha256": "2449f2dbed8db899f1164790f3a23214068475540fce0647a74dc0f05e643ebc"
+    },
+    {
+      "bytes": 45258,
+      "rel": "aider/website/assets/benchmarks-udiff.svg",
+      "sha256": "81058ee05fedd129b0eeb95fe9cbb1a2011c8d51df29116d1b9ca364af00c50f"
+    },
+    {
+      "bytes": 33907,
+      "rel": "aider/website/assets/benchmarks.jpg",
+      "sha256": "7e28081ffa569be71acfa5e3df1c3d23e7238c3f7833d928e2f251c4678103d5"
+    },
+    {
+      "bytes": 59882,
+      "rel": "aider/website/assets/benchmarks.svg",
+      "sha256": "5379feda79f2b508379b194453f0bc1b38a786437ca1b6402e7a8c2b477cdf6b"
+    },
+    {
+      "bytes": 161825,
+      "rel": "aider/website/assets/blame.jpg",
+      "sha256": "cb7715a0a2322613e3920858aa4cd8f1cd5d27c8058be024ac91cba0eb6bf034"
+    },
+    {
+      "bytes": 406561,
+      "rel": "aider/website/assets/browser.jpg",
+      "sha256": "b727c504f9fc8d701383ffeeb76e856d44466a856666e24c1471571cd0d131fe"
+    },
+    {
+      "bytes": 161674,
+      "rel": "aider/website/assets/code-in-json.jpg",
+      "sha256": "88e14881fe3ff254db1944644e880fdcf4199f7569b50f1b6273ff34cb7eb041"
+    },
+    {
+      "bytes": 139383,
+      "rel": "aider/website/assets/codespaces.jpg",
+      "sha256": "48303e7d762451d093c7c0369bf7432461519bb0af673c09faff262c61ad055b"
+    },
+    {
+      "bytes": 1793301,
+      "rel": "aider/website/assets/codespaces.mp4",
+      "sha256": "c3161d5f1a6947388ba98356b9b1aa969cb79df46c6f53f3852c969ecb28252b"
+    },
+    {
+      "bytes": 321735,
+      "rel": "aider/website/assets/copypaste.jpg",
+      "sha256": "27e325b452e00f5ff9ea985f14f5a1de17e17cbba051b5c923395b34138b9dc0"
+    },
+    {
+      "bytes": 8388608,
+      "rel": "aider/website/assets/copypaste.mp4.chunks/copypaste.mp4.part-0000",
+      "sha256": "4bf9746e0c3d9b56996fd055ca896ffd30d8a877154bfb9e5178efbc5c350259"
+    },
+    {
+      "bytes": 5290799,
+      "rel": "aider/website/assets/copypaste.mp4.chunks/copypaste.mp4.part-0001",
+      "sha256": "d6efbe8f28db9912e0a1623646db9dcc6e6a075c3c2244c89ffe516aeb271c10"
+    },
+    {
+      "bytes": 28964,
+      "rel": "aider/website/assets/figure.png",
+      "sha256": "ae69ec5370b0ced731a36d621e213c6bf6fb1aee77e8883220935bdd6b2b1bbd"
+    },
+    {
+      "bytes": 18294,
+      "rel": "aider/website/assets/home.css",
+      "sha256": "afa0b8ff9e2218b09b58e9fa2f08eebdb575b7b6a6aaa4b217a65cc5537fff76"
+    },
+    {
+      "bytes": 29475,
+      "rel": "aider/website/assets/icons/android-chrome-192x192.png",
+      "sha256": "9242d14983bd63790790581471f6e33ba09a143feb841598107635d58ea96018"
+    },
+    {
+      "bytes": 93930,
+      "rel": "aider/website/assets/icons/android-chrome-384x384.png",
+      "sha256": "1bdc5eaa7b2cc20519b252288607caff2d0d1dfadc89bdc5a25f89e6e7f4d89c"
+    },
+    {
+      "bytes": 26544,
+      "rel": "aider/website/assets/icons/apple-touch-icon.png",
+      "sha256": "6efbd1fc700f455630b59d233aa37bfc764cffb0bcb255a42e73837f12497a2b"
+    },
+    {
+      "bytes": 2268,
+      "rel": "aider/website/assets/icons/brain.svg",
+      "sha256": "29dbf1ab19cb88973c0d50bb7ac5ae6f9c84e2fa9a82014600919035a086cb08"
+    },
+    {
+      "bytes": 259,
+      "rel": "aider/website/assets/icons/browserconfig.xml",
+      "sha256": "0d04b0ed77d7e46a3d6683bff99d4e0a9dad1723acb336ce5d5b05365be7cdb6"
+    },
+    {
+      "bytes": 253,
+      "rel": "aider/website/assets/icons/check-all.svg",
+      "sha256": "8ee66a6e5a3e6aabd34afb7de0dfb98288d7e85b7b3b66762cde41448e25699d"
+    },
+    {
+      "bytes": 216,
+      "rel": "aider/website/assets/icons/code-tags.svg",
+      "sha256": "27e4131004d56461d8fdc90c435821991cf8b2a56e7e920d9a49eac63262a5e3"
+    },
+    {
+      "bytes": 239,
+      "rel": "aider/website/assets/icons/content-copy.svg",
+      "sha256": "fee0d394ab12da45ac35bce23366dbd386e2f99ed58c7a7b247ffc2efee0d545"
+    },
+    {
+      "bytes": 1212,
+      "rel": "aider/website/assets/icons/favicon-16x16.png",
+      "sha256": "7c5bca89aa7da41bb180ab46c34b8261c06cfbabf6727a3dcf79a2393d7a3463"
+    },
+    {
+      "bytes": 1891,
+      "rel": "aider/website/assets/icons/favicon-32x32.png",
+      "sha256": "76df46f16497adaaf724c98db79a6e32058f84dc8de384a35d2a7d38f7437bbb"
+    },
+    {
+      "bytes": 15086,
+      "rel": "aider/website/assets/icons/favicon.ico",
+      "sha256": "2d322d4d121c088c3c988480745887567b32f00f0c1ebc4401875a9d25c5d869"
+    },
+    {
+      "bytes": 259,
+      "rel": "aider/website/assets/icons/image-multiple.svg",
+      "sha256": "a457f4735b971d726e7b2e2cff272595394c4985935cc35538812f1c39acd590"
+    },
+    {
+      "bytes": 400,
+      "rel": "aider/website/assets/icons/map-outline.svg",
+      "sha256": "7334e55cddb3f3a65d6c57118164f1c66622f7994a21042846c49956f387fd20"
+    },
+    {
+      "bytes": 296,
+      "rel": "aider/website/assets/icons/microphone.svg",
+      "sha256": "3aad025ee6afbe17fc647fcdcad29dbd05f1099cab5d1281d99936064357990e"
+    },
+    {
+      "bytes": 233,
+      "rel": "aider/website/assets/icons/monitor.svg",
+      "sha256": "ea6f193703654d6ea64b8c7b2545365ba9e8fd681477b0cffe1e796987b89953"
+    },
+    {
+      "bytes": 18392,
+      "rel": "aider/website/assets/icons/mstile-150x150.png",
+      "sha256": "9557febbd0da21c826ca3e9d8700a9617ae9b2cbf316a09b2dc455b6e8c46119"
+    },
+    {
+      "bytes": 1841,
+      "rel": "aider/website/assets/icons/safari-pinned-tab.svg",
+      "sha256": "145269573c298162e3e032de7563d39e6db234d29fbb7a7312f251e28cc374a6"
+    },
+    {
+      "bytes": 452,
+      "rel": "aider/website/assets/icons/site.webmanifest",
+      "sha256": "1332eb5f381c7ea33f8faf6e2330ea59afdb70fe5f1582a6445ce92ac97a74b1"
+    },
+    {
+      "bytes": 681,
+      "rel": "aider/website/assets/icons/source-branch.svg",
+      "sha256": "3daf05894b5180be2bc9d3a0653646991dfb55f79d2633a61707d3d3507e2c30"
+    },
+    {
+      "bytes": 142382,
+      "rel": "aider/website/assets/install.jpg",
+      "sha256": "918d77c3375eea1957a9eb63ebaf76bd3c223eed78c6f3c9892237bb3844b5d4"
+    },
+    {
+      "bytes": 7740091,
+      "rel": "aider/website/assets/install.mp4",
+      "sha256": "9e85e2aac051b1a504c22b84faa7e4792df4160ff3668393cd50f14ffb54b77a"
+    },
+    {
+      "bytes": 150361,
+      "rel": "aider/website/assets/leaderboard.jpg",
+      "sha256": "65c855eedf439ff347934fd95bcc664fef550d5d75da236a1666dbe1f24f607a"
+    },
+    {
+      "bytes": 157899,
+      "rel": "aider/website/assets/linting.jpg",
+      "sha256": "e9ad0ec20cc1df39460ead948034e2bad4ad6650ebb01eb07191f8f10d6ba06e"
+    },
+    {
+      "bytes": 113227,
+      "rel": "aider/website/assets/llms.jpg",
+      "sha256": "b3aa0255688a5dddad2caf93791caf8c0517318092addd666f4365042a2c9650"
+    },
+    {
+      "bytes": 5742,
+      "rel": "aider/website/assets/logo.svg",
+      "sha256": "c2012ba0a3141ef162f6bc6f4cc8cb4ab19444dba0408c975f58ceeda4ed79b1"
+    },
+    {
+      "bytes": 105527,
+      "rel": "aider/website/assets/models-over-time.png",
+      "sha256": "ef88df0bebdf20a77c083b1c280d2dbf3e460cd4759a3d6e36c9622d7a07df6b"
+    },
+    {
+      "bytes": 60095,
+      "rel": "aider/website/assets/models-over-time.svg",
+      "sha256": "90425a7f175c9ab5b1082a018df18f55c0ae2dbd431da9a48f85e4417009ab4c"
+    },
+    {
+      "bytes": 160589,
+      "rel": "aider/website/assets/o1-polyglot.jpg",
+      "sha256": "a91e1f568e39f74b425860349de1c6c1c6d2d9c01d76956a81978cd3eb73a5e9"
+    },
+    {
+      "bytes": 314766,
+      "rel": "aider/website/assets/prompt-caching.jpg",
+      "sha256": "77d5a9ddca63f8c511aba6145097dfec0e816b0000f7f6571cac3cf3bd57d8fd"
+    },
+    {
+      "bytes": 151649,
+      "rel": "aider/website/assets/quantization.jpg",
+      "sha256": "efb2adeb7e47ba57d37edead297ada8d85a4fd758ea3285a7612833dc1ca6c6d"
+    },
+    {
+      "bytes": 117885,
+      "rel": "aider/website/assets/qwq.jpg",
+      "sha256": "ade4e416d1633653368ba407b1022b7f5ae56604ec3df0840759d4878e7b51a8"
+    },
+    {
+      "bytes": 126758,
+      "rel": "aider/website/assets/r1-sonnet-sota.jpg",
+      "sha256": "7c80418ad51d81790cbe91bc3620554433c44f3e4a0ef73520e4f3d79992aab0"
+    },
+    {
+      "bytes": 220815,
+      "rel": "aider/website/assets/recordings.jpg",
+      "sha256": "ecc4f119f76b581cae11f0ace846fc2fe3bc546f1fdeceb69fe427dbcf93181b"
+    },
+    {
+      "bytes": 686936,
+      "rel": "aider/website/assets/robot-ast.png",
+      "sha256": "edf6de0f9273a885182f9e51e5ba2eb9d4f717e84b293f8c7d1e0032043842ec"
+    },
+    {
+      "bytes": 716411,
+      "rel": "aider/website/assets/robot-flowchart.png",
+      "sha256": "125308605b0a851296001af18843145464abf2a26cce2e43077b9870315dc440"
+    },
+    {
+      "bytes": 155010,
+      "rel": "aider/website/assets/sample-analytics.jsonl",
+      "sha256": "f843be2ca655b0fe557f41fe17a30df5de990bffdab9d3dc22935a588672cb98"
+    },
+    {
+      "bytes": 13864,
+      "rel": "aider/website/assets/sample.aider.conf.yml",
+      "sha256": "a29554e8b8b9e7b3664528eb7f881edf8cf86089f7372426853b8350b2894f71"
+    },
+    {
+      "bytes": 13675,
+      "rel": "aider/website/assets/sample.env",
+      "sha256": "5cfa1e9f8fd5b025b83d2a05156419c84109cea8f5183a98569c132503b55934"
+    },
+    {
+      "bytes": 118106,
+      "rel": "aider/website/assets/screencast.svg",
+      "sha256": "6d6271961f911a4303c65a145bb81000979da4e04b42d0a7cbefdcbf0a4ad34a"
+    },
+    {
+      "bytes": 166103,
+      "rel": "aider/website/assets/screenshot.png",
+      "sha256": "fe091c3643ad9bb5c6852e522253311e51c0d341ab5539b1748a24e0fbd58619"
+    },
+    {
+      "bytes": 166032,
+      "rel": "aider/website/assets/self-assembly.jpg",
+      "sha256": "56cd966dcfbff52fdeb19f958c27c4204442aa295fa8796712ca8e5cfa0cb7f3"
+    },
+    {
+      "bytes": 8388608,
+      "rel": "aider/website/assets/shell-cmds-small.mp4.chunks/shell-cmds-small.mp4.part-0000",
+      "sha256": "5c938152939ba7d1d925d0c911e072cf45afa7de0f9b89c4cce86b8af9e5011a"
+    },
+    {
+      "bytes": 2159211,
+      "rel": "aider/website/assets/shell-cmds-small.mp4.chunks/shell-cmds-small.mp4.part-0001",
+      "sha256": "0346c62d2f359a5172c8ba914dbc6d19f2950504a301d18a6c39a330af4d8792"
+    },
+    {
+      "bytes": 531265,
+      "rel": "aider/website/assets/shell-cmds.jpg",
+      "sha256": "6dc90bfafef67cb7145923c62701e2006979c6564be20a65fa45bbef12d0ff05"
+    },
+    {
+      "bytes": 214104,
+      "rel": "aider/website/assets/sonnet-not-lazy.jpg",
+      "sha256": "a1f344cc15070c48617d570150fdca8a4d88385c6f86671d376c0682b12e9989"
+    },
+    {
+      "bytes": 150910,
+      "rel": "aider/website/assets/sonnet-seems-fine.jpg",
+      "sha256": "21b31dff2af88f0c5602f28c0be9971016e684e62431a6c37f23b5983dadaeed"
+    },
+    {
+      "bytes": 43436,
+      "rel": "aider/website/assets/swe_bench.jpg",
+      "sha256": "54e5f61e19c2b36527b8ca41ad9d69888a16e6dc265aeaf1e18aa9d6e9ffd870"
+    },
+    {
+      "bytes": 59635,
+      "rel": "aider/website/assets/swe_bench.svg",
+      "sha256": "6a44be283c73c5b55b8f453888f73ed1ddba0a254514b94952d5d0f51e30e90e"
+    },
+    {
+      "bytes": 39368,
+      "rel": "aider/website/assets/swe_bench_lite.jpg",
+      "sha256": "94bbf410a2057f55d03be7851bafa65bba346062a340bf6f1210a52086440048"
+    },
+    {
+      "bytes": 54496,
+      "rel": "aider/website/assets/swe_bench_lite.svg",
+      "sha256": "8b10b47abd444db596e51a0ef2ab9405637c855ea6f42c463bbe77363582138c"
+    },
+    {
+      "bytes": 348914,
+      "rel": "aider/website/assets/thinking.jpg",
+      "sha256": "b136ac583d2c15973ea9a2765d54ada8da1e8e2e6697bd8d5701fa86931ac1dc"
+    },
+    {
+      "bytes": 85462,
+      "rel": "aider/website/assets/udiffs.jpg",
+      "sha256": "d5b7db1b672a1dc276a54198c9eedd944c846cd130ef9f3fd5793419f941626a"
+    },
+    {
+      "bytes": 209071,
+      "rel": "aider/website/assets/watch.jpg",
+      "sha256": "1a4b682155b7d3370ed591278557b6bfb13d641961abe8f990ea8c88b03daaab"
+    },
+    {
+      "bytes": 8388608,
+      "rel": "aider/website/assets/watch.mp4.chunks/watch.mp4.part-0000",
+      "sha256": "32fa9d60ab59cc2e6683c65091c53ff9b0c202eaa03bc41e506e2d614ad699d6"
+    },
+    {
+      "bytes": 2951256,
+      "rel": "aider/website/assets/watch.mp4.chunks/watch.mp4.part-0001",
+      "sha256": "f74cf43b8ec24e5f9326f89c3c226090a529c1954a77f1a60b6762deca783cbb"
+    },
+    {
+      "bytes": 973,
+      "rel": "aider/website/blog/index.html",
+      "sha256": "cb898583361ba2e771af91b41c605fdcd3945a0052c81ee3d78899f14f519b07"
+    },
+    {
+      "bytes": 2190,
+      "rel": "aider/website/docs/benchmarks-0125.md",
+      "sha256": "c20592e5d0592eccd93912beabda8097da2dc996d8d515af887f70de328281ea"
+    },
+    {
+      "bytes": 4876,
+      "rel": "aider/website/docs/benchmarks-1106.md",
+      "sha256": "75ed7cba97f943d2793524ba8300be0c7b83ffe3f20d2f22030da34def8fa71e"
+    },
+    {
+      "bytes": 2779,
+      "rel": "aider/website/docs/benchmarks-speed-1106.md",
+      "sha256": "376fccf9563eb92dcea1648f31687847396fff02516bbc49d3234478a2691149"
+    },
+    {
+      "bytes": 14966,
+      "rel": "aider/website/docs/benchmarks.md",
+      "sha256": "9a51e7200f672b532c9ebbf177646ac453ebe0dc35cff754c13f28c65c6aa521"
+    },
+    {
+      "bytes": 749,
+      "rel": "aider/website/docs/config.md",
+      "sha256": "18092253c01f6160a745d870dca18e89e0b7d2953f4d94376be2e6cda7b7213f"
+    },
+    {
+      "bytes": 88400,
+      "rel": "aider/website/docs/config/adv-model-settings.md",
+      "sha256": "6928be820df0d60f744d5b6648f0dd69015a52cd8c371bc616e2b4b2988ea7e5"
+    },
+    {
+      "bytes": 15133,
+      "rel": "aider/website/docs/config/aider_conf.md",
+      "sha256": "49df94133a2eac6efc2d357ee72032121d2db9a922d1ef0698046fdd3d65670d"
+    },
+    {
+      "bytes": 2046,
+      "rel": "aider/website/docs/config/api-keys.md",
+      "sha256": "b8e51df68111bd837a5732ad72c8ee9ffeedb61d7901811f44c2574f935ed0a5"
+    },
+    {
+      "bytes": 14692,
+      "rel": "aider/website/docs/config/dotenv.md",
+      "sha256": "0088c14766a379c2328a53dd380b6aed5d406ae446ec0ee12c29fd51b704cc92"
+    },
+    {
+      "bytes": 2611,
+      "rel": "aider/website/docs/config/editor.md",
+      "sha256": "4a12477d185ed449f9f6899929c8c5a6b10b7fce45eedf1274f87d97dcb5acd9"
+    },
+    {
+      "bytes": 3615,
+      "rel": "aider/website/docs/config/model-aliases.md",
+      "sha256": "51d047e123ee0a8adfe38f52f4096dbbdfcabb5efea7302b775854aeefdf115f"
+    },
+    {
+      "bytes": 27427,
+      "rel": "aider/website/docs/config/options.md",
+      "sha256": "6bd20c611865ab5060165c6e991bfa6cea2e049ffd9dec89dcd5442f11f94610"
+    },
+    {
+      "bytes": 7131,
+      "rel": "aider/website/docs/config/reasoning.md",
+      "sha256": "a05be33d706c4eaa63b75405bc907f03e016538fcfdd2600b7f103d7c33f03d0"
+    },
+    {
+      "bytes": 10600,
+      "rel": "aider/website/docs/ctags.md",
+      "sha256": "9dd05206d2f42f935d7c1463b541649b9a258cfb293ede7a11735f8d96e61039"
+    },
+    {
+      "bytes": 14030,
+      "rel": "aider/website/docs/faq.md",
+      "sha256": "47863a87759edff06740c20f8a606e8a16cf7bca00bd3c966d917b4b9a296239"
+    },
+    {
+      "bytes": 3758,
+      "rel": "aider/website/docs/git.md",
+      "sha256": "1469e351b879780852b550b3b1d702d26cba36e2a7738b3613e2577441bbcf8c"
+    },
+    {
+      "bytes": 1819,
+      "rel": "aider/website/docs/index.md",
+      "sha256": "274a87d1ef50f7c1ed9d9a2cd22ac16fc3a56535cfb72e9e4c5f0930f58ca463"
+    },
+    {
+      "bytes": 2882,
+      "rel": "aider/website/docs/install.md",
+      "sha256": "e82f091f30c3a6e6257a182ee94c95185c3eac6c67bbc21ceffa2f8524827738"
+    },
+    {
+      "bytes": 783,
+      "rel": "aider/website/docs/install/codespaces.md",
+      "sha256": "6ba394b6f507907b8cd326f959584e302582f9760b91aa3ce9ee9b7b51ece853"
+    },
+    {
+      "bytes": 2094,
+      "rel": "aider/website/docs/install/docker.md",
+      "sha256": "24d9f59dc8626699b87438d43706d694a37f42128f5577f553ab12455761a32c"
+    },
+    {
+      "bytes": 3405,
+      "rel": "aider/website/docs/install/optional.md",
+      "sha256": "b52b739fdc33a9de4f6b148c87391f5b66e87ff877aaadf65ea15359ca50435d"
+    },
+    {
+      "bytes": 86,
+      "rel": "aider/website/docs/install/replit.md",
+      "sha256": "6323a4b2dcfb1aff57dd4a6b4c3561d61e1d43f6585b0faa0f28f27c86bc0318"
+    },
+    {
+      "bytes": 16610,
+      "rel": "aider/website/docs/languages.md",
+      "sha256": "c0aef9601f169e2410792bce5b9dc7dae5435c479ce016ea63a0123d1b948d13"
+    },
+    {
+      "bytes": 242,
+      "rel": "aider/website/docs/leaderboards/by-release-date.md",
+      "sha256": "0ca74c859d18fb679904e22af19f414de2e187996591a562ab94eaba5707646e"
+    },
+    {
+      "bytes": 427,
+      "rel": "aider/website/docs/leaderboards/contrib.md",
+      "sha256": "40379351b5000bb48b379ea18a63cc1c135b1dae0d0d99372b541efee6c577e5"
+    },
+    {
+      "bytes": 5189,
+      "rel": "aider/website/docs/leaderboards/edit.md",
+      "sha256": "92b578539a3421f0f79e3fa430181225821bf64ed3a683c5e6067d2fb7a821bd"
+    },
+    {
+      "bytes": 12389,
+      "rel": "aider/website/docs/leaderboards/index.md",
+      "sha256": "2e12c12afa07c1bf5212d5824411d8f74bce4c32783dc53fbf256da9580dfc30"
+    },
+    {
+      "bytes": 1734,
+      "rel": "aider/website/docs/leaderboards/notes.md",
+      "sha256": "aebac3fc9be9ab72aba28c2edbae74811ece04a6437c04545569b21acdfa03fb"
+    },
+    {
+      "bytes": 3220,
+      "rel": "aider/website/docs/leaderboards/refactor.md",
+      "sha256": "1a6d950f412ee2dff7734dcf3cbb820461aa758e1ec49ecac565a14577bef9a1"
+    },
+    {
+      "bytes": 6064,
+      "rel": "aider/website/docs/legal/contributor-agreement.md",
+      "sha256": "a721a84057a52e15931a3dea5bce4e5dc2acb1166b87721a42421d8077b5fd52"
+    },
+    {
+      "bytes": 8340,
+      "rel": "aider/website/docs/legal/privacy.md",
+      "sha256": "a4277601e9ae64c3cb3b1c834a95df42bcd6c41dec1345b21ccff6a9a629d48c"
+    },
+    {
+      "bytes": 1562,
+      "rel": "aider/website/docs/llms.md",
+      "sha256": "7ead152f9bb35c50426d745b96d21cb87f803b9801dfa0b0de4dba9d7e617080"
+    },
+    {
+      "bytes": 2158,
+      "rel": "aider/website/docs/llms/anthropic.md",
+      "sha256": "4e802ab8103fa9686fadaa44b843c0564e22b58e57df3132fe82adbd6837375e"
+    },
+    {
+      "bytes": 1443,
+      "rel": "aider/website/docs/llms/azure.md",
+      "sha256": "c62b37bf629916d57043dafd2d32aae5f75c8f502c7af515ab2401d6d6fdeca4"
+    },
+    {
+      "bytes": 4368,
+      "rel": "aider/website/docs/llms/bedrock.md",
+      "sha256": "982a37fdbb6540538c893594b34f989383d0093363f0c74a70287aafc0239ed3"
+    },
+    {
+      "bytes": 694,
+      "rel": "aider/website/docs/llms/cohere.md",
+      "sha256": "6e3d63ef8a2cc61149a4c39a5827187583821eb6f7b518939ba3b5012b4fd26a"
+    },
+    {
+      "bytes": 735,
+      "rel": "aider/website/docs/llms/deepseek.md",
+      "sha256": "53424aa6a032c1d74a2a71f26834f369345b506b7046a16c43b44a8ccc8dd497"
+    },
+    {
+      "bytes": 700,
+      "rel": "aider/website/docs/llms/gemini.md",
+      "sha256": "48668ea1843e3d34ee857dc94624966437e46e69b556e04bf9846454331fa449"
+    },
+    {
+      "bytes": 2386,
+      "rel": "aider/website/docs/llms/github.md",
+      "sha256": "bc027382e1eae9c947fc189e671db51ae55ab0add1743046017a83633372dee4"
+    },
+    {
+      "bytes": 699,
+      "rel": "aider/website/docs/llms/groq.md",
+      "sha256": "0db51e8d624e1513ac4bebcb53043554a76c97f9a5a5ac6419def2c0a8b8252e"
+    },
+    {
+      "bytes": 1144,
+      "rel": "aider/website/docs/llms/lm-studio.md",
+      "sha256": "43952268f430bac23c04773df35be8541e09621cc3e10693e672f46817a3a5a9"
+    },
+    {
+      "bytes": 2013,
+      "rel": "aider/website/docs/llms/ollama.md",
+      "sha256": "22770bc88f1eaedc80c5ac21bfb2664f9e7391106b31d834ccf124478bb8558e"
+    },
+    {
+      "bytes": 821,
+      "rel": "aider/website/docs/llms/openai-compat.md",
+      "sha256": "ed0c73ac06981f5e17dd2dcb98075f155d4f6bb605bfb7a2d0cea1b19f8142ae"
+    },
+    {
+      "bytes": 1519,
+      "rel": "aider/website/docs/llms/openai.md",
+      "sha256": "7e1580c8ce3dad59a4a17a94a21c20efa0e456e219c9d10ceabe1751295bdeab"
+    },
+    {
+      "bytes": 2248,
+      "rel": "aider/website/docs/llms/openrouter.md",
+      "sha256": "8fa09faf9b3c4f7dbba5e72e435e0b790dd809eed0a6a8a4a41aa1eca0e178f5"
+    },
+    {
+      "bytes": 2718,
+      "rel": "aider/website/docs/llms/other.md",
+      "sha256": "307adeb47155c898f91e998a95ebbcd4e97011aa7833f2ec6c202ceb09e20bb9"
+    },
+    {
+      "bytes": 1493,
+      "rel": "aider/website/docs/llms/vertex.md",
+      "sha256": "228723a9311ed2c7ad0d9360a4fcca4e4ca825f374cb4e1b0558122d2042f498"
+    },
+    {
+      "bytes": 103,
+      "rel": "aider/website/docs/llms/warnings.md",
+      "sha256": "15586043c4da6b77fe872bbe15536e5b6a768568a2e2144da655b70540d81d5d"
+    },
+    {
+      "bytes": 961,
+      "rel": "aider/website/docs/llms/xai.md",
+      "sha256": "d15274d9d65088a8153c521c6d1f1f001f56fc33cabf1613c05d91d389ac96b7"
+    },
+    {
+      "bytes": 124,
+      "rel": "aider/website/docs/more-info.md",
+      "sha256": "acd7a8148c02edb61c5bbf1869414c9e8580f27a30b8d4c63e8dd12273e7538f"
+    },
+    {
+      "bytes": 3933,
+      "rel": "aider/website/docs/more/analytics.md",
+      "sha256": "073a41bac099ea2f09e29dd4d39fd31df31ab2a2fa5073023f8486cd547c2698"
+    },
+    {
+      "bytes": 3067,
+      "rel": "aider/website/docs/more/edit-formats.md",
+      "sha256": "0d3c5081def0547879813439f47e71dc99b45bb526411bf23e9cf615670657fa"
+    },
+    {
+      "bytes": 9154,
+      "rel": "aider/website/docs/more/infinite-output.md",
+      "sha256": "b27c8167efbc2347412d19f265ea961e8dc0b83a3c665a09f914a80da6a6bf81"
+    },
+    {
+      "bytes": 1131,
+      "rel": "aider/website/docs/recordings/auto-accept-architect.md",
+      "sha256": "4d97fe45b5ff6df3c83e56791d13bd20326905f60b4ec4365e6ea132b5363a36"
+    },
+    {
+      "bytes": 1196,
+      "rel": "aider/website/docs/recordings/dont-drop-original-read-files.md",
+      "sha256": "e4e2aebff9c1d9eb9ff8cc6aec95ffa02491c54fe87745f534ab5150c1dccb93"
+    },
+    {
+      "bytes": 639,
+      "rel": "aider/website/docs/recordings/index.md",
+      "sha256": "21ede5400180d0ac86c6577b0aac695ab8ed7e91d862ab9503e3784296cd1149"
+    },
+    {
+      "bytes": 4476,
+      "rel": "aider/website/docs/recordings/model-accepts-settings.md",
+      "sha256": "4bf52d6eabec2d01eaf87487f6e5ad5473ee18720013e30f964aba9819dc5030"
+    },
+    {
+      "bytes": 4361,
+      "rel": "aider/website/docs/recordings/tree-sitter-language-pack.md",
+      "sha256": "d7fc4c533141d23192d00b06fad272d1cb0ac6dcf5c7d1e06dc7b17e1be56aad"
+    },
+    {
+      "bytes": 3900,
+      "rel": "aider/website/docs/repomap.md",
+      "sha256": "ac41c8843d66c04bb5951155015118ef702f107417be62f280cb8955baf1eec8"
+    },
+    {
+      "bytes": 3123,
+      "rel": "aider/website/docs/scripting.md",
+      "sha256": "163d09dc12d44d402850504ca64d4a6b28f5a5a53573f7d7ca0fb96655452885"
+    },
+    {
+      "bytes": 218,
+      "rel": "aider/website/docs/troubleshooting.md",
+      "sha256": "51816008ff33849c4626aa383c8d3e27e101fb367d1ed46c20a7c23fea9af658"
+    },
+    {
+      "bytes": 704,
+      "rel": "aider/website/docs/troubleshooting/aider-not-found.md",
+      "sha256": "23d5fb29203d35991b509603875f353966e1fe013001633ddaf4210f73d7e19c"
+    },
+    {
+      "bytes": 2960,
+      "rel": "aider/website/docs/troubleshooting/edit-errors.md",
+      "sha256": "29cca0f5fd3692655b931fa91182112c9b32c5cb7b3c370f144eddc9a38e85ea"
+    },
+    {
+      "bytes": 1983,
+      "rel": "aider/website/docs/troubleshooting/imports.md",
+      "sha256": "eb889c4905ed6ae40474c553903e661ba95e934ff2faa7752def20274fdcb54d"
+    },
+    {
+      "bytes": 1807,
+      "rel": "aider/website/docs/troubleshooting/models-and-keys.md",
+      "sha256": "fa5239de8aa4b476b20034f2ed361c281bbfcf810f57572ceb14fcbacb508e2a"
+    },
+    {
+      "bytes": 3247,
+      "rel": "aider/website/docs/troubleshooting/support.md",
+      "sha256": "2a9ff79264f48329f73065686857c374e372fffd38dafdb80a41656a86bf0c15"
+    },
+    {
+      "bytes": 2968,
+      "rel": "aider/website/docs/troubleshooting/token-limits.md",
+      "sha256": "f51ac9045a467ebe82d96c4bb495f4349862dd7f11b6af7b115291b4c3fff7ab"
+    },
+    {
+      "bytes": 134,
+      "rel": "aider/website/docs/troubleshooting/warnings.md",
+      "sha256": "7877f0697f727d91d026c2a04837e4e3e00249e89bdc5dda57a3e3ac5ecbd339"
+    },
+    {
+      "bytes": 15885,
+      "rel": "aider/website/docs/unified-diffs.md",
+      "sha256": "16b627c7e09beb169494b32ea4b5177008f72e96daaa2bed1e43cac180c7d0c1"
+    },
+    {
+      "bytes": 2563,
+      "rel": "aider/website/docs/usage.md",
+      "sha256": "8a5d1b8d1fc83519ac0d36e3d4c3e3cefbd64a228d59f33ffd8c26fea60a9a9e"
+    },
+    {
+      "bytes": 1505,
+      "rel": "aider/website/docs/usage/browser.md",
+      "sha256": "27e56b0f3fa53c1ced181ddeb4bea14128a77225cac4a8d5f1d9c43dce7516be"
+    },
+    {
+      "bytes": 1439,
+      "rel": "aider/website/docs/usage/caching.md",
+      "sha256": "50e5e286fd7eb0abe1fb556443ceb556e5e53993e9de165ef751a689971049df"
+    },
+    {
+      "bytes": 6202,
+      "rel": "aider/website/docs/usage/commands.md",
+      "sha256": "7758ab435a896b5fe6e484d782780f797a4769773d4ef5e1e15e87afe756daf3"
+    },
+    {
+      "bytes": 3239,
+      "rel": "aider/website/docs/usage/conventions.md",
+      "sha256": "b584901ecdca44dd2f5367a697114aaf5e91442ad9925bf33e9fb1b1f7c43a1a"
+    },
+    {
+      "bytes": 4834,
+      "rel": "aider/website/docs/usage/copypaste.md",
+      "sha256": "845f243a8a3cf99a83e4cc4b7e5ac4a213326068533edf7104ab77e3988cfa7f"
+    },
+    {
+      "bytes": 1453,
+      "rel": "aider/website/docs/usage/images-urls.md",
+      "sha256": "86ce6a9e5cadf3d230785c4322eb3de9a7435347eb6f953b97799fa4e606e18f"
+    },
+    {
+      "bytes": 3359,
+      "rel": "aider/website/docs/usage/lint-test.md",
+      "sha256": "b7ac6076b5801b5bd38d4b5ff552d1948dcdab7eba8acf353662eec5cfe5472e"
+    },
+    {
+      "bytes": 6733,
+      "rel": "aider/website/docs/usage/modes.md",
+      "sha256": "77c3d350e91d39ece704688208abcd923b277e10c13ea7230c13e2229e18c2a3"
+    },
+    {
+      "bytes": 3411,
+      "rel": "aider/website/docs/usage/not-code.md",
+      "sha256": "b3322bebad2aabac19e9bd1e3802dc70712d8389bc5e1bab8407f77cc3c7ea21"
+    },
+    {
+      "bytes": 2196,
+      "rel": "aider/website/docs/usage/notifications.md",
+      "sha256": "38a3472fc879c7e006fba56fc64248c06c509be3ba28883bb1ec12a25e52eb4b"
+    },
+    {
+      "bytes": 3324,
+      "rel": "aider/website/docs/usage/tips.md",
+      "sha256": "b26427c6c7f243671c7643f0ef7b934f2aa13d23975ce656d93388fb590cb573"
+    },
+    {
+      "bytes": 2223,
+      "rel": "aider/website/docs/usage/tutorials.md",
+      "sha256": "64a073b5b52db9c1ce8aff61f20bd68964cfe8c4d2b05cb3e2601eb662e1bd86"
+    },
+    {
+      "bytes": 3452,
+      "rel": "aider/website/docs/usage/voice.md",
+      "sha256": "06d5fba474601d15949ab35b4b826cb02f923bc46b27f39eb410ad218a4ed295"
+    },
+    {
+      "bytes": 7940,
+      "rel": "aider/website/docs/usage/watch.md",
+      "sha256": "395175e251adbf5be1497444f0fa71437616fae5d289f6ab51b98b06398b4720"
+    },
+    {
+      "bytes": 3543,
+      "rel": "aider/website/examples/2048-game.md",
+      "sha256": "fd4c99568cecb6522c5b6c0e8a3dacb837e362e5fdd5bbc0b14ee418b2fccf29"
+    },
+    {
+      "bytes": 3610,
+      "rel": "aider/website/examples/README.md",
+      "sha256": "52f523283554f64ba871a0b65db8d7b33903da2178e1d8008d3a6624a417eac1"
+    },
+    {
+      "bytes": 7391,
+      "rel": "aider/website/examples/add-test.md",
+      "sha256": "db69cc4b2f5e9d4389e3687a885390eae17c1c16933b62ddfa18527e1d7014b6"
+    },
+    {
+      "bytes": 1223,
+      "rel": "aider/website/examples/asciinema.md",
+      "sha256": "eb47bb6d861427d9d65168235b92f1f71fe8b0d5d52cbbc8d8c55b7cde9f53e2"
+    },
+    {
+      "bytes": 12186,
+      "rel": "aider/website/examples/census.md",
+      "sha256": "7cf5c0e1baa9b1da22f27cd079f3cb0ea999d029012ed08926bdd139a8b775b9"
+    },
+    {
+      "bytes": 10837,
+      "rel": "aider/website/examples/chat-transcript-css.md",
+      "sha256": "737c75a96d13c79d1537ec8fbd859f91d43efb7508778a966db5ad476b007bbb"
+    },
+    {
+      "bytes": 16298,
+      "rel": "aider/website/examples/complex-change.md",
+      "sha256": "4b6c008b8eb2a58ad3a641852079b4e5e0be4540571e6e213921915566e24ad9"
+    },
+    {
+      "bytes": 3115,
+      "rel": "aider/website/examples/css-exercises.md",
+      "sha256": "aac743bcddec76f23d9606075f7305b16a772d061b6df2109dbeb6bc73173787"
+    },
+    {
+      "bytes": 3502,
+      "rel": "aider/website/examples/hello-world-flask.md",
+      "sha256": "d80df16b41d91a5633bd0624416375ae6ea9066cddbeb1a0596e79cc148cda44"
+    },
+    {
+      "bytes": 558,
+      "rel": "aider/website/examples/hello.md",
+      "sha256": "df5b61c4d20b7ba1cb74e12c6f23e4ee9f117514322391b807fee83117d529eb"
+    },
+    {
+      "bytes": 5656,
+      "rel": "aider/website/examples/no-color.md",
+      "sha256": "f4aaecc228c282e2fa7ad2557a21c191e3848da9dffd75d2bfa504955e7acbd9"
+    },
+    {
+      "bytes": 9223,
+      "rel": "aider/website/examples/pong.md",
+      "sha256": "3e22e4bdeb6b02fe9a47aea905ab3ffef97fa19c96395f198e46a00b27cd735e"
+    },
+    {
+      "bytes": 1946,
+      "rel": "aider/website/examples/semantic-search-replace.md",
+      "sha256": "7afde25845ecb3d7378aa0d2a618cac42d5d9d2e8c0c763b01351bde494f11c8"
+    },
+    {
+      "bytes": 2926,
+      "rel": "aider/website/examples/update-docs.md",
+      "sha256": "ba40015960b15fef8389e912959375348bee6f222cd4d79a0da7f9f21c11ca7c"
+    },
+    {
+      "bytes": 30653,
+      "rel": "aider/website/index.html",
+      "sha256": "24e8c947c172d3687ae7ebf469ebc3c43a2d91c7e61c027e6d43d49827cb347a"
+    },
+    {
+      "bytes": 19648,
+      "rel": "aider/website/install.ps1",
+      "sha256": "30d6685bda00f323607d2874a5c75b3dbe8bac9acd7fa699a40f63bb9152b8d7"
+    },
+    {
+      "bytes": 57501,
+      "rel": "aider/website/install.sh",
+      "sha256": "0c907752bf2a087fecbc0fe9f2dce7f6a6e46f379dfb8e41acf99b6b810b8567"
+    },
+    {
+      "bytes": 3172,
+      "rel": "aider/website/share/index.md",
+      "sha256": "3f9d5a0f0f404fc0156ec53bbfa835b56b8c8e5cbbcbfa6533f648d5271a4fc6"
+    },
+    {
+      "bytes": 1842,
+      "rel": "benchmark/Dockerfile",
+      "sha256": "352813bb478c35b88981d03a23679b33f5d1a78871c53173a68b52422fe68e80"
+    },
+    {
+      "bytes": 5933,
+      "rel": "benchmark/README.md",
+      "sha256": "c87a9cd84c1d55a0d5e3d3b7d61e65d83c0dd6f66fe12310bfd37c5994d22074"
+    },
+    {
+      "bytes": 0,
+      "rel": "benchmark/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 34621,
+      "rel": "benchmark/benchmark.py",
+      "sha256": "ba350b7b3ebcc9da6f588c0724dade552791b3c5edd9f16641eadb5931de9c30"
+    },
+    {
+      "bytes": 493,
+      "rel": "benchmark/clone-exercism.sh",
+      "sha256": "dfff450720e70ef4870519c28197cd5311181261e0cf77e7f13d7ddd32047a8d"
+    },
+    {
+      "bytes": 155,
+      "rel": "benchmark/cpp-test.sh",
+      "sha256": "51184a5f17c90e5cfeec37bb7f7cb37119b9fe7c295621f36bdcef5094713eca"
+    },
+    {
+      "bytes": 545,
+      "rel": "benchmark/docker.sh",
+      "sha256": "1ca9a297c569ef54d90eb98b402ba8e1f30c068f95c145608dada9ddea635fe4"
+    },
+    {
+      "bytes": 110,
+      "rel": "benchmark/docker_build.sh",
+      "sha256": "1c4513d9d8d4b470837cef3de6a7629c9fedbeba445af1823bb52960347d8eb6"
+    },
+    {
+      "bytes": 1705,
+      "rel": "benchmark/install-docker-ubuntu.sh",
+      "sha256": "9f35e821ac0cff8bc8dc35a0a2d3f948a10d1695e7a4584ed33904004566b5be"
+    },
+    {
+      "bytes": 271,
+      "rel": "benchmark/npm-test.sh",
+      "sha256": "4ad9c732f05da5cad4608545454b574c40a97aefb45ead784a31f398b5dad687"
+    },
+    {
+      "bytes": 5346,
+      "rel": "benchmark/over_time.py",
+      "sha256": "c638817a57e80fb11e60425601c380965731ab839d96faf51f438d1e76033477"
+    },
+    {
+      "bytes": 1227,
+      "rel": "benchmark/plot.sh",
+      "sha256": "2aed3e165fde2223baf826918ea7c760ec44e6a57e9292f50fe17b2713304cc9"
+    },
+    {
+      "bytes": 11425,
+      "rel": "benchmark/plots.py",
+      "sha256": "82f99583c5cc6ccf6dd576eacd2ccaac77a445fb1bb2ce286aedb3bec558557a"
+    },
+    {
+      "bytes": 13538,
+      "rel": "benchmark/problem_stats.py",
+      "sha256": "48dcdd6338c8c357c94ddda47c860598f73d2d02683a4cc12f0c0330781e26d1"
+    },
+    {
+      "bytes": 473,
+      "rel": "benchmark/prompts.py",
+      "sha256": "204ff3b6e8d24f854a395e0d66c6bc78f47934059dec7d83b85e530e53446683"
+    },
+    {
+      "bytes": 6467,
+      "rel": "benchmark/refactor_tools.py",
+      "sha256": "4d6c71f566d3c455fb500e4f4921424a4d14fd17f57614c3a4be449d742845e7"
+    },
+    {
+      "bytes": 916,
+      "rel": "benchmark/rsync.sh",
+      "sha256": "4cbb0e5299d7e1ad17ae860e12443252a2639542a5f69ce61fabe9babc49e6ee"
+    },
+    {
+      "bytes": 1354,
+      "rel": "benchmark/rungrid.py",
+      "sha256": "2c21a144a94003093d6fb9541c76b46d76a5ca4ffec602930f67c882a266a7a5"
+    },
+    {
+      "bytes": 163,
+      "rel": "benchmark/swe-bench-lite.txt",
+      "sha256": "64bcfcff8e7b3e369bf796d96974ed448806084e7db1a5b9bd6c664bcec8cb41"
+    },
+    {
+      "bytes": 209,
+      "rel": "benchmark/swe-bench.txt",
+      "sha256": "90b8b273ea3a3f3f9aa8192bc5f10f33c275b27802206f23f27893569fbd69dd"
+    },
+    {
+      "bytes": 3621,
+      "rel": "benchmark/swe_bench.py",
+      "sha256": "07f0616e4aed0e762c7d1a146e684e5511b478692113519662eeec03b045fd26"
+    },
+    {
+      "bytes": 1535,
+      "rel": "benchmark/test_benchmark.py",
+      "sha256": "ae9162efc11cdd126a6e9ac9cb89e3a428f541a5d9d69a9fc8f249ad1a99a3b2"
+    },
+    {
+      "bytes": 2563,
+      "rel": "docker/Dockerfile",
+      "sha256": "0db9cf9b24c471a85faa312b56a71cdacca882fb05108d77825e12fae66e54d6"
+    },
+    {
+      "bytes": 1580,
+      "rel": "pyproject.toml",
+      "sha256": "1faaea506c1d42f5e9db0d7152cea43920596b901e281e27c2655e791284c9ef"
+    },
+    {
+      "bytes": 194,
+      "rel": "pytest.ini",
+      "sha256": "e2a4c6c2b7054950222be00f2e41a01b239cdd21c191f388b7c9650a4855301c"
+    },
+    {
+      "bytes": 12329,
+      "rel": "requirements.txt",
+      "sha256": "5b340fe0a8830196dbfc18098edd73c379eeae05f752ab47979e96cb542f095f"
+    },
+    {
+      "bytes": 13370,
+      "rel": "requirements/common-constraints.txt",
+      "sha256": "9088c6b2548d4785bc57ec71333b4f184a7377767e33356edbf6883b1ae5d008"
+    },
+    {
+      "bytes": 103,
+      "rel": "requirements/pydub.in",
+      "sha256": "3d1696d5ff81adacd0cd5cb5a14c79c99ae51e85d810ddacdc588ecd22531875"
+    },
+    {
+      "bytes": 422,
+      "rel": "requirements/python-compat.in",
+      "sha256": "bd8f578056785f0005e7c95c7a83fad2429d23a8ac3c19c3d58f089e6bdfb95f"
+    },
+    {
+      "bytes": 10,
+      "rel": "requirements/requirements-browser.in",
+      "sha256": "57716129b9bb1b62e7474b384b2b5abeb8c83cd221bdcb001977d81c0c2d433c"
+    },
+    {
+      "bytes": 3734,
+      "rel": "requirements/requirements-browser.txt",
+      "sha256": "44c13f1c4e4ebe43465aceadfadc6144f07d2729d001388ae37781c195360e3b"
+    },
+    {
+      "bytes": 317,
+      "rel": "requirements/requirements-dev.in",
+      "sha256": "ca77ce715bea95e83c6db77f33e007a57b577e99c4bdfff9ed1dca0aeaf010ec"
+    },
+    {
+      "bytes": 8065,
+      "rel": "requirements/requirements-dev.txt",
+      "sha256": "57deef00134d9b9d35e21e8d0d92a1e258b91edd74d35a426bab0631172a9e03"
+    },
+    {
+      "bytes": 455,
+      "rel": "requirements/requirements-help.in",
+      "sha256": "75968fb00892ba5b2c2bc3496a531a218a4966388095f1f8ba4f2d52ce2d16d3"
+    },
+    {
+      "bytes": 9398,
+      "rel": "requirements/requirements-help.txt",
+      "sha256": "5f7750212462dac90cc776a6d1496761c757581ffda873820acb255e8543fab6"
+    },
+    {
+      "bytes": 11,
+      "rel": "requirements/requirements-playwright.in",
+      "sha256": "a188b3e7e65be32db700d668b768b794cb0af81022c17a93950e21cad2c962e1"
+    },
+    {
+      "bytes": 649,
+      "rel": "requirements/requirements-playwright.txt",
+      "sha256": "e271c9bb91117d3ba9b453ea9fc4614d778b8a69aa695c5e0557e4302d879e03"
+    },
+    {
+      "bytes": 998,
+      "rel": "requirements/requirements.in",
+      "sha256": "23e1ec3484e7ae6c161e1d32b2f5d44f64d7a3d259ccbe1b3ae733ca759e7d8b"
+    },
+    {
+      "bytes": 96,
+      "rel": "requirements/tree-sitter.in",
+      "sha256": "340dadda7dffa3b133e9e4ee8fe2f4ee177a4de891f8c8fb5710f834c1bbba89"
+    },
+    {
+      "bytes": 8967,
+      "rel": "scripts/30k-image.py",
+      "sha256": "139dc377dd08be94cd3d9f67796491d273361315d8aabe8b2d69f5165eb509cc"
+    },
+    {
+      "bytes": 579,
+      "rel": "scripts/Dockerfile.jekyll",
+      "sha256": "ecbd796792783e780b26a3a4d4db68935122818e47abf82d89dc31dd8295caa4"
+    },
+    {
+      "bytes": 0,
+      "rel": "scripts/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 10066,
+      "rel": "scripts/blame.py",
+      "sha256": "47d5ee789f0ea0d92a5bca65af3d6b69c1703f58fa6f4abf70587099d19bd038"
+    },
+    {
+      "bytes": 10188,
+      "rel": "scripts/clean_metadata.py",
+      "sha256": "2de5b05f243e1921acb62f11ee349c1983de0dc81f5843e7ad63f51735a8be4d"
+    },
+    {
+      "bytes": 1390,
+      "rel": "scripts/dl_icons.py",
+      "sha256": "88c4f39a657843360aaf8bd98ece3896eb41d2268712fae2702afdf150a0e898"
+    },
+    {
+      "bytes": 1356,
+      "rel": "scripts/history_prompts.py",
+      "sha256": "9295841cef209fdd6b7866a79d5f761b91f09394a04c2de64d565b09bc9062df"
+    },
+    {
+      "bytes": 23561,
+      "rel": "scripts/homepage.py",
+      "sha256": "0446da83acdcb8639a390012517cefd7f026a2c18dd45333c62d53d7d6b862a4"
+    },
+    {
+      "bytes": 17667,
+      "rel": "scripts/issues.py",
+      "sha256": "dec1b2a66f5c792cdefb722efcbd088d924e84b15c71cb87cd05933590766c42"
+    },
+    {
+      "bytes": 100,
+      "rel": "scripts/jekyll_build.sh",
+      "sha256": "aa1adfe09c34efbce8609b5ab5a066f855abe06ffeca44de58baf6fcc4582914"
+    },
+    {
+      "bytes": 453,
+      "rel": "scripts/jekyll_run.sh",
+      "sha256": "8ed3c3517fe2ac5cd9bc12d854acf3b5de1b4df48ad0faeca4c5898de8973f86"
+    },
+    {
+      "bytes": 5616,
+      "rel": "scripts/logo_svg.py",
+      "sha256": "a42e12a8c53f04e95ed7b38f676c1b1b0e7a485ee8863222f7276deb93a5b73b"
+    },
+    {
+      "bytes": 3258,
+      "rel": "scripts/my_models.py",
+      "sha256": "00058d4acb4eeeff702b8a28684f77cc20ae22230d63b59d3d88de736942fd1d"
+    },
+    {
+      "bytes": 1304,
+      "rel": "scripts/pip-compile.sh",
+      "sha256": "3ebbf240d09a0b8c4e421087faf2cbfdabd66025065d630dbc073835bf916458"
+    },
+    {
+      "bytes": 11641,
+      "rel": "scripts/recording_audio.py",
+      "sha256": "511bc66942dcc0897c6c3cc5bed90dbbcdc53c7a3d079df9b7353d4a3e0dce26"
+    },
+    {
+      "bytes": 1696,
+      "rel": "scripts/redact-cast.py",
+      "sha256": "dd15d0e5ac02f8fe92cc30c75f70cf922520f4fde8b0c9f90c9b258323362ae3"
+    },
+    {
+      "bytes": 531,
+      "rel": "scripts/tmux_record.sh",
+      "sha256": "a8e8e853680b6ae4d7db029e0597a9b99aad6a718230587cea5479e056a22a14"
+    },
+    {
+      "bytes": 4486,
+      "rel": "scripts/tsl_pack_langs.py",
+      "sha256": "af470fa0a9c65f5208e5feced1d2af38d4101169032159b85d4fd4e17d08ae64"
+    },
+    {
+      "bytes": 220,
+      "rel": "scripts/update-blame.sh",
+      "sha256": "61edb1f421ddaf824aba64970aedc182376b6f128055edccb6223cd318133b70"
+    },
+    {
+      "bytes": 1006,
+      "rel": "scripts/update-docs.sh",
+      "sha256": "7baf6f27d972610efd798df6adda5f72f7608578e663c66610df26e86c104e71"
+    },
+    {
+      "bytes": 4804,
+      "rel": "scripts/update-history.py",
+      "sha256": "7e0a8280379e7533aa5a0563a56f323e15d42c5ecceceb1cf869f0b152709cac"
+    },
+    {
+      "bytes": 5952,
+      "rel": "scripts/versionbump.py",
+      "sha256": "91ba8f5b4512734657ffe8911648a65ec8442528764b9e278910bccf8038337d"
+    },
+    {
+      "bytes": 1684,
+      "rel": "scripts/yank-old-versions.py",
+      "sha256": "ffbb9d07275eff019f695709dfed14e29b125e0ef003b5746a9a9b6dc84c640d"
+    },
+    {
+      "bytes": 0,
+      "rel": "tests/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "rel": "tests/basic/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 4440,
+      "rel": "tests/basic/test_analytics.py",
+      "sha256": "801818c5872e8df796d210ecf1809041bbb03610b514f47f9edf6f7a526667ba"
+    },
+    {
+      "bytes": 6956,
+      "rel": "tests/basic/test_aws_credentials.py",
+      "sha256": "fdff9f0ba37d91e338082fe765f9de22bcdb295c6c1f73335308a2791491d1c4"
+    },
+    {
+      "bytes": 55504,
+      "rel": "tests/basic/test_coder.py",
+      "sha256": "a3d3a1760ac29ae33d9478ea35490eb9af2095dd4e1546d27fdaa8363b2a4bda"
+    },
+    {
+      "bytes": 90081,
+      "rel": "tests/basic/test_commands.py",
+      "sha256": "e94a0b1293191a353dbcabbace9274c0c98d87726bf8e33e84a8da6c74656c02"
+    },
+    {
+      "bytes": 5200,
+      "rel": "tests/basic/test_deprecated.py",
+      "sha256": "502ac075071d5cc7bb6a8897e14c250e30407da325666d4f9689c16cefbdb123"
+    },
+    {
+      "bytes": 17579,
+      "rel": "tests/basic/test_editblock.py",
+      "sha256": "adeb3528434615b088d213601867e8878d098a8a3e1e2c84427a83ae66c158aa"
+    },
+    {
+      "bytes": 5103,
+      "rel": "tests/basic/test_editor.py",
+      "sha256": "d488e628fec22abc5a1b8cc3f1095663cccb4195cf86926949e07c9d77746369"
+    },
+    {
+      "bytes": 3301,
+      "rel": "tests/basic/test_exceptions.py",
+      "sha256": "441607c9d258fbac3f99461b2ccc35af72e370e36dbd9f6c56dfa8916e8351f6"
+    },
+    {
+      "bytes": 3915,
+      "rel": "tests/basic/test_find_or_blocks.py",
+      "sha256": "b2be263d6316e466588a7d1222f156e2b845dd779b5d6cfad53dadc5738407db"
+    },
+    {
+      "bytes": 4349,
+      "rel": "tests/basic/test_history.py",
+      "sha256": "bec09efb16246748c743fc4d1e3c8e7b3381f90e87d077ab638bb6cf375ad6d2"
+    },
+    {
+      "bytes": 24607,
+      "rel": "tests/basic/test_io.py",
+      "sha256": "f5c41cb4b8df04ec6d575a1fdfe1f433ae04ef6501ac08f967dc6004e23d848a"
+    },
+    {
+      "bytes": 3063,
+      "rel": "tests/basic/test_linter.py",
+      "sha256": "99287006e21acdbb56519cffb16988253f8738c8953f7be6a444463b6e259803"
+    },
+    {
+      "bytes": 62437,
+      "rel": "tests/basic/test_main.py",
+      "sha256": "142235548fc5ca33a99973f8a45b12b00b904f053d55e0192aea8f8264676a13"
+    },
+    {
+      "bytes": 3173,
+      "rel": "tests/basic/test_model_info_manager.py",
+      "sha256": "ff836743333227922204fc3f6666e261860271b49f4b696eca5bf01bd3c5ace7"
+    },
+    {
+      "bytes": 22037,
+      "rel": "tests/basic/test_models.py",
+      "sha256": "795a7874a2948dd95cdc2e83218fd0794886ba92dce9eafebacd71ce2c77d788"
+    },
+    {
+      "bytes": 19872,
+      "rel": "tests/basic/test_onboarding.py",
+      "sha256": "2041f6ac7229d118e6ec60aeee59712144949dc3f5e5a9f05995106a5f4f1cec"
+    },
+    {
+      "bytes": 2338,
+      "rel": "tests/basic/test_openrouter.py",
+      "sha256": "31a561bb2cb8a6f284aa3749b4d106afc7c98cbf90f8c095d3577211640c1954"
+    },
+    {
+      "bytes": 26048,
+      "rel": "tests/basic/test_reasoning.py",
+      "sha256": "61742abac7fb533b796e480fcb60e510f3126716f38e55f30b260333608418dd"
+    },
+    {
+      "bytes": 29480,
+      "rel": "tests/basic/test_repo.py",
+      "sha256": "d888fd8093bcb7638a586a8249d9a813b75e0bd11acd9a92a02038ed0e3cde0f"
+    },
+    {
+      "bytes": 18820,
+      "rel": "tests/basic/test_repomap.py",
+      "sha256": "4155b4f18992f463e633381e0629306d0fecc3e58d57d2923f4df00a6cf3cd62"
+    },
+    {
+      "bytes": 238,
+      "rel": "tests/basic/test_run_cmd.py",
+      "sha256": "bbec951d0840d2b470c81ac15fb78848f25d70d7ff3538c521393192a76d565b"
+    },
+    {
+      "bytes": 5890,
+      "rel": "tests/basic/test_sanity_check_repo.py",
+      "sha256": "562963f85c90f67106b336b842e928949764f35af3e6d7b7567e6ab139115587"
+    },
+    {
+      "bytes": 1335,
+      "rel": "tests/basic/test_scripting.py",
+      "sha256": "24abc0f766c66ec8cf63e60e01525c3e9ca0fd49a24ea15690a92573000c41b6"
+    },
+    {
+      "bytes": 6178,
+      "rel": "tests/basic/test_sendchat.py",
+      "sha256": "d5a49f40036b29999d7abe580e0432008688b595bee9056ff6c6eee18d71d5c7"
+    },
+    {
+      "bytes": 1937,
+      "rel": "tests/basic/test_special.py",
+      "sha256": "8850402b3fb5f2f90cc0ec53a10ed5edae1667d82cf91937e5fe733e39b6b6d2"
+    },
+    {
+      "bytes": 3250,
+      "rel": "tests/basic/test_ssl_verification.py",
+      "sha256": "9cab50367288fc56a35bdf4a3310559174314d376714dd72805465001b98c791"
+    },
+    {
+      "bytes": 3170,
+      "rel": "tests/basic/test_udiff.py",
+      "sha256": "176d8106722636c30f303022aff5852f64cc4c0110cfa32b6a3da30a82422755"
+    },
+    {
+      "bytes": 410,
+      "rel": "tests/basic/test_urls.py",
+      "sha256": "3d7cced2ac9843f566890d8caa1810931c0c4d8660bf2db236e7eec0cd5923e9"
+    },
+    {
+      "bytes": 410,
+      "rel": "tests/basic/test_utils.py",
+      "sha256": "06cef6bcb19d0c8cca765bfc6a0fc956f733ac545b93091f424f533794605deb"
+    },
+    {
+      "bytes": 3243,
+      "rel": "tests/basic/test_voice.py",
+      "sha256": "2a7a5379fc365409b00d9a4e163e5ecb3c437fa71b4550013808f4a5545d10f0"
+    },
+    {
+      "bytes": 5991,
+      "rel": "tests/basic/test_watch.py",
+      "sha256": "05ba6a4546d69d30653b76a4e5a091e10da8e37fd941b98d96141e4432d84b96"
+    },
+    {
+      "bytes": 12313,
+      "rel": "tests/basic/test_wholefile.py",
+      "sha256": "672928c94ee07ee7a97e0d35a7d1e45b1aec8ab13ebb7420fcaf4506e07ed6b3"
+    },
+    {
+      "bytes": 895,
+      "rel": "tests/browser/test_browser.py",
+      "sha256": "63d2c68b4eae139ca6f86bc2fc9d759318217bf364efb114fe5fa1c381f64352"
+    },
+    {
+      "bytes": 987911,
+      "rel": "tests/fixtures/chat-history-search-replace-gold.txt",
+      "sha256": "0bac323e554c1d7e7bbc56a24a7a7b5c8f2b1c17230969213660566f90c8f2b5"
+    },
+    {
+      "bytes": 4153283,
+      "rel": "tests/fixtures/chat-history.md",
+      "sha256": "a9a89dfd830af253103f86ff25dcba55364b22db779664d2fb36a3c2fd058710"
+    },
+    {
+      "bytes": 429,
+      "rel": "tests/fixtures/languages/arduino/test.ino",
+      "sha256": "15ed8a301b2bd9ca99801d0574ad436e18960275ad52eb7aab0c672bb11a591b"
+    },
+    {
+      "bytes": 181,
+      "rel": "tests/fixtures/languages/bash/test.sh",
+      "sha256": "4f13003448d03ceb24f912724a43eed25d42c6de6194537cc67a027d55116755"
+    },
+    {
+      "bytes": 345,
+      "rel": "tests/fixtures/languages/c/test.c",
+      "sha256": "266133a0fa57ac4ba35ebe2afc5788faefd24922a160911e532076de14772b37"
+    },
+    {
+      "bytes": 277,
+      "rel": "tests/fixtures/languages/chatito/test.chatito",
+      "sha256": "f37587bfd2de5a1f513b6bb0baeacfdda6ed02dbf0336dcbdeeb9265879bf078"
+    },
+    {
+      "bytes": 101,
+      "rel": "tests/fixtures/languages/clojure/test.clj",
+      "sha256": "737210db3bb39f1f3cc3da66865dc64705b42bbe266e10432bd388a5062546e9"
+    },
+    {
+      "bytes": 523,
+      "rel": "tests/fixtures/languages/commonlisp/test.lisp",
+      "sha256": "8198d717a68a27499937f9aa987ef8ea8d77ab6280a97d5990f6b7422308b181"
+    },
+    {
+      "bytes": 97,
+      "rel": "tests/fixtures/languages/cpp/test.cpp",
+      "sha256": "e16b4b4c8be579815466daffd436846d51cba2600b7bb419853c09249114ea71"
+    },
+    {
+      "bytes": 964,
+      "rel": "tests/fixtures/languages/csharp/test.cs",
+      "sha256": "59027e3bc7418a58d179e5448e765886fc824ddecacdb825cfb1bf03d465fc41"
+    },
+    {
+      "bytes": 416,
+      "rel": "tests/fixtures/languages/d/test.d",
+      "sha256": "a27a0c1b0a80114b32c61ebe6c733bf14d38b0cc3785fe2cb5368ca7010460a1"
+    },
+    {
+      "bytes": 369,
+      "rel": "tests/fixtures/languages/dart/test.dart",
+      "sha256": "43f2f7bd939d85e54801f872e22ceca31faf478f90a85c93bb8a2a336dae9597"
+    },
+    {
+      "bytes": 653,
+      "rel": "tests/fixtures/languages/elisp/test.el",
+      "sha256": "f525f6be489a488a669853e3b0de4d6863edf8325ca785db91090e62eae9009b"
+    },
+    {
+      "bytes": 83,
+      "rel": "tests/fixtures/languages/elixir/test.ex",
+      "sha256": "391b748c27f31376c2742322c556e36bca2f44562b16209ff0d6b5d13a4e1f1d"
+    },
+    {
+      "bytes": 1033,
+      "rel": "tests/fixtures/languages/elm/test.elm",
+      "sha256": "85686a7050325eecfc03c72375bd2decf86a872423aef2c324fa46362587c6bc"
+    },
+    {
+      "bytes": 137,
+      "rel": "tests/fixtures/languages/gleam/test.gleam",
+      "sha256": "728d52c005c6d3cb36fa533d59ba7d1ebb29229e68bae202ea42a52d4a9b18ad"
+    },
+    {
+      "bytes": 772,
+      "rel": "tests/fixtures/languages/go/test.go",
+      "sha256": "05bbd979a0cc1c0b740609bb5ed7e33b494a9e4c07b55b52e1f1140737fd646b"
+    },
+    {
+      "bytes": 98,
+      "rel": "tests/fixtures/languages/haskell/test.hs",
+      "sha256": "af8d8f2dcfb14ccc433c574d3e965be18e51e83f9e44897303c720f5231e8c9b"
+    },
+    {
+      "bytes": 1076,
+      "rel": "tests/fixtures/languages/hcl/test.tf",
+      "sha256": "0278a98c9d3bc39e947d00aafe39d50a0c42da40d8abc84b8a293150e1c6a3b3"
+    },
+    {
+      "bytes": 369,
+      "rel": "tests/fixtures/languages/java/test.java",
+      "sha256": "816183cbaf0e95f5043007c595350855d44891b8b246f17afb5dff82fa173064"
+    },
+    {
+      "bytes": 440,
+      "rel": "tests/fixtures/languages/javascript/test.js",
+      "sha256": "83ea8deb96446b487acc2a53354a9e711d58fd77c9f2c1114640428c6d9af7d6"
+    },
+    {
+      "bytes": 302,
+      "rel": "tests/fixtures/languages/kotlin/test.kt",
+      "sha256": "c6966cd15ed5acdbe1fdb79fef65a387535d2c947bf79f06813daaefa7da6af0"
+    },
+    {
+      "bytes": 462,
+      "rel": "tests/fixtures/languages/lua/test.lua",
+      "sha256": "eaaafe7e73acca5aec0f73f7c80589c87d64ff866a0e114d34fe0debddff2199"
+    },
+    {
+      "bytes": 1015,
+      "rel": "tests/fixtures/languages/matlab/test.m",
+      "sha256": "f81fbbbf17bb4965c98648edbb86620c942d1f1746ba3bd7865989eac7975ae7"
+    },
+    {
+      "bytes": 368,
+      "rel": "tests/fixtures/languages/ocaml/test.ml",
+      "sha256": "ce78e33486854cf06f393715c3e071c873c3cf4cd514ebaa81341a8ef3400b8a"
+    },
+    {
+      "bytes": 229,
+      "rel": "tests/fixtures/languages/ocaml_interface/test.mli",
+      "sha256": "ff692709218a0901324c46cbd4842625e268d3e2a6d9b341be0b88515e2d6baa"
+    },
+    {
+      "bytes": 61,
+      "rel": "tests/fixtures/languages/php/test.php",
+      "sha256": "6dcc84b0357b65aceb827147de9d5a75a281ec312f1fbe4b1beae8c64b63ec41"
+    },
+    {
+      "bytes": 183,
+      "rel": "tests/fixtures/languages/pony/test.pony",
+      "sha256": "1e2077dac69c6f5155ff846f3d95ae4fa50829a10fdbd4bbe5d2fed4cb0fd234"
+    },
+    {
+      "bytes": 290,
+      "rel": "tests/fixtures/languages/properties/test.properties",
+      "sha256": "ab1fa61233af1fb47fba3b2ec19cf98a5f5bc88649239b7c837aac108bddd0a4"
+    },
+    {
+      "bytes": 680,
+      "rel": "tests/fixtures/languages/python/test.py",
+      "sha256": "3a8f8b5d4b8b04449981e81e5f6b445192021ed5809504511657bf4e5f73478e"
+    },
+    {
+      "bytes": 50,
+      "rel": "tests/fixtures/languages/ql/test.ql",
+      "sha256": "4b40e88a22d1b8b41694f373e4afd97896f7f6b7d9175079840d5c4dd7d9285e"
+    },
+    {
+      "bytes": 395,
+      "rel": "tests/fixtures/languages/r/test.r",
+      "sha256": "f2b308d3ba5e3297cacce9fb531e0e7c25979d9ed726a382476c8f2fbadb35c4"
+    },
+    {
+      "bytes": 144,
+      "rel": "tests/fixtures/languages/racket/test.rkt",
+      "sha256": "7eba04361631e5e155180d33878e6632a3056ad060ca8f65b91ddfe1041534fa"
+    },
+    {
+      "bytes": 45,
+      "rel": "tests/fixtures/languages/ruby/test.rb",
+      "sha256": "6fcdf9f9f96fdae10f6a009e88f76e3b560b098cedc84fb97b0d5bb244b0db00"
+    },
+    {
+      "bytes": 632,
+      "rel": "tests/fixtures/languages/rust/test.rs",
+      "sha256": "4043d3fa06aad5ef0eb5b467f44a8c27c7c1d5a65170e975b253a3d9aa2c260d"
+    },
+    {
+      "bytes": 1280,
+      "rel": "tests/fixtures/languages/scala/test.scala",
+      "sha256": "df740844d06fdf63c64e05a7a2b49a0567baf5aaa9af06d8b4b6ba52e47d1e25"
+    },
+    {
+      "bytes": 451,
+      "rel": "tests/fixtures/languages/solidity/test.sol",
+      "sha256": "85004987d3a165d0c7d18e3c7fa8c5885a8e9b2cfca625046aaa8d25385a33be"
+    },
+    {
+      "bytes": 312,
+      "rel": "tests/fixtures/languages/swift/test.swift",
+      "sha256": "79693f6aadaf0e958c9872c8dc1a6f60a7fb0cd6158e88366d09ffa916b16bc3"
+    },
+    {
+      "bytes": 733,
+      "rel": "tests/fixtures/languages/tsx/test.tsx",
+      "sha256": "101d02688e94945b16f6f78eca2a22234532c33d47f5b042325286369aeee0a4"
+    },
+    {
+      "bytes": 75,
+      "rel": "tests/fixtures/languages/typescript/test.ts",
+      "sha256": "df58429c82ba9272018a0f038da5da9e88d0d5af7e7657f0bd0c6a24e97a3ef8"
+    },
+    {
+      "bytes": 545,
+      "rel": "tests/fixtures/languages/udev/test.rules",
+      "sha256": "1a8627f6bfd8fa5c861b0043a5d86c416c158ab660a1a5869f7c15ad9d715a9b"
+    },
+    {
+      "bytes": 197,
+      "rel": "tests/fixtures/languages/zig/test.zig",
+      "sha256": "f523c00a9dee7f39c68cfdc0d63730e38f50d2efcceb15bf1d6b698fbae13fb1"
+    },
+    {
+      "bytes": 1276,
+      "rel": "tests/fixtures/sample-code-base-repo-map.txt",
+      "sha256": "2fd7f7c9964d527d1f897c6bb9a6dfc807129dbe7975438030395332eb1843f4"
+    },
+    {
+      "bytes": 1356,
+      "rel": "tests/fixtures/sample-code-base/sample.js",
+      "sha256": "89cae2395238af2e461167ff5f2814bad9e9e17bf171352677dacede5c77a7f3"
+    },
+    {
+      "bytes": 1722,
+      "rel": "tests/fixtures/sample-code-base/sample.py",
+      "sha256": "8812b23090d3e7b62ba707f856eab9586d3c3823d703461e862c1f3cf38926b9"
+    },
+    {
+      "bytes": 633,
+      "rel": "tests/fixtures/watch.js",
+      "sha256": "205544e77dec1a58d2246414a863fca8798a7c4da6659a98bf56425e0a6d2fac"
+    },
+    {
+      "bytes": 445,
+      "rel": "tests/fixtures/watch.lisp",
+      "sha256": "38a32bd9ce5602390d842accee5ec7dba8050bf7222737f66b0d8d4079724390"
+    },
+    {
+      "bytes": 368,
+      "rel": "tests/fixtures/watch.py",
+      "sha256": "e339ccd751699bff29e42276f34933bf39cbb630fb20076d5dc80fd8810d93b2"
+    },
+    {
+      "bytes": 225,
+      "rel": "tests/fixtures/watch_question.js",
+      "sha256": "7ee5ed811c65aac79c3673df3476adb8d2c50001b4436ee9947c415e930643c3"
+    },
+    {
+      "bytes": 5286,
+      "rel": "tests/help/test_help.py",
+      "sha256": "f8a293f6420afe8d056fd0bebc53020ae1af6626544abe742b878c65bae87605"
+    },
+    {
+      "bytes": 4209,
+      "rel": "tests/scrape/test_playwright_disable.py",
+      "sha256": "f7475024df7cf0866e92b3ffad24e107c7968b6286de2112c4a0d03efc47422f"
+    },
+    {
+      "bytes": 6444,
+      "rel": "tests/scrape/test_scrape.py",
+      "sha256": "6c804ad0a22f143962230222d54ee99da1281923d4eb3ec1e40be3198d91c361"
+    }
+  ],
+  "schema": "yaiwes.frontend.copy-batches.v1"
+}

@@ -1,0 +1,38 @@
+<h2>实验成功判定方式</h2>
+<p class="subtitle">怎么判断一个实验"成功了"——决定了 debug 循环何时停止、何时推进到下一阶段</p>
+
+<div class="options">
+  <div class="option" data-choice="metric" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>指标解析 + 目标对比（AI Scientist-v2 风格）</h3>
+      <p>ExperimentPlan 中预先定义目标指标（如 accuracy >= 0.9）。ResultParser 从 stdout 正则提取数值，自动对比判定 pass/fail</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优点</h4><ul><li>全自动，不需要 LLM</li><li>可量化，可重现</li><li>与 AI Scientist-v2 一致</li></ul></div>
+        <div class="cons"><h4>缺点</h4><ul><li>依赖 stdout 格式规范</li><li>无法判断定性结果（如图像质量）</li></ul></div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="llm_judge" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>LLM Judge 判定</h3>
+      <p>将实验 stdout + stderr + 预期目标发给 LLM，让 LLM 判断是否达到目标并输出理由</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优点</h4><ul><li>可处理定性目标</li><li>灵活，适应各种输出格式</li></ul></div>
+        <div class="cons"><h4>缺点</h4><ul><li>消耗 token</li><li>判定可能不一致</li><li>每次 run 结果可能不同</li></ul></div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="both" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>双层判定（推荐）</h3>
+      <p>优先指标解析（快速、零 token）。如果 ExperimentPlan 中定义了数值指标就用它；如果只有定性目标（"改善生成图像的多样性"）或指标解析失败，fallback 到 LLM Judge</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优点</h4><ul><li>能定量的不浪费 token</li><li>定性的也能处理</li><li>渐进式能力</li></ul></div>
+        <div class="cons"><h4>缺点</h4><ul><li>两种实现</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>

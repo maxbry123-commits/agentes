@@ -1,0 +1,24 @@
+[package]
+name = "opendev-tools-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Tool framework foundation for OpenDev: traits, registry, policies, and sanitization"
+
+[dependencies]
+opendev-models = { workspace = true }
+opendev-config = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+regex = { workspace = true }
+dirs = "6"
+uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["full", "test-util"] }

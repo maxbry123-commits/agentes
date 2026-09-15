@@ -1,0 +1,33 @@
+[package]
+name = "opendev-repl"
+description = "REPL loop and command handling for OpenDev"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+opendev-models = { workspace = true }
+opendev-config = { workspace = true }
+opendev-agents = { workspace = true }
+opendev-tools-core = { workspace = true }
+opendev-history = { workspace = true }
+opendev-runtime = { workspace = true }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+regex = { workspace = true }
+base64 = "0.22"
+reqwest = { version = "0.13", features = ["json", "rustls"] }
+sha2 = "0.10"
+dirs = "6"
+uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["test-util", "macros"] }

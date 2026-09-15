@@ -1,0 +1,22 @@
+[project]
+name = "research-agent-lab"
+version = "0.1.0"
+description = "Local-first scaffold for reusable scientific multi-agent workflows"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+integrations = [
+  "pyyaml>=6.0",
+  "httpx>=0.27",
+  "qdrant-client>=1.9",
+]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.6",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+

@@ -1,0 +1,12 @@
+{
+  "experiment_id": "experiment_29f8eb5eb785",
+  "decision_id": "decision_e8a7b2a3b05f",
+  "action": "hold",
+  "reason": "no experiment results to evaluate",
+  "based_on_result_ids": [],
+  "suggestion": "run AutonomousExperimentAgent to execute smoke tests",
+  "requires_human_approval": true,
+  "notes": [
+    "no results found in state"
+  ]
+}

@@ -1,0 +1,1389 @@
+{
+  "batches": 3,
+  "completed": {
+    ".claude-plugin/marketplace.json": "COPIED_VERIFIED",
+    ".claude/commands/commit-push-pr.md": "COPIED_VERIFIED",
+    ".claude/commands/dedupe.md": "COPIED_VERIFIED",
+    ".claude/commands/triage-issue.md": "COPIED_VERIFIED",
+    ".devcontainer/Dockerfile": "COPIED_VERIFIED",
+    ".devcontainer/devcontainer.json": "COPIED_VERIFIED",
+    ".devcontainer/init-firewall.sh": "COPIED_VERIFIED",
+    ".gitattributes": "COPIED_VERIFIED",
+    ".github/ISSUE_TEMPLATE/bug_report.yml": "COPIED_VERIFIED",
+    ".github/ISSUE_TEMPLATE/config.yml": "COPIED_VERIFIED",
+    ".github/ISSUE_TEMPLATE/documentation.yml": "COPIED_VERIFIED",
+    ".github/ISSUE_TEMPLATE/feature_request.yml": "COPIED_VERIFIED",
+    ".github/ISSUE_TEMPLATE/model_behavior.yml": "COPIED_VERIFIED",
+    ".github/workflows/auto-close-duplicates.yml": "COPIED_VERIFIED",
+    ".github/workflows/backfill-duplicate-comments.yml": "COPIED_VERIFIED",
+    ".github/workflows/claude-dedupe-issues.yml": "COPIED_VERIFIED",
+    ".github/workflows/claude-issue-triage.yml": "COPIED_VERIFIED",
+    ".github/workflows/claude.yml": "COPIED_VERIFIED",
+    ".github/workflows/issue-lifecycle-comment.yml": "COPIED_VERIFIED",
+    ".github/workflows/issue-opened-dispatch.yml": "COPIED_VERIFIED",
+    ".github/workflows/lock-closed-issues.yml": "COPIED_VERIFIED",
+    ".github/workflows/log-issue-events.yml": "COPIED_VERIFIED",
+    ".github/workflows/non-write-users-check.yml": "COPIED_VERIFIED",
+    ".github/workflows/remove-autoclose-label.yml": "COPIED_VERIFIED",
+    ".github/workflows/sweep.yml": "COPIED_VERIFIED",
+    ".gitignore": "COPIED_VERIFIED",
+    ".vscode/extensions.json": "COPIED_VERIFIED",
+    "CHANGELOG.md": "COPIED_VERIFIED",
+    "LICENSE.md": "COPIED_VERIFIED",
+    "README.md": "COPIED_VERIFIED",
+    "SECURITY.md": "COPIED_VERIFIED",
+    "Script/run_devcontainer_claude_code.ps1": "COPIED_VERIFIED",
+    "demo.gif.chunks/demo.gif.part-0000": "COPIED_VERIFIED",
+    "demo.gif.chunks/demo.gif.part-0001": "COPIED_VERIFIED",
+    "examples/gateway/aws/.dockerignore": "COPIED_VERIFIED",
+    "examples/gateway/aws/.gitignore": "COPIED_VERIFIED",
+    "examples/gateway/aws/Dockerfile": "COPIED_VERIFIED",
+    "examples/gateway/aws/README.md": "COPIED_VERIFIED",
+    "examples/gateway/aws/gateway.yaml.example": "COPIED_VERIFIED",
+    "examples/gateway/aws/setup.sh": "COPIED_VERIFIED",
+    "examples/gateway/aws/terraform/.gitignore": "COPIED_VERIFIED",
+    "examples/gateway/aws/terraform/README.md": "COPIED_VERIFIED",
+    "examples/gateway/aws/terraform/main.tf": "COPIED_VERIFIED",
+    "examples/gateway/aws/terraform/outputs.tf": "COPIED_VERIFIED",
+    "examples/gateway/aws/terraform/terraform.tfvars.example": "COPIED_VERIFIED",
+    "examples/gateway/aws/terraform/variables.tf": "COPIED_VERIFIED",
+    "examples/gateway/aws/terraform/versions.tf": "COPIED_VERIFIED",
+    "examples/gateway/gcp/.dockerignore": "COPIED_VERIFIED",
+    "examples/gateway/gcp/.gitignore": "COPIED_VERIFIED",
+    "examples/gateway/gcp/Dockerfile": "COPIED_VERIFIED",
+    "examples/gateway/gcp/README.md": "COPIED_VERIFIED",
+    "examples/gateway/gcp/gateway.yaml.example": "COPIED_VERIFIED",
+    "examples/gateway/gcp/setup.sh": "COPIED_VERIFIED",
+    "examples/gateway/gcp/terraform/.gitignore": "COPIED_VERIFIED",
+    "examples/gateway/gcp/terraform/README.md": "COPIED_VERIFIED",
+    "examples/gateway/gcp/terraform/main.tf": "COPIED_VERIFIED",
+    "examples/gateway/gcp/terraform/outputs.tf": "COPIED_VERIFIED",
+    "examples/gateway/gcp/terraform/terraform.tfvars.example": "COPIED_VERIFIED",
+    "examples/gateway/gcp/terraform/variables.tf": "COPIED_VERIFIED",
+    "examples/gateway/gcp/terraform/versions.tf": "COPIED_VERIFIED",
+    "examples/hooks/bash_command_validator_example.py": "COPIED_VERIFIED",
+    "examples/mdm/README.md": "COPIED_VERIFIED",
+    "examples/mdm/macos/com.anthropic.claudecode.mobileconfig": "COPIED_VERIFIED",
+    "examples/mdm/macos/com.anthropic.claudecode.plist": "COPIED_VERIFIED",
+    "examples/mdm/managed-settings.json": "COPIED_VERIFIED",
+    "examples/mdm/windows/ClaudeCode.admx": "COPIED_VERIFIED",
+    "examples/mdm/windows/Set-ClaudeCodePolicy.ps1": "COPIED_VERIFIED",
+    "examples/mdm/windows/en-US/ClaudeCode.adml": "COPIED_VERIFIED",
+    "examples/settings/README.md": "COPIED_VERIFIED",
+    "examples/settings/settings-bash-sandbox.json": "COPIED_VERIFIED",
+    "examples/settings/settings-lax.json": "COPIED_VERIFIED",
+    "examples/settings/settings-strict.json": "COPIED_VERIFIED",
+    "feed.xml": "COPIED_VERIFIED",
+    "plugins/README.md": "COPIED_VERIFIED",
+    "plugins/agent-sdk-dev/.claude-plugin/plugin.json": "COPIED_VERIFIED",
+    "plugins/agent-sdk-dev/README.md": "COPIED_VERIFIED",
+    "plugins/agent-sdk-dev/agents/agent-sdk-verifier-py.md": "COPIED_VERIFIED",
+    "plugins/agent-sdk-dev/agents/agent-sdk-verifier-ts.md": "COPIED_VERIFIED",
+    "plugins/agent-sdk-dev/commands/new-sdk-app.md": "COPIED_VERIFIED",
+    "plugins/claude-opus-4-5-migration/.claude-plugin/plugin.json": "COPIED_VERIFIED",
+    "plugins/claude-opus-4-5-migration/README.md": "COPIED_VERIFIED",
+    "plugins/claude-opus-4-5-migration/skills/claude-opus-4-5-migration/SKILL.md": "COPIED_VERIFIED",
+    "plugins/claude-opus-4-5-migration/skills/claude-opus-4-5-migration/references/effort.md": "COPIED_VERIFIED",
+    "plugins/claude-opus-4-5-migration/skills/claude-opus-4-5-migration/references/prompt-snippets.md": "COPIED_VERIFIED",
+    "plugins/code-review/.claude-plugin/plugin.json": "COPIED_VERIFIED",
+    "plugins/code-review/README.md": "COPIED_VERIFIED",
+    "plugins/code-review/commands/code-review.md": "COPIED_VERIFIED",
+    "plugins/commit-commands/.claude-plugin/plugin.json": "COPIED_VERIFIED",
+    "plugins/commit-commands/README.md": "COPIED_VERIFIED",
+    "plugins/commit-commands/commands/clean_gone.md": "COPIED_VERIFIED",
+    "plugins/commit-commands/commands/commit-push-pr.md": "COPIED_VERIFIED",
+    "plugins/commit-commands/commands/commit.md": "COPIED_VERIFIED",
+    "plugins/explanatory-output-style/.claude-plugin/plugin.json": "COPIED_VERIFIED",
+    "plugins/explanatory-output-style/README.md": "COPIED_VERIFIED",
+    "plugins/explanatory-output-style/hooks-handlers/session-start.sh": "COPIED_VERIFIED",
+    "plugins/explanatory-output-style/hooks/hooks.json": "COPIED_VERIFIED",
+    "plugins/feature-dev/.claude-plugin/plugin.json": "COPIED_VERIFIED",
+    "plugins/feature-dev/README.md": "COPIED_VERIFIED",
+    "plugins/feature-dev/agents/code-architect.md": "COPIED_VERIFIED",
+    "plugins/feature-dev/agents/code-explorer.md": "COPIED_VERIFIED",
+    "plugins/feature-dev/agents/code-reviewer.md": "COPIED_VERIFIED",
+    "plugins/feature-dev/commands/feature-dev.md": "COPIED_VERIFIED",
+    "plugins/frontend-design/.claude-plugin/plugin.json": "COPIED_VERIFIED",
+    "plugins/frontend-design/README.md": "COPIED_VERIFIED",
+    "plugins/frontend-design/skills/frontend-design/SKILL.md": "COPIED_VERIFIED",
+    "plugins/hookify/.claude-plugin/plugin.json": "COPIED_VERIFIED",
+    "plugins/hookify/.gitignore": "COPIED_VERIFIED",
+    "plugins/hookify/README.md": "COPIED_VERIFIED",
+    "plugins/hookify/agents/conversation-analyzer.md": "COPIED_VERIFIED",
+    "plugins/hookify/commands/configure.md": "COPIED_VERIFIED",
+    "plugins/hookify/commands/help.md": "COPIED_VERIFIED",
+    "plugins/hookify/commands/hookify.md": "COPIED_VERIFIED",
+    "plugins/hookify/commands/list.md": "COPIED_VERIFIED",
+    "plugins/hookify/core/__init__.py": "COPIED_VERIFIED",
+    "plugins/hookify/core/config_loader.py": "COPIED_VERIFIED",
+    "plugins/hookify/core/rule_engine.py": "COPIED_VERIFIED",
+    "plugins/hookify/examples/console-log-warning.local.md": "COPIED_VERIFIED",
+    "plugins/hookify/examples/dangerous-rm.local.md": "COPIED_VERIFIED",
+    "plugins/hookify/examples/require-tests-stop.local.md": "COPIED_VERIFIED",
+    "plugins/hookify/examples/sensitive-files-warning.local.md": "COPIED_VERIFIED",
+    "plugins/hookify/hooks/__init__.py": "COPIED_VERIFIED",
+    "plugins/hookify/hooks/hooks.json": "COPIED_VERIFIED",
+    "plugins/hookify/hooks/posttooluse.py": "COPIED_VERIFIED",
+    "plugins/hookify/hooks/pretooluse.py": "COPIED_VERIFIED",
+    "plugins/hookify/hooks/stop.py": "COPIED_VERIFIED",
+    "plugins/hookify/hooks/userpromptsubmit.py": "COPIED_VERIFIED",
+    "plugins/hookify/matchers/__init__.py": "COPIED_VERIFIED",
+    "plugins/hookify/skills/writing-rules/SKILL.md": "COPIED_VERIFIED",
+    "plugins/hookify/utils/__init__.py": "COPIED_VERIFIED",
+    "plugins/learning-output-style/.claude-plugin/plugin.json": "COPIED_VERIFIED",
+    "plugins/learning-output-style/README.md": "COPIED_VERIFIED",
+    "plugins/learning-output-style/hooks-handlers/session-start.sh": "COPIED_VERIFIED",
+    "plugins/learning-output-style/hooks/hooks.json": "COPIED_VERIFIED",
+    "plugins/plugin-dev/README.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/agents/agent-creator.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/agents/plugin-validator.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/agents/skill-reviewer.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/commands/create-plugin.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/agent-development/SKILL.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/agent-development/examples/agent-creation-prompt.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/agent-development/examples/complete-agent-examples.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/agent-development/references/agent-creation-system-prompt.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/agent-development/references/system-prompt-design.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/agent-development/references/triggering-examples.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/agent-development/scripts/validate-agent.sh": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/command-development/README.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/command-development/SKILL.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/command-development/examples/plugin-commands.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/command-development/examples/simple-commands.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/command-development/references/advanced-workflows.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/command-development/references/documentation-patterns.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/command-development/references/frontmatter-reference.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/command-development/references/interactive-commands.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/command-development/references/marketplace-considerations.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/command-development/references/plugin-features-reference.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/command-development/references/testing-strategies.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/hook-development/SKILL.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/hook-development/examples/load-context.sh": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/hook-development/examples/validate-bash.sh": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/hook-development/examples/validate-write.sh": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/hook-development/references/advanced.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/hook-development/references/migration.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/hook-development/references/patterns.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/hook-development/scripts/README.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/hook-development/scripts/hook-linter.sh": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/hook-development/scripts/test-hook.sh": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/hook-development/scripts/validate-hook-schema.sh": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/mcp-integration/SKILL.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/mcp-integration/examples/http-server.json": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/mcp-integration/examples/sse-server.json": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/mcp-integration/examples/stdio-server.json": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/mcp-integration/references/authentication.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/mcp-integration/references/server-types.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/mcp-integration/references/tool-usage.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/plugin-settings/SKILL.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/plugin-settings/examples/create-settings-command.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/plugin-settings/examples/example-settings.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/plugin-settings/examples/read-settings-hook.sh": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/plugin-settings/references/parsing-techniques.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/plugin-settings/references/real-world-examples.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/plugin-settings/scripts/parse-frontmatter.sh": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/plugin-settings/scripts/validate-settings.sh": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/plugin-structure/README.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/plugin-structure/SKILL.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/plugin-structure/examples/advanced-plugin.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/plugin-structure/examples/minimal-plugin.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/plugin-structure/examples/standard-plugin.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/plugin-structure/references/component-patterns.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/plugin-structure/references/manifest-reference.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/skill-development/SKILL.md": "COPIED_VERIFIED",
+    "plugins/plugin-dev/skills/skill-development/references/skill-creator-original.md": "COPIED_VERIFIED",
+    "plugins/pr-review-toolkit/.claude-plugin/plugin.json": "COPIED_VERIFIED",
+    "plugins/pr-review-toolkit/README.md": "COPIED_VERIFIED",
+    "plugins/pr-review-toolkit/agents/code-reviewer.md": "COPIED_VERIFIED",
+    "plugins/pr-review-toolkit/agents/code-simplifier.md": "COPIED_VERIFIED",
+    "plugins/pr-review-toolkit/agents/comment-analyzer.md": "COPIED_VERIFIED",
+    "plugins/pr-review-toolkit/agents/pr-test-analyzer.md": "COPIED_VERIFIED",
+    "plugins/pr-review-toolkit/agents/silent-failure-hunter.md": "COPIED_VERIFIED",
+    "plugins/pr-review-toolkit/agents/type-design-analyzer.md": "COPIED_VERIFIED",
+    "plugins/pr-review-toolkit/commands/review-pr.md": "COPIED_VERIFIED",
+    "plugins/ralph-wiggum/.claude-plugin/plugin.json": "COPIED_VERIFIED",
+    "plugins/ralph-wiggum/README.md": "COPIED_VERIFIED",
+    "plugins/ralph-wiggum/commands/cancel-ralph.md": "COPIED_VERIFIED",
+    "plugins/ralph-wiggum/commands/help.md": "COPIED_VERIFIED",
+    "plugins/ralph-wiggum/commands/ralph-loop.md": "COPIED_VERIFIED",
+    "plugins/ralph-wiggum/hooks/hooks.json": "COPIED_VERIFIED",
+    "plugins/ralph-wiggum/hooks/stop-hook.sh": "COPIED_VERIFIED",
+    "plugins/ralph-wiggum/scripts/setup-ralph-loop.sh": "COPIED_VERIFIED",
+    "plugins/security-guidance/.claude-plugin/plugin.json": "COPIED_VERIFIED",
+    "plugins/security-guidance/README.md": "COPIED_VERIFIED",
+    "plugins/security-guidance/hooks/_base.py": "COPIED_VERIFIED",
+    "plugins/security-guidance/hooks/diffstate.py": "COPIED_VERIFIED",
+    "plugins/security-guidance/hooks/ensure_agent_sdk.py": "COPIED_VERIFIED",
+    "plugins/security-guidance/hooks/extensibility.py": "COPIED_VERIFIED",
+    "plugins/security-guidance/hooks/gitutil.py": "COPIED_VERIFIED",
+    "plugins/security-guidance/hooks/hooks.json": "COPIED_VERIFIED",
+    "plugins/security-guidance/hooks/llm.py": "COPIED_VERIFIED",
+    "plugins/security-guidance/hooks/patterns.py": "COPIED_VERIFIED",
+    "plugins/security-guidance/hooks/review_api.py": "COPIED_VERIFIED",
+    "plugins/security-guidance/hooks/security_reminder_hook.py": "COPIED_VERIFIED",
+    "plugins/security-guidance/hooks/session_state.py": "COPIED_VERIFIED",
+    "plugins/security-guidance/hooks/sg-python.sh": "COPIED_VERIFIED",
+    "scripts/auto-close-duplicates.ts": "COPIED_VERIFIED",
+    "scripts/backfill-duplicate-comments.ts": "COPIED_VERIFIED",
+    "scripts/comment-on-duplicates.sh": "COPIED_VERIFIED",
+    "scripts/edit-issue-labels.sh": "COPIED_VERIFIED",
+    "scripts/gh.sh": "COPIED_VERIFIED",
+    "scripts/issue-lifecycle.ts": "COPIED_VERIFIED",
+    "scripts/lifecycle-comment.ts": "COPIED_VERIFIED",
+    "scripts/sweep.ts": "COPIED_VERIFIED"
+  },
+  "failed": {},
+  "manifest": [
+    {
+      "bytes": 5468,
+      "rel": ".claude-plugin/marketplace.json",
+      "sha256": "663c1abf7f7661453bd5ce2b1ddcd2827b6ef7cad1b0b11f648c9ea08273c6e5"
+    },
+    {
+      "bytes": 795,
+      "rel": ".claude/commands/commit-push-pr.md",
+      "sha256": "15937f2f044999ad650abfb209a5fb36abd3f93f8b7847bf817f4098c2f4fdca"
+    },
+    {
+      "bytes": 1701,
+      "rel": ".claude/commands/dedupe.md",
+      "sha256": "a67ae505d7a11a02e03834b15e83dad161cfc2708a9630648ecfe3e1747b9b52"
+    },
+    {
+      "bytes": 5550,
+      "rel": ".claude/commands/triage-issue.md",
+      "sha256": "d12820dc097b2cac15766aae4090573d05d5be7519ca7a71245e616028edc1eb"
+    },
+    {
+      "bytes": 2507,
+      "rel": ".devcontainer/Dockerfile",
+      "sha256": "c7a479015487f55e42dba0487f8a45c92522b7fe03086fe22a19b0f618411334"
+    },
+    {
+      "bytes": 1662,
+      "rel": ".devcontainer/devcontainer.json",
+      "sha256": "cc0ecd73c98773b065e4713b25fc218d5e4f3414afd0a1f6b2dd7acc84b87916"
+    },
+    {
+      "bytes": 4548,
+      "rel": ".devcontainer/init-firewall.sh",
+      "sha256": "d6da27a11b17bd9b1effa1d8d695e8e223c2214e85949f3afc6b6381d5327bae"
+    },
+    {
+      "bytes": 35,
+      "rel": ".gitattributes",
+      "sha256": "f165e828260735453b5bfb08d09d35e026ecf06e6970a08beb6d77befbc27426"
+    },
+    {
+      "bytes": 5851,
+      "rel": ".github/ISSUE_TEMPLATE/bug_report.yml",
+      "sha256": "ad727a431e8ace6cc5eaa216117dbdd842e55d64de79cbabdba839072ebea94c"
+    },
+    {
+      "bytes": 619,
+      "rel": ".github/ISSUE_TEMPLATE/config.yml",
+      "sha256": "c56ee23aaea23eeeb07058db9c25aa3c2356316902c65b29abe211f3cb8a0129"
+    },
+    {
+      "bytes": 3489,
+      "rel": ".github/ISSUE_TEMPLATE/documentation.yml",
+      "sha256": "dced259933471276e07a2204131a320d41964203e5f4a72d30a09d932c4d6b99"
+    },
+    {
+      "bytes": 4208,
+      "rel": ".github/ISSUE_TEMPLATE/feature_request.yml",
+      "sha256": "2286f60a8ea0adf523ad9ba4ba8dac423fd3e9ad4f2c52703696e2be8d88bc8b"
+    },
+    {
+      "bytes": 6952,
+      "rel": ".github/ISSUE_TEMPLATE/model_behavior.yml",
+      "sha256": "0441ea7b5d486cc4296f705fc59447e101577e1b5ba885f6ef95e347dc71ad4d"
+    },
+    {
+      "bytes": 907,
+      "rel": ".github/workflows/auto-close-duplicates.yml",
+      "sha256": "261cd7972014fb401211ebd4d7fd7cb7354e88ec93478ec86ddff0100e2c7d1b"
+    },
+    {
+      "bytes": 1203,
+      "rel": ".github/workflows/backfill-duplicate-comments.yml",
+      "sha256": "b039d73ede180a68838557ff58ec2f2a6c05c38dd096341743e7b5ab009a9db8"
+    },
+    {
+      "bytes": 3705,
+      "rel": ".github/workflows/claude-dedupe-issues.yml",
+      "sha256": "30e4b59ece566774339fbd22d48f01a1e6b4cc575a68fefd2a410ae64210f6f9"
+    },
+    {
+      "bytes": 1832,
+      "rel": ".github/workflows/claude-issue-triage.yml",
+      "sha256": "c6edc9996fc101da1f6c5a91c8c31cd7528c3fb381b945e3bceb34d6f48642f5"
+    },
+    {
+      "bytes": 1649,
+      "rel": ".github/workflows/claude.yml",
+      "sha256": "5e6864cd67a2dd6e29b02db9f440e04783c306f373dc67856d7e185f5dabde76"
+    },
+    {
+      "bytes": 644,
+      "rel": ".github/workflows/issue-lifecycle-comment.yml",
+      "sha256": "4e0ce9969a938feb090de9d719bfb74019c965b5caccd29ce120fe4237c560b7"
+    },
+    {
+      "bytes": 738,
+      "rel": ".github/workflows/issue-opened-dispatch.yml",
+      "sha256": "7ff9249785ec33ba08f211aa899866bf5081ef3b4301753455088d0b39783e7e"
+    },
+    {
+      "bytes": 2778,
+      "rel": ".github/workflows/lock-closed-issues.yml",
+      "sha256": "f458c35bea52880fe25edb6ff6b9866484a4f654b5efa594c15f5474431e4822"
+    },
+    {
+      "bytes": 1403,
+      "rel": ".github/workflows/log-issue-events.yml",
+      "sha256": "0d6fd4692b6eed0338b828ff0ac2ad8d20e7bfc21d7d10eede8b02e6a363aa5e"
+    },
+    {
+      "bytes": 1601,
+      "rel": ".github/workflows/non-write-users-check.yml",
+      "sha256": "e1829734a83af310b0563076e87f525f6f72629dc6d71b8b4b8fc72805a4dbb0"
+    },
+    {
+      "bytes": 1447,
+      "rel": ".github/workflows/remove-autoclose-label.yml",
+      "sha256": "750e708f9127b04f1378558c5278faabc55209b9605ad1b668ea1e5044827f59"
+    },
+    {
+      "bytes": 724,
+      "rel": ".github/workflows/sweep.yml",
+      "sha256": "5fd72214a5f6f4d711858d55dd9f6a1ef0d38cf5fb0e94cc9fc2553d1f8d4d28"
+    },
+    {
+      "bytes": 11,
+      "rel": ".gitignore",
+      "sha256": "caafcb75ca9f0a55b67ad98232bb8ea46418875f1bf1deeff341587a9d28933d"
+    },
+    {
+      "bytes": 155,
+      "rel": ".vscode/extensions.json",
+      "sha256": "9e22087dace5ce2665c5fa9dee19a1ff08e240176c699a2d3d6b4beee99ce4ed"
+    },
+    {
+      "bytes": 587814,
+      "rel": "CHANGELOG.md",
+      "sha256": "14eceeda4cb6cbf694a0caf3bb5d7e1cd6d1f6cf142a57edd05dd7ffe072c522"
+    },
+    {
+      "bytes": 150,
+      "rel": "LICENSE.md",
+      "sha256": "728158fd1037143fad6907e8fa34804177e598b7326519503fe83cafdef849e6"
+    },
+    {
+      "bytes": 2873,
+      "rel": "README.md",
+      "sha256": "aa0d8b80ac083e1591be0789273f447058cc9187b4331634a5614155da27778d"
+    },
+    {
+      "bytes": 674,
+      "rel": "SECURITY.md",
+      "sha256": "682ab87da77179b60028989b97fa03f0caa063ef16cb9b6cc7b3317146d04503"
+    },
+    {
+      "bytes": 5319,
+      "rel": "Script/run_devcontainer_claude_code.ps1",
+      "sha256": "d1571795e2fa70445ca9cf093117348bff34ccd4ae7ec4c2e0ad4d8af3e7c0e0"
+    },
+    {
+      "bytes": 8388608,
+      "rel": "demo.gif.chunks/demo.gif.part-0000",
+      "sha256": "77bf68642cab1f06ad5340c2518ccd61150b046909186e3149a50750135d81cc"
+    },
+    {
+      "bytes": 2614152,
+      "rel": "demo.gif.chunks/demo.gif.part-0001",
+      "sha256": "aa31603ea8e328707be01f6dcbcb1cdcbbfce851342e5ea6ecc4cbcc10dcc5eb"
+    },
+    {
+      "bytes": 790,
+      "rel": "examples/gateway/aws/.dockerignore",
+      "sha256": "f13b81644272745419188c6a5e1ac494996f247b4c78c224ba0c260c09ad82f6"
+    },
+    {
+      "bytes": 665,
+      "rel": "examples/gateway/aws/.gitignore",
+      "sha256": "ec98cbc66ff534b75599d4bc303d5983e81eedc969d60dad25ae74063f2fb44a"
+    },
+    {
+      "bytes": 3213,
+      "rel": "examples/gateway/aws/Dockerfile",
+      "sha256": "8bf0dbf6a36d5dbea4ca6639e8f9f7a9ffa0cf1676b5e15ebc8bd27e5fc5f88b"
+    },
+    {
+      "bytes": 986,
+      "rel": "examples/gateway/aws/README.md",
+      "sha256": "3274562975b40739f5d960684e33a7bc984aa5efa80df504742987848f75de81"
+    },
+    {
+      "bytes": 10700,
+      "rel": "examples/gateway/aws/gateway.yaml.example",
+      "sha256": "4316fdda2e7910f6e1f6dd2bc26db6f82ab355d699a2cb20aef4a801e8403b01"
+    },
+    {
+      "bytes": 53781,
+      "rel": "examples/gateway/aws/setup.sh",
+      "sha256": "286ca8b1ef3550efb745f7cc6ced035cb58bf27f3c7d94b8d3f27d278b104179"
+    },
+    {
+      "bytes": 860,
+      "rel": "examples/gateway/aws/terraform/.gitignore",
+      "sha256": "c7083fbab7ef9e1514ca9d83305b2ece646ffde3ebaeca177be1ff5166bc5627"
+    },
+    {
+      "bytes": 9189,
+      "rel": "examples/gateway/aws/terraform/README.md",
+      "sha256": "50f56ce2c37f256e3175641d876abb91d7a83486e963dfd8fb06ceb1d78a8d7c"
+    },
+    {
+      "bytes": 21910,
+      "rel": "examples/gateway/aws/terraform/main.tf",
+      "sha256": "b05a09645075676c176fe9263200655461151f610706e4465136174d3e0058bc"
+    },
+    {
+      "bytes": 1173,
+      "rel": "examples/gateway/aws/terraform/outputs.tf",
+      "sha256": "f7caa08115345a7cf5353e2464d3cfcb56befec3833b1afc0491562639547fc7"
+    },
+    {
+      "bytes": 1345,
+      "rel": "examples/gateway/aws/terraform/terraform.tfvars.example",
+      "sha256": "5d32d7e0e03accd69681c19d652369157488104e6b75bedf8a4330a8c81c1366"
+    },
+    {
+      "bytes": 8249,
+      "rel": "examples/gateway/aws/terraform/variables.tf",
+      "sha256": "0e1dae9b124b25eddd368386e65edd486f37fbeb7ad4f0822bb18b11c36c46a2"
+    },
+    {
+      "bytes": 408,
+      "rel": "examples/gateway/aws/terraform/versions.tf",
+      "sha256": "74791dd3e6c293df5666b2436249d0ce2e4fb631997b486ff99ac3a9079fdeeb"
+    },
+    {
+      "bytes": 487,
+      "rel": "examples/gateway/gcp/.dockerignore",
+      "sha256": "050519ec2ab36d09a117e01335cb9d02686f4309f1ffd70edb5e84bc5abee5ff"
+    },
+    {
+      "bytes": 356,
+      "rel": "examples/gateway/gcp/.gitignore",
+      "sha256": "07a77f2facbe2020b452ac6735e9cc3fce3337a12255228386a59fc884390104"
+    },
+    {
+      "bytes": 1274,
+      "rel": "examples/gateway/gcp/Dockerfile",
+      "sha256": "74c0f96e6d7da1623b6c72bb6d2f0e784ab4b772f9838a0ec9dedffda6d60bd5"
+    },
+    {
+      "bytes": 842,
+      "rel": "examples/gateway/gcp/README.md",
+      "sha256": "1433489efa8a2e6b45f448146e7c34e8ff7f767e4b2c691f0c1e78b95ce4c39d"
+    },
+    {
+      "bytes": 9465,
+      "rel": "examples/gateway/gcp/gateway.yaml.example",
+      "sha256": "261dbb659829e8172fb94ecfe037d14ae171553360e607e7589316e1385efe3c"
+    },
+    {
+      "bytes": 30481,
+      "rel": "examples/gateway/gcp/setup.sh",
+      "sha256": "a0748540cfdb48102e1ef1d42601dc22b00c522a5ca2ef01a6424aa012dbbeff"
+    },
+    {
+      "bytes": 420,
+      "rel": "examples/gateway/gcp/terraform/.gitignore",
+      "sha256": "de8caee5595fcab1395b4c4a018a1710f65e6386d1011ab2711f6f8604d5ba24"
+    },
+    {
+      "bytes": 7934,
+      "rel": "examples/gateway/gcp/terraform/README.md",
+      "sha256": "e580550ce87145ae65a1960c4c4f077bd5bbace1b8bed66b9929a34f928c1729"
+    },
+    {
+      "bytes": 16028,
+      "rel": "examples/gateway/gcp/terraform/main.tf",
+      "sha256": "21bed451bd06bd088cd024602056f2f78a70694fca24acda5745538d4d864aca"
+    },
+    {
+      "bytes": 1225,
+      "rel": "examples/gateway/gcp/terraform/outputs.tf",
+      "sha256": "29e7f7e14b587c67106dec0942edcf1116b2eb97ad64cd040d699beb484ed9d8"
+    },
+    {
+      "bytes": 1590,
+      "rel": "examples/gateway/gcp/terraform/terraform.tfvars.example",
+      "sha256": "1223b8b132dddf819deee79c7175b7245f3ab1ec226fdb9ee65aa27c8a698e26"
+    },
+    {
+      "bytes": 7802,
+      "rel": "examples/gateway/gcp/terraform/variables.tf",
+      "sha256": "73a2213f069de8e44ca2ec6761b05ebdb1895bc8a8a39b1786ed6bcf9178f3a4"
+    },
+    {
+      "bytes": 447,
+      "rel": "examples/gateway/gcp/terraform/versions.tf",
+      "sha256": "04a25a624581a4428b6cda5ffaeb395890b508638316c8bfbb9bb94be5bda287"
+    },
+    {
+      "bytes": 2078,
+      "rel": "examples/hooks/bash_command_validator_example.py",
+      "sha256": "0d7a9468405bb614ebddfb56037217cd9282a8045ea87a42cf6ff4099a61820d"
+    },
+    {
+      "bytes": 2357,
+      "rel": "examples/mdm/README.md",
+      "sha256": "18d7c54937e29864625748027d781c3950e0433f3ceed4c7a6e579293d97ab7f"
+    },
+    {
+      "bytes": 1622,
+      "rel": "examples/mdm/macos/com.anthropic.claudecode.mobileconfig",
+      "sha256": "997075f1065d7e9fd94fd7ba9627bcab8d67446745b75cc54670c4c3edfd4567"
+    },
+    {
+      "bytes": 298,
+      "rel": "examples/mdm/macos/com.anthropic.claudecode.plist",
+      "sha256": "ee831bfe20ca14317c54e491b5343173f858be123fcee6ba5ef652637ae97f8d"
+    },
+    {
+      "bytes": 73,
+      "rel": "examples/mdm/managed-settings.json",
+      "sha256": "61592cdc3d8983265ea33becbb59162c75b5cd9e26af7204b09b02c1488b6ad6"
+    },
+    {
+      "bytes": 1242,
+      "rel": "examples/mdm/windows/ClaudeCode.admx",
+      "sha256": "fbbd100c162caf045b1d0bde9153957fa06afb5856430cc40d46cb3dcab99410"
+    },
+    {
+      "bytes": 885,
+      "rel": "examples/mdm/windows/Set-ClaudeCodePolicy.ps1",
+      "sha256": "a885a1ce8e66e8affdef25673d3f4415dfd6474fcc541aa263c82826c39641cc"
+    },
+    {
+      "bytes": 1546,
+      "rel": "examples/mdm/windows/en-US/ClaudeCode.adml",
+      "sha256": "4fa91f6dc322b7a3ebc59696d9fc6f0c710e937d79ef4d61b8dc2fe0c01990ad"
+    },
+    {
+      "bytes": 2031,
+      "rel": "examples/settings/README.md",
+      "sha256": "0826863eed98e1bab546873588784f71fd02b0334ce5df1928cd98a2277359ac"
+    },
+    {
+      "bytes": 442,
+      "rel": "examples/settings/settings-bash-sandbox.json",
+      "sha256": "d3b8f709f9b783b38fac3c10f4c15fa28a8eedb44cd644f1140a788115de5d15"
+    },
+    {
+      "bytes": 106,
+      "rel": "examples/settings/settings-lax.json",
+      "sha256": "668345c00b5622f2d632670e90d681c7fc408f55997f9ad0707bf2b79de54b4a"
+    },
+    {
+      "bytes": 608,
+      "rel": "examples/settings/settings-strict.json",
+      "sha256": "24434853701e419d030668ca1f045f115cb66cca6edc3748dc90c0d3fa558843"
+    },
+    {
+      "bytes": 110324,
+      "rel": "feed.xml",
+      "sha256": "ecaee33caf2cbeaf15412b38c0d9f8eb8aa6828cecccae18831ac6a8a8d67a1f"
+    },
+    {
+      "bytes": 6530,
+      "rel": "plugins/README.md",
+      "sha256": "96f807a4aac7f46abee8a5e03db672c2c0d563b9383fa67cf69d842c26e342d4"
+    },
+    {
+      "bytes": 190,
+      "rel": "plugins/agent-sdk-dev/.claude-plugin/plugin.json",
+      "sha256": "bcef2577cc5cca802a52730cfacccf9d90716fe94b1e0d644fa5159d18d93436"
+    },
+    {
+      "bytes": 6397,
+      "rel": "plugins/agent-sdk-dev/README.md",
+      "sha256": "7f9bc2aac9c7c546e550e2fa2e2d9a66d7ab6bb7dea01a2e07147f78981ba3ee"
+    },
+    {
+      "bytes": 5206,
+      "rel": "plugins/agent-sdk-dev/agents/agent-sdk-verifier-py.md",
+      "sha256": "a72c50412f4f9940932cac0f3ca61d6ced7354b8ac8892e3f1507bcd2957006e"
+    },
+    {
+      "bytes": 5419,
+      "rel": "plugins/agent-sdk-dev/agents/agent-sdk-verifier-ts.md",
+      "sha256": "68fe98341656fa242a5de9272165481d62b5670b2fff294961bc45a5c4ee57ea"
+    },
+    {
+      "bytes": 7846,
+      "rel": "plugins/agent-sdk-dev/commands/new-sdk-app.md",
+      "sha256": "d273539c037e63bec2be30ac0e3474371a8725d7b0c39cb9e4341534fde83fb6"
+    },
+    {
+      "bytes": 234,
+      "rel": "plugins/claude-opus-4-5-migration/.claude-plugin/plugin.json",
+      "sha256": "1ea125290ae839832849b115a4fcf3f89a3085ef0463837b6965cad3ca7ddece"
+    },
+    {
+      "bytes": 707,
+      "rel": "plugins/claude-opus-4-5-migration/README.md",
+      "sha256": "330bc49323afdbc8d61321b07dd5d778499d94a4fe714867b19b9b89c2ae7219"
+    },
+    {
+      "bytes": 4746,
+      "rel": "plugins/claude-opus-4-5-migration/skills/claude-opus-4-5-migration/SKILL.md",
+      "sha256": "ec3f9c16195aaae88003a5ed831f6a66c8fd7b2e0fbd039071107dc788247761"
+    },
+    {
+      "bytes": 1728,
+      "rel": "plugins/claude-opus-4-5-migration/skills/claude-opus-4-5-migration/references/effort.md",
+      "sha256": "1d10254a2089682bedc2dcc68243221f9b67f852fdf8e8992fa3eb1f731763ca"
+    },
+    {
+      "bytes": 6139,
+      "rel": "plugins/claude-opus-4-5-migration/skills/claude-opus-4-5-migration/references/prompt-snippets.md",
+      "sha256": "a6995d7c3588bb55da02eac0aaf438d6f75a0f8203c16c0f621fea384e2ffa51"
+    },
+    {
+      "bytes": 257,
+      "rel": "plugins/code-review/.claude-plugin/plugin.json",
+      "sha256": "3297e7b15efb840a76587a8c6aa043f5a62b0050785442ede6ff395c847140d5"
+    },
+    {
+      "bytes": 7703,
+      "rel": "plugins/code-review/README.md",
+      "sha256": "8ba1b98f4537d70347ec982691a8fc8a1ee4153189877d028375fb644ddc3071"
+    },
+    {
+      "bytes": 7297,
+      "rel": "plugins/code-review/commands/code-review.md",
+      "sha256": "2b0837c5ec0b2e75f8ba4565bdafd76fa916b0dc146608c5733af7ba5802012c"
+    },
+    {
+      "bytes": 258,
+      "rel": "plugins/commit-commands/.claude-plugin/plugin.json",
+      "sha256": "6021809c770a03f8cf5caac36958646551a2b97358bf5d2f0be64e2d03018ed8"
+    },
+    {
+      "bytes": 5908,
+      "rel": "plugins/commit-commands/README.md",
+      "sha256": "03172e9933f1c1556a3a32a98dc54b31e73ebe57d3348e58aced204e0a9f526b"
+    },
+    {
+      "bytes": 1865,
+      "rel": "plugins/commit-commands/commands/clean_gone.md",
+      "sha256": "4f07fa2ccf4f81a69c6455bdc563b53a3d3b20aea6e4e82337c52b172ee02344"
+    },
+    {
+      "bytes": 796,
+      "rel": "plugins/commit-commands/commands/commit-push-pr.md",
+      "sha256": "3bc3d171939149cbbef141cbced553dce6ba6f97dac4a764f4ef1e055c35064d"
+    },
+    {
+      "bytes": 624,
+      "rel": "plugins/commit-commands/commands/commit.md",
+      "sha256": "d1acbc2bf0c50164f48d6bda872de6a343cd9390954ce903c3431c3119e7f8c4"
+    },
+    {
+      "bytes": 293,
+      "rel": "plugins/explanatory-output-style/.claude-plugin/plugin.json",
+      "sha256": "1ef1b51a3856eef109b5294b45cb91e441599b1496984c04bbe7ac8472540efd"
+    },
+    {
+      "bytes": 2470,
+      "rel": "plugins/explanatory-output-style/README.md",
+      "sha256": "543754079554d2c58b72322edebcf09775a5fe74eafe1f5102c496388ab4aa82"
+    },
+    {
+      "bytes": 1468,
+      "rel": "plugins/explanatory-output-style/hooks-handlers/session-start.sh",
+      "sha256": "58efe97b7f5ccd384e0ee12a2f3dd2e75a38df35841a1b27ea6d9eb833c28912"
+    },
+    {
+      "bytes": 314,
+      "rel": "plugins/explanatory-output-style/hooks/hooks.json",
+      "sha256": "2aa8994322de34b3f940d5fd9f37135da11a218fe8b86db19f52de3fbd76a286"
+    },
+    {
+      "bytes": 291,
+      "rel": "plugins/feature-dev/.claude-plugin/plugin.json",
+      "sha256": "191877e5061c5e3750e3b41c6d0d8b761490c40fb58651e5fd5dba34ac4e7700"
+    },
+    {
+      "bytes": 11697,
+      "rel": "plugins/feature-dev/README.md",
+      "sha256": "8dca1b27e026cab4b8bb8118709935b08fc27d2911efd9e1061b9836b534fbc1"
+    },
+    {
+      "bytes": 2259,
+      "rel": "plugins/feature-dev/agents/code-architect.md",
+      "sha256": "c50fb08d59a4bbd19660860626a049e44cf1a2b0c1cf782e6c7a99ba7e71b0c3"
+    },
+    {
+      "bytes": 2115,
+      "rel": "plugins/feature-dev/agents/code-explorer.md",
+      "sha256": "3b277703de7458988ec3b8021c716f79f642e174950ed332629310f68322029a"
+    },
+    {
+      "bytes": 2994,
+      "rel": "plugins/feature-dev/agents/code-reviewer.md",
+      "sha256": "a7df173bf77a00da5584c6401a1061524fdbe477b6fef5dd496d4c7a9113c78c"
+    },
+    {
+      "bytes": 5097,
+      "rel": "plugins/feature-dev/commands/feature-dev.md",
+      "sha256": "652e5d6264fd253fcb70c2f84de986a88d77109a02410aacd90230a6ab4bf557"
+    },
+    {
+      "bytes": 256,
+      "rel": "plugins/frontend-design/.claude-plugin/plugin.json",
+      "sha256": "bbb898b04018cdee70f9fac1f36cf0f1aa75758a0d399c5fb1f776fd7b963e70"
+    },
+    {
+      "bytes": 977,
+      "rel": "plugins/frontend-design/README.md",
+      "sha256": "5351137ecb2c5adfcdbadcdbbeda1eab16409bae98eb53f62f945514552d6706"
+    },
+    {
+      "bytes": 8260,
+      "rel": "plugins/frontend-design/skills/frontend-design/SKILL.md",
+      "sha256": "1608ea77fbb6fc30d13a97d12cfa8ebf31358d40f0dd97beed24829d6b3f45dd"
+    },
+    {
+      "bytes": 234,
+      "rel": "plugins/hookify/.claude-plugin/plugin.json",
+      "sha256": "ca096bda75ed3cd3acbaba2b1940d740b6011303ced368655e18a8430438a148"
+    },
+    {
+      "bytes": 291,
+      "rel": "plugins/hookify/.gitignore",
+      "sha256": "9c4f1216608d920b999f9caee6dd91169b5ea0c12eeb2e2d803cb1be7e922a16"
+    },
+    {
+      "bytes": 7710,
+      "rel": "plugins/hookify/README.md",
+      "sha256": "976542a7e018465e44855bed6f53fae12aea7ca59b6e1db40f8880b72b09e38c"
+    },
+    {
+      "bytes": 5478,
+      "rel": "plugins/hookify/agents/conversation-analyzer.md",
+      "sha256": "535ec8acb55b51bfac83a54f5f5c70746a52adb7a0b785e9be0e376c7e2eb12c"
+    },
+    {
+      "bytes": 2863,
+      "rel": "plugins/hookify/commands/configure.md",
+      "sha256": "1cb84c1055f6069f2b16ee5b8691f776640267d98b65c09fb81c7569b3197c5f"
+    },
+    {
+      "bytes": 4624,
+      "rel": "plugins/hookify/commands/help.md",
+      "sha256": "39529a6e6473c45d08efbcf7053369a17e04cd3fda0bdf6f186eb20c94135d33"
+    },
+    {
+      "bytes": 7667,
+      "rel": "plugins/hookify/commands/hookify.md",
+      "sha256": "7560e58edc6cbb899c0b171292f63654fd1a0bd77354e7f89e2457acd0241e30"
+    },
+    {
+      "bytes": 2020,
+      "rel": "plugins/hookify/commands/list.md",
+      "sha256": "6128e44611d981e911c0e956d619b02924f46407a00bbb9deff2e4f3465b9368"
+    },
+    {
+      "bytes": 0,
+      "rel": "plugins/hookify/core/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 9690,
+      "rel": "plugins/hookify/core/config_loader.py",
+      "sha256": "9f1d083cc43883323ddf00747e7696a4fd9d478ddd63f5b43038657da8516e56"
+    },
+    {
+      "bytes": 10727,
+      "rel": "plugins/hookify/core/rule_engine.py",
+      "sha256": "3bc18bd7167ab4ea2c06b9693b1994d267e0678c9210db9761c93060607f9fce"
+    },
+    {
+      "bytes": 315,
+      "rel": "plugins/hookify/examples/console-log-warning.local.md",
+      "sha256": "240788cba25f5a403f13682c703eb2bed5ef3245aa9e82faaca628288a08e53b"
+    },
+    {
+      "bytes": 278,
+      "rel": "plugins/hookify/examples/dangerous-rm.local.md",
+      "sha256": "fad5e3e0d5dc1f60901d2d4d948a609eeeb69d0e91f49fcb02d81e4e01489acf"
+    },
+    {
+      "bytes": 500,
+      "rel": "plugins/hookify/examples/require-tests-stop.local.md",
+      "sha256": "f5d950883a4c20f1660af1ef589805f73ffe409167eb6b8db9a60b6ad05f7cfb"
+    },
+    {
+      "bytes": 421,
+      "rel": "plugins/hookify/examples/sensitive-files-warning.local.md",
+      "sha256": "f81037232ae3d37bc71f74b49adb16b568fa0bfa1318638c2e019d089480749b"
+    },
+    {
+      "bytes": 0,
+      "rel": "plugins/hookify/hooks/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 1020,
+      "rel": "plugins/hookify/hooks/hooks.json",
+      "sha256": "838dd2ffbe325307cc23a02ef541fd45c25fd42492d64ccbe9ec11233a3a04f0"
+    },
+    {
+      "bytes": 1776,
+      "rel": "plugins/hookify/hooks/posttooluse.py",
+      "sha256": "b440f17f3a6c962d87f094ce8974cb6090881adec2e495eb2356aa89b945f741"
+    },
+    {
+      "bytes": 2205,
+      "rel": "plugins/hookify/hooks/pretooluse.py",
+      "sha256": "cf3f718f26f57979686ca00d9cccbe09bc7920943bdc35cd689ba5163a777aac"
+    },
+    {
+      "bytes": 1557,
+      "rel": "plugins/hookify/hooks/stop.py",
+      "sha256": "c37678c66db0d9ca0c2d4004ee073de88617c70c6def11bfd110d5610ddfb24c"
+    },
+    {
+      "bytes": 1543,
+      "rel": "plugins/hookify/hooks/userpromptsubmit.py",
+      "sha256": "82c8784355826e9ecfa01c5b357c27d1246c21f0d26400d32ea962c7db4e3d01"
+    },
+    {
+      "bytes": 0,
+      "rel": "plugins/hookify/matchers/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 8423,
+      "rel": "plugins/hookify/skills/writing-rules/SKILL.md",
+      "sha256": "cf7a6a0b92092f44c6532bd9af7189748a9c3b4d044005418230b08cc99ac55c"
+    },
+    {
+      "bytes": 0,
+      "rel": "plugins/hookify/utils/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 296,
+      "rel": "plugins/learning-output-style/.claude-plugin/plugin.json",
+      "sha256": "7642b740f89ede0586cb2d43b93058d84519cb60792dd704d6b2ac1eda8c5921"
+    },
+    {
+      "bytes": 4687,
+      "rel": "plugins/learning-output-style/README.md",
+      "sha256": "3148b3552ce12e2e8fa73e00d914882ae60557b29ded502d22da633685e5bdbd"
+    },
+    {
+      "bytes": 3564,
+      "rel": "plugins/learning-output-style/hooks-handlers/session-start.sh",
+      "sha256": "2b2ef02fffeb9df6d587a3180ab3bb06e1364a75f70e2f534045b599b953731e"
+    },
+    {
+      "bytes": 311,
+      "rel": "plugins/learning-output-style/hooks/hooks.json",
+      "sha256": "595436e45533450f9961fadb9efc6826125383d1aa84b477a6d61778962ed487"
+    },
+    {
+      "bytes": 14592,
+      "rel": "plugins/plugin-dev/README.md",
+      "sha256": "67a23d324462b1f30044b66ec77b59edf6a55547b5e0000a1d886d1906b8073d"
+    },
+    {
+      "bytes": 7437,
+      "rel": "plugins/plugin-dev/agents/agent-creator.md",
+      "sha256": "85652447d8ebe3d84bd546b16ca863dfcd9e5bf30d45419df22a4a602940b979"
+    },
+    {
+      "bytes": 6623,
+      "rel": "plugins/plugin-dev/agents/plugin-validator.md",
+      "sha256": "e639a6faa931d60708dd2fbc936fab1fbf9c87308f93330a21277246c661b352"
+    },
+    {
+      "bytes": 6079,
+      "rel": "plugins/plugin-dev/agents/skill-reviewer.md",
+      "sha256": "fd72869adb4a873bb5e078e8874a7a822c3d2d9c3d4be9f3e7aeb2553fb5b51f"
+    },
+    {
+      "bytes": 14950,
+      "rel": "plugins/plugin-dev/commands/create-plugin.md",
+      "sha256": "b6c0c23196c05ef9b85f4dfdaed7295aee7d7e075cff78dcfaee6536f831e10a"
+    },
+    {
+      "bytes": 10430,
+      "rel": "plugins/plugin-dev/skills/agent-development/SKILL.md",
+      "sha256": "ff3324078bbeef3e214157391795360e148892e9c6735f1fc049f397aa939c80"
+    },
+    {
+      "bytes": 9390,
+      "rel": "plugins/plugin-dev/skills/agent-development/examples/agent-creation-prompt.md",
+      "sha256": "fddc24d6f7c67722e5c007087d19606cf116a89f3360519c2ae8f52989f40a4d"
+    },
+    {
+      "bytes": 14117,
+      "rel": "plugins/plugin-dev/skills/agent-development/examples/complete-agent-examples.md",
+      "sha256": "36fde2ac46665ba98804ec0fb6e94022795cba063e932d670c9463deedd30e72"
+    },
+    {
+      "bytes": 8879,
+      "rel": "plugins/plugin-dev/skills/agent-development/references/agent-creation-system-prompt.md",
+      "sha256": "35ea11d43d8462f7a281f9becd99e69fe1cdd9d80b4024cef7092a03f0f73ca1"
+    },
+    {
+      "bytes": 9998,
+      "rel": "plugins/plugin-dev/skills/agent-development/references/system-prompt-design.md",
+      "sha256": "eaac53eaaf8326ac04428987280fb5041920b7571477ad41742517c5aac683fc"
+    },
+    {
+      "bytes": 11613,
+      "rel": "plugins/plugin-dev/skills/agent-development/references/triggering-examples.md",
+      "sha256": "2a5ea013c97fc9f2c1ed55f96c6d5da2c2378695f7714bfb2c2e61bfbc9d228f"
+    },
+    {
+      "bytes": 5796,
+      "rel": "plugins/plugin-dev/skills/agent-development/scripts/validate-agent.sh",
+      "sha256": "d22e1292f997169fb745793dc50ebe3e9c6631603e1d77f04c2e79bb1fc63cba"
+    },
+    {
+      "bytes": 7651,
+      "rel": "plugins/plugin-dev/skills/command-development/README.md",
+      "sha256": "dd4ba7eded93d7ba698f05ec63d06d110a6b5543664af359b005dd976ce811b8"
+    },
+    {
+      "bytes": 18941,
+      "rel": "plugins/plugin-dev/skills/command-development/SKILL.md",
+      "sha256": "cf4372aa8f5e86ef0b587aa3703b4af9b22996e0dc7fd0ea6ffae49770136a2a"
+    },
+    {
+      "bytes": 13989,
+      "rel": "plugins/plugin-dev/skills/command-development/examples/plugin-commands.md",
+      "sha256": "7d71d7b516020a6c171171399b40dd2cad02b842c9faa78b90e0983906c9ee94"
+    },
+    {
+      "bytes": 8675,
+      "rel": "plugins/plugin-dev/skills/command-development/examples/simple-commands.md",
+      "sha256": "f2533ed834305166603bcb4dd870d695af4a33b9a49d330937a4c70ed964767c"
+    },
+    {
+      "bytes": 13618,
+      "rel": "plugins/plugin-dev/skills/command-development/references/advanced-workflows.md",
+      "sha256": "eb258095b5a411b68377c96730effe597884a14b619cb0c1a7ab1c801d80a7d9"
+    },
+    {
+      "bytes": 14971,
+      "rel": "plugins/plugin-dev/skills/command-development/references/documentation-patterns.md",
+      "sha256": "70c6c9b0a9b2d46a925ada6c45808a73498a457e1d641c82cc05de8a29a33b05"
+    },
+    {
+      "bytes": 9162,
+      "rel": "plugins/plugin-dev/skills/command-development/references/frontmatter-reference.md",
+      "sha256": "db1ea175ca4b0bb7d11c75cb8a7d00b353ea7cf4df2027b4263e45ded4d39475"
+    },
+    {
+      "bytes": 20980,
+      "rel": "plugins/plugin-dev/skills/command-development/references/interactive-commands.md",
+      "sha256": "09ab1f18bfa3ff5f7088e45d5810ac20eb25ffc97fc9e8bb79416d40e0b4516b"
+    },
+    {
+      "bytes": 16437,
+      "rel": "plugins/plugin-dev/skills/command-development/references/marketplace-considerations.md",
+      "sha256": "ab30835431d06a8e65cd629ba0e73b3f1de5b043126c6fef7ea70163400e90f4"
+    },
+    {
+      "bytes": 14622,
+      "rel": "plugins/plugin-dev/skills/command-development/references/plugin-features-reference.md",
+      "sha256": "57e11ae6a4bbc1a4a295d1f036202970911d6029d64f4ab058b63a4c5a899072"
+    },
+    {
+      "bytes": 14803,
+      "rel": "plugins/plugin-dev/skills/command-development/references/testing-strategies.md",
+      "sha256": "e6ccf78d85c23bc58582dbc8b91731c4e412568705ed2c87ac699a1ded9adc67"
+    },
+    {
+      "bytes": 16246,
+      "rel": "plugins/plugin-dev/skills/hook-development/SKILL.md",
+      "sha256": "d14528f389cae485ac50583a22be326485c83fc9c8ef7ce700213e1583cf8fbe"
+    },
+    {
+      "bytes": 1690,
+      "rel": "plugins/plugin-dev/skills/hook-development/examples/load-context.sh",
+      "sha256": "0d614599e711c087b381a4ac7ee3c40758af1022669fc998649d199b9dfe15ed"
+    },
+    {
+      "bytes": 1304,
+      "rel": "plugins/plugin-dev/skills/hook-development/examples/validate-bash.sh",
+      "sha256": "348c58f4cf38a2e7080ea5272935a7658c7122d83dd6c52d0a1f2ef599c176ab"
+    },
+    {
+      "bytes": 1222,
+      "rel": "plugins/plugin-dev/skills/hook-development/examples/validate-write.sh",
+      "sha256": "89a8ef9bb7508e4819080e65834d6783afa5a5a614d458a3821b80a329eb32e5"
+    },
+    {
+      "bytes": 10148,
+      "rel": "plugins/plugin-dev/skills/hook-development/references/advanced.md",
+      "sha256": "5b139ceeb6a3ef16555a6eef421e2642e6ca286b5527ee2b4e02c11ae5b75dd5"
+    },
+    {
+      "bytes": 8299,
+      "rel": "plugins/plugin-dev/skills/hook-development/references/migration.md",
+      "sha256": "7f8e7a795829837f46a0c058c26c8f5c4aa8be5c9fb5316b828229d1802ded77"
+    },
+    {
+      "bytes": 7144,
+      "rel": "plugins/plugin-dev/skills/hook-development/references/patterns.md",
+      "sha256": "cb607fca192bfa892fd198141b86dac9d0ca2c573a280b054b7beaa56fc9a8bf"
+    },
+    {
+      "bytes": 3677,
+      "rel": "plugins/plugin-dev/skills/hook-development/scripts/README.md",
+      "sha256": "08a28b12ffa9fcb16f257ea685c70a920f4f835978b9ffbbac055137c6f6aca0"
+    },
+    {
+      "bytes": 4200,
+      "rel": "plugins/plugin-dev/skills/hook-development/scripts/hook-linter.sh",
+      "sha256": "85a7d55488f8f38f9b98350b5cb597fb306432d5e61eaa3444e7226ca9309e0b"
+    },
+    {
+      "bytes": 5336,
+      "rel": "plugins/plugin-dev/skills/hook-development/scripts/test-hook.sh",
+      "sha256": "ded642e811b4731f6a2c90c73b02e00c937511d9ee65236bb8cf9964f0069393"
+    },
+    {
+      "bytes": 5081,
+      "rel": "plugins/plugin-dev/skills/hook-development/scripts/validate-hook-schema.sh",
+      "sha256": "e7785d6c61d368f5ea5270c979753aea02f776f5b6aa220137ec4585abd720c2"
+    },
+    {
+      "bytes": 12519,
+      "rel": "plugins/plugin-dev/skills/mcp-integration/SKILL.md",
+      "sha256": "1cbfb6b1cf98f48a7c6938e113869a229cd5a59037712072fe11f21a47c6df0e"
+    },
+    {
+      "bytes": 502,
+      "rel": "plugins/plugin-dev/skills/mcp-integration/examples/http-server.json",
+      "sha256": "7a11adaea5ac1bb76269bf473f5cf5cbd636a83c2ec0b7007f2b1cbf4a8a725f"
+    },
+    {
+      "bytes": 413,
+      "rel": "plugins/plugin-dev/skills/mcp-integration/examples/sse-server.json",
+      "sha256": "9b0be023f74e12c804757e56dc86349134fd7497ef17f34c7c2ff25039cd1efc"
+    },
+    {
+      "bytes": 686,
+      "rel": "plugins/plugin-dev/skills/mcp-integration/examples/stdio-server.json",
+      "sha256": "46148a5dc7fc5e63c681c5fb975d3908d3f3052f51de7236725cdadda41e2b5d"
+    },
+    {
+      "bytes": 10196,
+      "rel": "plugins/plugin-dev/skills/mcp-integration/references/authentication.md",
+      "sha256": "9f3ca61a857a15cc4c0dea9143365b0c49cae558690089dd61f6434186c702ce"
+    },
+    {
+      "bytes": 10613,
+      "rel": "plugins/plugin-dev/skills/mcp-integration/references/server-types.md",
+      "sha256": "7b06c7ea92e255218897189c550a32cbad1daa173e78e40ec94524fc9a1fb36b"
+    },
+    {
+      "bytes": 11674,
+      "rel": "plugins/plugin-dev/skills/mcp-integration/references/tool-usage.md",
+      "sha256": "8dd0005d7ba6cd2d24e72f9e6102c129b7445fc818e14656ad9ebaef6621a7a6"
+    },
+    {
+      "bytes": 12101,
+      "rel": "plugins/plugin-dev/skills/plugin-settings/SKILL.md",
+      "sha256": "03edd6f2bbf2499468e9ee8cfb75b34b4fbe04dd43b9133d94920db71459306d"
+    },
+    {
+      "bytes": 2177,
+      "rel": "plugins/plugin-dev/skills/plugin-settings/examples/create-settings-command.md",
+      "sha256": "abf0a36bb3f6425041046f2da1ebfac5505c5b37656fdd4772cfc4d8bd2fa655"
+    },
+    {
+      "bytes": 2930,
+      "rel": "plugins/plugin-dev/skills/plugin-settings/examples/example-settings.md",
+      "sha256": "f07209b6e2fb62d443ae07d01bc1674c6c741c352a04549bfa978e1f34b9769e"
+    },
+    {
+      "bytes": 2205,
+      "rel": "plugins/plugin-dev/skills/plugin-settings/examples/read-settings-hook.sh",
+      "sha256": "627fce38d37d64c971401ecc85d548f060075670bcac52f65c92ca156e810c70"
+    },
+    {
+      "bytes": 11513,
+      "rel": "plugins/plugin-dev/skills/plugin-settings/references/parsing-techniques.md",
+      "sha256": "bc90aa020aa5fcbb3483d7316754450dcc91d086ee96f9304fa655e878f7712e"
+    },
+    {
+      "bytes": 9496,
+      "rel": "plugins/plugin-dev/skills/plugin-settings/references/real-world-examples.md",
+      "sha256": "565c3af7f6190b7f4dbd9623c471bd2ca5b303432224e69165d18d2bdf62eac6"
+    },
+    {
+      "bytes": 1269,
+      "rel": "plugins/plugin-dev/skills/plugin-settings/scripts/parse-frontmatter.sh",
+      "sha256": "1ab8c42d5a19e0b404af3c573d0267fc19b5987e1d7885f522066ffd76e54553"
+    },
+    {
+      "bytes": 2712,
+      "rel": "plugins/plugin-dev/skills/plugin-settings/scripts/validate-settings.sh",
+      "sha256": "2f4975285cba7f16b82c764a95fe76d34ac488308ba6705c04561267da4f4f75"
+    },
+    {
+      "bytes": 3210,
+      "rel": "plugins/plugin-dev/skills/plugin-structure/README.md",
+      "sha256": "c7cb4931d6d71198cba6b552e4733b41940be56a65552a2ff7c5656750b95184"
+    },
+    {
+      "bytes": 13796,
+      "rel": "plugins/plugin-dev/skills/plugin-structure/SKILL.md",
+      "sha256": "ee28fd41535313e9ffb2fd04393cc70e6e7e1d7ea143097a2c3b856e8be98132"
+    },
+    {
+      "bytes": 18746,
+      "rel": "plugins/plugin-dev/skills/plugin-structure/examples/advanced-plugin.md",
+      "sha256": "3d24f5856048a94cb99fe2b8207d99f2f5d69325771b361d63ec73024290759c"
+    },
+    {
+      "bytes": 1731,
+      "rel": "plugins/plugin-dev/skills/plugin-structure/examples/minimal-plugin.md",
+      "sha256": "c4f14fe56b153be3c532b7947bb10b453fc92e280dca5a7da752d2b1b5d17448"
+    },
+    {
+      "bytes": 13310,
+      "rel": "plugins/plugin-dev/skills/plugin-structure/examples/standard-plugin.md",
+      "sha256": "b8cfba84bd4dbdc83365cebcde5dcc6391252372300df0c1ea7890441582d784"
+    },
+    {
+      "bytes": 12086,
+      "rel": "plugins/plugin-dev/skills/plugin-structure/references/component-patterns.md",
+      "sha256": "38681792a6aba4f06d3c391b20b04060263f1fbaacc5880cc0cafe0543d37f91"
+    },
+    {
+      "bytes": 12061,
+      "rel": "plugins/plugin-dev/skills/plugin-structure/references/manifest-reference.md",
+      "sha256": "d0ff8ffece4754df92c543266b8d0b689fb85473f51fbb57e215f2d235ee9782"
+    },
+    {
+      "bytes": 22827,
+      "rel": "plugins/plugin-dev/skills/skill-development/SKILL.md",
+      "sha256": "d40080c45d652dd3cc481d1e381cd7e6258091a87351fa1de67c6c8ecec3446e"
+    },
+    {
+      "bytes": 11547,
+      "rel": "plugins/plugin-dev/skills/skill-development/references/skill-creator-original.md",
+      "sha256": "8c0ce23bb87be91f5b0853c2e9815617c3858b63acdddfe5da47d2c2d3a60816"
+    },
+    {
+      "bytes": 282,
+      "rel": "plugins/pr-review-toolkit/.claude-plugin/plugin.json",
+      "sha256": "9435cc134fc72d56175f222894d401b0cf20f700d5bc0098c4257455314695ca"
+    },
+    {
+      "bytes": 7528,
+      "rel": "plugins/pr-review-toolkit/README.md",
+      "sha256": "364cb1d46aa64a01016e4ef5f41dfea5bd5e3cf530459409a376feba93dd2b49"
+    },
+    {
+      "bytes": 3985,
+      "rel": "plugins/pr-review-toolkit/agents/code-reviewer.md",
+      "sha256": "533b9967ca21b7e9572236935cada4bfd03d7dd362cb2e680a2d13aa0d699232"
+    },
+    {
+      "bytes": 5230,
+      "rel": "plugins/pr-review-toolkit/agents/code-simplifier.md",
+      "sha256": "da129a12e959b059a7605d093fbc4f8710755ebf0c914ebc3102b5f78831ead1"
+    },
+    {
+      "bytes": 5725,
+      "rel": "plugins/pr-review-toolkit/agents/comment-analyzer.md",
+      "sha256": "da0540c507e42a7f66df0b09f81f3c9d3b246620a8f2be4e84b85b97f7b4e2f5"
+    },
+    {
+      "bytes": 4985,
+      "rel": "plugins/pr-review-toolkit/agents/pr-test-analyzer.md",
+      "sha256": "d369fd3946a814bb7a9d4f32e971722fe259e301878986bc6312d6f6c56014a8"
+    },
+    {
+      "bytes": 7807,
+      "rel": "plugins/pr-review-toolkit/agents/silent-failure-hunter.md",
+      "sha256": "fa9b0daec5a267e7e66435cc48b3328301fc9f70c3af259fe248881327a1babc"
+    },
+    {
+      "bytes": 5368,
+      "rel": "plugins/pr-review-toolkit/agents/type-design-analyzer.md",
+      "sha256": "ad160052fd3b45395d531d5e97e54940a1b660443fb513db3feb613848b6e72d"
+    },
+    {
+      "bytes": 4997,
+      "rel": "plugins/pr-review-toolkit/commands/review-pr.md",
+      "sha256": "5e70c17293a044e1bf9d092c80b5da8b4fd5802ebb07dc53993dec4ba7ce2fc4"
+    },
+    {
+      "bytes": 353,
+      "rel": "plugins/ralph-wiggum/.claude-plugin/plugin.json",
+      "sha256": "ea8cc92197a9c7997ed201a71402e1d873b544cf029abc5ce69c6ab66b114e9c"
+    },
+    {
+      "bytes": 5201,
+      "rel": "plugins/ralph-wiggum/README.md",
+      "sha256": "c654dd0c552e22f778c811edcc3fce9e6e294cd84eed52d4f1a9bcfb5f622017"
+    },
+    {
+      "bytes": 745,
+      "rel": "plugins/ralph-wiggum/commands/cancel-ralph.md",
+      "sha256": "cbccb12e845de0b09d7f12b6b39950c696a528367b57ec987ccc996863e68f25"
+    },
+    {
+      "bytes": 3229,
+      "rel": "plugins/ralph-wiggum/commands/help.md",
+      "sha256": "ffbe8965aa08e0d735265a0a1babf0bdf8fbb7ca1cfc0f1cd1c529f3cefc8aae"
+    },
+    {
+      "bytes": 923,
+      "rel": "plugins/ralph-wiggum/commands/ralph-loop.md",
+      "sha256": "fe5bf6641c5f1098c113624e458698da0a5c47b7e242696f132d7f46da025670"
+    },
+    {
+      "bytes": 284,
+      "rel": "plugins/ralph-wiggum/hooks/hooks.json",
+      "sha256": "01180e972a5f6b5c8fa0edcd352ab79b4f8490718fe9c2faac9bfa738f3caa21"
+    },
+    {
+      "bytes": 6564,
+      "rel": "plugins/ralph-wiggum/hooks/stop-hook.sh",
+      "sha256": "c8760febc22ed5e2dd322df277647b7d8fb094a41d590d59236a5a6264c7c9bc"
+    },
+    {
+      "bytes": 7009,
+      "rel": "plugins/ralph-wiggum/scripts/setup-ralph-loop.sh",
+      "sha256": "223feb25780b8049352432e0c3c9120a856fa9a7555a78e02e16b9d86130cd8f"
+    },
+    {
+      "bytes": 487,
+      "rel": "plugins/security-guidance/.claude-plugin/plugin.json",
+      "sha256": "802cdf34d678d317ef063bcd6124f0ff1ad4adad6e56168934067d268635c174"
+    },
+    {
+      "bytes": 7219,
+      "rel": "plugins/security-guidance/README.md",
+      "sha256": "8e9f9ed1f43a2b877de1040a0a5181a80deed95417a919eee55efc58bd5f48eb"
+    },
+    {
+      "bytes": 6832,
+      "rel": "plugins/security-guidance/hooks/_base.py",
+      "sha256": "46b037d6d36405472c3193fb9e643719e413c0d9259d92c263cdbccafa23f2fd"
+    },
+    {
+      "bytes": 18669,
+      "rel": "plugins/security-guidance/hooks/diffstate.py",
+      "sha256": "2acce7933c82301c3cf72b41a09f81790138546a5b53b949a25b4545127d779e"
+    },
+    {
+      "bytes": 9856,
+      "rel": "plugins/security-guidance/hooks/ensure_agent_sdk.py",
+      "sha256": "e682d82026521106ec00267078fb4e2190b3a0a501362fc9f4a0753f2d7a1b56"
+    },
+    {
+      "bytes": 12240,
+      "rel": "plugins/security-guidance/hooks/extensibility.py",
+      "sha256": "49dec35c1768d35ef13f7733dc3612c6591cbcedfb3d4bb1849679989e2e2435"
+    },
+    {
+      "bytes": 30039,
+      "rel": "plugins/security-guidance/hooks/gitutil.py",
+      "sha256": "8a3fc8add69ec3ebbff51c82d73e16a60f322ef6ed95c88f9371b65b06d410c4"
+    },
+    {
+      "bytes": 2783,
+      "rel": "plugins/security-guidance/hooks/hooks.json",
+      "sha256": "37181aea2a1ccd4efa88c427d4cd194fac48ab1ca67779c14edf8de375809181"
+    },
+    {
+      "bytes": 112010,
+      "rel": "plugins/security-guidance/hooks/llm.py",
+      "sha256": "bf2f1e71ac04eea6364b545b69aa876168b928fc767146ba5d86988cfb213b34"
+    },
+    {
+      "bytes": 17541,
+      "rel": "plugins/security-guidance/hooks/patterns.py",
+      "sha256": "7870f5cac17034e9bfff829a2bba283bbcb47b416c915d8c8a1ab7ec02c5b4aa"
+    },
+    {
+      "bytes": 24763,
+      "rel": "plugins/security-guidance/hooks/review_api.py",
+      "sha256": "b5e5ee59787e174998adb70a53e0b06252449c6e96f2d52e735f8ad5cbe4e319"
+    },
+    {
+      "bytes": 103394,
+      "rel": "plugins/security-guidance/hooks/security_reminder_hook.py",
+      "sha256": "e9921af9fa85fa1cfd9b8db9589d1f767c365374619c647c7369e7b84cae8411"
+    },
+    {
+      "bytes": 5849,
+      "rel": "plugins/security-guidance/hooks/session_state.py",
+      "sha256": "f74455e57109595eb6fc267babd8f1dd26172014561ec919bdfd38e7ad096380"
+    },
+    {
+      "bytes": 1814,
+      "rel": "plugins/security-guidance/hooks/sg-python.sh",
+      "sha256": "5acbfc6a50dffa7422a813117fd1ae42e63f1571e768d0da991117b36dee96b9"
+    },
+    {
+      "bytes": 7753,
+      "rel": "scripts/auto-close-duplicates.ts",
+      "sha256": "9dcf88eef9515b4e856b6410f82e165b9827388540e3a31bc09800ad57b8d190"
+    },
+    {
+      "bytes": 6830,
+      "rel": "scripts/backfill-duplicate-comments.ts",
+      "sha256": "ce93dd4526385ff5590a2fe71d67abfe8b8434319b896ef399a673ce3c46d1a0"
+    },
+    {
+      "bytes": 2600,
+      "rel": "scripts/comment-on-duplicates.sh",
+      "sha256": "4e7208e4e8b59a4e551621408db757e5ea06229b2cfa434c2e51ada05d11acfd"
+    },
+    {
+      "bytes": 1988,
+      "rel": "scripts/edit-issue-labels.sh",
+      "sha256": "0b78a5620bb3d4b7931977a98d0cbf8c9460073b3878bee01d5982ffe64f7d94"
+    },
+    {
+      "bytes": 3107,
+      "rel": "scripts/gh.sh",
+      "sha256": "a57ddaf4f7876012cae45294a61cb8ff88fbcc7b91c09ade3d05f8e874042891"
+    },
+    {
+      "bytes": 1393,
+      "rel": "scripts/issue-lifecycle.ts",
+      "sha256": "96b77c8231bb88cf3980a894face571234851f13e4e3df486d5e2254c154ae59"
+    },
+    {
+      "bytes": 1637,
+      "rel": "scripts/lifecycle-comment.ts",
+      "sha256": "44f620c863bd23cc3f3fbd4c3655fa5800ed0e33ed3c75b7b0fbd0531e648981"
+    },
+    {
+      "bytes": 5504,
+      "rel": "scripts/sweep.ts",
+      "sha256": "a7451eb9ce260ae4cc869a9013d2e423e8ac6aa006436f3d51076a88ffdc57f5"
+    }
+  ],
+  "schema": "yaiwes.frontend.copy-batches.v1"
+}

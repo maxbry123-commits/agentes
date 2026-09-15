@@ -1,0 +1,67 @@
+{
+  "topic_name": "language_conditioned_pedestrian_trajectory_prediction",
+  "domain": {
+    "primary_area": "pedestrian_trajectory_prediction",
+    "secondary_areas": [
+      "diffusion_models",
+      "multimodal_fusion",
+      "pedestrian_intention_recognition",
+      "video_language_understanding"
+    ]
+  },
+  "research_goal": {
+    "short": "Introduce language, video, and historical trajectory conditions into diffusion-based pedestrian trajectory prediction.",
+    "long": "Build a reusable research workflow for studying how natural language descriptions and video semantics can condition diffusion models for pedestrian trajectory forecasting."
+  },
+  "current_status": {
+    "baseline_methods": ["Leapfrog", "MID"],
+    "existing_models": ["Qwen3.5-2B LoRA intention recognition"],
+    "known_results": ["intention output format compliance 100%", "intention accuracy about 70%"],
+    "priority": [
+      "do not prioritize intention-recognition accuracy first",
+      "prioritize how language features enter diffusion trajectory prediction"
+    ],
+    "first_strategy": "Add the smallest language-conditioning path first, then compare concat, gated fusion, and cross-attention.",
+    "dataset": "to_confirm"
+  },
+  "search_seeds": {
+    "keywords": [
+      "diffusion trajectory prediction",
+      "pedestrian trajectory forecasting diffusion",
+      "language conditioned trajectory prediction",
+      "multimodal pedestrian trajectory prediction",
+      "pedestrian intention trajectory forecasting",
+      "cross attention diffusion model trajectory",
+      "MID motion indeterminacy diffusion",
+      "Leapfrog pedestrian trajectory prediction"
+    ]
+  },
+  "paper_schema": {
+    "required_fields": [
+      "task",
+      "input_modalities",
+      "output",
+      "model_architecture",
+      "temporal_modeling",
+      "fusion_strategy",
+      "diffusion_strategy",
+      "datasets",
+      "metrics",
+      "limitations",
+      "reusable_ideas",
+      "implementation_difficulty"
+    ],
+    "default_input_modalities": ["trajectory", "language", "video", "scene"],
+    "default_output": "future trajectory"
+  },
+  "experiment_metrics": ["ADE", "FDE", "miss_rate", "collision_rate", "multimodal_diversity"],
+  "codebase": {
+    "repo_path": "",
+    "protected_files": ["data/raw/*"],
+    "allowed_auto_edit": ["models/*", "configs/*", "train.py", "datasets/*"]
+  },
+  "metadata": {
+    "created_from": "code_plan.md",
+    "version": "v1"
+  }
+}

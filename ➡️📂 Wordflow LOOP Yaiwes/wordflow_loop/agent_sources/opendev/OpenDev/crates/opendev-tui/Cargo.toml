@@ -1,0 +1,39 @@
+[package]
+name = "opendev-tui"
+description = "Ratatui-based terminal UI for OpenDev"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+opendev-models = { workspace = true }
+opendev-agents = { workspace = true }
+opendev-config = { workspace = true }
+opendev-runtime = { workspace = true }
+opendev-tools-core = { workspace = true }
+
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+unicode-width = { workspace = true }
+ignore = { workspace = true }
+uuid = { workspace = true }
+regex = { workspace = true }
+dirs = "6"
+arboard = "3"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["test-util", "macros"] }
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "render_bench"
+harness = false

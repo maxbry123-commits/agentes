@@ -1,0 +1,1893 @@
+{
+  "batches": 4,
+  "completed": {
+    "Research-Agent-Lab/.gitignore": "COPIED_VERIFIED",
+    "Research-Agent-Lab/.superpowers/brainstorm/.last-port": "COPIED_VERIFIED",
+    "Research-Agent-Lab/.superpowers/brainstorm/.last-token": "COPIED_VERIFIED",
+    "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/content/architecture-v2.html": "COPIED_VERIFIED",
+    "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/content/architecture.html": "COPIED_VERIFIED",
+    "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/content/autodebug.html": "COPIED_VERIFIED",
+    "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/content/current-gaps.html": "COPIED_VERIFIED",
+    "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/content/orchestrator.html": "COPIED_VERIFIED",
+    "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/content/safety-model.html": "COPIED_VERIFIED",
+    "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/content/success-criteria.html": "COPIED_VERIFIED",
+    "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/content/waiting-2.html": "COPIED_VERIFIED",
+    "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/content/waiting-3.html": "COPIED_VERIFIED",
+    "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/content/waiting.html": "COPIED_VERIFIED",
+    "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/state/server-info": "COPIED_VERIFIED",
+    "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/state/server-instance-id": "COPIED_VERIFIED",
+    "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/state/server.pid": "COPIED_VERIFIED",
+    "Research-Agent-Lab/README.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agentlab_configs/intent_led_virat_agentlab.yaml": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/__init__.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/auto_debugger.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/autonomous_experiment.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/branch_selection_agent.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/code_writer.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/codebase_analyzer.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/developer_agent.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/evidence_checker.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/experiment_decision.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/experiment_orchestrator.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/experiment_planner.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/literature_memory_agent.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/literature_searcher.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/local_paper_library.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/local_paper_parser.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/method_card_extractor.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/method_card_retriever.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/opportunity_agent.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/paper_reader.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/paper_selector.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/paper_triage.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/reference_extractor.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/research_manager.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/result_parser.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/retrieval_evaluator.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/reviewer_agent.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/run_evaluator.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/run_validation_agent.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/synthesis_agent.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/tree_pruner.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/agents/tree_search_agent.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/app/__init__.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/app/main.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/code_plan.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/core/__init__.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/core/agent_base.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/core/artifact_store.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/core/run_logger.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/core/state.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/core/tool_base.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/core/workflow.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/data/backups/autonomous_research_goal_docs/README.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/data/backups/autonomous_research_goal_docs/docs/project_handoff.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/data/backups/intent_led_motion_condition_base/model_led_initializer.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/data/backups/intent_led_motion_condition_base/train_led_trajectory_augment_input.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/data/backups/intent_led_motion_condition_base/work.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/data/backups/research_agent_lab_llm_budget/README.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/data/backups/research_agent_lab_llm_budget/agents/method_card_extractor.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/data/backups/research_agent_lab_llm_budget/app/main.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/data/backups/research_agent_lab_llm_budget/docs/model_and_literature_config.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/data/backups/research_agent_lab_llm_budget/workflows/factory.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/data/backups/research_agent_lab_llm_gateway/README.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/data/backups/research_agent_lab_llm_gateway/agents/method_card_extractor.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/data/backups/research_agent_lab_llm_gateway/docs/model_and_literature_config.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/data/backups/research_agent_lab_llm_gateway/tools/llm_client.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/data/backups/research_agent_lab_synthesis_planner_llm/README.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/data/backups/research_agent_lab_synthesis_planner_llm/agents/experiment_planner.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/data/backups/research_agent_lab_synthesis_planner_llm/agents/method_card_extractor.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/data/backups/research_agent_lab_synthesis_planner_llm/agents/reviewer_agent.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/data/backups/research_agent_lab_synthesis_planner_llm/agents/synthesis_agent.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/data/backups/research_agent_lab_synthesis_planner_llm/docs/model_and_literature_config.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/data/backups/research_agent_lab_synthesis_planner_llm/tools/llm_client.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/data/run_dabda7b07d8b/artifact_index.jsonl": "COPIED_VERIFIED",
+    "Research-Agent-Lab/data/run_dabda7b07d8b/artifacts/run_evaluations/runeval_d852941b733f.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/Q&A.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/model_and_literature_config.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/p17_dynamic_validation.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/project_handoff.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/project_safety.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/reference_network_retrieval.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/retrieval_evaluation.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/run_evaluation.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/runtime_environment.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/superpowers/plans/2026-06-17-p10-tree-optimization.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/superpowers/plans/2026-06-18-p11-run-evaluation-benchmark.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/superpowers/plans/2026-06-18-p13-reference-network-and-run-trends.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/superpowers/plans/2026-06-22-p14-retrieval-evaluation.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/superpowers/plans/2026-06-22-p15-experiment-execution-loop.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/superpowers/plans/2026-06-23-p16-debug-llm-loop.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/superpowers/plans/2026-06-24-p17-run-validation-delivery-hardening.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/superpowers/plans/2026-06-24-p18-real-training-integration.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/superpowers/plans/2026-06-24-p19-autonomy-upgrade.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/superpowers/specs/2026-06-17-p10-tree-optimization-design.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/superpowers/specs/2026-06-22-experiment-execution-loop-design.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/superpowers/specs/2026-06-22-p14-retrieval-evaluation-design.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/superpowers/specs/2026-06-23-p16-debug-llm-loop-design.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/superpowers/specs/2026-06-24-p17-run-validation-delivery-hardening-design.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/superpowers/specs/2026-06-24-p18-real-training-integration-design.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/docs/superpowers/specs/2026-06-24-p19-autonomy-upgrade-design.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/external/.gitkeep": "COPIED_VERIFIED",
+    "Research-Agent-Lab/memory/__init__.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/memory/literature_memory.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/memory/memory_policy.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/memory/sqlite_memory.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/pyproject.toml": "COPIED_VERIFIED",
+    "Research-Agent-Lab/schemas/__init__.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/schemas/auto_debug_record.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/schemas/base.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/schemas/code_patch.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/schemas/code_task.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/schemas/codebase_report.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/schemas/evidence.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/schemas/experiment_decision.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/schemas/experiment_plan.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/schemas/experiment_result.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/schemas/experiment_tree.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/schemas/method_card.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/schemas/opportunity.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/schemas/paper.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/schemas/parsed_paper.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/schemas/reference.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/schemas/retrieval_evaluation.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/schemas/review_result.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/schemas/run_evaluation.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/schemas/run_validation.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/schemas/topic_pack.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_agentlab_adapter.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_auto_debug_record_schema.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_auto_debugger.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_autonomous_experiment.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_branch_selection_agent.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_code_patch_schema.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_code_writer.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_codebase_analyzer.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_env_loader.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_experiment_decision.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_experiment_orchestrator.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_experiment_result.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_full_research_loop.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_literature_memory.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_literature_retriever.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_local_paper_library.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_method_card_extractor_llm.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_method_card_retriever.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_multi_branch_parallel.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_paper_chunk_selector.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_paper_selector.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_pdf_parser_and_llm.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_reference_expansion_search.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_reference_extractor.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_reference_memory.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_reference_seed_builder.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_result_parser.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_retrieval_evaluator.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_run_artifact_validator.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_run_evaluation_trends.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_run_evaluator.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_section_detection.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_synthesis_and_planner_llm.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_tree_promotion.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_tree_pruner.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_tree_search_agent.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tests/test_tree_visualizer.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifact_index.jsonl": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/briefs/research_brief.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/code_tasks/codetask_45be01610b9a.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/codebase_reports/codebase_c19229bf640a.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/evidence/evidence_61b01104a979.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/evidence/evidence_81f2d18bc5da.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/evidence/evidence_e7b091a9cd07.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/evidence_checks/evidence_checks.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/experiment_decisions/decision_e8a7b2a3b05f.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/experiment_plans/experiment_29f8eb5eb785.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/extracted_references/ref_048615e2bfc3.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/extracted_references/ref_45ef9b1525ea.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/extracted_references/ref_6514b6686f6e.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/extracted_references/ref_ae062a176e2c.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/extracted_references/ref_ce839ac9b462.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_04191a3a9d16.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_0b73e80fa1fd.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_0ed6cd9bf414.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_12bcdfdf1c13.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_1491b9b67f58.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_160edfdc06c5.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_1b9a76b33804.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_21047b69ffc8.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_2175352b707d.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_217e20e4741e.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_25aab0476196.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_262eba38403c.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_29ef6164639e.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_33137405edac.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_3b0d5582dd2a.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_56cca013f640.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_5bd0be79ab7f.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_5f54ce7ba8ff.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_6681cf981eca.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_66cd972f4dc5.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_6dfe136bd9e8.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_797c11fa7988.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_8508882e4dac.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_8880bd2002e9.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_889a9795db60.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_8957b1f2fd46.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_8be5423c44e1.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_8e3ea4f00612.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_9262255ce28a.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_98cd9de69280.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_99f9becb0b30.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_9a9ce9bac9f6.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_a3da643e3ca1.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_a4ae49076987.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_a4b08cf40b0b.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_a890f1911ff8.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_a91b4dd53b86.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_ae2b6a5db79c.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_b801cc069417.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_bde31c84f3e1.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_bef53b29b4dd.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_c5e7c6881da4.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_deca003fc3e3.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_e4c96de3acd8.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_f4a7194c7282.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_f7173c8b51ba.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_faab44d9a104.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/method_cards/method_3f96a41605de.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/method_cards/method_fe5f4dc138fe.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/opportunities/opportunity_57163acc1663.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_005ca66514dc.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_03a74843f04b.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_08ab5b7c135b.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_0b725d1cea40.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_2ca2a6d64b62.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_2cacb4566183.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_3bbdf197887f.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_401664f4027e.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_46e89b388424.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_5545e6accf82.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_5992a81e9e35.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_6239c5e98932.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_67ef611803e8.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_696a171b0484.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_6f444cdb79e3.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_7620c93af347.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_767a492d4903.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_8045276343a6.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_8f4773f4edee.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_95eae875447b.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_973c4c6c8cfa.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_a4aa943831b2.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_a93ea47a916e.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_b2fd892ec064.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_bc14804eedfc.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_c12b1d72dbfa.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_d09c0a219b13.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_d66b23a4edd2.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_df12152925f9.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_e13ab83b4d62.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_ec52f8f6f5e7.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_f1734e82c75b.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_f379e9fb16fc.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_fa197292c682.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_faa67ab58724.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_fb2cd0fd69dd.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_fb44bb58db8c.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/papers/paper_5bd0be79ab7f.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/papers/paper_8e3ea4f00612.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/parsed_papers/parsed_8505e9b955cd.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/parsed_papers/parsed_a811bd619373.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/reports/codebase_report.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/reports/synthesis_report.md": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/retrieval_evaluations/retrieval_eval_4dae4d130094.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/reviews/review_c127ba7ff6ea.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/run_evaluations/runeval_6f9d2fa8d682.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/selected_contexts/context_3dc803dfb071.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/selected_contexts/context_aad79c7c7cdb.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/triage/paper_triage.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/run_log.jsonl": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/state.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tools/__init__.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tools/agent_laboratory_adapter.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tools/arxiv_tool.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tools/code_executor.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tools/codebase_analyzer.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tools/env_loader.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tools/git_tool.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tools/literature_retriever.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tools/llm_budget.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tools/llm_client.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tools/local_paper_library.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tools/local_pdf_parser.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tools/model_router.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tools/paper_chunk_selector.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tools/project_safety.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tools/reference_seed_builder.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tools/run_artifact_validator.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tools/run_evaluation_trends.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tools/test_runner.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tools/tool_registry.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/tools/tree_visualizer.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/topics/intent_led_virat.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/topics/pedestrian_diffusion.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/topics/vin_ocr.json": "COPIED_VERIFIED",
+    "Research-Agent-Lab/workflows/__init__.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/workflows/factory.py": "COPIED_VERIFIED",
+    "Research-Agent-Lab/workflows/full_research_loop.json": "COPIED_VERIFIED"
+  },
+  "failed": {},
+  "manifest": [
+    {
+      "bytes": 208,
+      "rel": "Research-Agent-Lab/.gitignore",
+      "sha256": "9ca2c09abc5fb116b2792953757647069b09f15b17ab8ca74e9f3ae075a64061"
+    },
+    {
+      "bytes": 5,
+      "rel": "Research-Agent-Lab/.superpowers/brainstorm/.last-port",
+      "sha256": "83a13266eaa727ad08c4b60654520b900d697b3b75a8d97d610fd91be5830759"
+    },
+    {
+      "bytes": 64,
+      "rel": "Research-Agent-Lab/.superpowers/brainstorm/.last-token",
+      "sha256": "f68e5858b5f9858c93aa7da831d0a5d59f3ba9bb08f2751d5f2cc52f0bebcdaf"
+    },
+    {
+      "bytes": 4713,
+      "rel": "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/content/architecture-v2.html",
+      "sha256": "5ca229f2750714dcad6fc9dc2e8b122567316218298ee4967c8a02866187e0fe"
+    },
+    {
+      "bytes": 4462,
+      "rel": "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/content/architecture.html",
+      "sha256": "13d28c81b884300ed79db1d3e78b00ddc556fdf67e646e1bd32700e6a4c4df98"
+    },
+    {
+      "bytes": 2256,
+      "rel": "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/content/autodebug.html",
+      "sha256": "422325e2084f2fa45e701f2cd494e83987dd3ae15fc7e630990d9f78e539b9d5"
+    },
+    {
+      "bytes": 6005,
+      "rel": "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/content/current-gaps.html",
+      "sha256": "53108f077bcf678b062722fde6bf38564f3da00f472ac49031f705a7f13f36c5"
+    },
+    {
+      "bytes": 4569,
+      "rel": "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/content/orchestrator.html",
+      "sha256": "f9f7b25e02cafb82d0fe9f4f0f5bc6922c00f61d25c63d4c0f92ccc27b0fd02c"
+    },
+    {
+      "bytes": 2363,
+      "rel": "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/content/safety-model.html",
+      "sha256": "fc2938ae8eb2f08f024b4bcfe9af9decb24371213b74e53dbfdc5e8950099990"
+    },
+    {
+      "bytes": 2217,
+      "rel": "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/content/success-criteria.html",
+      "sha256": "20bcbaf12c0b0962771921a110eac3430720a3d48fd22241b6093e3eb44061ff"
+    },
+    {
+      "bytes": 154,
+      "rel": "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/content/waiting-2.html",
+      "sha256": "b1c0f4473632fbe3a912bba0955243985345157cb6903b45c193f608499957c0"
+    },
+    {
+      "bytes": 156,
+      "rel": "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/content/waiting-3.html",
+      "sha256": "37ab2c9167492030a4739caf9f6f2901155ea80b742dffaf0fab6081060eac3c"
+    },
+    {
+      "bytes": 142,
+      "rel": "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/content/waiting.html",
+      "sha256": "614a53d3b61053b5cbcf12f2d7401eea1932615d1050e04da9f37780e8b67db6"
+    },
+    {
+      "bytes": 408,
+      "rel": "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/state/server-info",
+      "sha256": "ab3d03c31d979c22458261fb362e013292b16d84043f00f0f03118a4b7389fc4"
+    },
+    {
+      "bytes": 49,
+      "rel": "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/state/server-instance-id",
+      "sha256": "7d3ca350a9f1f6ab2cf69ab9fd0aded5738d68e3af89324110238d4a5a95e38f"
+    },
+    {
+      "bytes": 5,
+      "rel": "Research-Agent-Lab/.superpowers/brainstorm/1215-1782110672/state/server.pid",
+      "sha256": "a6be961fdf73aef828a547aaf03d419ce106a4e27c436736261511dc34e6226a"
+    },
+    {
+      "bytes": 4972,
+      "rel": "Research-Agent-Lab/README.md",
+      "sha256": "80d7f23ea11dee0a573ec8da29a9e5e5338141302ea079428d3342d38d44edb0"
+    },
+    {
+      "bytes": 2242,
+      "rel": "Research-Agent-Lab/agentlab_configs/intent_led_virat_agentlab.yaml",
+      "sha256": "3c0eaa5b644460d3bfaab9856221f293c5ff1fe3cea4ef1785d192244ced9332"
+    },
+    {
+      "bytes": 2654,
+      "rel": "Research-Agent-Lab/agents/__init__.py",
+      "sha256": "923204541bacc1a84effc5bd44a2eaba57b4631c7be7fd5fa4c31e3686962cf9"
+    },
+    {
+      "bytes": 18083,
+      "rel": "Research-Agent-Lab/agents/auto_debugger.py",
+      "sha256": "c9fd53ead4db81438dd2b3c97b8c520b8b2985478f4e76135082def12ad577ef"
+    },
+    {
+      "bytes": 7402,
+      "rel": "Research-Agent-Lab/agents/autonomous_experiment.py",
+      "sha256": "1118d9c53ba31bfa61d65f4cecf03f8a358d1d5e4dbcaffd738ffe67088e2518"
+    },
+    {
+      "bytes": 3964,
+      "rel": "Research-Agent-Lab/agents/branch_selection_agent.py",
+      "sha256": "9362eaced56204e4ecd0136b9ff47434dfe6a4c017c619fe17fd990015cd7bc5"
+    },
+    {
+      "bytes": 10450,
+      "rel": "Research-Agent-Lab/agents/code_writer.py",
+      "sha256": "0ec73feb55b5ad49d072f91e0d870384951d286061785f1f8854ff3673ccf3b6"
+    },
+    {
+      "bytes": 1232,
+      "rel": "Research-Agent-Lab/agents/codebase_analyzer.py",
+      "sha256": "731267a1b1676df3600ce38d1c0ebcfa2c48333fbc816951913ae6b6a8e54252"
+    },
+    {
+      "bytes": 2306,
+      "rel": "Research-Agent-Lab/agents/developer_agent.py",
+      "sha256": "cb0274b160c2617191247dd9df192bede9380f1d4780d17ee741c7c9da959d32"
+    },
+    {
+      "bytes": 1341,
+      "rel": "Research-Agent-Lab/agents/evidence_checker.py",
+      "sha256": "89138f95231fe1aade5c0b2edae1e73d71868aa71ca9780433a6116254667b8c"
+    },
+    {
+      "bytes": 6983,
+      "rel": "Research-Agent-Lab/agents/experiment_decision.py",
+      "sha256": "c255cc33ba5387b781be861bac017b06e839695457d225faeb495984dee937e8"
+    },
+    {
+      "bytes": 4999,
+      "rel": "Research-Agent-Lab/agents/experiment_orchestrator.py",
+      "sha256": "e832f84b1c007161c261b14e4c840c57a84c4a15db4cbe5fbbd6726c3e428471"
+    },
+    {
+      "bytes": 12391,
+      "rel": "Research-Agent-Lab/agents/experiment_planner.py",
+      "sha256": "df4aa2b738cd8e3f9b16790aa211b36efa260794043039e86f5137ee83fcaf6d"
+    },
+    {
+      "bytes": 3362,
+      "rel": "Research-Agent-Lab/agents/literature_memory_agent.py",
+      "sha256": "995eb133130a83ff57095811f630f84307f299576ddd804699ef90829c38b266"
+    },
+    {
+      "bytes": 5892,
+      "rel": "Research-Agent-Lab/agents/literature_searcher.py",
+      "sha256": "ac25f23e9570f51236b26603c49327cd167a59badf096d87ba924841f1a01232"
+    },
+    {
+      "bytes": 928,
+      "rel": "Research-Agent-Lab/agents/local_paper_library.py",
+      "sha256": "f5f02b4bb1ff9ecc1da1f1afb268341535885002fedd33197352ad5d9aecefe2"
+    },
+    {
+      "bytes": 1905,
+      "rel": "Research-Agent-Lab/agents/local_paper_parser.py",
+      "sha256": "f586465cb330dac0b1a8993ef2ee0520496cd8b87b3555e813ff7524d1e14b52"
+    },
+    {
+      "bytes": 15539,
+      "rel": "Research-Agent-Lab/agents/method_card_extractor.py",
+      "sha256": "fc768724cbc2ab668bea1491e16e5001c6d91245cfdec98ee842303868abd892"
+    },
+    {
+      "bytes": 2714,
+      "rel": "Research-Agent-Lab/agents/method_card_retriever.py",
+      "sha256": "ca48dce7b9bdde01c4a2810666f8a98b5a93a1ec49a16c3c22b43941c2787144"
+    },
+    {
+      "bytes": 3327,
+      "rel": "Research-Agent-Lab/agents/opportunity_agent.py",
+      "sha256": "37e17e6a396b0555431888f6512aa72370444c9a98475f9ea2a92fdeb5eee896"
+    },
+    {
+      "bytes": 2967,
+      "rel": "Research-Agent-Lab/agents/paper_reader.py",
+      "sha256": "fd297ac12df1a05fd406e5eb8facce5c07b5e2706dfc1afb3f40f3a9c36ba6cb"
+    },
+    {
+      "bytes": 2442,
+      "rel": "Research-Agent-Lab/agents/paper_selector.py",
+      "sha256": "fb7944516d59eb45a266030ac513bbaf2ca9299d1ceab37179bb50d01b8d8cb8"
+    },
+    {
+      "bytes": 7858,
+      "rel": "Research-Agent-Lab/agents/paper_triage.py",
+      "sha256": "ab2c562b373f11752f2c89e3a33fbee801811d08bd0b4b04e5dc2e69f1ddc87e"
+    },
+    {
+      "bytes": 15387,
+      "rel": "Research-Agent-Lab/agents/reference_extractor.py",
+      "sha256": "a2cf178450fd5cc62a227cca83b13e1c1e05566e8da07f6ea145d50e0f30381b"
+    },
+    {
+      "bytes": 1327,
+      "rel": "Research-Agent-Lab/agents/research_manager.py",
+      "sha256": "3ba8341acb7b8247c0353ebf73e065ebdb351b166dbfd554e1e5e70eabd444b9"
+    },
+    {
+      "bytes": 7021,
+      "rel": "Research-Agent-Lab/agents/result_parser.py",
+      "sha256": "707da57ea2bc785cf5fea670e3145bc2d24cbec25eb5fdb7eeafcbb63ac09738"
+    },
+    {
+      "bytes": 16480,
+      "rel": "Research-Agent-Lab/agents/retrieval_evaluator.py",
+      "sha256": "40487765a0d3681d8f587e07ce894ce95aa60474e4fec39ebf6e0abd2206d121"
+    },
+    {
+      "bytes": 14826,
+      "rel": "Research-Agent-Lab/agents/reviewer_agent.py",
+      "sha256": "aea088a60e44d553bafa6fcd24a893dec1bbe839cad012edfc49fd2d6079d2be"
+    },
+    {
+      "bytes": 17743,
+      "rel": "Research-Agent-Lab/agents/run_evaluator.py",
+      "sha256": "eaf8dd94b6d8e8e72efa3c93c98c34372f45242b9ce52234259e9e140694f511"
+    },
+    {
+      "bytes": 1314,
+      "rel": "Research-Agent-Lab/agents/run_validation_agent.py",
+      "sha256": "2898cb36a18e73e455d3c3deac2b13a50140b2cb47c66c38d52ae74b574c0d10"
+    },
+    {
+      "bytes": 7295,
+      "rel": "Research-Agent-Lab/agents/synthesis_agent.py",
+      "sha256": "58b5aa368240d30fd534d870bc697e72b0a917308b82b2c88218fbff074b23d3"
+    },
+    {
+      "bytes": 3155,
+      "rel": "Research-Agent-Lab/agents/tree_pruner.py",
+      "sha256": "2c91e4ee55def0e1f0866bc558551c4c22874fb6e994c345f94bbae9d90ef649"
+    },
+    {
+      "bytes": 24029,
+      "rel": "Research-Agent-Lab/agents/tree_search_agent.py",
+      "sha256": "3543d44607e1beddc5979663c5e91bf79a39bf6ff3da7b59eeafa6221b238cda"
+    },
+    {
+      "bytes": 55,
+      "rel": "Research-Agent-Lab/app/__init__.py",
+      "sha256": "b69393f38c34248cba5c32d2167483aac9bb27f48660683a64e3dcc6048eaa19"
+    },
+    {
+      "bytes": 14469,
+      "rel": "Research-Agent-Lab/app/main.py",
+      "sha256": "3013386f8910401a2620aaab0b51405303f48e70e5bbcc25f61573cf8c1a0d8d"
+    },
+    {
+      "bytes": 43169,
+      "rel": "Research-Agent-Lab/code_plan.md",
+      "sha256": "cef753b57b1aaf025fc5ae65c19f710b39a1132b3d0dbe92a1f69362123a9870"
+    },
+    {
+      "bytes": 32,
+      "rel": "Research-Agent-Lab/core/__init__.py",
+      "sha256": "89fa1a616011582c39e8d0a3ebfb1c62b3b936f90122497a43f67bda1e137056"
+    },
+    {
+      "bytes": 1027,
+      "rel": "Research-Agent-Lab/core/agent_base.py",
+      "sha256": "df14af5c4eb230ece1f03d1920d2874113887992bc9407af61890cd9f20fefb2"
+    },
+    {
+      "bytes": 2513,
+      "rel": "Research-Agent-Lab/core/artifact_store.py",
+      "sha256": "5a33b32195bdc5709b6972e0781ecdd7b427cb0304d51a830671b11f67e0cf2b"
+    },
+    {
+      "bytes": 600,
+      "rel": "Research-Agent-Lab/core/run_logger.py",
+      "sha256": "9b40f13883e16b72112734292da558800e5c9d3beac7fbd627dd97d4a7ceb4a2"
+    },
+    {
+      "bytes": 1183,
+      "rel": "Research-Agent-Lab/core/state.py",
+      "sha256": "cf63c824f43499147d0bd6f682d493165ffdf1ea545530717ad8d6e09ac19902"
+    },
+    {
+      "bytes": 403,
+      "rel": "Research-Agent-Lab/core/tool_base.py",
+      "sha256": "0e0b960d8367110005b0bcff5e0ca75647793ea78335780d21f70583a1f1c14a"
+    },
+    {
+      "bytes": 3230,
+      "rel": "Research-Agent-Lab/core/workflow.py",
+      "sha256": "0c034fd3bf00619e2038f23ef37ee9c2577ef8f515229d1ea1189e4427e253d8"
+    },
+    {
+      "bytes": 4541,
+      "rel": "Research-Agent-Lab/data/backups/autonomous_research_goal_docs/README.md",
+      "sha256": "3d413c9520b68dbd36f845040589d0f396023cca036b5fe1605c0a657eb5340f"
+    },
+    {
+      "bytes": 13480,
+      "rel": "Research-Agent-Lab/data/backups/autonomous_research_goal_docs/docs/project_handoff.md",
+      "sha256": "c3c430e25c502381932c23907432b915530ef885d6f3d0d4fb09035ce43bb7a6"
+    },
+    {
+      "bytes": 2030,
+      "rel": "Research-Agent-Lab/data/backups/intent_led_motion_condition_base/model_led_initializer.py",
+      "sha256": "590ac7a9564b0abc776ef712183d030a8dd4f5cc6749c1584e79d1ab5eb9bbe5"
+    },
+    {
+      "bytes": 20100,
+      "rel": "Research-Agent-Lab/data/backups/intent_led_motion_condition_base/train_led_trajectory_augment_input.py",
+      "sha256": "c046354e104f7823656c0b9d5017a093adbf0eb546f95bc6997080c75a0e7c19"
+    },
+    {
+      "bytes": 3884,
+      "rel": "Research-Agent-Lab/data/backups/intent_led_motion_condition_base/work.md",
+      "sha256": "e1b95157541d617ab4721745d5e81107f6e6089fc9fbf9b27877ed9677758552"
+    },
+    {
+      "bytes": 4233,
+      "rel": "Research-Agent-Lab/data/backups/research_agent_lab_llm_budget/README.md",
+      "sha256": "9c81e361c7135a4f1ea8123ae4132c7e8a1a209d7d76b5eb172d448feb2c1088"
+    },
+    {
+      "bytes": 13042,
+      "rel": "Research-Agent-Lab/data/backups/research_agent_lab_llm_budget/agents/method_card_extractor.py",
+      "sha256": "4db4da316c28c73006b1befd19e66e009d8465d7d227cf44480aca40ee30d04f"
+    },
+    {
+      "bytes": 5231,
+      "rel": "Research-Agent-Lab/data/backups/research_agent_lab_llm_budget/app/main.py",
+      "sha256": "60d3efc42d3e07264f98e698fc2533a8dc0964f07d1072243c5c6c131d4bb448"
+    },
+    {
+      "bytes": 3239,
+      "rel": "Research-Agent-Lab/data/backups/research_agent_lab_llm_budget/docs/model_and_literature_config.md",
+      "sha256": "d3323288452d6e80c3b2e05b2c3d5a920a5cf3910a2551468343cc779654b3fd"
+    },
+    {
+      "bytes": 1572,
+      "rel": "Research-Agent-Lab/data/backups/research_agent_lab_llm_budget/workflows/factory.py",
+      "sha256": "bf89d8d8b176c364ee72ad080d5e32d10e6007cae18dc15a2d186af3da86b36f"
+    },
+    {
+      "bytes": 3561,
+      "rel": "Research-Agent-Lab/data/backups/research_agent_lab_llm_gateway/README.md",
+      "sha256": "f4bb52b7f527ad267f4d257937730d5e869deafa8f0a44463cb093192d94ed38"
+    },
+    {
+      "bytes": 4261,
+      "rel": "Research-Agent-Lab/data/backups/research_agent_lab_llm_gateway/agents/method_card_extractor.py",
+      "sha256": "8e670091ec4a5c25f89092fcca97441b1c5da0f53859a9d6945a6f2342485032"
+    },
+    {
+      "bytes": 2284,
+      "rel": "Research-Agent-Lab/data/backups/research_agent_lab_llm_gateway/docs/model_and_literature_config.md",
+      "sha256": "477537a10dd003ec461500540836f09aaf41141ae01392c4025e8a9c83c0db51"
+    },
+    {
+      "bytes": 2814,
+      "rel": "Research-Agent-Lab/data/backups/research_agent_lab_llm_gateway/tools/llm_client.py",
+      "sha256": "253de7705ccd1e87fe156f9914ceb0de77ccc7de5d4fb839fe83cd484cb58241"
+    },
+    {
+      "bytes": 4416,
+      "rel": "Research-Agent-Lab/data/backups/research_agent_lab_synthesis_planner_llm/README.md",
+      "sha256": "6ac624c967ba427a6dc4d63a6ca847173dde7bf4f6d91163880abc640f58b501"
+    },
+    {
+      "bytes": 2603,
+      "rel": "Research-Agent-Lab/data/backups/research_agent_lab_synthesis_planner_llm/agents/experiment_planner.py",
+      "sha256": "c21e24166b1ff84a55d997719ea3891bd0988abdb7275ea36f36a00d3c8f549e"
+    },
+    {
+      "bytes": 14957,
+      "rel": "Research-Agent-Lab/data/backups/research_agent_lab_synthesis_planner_llm/agents/method_card_extractor.py",
+      "sha256": "b1d61086c683bcf670949b13834bf77ac69f4c579da78be05f964ab6b76a61ef"
+    },
+    {
+      "bytes": 2187,
+      "rel": "Research-Agent-Lab/data/backups/research_agent_lab_synthesis_planner_llm/agents/reviewer_agent.py",
+      "sha256": "2b6bf2bf61cd87d7224a74e0091dc59232adc447fafa581093c1ced458022979"
+    },
+    {
+      "bytes": 1514,
+      "rel": "Research-Agent-Lab/data/backups/research_agent_lab_synthesis_planner_llm/agents/synthesis_agent.py",
+      "sha256": "fe645a996d66213d25ed8aca365f4b688a358eb0c36502408a51196a01227806"
+    },
+    {
+      "bytes": 3735,
+      "rel": "Research-Agent-Lab/data/backups/research_agent_lab_synthesis_planner_llm/docs/model_and_literature_config.md",
+      "sha256": "1d76ce492e0c3dfbc87c7b686b6836cc83f4ae1ad27abda9f5f03dacd625c6d2"
+    },
+    {
+      "bytes": 4525,
+      "rel": "Research-Agent-Lab/data/backups/research_agent_lab_synthesis_planner_llm/tools/llm_client.py",
+      "sha256": "aaadad0d89db4d346b34900715c7c97b97ca39651147c73682a9aef4de156447"
+    },
+    {
+      "bytes": 156,
+      "rel": "Research-Agent-Lab/data/run_dabda7b07d8b/artifact_index.jsonl",
+      "sha256": "d155e3352a5935b6a18fab6b34a3d480c93166c89cc2e5e2c134fa10873d7098"
+    },
+    {
+      "bytes": 2678,
+      "rel": "Research-Agent-Lab/data/run_dabda7b07d8b/artifacts/run_evaluations/runeval_d852941b733f.json",
+      "sha256": "3c7367d57af8492128e6e20f108c49020eebd9589a5155ab1369c42af2e44c1e"
+    },
+    {
+      "bytes": 38933,
+      "rel": "Research-Agent-Lab/docs/Q&A.md",
+      "sha256": "da15c15bc622b55ae498413de611ba6ec0a52b5a02ae3b6798577988fc0811d2"
+    },
+    {
+      "bytes": 4127,
+      "rel": "Research-Agent-Lab/docs/model_and_literature_config.md",
+      "sha256": "85cc93c2431c76210a654f5f3202cd735c23e199ca04c5283912c5120938ebff"
+    },
+    {
+      "bytes": 2613,
+      "rel": "Research-Agent-Lab/docs/p17_dynamic_validation.md",
+      "sha256": "85585155557065b838dad3cff97e2b893ef95e90178a41b68bf5901b1ce9c46c"
+    },
+    {
+      "bytes": 21965,
+      "rel": "Research-Agent-Lab/docs/project_handoff.md",
+      "sha256": "317bfede068d6750ae017e60807e80e212bf98371ecea2074353bf77ee28a003"
+    },
+    {
+      "bytes": 1163,
+      "rel": "Research-Agent-Lab/docs/project_safety.md",
+      "sha256": "ed50165f8cbc4e429ef08182e56e9e87ae18dfbf1c5d138c140d2a068bb98a2a"
+    },
+    {
+      "bytes": 1214,
+      "rel": "Research-Agent-Lab/docs/reference_network_retrieval.md",
+      "sha256": "6cbd6780f2ef59f49c1de504435c0479660ca1250b6ed5fa66d50ea3647f52ae"
+    },
+    {
+      "bytes": 1053,
+      "rel": "Research-Agent-Lab/docs/retrieval_evaluation.md",
+      "sha256": "50c30d7315276a4395d2cbb670985625ebbeadbfe59afa5b245924c5d429be24"
+    },
+    {
+      "bytes": 904,
+      "rel": "Research-Agent-Lab/docs/run_evaluation.md",
+      "sha256": "e1133db515c17554b07fbbaad719edad04412e662cda0367acaf04b778f4a966"
+    },
+    {
+      "bytes": 826,
+      "rel": "Research-Agent-Lab/docs/runtime_environment.md",
+      "sha256": "eef57e9bb7b00786762183d6893f5011591392d74a386c11d7299ffb4d8482d6"
+    },
+    {
+      "bytes": 55243,
+      "rel": "Research-Agent-Lab/docs/superpowers/plans/2026-06-17-p10-tree-optimization.md",
+      "sha256": "bbf90aec0ae3f56f52e28116dd068f81e590a4f1043d187e401f9957b59909c1"
+    },
+    {
+      "bytes": 29549,
+      "rel": "Research-Agent-Lab/docs/superpowers/plans/2026-06-18-p11-run-evaluation-benchmark.md",
+      "sha256": "7c0f65c6acdb6e7e6f6655c05dad9c06da25c17fd0da25175a229b1f3d3115f8"
+    },
+    {
+      "bytes": 37524,
+      "rel": "Research-Agent-Lab/docs/superpowers/plans/2026-06-18-p13-reference-network-and-run-trends.md",
+      "sha256": "129b3db8c9ef386c3ff99a2d140008454b99b5a29238c8a970a4b130737df2f2"
+    },
+    {
+      "bytes": 50499,
+      "rel": "Research-Agent-Lab/docs/superpowers/plans/2026-06-22-p14-retrieval-evaluation.md",
+      "sha256": "1b7739bbc8bb19f42ad536de1928bbea8719c348fe932caca02373930b28cccc"
+    },
+    {
+      "bytes": 62893,
+      "rel": "Research-Agent-Lab/docs/superpowers/plans/2026-06-22-p15-experiment-execution-loop.md",
+      "sha256": "bf9b16596b1fb2300acc180eadb1c427cb51c9ef5b159f94318b4b805a7bca57"
+    },
+    {
+      "bytes": 40779,
+      "rel": "Research-Agent-Lab/docs/superpowers/plans/2026-06-23-p16-debug-llm-loop.md",
+      "sha256": "8ae4b51e45c61d95325e6e7d2265b49086346aa49c6b13494fb251c43749d192"
+    },
+    {
+      "bytes": 55682,
+      "rel": "Research-Agent-Lab/docs/superpowers/plans/2026-06-24-p17-run-validation-delivery-hardening.md",
+      "sha256": "f7c8e529e19c2d9ccfe58e940c219276811b025d90c2ac4df9c5f386ca3ad7d6"
+    },
+    {
+      "bytes": 24369,
+      "rel": "Research-Agent-Lab/docs/superpowers/plans/2026-06-24-p18-real-training-integration.md",
+      "sha256": "f3766a600a19eeb1f057f3242424f18f50af76aba0eb131ead108c21165e221f"
+    },
+    {
+      "bytes": 35924,
+      "rel": "Research-Agent-Lab/docs/superpowers/plans/2026-06-24-p19-autonomy-upgrade.md",
+      "sha256": "7119548e23039e60d0fd2ff22747b9b6c12dace03dd221fe211ea8dd72b02011"
+    },
+    {
+      "bytes": 8697,
+      "rel": "Research-Agent-Lab/docs/superpowers/specs/2026-06-17-p10-tree-optimization-design.md",
+      "sha256": "19a1fff1b7f195a96069f2ef20ececeed43d7772c9020de02f4ce1c0cc233887"
+    },
+    {
+      "bytes": 20094,
+      "rel": "Research-Agent-Lab/docs/superpowers/specs/2026-06-22-experiment-execution-loop-design.md",
+      "sha256": "c176f57b75ba9d05fe21028b2bd50df55b1b6cbe933b680296698fc0d30d5892"
+    },
+    {
+      "bytes": 10912,
+      "rel": "Research-Agent-Lab/docs/superpowers/specs/2026-06-22-p14-retrieval-evaluation-design.md",
+      "sha256": "78bb2c874f7621f7bdb12a04c3fd6e013fd339aec79cf72dec337e2fe5b93104"
+    },
+    {
+      "bytes": 11000,
+      "rel": "Research-Agent-Lab/docs/superpowers/specs/2026-06-23-p16-debug-llm-loop-design.md",
+      "sha256": "c1c9cae2c57c64e6e0b5b6735b2b2c18a4fb97210c61088ce211b4d1680e5dfc"
+    },
+    {
+      "bytes": 12385,
+      "rel": "Research-Agent-Lab/docs/superpowers/specs/2026-06-24-p17-run-validation-delivery-hardening-design.md",
+      "sha256": "108a0eb5ec7a577ff825385ff7e63b99e8b18ccc0031560ec5675861e92325bf"
+    },
+    {
+      "bytes": 8500,
+      "rel": "Research-Agent-Lab/docs/superpowers/specs/2026-06-24-p18-real-training-integration-design.md",
+      "sha256": "99e7402bcdd07ab3686896fcb959b228cd4e0f16dd55dcfbbfbfc01e43747b53"
+    },
+    {
+      "bytes": 13222,
+      "rel": "Research-Agent-Lab/docs/superpowers/specs/2026-06-24-p19-autonomy-upgrade-design.md",
+      "sha256": "e75f6135d0fc0dbef2b03360f236cde01e3921dc3564d255dbfbf72023ba5f94"
+    },
+    {
+      "bytes": 1,
+      "rel": "Research-Agent-Lab/external/.gitkeep",
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    {
+      "bytes": 34,
+      "rel": "Research-Agent-Lab/memory/__init__.py",
+      "sha256": "2dcac08400688b29768401b47381a1c1f3cfb76ce448ab504d0dca0e3b0153fe"
+    },
+    {
+      "bytes": 26501,
+      "rel": "Research-Agent-Lab/memory/literature_memory.py",
+      "sha256": "3ef601e28813efc66b526715ac46fd1c0f952c3e6bf32338e88d0b1382900fa6"
+    },
+    {
+      "bytes": 236,
+      "rel": "Research-Agent-Lab/memory/memory_policy.py",
+      "sha256": "996e8f90c44b4f225ef0f7a0233c3519333e06077b86886fc8704a9aa98b838f"
+    },
+    {
+      "bytes": 2136,
+      "rel": "Research-Agent-Lab/memory/sqlite_memory.py",
+      "sha256": "cf9c53f5267f1b4947e381fa77f5c34affea722c6d1c46388aafafab06b6eef7"
+    },
+    {
+      "bytes": 393,
+      "rel": "Research-Agent-Lab/pyproject.toml",
+      "sha256": "ea2b33b8f428d41cdfbd907b6dfc3e4d257e498d7de13b14cbe194dba3740b0a"
+    },
+    {
+      "bytes": 974,
+      "rel": "Research-Agent-Lab/schemas/__init__.py",
+      "sha256": "70bc601899f8b0174c8be7f9b519e5d544722c5fc87790737984ac365f062abe"
+    },
+    {
+      "bytes": 542,
+      "rel": "Research-Agent-Lab/schemas/auto_debug_record.py",
+      "sha256": "c45c6d026a820e6937d9867ad99180c3d7416697927ff70b310f431d03c53513"
+    },
+    {
+      "bytes": 1454,
+      "rel": "Research-Agent-Lab/schemas/base.py",
+      "sha256": "b7bf77c7e3da67575bc5ec7244fccfbc0bca44e325ae4c91e5517e6c1a249cc9"
+    },
+    {
+      "bytes": 533,
+      "rel": "Research-Agent-Lab/schemas/code_patch.py",
+      "sha256": "d32bd258ac7d6189a6fdab563f320b50182c7226316a33ddc7b5838e34f383c3"
+    },
+    {
+      "bytes": 711,
+      "rel": "Research-Agent-Lab/schemas/code_task.py",
+      "sha256": "aacc3fbd51b0ecf5f90fd81ed9306099465ac2b7f84b9961458a8dcb339e5d61"
+    },
+    {
+      "bytes": 955,
+      "rel": "Research-Agent-Lab/schemas/codebase_report.py",
+      "sha256": "f25a1f3fe82314c282538889cb91ae7e8cdb7f611302f61c0f7d773fdf235fdb"
+    },
+    {
+      "bytes": 398,
+      "rel": "Research-Agent-Lab/schemas/evidence.py",
+      "sha256": "6aa985e6a99168fa4043641f8bf10576694244882309c2fd45cd71567b29d7a5"
+    },
+    {
+      "bytes": 485,
+      "rel": "Research-Agent-Lab/schemas/experiment_decision.py",
+      "sha256": "775b18d3970f0adda5b4d8c4885174ba53fbbfccd62a0f5846fe0ed41cdb02fa"
+    },
+    {
+      "bytes": 810,
+      "rel": "Research-Agent-Lab/schemas/experiment_plan.py",
+      "sha256": "04382040a03742bc4d81a5a60c171ffe22ac726b7d54242e9ea3bdb0108e331b"
+    },
+    {
+      "bytes": 837,
+      "rel": "Research-Agent-Lab/schemas/experiment_result.py",
+      "sha256": "12bfdae22b1169dcbc3f2debb1a3682f3eeced1e7f4b7e990d90aecb1a65485f"
+    },
+    {
+      "bytes": 873,
+      "rel": "Research-Agent-Lab/schemas/experiment_tree.py",
+      "sha256": "2cbf2cefd5d805ddb0f615b16a915e733067f711205110ac45e54e82c3193e72"
+    },
+    {
+      "bytes": 995,
+      "rel": "Research-Agent-Lab/schemas/method_card.py",
+      "sha256": "763e432518774dec1d5535820877c6bcd089ac1c3e77a06710e1b0424690121d"
+    },
+    {
+      "bytes": 596,
+      "rel": "Research-Agent-Lab/schemas/opportunity.py",
+      "sha256": "6f93a3e526d27c42334258fd4df39131e072dd9e2d65f3317eff73208aca5176"
+    },
+    {
+      "bytes": 618,
+      "rel": "Research-Agent-Lab/schemas/paper.py",
+      "sha256": "4cd5b5e417022acbcf829ec0764b3f500a0bf188f48bf8040b0bededcc2efce2"
+    },
+    {
+      "bytes": 699,
+      "rel": "Research-Agent-Lab/schemas/parsed_paper.py",
+      "sha256": "7f2c372a2414fc9a64962e156aef86711e6e5913d09b79f80cb7004cf6982ef6"
+    },
+    {
+      "bytes": 516,
+      "rel": "Research-Agent-Lab/schemas/reference.py",
+      "sha256": "cd1e4dd4dba6f454a13ccd6de802fff8cad2bbb286b1adfbdc862cb234a33bd8"
+    },
+    {
+      "bytes": 960,
+      "rel": "Research-Agent-Lab/schemas/retrieval_evaluation.py",
+      "sha256": "5ef5af68e8621fed81df6fde51ec3bbaa69479bbcf1ebc24bcac3c277843f54f"
+    },
+    {
+      "bytes": 415,
+      "rel": "Research-Agent-Lab/schemas/review_result.py",
+      "sha256": "ee5036c83f62fbcc8d9b233034c5194832a04a3da0bc9bf7f5932f302bf02caa"
+    },
+    {
+      "bytes": 762,
+      "rel": "Research-Agent-Lab/schemas/run_evaluation.py",
+      "sha256": "98eb0933ad646b9bac89db8c559052768dde07c7e8a305280e0c5959daf0c032"
+    },
+    {
+      "bytes": 732,
+      "rel": "Research-Agent-Lab/schemas/run_validation.py",
+      "sha256": "2c244349c8fde6c17a2a35239bbdddd2c2d9942204d01f39596b9b89e0f9f8be"
+    },
+    {
+      "bytes": 2465,
+      "rel": "Research-Agent-Lab/schemas/topic_pack.py",
+      "sha256": "9db6a53c0353ac70c33bd65cecd1924a0def9e958cff1a8e204cc3b58305c02d"
+    },
+    {
+      "bytes": 1633,
+      "rel": "Research-Agent-Lab/tests/test_agentlab_adapter.py",
+      "sha256": "fc61f11e573462b636f9609a5f977e1f9db970ef11ef5628b3a5ce63de8d4350"
+    },
+    {
+      "bytes": 841,
+      "rel": "Research-Agent-Lab/tests/test_auto_debug_record_schema.py",
+      "sha256": "aeaac1f3f9edd0066bf448ec08bd41001c520c8f1dc7378131f14fccbb0e654d"
+    },
+    {
+      "bytes": 24706,
+      "rel": "Research-Agent-Lab/tests/test_auto_debugger.py",
+      "sha256": "5964e744d46330d93957026976af0b5b67e06876fc731d3be4dde1fef970edfe"
+    },
+    {
+      "bytes": 11020,
+      "rel": "Research-Agent-Lab/tests/test_autonomous_experiment.py",
+      "sha256": "f2edc2a531fb5e2a9bd4dbfc3df8903e2479b60f15b423d24ef831b652744931"
+    },
+    {
+      "bytes": 17170,
+      "rel": "Research-Agent-Lab/tests/test_branch_selection_agent.py",
+      "sha256": "bb7d9d78684825d51d3063adbd59b9eace0fb2ab9425482284e6f4408bfb2910"
+    },
+    {
+      "bytes": 1664,
+      "rel": "Research-Agent-Lab/tests/test_code_patch_schema.py",
+      "sha256": "2ea3de84c867e7fa31dc71486aa61c081219614cf718fd9c0dc731792de1c094"
+    },
+    {
+      "bytes": 16259,
+      "rel": "Research-Agent-Lab/tests/test_code_writer.py",
+      "sha256": "5e18034603f7cb38839dabdc0a4563e589068646df502dda57e4d4d5ac83bb74"
+    },
+    {
+      "bytes": 3420,
+      "rel": "Research-Agent-Lab/tests/test_codebase_analyzer.py",
+      "sha256": "5aee0f88429ea55efa9fb979a1b075347d1c8fbfb92e57f5ee9fc80d984f5c07"
+    },
+    {
+      "bytes": 953,
+      "rel": "Research-Agent-Lab/tests/test_env_loader.py",
+      "sha256": "cb803726448400dfd15bf185d300a059991632d53e5e54ae2e586ca1e7a17d7a"
+    },
+    {
+      "bytes": 7018,
+      "rel": "Research-Agent-Lab/tests/test_experiment_decision.py",
+      "sha256": "ad668d9318f2e158497eb1b86b4702bffee731e3a56d4f104743fb3ee18b8003"
+    },
+    {
+      "bytes": 3758,
+      "rel": "Research-Agent-Lab/tests/test_experiment_orchestrator.py",
+      "sha256": "cb31ce0adae1f82bab8e7f8710203daa1ab6d5d6c6c5fa135628919a9db5fdfc"
+    },
+    {
+      "bytes": 2649,
+      "rel": "Research-Agent-Lab/tests/test_experiment_result.py",
+      "sha256": "b4d69a5b0676bab15f9b9095e030e3dda0f703a789659fec5f4c380c24547a82"
+    },
+    {
+      "bytes": 8896,
+      "rel": "Research-Agent-Lab/tests/test_full_research_loop.py",
+      "sha256": "a7ca61a19a7ac381ef0d8a5d19de538bfbcfd8d423ed39607c2405d64f0f053e"
+    },
+    {
+      "bytes": 25072,
+      "rel": "Research-Agent-Lab/tests/test_literature_memory.py",
+      "sha256": "50609d14f32a7af386ad9eb1b13a00dce67ac1ecc91bf4c22f16a0a37dd0f150"
+    },
+    {
+      "bytes": 3431,
+      "rel": "Research-Agent-Lab/tests/test_literature_retriever.py",
+      "sha256": "fbc420a0cf8fda92a743ce86fd7d3534dcded2001e5106c845a9776406561164"
+    },
+    {
+      "bytes": 3095,
+      "rel": "Research-Agent-Lab/tests/test_local_paper_library.py",
+      "sha256": "8ffc8ff27356445e405b15f2f7f423b4ce37ec014ba8498ece07d4549dc58177"
+    },
+    {
+      "bytes": 8741,
+      "rel": "Research-Agent-Lab/tests/test_method_card_extractor_llm.py",
+      "sha256": "2b9db3bd30a619e5aad33080027bc704042102215e8f42a9e8c394bdb60d5c1a"
+    },
+    {
+      "bytes": 8495,
+      "rel": "Research-Agent-Lab/tests/test_method_card_retriever.py",
+      "sha256": "2b107e8f34fb61fca417048a5780d3ce4e0fafac693d69debec5d822f38927a0"
+    },
+    {
+      "bytes": 3894,
+      "rel": "Research-Agent-Lab/tests/test_multi_branch_parallel.py",
+      "sha256": "4550d5ed103cc00a5a866d0b283a0f0f5487b090fc095973f35d345ce0eef8c5"
+    },
+    {
+      "bytes": 1639,
+      "rel": "Research-Agent-Lab/tests/test_paper_chunk_selector.py",
+      "sha256": "7d6502c87ef64225eecc6f5ff4894d24814056bdec45a15f376c99ffb7f400d0"
+    },
+    {
+      "bytes": 8869,
+      "rel": "Research-Agent-Lab/tests/test_paper_selector.py",
+      "sha256": "fe90e9184b7ca12936a3affef82a0df6472ea9e01f3a43090faa3d69966623e6"
+    },
+    {
+      "bytes": 5037,
+      "rel": "Research-Agent-Lab/tests/test_pdf_parser_and_llm.py",
+      "sha256": "23b4b9060b97b6dbe0961e221520aebf3e4eb5dcbe1b8f4858ea240fed3c5552"
+    },
+    {
+      "bytes": 6533,
+      "rel": "Research-Agent-Lab/tests/test_reference_expansion_search.py",
+      "sha256": "15e0f9dc4a2d6ef36b35a1e38fa1e8fa307ac0db3160077afe364d52433d896d"
+    },
+    {
+      "bytes": 15944,
+      "rel": "Research-Agent-Lab/tests/test_reference_extractor.py",
+      "sha256": "0ad6a6cb1a0fda69b10c3bdc7bb486f68e0f00238e554a3e8276487a66f41654"
+    },
+    {
+      "bytes": 2909,
+      "rel": "Research-Agent-Lab/tests/test_reference_memory.py",
+      "sha256": "c34cfb4fff3b1e1ecb903f0a5fa124b482a24e22986f3cca56b4b57d63481cf3"
+    },
+    {
+      "bytes": 2193,
+      "rel": "Research-Agent-Lab/tests/test_reference_seed_builder.py",
+      "sha256": "de6efbed9d0a13a64dedf765be908f4d1f75c3df7d72f980689e6d399213f0a2"
+    },
+    {
+      "bytes": 7158,
+      "rel": "Research-Agent-Lab/tests/test_result_parser.py",
+      "sha256": "47c50d699ebbfbf80c9713fd41c5ad5b8cab8b5f40281d8b374cfc53554a092a"
+    },
+    {
+      "bytes": 17238,
+      "rel": "Research-Agent-Lab/tests/test_retrieval_evaluator.py",
+      "sha256": "b869288ed9fddb69b2069b002a9ee9086270688f149abf892285856b2a4cafaf"
+    },
+    {
+      "bytes": 16131,
+      "rel": "Research-Agent-Lab/tests/test_run_artifact_validator.py",
+      "sha256": "5b77f78eaf13819d6f34617ec69c6f40d26692a9a2cc8a6c4544911d07d5f4d3"
+    },
+    {
+      "bytes": 1949,
+      "rel": "Research-Agent-Lab/tests/test_run_evaluation_trends.py",
+      "sha256": "299925597715839513e036520a9c0ef9d2e837373bcc14c24aa0f1129097d5cc"
+    },
+    {
+      "bytes": 25409,
+      "rel": "Research-Agent-Lab/tests/test_run_evaluator.py",
+      "sha256": "393a4094d4031f5ed68609e96cb2e63ee0f4cf867cc60f3aac2aca55f70c9ecf"
+    },
+    {
+      "bytes": 7038,
+      "rel": "Research-Agent-Lab/tests/test_section_detection.py",
+      "sha256": "09c4f337087f8a1146185be2cf5991d746eda70eb3da68e713ed90e82377ea25"
+    },
+    {
+      "bytes": 9808,
+      "rel": "Research-Agent-Lab/tests/test_synthesis_and_planner_llm.py",
+      "sha256": "5fb992caf50f3c87877ae478145087504629a2a0701dd0114f1eae9ade4a6327"
+    },
+    {
+      "bytes": 7897,
+      "rel": "Research-Agent-Lab/tests/test_tree_promotion.py",
+      "sha256": "3e21abeaf93ded391f1df1b253ba591e2f8b625bcb3a95b8165d84b94ba337d6"
+    },
+    {
+      "bytes": 16099,
+      "rel": "Research-Agent-Lab/tests/test_tree_pruner.py",
+      "sha256": "8c388abc24e1ec40bf18670ecda5f23fef747ae3d4e184af4aae20ee55918a0b"
+    },
+    {
+      "bytes": 32626,
+      "rel": "Research-Agent-Lab/tests/test_tree_search_agent.py",
+      "sha256": "aa143b3dcb40b4207484700a18a277f4fb728aca2b6f95b4c3ebea1a558e8f85"
+    },
+    {
+      "bytes": 6725,
+      "rel": "Research-Agent-Lab/tests/test_tree_visualizer.py",
+      "sha256": "9f6eb9ef728119ca1d260731f810768d27621beead3b10b1c0b0a5fc5a32d80b"
+    },
+    {
+      "bytes": 19875,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifact_index.jsonl",
+      "sha256": "307bcaa10b86e544b26a20e0e45675cb90f4894b4344b655382adde2e4c77cfa"
+    },
+    {
+      "bytes": 3578,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/briefs/research_brief.json",
+      "sha256": "4b421292747d4c0972c6f6c84b1bdc22122f7191568c71ec4b4229718baeca67"
+    },
+    {
+      "bytes": 1858,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/code_tasks/codetask_45be01610b9a.json",
+      "sha256": "8566469c2a7b4c1b79aeb12f9d1a547c12310403976af39a358a359e4bfb1cfa"
+    },
+    {
+      "bytes": 19249,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/codebase_reports/codebase_c19229bf640a.json",
+      "sha256": "86a764f896d6c6dac56b0cd45c3ebdd13eac257152bd1df5a9bd73e4bc4b2a07"
+    },
+    {
+      "bytes": 1599,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/evidence/evidence_61b01104a979.json",
+      "sha256": "2dd9a3fbc3e6e7070dc0913b2625299586be1c5bc923bc377400b15131048aff"
+    },
+    {
+      "bytes": 1556,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/evidence/evidence_81f2d18bc5da.json",
+      "sha256": "e2b96498d61e84202b0096f82e259d62b42b0c018a686c6393ca0bed70a9806a"
+    },
+    {
+      "bytes": 1563,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/evidence/evidence_e7b091a9cd07.json",
+      "sha256": "a575d0aac753008adaeaa491c5e243b96d9d02baf1933d00b6d923bcd4c14806"
+    },
+    {
+      "bytes": 4999,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/evidence_checks/evidence_checks.json",
+      "sha256": "d666fb0279d7b83f4d798cbcf47ec57ac40e4e549850738ce5a2a130b73c4ec1"
+    },
+    {
+      "bytes": 345,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/experiment_decisions/decision_e8a7b2a3b05f.json",
+      "sha256": "e4b60cc39db8d4bee0aef793b1c93666379d07a05508aa9143dd57dc2e8e811a"
+    },
+    {
+      "bytes": 1786,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/experiment_plans/experiment_29f8eb5eb785.json",
+      "sha256": "4bdbb189eedf2f28142ae74137bc86537b7b14754a14cd5ffebc80b8d71c83b2"
+    },
+    {
+      "bytes": 322,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/extracted_references/ref_048615e2bfc3.json",
+      "sha256": "6c0118d2ae9878b29558ac3b68a0802adbc26403ac2976b18789fad1c84928a1"
+    },
+    {
+      "bytes": 337,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/extracted_references/ref_45ef9b1525ea.json",
+      "sha256": "18e7556d0819288d0fdb7152dd74d5cad1815b817f8dac1e8287cd7255fdef99"
+    },
+    {
+      "bytes": 334,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/extracted_references/ref_6514b6686f6e.json",
+      "sha256": "266d0ad2351c8835e3ce9c6e04154bd258b910684e3185c06b23b23f3c59312b"
+    },
+    {
+      "bytes": 330,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/extracted_references/ref_ae062a176e2c.json",
+      "sha256": "7e868a0f4d4a5c8e64c1edea4a6c0f92663b71afd2b26584a0d8329ca61ea23b"
+    },
+    {
+      "bytes": 337,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/extracted_references/ref_ce839ac9b462.json",
+      "sha256": "60bbca0b27a7b7d8090474c59a1111fcfcc8247fef1cde1333786bf46ed9b051"
+    },
+    {
+      "bytes": 930,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_04191a3a9d16.json",
+      "sha256": "daac14630735945910c1b0a8e52993aeb63e37d4f2b040c90d86f38eae563311"
+    },
+    {
+      "bytes": 989,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_0b73e80fa1fd.json",
+      "sha256": "eb605689796d947115bf1737e8bd14dc8fcee6b18df502680762a7e0aa3fb40e"
+    },
+    {
+      "bytes": 871,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_0ed6cd9bf414.json",
+      "sha256": "3dc3711aac5866c6a0c232121ae73e9f9ab97c69afc42681e2e0db41e9ea4218"
+    },
+    {
+      "bytes": 837,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_12bcdfdf1c13.json",
+      "sha256": "1a3f293bc0db000b84a97b016276eef550b5cb895b4d84c4491e48a9e9f34490"
+    },
+    {
+      "bytes": 937,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_1491b9b67f58.json",
+      "sha256": "21efcc5ac9cc298dae00bb5ee3095832f1c9cccd5e05a2d41d92f822902fe1fa"
+    },
+    {
+      "bytes": 869,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_160edfdc06c5.json",
+      "sha256": "9269493236c45178dd504e1033e175d9a57faaab67c6be93a5dfd5bd2c3ef5ea"
+    },
+    {
+      "bytes": 959,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_1b9a76b33804.json",
+      "sha256": "1d7b8642a624f43311a050965be63a4c94553baccbeb525abc61a2b012a547eb"
+    },
+    {
+      "bytes": 850,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_21047b69ffc8.json",
+      "sha256": "1543ad5bd0b80acca2aa74d6ea0f87723828f6e98535cc53769938ecc8fe2642"
+    },
+    {
+      "bytes": 868,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_2175352b707d.json",
+      "sha256": "baf312ed63603d45306b40b7a0c8832e8d75b394bf465f6505ae3052761139b4"
+    },
+    {
+      "bytes": 945,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_217e20e4741e.json",
+      "sha256": "2cb7a3d9cec4bfc1cd4c859905b7279de3f0db36f02c8be3d3aacdb331b74077"
+    },
+    {
+      "bytes": 990,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_25aab0476196.json",
+      "sha256": "5ccd9f419fd495b50abf32bee92ded4b204f9ec0149f29e3aff6d2d8af67774b"
+    },
+    {
+      "bytes": 1029,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_262eba38403c.json",
+      "sha256": "14fd2b42bc93488c405b89d8fcbdfdffe355bfea855fa1d9b3b6624a4b20e104"
+    },
+    {
+      "bytes": 989,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_29ef6164639e.json",
+      "sha256": "1b3037ecb86fefd157cd3fa5e89191641c66ad83776dacf89a3a76a21cb89bd7"
+    },
+    {
+      "bytes": 1086,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_33137405edac.json",
+      "sha256": "66d73a8d893f037a15fde1a7d60541c31e56078f74cfd155dc185029d6b7fd6b"
+    },
+    {
+      "bytes": 954,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_3b0d5582dd2a.json",
+      "sha256": "202d34599bef088fe269bca839a41d6560059c2bca68d05145e5ed82c95f7817"
+    },
+    {
+      "bytes": 1089,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_56cca013f640.json",
+      "sha256": "5a2f7ded1c64c2ecdbcf0c2dafb7709d36dacce5da0d67caac5e52c4702022f0"
+    },
+    {
+      "bytes": 1058,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_5bd0be79ab7f.json",
+      "sha256": "1b60df0a6f6c8a72bcbf0e4ca015c958d0809863cd5138a5461f31852b1df676"
+    },
+    {
+      "bytes": 1041,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_5f54ce7ba8ff.json",
+      "sha256": "5edc4c19af006667f8f82e597daecae12c65dbba403b530a49bbcf128efcac00"
+    },
+    {
+      "bytes": 968,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_6681cf981eca.json",
+      "sha256": "d93b6791dc4451ff31cab2b31c758ddd47cd8ec54343461a6e3118bf3b4cebcd"
+    },
+    {
+      "bytes": 899,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_66cd972f4dc5.json",
+      "sha256": "7ea1f4e702c527f2102847b8f72ed71f765e57419c5b87235b42ab1031e800e6"
+    },
+    {
+      "bytes": 907,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_6dfe136bd9e8.json",
+      "sha256": "17d83e3c324b345c4f1640d1676e1ceaed41979c991088238618e897d311b8b2"
+    },
+    {
+      "bytes": 730,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_797c11fa7988.json",
+      "sha256": "cf4fc0a83678c083c1a29771a5e0ace152ab7f02ab43fea176e02897785e1bb6"
+    },
+    {
+      "bytes": 998,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_8508882e4dac.json",
+      "sha256": "b6553c3a74f501c800015a7d0381534b7c86e2b18005b78feb3193320163188f"
+    },
+    {
+      "bytes": 738,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_8880bd2002e9.json",
+      "sha256": "aa8e42edcc7f903e4252cb820678788ba8c1ed378479eee8d631788cb61dd829"
+    },
+    {
+      "bytes": 1047,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_889a9795db60.json",
+      "sha256": "2c3f4f2ab68234e7a3fe3e079f1677c796b62bf357032165466f9c8d1fba606a"
+    },
+    {
+      "bytes": 733,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_8957b1f2fd46.json",
+      "sha256": "d10c556a4c02f10058ba63e904fdcee39323c0cc775862b6f17d8bff2f0ec7bc"
+    },
+    {
+      "bytes": 834,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_8be5423c44e1.json",
+      "sha256": "b179b5ca727af7c15d3bbcac8effe89ed3bb952e1a67c593212f1863b5532cc2"
+    },
+    {
+      "bytes": 928,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_8e3ea4f00612.json",
+      "sha256": "3a16cf92cb81f0566701360e9f174b12a7961c6eb96c74700e76a2c3cd8cc20d"
+    },
+    {
+      "bytes": 927,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_9262255ce28a.json",
+      "sha256": "7791b76efdf96a4d650dfd810b0d3999b123a9394cdb6d5f50567541ff3538fe"
+    },
+    {
+      "bytes": 755,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_98cd9de69280.json",
+      "sha256": "400ebe8d9394e3f3f944f42e757911cd29640d52c20098f9f112d695c7442a80"
+    },
+    {
+      "bytes": 904,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_99f9becb0b30.json",
+      "sha256": "8db33b0022f7dadbbb078b8980c51353a83c1ea85d2cb89e5afab407e8ebcd1f"
+    },
+    {
+      "bytes": 946,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_9a9ce9bac9f6.json",
+      "sha256": "4304c406246ed3bed022fb61fcadf17301d2e024741f6d0fb880c0a53ba27883"
+    },
+    {
+      "bytes": 927,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_a3da643e3ca1.json",
+      "sha256": "fc6ef94d4922327cd421538c576c19067945cc27b962187d1c61b68322c07e75"
+    },
+    {
+      "bytes": 931,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_a4ae49076987.json",
+      "sha256": "0d47cf43e5064022754ed0c19ffcc2ca0402a27c63b355440d14f86264b42149"
+    },
+    {
+      "bytes": 965,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_a4b08cf40b0b.json",
+      "sha256": "fd59512e972300a6666d2af8b0401c327a907ea4361c01e588971523647fd606"
+    },
+    {
+      "bytes": 1023,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_a890f1911ff8.json",
+      "sha256": "26931c822db8271eb2adb640340b7119c67a2b4289e1d314191d03ef3056cb56"
+    },
+    {
+      "bytes": 831,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_a91b4dd53b86.json",
+      "sha256": "205e1d38bbf6f897e5f23746f44131214e1dad8e916e846a49114acb27bd8aa0"
+    },
+    {
+      "bytes": 948,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_ae2b6a5db79c.json",
+      "sha256": "04da6e0a923d6f6ee92cf82bb7cb3fe1780076d630db45f3af7c6f8edfee1206"
+    },
+    {
+      "bytes": 1073,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_b801cc069417.json",
+      "sha256": "269ec9afdf7deb8b6a15f4bc8902869951fc560bea22e742fc8d7d9483d20783"
+    },
+    {
+      "bytes": 810,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_bde31c84f3e1.json",
+      "sha256": "d2551a7c4fc9b2e89aebffd642c84234e0e7846f14b5664f07bda634e6f19033"
+    },
+    {
+      "bytes": 773,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_bef53b29b4dd.json",
+      "sha256": "de76b04e8f8b37350c6f475e4b3b11ddb847c372136295a06bb01035350b1cb3"
+    },
+    {
+      "bytes": 922,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_c5e7c6881da4.json",
+      "sha256": "d8a37afeb838d5375a1cb66b18c1e2818ebd2d4c52b066b212b184725748236e"
+    },
+    {
+      "bytes": 763,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_deca003fc3e3.json",
+      "sha256": "82ee9a13d1c95d0f6fe9cfe86613b320f0a0ba573bbdbce4783179761ed91873"
+    },
+    {
+      "bytes": 1050,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_e4c96de3acd8.json",
+      "sha256": "292bc11220edd4cf45e24ffd7babc205996e76f11f8b60cbc2375b34344d4480"
+    },
+    {
+      "bytes": 978,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_f4a7194c7282.json",
+      "sha256": "10240d1b9dd2a30fc538760af0a2cfb858e7b9f34b9e1c743c07a7c3a609e358"
+    },
+    {
+      "bytes": 860,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_f7173c8b51ba.json",
+      "sha256": "c633ab589f05a5dc5709e945ee7b97a7595310cd6d8ed4977d318add8aad6ef9"
+    },
+    {
+      "bytes": 915,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/local_papers/paper_faab44d9a104.json",
+      "sha256": "6d6621e4a7c5dac4277b998fb9b3975beab39130d7dd57fad6bd99595d39d977"
+    },
+    {
+      "bytes": 1281,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/method_cards/method_3f96a41605de.json",
+      "sha256": "b2cc5f17c8e5298f9732721409f61c85a883885b58a4300945e2107aa7bd504d"
+    },
+    {
+      "bytes": 1262,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/method_cards/method_fe5f4dc138fe.json",
+      "sha256": "4a4be829e90ab98bd880188fb2eac6cec9d4e3624e3115af3d7259c296fe2fe0"
+    },
+    {
+      "bytes": 1256,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/opportunities/opportunity_57163acc1663.json",
+      "sha256": "a794023c5dad034b8a176d40c429b2580a180de42c043a3859fc16268f69f28c"
+    },
+    {
+      "bytes": 479,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_005ca66514dc.json",
+      "sha256": "c6782aef28bb7d130243da570ee0835d29f720243d1a1b6616a10795446639fd"
+    },
+    {
+      "bytes": 2023,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_03a74843f04b.json",
+      "sha256": "b1d031d0dcb9fd68a314166bbe7005e5c73b7931c5921c86a788acf7fc05ba09"
+    },
+    {
+      "bytes": 1055,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_08ab5b7c135b.json",
+      "sha256": "dbdefb54f2f6c635c5dc98d5add4e966fb9497de33967644813e8d96405eb218"
+    },
+    {
+      "bytes": 1987,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_0b725d1cea40.json",
+      "sha256": "51740ae2062406c4057abd8d9639040a4d263f41fc00921e569ebee5dc48576c"
+    },
+    {
+      "bytes": 1992,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_2ca2a6d64b62.json",
+      "sha256": "7c4f46369aed3b8145397712b77191c4811aa3d0d66bfe26a86c1eb5cadb2884"
+    },
+    {
+      "bytes": 1993,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_2cacb4566183.json",
+      "sha256": "e43f1c25afa773b9329665da41e7429c56553ba8d5ab889a1b783e1f48933c22"
+    },
+    {
+      "bytes": 2431,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_3bbdf197887f.json",
+      "sha256": "1e3553c0bf229eff1de7d65a70b27d54fbf282ef776c148ec5ccdcb194ce18d9"
+    },
+    {
+      "bytes": 2041,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_401664f4027e.json",
+      "sha256": "f01f80c6b480d806e8c6d9aafaa0c290b27b34a43dbe6f8c8f7fb5272c4ce146"
+    },
+    {
+      "bytes": 1983,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_46e89b388424.json",
+      "sha256": "2a7c3c41c630c1a496d6b5ab1c82ac1c8f940cb5f32ae09f7bfeba7c1c2967a5"
+    },
+    {
+      "bytes": 2112,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_5545e6accf82.json",
+      "sha256": "7b2c930f7dff82321d08c322d4e2a52c68b224752f3a5f203bc2a5d5b12f6fbc"
+    },
+    {
+      "bytes": 1986,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_5992a81e9e35.json",
+      "sha256": "46a9558a67d8e093c2da614d668442d535653b7bcbe551d11c4f2d9049eab05c"
+    },
+    {
+      "bytes": 1985,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_6239c5e98932.json",
+      "sha256": "57d0fdfaf029f95aff5881938586b0140b0bb3c335e5bef69be7f8da97a501ce"
+    },
+    {
+      "bytes": 1985,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_67ef611803e8.json",
+      "sha256": "9c4a9ac00a605cbf9a02ccf1a125fd51e8b4dd520fd11b8800f7d2a99fe657d5"
+    },
+    {
+      "bytes": 2090,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_696a171b0484.json",
+      "sha256": "12e6287d791d5c72798b44c9fd0861acb5a293bd38c0a703ba29682e438360ba"
+    },
+    {
+      "bytes": 1985,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_6f444cdb79e3.json",
+      "sha256": "35a7380fee39a1698789db9a7a2b146d165540684dd9cea71df44c91f70ea059"
+    },
+    {
+      "bytes": 1689,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_7620c93af347.json",
+      "sha256": "f1a15a2422b9d78bb0d663be545b0fcb0eb6dab99cc9731c5adb0ed71fdceccf"
+    },
+    {
+      "bytes": 1492,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_767a492d4903.json",
+      "sha256": "cdd02c5111c9f422d0ca2c5ac17af148e0ba7fd3673ba58bece286b14b142cd0"
+    },
+    {
+      "bytes": 1988,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_8045276343a6.json",
+      "sha256": "d2c4646524fdba329fdc7ef6c25b03337c8bb265ffcee16332e00ac48ea7837a"
+    },
+    {
+      "bytes": 481,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_8f4773f4edee.json",
+      "sha256": "80a066a2c1615a590eae5f020200f82da2eb0ada05c589ae5e49c65f4564ce05"
+    },
+    {
+      "bytes": 1616,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_95eae875447b.json",
+      "sha256": "da25246b8dd86f4e197d00a6a6669761c65ac8f982f5d72fa1411132ca533530"
+    },
+    {
+      "bytes": 1987,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_973c4c6c8cfa.json",
+      "sha256": "e4108f85baf6d82604c5113ee36ffbcfc32e6da1aea9edf05d91836dbaf1f8c9"
+    },
+    {
+      "bytes": 1998,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_a4aa943831b2.json",
+      "sha256": "2bd844dcedcb8746b4e8e1564a43120e6613f21641fdc69514cab3c79cc0efc7"
+    },
+    {
+      "bytes": 1987,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_a93ea47a916e.json",
+      "sha256": "d1bcd8447f44b5d76f69b030eba9f8403de0ba5c9e5465841f40b52facaa29a4"
+    },
+    {
+      "bytes": 1989,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_b2fd892ec064.json",
+      "sha256": "bc5e2cd67fb0cf5ef0dbc10a209b318a6ad028e5a46427ecff6a72b876268899"
+    },
+    {
+      "bytes": 560,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_bc14804eedfc.json",
+      "sha256": "0f1eecb63fd0a039526458b3d454a27453098e6246008dd8d8561ad3835eff86"
+    },
+    {
+      "bytes": 1991,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_c12b1d72dbfa.json",
+      "sha256": "a74d30f052ef093b9c966ff8f4b6246d6db05d8231f5a9bbdbb191e2f3c23ccd"
+    },
+    {
+      "bytes": 2108,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_d09c0a219b13.json",
+      "sha256": "a94f9faf2510a86e4a0992f645dae959a7cf096f2a5988771c0c03a6ef38c226"
+    },
+    {
+      "bytes": 2004,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_d66b23a4edd2.json",
+      "sha256": "1df45232be8829ace582844e6de577dfd571f5cbd1da18f7369d23ed90febed2"
+    },
+    {
+      "bytes": 2466,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_df12152925f9.json",
+      "sha256": "ad2a946e3be23b2b12f2cf7c10d1f4ba4e473b911e5b0051d4a182125d054a46"
+    },
+    {
+      "bytes": 2170,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_e13ab83b4d62.json",
+      "sha256": "e741412eba0aab07d0cb05e0d4978a6dd37033e5edbdd41e42087d568acf7812"
+    },
+    {
+      "bytes": 2008,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_ec52f8f6f5e7.json",
+      "sha256": "633b57d8452f3b10fa209176a5f13e73436f47567d9f2b937216b56838ae1847"
+    },
+    {
+      "bytes": 1988,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_f1734e82c75b.json",
+      "sha256": "95caa802c719f1b262df81beb77ce9d14e9ea88a869cb347402e0050e22ce3ff"
+    },
+    {
+      "bytes": 1990,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_f379e9fb16fc.json",
+      "sha256": "11ca8520c24c0b04268cb1ae8531bba00ea6e9205a0bac59da7abeed361787af"
+    },
+    {
+      "bytes": 1985,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_fa197292c682.json",
+      "sha256": "0f22d8f38a7b91045cb647fac751cd995e00a5bb454b0bd6b7af32381d22b7de"
+    },
+    {
+      "bytes": 2011,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_faa67ab58724.json",
+      "sha256": "a0ede1c6c4709cbbf2f7b89b669799ea0740d1a8ccee4c72d7bf7b271be183c8"
+    },
+    {
+      "bytes": 1987,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_fb2cd0fd69dd.json",
+      "sha256": "8a36868e1af88efa1698ec3c5747c666150a51cf6d9b63634c3b6af359163f41"
+    },
+    {
+      "bytes": 1983,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/paper_chunks/chunk_fb44bb58db8c.json",
+      "sha256": "b9ff7c69d3450b229e9a5fca9465ef8c61edfb6ec71720da052c3b0f755ab901"
+    },
+    {
+      "bytes": 1058,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/papers/paper_5bd0be79ab7f.json",
+      "sha256": "1b60df0a6f6c8a72bcbf0e4ca015c958d0809863cd5138a5461f31852b1df676"
+    },
+    {
+      "bytes": 928,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/papers/paper_8e3ea4f00612.json",
+      "sha256": "3a16cf92cb81f0566701360e9f174b12a7961c6eb96c74700e76a2c3cd8cc20d"
+    },
+    {
+      "bytes": 87944,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/parsed_papers/parsed_8505e9b955cd.json",
+      "sha256": "6a6e7d5f229742e388d6a666de502e7340d1700d57beffed4fa5038d3628ec6b"
+    },
+    {
+      "bytes": 66355,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/parsed_papers/parsed_a811bd619373.json",
+      "sha256": "7ce08379d93631effd5546e52f67bf9286f1ee8a45b13c8dfeb880e87843db5d"
+    },
+    {
+      "bytes": 5708,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/reports/codebase_report.md",
+      "sha256": "49f31ecdda4520edbc74a08afdeb747df62efb176ab1b626946f65b469f9c5c2"
+    },
+    {
+      "bytes": 578,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/reports/synthesis_report.md",
+      "sha256": "aa5d2b8f828b4656ce7166f3b00a4163308b8b349bce8254e37a044c693c7c74"
+    },
+    {
+      "bytes": 2131,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/retrieval_evaluations/retrieval_eval_4dae4d130094.json",
+      "sha256": "86c5d26f04adf47cca85ab50fbb5911b912b107653f31dcf51f8d01f1b65f9bc"
+    },
+    {
+      "bytes": 303,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/reviews/review_c127ba7ff6ea.json",
+      "sha256": "d9dfa0d52a7d3058a7af0706d3dfc6c908afdaf8fdf20a0971a5316b88ddb40a"
+    },
+    {
+      "bytes": 2518,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/run_evaluations/runeval_6f9d2fa8d682.json",
+      "sha256": "bb308b811eeb3ee244a385e15f3f8f4b98f2c1dbcd94a35690ee024db51d1cf1"
+    },
+    {
+      "bytes": 9798,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/selected_contexts/context_3dc803dfb071.json",
+      "sha256": "7dda17f152db7c6029d1f44b1b896d9385ccd506b946bbdf0ee8e1757b71e589"
+    },
+    {
+      "bytes": 7395,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/selected_contexts/context_aad79c7c7cdb.json",
+      "sha256": "30b7c257ce8ef341c3f035811e5a442db6bd6f8d7db0240ca07c2b86dda6113f"
+    },
+    {
+      "bytes": 2051,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/artifacts/triage/paper_triage.json",
+      "sha256": "d6d53a39b36285741a72b3cc8d07eda588436a804028021dd135ae75e3205b81"
+    },
+    {
+      "bytes": 8154,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/run_log.jsonl",
+      "sha256": "4c4340d135782902742493687e50ca2eb49db10b9cf517f4de85214469fe0c99"
+    },
+    {
+      "bytes": 289410,
+      "rel": "Research-Agent-Lab/tmp/p14_review_smoke/runs/20260622_140913_c95ebd/state.json",
+      "sha256": "f436f9bd64e8bb05b99115a5d05736d0ec6ed3358cff57dd56816590363d0d8d"
+    },
+    {
+      "bytes": 36,
+      "rel": "Research-Agent-Lab/tools/__init__.py",
+      "sha256": "12048ce43c5f68327df133bc7078f97a09dd287d9ae9ced2216b4f2a61c7a0e3"
+    },
+    {
+      "bytes": 6042,
+      "rel": "Research-Agent-Lab/tools/agent_laboratory_adapter.py",
+      "sha256": "532a2fe9bb1d8bf2f731dfe0cc37e80220a193997aa3d9b038fb9037ce9da6ce"
+    },
+    {
+      "bytes": 2167,
+      "rel": "Research-Agent-Lab/tools/arxiv_tool.py",
+      "sha256": "b759a4c48a559d924cf1efbffa38a870779b6eb5ff3cb6a3d6e9493627a8dd34"
+    },
+    {
+      "bytes": 1001,
+      "rel": "Research-Agent-Lab/tools/code_executor.py",
+      "sha256": "38bbe39b8acced87295dae8408e29108ccc0e6da12877bdef4ccc1f71cc6574d"
+    },
+    {
+      "bytes": 9349,
+      "rel": "Research-Agent-Lab/tools/codebase_analyzer.py",
+      "sha256": "eeff7b6bca5913fba2fae7dcca61babf3e29489c0a85847725af48047c1ee189"
+    },
+    {
+      "bytes": 943,
+      "rel": "Research-Agent-Lab/tools/env_loader.py",
+      "sha256": "4c8e5a1a1c1918495a5e310f898d7d5e7f042de04029ceba59b8feeaf6114227"
+    },
+    {
+      "bytes": 449,
+      "rel": "Research-Agent-Lab/tools/git_tool.py",
+      "sha256": "7a4923c7f59ca14f23c5ac3676b6b930396b13c31c6a2ebe0bbfad28232677ed"
+    },
+    {
+      "bytes": 4043,
+      "rel": "Research-Agent-Lab/tools/literature_retriever.py",
+      "sha256": "33ce631cd8deced60f2df51c1d61a41bf96205bbc6472b2145636d8e721ed3a8"
+    },
+    {
+      "bytes": 1349,
+      "rel": "Research-Agent-Lab/tools/llm_budget.py",
+      "sha256": "e7427de7cab8313f37c9cb7b1f4055bd6d62e5f54a8e6c92aa13c202b71501fc"
+    },
+    {
+      "bytes": 4525,
+      "rel": "Research-Agent-Lab/tools/llm_client.py",
+      "sha256": "aaadad0d89db4d346b34900715c7c97b97ca39651147c73682a9aef4de156447"
+    },
+    {
+      "bytes": 3089,
+      "rel": "Research-Agent-Lab/tools/local_paper_library.py",
+      "sha256": "8c53c3adb9130d4cd6128a145dac0ce70104308fc9317e9596738691583abe22"
+    },
+    {
+      "bytes": 5998,
+      "rel": "Research-Agent-Lab/tools/local_pdf_parser.py",
+      "sha256": "653b9606b7f2693cb21ea59cb97cd487ae8ae21993e50144dd2a33cd07797cd8"
+    },
+    {
+      "bytes": 1818,
+      "rel": "Research-Agent-Lab/tools/model_router.py",
+      "sha256": "2aecf6a7976bd17d0f7de9b849bee03c2dd659a914629df8586943779f56d181"
+    },
+    {
+      "bytes": 5049,
+      "rel": "Research-Agent-Lab/tools/paper_chunk_selector.py",
+      "sha256": "7e762b6c764aa1d29f9805b96e4368e5af6a78d68486fcae5389a0b4686c3262"
+    },
+    {
+      "bytes": 2749,
+      "rel": "Research-Agent-Lab/tools/project_safety.py",
+      "sha256": "a24ba628d7f56ab89f1fa750c78f876a448acf30d08e9bcbb9de860935dbf3e2"
+    },
+    {
+      "bytes": 2610,
+      "rel": "Research-Agent-Lab/tools/reference_seed_builder.py",
+      "sha256": "c854c54d7ac830f4c20af4a5a2614f4eb8b7be864e232817feae74d3243dcf1a"
+    },
+    {
+      "bytes": 13749,
+      "rel": "Research-Agent-Lab/tools/run_artifact_validator.py",
+      "sha256": "92a0d7f152893b20a0c6985be879467d2ae76fb8ae31d47f16ec3f90d4fc4c60"
+    },
+    {
+      "bytes": 2708,
+      "rel": "Research-Agent-Lab/tools/run_evaluation_trends.py",
+      "sha256": "e70419ab4b5e64c46bb5618a1df7abecea3a515a91c1bb6db06f58f328696be7"
+    },
+    {
+      "bytes": 411,
+      "rel": "Research-Agent-Lab/tools/test_runner.py",
+      "sha256": "4b147cdda43f632f8755876fbf894c3636741b4ccb7cc0d3ce9371719ab44891"
+    },
+    {
+      "bytes": 709,
+      "rel": "Research-Agent-Lab/tools/tool_registry.py",
+      "sha256": "85d21d81c703bcc79cf1c0115748adb0f86aec25d6ae640fdc2a2578db4f5f5c"
+    },
+    {
+      "bytes": 5021,
+      "rel": "Research-Agent-Lab/tools/tree_visualizer.py",
+      "sha256": "f312ed8f27b9f13fc78170f047ac2007a23308e6826f548a0dc9b11be20de556"
+    },
+    {
+      "bytes": 4967,
+      "rel": "Research-Agent-Lab/topics/intent_led_virat.json",
+      "sha256": "3001ab344abd7d8d75752c2eb34ad18b8d39c567b1d3d19af26d66cd65f57eb1"
+    },
+    {
+      "bytes": 2457,
+      "rel": "Research-Agent-Lab/topics/pedestrian_diffusion.json",
+      "sha256": "b7ba1232b4b50543fbbf0a790fe32251a68b8cee9a3f22694a75c9530e06442f"
+    },
+    {
+      "bytes": 1452,
+      "rel": "Research-Agent-Lab/topics/vin_ocr.json",
+      "sha256": "274aff83b057e60b71343a6b2e75176f6c11def0f8155fdd99713771bacefaea"
+    },
+    {
+      "bytes": 42,
+      "rel": "Research-Agent-Lab/workflows/__init__.py",
+      "sha256": "7f8a16c6981e71ae7a88e7ded6f0704d8b9698b23b88e20b868829e091bfa0ce"
+    },
+    {
+      "bytes": 4587,
+      "rel": "Research-Agent-Lab/workflows/factory.py",
+      "sha256": "62d3e51910ae108834c510320d113cff810726c238aff0b21c2d2d41900e781b"
+    },
+    {
+      "bytes": 503,
+      "rel": "Research-Agent-Lab/workflows/full_research_loop.json",
+      "sha256": "886771fa6e31219f1dc22fc21a7579db7bef67316ded151d92fc15350c953dfb"
+    }
+  ],
+  "schema": "yaiwes.frontend.copy-batches.v1"
+}

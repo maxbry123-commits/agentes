@@ -1,0 +1,88 @@
+{
+  "id": "test12345678",
+  "created_at": "2024-06-15T10:30:00Z",
+  "updated_at": "2024-06-15T11:00:00Z",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello, can you help me?",
+      "timestamp": "2024-06-15T10:30:00Z",
+      "metadata": {},
+      "tool_calls": [],
+      "tokens": null,
+      "thinking_trace": null,
+      "reasoning_content": null,
+      "token_usage": null,
+      "provenance": null
+    },
+    {
+      "role": "assistant",
+      "content": "Of course! How can I help?",
+      "timestamp": "2024-06-15T10:30:05Z",
+      "metadata": {
+        "raw_content": "Of course! How can I help?"
+      },
+      "tool_calls": [
+        {
+          "id": "tc_001",
+          "name": "read_file",
+          "parameters": {
+            "file_path": "/tmp/test.py"
+          },
+          "result": "print(\"hello\")",
+          "result_summary": "Read 1 line",
+          "timestamp": "2024-06-15T10:30:03Z",
+          "approved": true,
+          "error": null,
+          "nested_tool_calls": []
+        }
+      ],
+      "tokens": 150,
+      "thinking_trace": "Let me read the file first.",
+      "reasoning_content": null,
+      "token_usage": {
+        "prompt_tokens": 100,
+        "completion_tokens": 50
+      },
+      "provenance": null
+    }
+  ],
+  "context_files": [
+    "src/main.py"
+  ],
+  "working_directory": "/home/user/project",
+  "metadata": {
+    "title": "Test Session",
+    "summary": "A test",
+    "tags": [
+      "test"
+    ]
+  },
+  "playbook": {},
+  "file_changes": [
+    {
+      "id": "fc_001",
+      "type": "modified",
+      "file_path": "src/main.py",
+      "old_path": null,
+      "timestamp": "2024-06-15T10:35:00Z",
+      "lines_added": 5,
+      "lines_removed": 2,
+      "tool_call_id": "tc_001",
+      "session_id": "test12345678",
+      "description": "Modified main.py (+5 -2)"
+    }
+  ],
+  "channel": "cli",
+  "chat_type": "direct",
+  "channel_user_id": "",
+  "thread_id": null,
+  "delivery_context": {},
+  "last_activity": null,
+  "workspace_confirmed": false,
+  "owner_id": null,
+  "parent_id": null,
+  "subagent_sessions": {},
+  "time_archived": null,
+  "slug": "test-session"
+}

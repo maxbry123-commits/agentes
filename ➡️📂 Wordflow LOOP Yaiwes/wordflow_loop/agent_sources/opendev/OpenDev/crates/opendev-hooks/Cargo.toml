@@ -1,0 +1,18 @@
+[package]
+name = "opendev-hooks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Lifecycle hook system for OpenDev: shell-based hooks triggered on tool use, session, and agent events"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+regex = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["full", "test-util"] }

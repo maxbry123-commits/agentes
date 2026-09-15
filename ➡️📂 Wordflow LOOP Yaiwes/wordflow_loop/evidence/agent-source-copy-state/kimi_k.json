@@ -1,0 +1,45 @@
+{
+  "batches": 1,
+  "completed": {
+    "LICENSE": "COPIED_VERIFIED",
+    "README.md": "COPIED_VERIFIED",
+    "docs/deploy_guidance.md": "COPIED_VERIFIED",
+    "figures/kimi-logo.png": "COPIED_VERIFIED",
+    "tech_report.pdf.chunks/tech_report.pdf.part-0000": "COPIED_VERIFIED",
+    "tech_report.pdf.chunks/tech_report.pdf.part-0001": "COPIED_VERIFIED"
+  },
+  "failed": {},
+  "manifest": [
+    {
+      "bytes": 1465,
+      "rel": "LICENSE",
+      "sha256": "c524b41658421b8b143c5b50637ef008909da56013ad12ccaba0536139ee35b0"
+    },
+    {
+      "bytes": 33956,
+      "rel": "README.md",
+      "sha256": "97a8b8d78c8832ec149792a3a00f1f04c5c87fc61d7ece5160024e8720251020"
+    },
+    {
+      "bytes": 3233,
+      "rel": "docs/deploy_guidance.md",
+      "sha256": "3f95844718be30742eef1924f81b96840bac39cb9f993bdb3ee78435587b69b7"
+    },
+    {
+      "bytes": 87988,
+      "rel": "figures/kimi-logo.png",
+      "sha256": "4a80f64242bf907940765adc7bcf340c28dd83334b07c5503792a26495d1933b"
+    },
+    {
+      "bytes": 8388608,
+      "rel": "tech_report.pdf.chunks/tech_report.pdf.part-0000",
+      "sha256": "80721878d41622fe2b2c1e2e6b860f9f2e041bf62edd2e019bf5a2a9b3e1b967"
+    },
+    {
+      "bytes": 241346,
+      "rel": "tech_report.pdf.chunks/tech_report.pdf.part-0001",
+      "sha256": "4f81f3c8d18540b89243e03da039c7d997241c9684c371aad14c78eb7ea2478b"
+    }
+  ],
+  "schema": "yaiwes.frontend.copy-batches.v1"
+}

@@ -1,0 +1,1131 @@
+{
+  "batches": 2,
+  "completed": {
+    "MiroThinker/.github/workflows/run-ruff.yml": "COPIED_VERIFIED",
+    "MiroThinker/.gitignore": "COPIED_VERIFIED",
+    "MiroThinker/LICENSE": "COPIED_VERIFIED",
+    "MiroThinker/README.md": "COPIED_VERIFIED",
+    "MiroThinker/apps/collect-trace/README.md": "COPIED_VERIFIED",
+    "MiroThinker/apps/collect-trace/pyproject.toml": "COPIED_VERIFIED",
+    "MiroThinker/apps/collect-trace/scripts/collect_trace_claude37.sh": "COPIED_VERIFIED",
+    "MiroThinker/apps/collect-trace/scripts/collect_trace_gpt41.sh": "COPIED_VERIFIED",
+    "MiroThinker/apps/collect-trace/scripts/collect_trace_gpt5.sh": "COPIED_VERIFIED",
+    "MiroThinker/apps/collect-trace/scripts/collect_trace_qwen3.sh": "COPIED_VERIFIED",
+    "MiroThinker/apps/collect-trace/utils/converters/__init__.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/collect-trace/utils/converters/convert_non_oai_to_chatml.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/collect-trace/utils/converters/convert_oai_to_chatml.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/collect-trace/utils/converters/convert_to_chatml_auto_batch.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/collect-trace/utils/converters/example_usage.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/collect-trace/utils/converters/system_prompts.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/collect-trace/utils/merge_chatml_msgs_to_one_json.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/collect-trace/utils/process_logs.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/collect-trace/uv.lock": "COPIED_VERIFIED",
+    "MiroThinker/apps/gradio-demo/.env.example": "COPIED_VERIFIED",
+    "MiroThinker/apps/gradio-demo/README.md": "COPIED_VERIFIED",
+    "MiroThinker/apps/gradio-demo/main.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/gradio-demo/prompt_patch.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/gradio-demo/pyproject.toml": "COPIED_VERIFIED",
+    "MiroThinker/apps/gradio-demo/utils.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/gradio-demo/uv.lock": "COPIED_VERIFIED",
+    "MiroThinker/apps/lobehub-compatibility/MiroThinkerToolParser.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/lobehub-compatibility/README.md": "COPIED_VERIFIED",
+    "MiroThinker/apps/lobehub-compatibility/chat_template.jinja": "COPIED_VERIFIED",
+    "MiroThinker/apps/lobehub-compatibility/img/AI-provider.png": "COPIED_VERIFIED",
+    "MiroThinker/apps/lobehub-compatibility/img/model.png": "COPIED_VERIFIED",
+    "MiroThinker/apps/lobehub-compatibility/img/presentation.gif": "COPIED_VERIFIED",
+    "MiroThinker/apps/lobehub-compatibility/img/settings.png": "COPIED_VERIFIED",
+    "MiroThinker/apps/lobehub-compatibility/requirements.txt": "COPIED_VERIFIED",
+    "MiroThinker/apps/lobehub-compatibility/test_tool_parser.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/lobehub-compatibility/unit_test.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/.env.example": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/README.md": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/benchmarks/__init__.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_aime2025.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_browsecomp.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_browsecomp_zh.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_deepsearchqa.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_frames.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_gaia-validation-text-103.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_gaia-validation.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_hle-text-2158.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_hle-text-500.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_hle.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_seal-0.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_webwalkerqa.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_xbench_deepsearch.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/common.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/benchmarks/common_benchmark.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/benchmarks/evaluators/__init__.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/benchmarks/evaluators/calculate_average_score.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/benchmarks/evaluators/eval_utils.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/benchmarks/evaluators/extract_futurex_results.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/benchmarks/subset_extraction/gaia-text-103-grader.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/benchmarks/subset_extraction/gaia-to-text-103-mover.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/__init__.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/agent/default.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/agent/demo.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/agent/mirothinker_1.7_keep5_max200.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/agent/mirothinker_1.7_keep5_max300.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/agent/mirothinker_v1.0.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/agent/mirothinker_v1.0_keep5.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/agent/mirothinker_v1.5.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/agent/mirothinker_v1.5_keep5_max200.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/agent/mirothinker_v1.5_keep5_max400.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/agent/multi_agent.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/agent/multi_agent_os.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/agent/single_agent.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/agent/single_agent_keep5.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/benchmark/aime2025.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/benchmark/browsecomp.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/benchmark/browsecomp_zh.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/benchmark/collect_trace.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/benchmark/debug.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/benchmark/deepsearchqa.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/benchmark/default.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/benchmark/frames.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/benchmark/futurex.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/benchmark/gaia-validation-text-103.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/benchmark/gaia-validation.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/benchmark/hle-text-2158.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/benchmark/hle-text-500.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/benchmark/hle.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/benchmark/seal-0.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/benchmark/webwalkerqa.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/benchmark/xbench_deepsearch.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/config.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/llm/claude-3-7.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/llm/default.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/llm/gpt-5.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/conf/llm/qwen-3.yaml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/main.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/pyproject.toml": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_aime2025.sh": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_browsecomp.sh": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_browsecomp_zh.sh": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_debug.sh": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_deepsearchqa.sh": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_frames.sh": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_futurex.sh": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_gaia-validation-text-103.sh": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_gaia-validation.sh": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_hle-text-2158.sh": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_hle-text-500.sh": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_hle.sh": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_seal-0.sh": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_webwalkerqa.sh": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_xbench_deepsearch.sh": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/__init__.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/config/__init__.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/config/settings.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/core/__init__.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/core/answer_generator.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/core/orchestrator.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/core/pipeline.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/core/stream_handler.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/core/tool_executor.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/io/__init__.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/io/input_handler.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/io/output_formatter.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/llm/__init__.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/llm/base_client.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/llm/factory.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/llm/providers/__init__.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/llm/providers/anthropic_client.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/llm/providers/openai_client.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/llm/util.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/logging/__init__.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/logging/summary_time_cost.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/logging/task_logger.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/utils/__init__.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/utils/parsing_utils.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/utils/prompt_utils.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/src/utils/wrapper_utils.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/miroflow-agent/uv.lock": "COPIED_VERIFIED",
+    "MiroThinker/apps/visualize-trace/.python-version": "COPIED_VERIFIED",
+    "MiroThinker/apps/visualize-trace/README.md": "COPIED_VERIFIED",
+    "MiroThinker/apps/visualize-trace/app.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/visualize-trace/pyproject.toml": "COPIED_VERIFIED",
+    "MiroThinker/apps/visualize-trace/requirements.txt": "COPIED_VERIFIED",
+    "MiroThinker/apps/visualize-trace/run.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/visualize-trace/static/css/style.css": "COPIED_VERIFIED",
+    "MiroThinker/apps/visualize-trace/static/js/script.js": "COPIED_VERIFIED",
+    "MiroThinker/apps/visualize-trace/templates/index.html": "COPIED_VERIFIED",
+    "MiroThinker/apps/visualize-trace/trace_analyzer.py": "COPIED_VERIFIED",
+    "MiroThinker/apps/visualize-trace/uv.lock": "COPIED_VERIFIED",
+    "MiroThinker/assets/1.7_main_results.png": "COPIED_VERIFIED",
+    "MiroThinker/assets/17_table.png": "COPIED_VERIFIED",
+    "MiroThinker/assets/LOCAL-TOOL-DEPLOYMENT.md": "COPIED_VERIFIED",
+    "MiroThinker/assets/MiromindAI_H.svg": "COPIED_VERIFIED",
+    "MiroThinker/assets/QA.md": "COPIED_VERIFIED",
+    "MiroThinker/assets/futurex-09-12.png": "COPIED_VERIFIED",
+    "MiroThinker/assets/gaia_text_103.png": "COPIED_VERIFIED",
+    "MiroThinker/assets/miro_thinker.png": "COPIED_VERIFIED",
+    "MiroThinker/assets/miroflow_logo.png": "COPIED_VERIFIED",
+    "MiroThinker/assets/mirothinker_logo.png": "COPIED_VERIFIED",
+    "MiroThinker/assets/qwen3_nonthinking.jinja": "COPIED_VERIFIED",
+    "MiroThinker/justfile": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/README.md": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/pyproject.toml": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/src/__init__.py": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/src/miroflow_tools/__init__.py": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/src/miroflow_tools/dev_mcp_servers/jina_scrape_llm_summary.py": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/src/miroflow_tools/dev_mcp_servers/search_and_scrape_webpage.py": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/src/miroflow_tools/dev_mcp_servers/stateless_python_server.py": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/src/miroflow_tools/dev_mcp_servers/task_planner.py": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/src/miroflow_tools/manager.py": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/__init__.py": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/audio_mcp_server.py": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/audio_mcp_server_os.py": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/browser_session.py": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/python_mcp_server.py": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/reading_mcp_server.py": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/reasoning_mcp_server.py": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/reasoning_mcp_server_os.py": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/searching_google_mcp_server.py": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/searching_sogou_mcp_server.py": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/serper_mcp_server.py": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/utils/__init__.py": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/utils/url_unquote.py": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/vision_mcp_server.py": "COPIED_VERIFIED",
+    "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/vision_mcp_server_os.py": "COPIED_VERIFIED"
+  },
+  "failed": {},
+  "manifest": [
+    {
+      "bytes": 972,
+      "rel": "MiroThinker/.github/workflows/run-ruff.yml",
+      "sha256": "8313a836f958d0e4fd6a72243d136124def1ec412b707c99b2c4e5df3d8bf24c"
+    },
+    {
+      "bytes": 4835,
+      "rel": "MiroThinker/.gitignore",
+      "sha256": "05e9d8cabb32cd9284b1d3fb82e5b980ea306fee9c3aa90b3d1b2b84a57ad99e"
+    },
+    {
+      "bytes": 10173,
+      "rel": "MiroThinker/LICENSE",
+      "sha256": "0cec06e0e55fbc3dc5cee4fca9b607f66cb8f4e4dbcf3b3c013594dd156732e9"
+    },
+    {
+      "bytes": 56579,
+      "rel": "MiroThinker/README.md",
+      "sha256": "2c1114aed8bb4ec16af02eb7cab2a97f7bd0b17bed2a1d22132f67a7113608bb"
+    },
+    {
+      "bytes": 2002,
+      "rel": "MiroThinker/apps/collect-trace/README.md",
+      "sha256": "a3841a95c18b4a1d21d21bf3e003722fdcd38d81deda5adc58eb1c34c3fd825e"
+    },
+    {
+      "bytes": 447,
+      "rel": "MiroThinker/apps/collect-trace/pyproject.toml",
+      "sha256": "478680becfd5e929693eea8db7684a823ad4869a0a7bc266d8a61f87dd4d5704"
+    },
+    {
+      "bytes": 1449,
+      "rel": "MiroThinker/apps/collect-trace/scripts/collect_trace_claude37.sh",
+      "sha256": "3cfcb6f15d94be63a46b92c87c28c190c5ff0bd9126d673b54b0c3dab7ea359f"
+    },
+    {
+      "bytes": 1409,
+      "rel": "MiroThinker/apps/collect-trace/scripts/collect_trace_gpt41.sh",
+      "sha256": "732c75e7f71bf005da7bc6ad0837d2e74c9df38e79052bfaa15e8298cbe1c2e3"
+    },
+    {
+      "bytes": 1412,
+      "rel": "MiroThinker/apps/collect-trace/scripts/collect_trace_gpt5.sh",
+      "sha256": "d8e7d467f2c072b6046dfd6ba7a296e32dbc37ee27cdccb4051653617d965d01"
+    },
+    {
+      "bytes": 1283,
+      "rel": "MiroThinker/apps/collect-trace/scripts/collect_trace_qwen3.sh",
+      "sha256": "3c8d7d0fb743eab4b5aae1e15fb1388cb6102e7ecd3cf2f23758a20b71bd6f7a"
+    },
+    {
+      "bytes": 943,
+      "rel": "MiroThinker/apps/collect-trace/utils/converters/__init__.py",
+      "sha256": "57b1161caf816b65d6c8eba8227343df2326cd5c9c2267d66ae1d1ced78e34f0"
+    },
+    {
+      "bytes": 5267,
+      "rel": "MiroThinker/apps/collect-trace/utils/converters/convert_non_oai_to_chatml.py",
+      "sha256": "3a1c04b701ae0c4da19441d7a3852f77245c64464f82c03f3921f7a7b518f3c0"
+    },
+    {
+      "bytes": 13007,
+      "rel": "MiroThinker/apps/collect-trace/utils/converters/convert_oai_to_chatml.py",
+      "sha256": "49a0ae357bcb7c68c663d8d87424e10600358debfe4f2bc4c5901dd5c6363bba"
+    },
+    {
+      "bytes": 8613,
+      "rel": "MiroThinker/apps/collect-trace/utils/converters/convert_to_chatml_auto_batch.py",
+      "sha256": "4c40b2cc9172377473c4b2ab8b83b385009ab8eee72d94f3bb83c37a7033b420"
+    },
+    {
+      "bytes": 3615,
+      "rel": "MiroThinker/apps/collect-trace/utils/converters/example_usage.py",
+      "sha256": "3c43db317a2ba58e28053b8f13cfddd9c849e377a318eeae09195177a8e377c0"
+    },
+    {
+      "bytes": 2679,
+      "rel": "MiroThinker/apps/collect-trace/utils/converters/system_prompts.py",
+      "sha256": "d87d63a5c21b9272918fa0c125ea0d3e0805c81792adf30035a86ee9e39ebf14"
+    },
+    {
+      "bytes": 1870,
+      "rel": "MiroThinker/apps/collect-trace/utils/merge_chatml_msgs_to_one_json.py",
+      "sha256": "5706bcce76eb7445e77f692d7ca60ad89171d92ca4c989d956ced5fa868ac565"
+    },
+    {
+      "bytes": 3403,
+      "rel": "MiroThinker/apps/collect-trace/utils/process_logs.py",
+      "sha256": "8d562470c8dec85da705be3228ee20f29b303137721f50a578b6fe172af59187"
+    },
+    {
+      "bytes": 312368,
+      "rel": "MiroThinker/apps/collect-trace/uv.lock",
+      "sha256": "ee14d9be7d0ee78766b12700aafe164b2cd24a570abf67246b00dacf67bce316"
+    },
+    {
+      "bytes": 1491,
+      "rel": "MiroThinker/apps/gradio-demo/.env.example",
+      "sha256": "2dc3ca4b5ca9fd7b3bc96487e42235f749f3538358ae9fac5edb046b92df84d7"
+    },
+    {
+      "bytes": 4322,
+      "rel": "MiroThinker/apps/gradio-demo/README.md",
+      "sha256": "c517015dacbf6c4463180b64b9dc7eefdcd04582ded113554679d02a5745f571"
+    },
+    {
+      "bytes": 53811,
+      "rel": "MiroThinker/apps/gradio-demo/main.py",
+      "sha256": "57d5d08fdd9a7dfaf350bbb4982e0da1e8a48183aa17f990a3d7ca4946598a02"
+    },
+    {
+      "bytes": 13178,
+      "rel": "MiroThinker/apps/gradio-demo/prompt_patch.py",
+      "sha256": "61c4b18628a8674b323b55b5117bd68a91da38ce01c6dbac3acfd97b260fe50e"
+    },
+    {
+      "bytes": 602,
+      "rel": "MiroThinker/apps/gradio-demo/pyproject.toml",
+      "sha256": "a2c980e66ba67f6211f609cbe7515e07475074f5f09ed68e07ae658f3d1bb0e5"
+    },
+    {
+      "bytes": 1497,
+      "rel": "MiroThinker/apps/gradio-demo/utils.py",
+      "sha256": "5353cc2b504b14a6fa036d0ae5887311260f0f0b905290cd1a76d29b44f53845"
+    },
+    {
+      "bytes": 471444,
+      "rel": "MiroThinker/apps/gradio-demo/uv.lock",
+      "sha256": "e4e93561256651a134ec94c8a8b30a353ab203423bc2ec0e2766fc992a5dfa11"
+    },
+    {
+      "bytes": 16934,
+      "rel": "MiroThinker/apps/lobehub-compatibility/MiroThinkerToolParser.py",
+      "sha256": "20eb92c7f86a36e1991d8e7f5f244349ef031acd55f2adeda8170a80e843a820"
+    },
+    {
+      "bytes": 3042,
+      "rel": "MiroThinker/apps/lobehub-compatibility/README.md",
+      "sha256": "006d2c5725bebfefecd2ba8f07afaa246594c376c632b96eec395d1a4ce7ebf3"
+    },
+    {
+      "bytes": 6403,
+      "rel": "MiroThinker/apps/lobehub-compatibility/chat_template.jinja",
+      "sha256": "a153bc5b0a1150cdad18d8d24483ea5c5162ce4df6e1fcc7bf4311a7ca84fece"
+    },
+    {
+      "bytes": 1283041,
+      "rel": "MiroThinker/apps/lobehub-compatibility/img/AI-provider.png",
+      "sha256": "98d91072633a51cafaafecb964218ce74ba73073b07a4d1155acefa618b96b91"
+    },
+    {
+      "bytes": 1456925,
+      "rel": "MiroThinker/apps/lobehub-compatibility/img/model.png",
+      "sha256": "8202e6f3c20533706682999780bbba33669909bdae30a1c7069a927d8181ddc2"
+    },
+    {
+      "bytes": 3877776,
+      "rel": "MiroThinker/apps/lobehub-compatibility/img/presentation.gif",
+      "sha256": "9badd539a16a29d445392a5c2cd027b0e5c6c859f7ccecf19bfd08bedc61ba91"
+    },
+    {
+      "bytes": 664296,
+      "rel": "MiroThinker/apps/lobehub-compatibility/img/settings.png",
+      "sha256": "86affaa7b34efb3880e3c30c2f7dd65090e5c95ad89c0244e26eb3c6f8db4935"
+    },
+    {
+      "bytes": 30,
+      "rel": "MiroThinker/apps/lobehub-compatibility/requirements.txt",
+      "sha256": "0f88fdd4649813411bcb842ddd49697027a12ce75f287467162549537d2fb8d6"
+    },
+    {
+      "bytes": 10807,
+      "rel": "MiroThinker/apps/lobehub-compatibility/test_tool_parser.py",
+      "sha256": "dc87f6896d0db030218b61660edf54ee01e8e26dc6c311ee26184d717b134d5d"
+    },
+    {
+      "bytes": 31163,
+      "rel": "MiroThinker/apps/lobehub-compatibility/unit_test.py",
+      "sha256": "2b8f1b0d176e6b1dfbd7a2ecab55f9cfecf35ff453e87a476078eb827d468ab5"
+    },
+    {
+      "bytes": 1521,
+      "rel": "MiroThinker/apps/miroflow-agent/.env.example",
+      "sha256": "829fecaa01d4e0d3ab2d6a93a2d18544f723b676c414464e4e74c938c38e945c"
+    },
+    {
+      "bytes": 3903,
+      "rel": "MiroThinker/apps/miroflow-agent/README.md",
+      "sha256": "f0b357a31f910b99c80d7190059009ea8faa53ca990856e4fd5c89bf038416e3"
+    },
+    {
+      "bytes": 0,
+      "rel": "MiroThinker/apps/miroflow-agent/benchmarks/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 1519,
+      "rel": "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_aime2025.py",
+      "sha256": "6c25ff18fe73e4369a91c5173cd3554e7ddcb82a83d92356784455c7ab606b63"
+    },
+    {
+      "bytes": 1528,
+      "rel": "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_browsecomp.py",
+      "sha256": "91f8191990d214e159aafe865ea19d162a6f97ad4903f94825594c6a284a0bbf"
+    },
+    {
+      "bytes": 1530,
+      "rel": "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_browsecomp_zh.py",
+      "sha256": "bb6338585f65dc4854236362d58c302916147fba1d035609ac86d11d6b9b24a9"
+    },
+    {
+      "bytes": 16784,
+      "rel": "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_deepsearchqa.py",
+      "sha256": "5553cdc0abca1b29d476558c00455bb9dd9b184f6b29561706534e72d25b6406"
+    },
+    {
+      "bytes": 1516,
+      "rel": "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_frames.py",
+      "sha256": "9d36a0f93a9cb68379d7822196814283d638e943032346ebdcb191aa45d30d55"
+    },
+    {
+      "bytes": 1576,
+      "rel": "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_gaia-validation-text-103.py",
+      "sha256": "599846bd75753283b97c6e8d34c76b6e2d92550163630b1eb1b178e32ecf9a48"
+    },
+    {
+      "bytes": 1566,
+      "rel": "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_gaia-validation.py",
+      "sha256": "df0ac1ae33cac5f4bd57021fbb6606c1d8b92c9dfc87e91bb04dff9b5735e134"
+    },
+    {
+      "bytes": 1531,
+      "rel": "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_hle-text-2158.py",
+      "sha256": "9c8468fb67f361a1bfcc961b7b72df149e9395c220ab1613f56d52a90341d868"
+    },
+    {
+      "bytes": 1528,
+      "rel": "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_hle-text-500.py",
+      "sha256": "aa7586ac640612b77280433c505c64c07f0da02dbd56f3f9201580105aad0396"
+    },
+    {
+      "bytes": 1516,
+      "rel": "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_hle.py",
+      "sha256": "eff808bba06d5a9dd1436eb9c06967c483869a900a4e9188e37113da8237241a"
+    },
+    {
+      "bytes": 1516,
+      "rel": "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_seal-0.py",
+      "sha256": "2880b96992b7de159e3f14ddeaec79af9c1cf7266bd19e6146680952212dadd4"
+    },
+    {
+      "bytes": 1528,
+      "rel": "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_webwalkerqa.py",
+      "sha256": "60d992f9867be71c3884cd68b9307d7ef12f16297ba39826ae027c48667730ae"
+    },
+    {
+      "bytes": 1538,
+      "rel": "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/check_progress_xbench_deepsearch.py",
+      "sha256": "8484216e26fa771b7b7bb0ba51c9805747d4704dd9bafdedd45688292d50410f"
+    },
+    {
+      "bytes": 52233,
+      "rel": "MiroThinker/apps/miroflow-agent/benchmarks/check_progress/common.py",
+      "sha256": "bcbee90d1c222cbe691baef07545a0637e541e223036ce3e13018e9275de898d"
+    },
+    {
+      "bytes": 43732,
+      "rel": "MiroThinker/apps/miroflow-agent/benchmarks/common_benchmark.py",
+      "sha256": "c8d185aa8487b1ea88f2f79c0878de5877df8d5f8e33a54e021466e47020cbfc"
+    },
+    {
+      "bytes": 0,
+      "rel": "MiroThinker/apps/miroflow-agent/benchmarks/evaluators/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 4642,
+      "rel": "MiroThinker/apps/miroflow-agent/benchmarks/evaluators/calculate_average_score.py",
+      "sha256": "f9606cf6164db69c184e16506b29a477d9fdafa82211599a5cb5819fafd6004f"
+    },
+    {
+      "bytes": 48824,
+      "rel": "MiroThinker/apps/miroflow-agent/benchmarks/evaluators/eval_utils.py",
+      "sha256": "786b88359401b497c4cdf3bd87a491c3ee3804d8604d4bf7c23ed41da9d4df4e"
+    },
+    {
+      "bytes": 5397,
+      "rel": "MiroThinker/apps/miroflow-agent/benchmarks/evaluators/extract_futurex_results.py",
+      "sha256": "f47a407b4b2767302d26e3a333b09760cc9b002ad3b8e5e11dc41a116f8a9e09"
+    },
+    {
+      "bytes": 10105,
+      "rel": "MiroThinker/apps/miroflow-agent/benchmarks/subset_extraction/gaia-text-103-grader.py",
+      "sha256": "1150d6e277eedd60e5eab52cdcde7f2e168943e09d25969c6af97faf05243df5"
+    },
+    {
+      "bytes": 6845,
+      "rel": "MiroThinker/apps/miroflow-agent/benchmarks/subset_extraction/gaia-to-text-103-mover.py",
+      "sha256": "113b55695a4c0fd7653d47e4a3170dff14f7c1c2d6a1644c6932d32164cd7bb7"
+    },
+    {
+      "bytes": 54,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/__init__.py",
+      "sha256": "497fd7ac0ab01aa78ec9fe0ad924a5bce455996450a664eaf29969139eb674c9"
+    },
+    {
+      "bytes": 669,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/agent/default.yaml",
+      "sha256": "8c9910b3f07c49ef7c5da335e73691e4dcb09261a9bce38ca8caea77c5aa062f"
+    },
+    {
+      "bytes": 690,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/agent/demo.yaml",
+      "sha256": "339b86b4e7a757f4e187e212f768e9e551d32ba9add9bdcfda4168f2f5e978bd"
+    },
+    {
+      "bytes": 758,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/agent/mirothinker_1.7_keep5_max200.yaml",
+      "sha256": "e28ad73cc77ae5d333fca53a5719e3f3117945b0faeb1cb9bef39f8f4733901b"
+    },
+    {
+      "bytes": 758,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/agent/mirothinker_1.7_keep5_max300.yaml",
+      "sha256": "1b1fe3bc13630e727457043295df02d18e2f46d983e71f348441307f40571742"
+    },
+    {
+      "bytes": 703,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/agent/mirothinker_v1.0.yaml",
+      "sha256": "1a2d1710e20d81cfc663d14ee7105672a97069741c6b3ce9297d5dd851275a3a"
+    },
+    {
+      "bytes": 708,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/agent/mirothinker_v1.0_keep5.yaml",
+      "sha256": "c9c11a08cb9939bcabdf016d13b545ebe7bc8684d973b5ae9c7c00a5222463de"
+    },
+    {
+      "bytes": 703,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/agent/mirothinker_v1.5.yaml",
+      "sha256": "5cd74285faf934921a035d7ee94de50390bbcd371cd5991fa09ebb61deda3626"
+    },
+    {
+      "bytes": 715,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/agent/mirothinker_v1.5_keep5_max200.yaml",
+      "sha256": "5b5ce246391e27cb051872a2e0aa73e7b53b8909df99f82ea43a2169899213a4"
+    },
+    {
+      "bytes": 715,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/agent/mirothinker_v1.5_keep5_max400.yaml",
+      "sha256": "187412843f80e051b50cc4a0a21b628209657a8459baae251529f06c5af0b71a"
+    },
+    {
+      "bytes": 708,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/agent/multi_agent.yaml",
+      "sha256": "3ccd5b45aee3ec637a72439f696e297aca530584dafa6ac26cacfb30c4cc9391"
+    },
+    {
+      "bytes": 723,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/agent/multi_agent_os.yaml",
+      "sha256": "b946e6a1b26a8d90ff8df2c797292d017d98b9156746860e345139f16674984c"
+    },
+    {
+      "bytes": 699,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/agent/single_agent.yaml",
+      "sha256": "dd0bfed6bc32905d15909c3fe09727a6fa287300702b66b6a8ba5e58c612750a"
+    },
+    {
+      "bytes": 704,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/agent/single_agent_keep5.yaml",
+      "sha256": "a68a855843d910fe2d3ba99978e009684f5b128a5af4e709850a2c1709978a9b"
+    },
+    {
+      "bytes": 210,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/benchmark/aime2025.yaml",
+      "sha256": "74da714f4dde4ee101f37d953fc719f9c76c59628d5b36a3a40f8387314835ae"
+    },
+    {
+      "bytes": 217,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/benchmark/browsecomp.yaml",
+      "sha256": "f8825172c3a3f587b8430d01145048e55b8515c5bf49d613f7c4f210225b348f"
+    },
+    {
+      "bytes": 226,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/benchmark/browsecomp_zh.yaml",
+      "sha256": "b4e8dff784e84256925e7922546548c82810b6fa7d689991509380211608d560"
+    },
+    {
+      "bytes": 218,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/benchmark/collect_trace.yaml",
+      "sha256": "66db7754ec5adfe7b0a3bcd716f5543f5a560283938c22cba2e428a8344c1c6a"
+    },
+    {
+      "bytes": 202,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/benchmark/debug.yaml",
+      "sha256": "f0af228e4217f1694a7b88ccbff835d3d8d82f1ae7e6a3ddf2bdd61af7fd4f33"
+    },
+    {
+      "bytes": 223,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/benchmark/deepsearchqa.yaml",
+      "sha256": "902aa13f82296a58e6643ce75c464223485e81e2f0f3865d72c3eccd8904a05b"
+    },
+    {
+      "bytes": 473,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/benchmark/default.yaml",
+      "sha256": "80add40ae571815d577e97feb78c99517d852799f27d07ad034efc47e983bd28"
+    },
+    {
+      "bytes": 205,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/benchmark/frames.yaml",
+      "sha256": "f1d8efef486b65a8c63b4d9db39b4b8d23113b68d347f014caa0501716b987a6"
+    },
+    {
+      "bytes": 208,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/benchmark/futurex.yaml",
+      "sha256": "0cadffc8dfccc84aca6d4f8f96a83cd07a2769de5e1f94318b613dc69ed685b2"
+    },
+    {
+      "bytes": 264,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/benchmark/gaia-validation-text-103.yaml",
+      "sha256": "2405b56cca6c0dc498e20d15d66ff716f28f971cd7e68c43d340400d33b7472d"
+    },
+    {
+      "bytes": 237,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/benchmark/gaia-validation.yaml",
+      "sha256": "5ba6e4fd2c9444b6a740ee93461f6b4ac02a65c15d7929a3e45e8fc3aa0833e5"
+    },
+    {
+      "bytes": 225,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/benchmark/hle-text-2158.yaml",
+      "sha256": "e2c8a6ba8cb19c95912782be40fc53d1d13b820b0957aaec4c43f64009ea0d8c"
+    },
+    {
+      "bytes": 222,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/benchmark/hle-text-500.yaml",
+      "sha256": "f5c759039728b63d5b292808ea67790d2c075926be2796e10efd1844b2104ad1"
+    },
+    {
+      "bytes": 196,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/benchmark/hle.yaml",
+      "sha256": "b705d1861b1143c757a3ae81f5402f9157291ab21ab5a7c01610dab0a0a4cf0c"
+    },
+    {
+      "bytes": 204,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/benchmark/seal-0.yaml",
+      "sha256": "96fedf1f31bc0bf351e6a4228db63801cf3dcc9da32c63376bbaef4f62e637b4"
+    },
+    {
+      "bytes": 220,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/benchmark/webwalkerqa.yaml",
+      "sha256": "22fe5b8f90e3d30170f3b33c9ad3d98c37e1b16a05dc5b0bead4b21e1b0d2058"
+    },
+    {
+      "bytes": 238,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/benchmark/xbench_deepsearch.yaml",
+      "sha256": "77d4b3cc506feee9eed4e4cd40430056bc0aeb9e7e0ac0e764d76d7a7463001e"
+    },
+    {
+      "bytes": 319,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/config.yaml",
+      "sha256": "a28d43d03224071b21e2550a1d6e6bc61e012350a261c1aad968704c61a551dd"
+    },
+    {
+      "bytes": 186,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/llm/claude-3-7.yaml",
+      "sha256": "cb6725364c1fe606fa47eea0f1399329916f3b612f7ad76a63a2d99a53d55440"
+    },
+    {
+      "bytes": 299,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/llm/default.yaml",
+      "sha256": "f186fc2afa9cd4a455e34f5a979bb1758169a1c3f8705a1d13b89ee459bd5a11"
+    },
+    {
+      "bytes": 168,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/llm/gpt-5.yaml",
+      "sha256": "bbc8dbc05b7b87ca5339c91867b85e410118a5a05c4830c7e7cdcef020c46103"
+    },
+    {
+      "bytes": 229,
+      "rel": "MiroThinker/apps/miroflow-agent/conf/llm/qwen-3.yaml",
+      "sha256": "a2ea8683a1830bef20aeb6f50e01abf91e6bbb885e98ee403da5e644f2c5e11e"
+    },
+    {
+      "bytes": 1529,
+      "rel": "MiroThinker/apps/miroflow-agent/main.py",
+      "sha256": "465b6955e98e5b8e18e6bbde03d3e390d83303f9fa981a2da6f79c85e36e28ec"
+    },
+    {
+      "bytes": 2440,
+      "rel": "MiroThinker/apps/miroflow-agent/pyproject.toml",
+      "sha256": "14b91e1fca72171035a89b5a0d541649d7dcbc2719810b3e619f5fda13a0be29"
+    },
+    {
+      "bytes": 3258,
+      "rel": "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_aime2025.sh",
+      "sha256": "ff9d602f2c2495f1acbe7b2bb279cf20fb369273f53ef417ebc8a0ab3a6f6760"
+    },
+    {
+      "bytes": 3261,
+      "rel": "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_browsecomp.sh",
+      "sha256": "a4b5c8f62bd18444eda08f6a2a30d2b1ba937a59ef57cd14a37b5bd9fdd2f2bf"
+    },
+    {
+      "bytes": 3267,
+      "rel": "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_browsecomp_zh.sh",
+      "sha256": "d3fa36c9538f961ce84408bcff4c44e7d8787c457ffe77c26d908f464da5f7dd"
+    },
+    {
+      "bytes": 3250,
+      "rel": "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_debug.sh",
+      "sha256": "42aaf75542fdb25e1f28f6b35a397e8288b3bfcff6fcb43ce6014417ccb8855c"
+    },
+    {
+      "bytes": 3265,
+      "rel": "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_deepsearchqa.sh",
+      "sha256": "f2f0e1b81d4b946e18f601032d4af11f8b24bf7261e2039cb8c83680b673270d"
+    },
+    {
+      "bytes": 3253,
+      "rel": "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_frames.sh",
+      "sha256": "cfbec861cbfdbae6cd802f5785b5e83f42355a5db302d0d6b6497e5f3520d3cc"
+    },
+    {
+      "bytes": 3736,
+      "rel": "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_futurex.sh",
+      "sha256": "8b4f870f9516b7b535eccfc0e46fd41a120af7f489cf259d8152201b455473f8"
+    },
+    {
+      "bytes": 3294,
+      "rel": "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_gaia-validation-text-103.sh",
+      "sha256": "5435e479d9bd55f19a5bc63ae429a4a4244393e4085f778cd0474395325c0734"
+    },
+    {
+      "bytes": 3276,
+      "rel": "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_gaia-validation.sh",
+      "sha256": "e64cb3c189b07e09e0af592c6ce662fea9d7be187685d9c50fa5bd3d4281bd7e"
+    },
+    {
+      "bytes": 3276,
+      "rel": "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_hle-text-2158.sh",
+      "sha256": "3e3b36facad053d691e99f56909d35c27b3867a45fd7546822bf4665f7fcf040"
+    },
+    {
+      "bytes": 3274,
+      "rel": "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_hle-text-500.sh",
+      "sha256": "d4c496de8243132a5dd6fbe209f06852a582dba0294247bab53b45458d65af4b"
+    },
+    {
+      "bytes": 3247,
+      "rel": "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_hle.sh",
+      "sha256": "c033f1473ad5a474eb3ff10f69b7071f8a40d2fa1f02c50e18a7472df1dbc641"
+    },
+    {
+      "bytes": 3253,
+      "rel": "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_seal-0.sh",
+      "sha256": "970b9dd5b9e98a990577e32e3d1d0b90a03f5164913d37d7e30d3e2a89fc3a94"
+    },
+    {
+      "bytes": 3263,
+      "rel": "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_webwalkerqa.sh",
+      "sha256": "fbb81f5edf7686b578a9295b720a847df01d23b5c510b4af7b8e530d04faddd4"
+    },
+    {
+      "bytes": 3275,
+      "rel": "MiroThinker/apps/miroflow-agent/scripts/run_evaluate_multiple_runs_xbench_deepsearch.sh",
+      "sha256": "c8fd1e18e9d988d2029342968595fb69c871fc23f449ea18656800f3e340234f"
+    },
+    {
+      "bytes": 611,
+      "rel": "MiroThinker/apps/miroflow-agent/src/__init__.py",
+      "sha256": "c292a20b92e7e6ec48c1bec9adbc61b16a54747f6af4d5f81debb5a722011c6c"
+    },
+    {
+      "bytes": 355,
+      "rel": "MiroThinker/apps/miroflow-agent/src/config/__init__.py",
+      "sha256": "c3c073107fa4d0903b2b04d8284ab5a7a78ac141a816bdccd1b1e9bcc8e9ea9e"
+    },
+    {
+      "bytes": 17392,
+      "rel": "MiroThinker/apps/miroflow-agent/src/config/settings.py",
+      "sha256": "1ec58cf6cc1eec18f03d7f3be45379d260d201cbb451fa00de88ada3ba4214a9"
+    },
+    {
+      "bytes": 561,
+      "rel": "MiroThinker/apps/miroflow-agent/src/core/__init__.py",
+      "sha256": "789902d15644b411cdd9bc335108a3d43054acf845a0a18bb50fd100289128b8"
+    },
+    {
+      "bytes": 22823,
+      "rel": "MiroThinker/apps/miroflow-agent/src/core/answer_generator.py",
+      "sha256": "0d08a76b2b1e661eaf10a7c712e8240c6f1356a68b676693567e653d51a2a435"
+    },
+    {
+      "bytes": 47022,
+      "rel": "MiroThinker/apps/miroflow-agent/src/core/orchestrator.py",
+      "sha256": "2971d920be8c47379a5d1ce80ff5d187add68ea02aba11d904425ee77e04b228"
+    },
+    {
+      "bytes": 7550,
+      "rel": "MiroThinker/apps/miroflow-agent/src/core/pipeline.py",
+      "sha256": "10d611f06b2d4a67773966cb02b20078f19b0147055aaea24d7e7d8c43182223"
+    },
+    {
+      "bytes": 6523,
+      "rel": "MiroThinker/apps/miroflow-agent/src/core/stream_handler.py",
+      "sha256": "fc28bd0d080114fd4d3832a996d0db3555016d3235dfd5f638c5ad9919c88fd9"
+    },
+    {
+      "bytes": 12126,
+      "rel": "MiroThinker/apps/miroflow-agent/src/core/tool_executor.py",
+      "sha256": "7d01b5e66cbb60084d97d18413c65a05ab30bab207dc834d3d7fba5f5704094e"
+    },
+    {
+      "bytes": 316,
+      "rel": "MiroThinker/apps/miroflow-agent/src/io/__init__.py",
+      "sha256": "1ac4dd98b8cdcbc21e196e39c068c921552c272a18b4d41e96c170a352421eb2"
+    },
+    {
+      "bytes": 54137,
+      "rel": "MiroThinker/apps/miroflow-agent/src/io/input_handler.py",
+      "sha256": "cbd757dabd53aea1987ba2bee906e1f8a6e767a6b1e1e1d74b4fa0fd5ad8d820"
+    },
+    {
+      "bytes": 6504,
+      "rel": "MiroThinker/apps/miroflow-agent/src/io/output_formatter.py",
+      "sha256": "f797651e3836f5133a8ab06a021c00d0d3057fdd0da64637c31e622d99012c2b"
+    },
+    {
+      "bytes": 326,
+      "rel": "MiroThinker/apps/miroflow-agent/src/llm/__init__.py",
+      "sha256": "a3b01bb021e802f22858a73e21d2f03ba5b1df9c59793fe2865ca840499d6e77"
+    },
+    {
+      "bytes": 14434,
+      "rel": "MiroThinker/apps/miroflow-agent/src/llm/base_client.py",
+      "sha256": "82b1fd8938f962f969318fe01c5f2b17486968b21138ea403df5706035c7e5db"
+    },
+    {
+      "bytes": 2221,
+      "rel": "MiroThinker/apps/miroflow-agent/src/llm/factory.py",
+      "sha256": "1bb580d10b3bb52d434cb8bc699cb4d436a8edb12fe6f0763899f1b11f1264fa"
+    },
+    {
+      "bytes": 236,
+      "rel": "MiroThinker/apps/miroflow-agent/src/llm/providers/__init__.py",
+      "sha256": "be0d16be7b844053fd8cc2edee7598333a915bc901fbb649798d98112bd65abb"
+    },
+    {
+      "bytes": 17707,
+      "rel": "MiroThinker/apps/miroflow-agent/src/llm/providers/anthropic_client.py",
+      "sha256": "27080280bc0e2edcd82110f66a06e46b23e9ffebc74cd25bcee0284c3dc6d61c"
+    },
+    {
+      "bytes": 20192,
+      "rel": "MiroThinker/apps/miroflow-agent/src/llm/providers/openai_client.py",
+      "sha256": "6e003b6ef3cca83a5abf61f7be468fc18f855a78ec6bf82fc6a35deeabcad802"
+    },
+    {
+      "bytes": 963,
+      "rel": "MiroThinker/apps/miroflow-agent/src/llm/util.py",
+      "sha256": "dd93e7c26b5aca769a170b6f6ab2318373d0a6486b7d2aa29ed1eb626873867a"
+    },
+    {
+      "bytes": 411,
+      "rel": "MiroThinker/apps/miroflow-agent/src/logging/__init__.py",
+      "sha256": "031851b258514062ffd79a74bbf46d821ecf57e9dfe3e05348b59b17c0c4be25"
+    },
+    {
+      "bytes": 5023,
+      "rel": "MiroThinker/apps/miroflow-agent/src/logging/summary_time_cost.py",
+      "sha256": "55f157fce88d46fb6865cd1ba501b2cab2895f1d00998028b080588fb4a0ae6e"
+    },
+    {
+      "bytes": 11385,
+      "rel": "MiroThinker/apps/miroflow-agent/src/logging/task_logger.py",
+      "sha256": "1eed6146aa05d99342ab0443aff0abcd2dfa586d180ddcae67dabfb5a5c78534"
+    },
+    {
+      "bytes": 1046,
+      "rel": "MiroThinker/apps/miroflow-agent/src/utils/__init__.py",
+      "sha256": "97cc12939cadbc51b8604c46888c1d51131dfd8b18d76d5980148059330d5322"
+    },
+    {
+      "bytes": 14928,
+      "rel": "MiroThinker/apps/miroflow-agent/src/utils/parsing_utils.py",
+      "sha256": "76d85d6f01321ad587fbbd666e367af2185618dd6f09462cbc3027a9cc5f2078"
+    },
+    {
+      "bytes": 14301,
+      "rel": "MiroThinker/apps/miroflow-agent/src/utils/prompt_utils.py",
+      "sha256": "f1adf12844b6cf098bf89b33eb75f572f684fc7b3a0de67b9f4f3d4b0ccd3fc5"
+    },
+    {
+      "bytes": 2255,
+      "rel": "MiroThinker/apps/miroflow-agent/src/utils/wrapper_utils.py",
+      "sha256": "675c39558a5ec85944bb4ba6e459da2c27be491e6c97758c15e0af7f377565c5"
+    },
+    {
+      "bytes": 433392,
+      "rel": "MiroThinker/apps/miroflow-agent/uv.lock",
+      "sha256": "edfcb36aa50a901f56eec1db94e3b3d56a8c7d7ec3a09d526e120789c450aa67"
+    },
+    {
+      "bytes": 5,
+      "rel": "MiroThinker/apps/visualize-trace/.python-version",
+      "sha256": "0fa14b2e97c040827bebfc6ccb8f6d88543892f78551fe581e42395e67ddf160"
+    },
+    {
+      "bytes": 1163,
+      "rel": "MiroThinker/apps/visualize-trace/README.md",
+      "sha256": "f4a264f76ec5f449564ee03b4fe7858db48c88959ce3c48214b6fb39f4c54fb0"
+    },
+    {
+      "bytes": 7240,
+      "rel": "MiroThinker/apps/visualize-trace/app.py",
+      "sha256": "a944877100ce491e9aadb793c3e0bc6be7d9948037b6b06a93e68b9279ddf177"
+    },
+    {
+      "bytes": 237,
+      "rel": "MiroThinker/apps/visualize-trace/pyproject.toml",
+      "sha256": "83b030831a1a5d4e2536048544e9504b316bf75166688a0ad38c652cc9ea19c7"
+    },
+    {
+      "bytes": 29,
+      "rel": "MiroThinker/apps/visualize-trace/requirements.txt",
+      "sha256": "4be9ad8db3a8ecb5560b411cafd2ee8aed1b28460d5978a34ad8fcc8bcfedc5f"
+    },
+    {
+      "bytes": 3399,
+      "rel": "MiroThinker/apps/visualize-trace/run.py",
+      "sha256": "9389f47322d3d1e9171320c1c052d51d5373a6062f58ab0fa1901fb55fd4e43b"
+    },
+    {
+      "bytes": 16118,
+      "rel": "MiroThinker/apps/visualize-trace/static/css/style.css",
+      "sha256": "a6fa9fe9eaa197aea19db6ba9009f2294878c34f0c6c29366abaf93b22f5c71d"
+    },
+    {
+      "bytes": 45708,
+      "rel": "MiroThinker/apps/visualize-trace/static/js/script.js",
+      "sha256": "57b8c3befd882e1f985026475d2113662e64e00c7d8de17f412d840b06b1948d"
+    },
+    {
+      "bytes": 10053,
+      "rel": "MiroThinker/apps/visualize-trace/templates/index.html",
+      "sha256": "7f15d148b8f0224e3a51892ec39edfc00d752ab77f98dfb7b90449644f66ea94"
+    },
+    {
+      "bytes": 18492,
+      "rel": "MiroThinker/apps/visualize-trace/trace_analyzer.py",
+      "sha256": "f5378939c89dc8b99b32bde088d879c18af199add976f46fcaf5f7c7f00e0aa5"
+    },
+    {
+      "bytes": 51622,
+      "rel": "MiroThinker/apps/visualize-trace/uv.lock",
+      "sha256": "31bda04d3352e12b8ef7f09a49c57999e8a8d924e8c0218906a6da13e1963063"
+    },
+    {
+      "bytes": 381350,
+      "rel": "MiroThinker/assets/1.7_main_results.png",
+      "sha256": "c7a07243c0762d6887906e1603519b4d2a9767b9b2491d42471ac4e6d993e3f0"
+    },
+    {
+      "bytes": 463982,
+      "rel": "MiroThinker/assets/17_table.png",
+      "sha256": "1246761258bc2125631815f1690c7a9991ab12e983d31e543ee88a2f59d679ff"
+    },
+    {
+      "bytes": 4979,
+      "rel": "MiroThinker/assets/LOCAL-TOOL-DEPLOYMENT.md",
+      "sha256": "164d9ff646eb4a9dd1ec7458c997ad3b6bf637bb3638fc2ea4138889153a333b"
+    },
+    {
+      "bytes": 6124,
+      "rel": "MiroThinker/assets/MiromindAI_H.svg",
+      "sha256": "fc290f2e7fb455c1c249391ac34e6ed39e1f5a3f5f78e7c897bc9d69292a9719"
+    },
+    {
+      "bytes": 2096,
+      "rel": "MiroThinker/assets/QA.md",
+      "sha256": "4cb40ef59bb52e2e89275f85a07740e786e414116533bf6ac2161324cefa5e94"
+    },
+    {
+      "bytes": 1254754,
+      "rel": "MiroThinker/assets/futurex-09-12.png",
+      "sha256": "5a23a5f95593258227d3d6c3bcf2e0ea878b227a8359ce059744caff3c834fa5"
+    },
+    {
+      "bytes": 372772,
+      "rel": "MiroThinker/assets/gaia_text_103.png",
+      "sha256": "de40d7fdba0879f5d91dd639f6740a31023d57a0a8e1de7ab6c77a6a3de40469"
+    },
+    {
+      "bytes": 40758,
+      "rel": "MiroThinker/assets/miro_thinker.png",
+      "sha256": "f35fe718812e20a08cecee5baf268ac2b7b2d79aa7d915a82527ffd97c2dcfed"
+    },
+    {
+      "bytes": 1027165,
+      "rel": "MiroThinker/assets/miroflow_logo.png",
+      "sha256": "d5728fee1b1588947c54ae6481b6b993c002a373d5f1530a7882f917f6551ec8"
+    },
+    {
+      "bytes": 9902,
+      "rel": "MiroThinker/assets/mirothinker_logo.png",
+      "sha256": "70087a06bd8bdaf6ae900f93eabbc3d5868b5e13d8b24aa8d78a663a55551ede"
+    },
+    {
+      "bytes": 4012,
+      "rel": "MiroThinker/assets/qwen3_nonthinking.jinja",
+      "sha256": "aa3da9d8006d6dd9cf6a505dba67d0b053840c598892847a3cd01763555541d8"
+    },
+    {
+      "bytes": 885,
+      "rel": "MiroThinker/justfile",
+      "sha256": "456d57963c588f4229e82617923e5dde960285491b7ccf5fb4038f7526c2dcab"
+    },
+    {
+      "bytes": 29949,
+      "rel": "MiroThinker/libs/miroflow-tools/README.md",
+      "sha256": "bbafe9c6befd14c0455bf7a580d8baa000bf35f1f8c88bee952b34f28cede96f"
+    },
+    {
+      "bytes": 1479,
+      "rel": "MiroThinker/libs/miroflow-tools/pyproject.toml",
+      "sha256": "b92cb739820815164a5579c2e57bf56e8df399abe161184f3451437212fd0237"
+    },
+    {
+      "bytes": 0,
+      "rel": "MiroThinker/libs/miroflow-tools/src/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 152,
+      "rel": "MiroThinker/libs/miroflow-tools/src/miroflow_tools/__init__.py",
+      "sha256": "2eadc43efd000d370f9f3554a4a28073b3abc54bfb1b159c705ee582d4c3de49"
+    },
+    {
+      "bytes": 31990,
+      "rel": "MiroThinker/libs/miroflow-tools/src/miroflow_tools/dev_mcp_servers/jina_scrape_llm_summary.py",
+      "sha256": "13437b78002288c6d3dfa2001d547554586974bf62405bd8abbaf5c4d8f45780"
+    },
+    {
+      "bytes": 10575,
+      "rel": "MiroThinker/libs/miroflow-tools/src/miroflow_tools/dev_mcp_servers/search_and_scrape_webpage.py",
+      "sha256": "83ba60e36362002ca5512613abef2511a75a025017c5f2cfe8e9fedbb18db1b2"
+    },
+    {
+      "bytes": 1703,
+      "rel": "MiroThinker/libs/miroflow-tools/src/miroflow_tools/dev_mcp_servers/stateless_python_server.py",
+      "sha256": "22a9a7d1d2f10785865e2341d10eb19d70d6d20f731b6d1baf6c3290ca18f872"
+    },
+    {
+      "bytes": 9304,
+      "rel": "MiroThinker/libs/miroflow-tools/src/miroflow_tools/dev_mcp_servers/task_planner.py",
+      "sha256": "8ed9395a02f1122416d411e6c2e95e099bdf78b3a5a7cbb9855666a29652b669"
+    },
+    {
+      "bytes": 16822,
+      "rel": "MiroThinker/libs/miroflow-tools/src/miroflow_tools/manager.py",
+      "sha256": "23e9b90ed8c455c46f939bd4af7ed0a6e3c49d72d5e33b8aba347c3597f65a1f"
+    },
+    {
+      "bytes": 0,
+      "rel": "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 13220,
+      "rel": "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/audio_mcp_server.py",
+      "sha256": "c493351d12e030ab069382d33a1be8d5419ee4a8f03f52f7312aab66aaaa37e5"
+    },
+    {
+      "bytes": 7652,
+      "rel": "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/audio_mcp_server_os.py",
+      "sha256": "bb75a0db1a754b1519631f030481aae3a6bd592b74c2176b00083b4c5eaa083b"
+    },
+    {
+      "bytes": 3264,
+      "rel": "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/browser_session.py",
+      "sha256": "2de1a3210ee116cdb9ee3d79d821b35881587c74c0d28079f93fcc3c04187f9f"
+    },
+    {
+      "bytes": 19845,
+      "rel": "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/python_mcp_server.py",
+      "sha256": "45d7a7f7344117c75af818737c6a9ab130a6a22254f6c941781c598013d84a65"
+    },
+    {
+      "bytes": 3291,
+      "rel": "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/reading_mcp_server.py",
+      "sha256": "832648d9477c0b70acd86bdbcec876f8557e160361d90ee5570a09e589301766"
+    },
+    {
+      "bytes": 1626,
+      "rel": "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/reasoning_mcp_server.py",
+      "sha256": "785f8b392a78847812fe547b6ed5d859c477bb892e8e2471c02ad63fe2506a04"
+    },
+    {
+      "bytes": 3003,
+      "rel": "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/reasoning_mcp_server_os.py",
+      "sha256": "b0560a40bfe9e8d3dcded2190475ff6ccebee90e6eed27e5829fdb5efeddb8ae"
+    },
+    {
+      "bytes": 27481,
+      "rel": "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/searching_google_mcp_server.py",
+      "sha256": "2ad7d560394ed25ce46c8bba97afff7d30ba64a7fd2759510c8e39ad278be971"
+    },
+    {
+      "bytes": 6751,
+      "rel": "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/searching_sogou_mcp_server.py",
+      "sha256": "98e2b701dd78b87e2330ee0ce158330f4fffa5e4edd58b354848cebaabef5266"
+    },
+    {
+      "bytes": 5001,
+      "rel": "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/serper_mcp_server.py",
+      "sha256": "4580fd16fe896add4c030111c679ced246763dbd5c0417be362419ca007f7256"
+    },
+    {
+      "bytes": 181,
+      "rel": "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/utils/__init__.py",
+      "sha256": "97265a3304969e272b5bd639131271e27fda16c8561285005cd7a590c1301fd4"
+    },
+    {
+      "bytes": 6298,
+      "rel": "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/utils/url_unquote.py",
+      "sha256": "2a50909408dd284603293201d218cfb38df7f3afeb20a88127fc5bc019984be4"
+    },
+    {
+      "bytes": 6728,
+      "rel": "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/vision_mcp_server.py",
+      "sha256": "af08d96eed943688403d16cfbbde95d9d6f4844a4deac7c9bcc1cdf2f49c05b9"
+    },
+    {
+      "bytes": 3462,
+      "rel": "MiroThinker/libs/miroflow-tools/src/miroflow_tools/mcp_servers/vision_mcp_server_os.py",
+      "sha256": "c804344fbb4810bf9a7e149b108da26cab051c671a2c2a4b4be5f8160d278218"
+    }
+  ],
+  "schema": "yaiwes.frontend.copy-batches.v1"
+}

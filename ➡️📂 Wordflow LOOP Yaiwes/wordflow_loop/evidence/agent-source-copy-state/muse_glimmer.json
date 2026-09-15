@@ -1,0 +1,261 @@
+{
+  "batches": 1,
+  "completed": {
+    "DOWNLOAD_EXTRACT_MANIFEST.json": "COPIED_VERIFIED",
+    "_archives/Meta-Muse-Glimmer-Agent-2026.bundle.zip.part-0001": "COPIED_VERIFIED",
+    "code/.gitignore": "COPIED_VERIFIED",
+    "code/CODE_OF_CONDUCT.md": "COPIED_VERIFIED",
+    "code/CONTRIBUTING.md": "COPIED_VERIFIED",
+    "code/LICENSE": "COPIED_VERIFIED",
+    "code/README.md": "COPIED_VERIFIED",
+    "code/agentic-fundamentals/README.md": "COPIED_VERIFIED",
+    "code/agentic-fundamentals/agent_loop.py": "COPIED_VERIFIED",
+    "code/agentic-fundamentals/response_parser.py": "COPIED_VERIFIED",
+    "code/agentic-fundamentals/run_agent.py": "COPIED_VERIFIED",
+    "code/assets/README.md": "COPIED_VERIFIED",
+    "code/assets/RECIPE_TEMPLATE.md": "COPIED_VERIFIED",
+    "code/assets/muse-glimmer-30b-wordmark.png": "COPIED_VERIFIED",
+    "code/assets/nemoclaw-openshell-demo.mp4": "COPIED_VERIFIED",
+    "code/assets/nvidia-nemoclaw-vllm-architecture.png": "COPIED_VERIFIED",
+    "code/assets/ollama-launch-pi-muse-glimmer.png": "COPIED_VERIFIED",
+    "code/hosted/README.md": "COPIED_VERIFIED",
+    "code/hosted/together-ai.md": "COPIED_VERIFIED",
+    "code/inference-server/README.md": "COPIED_VERIFIED",
+    "code/inference-server/executorch.md": "COPIED_VERIFIED",
+    "code/inference-server/llama-cpp.md": "COPIED_VERIFIED",
+    "code/inference-server/lm-studio.md": "COPIED_VERIFIED",
+    "code/inference-server/ollama.md": "COPIED_VERIFIED",
+    "code/inference-server/sglang.md": "COPIED_VERIFIED",
+    "code/inference-server/unsloth.md": "COPIED_VERIFIED",
+    "code/inference-server/vllm.md": "COPIED_VERIFIED",
+    "code/platform/README.md": "COPIED_VERIFIED",
+    "code/platform/_template/VENDOR_TEMPLATE.md": "COPIED_VERIFIED",
+    "code/platform/intel.md": "COPIED_VERIFIED",
+    "code/platform/nvidia.md": "COPIED_VERIFIED",
+    "code/platform/validate.py": "COPIED_VERIFIED",
+    "code/quickstart/README.md": "COPIED_VERIFIED",
+    "code/recipes/README.md": "COPIED_VERIFIED",
+    "code/recipes/alert-triage-copilot/README.md": "COPIED_VERIFIED",
+    "code/recipes/alert-triage-copilot/alert_triage.py": "COPIED_VERIFIED",
+    "code/recipes/computer-use-web/README.md": "COPIED_VERIFIED",
+    "code/recipes/reasoning-effort/README.md": "COPIED_VERIFIED",
+    "code/recipes/reasoning-effort/reasoning_effort.py": "COPIED_VERIFIED",
+    "code/recipes/sandboxed-agent/README.md": "COPIED_VERIFIED",
+    "code/recipes/structured-output/README.md": "COPIED_VERIFIED",
+    "code/recipes/structured-output/structured_output.py": "COPIED_VERIFIED"
+  },
+  "failed": {},
+  "manifest": [
+    {
+      "bytes": 1079,
+      "rel": "DOWNLOAD_EXTRACT_MANIFEST.json",
+      "sha256": "4bc78a388da7e5ea3c9d5e2f9e955026fb84f26bb29a2eda5cbdd835888a2cc8"
+    },
+    {
+      "bytes": 5805775,
+      "rel": "_archives/Meta-Muse-Glimmer-Agent-2026.bundle.zip.part-0001",
+      "sha256": "08bd2c349bc99814e6317548bcb7a76409da1ac62356c6fcf89fc7a4729f7477"
+    },
+    {
+      "bytes": 95,
+      "rel": "code/.gitignore",
+      "sha256": "59e12efe383adf6f5c6857a48177f331634db16f9f032d39bc6fd321a3d3056f"
+    },
+    {
+      "bytes": 3537,
+      "rel": "code/CODE_OF_CONDUCT.md",
+      "sha256": "b161b3e2ec4712ebf69efc38ef796d2c701a323aac51cf11759d38e9c56c39bd"
+    },
+    {
+      "bytes": 1438,
+      "rel": "code/CONTRIBUTING.md",
+      "sha256": "2069df10df85363566df11ab5287ff9490ad5c91ff33492761d11c07f14e7499"
+    },
+    {
+      "bytes": 11359,
+      "rel": "code/LICENSE",
+      "sha256": "600cc67cc4cb2f5ea317dcfc687ad1c74dc4bec8782bbe9db0afd83513b935b7"
+    },
+    {
+      "bytes": 3853,
+      "rel": "code/README.md",
+      "sha256": "7f3c2eacbbf0a687b752c337d764b3f5d0ed13a5a1acf57b044601c96c2edd3c"
+    },
+    {
+      "bytes": 8991,
+      "rel": "code/agentic-fundamentals/README.md",
+      "sha256": "583e488b42f088fd398a91b6ee47af039ddbf821b93ec3f199cc7235fcabc048"
+    },
+    {
+      "bytes": 6986,
+      "rel": "code/agentic-fundamentals/agent_loop.py",
+      "sha256": "8bb8b261551cf61052c80b8c83bed6c9a477f4366abdbc3b03b4fc15a63ad041"
+    },
+    {
+      "bytes": 7587,
+      "rel": "code/agentic-fundamentals/response_parser.py",
+      "sha256": "3bdad8d9d47085a0473b02ed4f6a18414233a969b2b6ec2f173165be34cbdb6d"
+    },
+    {
+      "bytes": 7412,
+      "rel": "code/agentic-fundamentals/run_agent.py",
+      "sha256": "19321ba7eeef2c938cbed846480629cb044920e00d5ba761ea6d673e0308672a"
+    },
+    {
+      "bytes": 751,
+      "rel": "code/assets/README.md",
+      "sha256": "66e6b50acc73544d9e3dc60c1b562574400d1a1a93d9d518aced40aa4f182302"
+    },
+    {
+      "bytes": 1489,
+      "rel": "code/assets/RECIPE_TEMPLATE.md",
+      "sha256": "8ba12affb59e2e02d456be1e213fb4be1d07c68bf439c4b54a55797c334eef6e"
+    },
+    {
+      "bytes": 16797,
+      "rel": "code/assets/muse-glimmer-30b-wordmark.png",
+      "sha256": "7eb705a9af7dcdbf43f384ffa41f14625fe363b0597cfe71bd6d2ae9f1f735be"
+    },
+    {
+      "bytes": 5431377,
+      "rel": "code/assets/nemoclaw-openshell-demo.mp4",
+      "sha256": "97225fac0bf66f0a88f8f5fdc78a1f89641c9a276c241c78f39bf0244da8fca2"
+    },
+    {
+      "bytes": 172233,
+      "rel": "code/assets/nvidia-nemoclaw-vllm-architecture.png",
+      "sha256": "81e89095b0cd11c119eabebffe0ebac8331214bdefc32abb95e55043b8a1ded6"
+    },
+    {
+      "bytes": 283365,
+      "rel": "code/assets/ollama-launch-pi-muse-glimmer.png",
+      "sha256": "a49759032d8e1660b9489a61e44b8d3a4f79b58811d633d09c4eb95c0ae62323"
+    },
+    {
+      "bytes": 1711,
+      "rel": "code/hosted/README.md",
+      "sha256": "1f5ed6b52a717d8b9c8bd9583ab1db81ff6412e2c05b67232b3f16dc1bd2c9a7"
+    },
+    {
+      "bytes": 7524,
+      "rel": "code/hosted/together-ai.md",
+      "sha256": "dfd62cb6e0bd6624a247cd61a719d41577c65a619939dc6f671136b62924cf7b"
+    },
+    {
+      "bytes": 2664,
+      "rel": "code/inference-server/README.md",
+      "sha256": "4e45fb0f55710c051532aff5b07050be8cb442051602c619968de4bc161afeec"
+    },
+    {
+      "bytes": 12790,
+      "rel": "code/inference-server/executorch.md",
+      "sha256": "4bdcb9f70a45d7ce295387ad502f3cb59d676ea147cf9e332c41b83bd4e510fa"
+    },
+    {
+      "bytes": 6996,
+      "rel": "code/inference-server/llama-cpp.md",
+      "sha256": "5294b9efbf9ff1938694085ded7b7d89ea74b9d6ac18d21373f563b0f80c73ed"
+    },
+    {
+      "bytes": 3586,
+      "rel": "code/inference-server/lm-studio.md",
+      "sha256": "998997bb0d8a79c5af159dc602d4b99364fcca641d291b99462926d547a0c3f1"
+    },
+    {
+      "bytes": 1847,
+      "rel": "code/inference-server/ollama.md",
+      "sha256": "364257e18e037f1131315e7de0fbaa2fa95b5b16f3c13a686d161192e98a00bc"
+    },
+    {
+      "bytes": 15623,
+      "rel": "code/inference-server/sglang.md",
+      "sha256": "5942de4d27a1a0c5c9262dc166db7a01991ed619cbd3a104fff0d9fc16e3bb4a"
+    },
+    {
+      "bytes": 5608,
+      "rel": "code/inference-server/unsloth.md",
+      "sha256": "05f7975f22d658949bea16eacdc6018e8243c5adba1c7be9bde257019d5f0fb0"
+    },
+    {
+      "bytes": 9233,
+      "rel": "code/inference-server/vllm.md",
+      "sha256": "296144dd715604a2dd8a26aaf38dd7924470d54101a66139c6fb9e9c2281c4a1"
+    },
+    {
+      "bytes": 5749,
+      "rel": "code/platform/README.md",
+      "sha256": "63e544e63d6f80fb666caf2d3af75b8132c64b0fc7eb81f1f0d0f250807c398e"
+    },
+    {
+      "bytes": 5328,
+      "rel": "code/platform/_template/VENDOR_TEMPLATE.md",
+      "sha256": "992aabe40013b6f4e2e39c4fe8178939ef77504a7e9213d416fb7a69b1f7ddda"
+    },
+    {
+      "bytes": 11912,
+      "rel": "code/platform/intel.md",
+      "sha256": "ee5b6d82b82979e8393ac240f1b1c38d2a84e87f7b45ed8960204d7cb237ac90"
+    },
+    {
+      "bytes": 5999,
+      "rel": "code/platform/nvidia.md",
+      "sha256": "74ca4703644665351cdb69f8bb3607f6ffc480c2b89eb9caa447f199c34cf34f"
+    },
+    {
+      "bytes": 18036,
+      "rel": "code/platform/validate.py",
+      "sha256": "250aa457bb853677ff546a0f5a6d2214907437792375fdaab601fca134075e2f"
+    },
+    {
+      "bytes": 6789,
+      "rel": "code/quickstart/README.md",
+      "sha256": "ffd34c98d96029a0a1ee4a3e40dbe15bddb5e0a839d6edd9ba6fe61a67676c9c"
+    },
+    {
+      "bytes": 873,
+      "rel": "code/recipes/README.md",
+      "sha256": "b6aed1bbb1b8fcf32346e64e60473a5e190c6a8707c8f0a852c450d7a7d470a9"
+    },
+    {
+      "bytes": 4792,
+      "rel": "code/recipes/alert-triage-copilot/README.md",
+      "sha256": "940d72d0fc474cb50d16b3d1d442a87b5727469202c5ab3abba6235fdc882aa4"
+    },
+    {
+      "bytes": 8749,
+      "rel": "code/recipes/alert-triage-copilot/alert_triage.py",
+      "sha256": "2aa00086a7142d207992323489a5a01551c8fa57c1f92365271f4b0420b78be8"
+    },
+    {
+      "bytes": 6951,
+      "rel": "code/recipes/computer-use-web/README.md",
+      "sha256": "e56058c8278322c20a93cd276968ede03c287cd834abb916c642061df7d31f44"
+    },
+    {
+      "bytes": 3655,
+      "rel": "code/recipes/reasoning-effort/README.md",
+      "sha256": "0ff9d72f3be818fa6e6145123d9b6e830c5714728dec64b65fa92bc9bc8b0b0a"
+    },
+    {
+      "bytes": 3925,
+      "rel": "code/recipes/reasoning-effort/reasoning_effort.py",
+      "sha256": "5d92622e18d171156efa977d9a5f94f39e597ef1bcc26b303ab17f138f43f7b0"
+    },
+    {
+      "bytes": 4190,
+      "rel": "code/recipes/sandboxed-agent/README.md",
+      "sha256": "49315c4a8418267243628f1dae7f8ec9b37c37198dde8124b8667e6b84e76143"
+    },
+    {
+      "bytes": 3427,
+      "rel": "code/recipes/structured-output/README.md",
+      "sha256": "c169bf9845d907bd9a5ad62c853d1f7cc8e1a59bcbc3f6e00a75497b4b8282f3"
+    },
+    {
+      "bytes": 3940,
+      "rel": "code/recipes/structured-output/structured_output.py",
+      "sha256": "8bbffac85c754dff096c881d9b426f8d327281c1584bdd9970d7cf9f6be7d145"
+    }
+  ],
+  "schema": "yaiwes.frontend.copy-batches.v1"
+}

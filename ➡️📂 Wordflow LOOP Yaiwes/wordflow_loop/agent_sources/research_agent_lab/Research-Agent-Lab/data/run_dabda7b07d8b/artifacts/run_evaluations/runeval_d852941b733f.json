@@ -1,0 +1,105 @@
+{
+  "status": "block",
+  "score": 60,
+  "recommended_next_action": "fix_blocking_issues_before_next_run",
+  "evaluation_id": "runeval_d852941b733f",
+  "created_at": "2026-06-18T07:24:39.706813+00:00",
+  "checks": [
+    {
+      "name": "literature_selected_papers",
+      "status": "pass",
+      "severity": "warning",
+      "message": "selected papers are available",
+      "evidence": {
+        "selected_paper_count": 1
+      }
+    },
+    {
+      "name": "method_cards",
+      "status": "pass",
+      "severity": "warning",
+      "message": "method cards are available",
+      "evidence": {
+        "method_card_count": 1,
+        "selected_paper_count": 1
+      }
+    },
+    {
+      "name": "evidence_support",
+      "status": "pass",
+      "severity": "warning",
+      "message": "no unsupported evidence",
+      "evidence": {
+        "unsupported_evidence_count": 0
+      }
+    },
+    {
+      "name": "llm_call_budget",
+      "status": "warn",
+      "severity": "warning",
+      "message": "LLM is enabled but no call budget is configured; unlimited calls possible",
+      "evidence": {
+        "llm_calls_used": 0
+      }
+    },
+    {
+      "name": "llm_token_budget",
+      "status": "warn",
+      "severity": "warning",
+      "message": "LLM is enabled but no token budget is configured; unlimited tokens possible",
+      "evidence": {
+        "llm_tokens_used": 0
+      }
+    },
+    {
+      "name": "experiment_results",
+      "status": "pass",
+      "severity": "info",
+      "message": "experiments disabled; no experiment results expected",
+      "evidence": {
+        "enable_experiments": false
+      }
+    },
+    {
+      "name": "experiment_tree",
+      "status": "pass",
+      "severity": "info",
+      "message": "no experiment tree to evaluate",
+      "evidence": {}
+    },
+    {
+      "name": "review_status",
+      "status": "pass",
+      "severity": "warning",
+      "message": "review_status=pass",
+      "evidence": {
+        "review_status": "pass"
+      }
+    },
+    {
+      "name": "llm_experiment_planner_success",
+      "status": "fail",
+      "severity": "blocker",
+      "message": "experiment_planner had 1 LLM call(s) but 0 succeeded",
+      "evidence": {
+        "agent": "experiment_planner",
+        "record_count": 1,
+        "success_count": 0
+      }
+    }
+  ],
+  "blocking_issues": [
+    "experiment_planner had 1 LLM call(s) but 0 succeeded"
+  ],
+  "warnings": [
+    "LLM is enabled but no call budget is configured; unlimited calls possible",
+    "LLM is enabled but no token budget is configured; unlimited tokens possible"
+  ],
+  "summary": [
+    "status=block",
+    "score=60",
+    "checks=9",
+    "blocking=1",
+    "warnings=2"
+  ]
+}

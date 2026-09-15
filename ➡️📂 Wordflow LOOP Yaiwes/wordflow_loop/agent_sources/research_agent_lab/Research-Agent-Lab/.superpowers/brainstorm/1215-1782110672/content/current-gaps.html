@@ -1,0 +1,115 @@
+<h2>当前实验执行链路：骨架 vs 缺口</h2>
+<p class="subtitle">绿色 = 已实现，黄色 = 有但不足，红色 = 缺失</p>
+
+<div class="section">
+  <h3>整体流程：从文献到实验到报告</h3>
+</div>
+
+<div class="split">
+  <div class="mockup" style="flex:1;">
+    <div class="mockup-header">✅ 文献→报告链路（P1-P14，已完成）</div>
+    <div class="mockup-body">
+      <div style="background:#d4edda;border-left:4px solid #28a745;padding:10px;margin:5px 0;border-radius:4px;">
+        <strong>PaperTriage</strong> → 筛选论文
+      </div>
+      <div style="text-align:center;margin:3px 0;">↓</div>
+      <div style="background:#d4edda;border-left:4px solid #28a745;padding:10px;margin:5px 0;border-radius:4px;">
+        <strong>PaperReader</strong> → 提取证据
+      </div>
+      <div style="text-align:center;margin:3px 0;">↓</div>
+      <div style="background:#d4edda;border-left:4px solid #28a745;padding:10px;margin:5px 0;border-radius:4px;">
+        <strong>SynthesisAgent</strong> → 综合报告
+      </div>
+      <div style="text-align:center;margin:3px 0;">↓</div>
+      <div style="background:#d4edda;border-left:4px solid #28a745;padding:10px;margin:5px 0;border-radius:4px;">
+        <strong>ReviewerAgent</strong> → 审核
+      </div>
+    </div>
+  </div>
+  <div class="mockup" style="flex:1;">
+    <div class="mockup-header">⚠️ 实验执行链路（骨架，无法闭环）</div>
+    <div class="mockup-body">
+      <div style="background:#fff3cd;border-left:4px solid #ffc107;padding:10px;margin:5px 0;border-radius:4px;">
+        <strong>ExperimentPlanner</strong> → 生成实验计划（✅ 有规则+LLM）
+      </div>
+      <div style="text-align:center;margin:3px 0;">↓</div>
+      <div style="background:#f8d7da;border-left:4px solid #dc3545;padding:10px;margin:5px 0;border-radius:4px;">
+        <strong>DeveloperAgent</strong> → 只创建 CodeTask，<strong>不改代码</strong>
+      </div>
+      <div style="text-align:center;margin:3px 0;">↓</div>
+      <div style="background:#fff3cd;border-left:4px solid #ffc107;padding:10px;margin:5px 0;border-radius:4px;">
+        <strong>AutonomousExperiment</strong> → 只跑 smoke，<strong>不 debug</strong>
+      </div>
+      <div style="text-align:center;margin:3px 0;">↓</div>
+      <div style="background:#fff3cd;border-left:4px solid #ffc107;padding:10px;margin:5px 0;border-radius:4px;">
+        <strong>ExperimentDecision</strong> → 分析结果，<strong>不反馈修复</strong>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>四个关键缺口</h3>
+</div>
+
+<table style="width:100%;border-collapse:collapse;">
+  <tr style="background:#f8d7da;">
+    <td style="padding:12px;border:1px solid #f5c6cb;"><strong>🔴 缺口 1</strong></td>
+    <td style="padding:12px;border:1px solid #f5c6cb;"><strong>Code Writer</strong></td>
+    <td style="padding:12px;border:1px solid #f5c6cb;">DeveloperAgent 只输出 CodeTask schema，不实际修改代码文件。没有 diff/patch 生成能力</td>
+  </tr>
+  <tr style="background:#f8d7da;">
+    <td style="padding:12px;border:1px solid #f5c6cb;"><strong>🔴 缺口 2</strong></td>
+    <td style="padding:12px;border:1px solid #f5c6cb;"><strong>Auto-Debug 循环</strong></td>
+    <td style="padding:12px;border:1px solid #f5c6cb;">AutonomousExperiment 遇到错误就停止，不分析错误原因，不尝试修复。需要 feedback loop</td>
+  </tr>
+  <tr style="background:#fff3cd;">
+    <td style="padding:12px;border:1px solid #ffeaa7;"><strong>🟡 缺口 3</strong></td>
+    <td style="padding:12px;border:1px solid #ffeaa7;"><strong>结果分析深化</strong></td>
+    <td style="padding:12px;border:1px solid #ffeaa7;">ExperimentDecision 只输出方向性建议 (investigate/continue/rollback)，不解析具体数值，不判断是否达到实验目标</td>
+  </tr>
+  <tr style="background:#f8d7da;">
+    <td style="padding:12px;border:1px solid #f5c6cb;"><strong>🔴 缺口 4</strong></td>
+    <td style="padding:12px;border:1px solid #f5c6cb;"><strong>闭环迭代</strong></td>
+    <td style="padding:12px;border:1px solid #f5c6cb;">失败后无自动重规划。实验→分析→修复→再实验 的循环不存在</td>
+  </tr>
+</table>
+
+<div class="section">
+  <h3>开源参考项目的解决思路</h3>
+</div>
+
+<div class="options" data-multiselect>
+  <div class="option" data-choice="ai_scientist" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>AI Scientist-v2 模式</h3>
+      <p>实验树搜索 + 自动代码生成 + auto-debug（最多3轮修复）+ 结果驱动分支扩展。核心是 <strong>代码生成 agent 闭环</strong></p>
+    </div>
+  </div>
+  <div class="option" data-choice="openhands" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>OpenHands CodeAct 模式</h3>
+      <p>通用代码 agent（read/write/edit/bash），通过 sandbox 安全执行。核心是 <strong>"agent 在沙箱里操作"</strong> 的安全模式</p>
+    </div>
+  </div>
+  <div class="option" data-choice="agent_lab" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Agent Laboratory 模式</h3>
+      <p>阶段式流水线（文献→实验→报告），每阶段输出标准化 artifact。核心是 <strong>阶段间合约清晰、可替换</strong></p>
+    </div>
+  </div>
+  <div class="option" data-choice="swe_agent" onclick="toggleSelect(this)">
+    <div class="letter">D</div>
+    <div class="content">
+      <h3>SWE-agent 模式</h3>
+      <p>LM + 专用终端命令（search/edit/submit），通过 ACI（agent-computer interface）简化 agent 操作。核心是 <strong>简化 agent 的操作原语</strong></p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <p class="subtitle">多选：哪个（些）开源项目的模式更值得参考？请在浏览器中勾选，或直接在终端回复</p>
+</div>

@@ -1,0 +1,38 @@
+<h2>Auto-Debug 修复策略</h2>
+<p class="subtitle">实验运行失败或结果不达标时，agent 如何诊断并修复？</p>
+
+<div class="options">
+  <div class="option" data-choice="parse" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>规则驱动修复</h3>
+      <p>解析 stderr/stdout 中的常见错误模式（ImportError、SyntaxError、AssertionError、command not found 等），匹配预定义的修复模板。无 LLM 调用</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优点</h4><ul><li>零 token 消耗</li><li>快速，确定性</li><li>不会越改越错</li></ul></div>
+        <div class="cons"><h4>缺点</h4><ul><li>只能修常见错误</li><li>逻辑 bug 无法处理</li><li>维护规则库成本</li></ul></div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="llm" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>LLM 驱动修复（AI Scientist-v2 风格）</h3>
+      <p>把失败日志 + 原始代码 + 实验计划一起发给 LLM，让 LLM 分析原因并生成 patch。最多 3 轮修复</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优点</h4><ul><li>可处理复杂逻辑 bug</li><li>自适应，无需规则库</li><li>与 AI Scientist-v2 一致</li></ul></div>
+        <div class="cons"><h4>缺点</h4><ul><li>消耗 token</li><li>可能引入新 bug</li><li>需要 flash 模型路由</li></ul></div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="hybrid_debug" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>分级修复（推荐）</h3>
+      <p>第一轮：规则驱动快速修复（ImportError → pip install, SyntaxError → 修语法等）。规则无法匹配时，升级到 LLM 修复（最多 2 轮）。总共不超过 3 轮</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优点</h4><ul><li>简单问题不浪费 token</li><li>复杂问题有 LLM 兜底</li><li>轮次可控</li></ul></div>
+        <div class="cons"><h4>缺点</h4><ul><li>需要同时实现两种</li><li>升级判断可能不准确</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>

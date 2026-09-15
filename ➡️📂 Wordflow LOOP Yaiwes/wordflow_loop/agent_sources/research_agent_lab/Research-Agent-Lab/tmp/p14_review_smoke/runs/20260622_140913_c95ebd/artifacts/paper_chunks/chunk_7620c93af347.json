@@ -1,0 +1,8 @@
+{
+  "paper_id": "paper_8e3ea4f00612",
+  "text": "[page 7]\nFigure 5: Visualisation of prediction results on the\nETH/UCY dataset. Our method (yellow) is compared with\nMID (purple) and Social-V AE (cyan) across four scenarios\nfrom ETH and UCY datasets.\nFigure 6: Illustration of predicted endpoints on three scenar-\nios from the SDD dataset.\ncus, making it harder to capture a coherent and interpretable\nintention distribution, while too few may limit its ability to\nrepresent the diversity of plausible intent hypotheses.\nWe further evaluate the impact of diffusion steps K by\nvarying it from 10 to 200, with detailed results shown in Ta-\nble 5. Overall prediction performance consistently peaks at\nK = 100, where both ADE and FDE reach their lowest val-\nues. Too few steps may hinder the model’s ability to effec-\ntively capture fine-grained noise transitions, while too many\nmake subtle differences between steps harder to distinguish,\npotentially exceeding the model’s representational capacity.\nLastly, we investigate refinement input and correction tar-\nget. Using either noised state Yk or predicted noise ϵk as\ninput, and refining either residual noise ∆ϵk or residual data\n∆Y0, we find correcting ∆ϵk yields better results (Table 6).\nThis suggests refining noise is more effective than adjusting\ndata directly. Using noise state to correct predicted noise is\nalso more accurate than using data state, likely due to noise\nspace’s simpler, more continuous structure, while direct data\nadjustment is more complex and susceptible to errors.",
+  "chunk_id": "chunk_7620c93af347",
+  "page_start": null,
+  "page_end": null,
+  "section": "Ablation"
+}

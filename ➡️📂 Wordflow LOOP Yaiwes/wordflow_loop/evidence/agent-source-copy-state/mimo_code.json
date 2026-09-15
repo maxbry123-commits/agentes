@@ -1,0 +1,63 @@
+{
+  "batches": 1,
+  "completed": {
+    "LICENSE": "COPIED_VERIFIED",
+    "MiMo-7B-Technical-Report.pdf": "COPIED_VERIFIED",
+    "README.md": "COPIED_VERIFIED",
+    "figures/Xiaomi_MiMo.png": "COPIED_VERIFIED",
+    "figures/Xiaomi_MiMo_darkmode.png": "COPIED_VERIFIED",
+    "figures/architecture.png": "COPIED_VERIFIED",
+    "figures/curve.png": "COPIED_VERIFIED",
+    "figures/length.jpg": "COPIED_VERIFIED",
+    "registry/register_mimo_in_vllm.py": "COPIED_VERIFIED"
+  },
+  "failed": {},
+  "manifest": [
+    {
+      "bytes": 11348,
+      "rel": "LICENSE",
+      "sha256": "539327f43d0a84438f006fadf77a651daa9ca29429286a46e69cb6b2594d8a4c"
+    },
+    {
+      "bytes": 1993392,
+      "rel": "MiMo-7B-Technical-Report.pdf",
+      "sha256": "c631f23f50ff5386131fa145a3a4ae1d9c662a50a443ac1f8ac2890ed7d9b58c"
+    },
+    {
+      "bytes": 15645,
+      "rel": "README.md",
+      "sha256": "ebed748358d4cf7116960d60afb39040bbd48343abf713be58148abb22f3e661"
+    },
+    {
+      "bytes": 453766,
+      "rel": "figures/Xiaomi_MiMo.png",
+      "sha256": "4e6c8253d93515436ff62372fe54dd8470c38f77aefee0f04d210cff1289d32a"
+    },
+    {
+      "bytes": 432375,
+      "rel": "figures/Xiaomi_MiMo_darkmode.png",
+      "sha256": "4c535824abb32aa2ed3ae6cde6d14af87521934635148293f075f0c3dbfe67d7"
+    },
+    {
+      "bytes": 252682,
+      "rel": "figures/architecture.png",
+      "sha256": "64c67b7ee7b7ff6531090dc06fbb84ef0a4f62c47abffd2395f9c04b8414144b"
+    },
+    {
+      "bytes": 259552,
+      "rel": "figures/curve.png",
+      "sha256": "e2a6cd4a5051d99758b12d57e6873cf7bacef4a28fa3191a0eb9903b718201a0"
+    },
+    {
+      "bytes": 723689,
+      "rel": "figures/length.jpg",
+      "sha256": "35c87d3e7aaca20841a44de8b230acbe2f101c6ed79cb6746057e8abaa2e280a"
+    },
+    {
+      "bytes": 6105,
+      "rel": "registry/register_mimo_in_vllm.py",
+      "sha256": "63e1a3f4735e883542eef1c6c2caf5d8ea61bdd12fd19e3f78b963b1174e7efc"
+    }
+  ],
+  "schema": "yaiwes.frontend.copy-batches.v1"
+}

@@ -1,0 +1,38 @@
+<h2>代码修改的安全模型选择</h2>
+<p class="subtitle">代码修改能力是实验闭环的核心，也是风险最大的环节</p>
+
+<div class="options">
+  <div class="option" data-choice="copy" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>副本模式（AI Scientist-v2 风格）</h3>
+      <p>自动把目标代码库复制到 <code>run_dir/code_copy/</code>，agent 只在副本上改代码、跑实验。原代码完全不受影响。实验结束后保留副本作为 artifact</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优点</h4><ul><li>原代码绝对安全</li><li>副本可事后审计</li><li>实现简单</li></ul></div>
+        <div class="cons"><h4>缺点</h4><ul><li>大代码库复制慢</li><li>磁盘占用</li></ul></div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="sandbox" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Scoped 沙箱模式（当前架构扩展）</h3>
+      <p>扩展现有 <code>ScopedCodeExecutor</code>，在原代码库上操作但严格限制文件范围（<code>allowed_paths</code> 白名单 + <code>protected_paths</code> 黑名单）。写前自动备份（<code>.bak</code>）</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优点</h4><ul><li>无需复制大代码库</li><li>复用现有基础设施</li><li>快速迭代</li></ul></div>
+        <div class="cons"><h4>缺点</h4><ul><li>备份不如副本安全</li><li>路径配置错误有风险</li></ul></div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="hybrid" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>混合模式（推荐）</h3>
+      <p>默认副本模式。当代码库 &lt; 100MB 或用户显式设置 <code>copy_can_modify=false</code> 时用副本；当代码库很大且 <code>copy_can_modify=true</code> 时用 scoped 沙箱模式。两种模式都保留写前备份</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优点</h4><ul><li>兼顾安全和效率</li><li>用户可配置</li><li>渐进式信任</li></ul></div>
+        <div class="cons"><h4>缺点</h4><ul><li>实现两种路径</li><li>行为可能让用户困惑</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>

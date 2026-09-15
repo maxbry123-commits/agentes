@@ -1,0 +1,40 @@
+{
+  "topic_name": "vin_ocr_mobile_pipeline",
+  "domain": {
+    "primary_area": "scene_text_recognition",
+    "secondary_areas": ["OCR", "vehicle_identification_number", "mobile_deployment", "PaddleOCR", "ONNX"]
+  },
+  "research_goal": {
+    "short": "Study robust VIN OCR recognition and mobile deployment workflows.",
+    "long": "Use the same research-agent contracts for OCR model comparison, error analysis, and deployment planning."
+  },
+  "current_status": {
+    "baseline_methods": ["PaddleOCR", "PP-OCRv5"],
+    "priority": ["reduce wrong VIN selections before chasing missed detections"],
+    "first_strategy": "Build evidence-linked method cards for OCR correction and mobile deployment constraints."
+  },
+  "search_seeds": {
+    "keywords": [
+      "vehicle identification number OCR",
+      "scene text recognition VIN",
+      "PaddleOCR mobile deployment",
+      "ONNX OCR recognition",
+      "steel stamp OCR"
+    ]
+  },
+  "paper_schema": {
+    "required_fields": ["task", "input_modalities", "model_architecture", "datasets", "metrics"],
+    "default_input_modalities": ["image"],
+    "default_output": "VIN text"
+  },
+  "experiment_metrics": ["exact_match_accuracy", "character_accuracy", "latency", "model_size"],
+  "codebase": {
+    "repo_path": "",
+    "protected_files": ["dataset/raw/*"],
+    "allowed_auto_edit": ["src/*", "configs/*", "tools/*"]
+  },
+  "metadata": {
+    "created_from": "code_plan.md",
+    "version": "v1"
+  }
+}

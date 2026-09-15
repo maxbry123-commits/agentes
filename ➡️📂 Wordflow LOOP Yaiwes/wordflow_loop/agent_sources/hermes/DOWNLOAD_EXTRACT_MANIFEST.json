@@ -1,0 +1,63 @@
+{
+  "bundle_bytes": 77734292,
+  "bundle_sha256": "784167445957a69da29bf91c7b683f0ffb42ddfe658be01b001abdf3711052d0",
+  "extracted_tree": {
+    "bytes": 171734437,
+    "files": 13036,
+    "sha256": "1a3be58608849ae6d2e997b58048a35b66480b7ced61aabf12b26c7d6e88fa19"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "Hermes-Agent.bundle.zip.part-0001",
+      "sha256": "722d099988d6d5d51c71bcb8778dad4e44391b696517d12d5be9c9dde813260a"
+    },
+    {
+      "bytes": 12582912,
+      "name": "Hermes-Agent.bundle.zip.part-0002",
+      "sha256": "bbbdf0c3be3183b70fe1e147f461411fec86f7843a7035d232bb5c10c75beb39"
+    },
+    {
+      "bytes": 12582912,
+      "name": "Hermes-Agent.bundle.zip.part-0003",
+      "sha256": "5bc5842fe6fb0f355f03fad954f6b852cc1040bf854fe65fbd3ed97456370032"
+    },
+    {
+      "bytes": 12582912,
+      "name": "Hermes-Agent.bundle.zip.part-0004",
+      "sha256": "1bbb1562524920ec42d165e40e1e8fe1740f866f8e2c4eea8f62abda185acc0b"
+    },
+    {
+      "bytes": 12582912,
+      "name": "Hermes-Agent.bundle.zip.part-0005",
+      "sha256": "259a685085518055f108c1430639506d4ee3eb0c1ab18b51c829c10d17387e19"
+    },
+    {
+      "bytes": 12582912,
+      "name": "Hermes-Agent.bundle.zip.part-0006",
+      "sha256": "e75ed8b2771617149f449f6f715bfb5edeeb7963407613b41601e2ce03718983"
+    },
+    {
+      "bytes": 2236820,
+      "name": "Hermes-Agent.bundle.zip.part-0007",
+      "sha256": "28c8e390738beec660f6bb50b7acd27c398d2565cc676fcb39d41e0a5609adab"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Hermes-Agent",
+  "source_bytes": 171734437,
+  "source_commit": "6bc0e9e6df1be528dca42b4ae720026192896662",
+  "source_files": 13036,
+  "source_ref": "HEAD",
+  "source_repo": "NousResearch/hermes-agent",
+  "source_tree": {
+    "bytes": 171734437,
+    "files": 13036,
+    "sha256": "1a3be58608849ae6d2e997b58048a35b66480b7ced61aabf12b26c7d6e88fa19"
+  }
+}

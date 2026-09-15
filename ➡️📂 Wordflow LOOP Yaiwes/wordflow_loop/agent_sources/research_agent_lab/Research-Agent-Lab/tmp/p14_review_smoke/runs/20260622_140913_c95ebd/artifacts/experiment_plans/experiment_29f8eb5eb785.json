@@ -1,0 +1,39 @@
+{
+  "name": "Evidence-guided first experiment for pedestrian_trajectory_prediction",
+  "hypothesis": "A small, controlled modification aligned with topic priorities can test whether the research direction is feasible: preserve baseline_original outputs; smoke-test every change before full training; prefer small conditioning changes over broad rewrites.",
+  "experiment_id": "experiment_29f8eb5eb785",
+  "baseline": "LED VIRAT baseline, Leapfrog Diffusion Model",
+  "modification": "Plan a minimal intention-conditioning experiment that can be toggled from cfg/virat without changing baseline outputs. Integration points: Add optional per-agent intention/language features in VIRATDataset output. Fuse optional condition features in data_preprocess before initializer/denoiser calls. Inject condition features into LEDInitializer mean/variance/scale branches.",
+  "files_to_change": [
+    "cfg/virat/led_virat_debug.yml",
+    "cfg/virat/led_virat.yml",
+    "data/dataloader_virat.py",
+    "trainer/train_led_trajectory_augment_input.py",
+    "models/model_led_initializer.py",
+    "work.md"
+  ],
+  "dataset": "VIRAT processed pkl from ../MID-main/processed_data_virat",
+  "training_config": {
+    "mode": "smoke-first",
+    "epochs": "to_confirm",
+    "batch_size": "to_confirm"
+  },
+  "metrics": [
+    "ADE",
+    "FDE",
+    "miss_rate",
+    "multimodal_diversity"
+  ],
+  "ablation_studies": [
+    "baseline unchanged",
+    "minimal modification enabled",
+    "modification disabled with same config"
+  ],
+  "acceptance_criteria": {
+    "must_run": true,
+    "requires_human_approval_before_code_edit": true,
+    "metric_check": "compare against baseline on the same split",
+    "no_data_leakage": true
+  },
+  "rollback_plan": "keep changes as a reviewable patch; do not auto-commit"
+}
