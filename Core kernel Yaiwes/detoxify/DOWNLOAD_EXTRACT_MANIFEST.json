@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 245810,
+  "bundle_sha256": "5823b8a6e6c2bd6bed6af58db17070fc414b9926bef9b600c1ab8717ae8dc249",
+  "extracted_tree": {
+    "bytes": 401359,
+    "files": 40,
+    "sha256": "bd94d4719a29af29627fd610add2885ee285351eb7fac1d0789d43964e2c94ed"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 245810,
+      "name": "detoxify.bundle.zip.part-0001",
+      "sha256": "5823b8a6e6c2bd6bed6af58db17070fc414b9926bef9b600c1ab8717ae8dc249"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "detoxify",
+  "source_bytes": 401359,
+  "source_commit": "d5376446b6accee5dd2d346f2d3050f9d8a69af1",
+  "source_files": 40,
+  "source_ref": "HEAD",
+  "source_repo": "https://github.com/unitaryai/detoxify.git",
+  "source_tree": {
+    "bytes": 401359,
+    "files": 40,
+    "sha256": "bd94d4719a29af29627fd610add2885ee285351eb7fac1d0789d43964e2c94ed"
+  }
+}
