@@ -21,21 +21,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo 'SEALS_FRESH_ANALYSIS_V2'
+          echo 'SEALS_BRANCH_ANALYSIS_V3'
           for z in 'Core kernel Yaiwes/Download code Yaiwes/Muse-Agent_0001.zip' 'Core kernel Yaiwes/Download code Yaiwes/MUSE-KnowledgeXLab_0001.zip'; do
             echo "=== ZIP:$z ==="
             test -f "$z"
             echo "ZIP_SHA256=$(sha256sum "$z"|cut -d' ' -f1)"
             d=$(mktemp -d)
             unzip -q "$z" -d "$d"
-            echo '--- provenance-like files ---'
-            find "$d" -type f \( -iname '*source*' -o -iname '*manifest*' -o -iname '*provenance*' -o -iname 'pyproject.toml' -o -iname 'package.json' \) | head -40
-            echo '--- task-loop/state candidate ranking ---'
-            grep -RIlE 'while[[:space:]]+True|while[[:space:]]*\(|for .*task|next_task|task.*status|completed|checkpoint|state|memory|history|todo' "$d" --include='*.py' --include='*.ts' --include='*.js' --include='*.tsx' 2>/dev/null | while read -r f; do
-              c=$(grep -Ei 'while[[:space:]]+True|while[[:space:]]*\(|for .*task|next_task|task.*status|completed|checkpoint|state|memory|history|todo' "$f" | wc -l)
-              printf '%05d %s\n' "$c" "${f#$d/}"
-            done | sort -rn | head -30
-            echo '--- git metadata ---'
-            find "$d" \( -path '*/.git/HEAD' -o -path '*/.git/config' \) | head -10
+            grep -RIlE 'while .*to_do_subtasks|executePlanExecuteLoop|streamPlanExecute|checkpoint|done_subtasks' "$d" --include='*.py' --include='*.ts' 2>/dev/null | head -30
             rm -rf "$d"
           done
