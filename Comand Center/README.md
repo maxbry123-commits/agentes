@@ -59,7 +59,7 @@ El flujo implementado en comandante_tactico_seal.py es el siguiente:
 
 CARGA DEL EJECUTOR EXISTENTE
 
-La ruta física contiene espacios: Seals team YAIWES/seals_core/ejecutor.py. Por esa razón no puede expresarse como un import de paquete Python convencional con ese nombre de directorio. comandante_tactico_seal.py usa importlib únicamente para cargar ese archivo físico exacto. Antes de cargarlo añade seals_core al sys.path para que los imports locales ya existentes dentro de ejecutor.py, por ejemplo instalador_deterministico y cerebras_client, sigan resolviendo como fueron escritos.
+La ruta física contiene espacios: Seals team YAIWES/seals_core/ejecutor.py. Por esa razón no puede expresarse como un import de paquete Python convencional con ese nombre de directorio. comandante_tactico_seal.py usa importlib únicamente para cargar ese archivo físico exacto. Antes de cargarlo añade seals_core al sys.path para que los imports locales ya existentes dentro de ejecutor.py, concretamente instalador_deterministico, consultor_experto y verificador, sigan resolviendo como fueron escritos.
 
 Esta carga dinámica no copia ejecutor.py, no modifica seals_core, no altera dag_schema.yaml y no crea una arquitectura paralela. Su resultado es obtener la función callable ejecutar_tarea que ya existe.
 
