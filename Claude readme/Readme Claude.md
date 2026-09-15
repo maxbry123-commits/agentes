@@ -1,5 +1,5 @@
 # README CLAUDE — MEMORIA PERSISTENTE DEL ORQUESTADOR
-**Última actualización: 2026-09-13 20:19 hora de Colombia (America/Bogota)**
+**Última actualización: 2026-09-15 09:50 hora de Colombia (America/Bogota)**
 **Este archivo NUNCA se resume. Se actualiza añadiendo, nunca borrando historia relevante.**
 
 ---
@@ -60,3 +60,25 @@ Sol GPT queda retirado del rol de orquestador (rendimiento insuficiente, no plan
 4. Tener operativos varios wordflow loops automatizados tipo SDK de agentes de trabajo.
 
 **Próxima acción pendiente de ejecutar:** Paso 1 — auditoría forense X-Ray del repo `agentes`, enfocada en cerrar lo que ya veníamos construyendo (ficha, componentes, integración) antes de pasar al Wordflow Loop.
+
+---
+
+## 5. AGENTE SEALS TEAM (creado 2026-09-15, absorbido aqui desde la carpeta duplicada "Claude notas/" que se corrigio el mismo dia)
+
+Ubicacion: `Seals team YAIWES/`
+Estado: codigo completo (8 archivos + requirements.txt), sin placeholders, pendiente de PRIMERA PRUEBA REAL.
+Arquitectura: DAG determinista (`dag_schema.yaml`, 11 nodos), 95% codigo puro / 5% LLM via Cerebras (rotacion de 6 keys por variable de entorno) para volumen alto, Claude solo para verificacion final de bajo volumen (`seals_core/verificador.py`).
+Extraido quirurgicamente (no copia completa) de Muse-Agent y MUSE-KnowledgeXLab — evidencia real con sha256+commit en `Seals team YAIWES/_fuentes_extraidas/EXTRACTION_EVIDENCE_MUSE.json`.
+Pendiente de decision del Director: `Meta-Muse-Code-SDK-2026` y `Meta-Agent-Cookbook-2026` — Sol los descargo completos sin que se le pidiera, fuera del alcance de la tarea original. Pausados, sin usar, sin aprobar.
+
+Variables de entorno requeridas antes de la primera prueba (GitHub Secrets, nunca en codigo): `CEREBRAS_API_KEY_1` a `_6`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`.
+
+## 6. CORRECCION DE PROCESO (2026-09-15) — para no repetir
+
+Cree por error una carpeta duplicada "Claude notas/" para la memoria, sin
+buscar primero si esta carpeta ("Claude readme/", creada 19 horas antes)
+ya existia. Corregido: "Claude notas/memoria.md" quedo como aviso de
+redireccion (no se borro, por la regla del proyecto de no borrar y editar
+quirurgicamente), y este archivo absorbe toda la informacion real. Desde
+ahora, antes de crear cualquier carpeta nueva de memoria/registro, se
+verifica primero con una lectura de la raiz del repo.
