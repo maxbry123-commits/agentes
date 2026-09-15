@@ -113,31 +113,32 @@ jobs:
               'candidate_count':len(candidates),
               'total_skill_files':sum(r['skill_count'] for r in candidates),
               'candidates':candidates,
+              'read_gaps':[r for r in repos if r.get('status')=='READ_GAP'],
               'verdict':verdict,
           }
           p=Path(os.environ['EVIDENCE']);p.parent.mkdir(parents=True,exist_ok=True)
           p.write_text(json.dumps(evidence,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
           print(f"HF_SKILL_DISCOVERY={verdict} candidates={len(candidates)} skills={evidence['total_skill_files']} source={evidence['credential_source']}")
-          if not candidates:
-              raise SystemExit(22)
           PY
 
-      - name: Persist discovery evidence
+      - name: Persist discovery evidence before verdict
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- "$EVIDENCE"
-          git commit -m 'evidence(wordflow): record authenticated HF skill library discovery'
-          ok=0
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            if git rebase origin/main && git push origin HEAD:main; then ok=1; break; fi
-            git rebase --abort || true
-            sleep $((attempt*2))
-          done
-          test "$ok" -eq 1
+          if ! git diff --cached --quiet; then
+            git commit -m 'evidence(wordflow): record authenticated HF skill library discovery'
+            ok=0
+            for attempt in 1 2 3 4 5; do
+              git fetch origin main
+              if git rebase origin/main && git push origin HEAD:main; then ok=1; break; fi
+              git rebase --abort || true
+              sleep $((attempt*2))
+            done
+            test "$ok" -eq 1
+          fi
 
       - name: Fresh remote readback
         shell: bash
@@ -148,10 +149,24 @@ jobs:
           python3 - <<'PY'
           import json
           x=json.load(open('/tmp/hf-skills.json',encoding='utf-8'))
-          assert x['verdict']=='PASS_SKILL_LIBRARY_DISCOVERED'
-          assert x['candidate_count']>=1
-          assert x['total_skill_files']>=1
+          assert x['candidate_count']>=0
+          assert x['total_skill_files']>=0
           assert x['token_persisted'] is False
           assert x['credential_source'] in {'secrets.HF_TOKEN','secrets.HF_API_TOKEN','vars.HF_TOKEN','vars.HF_API_TOKEN'}
-          print('HF_SKILL_DISCOVERY_READBACK=PASS')
+          assert x['verdict'] in {'PASS_SKILL_LIBRARY_DISCOVERED','GAP_NO_SKILL_LIBRARY_FOUND'}
+          print('HF_SKILL_DISCOVERY_READBACK='+x['verdict'])
+          PY
+
+      - name: Final fail-closed verdict
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          x=json.load(open('/tmp/hf-skills.json',encoding='utf-8'))
+          if x['verdict']!='PASS_SKILL_LIBRARY_DISCOVERED':
+              print('HF_SKILL_LIBRARY_GAP_PERSISTED')
+              raise SystemExit(22)
+          assert x['candidate_count']>=1 and x['total_skill_files']>=1
+          print('HF_SKILL_LIBRARY_DISCOVERY=PASS')
           PY
