@@ -1,0 +1,106 @@
+name: YAIWES Wordflow G022 G017 Closure Sparse V2
+run-name: Wordflow G022→G017 sparse closure • ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-wordflow-g022-g017-closure-sparse-v2.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-wordflow-g022-g017-closure
+  cancel-in-progress: true
+
+jobs:
+  close-g022-g017:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Sparse checkout closure scope
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-wordflow-g022-g017-closure-sparse-v2.yml
+            /➡️📂 Wordflow LOOP Yaiwes/runtime/src/install/deterministic_deployer.py
+            /➡️📂 Wordflow LOOP Yaiwes/runtime/src/install/deployment_gate.py
+            /➡️📂 Wordflow LOOP Yaiwes/runtime/tests/g022_g017_closure_runner.py
+            /➡️📂 Wordflow LOOP Yaiwes/runtime/tests/g022_g017_finalize.py
+            /➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/TASK-NODES.json
+            /➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/STATE.json
+            /➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/CHECKPOINT.json
+            /➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/BITACORA-CRAZY-WALL.md
+            /➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md
+            /➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/
+
+      - name: Docker physical backend gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker info >/tmp/docker-info.txt
+          docker version
+          echo 'DOCKER_BACKEND=PASS'
+
+      - name: Four closure tests
+        shell: bash
+        env:
+          G022_TEST_IMAGE: python:3.12-alpine
+        run: |
+          set -euo pipefail
+          python3 '➡️📂 Wordflow LOOP Yaiwes/runtime/tests/g022_g017_closure_runner.py' | tee /tmp/closure.log
+          grep -q 'G022_PHYSICAL_SANDBOX=PASS' /tmp/closure.log
+          grep -q 'G017_DETERMINISTIC_DEPLOYMENT=PASS' /tmp/closure.log
+          grep -q 'FOUR_TEST_GATE=PASS_4_OF_4' /tmp/closure.log
+
+      - name: Finalize truth anchors
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 '➡️📂 Wordflow LOOP Yaiwes/runtime/tests/g022_g017_finalize.py'
+
+      - name: Persist verified closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- '➡️📂 Wordflow LOOP Yaiwes/'
+          git diff --cached --check
+          git commit -m 'close(wordflow): G-022 G-017 physical PASS 4/4'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
+
+      - name: Fresh remote readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          python3 - <<'PY'
+          import json,subprocess
+          def remote(path): return subprocess.check_output(['git','show',f'origin/main:{path}'],text=True)
+          base='➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/'
+          tasks=json.loads(remote(base+'TASK-NODES.json'))
+          byid={n['id']:n for n in tasks['nodes']}
+          state=json.loads(remote(base+'STATE.json'))
+          checkpoint=json.loads(remote(base+'CHECKPOINT.json'))
+          assert byid['G-022']['status']=='PASS'
+          assert byid['G-017']['status']=='PASS'
+          assert state['new_phase']['gaps_closed']==30
+          assert checkpoint['active_phase']['gaps_closed']==30
+          e22=remote('➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G022_PHYSICAL_SANDBOX_CLOSURE_2026-09-15.json')
+          e17=remote('➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G017_DETERMINISTIC_DEPLOYMENT_CLOSURE_2026-09-15.json')
+          assert 'PASS_PHYSICAL_ISOLATION_ENFORCED' in e22
+          assert 'PASS_DETERMINISTIC_DEPLOY_AND_ROLLBACK' in e17
+          print('REMOTE_READBACK=PASS_30_OF_30')
+          PY
+
+      - name: Final verdict
+        run: echo 'YAIWES_WORDFLOW_CODE_GRAPH=PASS_30_OF_30'
