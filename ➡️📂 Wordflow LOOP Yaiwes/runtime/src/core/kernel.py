@@ -26,6 +26,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, Optional
 
+from .completion_gate import require_completion
 from .parallel_scheduler import (
     SchedulerError,
     TaskEnvelope,
@@ -263,6 +264,19 @@ class Kernel:
         try:
             handler = self._handlers[node_id]
             result = await handler(payload)
+            completion_contract = payload.get("completion_contract")
+            if completion_contract is not None:
+                decision = require_completion(completion_contract, result)
+                await self._emit(
+                    "node.completion_verified",
+                    node_id,
+                    mission_id,
+                    {
+                        "profile": decision.profile,
+                        "acceptance_total": decision.acceptance_total,
+                        "acceptance_passed": decision.acceptance_passed,
+                    },
+                )
         except Exception as exc:  # noqa: BLE001 - frontera de error controlada
             await self._state_machine.transition(node_id, "FAILED")
             await self._emit(
