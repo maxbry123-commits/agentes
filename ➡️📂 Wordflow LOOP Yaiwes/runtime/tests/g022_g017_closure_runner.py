@@ -75,6 +75,7 @@ def test_3_memory_and_time_limits() -> dict:
         raise AssertionError("memory limit did not reject 512 MiB allocation")
 
     name = f"yaiwes-g022-time-{os.getpid()}"
+    started = time.monotonic()
     timed = run([
         "timeout", "--signal=TERM", "--kill-after=1s", "2s",
         "docker", "run", "--name", name, "--network", "none", "--cap-drop", "ALL",
@@ -82,10 +83,11 @@ def test_3_memory_and_time_limits() -> dict:
         "--memory", "64m", "--memory-swap", "64m", "--read-only", IMAGE,
         "python", "-c", "import time; time.sleep(30)",
     ], timeout=15)
+    elapsed = time.monotonic() - started
     run(["docker", "rm", "-f", name], timeout=30)
-    if timed.returncode != 124:
-        raise AssertionError(f"wall timeout not enforced, rc={timed.returncode}")
-    return {"id": 3, "name": "sandbox_resource_limits", "result": "PASS", "memory_rejected": True, "wall_timeout_rejected": True}
+    if timed.returncode not in {124, 137, -9} or elapsed > 6.0:
+        raise AssertionError(f"wall timeout not enforced, rc={timed.returncode}, elapsed={elapsed:.2f}s")
+    return {"id": 3, "name": "sandbox_resource_limits", "result": "PASS", "memory_rejected": True, "wall_timeout_rejected": True, "timeout_returncode": timed.returncode, "timeout_elapsed_seconds": round(elapsed, 3)}
 
 
 def _write_app(root: Path, *, good: bool) -> None:
