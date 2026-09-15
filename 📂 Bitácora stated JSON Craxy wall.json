@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-15T04:52:25Z",
+  "updated_at": "2026-09-15T22:32:18.336856Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -2281,17 +2281,18 @@
       "status": "PENDING_STEP1",
       "abc": null,
       "target": null,
-      "owner": null,
-      "lock": "FREE",
+      "owner": "SOL GPT",
+      "lock": "CLAIMED",
       "checkpoint": {
-        "before": "2026-09-14T14:15:52Z fresh main=30cfe02150ead03e69da629a78f8384d4fce9d3e; source_path=Core kernel Yaiwes/A2A-Protocol; source_tree=7e5a9733f8953ad3be0da97d9d0fc6f43b3f76f0; ficha_blob=98ce04d52ded873516e8c6c8291855650ac7cf58",
+        "before": "2026-09-15T22:32:18.336856Z fresh main=3f8b05aef01cb6f351f1b634baa823a2cf44e743; STEP1 claim; source=Core kernel Yaiwes/A2A-Protocol; exact target still unresolved",
         "after": null
       },
       "evidence": [
         "director:MOVE_DIRECT_TO_FINAL_ALL_CORE_COMPONENTS_2026-09-14",
         "step1:before:path:Core kernel Yaiwes/A2A-Protocol",
         "step1:before:tree:7e5a9733f8953ad3be0da97d9d0fc6f43b3f76f0",
-        "ficha:Claude readme/FICHA-ADN-TECNICA-YAIWES.md:blob:98ce04d52ded873516e8c6c8291855650ac7cf58"
+        "ficha:Claude readme/FICHA-ADN-TECNICA-YAIWES.md:blob:98ce04d52ded873516e8c6c8291855650ac7cf58",
+        "step1:claim:fresh_main:3f8b05aef01cb6f351f1b634baa823a2cf44e743"
       ],
       "history": [
         {
@@ -2300,6 +2301,13 @@
           "label": "SOL GPT",
           "event": "REGISTER_DIRECTOR_AUTHORIZED_STEP1",
           "base_sha": "30cfe02150ead03e69da629a78f8384d4fce9d3e"
+        },
+        {
+          "at": "2026-09-15T22:32:18.336856Z",
+          "actor": "SOL",
+          "label": "SOL GPT",
+          "event": "CLAIM_STEP1",
+          "base_sha": "3f8b05aef01cb6f351f1b634baa823a2cf44e743"
         }
       ],
       "next_action": "STEP1_ANALYZE_ABC_DESTINATION"
