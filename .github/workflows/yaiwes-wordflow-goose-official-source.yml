@@ -111,3 +111,5 @@ jobs:
             exit 1
           fi
           echo 'YAIWES_AGENT_SOURCE_COPY=VERIFIED_18_OF_18'
+
+# user-directed trigger 2026-09-15: execute existing canonical Goose closure workflow
