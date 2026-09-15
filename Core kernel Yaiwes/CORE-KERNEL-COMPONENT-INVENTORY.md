@@ -1,6 +1,6 @@
 # Core kernel YAIWES — inventario completo de componentes
 
-- Generado: `2026-09-15T09:25:21.760803+00:00`
+- Generado: `2026-09-15T10:30:23.192577+00:00`
 - Componentes únicos: **245**
 - Señal de kernel: **4**
 
