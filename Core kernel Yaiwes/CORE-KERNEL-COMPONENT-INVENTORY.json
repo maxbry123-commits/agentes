@@ -1,9 +1,9 @@
 {
   "schema": "yaiwes.core-component-inventory/v1",
-  "generated_at": "2026-09-15T04:23:36.963429+00:00",
+  "generated_at": "2026-09-15T06:58:20.584402+00:00",
   "repository": "maxbry123-commits/agentes",
   "root": "Core kernel Yaiwes",
-  "component_count": 241,
+  "component_count": 245,
   "kernel_signal_count": 4,
   "components": [
     {
@@ -511,6 +511,20 @@
       "wall_target": null
     },
     {
+      "name": "detect-secrets",
+      "path": "Core kernel Yaiwes/detect-secrets",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
+      "wall_target": null
+    },
+    {
       "name": "detoxify",
       "path": "Core kernel Yaiwes/detoxify",
       "bucket": "ROOT",
@@ -749,6 +763,20 @@
       "wall_target": null
     },
     {
+      "name": "gatekeeper",
+      "path": "Core kernel Yaiwes/gatekeeper",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
+      "wall_target": null
+    },
+    {
       "name": "Git",
       "path": "Core kernel Yaiwes/Componentes recuperados A/Git",
       "bucket": "Componentes recuperados A",
@@ -858,6 +886,20 @@
       "wall_node_id": 219,
       "wall_status": "PENDING_STEP1",
       "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "great-expectations",
+      "path": "Core kernel Yaiwes/great-expectations",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
       "wall_target": null
     },
     {
@@ -2813,6 +2855,20 @@
       "wall_node_id": 127,
       "wall_status": "PENDING_STEP1",
       "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "semgrep",
+      "path": "Core kernel Yaiwes/semgrep",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
       "wall_target": null
     },
     {
