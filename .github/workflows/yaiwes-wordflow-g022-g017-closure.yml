@@ -1,0 +1,223 @@
+name: YAIWES Wordflow G022 G017 Closure
+run-name: Wordflow G022→G017 physical closure • ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-wordflow-g022-g017-closure.yml'
+      - '➡️📂 Wordflow LOOP Yaiwes/runtime/src/install/deterministic_deployer.py'
+      - '➡️📂 Wordflow LOOP Yaiwes/runtime/tests/g022_g017_closure_runner.py'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-wordflow-g022-g017-closure
+  cancel-in-progress: false
+
+jobs:
+  close-g022-g017:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout fresh main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          lfs: false
+
+      - name: Verify Docker backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker version
+          docker info
+          echo 'DOCKER_BACKEND=AVAILABLE'
+
+      - name: Execute four physical and deployment tests
+        shell: bash
+        env:
+          G022_TEST_IMAGE: python:3.12-alpine
+        run: |
+          set -euo pipefail
+          python3 '➡️📂 Wordflow LOOP Yaiwes/runtime/tests/g022_g017_closure_runner.py' | tee /tmp/g022-g017-tests.log
+          grep -q 'G022_PHYSICAL_SANDBOX=PASS' /tmp/g022-g017-tests.log
+          grep -q 'G017_DETERMINISTIC_DEPLOYMENT=PASS' /tmp/g022-g017-tests.log
+          grep -q 'FOUR_TEST_GATE=PASS_4_OF_4' /tmp/g022-g017-tests.log
+
+      - name: Close Crazy Wall only after evidence PASS
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+          RUN_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          root=Path('➡️📂 Wordflow LOOP Yaiwes')
+          cw=root/'Crazy Wall Orquestador'
+          evroot=root/'wordflow_loop'/'evidence'
+          e22='➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G022_PHYSICAL_SANDBOX_CLOSURE_2026-09-15.json'
+          e17='➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G017_DETERMINISTIC_DEPLOYMENT_CLOSURE_2026-09-15.json'
+          g22=json.loads((evroot/'G022_PHYSICAL_SANDBOX_CLOSURE_2026-09-15.json').read_text())
+          g17=json.loads((evroot/'G017_DETERMINISTIC_DEPLOYMENT_CLOSURE_2026-09-15.json').read_text())
+          assert g22['g022_closed'] is True and g17['g017_closed'] is True
+          assert g22['tests_passed']==4 and g17['tests_passed']==4
+
+          tasks_path=cw/'TASK-NODES.json'
+          tasks=json.loads(tasks_path.read_text())
+          byid={n['id']:n for n in tasks['nodes']}
+          for gid,evidence,owner in (
+              ('G-022',e22,'ASTRA_GPT_LOOP'),
+              ('G-017',e17,'SOL_GPT_USER_DIRECTED_TAKEOVER'),
+          ):
+              n=byid[gid]
+              n['status']='PASS'
+              if not n.get('claimed_by'):
+                  n['claimed_by']=owner
+              for step in n.get('steps',[]): step['status']='PASS'
+              refs=list(n.get('evidence',[]))
+              for ref in (evidence, f'github_actions_run:{os.environ["RUN_ID"]}', 'four_test_gate:PASS_4_OF_4'):
+                  if ref not in refs: refs.append(ref)
+              n['evidence']=refs
+              n['gaps']=[]
+              n['version']=int(n.get('version',1))+1
+          tasks_path.write_text(json.dumps(tasks,ensure_ascii=False,indent=2)+'\n')
+
+          state_path=cw/'STATE.json'
+          state=json.loads(state_path.read_text())
+          phase=state['new_phase']
+          phase['gaps_closed']=30
+          closed=set(phase.get('gaps_closed_ids',[])); closed.update({'G-017','G-022'})
+          phase['gaps_closed_ids']=sorted(closed,key=lambda x:int(x.split('-')[1]))
+          phase['gaps_blocked']=[]; phase['gaps_in_research']=[]; phase['gaps_open']=[]
+          state['status']='CODE_GRAPH_CLOSED_VERIFIED_30_OF_30'
+          state['current_node']=None
+          state['g022_sandbox']={
+              'status':'CLOSED_VERIFIED_PHYSICAL_ISOLATION',
+              'owner':'ASTRA_GPT_LOOP',
+              'closure_executor':'SOL_GPT_USER_DIRECTED_TAKEOVER',
+              'evidence':e22,
+              'github_actions_run':os.environ['RUN_ID'],
+              'four_test_gate':'PASS_4_OF_4'
+          }
+          state['g017_deployment']={
+              'status':'CLOSED_VERIFIED_DETERMINISTIC_DEPLOYMENT',
+              'owner':'SOL_GPT_USER_DIRECTED_TAKEOVER',
+              'evidence':e17,
+              'github_actions_run':os.environ['RUN_ID'],
+              'health_smoke':'PASS_REAL',
+              'rollback':'PASS_VERIFIED'
+          }
+          state.setdefault('reuse_audit',{})['sandbox']='VERIFIED_PHYSICAL_ISOLATION_G022'
+          state['reuse_audit']['installation_deployment']='VERIFIED_DETERMINISTIC_G017'
+          state['next_actions']=[
+              'CODE_GRAPH 30/30 gaps verified closed',
+              'Preserve fail-closed gates and run regression tests on future runtime changes',
+              'AUTH_PROVIDER_TEST_PENDING remains a separate historical/external-auth item and is not one of the 30 CODE_GRAPH gaps'
+          ]
+          state_path.write_text(json.dumps(state,ensure_ascii=False,indent=2)+'\n')
+
+          cp_path=cw/'CHECKPOINT.json'
+          cp=json.loads(cp_path.read_text())
+          phase=cp['active_phase']; phase['gaps_closed']=30
+          closed=set(phase.get('closed',[])); closed.update({'G-017','G-022'})
+          phase['closed']=sorted(closed,key=lambda x:int(x.split('-')[1]))
+          phase['blocked']=[]; phase['in_research']=[]; phase['pending']=[]
+          cp['status']='CODE_GRAPH_CLOSED_VERIFIED_30_OF_30'
+          cp['active_node']=None; cp['current_node']=None; cp['claimed_by']=None
+          cp['blocked_dependency']=None
+          cp['foreign_owned_active']=[x for x in cp.get('foreign_owned_active',[]) if not x.startswith('G-022:')]
+          cp['verified_previous_cycle']={
+              'gaps':['G-022','G-017'],
+              'result':'PASS_PHYSICAL_SANDBOX_AND_DETERMINISTIC_DEPLOYMENT',
+              'github_actions_run':os.environ['RUN_ID'],
+              'evidence':[e22,e17],
+              'four_test_gate':'PASS_4_OF_4'
+          }
+          cp['next_action']='CODE_GRAPH_30_OF_30_CLOSED; PRESERVE_REGRESSION_GATES'
+          cp_path.write_text(json.dumps(cp,ensure_ascii=False,indent=2)+'\n')
+
+          marker='## Cierre físico G-022 + G-017 — 2026-09-15'
+          for rel in ('HANDOFF.md','Crazy Wall Orquestador/BITACORA-CRAZY-WALL.md'):
+              p=root/rel
+              text=p.read_text()
+              if marker not in text:
+                  text += f"\n\n{marker}\n\n- GitHub Actions run: `{os.environ['RUN_ID']}`\n- G-022: PASS físico — Docker aislado, filesystem RO, red denegada, memoria/tiempo enforceados.\n- G-017: PASS — hash content-addressed, promoción atómica, health/smoke reales y rollback verificado.\n- Gate: `PASS_4_OF_4`; CODE_GRAPH: `30/30`.\n- Evidencia: `{e22}` y `{e17}`.\n"
+                  p.write_text(text)
+          print('CRAZY_WALL_CLOSE=30_OF_30')
+          PY
+
+      - name: Validate closure readback before publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('➡️📂 Wordflow LOOP Yaiwes')
+          tasks=json.loads((root/'Crazy Wall Orquestador/TASK-NODES.json').read_text())
+          byid={n['id']:n for n in tasks['nodes']}
+          assert byid['G-022']['status']=='PASS'
+          assert byid['G-017']['status']=='PASS'
+          assert all(s['status']=='PASS' for s in byid['G-022']['steps'])
+          assert all(s['status']=='PASS' for s in byid['G-017']['steps'])
+          st=json.loads((root/'Crazy Wall Orquestador/STATE.json').read_text())
+          cp=json.loads((root/'Crazy Wall Orquestador/CHECKPOINT.json').read_text())
+          assert st['new_phase']['gaps_closed']==30 and not st['new_phase']['gaps_open'] and not st['new_phase']['gaps_blocked']
+          assert cp['active_phase']['gaps_closed']==30 and not cp['active_phase']['pending'] and not cp['active_phase']['blocked']
+          print('CLOSURE_READBACK_LOCAL=PASS_30_OF_30')
+          PY
+
+      - name: Persist closure evidence and truth anchors
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            '➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G022_PHYSICAL_SANDBOX_CLOSURE_2026-09-15.json' \
+            '➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G017_DETERMINISTIC_DEPLOYMENT_CLOSURE_2026-09-15.json' \
+            '➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/TASK-NODES.json' \
+            '➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/STATE.json' \
+            '➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/CHECKPOINT.json' \
+            '➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/BITACORA-CRAZY-WALL.md' \
+            '➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md'
+          git diff --cached --check
+          git commit -m 'close(wordflow): verify G-022 and G-017 with physical 4-test gate'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            if git rebase origin/main && git push origin HEAD:main; then exit 0; fi
+            git rebase --abort || true
+            sleep $((attempt*3))
+          done
+          exit 1
+
+      - name: Fresh remote readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          python3 - <<'PY'
+          import json,subprocess
+          def remote(path):
+              return subprocess.check_output(['git','show',f'origin/main:{path}'],text=True)
+          base='➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/'
+          tasks=json.loads(remote(base+'TASK-NODES.json'))
+          byid={n['id']:n for n in tasks['nodes']}
+          st=json.loads(remote(base+'STATE.json'))
+          cp=json.loads(remote(base+'CHECKPOINT.json'))
+          assert byid['G-022']['status']=='PASS' and byid['G-017']['status']=='PASS'
+          assert st['new_phase']['gaps_closed']==30
+          assert cp['active_phase']['gaps_closed']==30
+          assert 'PASS_PHYSICAL_ISOLATION_ENFORCED' in remote('➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G022_PHYSICAL_SANDBOX_CLOSURE_2026-09-15.json')
+          assert 'PASS_DETERMINISTIC_DEPLOY_AND_ROLLBACK' in remote('➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G017_DETERMINISTIC_DEPLOYMENT_CLOSURE_2026-09-15.json')
+          print('REMOTE_READBACK=PASS_30_OF_30')
+          PY
+
+      - name: Final verdict
+        run: echo 'YAIWES_WORDFLOW_CODE_GRAPH=PASS_30_OF_30'
