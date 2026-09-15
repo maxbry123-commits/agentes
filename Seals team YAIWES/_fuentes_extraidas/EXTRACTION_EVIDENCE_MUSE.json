@@ -1,0 +1,67 @@
+{
+  "schema": "yaiwes.seals.surgical-extraction/v1",
+  "mode": "FAIL_CLOSED_STRICT_3_STEPS",
+  "repo_full_copy": false,
+  "architecture_decision": false,
+  "adaptation_performed": false,
+  "sources": [
+    {
+      "label": "Muse-Agent",
+      "source_zip": "Core kernel Yaiwes/Download code Yaiwes/Muse-Agent_0001.zip",
+      "source_zip_sha256": "a3347abbc91ddedbb4d6379ff0b281cb3516f7426c5ed03518d6bf08afeea355",
+      "source_url": "https://github.com/wlsdks/muse-agent.git",
+      "source_commit": "c55ed22dd436a1a1d708905293bc3c06128fb6f3",
+      "files": [
+        {
+          "source_relative_path": "packages/agent-core/src/plan-execute-loop.ts",
+          "archive_entry": "Muse-Agent/packages/agent-core/src/plan-execute-loop.ts",
+          "destination_path": "Seals team YAIWES/_fuentes_extraidas/Muse-Agent/packages/agent-core/src/plan-execute-loop.ts",
+          "git_blob_sha": "e670d6dcc2ad6d158d9115160a3c2f2b2ea2e9fd",
+          "sha256": "fb66e4877ebaedc103a4b2f6550631bf2afb3c3da7d352aae0b05159ae23f12b",
+          "bytes": 23249
+        },
+        {
+          "source_relative_path": "packages/agent-core/src/checkpoint.ts",
+          "archive_entry": "Muse-Agent/packages/agent-core/src/checkpoint.ts",
+          "destination_path": "Seals team YAIWES/_fuentes_extraidas/Muse-Agent/packages/agent-core/src/checkpoint.ts",
+          "git_blob_sha": "60e6986831650039e5367fffb46ef0ff8c608722",
+          "sha256": "fdbdaca4eeb5cf1c3dff87b0300a12eee089af29635e3d818da931326e36fe7b",
+          "bytes": 5041
+        }
+      ]
+    },
+    {
+      "label": "MUSE-KnowledgeXLab",
+      "source_zip": "Core kernel Yaiwes/Download code Yaiwes/MUSE-KnowledgeXLab_0001.zip",
+      "source_zip_sha256": "565f8729372526a245af03d756359b10ae3ff5cb7113b227d14597df5dd7d872",
+      "source_url": "https://github.com/KnowledgeXLab/MUSE.git",
+      "source_commit": "63f98aaa5cd12542431308753f016ec558b392c5",
+      "files": [
+        {
+          "source_relative_path": "agent.py",
+          "archive_entry": "MUSE-KnowledgeXLab/agent.py",
+          "destination_path": "Seals team YAIWES/_fuentes_extraidas/MUSE-KnowledgeXLab/agent.py",
+          "git_blob_sha": "7799282268700e0d11a2d01ca4aad29c458bcf45",
+          "sha256": "fae19ecf96d44a5a6a1ad6e23c4f20d2056c6cdbd158750ab570f07dfd30af02",
+          "bytes": 40910
+        },
+        {
+          "source_relative_path": "monitor.py",
+          "archive_entry": "MUSE-KnowledgeXLab/monitor.py",
+          "destination_path": "Seals team YAIWES/_fuentes_extraidas/MUSE-KnowledgeXLab/monitor.py",
+          "git_blob_sha": "6c1316c16920a4e623b886c1fcc03a6dcab7fc62",
+          "sha256": "cf804ccd3b0c79ede0a219798f43e3f8a916279e323d69cf6211bcf417dbdacc",
+          "bytes": 4597
+        },
+        {
+          "source_relative_path": "memory_manager.py",
+          "archive_entry": "MUSE-KnowledgeXLab/memory_manager.py",
+          "destination_path": "Seals team YAIWES/_fuentes_extraidas/MUSE-KnowledgeXLab/memory_manager.py",
+          "git_blob_sha": "633bcf37c0b7abd17501028ad7df7b24f0c279c7",
+          "sha256": "cf3aeac331c4c1f7f9358740fc476aed8f01384d17633122a8832920366a3b48",
+          "bytes": 7984
+        }
+      ]
+    }
+  ]
+}
