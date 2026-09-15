@@ -1,9 +1,9 @@
 {
   "schema": "yaiwes.core-component-inventory/v1",
-  "generated_at": "2026-09-15T04:08:50.167769+00:00",
+  "generated_at": "2026-09-15T04:22:22.042026+00:00",
   "repository": "maxbry123-commits/agentes",
   "root": "Core kernel Yaiwes",
-  "component_count": 229,
+  "component_count": 241,
   "kernel_signal_count": 4,
   "components": [
     {
@@ -483,17 +483,45 @@
       "wall_target": null
     },
     {
-      "name": "DeepEval",
-      "path": "Core kernel Yaiwes/Componentes recuperados A/DeepEval",
-      "bucket": "Componentes recuperados A",
-      "readme": "Core kernel Yaiwes/Componentes recuperados A/DeepEval/README.md",
-      "function_source": "**DeepEval** is a simple-to-use, open-source LLM evaluation framework, for evaluating large-language model systems. It is similar to Pytest but specialized for unit testing LLM apps. DeepEval incorporates the latest research to run evals via metrics such as G-Eval, task completion, answer relevancy, hallucination, etc., which use LLM-as-a-judge and other NLP models that run **locally on your machine**.",
+      "name": "deepeval",
+      "path": "Core kernel Yaiwes/deepeval",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
       "kernel_signal": false,
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
       "wall_node_id": 54,
       "wall_status": "PENDING_STEP1",
       "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "deer-flow",
+      "path": "Core kernel Yaiwes/deer-flow",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
+      "wall_target": null
+    },
+    {
+      "name": "detoxify",
+      "path": "Core kernel Yaiwes/detoxify",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
       "wall_target": null
     },
     {
@@ -637,6 +665,20 @@
       "wall_target": null
     },
     {
+      "name": "faiss",
+      "path": "Core kernel Yaiwes/faiss",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
+      "wall_target": null
+    },
+    {
       "name": "Fast-Downward",
       "path": "Core kernel Yaiwes/Fast-Downward",
       "bucket": "ROOT",
@@ -732,6 +774,20 @@
       "wall_node_id": 217,
       "wall_status": "PENDING_STEP1",
       "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "gpt-researcher",
+      "path": "Core kernel Yaiwes/gpt-researcher",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
       "wall_target": null
     },
     {
@@ -1088,6 +1144,20 @@
       "wall_target": null
     },
     {
+      "name": "ipyhop",
+      "path": "Core kernel Yaiwes/ipyhop",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
+      "wall_target": null
+    },
+    {
       "name": "ISEK",
       "path": "Core kernel Yaiwes/ISEK",
       "bucket": "ROOT",
@@ -1354,6 +1424,20 @@
       "wall_target": null
     },
     {
+      "name": "llm-guard",
+      "path": "Core kernel Yaiwes/llm-guard",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
+      "wall_target": null
+    },
+    {
       "name": "LM-Evaluation-Harness",
       "path": "Core kernel Yaiwes/Componentes recuperados A/LM-Evaluation-Harness",
       "bucket": "Componentes recuperados A",
@@ -1393,6 +1477,20 @@
       "wall_node_id": 88,
       "wall_status": "PENDING_STEP1",
       "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "mabwiser",
+      "path": "Core kernel Yaiwes/mabwiser",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
       "wall_target": null
     },
     {
@@ -1706,6 +1804,20 @@
       "wall_target": null
     },
     {
+      "name": "nats-server",
+      "path": "Core kernel Yaiwes/nats-server",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
+      "wall_target": null
+    },
+    {
       "name": "NeMo-Guardrails",
       "path": "Core kernel Yaiwes/Componentes recuperados A/NeMo-Guardrails",
       "bucket": "Componentes recuperados A",
@@ -1885,6 +1997,20 @@
       "wall_node_id": 235,
       "wall_status": "PENDING_STEP1",
       "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "openevolve",
+      "path": "Core kernel Yaiwes/openevolve",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
       "wall_target": null
     },
     {
@@ -2308,6 +2434,34 @@
       "wall_target": null
     },
     {
+      "name": "py-trees",
+      "path": "Core kernel Yaiwes/py-trees",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
+      "wall_target": null
+    },
+    {
+      "name": "pybreaker",
+      "path": "Core kernel Yaiwes/pybreaker",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
+      "wall_target": null
+    },
+    {
       "name": "Pydantic",
       "path": "Core kernel Yaiwes/Componentes recuperados A/Pydantic",
       "bucket": "Componentes recuperados A",
@@ -2659,6 +2813,20 @@
       "wall_node_id": 127,
       "wall_status": "PENDING_STEP1",
       "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "simple-pid",
+      "path": "Core kernel Yaiwes/simple-pid",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
       "wall_target": null
     },
     {
