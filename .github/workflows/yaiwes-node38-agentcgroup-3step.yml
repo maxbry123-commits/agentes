@@ -1,0 +1,148 @@
+name: YAIWES Node38 AgentCgroup strict 3-step
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/yaiwes-node38-agentcgroup-3step.yml']
+permissions:
+  contents: write
+concurrency:
+  group: yaiwes-node38-agentcgroup
+  cancel-in-progress: false
+jobs:
+  integrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          lfs: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            .github/workflows/yaiwes-node38-agentcgroup-3step.yml
+            📂 Bitácora stated JSON Craxy wall.json
+            Core kernel Yaiwes/AgentCgroup/
+            Agente Yaiwes principal/execution-orchestration/container-pod-isolation/PLACEHOLDER.md
+            ➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py
+            Readme arquitectura Yaiwes/README.md
+      - name: Configure git
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+      - name: STEP1 claim fresh
+        run: |
+          set -euo pipefail
+          git pull --rebase origin main
+          python3 - <<'PY'
+          import json,datetime,subprocess
+          p='📂 Bitácora stated JSON Craxy wall.json'; d=json.load(open(p,encoding='utf-8')); n=next(x for x in d['nodes'] if x.get('id')==38 and x.get('component')=='AgentCgroup')
+          assert n['status']=='PENDING_STEP1' and n['lock']=='FREE' and n['owner'] is None, n
+          now=datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00','Z'); head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          n['owner']='SOL GPT'; n['lock']='CLAIMED'; n['status']='IN_PROGRESS_STEP1'; n['checkpoint']['before']=f'{now} STEP1 claim fresh main={head}'
+          n['evidence'].append('step1:claim:fresh_main:'+head); n['history'].append({'at':now,'actor':'SOL','label':'SOL GPT','event':'CLAIM_STEP1'})
+          d['updated_at']=now; open(p,'w',encoding='utf-8').write(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          PY
+          git add -- '📂 Bitácora stated JSON Craxy wall.json'; git commit -m 'crazy-wall: claim node38 AgentCgroup STEP1'; git pull --rebase origin main; git push origin HEAD:main
+      - name: STEP1 analyze C and exact target
+        run: |
+          set -euo pipefail
+          SRC='Core kernel Yaiwes/AgentCgroup'; TARGET='Agente Yaiwes principal/execution-orchestration/container-pod-isolation/agentcgroup'
+          test -f "$SRC/code/README.md"; test -f "$SRC/DOWNLOAD_EXTRACT_MANIFEST.json"; test ! -e "$TARGET"
+          grep -q 'eBPF-based resource controller' "$SRC/code/README.md"
+          grep -q 'container-pod-isolation/' 'Readme arquitectura Yaiwes/README.md'
+          python3 - <<'PY'
+          import json,datetime
+          p='📂 Bitácora stated JSON Craxy wall.json'; d=json.load(open(p,encoding='utf-8')); n=next(x for x in d['nodes'] if x.get('id')==38)
+          assert n['owner']=='SOL GPT' and n['lock']=='CLAIMED' and n['status']=='IN_PROGRESS_STEP1'
+          now=datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00','Z')
+          n['abc']='C'; n['target']='Agente Yaiwes principal/execution-orchestration/container-pod-isolation/agentcgroup/'; n['current_step']=2; n['status']='PASS_STEP1'; n['owner']=None; n['lock']='FREE'
+          n['checkpoint']['after']=f'{now} STEP1 PASS: deterministic eBPF/cgroup isolation capability -> canonical execution-orchestration/container-pod-isolation/agentcgroup'
+          n['evidence'] += ['step1:readme:code/README.md:PASS','step1:classification:C','step1:reason:eBPF+cgroup deterministic CPU/memory isolation for sandboxed AI coding agents','step1:architecture:execution-orchestration/container-pod-isolation','step1:target:Agente Yaiwes principal/execution-orchestration/container-pod-isolation/agentcgroup/']
+          n['history'].append({'at':now,'actor':'SOL','label':'SOL GPT','event':'STEP1_PASS_RELEASE'}); n['next_action']='STEP2_MOVE_WITH_CANONICAL_MOTOR'; d['updated_at']=now
+          open(p,'w',encoding='utf-8').write(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          PY
+          git add -- '📂 Bitácora stated JSON Craxy wall.json'; git commit -m 'crazy-wall: node38 AgentCgroup STEP1 pass C container isolation'; git pull --rebase origin main; git push origin HEAD:main
+      - name: STEP2 claim fresh
+        run: |
+          set -euo pipefail
+          git pull --rebase origin main
+          python3 - <<'PY'
+          import json,datetime
+          p='📂 Bitácora stated JSON Craxy wall.json'; d=json.load(open(p,encoding='utf-8')); n=next(x for x in d['nodes'] if x.get('id')==38)
+          assert n['status']=='PASS_STEP1' and n['current_step']==2 and n['owner'] is None and n['lock']=='FREE', n
+          now=datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00','Z'); n['owner']='SOL GPT'; n['lock']='CLAIMED'; n['status']='IN_PROGRESS_STEP2'; n['checkpoint']['before']=f'{now} STEP2 claim; canonical Motor4'
+          n['history'].append({'at':now,'actor':'SOL','label':'SOL GPT','event':'CLAIM_STEP2'}); d['updated_at']=now; open(p,'w',encoding='utf-8').write(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          PY
+          git add -- '📂 Bitácora stated JSON Craxy wall.json'; git commit -m 'crazy-wall: claim node38 AgentCgroup STEP2'; git pull --rebase origin main; git push origin HEAD:main
+      - name: STEP2 move with canonical Motor4 and provenance
+        id: move
+        run: |
+          set -euo pipefail
+          git pull --rebase origin main
+          SRC='Core kernel Yaiwes/AgentCgroup'; TARGET='Agente Yaiwes principal/execution-orchestration/container-pod-isolation/agentcgroup'; MOTOR='➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py'
+          test "$(git hash-object "$MOTOR")" = '9a21facfe11327cf60a2afca8f415ad52f0ecbe5'; test -d "$SRC"; test ! -e "$TARGET"
+          python3 - <<'PY'
+          import json
+          d=json.load(open('Core kernel Yaiwes/AgentCgroup/DOWNLOAD_EXTRACT_MANIFEST.json'))
+          assert d['extraction_verified'] is True and d['reconstruction_verified'] is True
+          assert d['source_commit']=='551ca1689b7d2d30db6b8a8613414750103cc68b'; assert d['source_tree']['sha256']=='a35a1e1984e46da68663e8b621dee4340495720c01be249bccfe481fd5905f14'
+          PY
+          SOURCE_DIR="$SRC" DEST_DIR="$TARGET" STATE_FILE='/tmp/node38-state.json' BATCH_SIZE=150 COLLISION_POLICY=fail python3 "$MOTOR" | tee /tmp/node38-motor4.out
+          grep -q '"verdict": "VERIFIED_CLOSED"' /tmp/node38-motor4.out
+          printf '%s\n' 'https://github.com/eunomia-bpf/agentcgroup.git' > "$TARGET/SOURCE_URL.txt"
+          printf '%s\n' '551ca1689b7d2d30db6b8a8613414750103cc68b' > "$TARGET/SOURCE_COMMIT.txt"
+          printf '%s\n' 'a35a1e1984e46da68663e8b621dee4340495720c01be249bccfe481fd5905f14' > "$TARGET/SOURCE_SHA256.txt"
+          python3 - <<'PY'
+          import json
+          t='Agente Yaiwes principal/execution-orchestration/container-pod-isolation/agentcgroup/YAIWES_PROVENANCE.json'
+          d={'schema':'yaiwes.provenance/v1','source_url':'https://github.com/eunomia-bpf/agentcgroup.git','source_commit':'551ca1689b7d2d30db6b8a8613414750103cc68b','source_sha256':'a35a1e1984e46da68663e8b621dee4340495720c01be249bccfe481fd5905f14','source_manifest':'DOWNLOAD_EXTRACT_MANIFEST.json','move_motor_blob':'9a21facfe11327cf60a2afca8f415ad52f0ecbe5'}
+          open(t,'w').write(json.dumps(d,indent=2)+'\n')
+          PY
+          test ! -f "$SRC/code/README.md"; test -f "$TARGET/code/README.md"; test "$(cat "$TARGET/SOURCE_COMMIT.txt")" = '551ca1689b7d2d30db6b8a8613414750103cc68b'; test "$(cat "$TARGET/SOURCE_SHA256.txt")" = 'a35a1e1984e46da68663e8b621dee4340495720c01be249bccfe481fd5905f14'
+          git add -A -- "$SRC" "$TARGET"; git commit -m 'move(yaiwes): node38 AgentCgroup into container-pod-isolation with provenance'; git pull --rebase origin main; git push origin HEAD:main
+          echo "move_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: STEP2 pass release
+        env:
+          MOVE_COMMIT: ${{ steps.move.outputs.move_commit }}
+        run: |
+          set -euo pipefail
+          git pull --rebase origin main
+          python3 - <<'PY'
+          import json,datetime,os
+          p='📂 Bitácora stated JSON Craxy wall.json'; d=json.load(open(p,encoding='utf-8')); n=next(x for x in d['nodes'] if x.get('id')==38); assert n['status']=='IN_PROGRESS_STEP2' and n['owner']=='SOL GPT'
+          now=datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00','Z'); mc=os.environ['MOVE_COMMIT']; n['current_step']=3; n['status']='PASS_STEP2'; n['owner']=None; n['lock']='FREE'; n['checkpoint']['after']=f'{now} STEP2 PASS Motor4 VERIFIED_CLOSED; provenance persisted; move_commit={mc}'
+          n['evidence'] += ['step2:motor4_blob:9a21facfe11327cf60a2afca8f415ad52f0ecbe5','step2:motor4:VERIFIED_CLOSED','step2:move_commit:'+mc,'step2:readback:source README absent + target README present','step2:provenance:SOURCE_URL+SOURCE_COMMIT+SOURCE_SHA256+YAIWES_PROVENANCE']; n['history'].append({'at':now,'actor':'SOL','label':'SOL GPT','event':'STEP2_PASS_RELEASE','commit':mc}); n['next_action']='STEP3_WIRE_PRUNE_IF_NEEDED_MICROTEST'; d['updated_at']=now
+          open(p,'w',encoding='utf-8').write(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          PY
+          git add -- '📂 Bitácora stated JSON Craxy wall.json'; git commit -m 'crazy-wall: node38 AgentCgroup STEP2 pass release'; git pull --rebase origin main; git push origin HEAD:main
+      - name: STEP3 claim fresh
+        run: |
+          set -euo pipefail
+          git pull --rebase origin main
+          python3 - <<'PY'
+          import json,datetime
+          p='📂 Bitácora stated JSON Craxy wall.json'; d=json.load(open(p,encoding='utf-8')); n=next(x for x in d['nodes'] if x.get('id')==38); assert n['status']=='PASS_STEP2' and n['current_step']==3 and n['owner'] is None and n['lock']=='FREE'
+          now=datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00','Z'); n['owner']='SOL GPT'; n['lock']='CLAIMED'; n['status']='IN_PROGRESS_STEP3'; n['checkpoint']['before']=f'{now} STEP3 claim; upstream no-root unit suite'; n['history'].append({'at':now,'actor':'SOL','label':'SOL GPT','event':'CLAIM_STEP3'}); d['updated_at']=now; open(p,'w',encoding='utf-8').write(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          PY
+          git add -- '📂 Bitácora stated JSON Craxy wall.json'; git commit -m 'crazy-wall: claim node38 AgentCgroup STEP3'; git pull --rebase origin main; git push origin HEAD:main
+      - name: STEP3 upstream unit microtest and close
+        run: |
+          set -uo pipefail
+          git pull --rebase origin main
+          TARGET='Agente Yaiwes principal/execution-orchestration/container-pod-isolation/agentcgroup'
+          TEST_RC=0
+          (cd "$TARGET/code/agentcg" && python3 -m unittest -v test_agentcgroupd.py) > /tmp/node38-tests.log 2>&1 || TEST_RC=$?
+          export TEST_RC
+          python3 - <<'PY'
+          import json,datetime,os
+          p='📂 Bitácora stated JSON Craxy wall.json'; d=json.load(open(p,encoding='utf-8')); n=next(x for x in d['nodes'] if x.get('id')==38); assert n['status']=='IN_PROGRESS_STEP3' and n['owner']=='SOL GPT'
+          now=datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00','Z'); rc=int(os.environ['TEST_RC']); n['owner']=None; n['lock']='FREE'
+          if rc==0:
+            n['status']='VERIFIED_CLOSED'; n['checkpoint']['after']=f'{now} STEP3 PASS upstream test_agentcgroupd.py; no root/eBPF required; WIRE_NOT_NEEDED_DIRECT_BACKEND'; n['evidence'] += ['step3:wire:NOT_NEEDED_DIRECT_BACKEND','step3:prune:NOT_NEEDED','step3:microtest:python_unittest_test_agentcgroupd:PASS','step3:runtime_privileged_eBPF:NOT_CLAIMED','step3:provenance_readback:PASS']; n['history'].append({'at':now,'actor':'SOL','label':'SOL GPT','event':'STEP3_PASS_RELEASE','microtest':'python3 -m unittest -v test_agentcgroupd.py'}); n['next_action']='COMPLETE'
+          else:
+            n['status']='GAP'; n['checkpoint']['after']=f'{now} STEP3 GAP upstream unit suite rc={rc}; no false runtime claim'; n['evidence'] += [f'step3:microtest:FAIL:rc={rc}','step3:GAP_RELEASE']; n['history'].append({'at':now,'actor':'SOL','label':'SOL GPT','event':'STEP3_GAP_RELEASE','cause':f'unittest_rc_{rc}'}); n['next_action']='STEP3_REPAIR_MICROTEST'
+          d['updated_at']=now; open(p,'w',encoding='utf-8').write(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          PY
+          git add -- '📂 Bitácora stated JSON Craxy wall.json'; git commit -m "crazy-wall: node38 AgentCgroup STEP3 result rc=$TEST_RC"; git pull --rebase origin main; git push origin HEAD:main
+          cat /tmp/node38-tests.log
