@@ -1,6 +1,6 @@
 # Core kernel YAIWES — inventario completo de componentes
 
-- Generado: `2026-09-15T22:28:06.041306+00:00`
+- Generado: `2026-09-15T22:34:03.431709+00:00`
 - Componentes únicos: **245**
 - Señal de kernel: **4**
 
@@ -11,7 +11,7 @@ Regla aprobada: material de kernel => **HOLD solo de ese material**; el resto de
 - Grupo: `ROOT`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
-- Crazy Wall: nodo `36`, paso `1`, estado `PENDING_STEP1`, destino `None`
+- Crazy Wall: nodo `36`, paso `1`, estado `GAP`, destino `None`
 
 ## 2. Agent-xpu-LLM-xpu
 - Ruta: `Core kernel Yaiwes/Agent-xpu-LLM-xpu`

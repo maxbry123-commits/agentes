@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.core-component-inventory/v1",
-  "generated_at": "2026-09-15T22:28:06.041306+00:00",
+  "generated_at": "2026-09-15T22:34:03.431709+00:00",
   "repository": "maxbry123-commits/agentes",
   "root": "Core kernel Yaiwes",
   "component_count": 245,
@@ -16,7 +16,7 @@
       "kernel_signals": [],
       "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
       "wall_node_id": 36,
-      "wall_status": "PENDING_STEP1",
+      "wall_status": "GAP",
       "wall_current_step": 1,
       "wall_target": null
     },
