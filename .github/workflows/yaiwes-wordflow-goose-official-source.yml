@@ -5,6 +5,8 @@ on:
   push:
     paths:
       - '.github/workflows/yaiwes-wordflow-goose-official-source.yml'
+      - '➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/goose_official_acquisition_runner.py'
+      - '➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_goose_source_normalization.py'
 
 permissions:
   contents: write
@@ -27,6 +29,7 @@ jobs:
             ➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/canonical_motor_gate.py
             ➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/agent_source_copy_runner.py
             ➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/goose_official_acquisition_runner.py
+            ➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_goose_source_normalization.py
             ➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/AGENT_SOURCE_COPY_2026-09-15.json
             ➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_registry.json
             ➡️📂motores de descarga extracción copiado movimiento archivos agentes/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py
@@ -40,8 +43,15 @@ jobs:
             '➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/canonical_motor_gate.py' \
             '➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/agent_source_copy_runner.py' \
             '➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/goose_official_acquisition_runner.py' \
+            '➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_goose_source_normalization.py' \
             '➡️📂motores de descarga extracción copiado movimiento archivos agentes/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py' \
             '➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de copiar archivos/motor_3_copy_batches.py'
+
+      - name: Test Goose tracked symlink normalization
+        shell: bash
+        run: |
+          set -euo pipefail
+          python '➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_goose_source_normalization.py'
 
       - name: Download extract and canonical-copy Goose
         id: goose
@@ -93,6 +103,9 @@ jobs:
           assert a['verified_total']==18 and a['unresolved_total']==0 and a['failures']==0, a
           assert g['verdict']=='VERIFIED_CLOSED', g
           assert g['official_source']['pinned_commit']=='a23a8cd5b138954bc8962cba623c2d8ecd375512', g
+          assert g['source_normalization']['strategy']=='TRACKED_INTERNAL_SYMLINKS_MATERIALIZED_TO_REGULAR_FILES', g
+          assert g['source_normalization']['materialized_symlinks'] > 0, g
+          assert g['source_normalization']['runtime_semantics_claimed'] is False, g
           assert r['source_traceability_status']=='18_OF_18_LOCAL_SOURCE_MIRRORS_VERIFIED_RUNTIME_STATUS_UNCHANGED', r['source_traceability_status']
           goose=[x for x in r['agents'] if x['agent_id']=='goose'][0]
           assert goose['local_source_copy_status']=='COPIED_AND_READBACK_VERIFIED', goose
