@@ -1,0 +1,43 @@
+{
+  "bundle_bytes": 26942086,
+  "bundle_sha256": "0d64a0c67dc190c56af25bb5025e1f27d43742ec58bf9615531bfb1f389c593d",
+  "extracted_tree": {
+    "bytes": 52741693,
+    "files": 2821,
+    "sha256": "f252cf90e81073551bf6f45b531085753fe024dfc884e4cdfeeea5cd45edeae7"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "deer-flow.bundle.zip.part-0001",
+      "sha256": "c99c2cef9b73333a8ac9cb144fff91005b9cfb3ddf7152efd0424ea7626c2622"
+    },
+    {
+      "bytes": 12582912,
+      "name": "deer-flow.bundle.zip.part-0002",
+      "sha256": "944638a2c808c3412cc2b96152baf7e95626461e7ff725b2ff7d34d523ef09da"
+    },
+    {
+      "bytes": 1776262,
+      "name": "deer-flow.bundle.zip.part-0003",
+      "sha256": "6f25a97bd816bc737a9e5655eb79c7c71cc4d925f5f2270196ed5c7c9ef7c6be"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "deer-flow",
+  "source_bytes": 52741693,
+  "source_commit": "14c9d44440780e63563e935046db8708e121a5b1",
+  "source_files": 2821,
+  "source_ref": "HEAD",
+  "source_repo": "https://github.com/bytedance/deer-flow.git",
+  "source_tree": {
+    "bytes": 52741693,
+    "files": 2821,
+    "sha256": "f252cf90e81073551bf6f45b531085753fe024dfc884e4cdfeeea5cd45edeae7"
+  }
+}
