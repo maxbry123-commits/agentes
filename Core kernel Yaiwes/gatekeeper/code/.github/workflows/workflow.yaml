@@ -1,0 +1,276 @@
+name: build_test
+on:
+  push:
+    paths-ignore:
+      - ".github/workflows/website.yaml"
+      - "docs/**"
+      - "library/**"
+      - "demo/**"
+      - "deprecated/**"
+      - "example/**"
+      - "website/**"
+      - "**.md"
+      - "!cmd/build/helmify/static/README.md"
+  pull_request:
+    paths-ignore:
+      - ".github/workflows/website.yaml"
+      - "docs/**"
+      - "library/**"
+      - "demo/**"
+      - "deprecated/**"
+      - "example/**"
+      - "website/**"
+      - "**.md"
+      - "!cmd/build/helmify/static/README.md"
+
+permissions: read-all
+
+jobs:
+  build_test:
+    name: "Build and Test"
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        KUBERNETES_VERSION: ["1.31.6", "1.32.3", "1.33.2"] # Latest available versions of Kubernetes at - https://hub.docker.com/r/kindest/node/tags
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Bootstrap e2e
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/bin
+          echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
+          make e2e-bootstrap KUBERNETES_VERSION=${{ matrix.KUBERNETES_VERSION }}
+
+      - name: Run e2e
+        run: |
+          make docker-buildx \
+            IMG=gatekeeper-e2e:latest
+
+          make e2e-build-load-externaldata-image
+
+          kind load docker-image --name kind \
+            gatekeeper-e2e:latest
+
+          make deploy \
+            IMG=gatekeeper-e2e:latest \
+            USE_LOCAL_IMG=true \
+            GENERATE_VAP=true \
+            SYNC_VAP_ENFORCEMENT_SCOPE=true \
+            GENERATE_VAPBINDING=true
+
+          make test-e2e KUBERNETES_VERSION=${{ matrix.KUBERNETES_VERSION }} ENABLE_VAP_TESTS=1
+
+      - name: Save logs
+        if: ${{ always() }}
+        run: |
+          kubectl logs -n gatekeeper-system -l control-plane=controller-manager --tail=-1 > logs-controller.json
+          kubectl logs -n gatekeeper-system -l control-plane=audit-controller --tail=-1 > logs-audit.json
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ always() }}
+        with:
+          name: logs-${{ matrix.KUBERNETES_VERSION }}
+          path: |
+            logs-*.json
+
+  helm_build_test:
+    name: "[Helm] Build and Test"
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        HELM_VERSION: ["4.2.3"]
+        GATEKEEPER_NAMESPACE: ["gatekeeper-system", "custom-namespace"]
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Bootstrap e2e
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/bin
+          echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
+          make e2e-bootstrap
+
+      - name: Run e2e
+        run: |
+          make docker-buildx \
+            IMG=gatekeeper-e2e:latest \
+            GATEKEEPER_NAMESPACE=${{ matrix.GATEKEEPER_NAMESPACE }}
+
+          make docker-buildx-crds \
+            CRD_IMG=gatekeeper-crds:latest \
+            GATEKEEPER_NAMESPACE=${{ matrix.GATEKEEPER_NAMESPACE }} \
+            CI=true
+
+          make e2e-build-load-externaldata-image \
+            GATEKEEPER_NAMESPACE=${{ matrix.GATEKEEPER_NAMESPACE }}
+
+          kind load docker-image --name kind \
+            gatekeeper-e2e:latest \
+            gatekeeper-crds:latest
+
+          make e2e-helm-deploy \
+            HELM_REPO=gatekeeper-e2e \
+            HELM_CRD_REPO=gatekeeper-crds \
+            HELM_RELEASE=latest \
+            HELM_VERSION=${{ matrix.HELM_VERSION }} \
+            GATEKEEPER_NAMESPACE=${{ matrix.GATEKEEPER_NAMESPACE }} \
+            GENERATE_VAP=true \
+            GENERATE_VAPBINDING=true \
+            SYNC_VAP_ENFORCEMENT_SCOPE=true \
+            LOG_LEVEL=DEBUG
+
+          make test-e2e \
+            GATEKEEPER_NAMESPACE=${{ matrix.GATEKEEPER_NAMESPACE }} \
+            ENABLE_VAP_TESTS=1
+
+      - name: Save logs
+        if: ${{ always() }}
+        run: |
+          kubectl logs -n ${{ matrix.GATEKEEPER_NAMESPACE }} -l control-plane=controller-manager --tail=-1 > logs-helm-${{ matrix.HELM_VERSION }}-${{ matrix.GATEKEEPER_NAMESPACE }}-controller.json
+          kubectl logs -n ${{ matrix.GATEKEEPER_NAMESPACE }} -l control-plane=audit-controller --tail=-1 > logs-helm-${{ matrix.HELM_VERSION }}-${{ matrix.GATEKEEPER_NAMESPACE }}-audit.json
+          kubectl logs -n ${{ matrix.GATEKEEPER_NAMESPACE }} -l run=dummy-provider --tail=-1 > logs-helm-${{ matrix.HELM_VERSION }}-${{ matrix.GATEKEEPER_NAMESPACE }}-dummy-provider.json
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ always() }}
+        with:
+          name: helm-logs-${{ matrix.HELM_VERSION }}-${{ matrix.GATEKEEPER_NAMESPACE }}
+          path: |
+            logs-*.json
+
+  build_test_generator_expansion:
+    name: "[Generator Resource Expansion] Build and Test"
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+
+    steps:
+    - name: Harden Runner
+      uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+      with:
+        egress-policy: audit
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+    - name: Set up Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: go.mod
+        check-latest: true
+
+    - name: Bootstrap e2e
+      run: |
+        mkdir -p $GITHUB_WORKSPACE/bin
+        echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
+        make e2e-bootstrap
+
+    - name: Run e2e
+      run: |
+        make docker-buildx \
+          IMG=gatekeeper-e2e:latest
+
+        make e2e-build-load-externaldata-image
+
+        kind load docker-image --name kind \
+          gatekeeper-e2e:latest
+
+        make deploy \
+          IMG=gatekeeper-e2e:latest \
+          USE_LOCAL_IMG=true \
+          ENABLE_GENERATOR_EXPANSION=true
+
+        make test-e2e ENABLE_GENERATOR_EXPANSION_TESTS=1
+
+    - name: Save logs
+      if: ${{ always() }}
+      run: |
+        kubectl logs -n gatekeeper-system -l control-plane=controller-manager --tail=-1 > logs-generatorexpansion-controller.json
+        kubectl logs -n gatekeeper-system -l control-plane=audit-controller --tail=-1 > logs-generatorexpansion-audit.json
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      if: ${{ always() }}
+      with:
+        name: generatorexpansion-logs
+        path: |
+          logs-*.json
+
+  e2e_test_with_OwnerReferencesPermissionEnforcement_admission_plugin:
+    name: "[E2E] Test with OwnerReferencesPermissionEnforcement admission plugin"
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Bootstrap e2e
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/bin
+          echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
+          make e2e-bootstrap KIND_CLUSTER_FILE=test/bats/tests/kindcluster.yml
+
+      - name: Run e2e
+        run: |
+          make docker-buildx \
+            IMG=gatekeeper-e2e:latest
+
+          make e2e-build-load-externaldata-image
+
+          kind load docker-image --name kind \
+            gatekeeper-e2e:latest
+
+          make deploy \
+            IMG=gatekeeper-e2e:latest \
+            USE_LOCAL_IMG=true \
+            GENERATE_VAP=true \
+            SYNC_VAP_ENFORCEMENT_SCOPE=true \
+            GENERATE_VAPBINDING=true
+
+          make test-e2e-owner-ref
+
+      - name: Save logs
+        if: ${{ always() }}
+        run: |
+          kubectl logs -n gatekeeper-system -l control-plane=controller-manager --tail=-1 > logs-controller.json
+          kubectl logs -n gatekeeper-system -l control-plane=audit-controller --tail=-1 > logs-audit.json
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ always() }}
+        with:
+          name: logs-ownerreferences-admission-plugin
+          path: |
+            logs-*.json

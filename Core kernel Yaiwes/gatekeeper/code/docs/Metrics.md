@@ -1,0 +1,1 @@
+This document has been moved to https://open-policy-agent.github.io/gatekeeper/website/docs/metrics.

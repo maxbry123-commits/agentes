@@ -1,0 +1,33 @@
+name: check-helm-lint
+on:
+  push:
+    paths:
+      - "cmd/build/helmify/static/**"
+      - "manifest_staging/**"
+  pull_request:
+    paths:
+      - "cmd/build/helmify/static/**"
+      - "manifest_staging/**"
+
+permissions: read-all
+
+jobs:
+  helm_lint_test:
+    name: "Helm lint"
+    runs-on: oracle-vm-2cpu-8gb-x86-64
+    timeout-minutes: 15
+
+    steps:
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    
+    - name: Set up Helm
+      uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      with:
+        version: "4.2.3"
+      id: install
+    
+    - name: Lint Helm charts
+      run: |
+        helm lint manifest_staging/charts/gatekeeper/
+        helm lint cmd/build/helmify/static/

@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: no-dupes
+  namespace: gatekeeper-test-playground
+  labels:
+    gatekeeper: not_duplicated
+    name: no-dupes
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: no-dupes
+  namespace: gatekeeper-test-playground-scoped
+  labels:
+    gatekeeper: not_duplicated
+    name: no-dupes

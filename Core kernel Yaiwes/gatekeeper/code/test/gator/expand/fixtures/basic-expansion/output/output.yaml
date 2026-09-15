@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    owner: admin
+  labels:
+    app: nginx
+  name: nginx-deployment-pod
+  ownerReferences:
+  - apiVersion: apps/v1
+    kind: Deployment
+    name: nginx-deployment
+    uid: ""
+spec:
+  containers:
+  - args:
+    - /bin/sh
+    image: nginx:latest
+    imagePullPolicy: Always
+    name: nginx
+    ports:
+    - containerPort: 80

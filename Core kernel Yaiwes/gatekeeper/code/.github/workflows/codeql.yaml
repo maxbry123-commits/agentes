@@ -1,0 +1,36 @@
+name: "CodeQL"
+
+on:
+  push:
+    branches: [master]
+  schedule:
+    - cron: "0 7 * * 1" # Mondays at 7:00 AM
+
+permissions: read-all
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: oracle-vm-4cpu-16gb-x86-64
+    permissions:
+      security-events: write
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd
+        with:
+          languages: go
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd

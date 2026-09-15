@@ -1,0 +1,114 @@
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: mutating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /v1/mutate
+  failurePolicy: Ignore
+  matchPolicy: Exact
+  name: mutation.gatekeeper.sh
+  rules:
+  - apiGroups:
+    - '*'
+    apiVersions:
+    - '*'
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - '*'
+    - pods/ephemeralcontainers
+    - pods/exec
+    - pods/log
+    - pods/eviction
+    - pods/portforward
+    - pods/proxy
+    - pods/attach
+    - pods/binding
+    - pods/resize
+    - deployments/scale
+    - replicasets/scale
+    - statefulsets/scale
+    - replicationcontrollers/scale
+    - serviceaccounts/token
+    - services/proxy
+    - nodes/proxy
+    - certificatesigningrequests/approval
+    - services/status
+  sideEffects: None
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: validating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /v1/admitlabel
+  failurePolicy: Fail
+  matchPolicy: Exact
+  name: check-ignore-label.gatekeeper.sh
+  rules:
+  - apiGroups:
+    - ""
+    apiVersions:
+    - '*'
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - namespaces
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /v1/admit
+  failurePolicy: Ignore
+  matchPolicy: Exact
+  name: validation.gatekeeper.sh
+  rules:
+  - apiGroups:
+    - '*'
+    apiVersions:
+    - '*'
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - '*'
+    - pods/ephemeralcontainers
+    - pods/exec
+    - pods/log
+    - pods/eviction
+    - pods/portforward
+    - pods/proxy
+    - pods/attach
+    - pods/binding
+    - pods/resize
+    - deployments/scale
+    - replicasets/scale
+    - statefulsets/scale
+    - replicationcontrollers/scale
+    - serviceaccounts/token
+    - services/proxy
+    - nodes/proxy
+    - certificatesigningrequests/approval
+    - services/status
+  sideEffects: None

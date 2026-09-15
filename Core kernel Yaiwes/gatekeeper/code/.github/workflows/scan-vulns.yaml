@@ -1,0 +1,89 @@
+name: scan_vulns
+on:
+  push:
+    paths-ignore:
+      - ".github/workflows/website.yaml"
+      - "docs/**"
+      - "library/**"
+      - "demo/**"
+      - "deprecated/**"
+      - "example/**"
+      - "website/**"
+      - "**.md"
+      - "!cmd/build/helmify/static/README.md"
+  pull_request:
+    paths-ignore:
+      - ".github/workflows/website.yaml"
+      - "docs/**"
+      - "library/**"
+      - "demo/**"
+      - "deprecated/**"
+      - "example/**"
+      - "website/**"
+      - "**.md"
+      - "!cmd/build/helmify/static/README.md"
+
+permissions: read-all
+
+jobs:
+  govulncheck:
+    name: "Run govulncheck"
+    runs-on: oracle-vm-4cpu-16gb-x86-64
+    timeout-minutes: 15
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26"
+          check-latest: true
+      - uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # unreleased, includes fix for golang/go#75908
+
+  scan_vulnerabilities:
+    name: "[Trivy] Scan for vulnerabilities"
+    runs-on: oracle-vm-4cpu-16gb-x86-64
+    timeout-minutes: 15
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Download trivy
+        run: |
+          pushd $(mktemp -d)
+          wget https://github.com/aquasecurity/trivy/releases/download/v${{ env.TRIVY_VERSION }}/trivy_${{ env.TRIVY_VERSION }}_Linux-64bit.tar.gz
+          tar zxvf trivy_${{ env.TRIVY_VERSION }}_Linux-64bit.tar.gz
+          echo "$(pwd)" >> $GITHUB_PATH
+        env:
+          TRIVY_VERSION: "0.69.3"
+
+      - name: Download trivy db
+        run: |
+          trivy image \
+            --download-db-only \
+            --db-repository=ghcr.io/aquasecurity/trivy-db,public.ecr.aws/aquasecurity/trivy-db,docker.io/aquasec/trivy-db
+
+      - name: Run trivy on git repository
+        run: |
+          trivy fs --format table --ignore-unfixed --skip-dirs website --scanners vuln .
+
+      - name: Build docker images
+        run: |
+          make docker-buildx \
+            IMG=gatekeeper-e2e:latest
+
+          make docker-buildx-crds \
+            CRD_IMG=gatekeeper-crds:latest
+
+      - name: Run trivy on images
+        run: |
+          for img in "gatekeeper-e2e:latest" "gatekeeper-crds:latest"; do
+              trivy image --ignore-unfixed --pkg-types="os,library" "${img}"
+          done
