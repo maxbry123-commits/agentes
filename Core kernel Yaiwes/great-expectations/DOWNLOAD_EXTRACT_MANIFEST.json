@@ -1,0 +1,68 @@
+{
+  "bundle_bytes": 99568556,
+  "bundle_sha256": "2688a6311404c92b70f07fa6aa1b8aeb570f25f43cd06d0870d7bde156e4d343",
+  "extracted_tree": {
+    "bytes": 278747400,
+    "files": 3761,
+    "sha256": "9a9d3ae968adb2f43e1bbd9d0d964149ce7bc796d4a3c86866a8a0cde69d52b2"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "great-expectations.bundle.zip.part-0001",
+      "sha256": "55e118ac88d5ad01fd029342485114a09e06f0643f54b18e116f9fa08ea64863"
+    },
+    {
+      "bytes": 12582912,
+      "name": "great-expectations.bundle.zip.part-0002",
+      "sha256": "e596ac47d2fe48ddd9916bd30fc6b2069c58462df2338750897875dff4272683"
+    },
+    {
+      "bytes": 12582912,
+      "name": "great-expectations.bundle.zip.part-0003",
+      "sha256": "830ab812c791d148785cd37d8b97daaa83fda488c271acbd50001071fb405780"
+    },
+    {
+      "bytes": 12582912,
+      "name": "great-expectations.bundle.zip.part-0004",
+      "sha256": "6be788a456b37ee447c5e8fae1f18f9a0bb44d3ae3806081b785262240527661"
+    },
+    {
+      "bytes": 12582912,
+      "name": "great-expectations.bundle.zip.part-0005",
+      "sha256": "941404addce81a03addbafcd1eacaecb201dc22bf17da5f850dd7e12f124ffdb"
+    },
+    {
+      "bytes": 12582912,
+      "name": "great-expectations.bundle.zip.part-0006",
+      "sha256": "322756ae2f4352a72a46c76540dd2f7ff1fb3f234aeee7651170d123317d96e4"
+    },
+    {
+      "bytes": 12582912,
+      "name": "great-expectations.bundle.zip.part-0007",
+      "sha256": "7cee8e119919bd94a71b242b48721c3dd5f9ca6ee8630d631225ccd8a098e671"
+    },
+    {
+      "bytes": 11488172,
+      "name": "great-expectations.bundle.zip.part-0008",
+      "sha256": "fffa70f666dc6ebdea5be48e87665618eb1f8079bd45f85221d34313a54b7795"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "great-expectations",
+  "source_bytes": 278747400,
+  "source_commit": "8fce4a7e9d448cdca583dcdae749d1897c9b150d",
+  "source_files": 3761,
+  "source_ref": "HEAD",
+  "source_repo": "https://github.com/great-expectations/great_expectations.git",
+  "source_tree": {
+    "bytes": 278747400,
+    "files": 3761,
+    "sha256": "9a9d3ae968adb2f43e1bbd9d0d964149ce7bc796d4a3c86866a8a0cde69d52b2"
+  }
+}

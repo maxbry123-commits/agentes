@@ -1,0 +1,4 @@
+services:
+  linkchecker:
+    build: ./
+    image: linkchecker:1.0

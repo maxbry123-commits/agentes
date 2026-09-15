@@ -1,0 +1,72 @@
+"""
+To run this code as a local test, use the following console command:
+```
+pytest -v --docs-tests -k "how_to_connect_to_data_on_gcs_using_spark" tests/integration/test_script_runner.py
+```
+"""
+
+import os
+
+import great_expectations as gx
+
+context = gx.get_context()
+
+# Python
+# <snippet name="docs/docusaurus/docs/oss/guides/connecting_to_your_data/fluent/filesystem/how_to_connect_to_data_on_gcs_using_spark.py define_add_spark_gcs_args">
+datasource_name = "my_gcs_datasource"
+bucket_or_name = "my_bucket"
+gcs_options = {}
+# </snippet>
+
+bucket_or_name = os.environ["GX_GCS_TEST_BUCKET"]
+
+# Python
+# <snippet name="docs/docusaurus/docs/oss/guides/connecting_to_your_data/fluent/filesystem/how_to_connect_to_data_on_gcs_using_spark.py create_datasource">
+datasource = context.data_sources.add_spark_gcs(
+    name=datasource_name, bucket_or_name=bucket_or_name, gcs_options=gcs_options
+)
+# </snippet>
+
+assert datasource_name in context.data_sources.all()
+
+# Python
+# <snippet name="docs/docusaurus/docs/oss/guides/connecting_to_your_data/fluent/filesystem/how_to_connect_to_data_on_gcs_using_spark.py add_asset">
+asset_name = "my_taxi_data_asset"
+gcs_prefix = "data/taxi_yellow_tripdata_samples/"
+batching_regex = r"yellow_tripdata_sample_(?P<year>\d{4})-(?P<month>\d{2})\.csv"
+data_asset = datasource.add_csv_asset(
+    name=asset_name,
+    gcs_prefix=gcs_prefix,
+    header=True,
+    infer_schema=True,
+)
+# </snippet>
+
+assert data_asset
+
+assert datasource.get_asset_names() == {"my_taxi_data_asset"}
+
+my_batch_definition = data_asset.add_batch_definition_monthly(
+    name="Monthly Taxi Data", regex=batching_regex
+)
+batch = my_batch_definition.get_batch(batch_parameters={"year": 2019, "month": 3})
+assert set(batch.columns()) == {
+    "vendor_id",
+    "pickup_datetime",
+    "dropoff_datetime",
+    "passenger_count",
+    "trip_distance",
+    "rate_code_id",
+    "store_and_fwd_flag",
+    "pickup_location_id",
+    "dropoff_location_id",
+    "payment_type",
+    "fare_amount",
+    "extra",
+    "mta_tax",
+    "tip_amount",
+    "tolls_amount",
+    "improvement_surcharge",
+    "total_amount",
+    "congestion_surcharge",
+}
