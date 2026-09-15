@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 3440867,
+  "bundle_sha256": "d1e42ea29562e5a7c8be48e50a414a4a9ef6d4979296f58857106c01803b5f7f",
+  "extracted_tree": {
+    "bytes": 7665444,
+    "files": 486,
+    "sha256": "d5297311b2a7055145a8492bf3fa5c77d84cc67f4a138e10fb813b2c80f7780e"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 3440867,
+      "name": "openevolve.bundle.zip.part-0001",
+      "sha256": "d1e42ea29562e5a7c8be48e50a414a4a9ef6d4979296f58857106c01803b5f7f"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "openevolve",
+  "source_bytes": 7665444,
+  "source_commit": "411fb59c886c18704caaffb611e17cf9e7d824d2",
+  "source_files": 486,
+  "source_ref": "HEAD",
+  "source_repo": "https://github.com/algorithmicsuperintelligence/openevolve.git",
+  "source_tree": {
+    "bytes": 7665444,
+    "files": 486,
+    "sha256": "d5297311b2a7055145a8492bf3fa5c77d84cc67f4a138e10fb813b2c80f7780e"
+  }
+}
