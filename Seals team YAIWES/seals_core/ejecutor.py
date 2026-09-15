@@ -2,9 +2,13 @@
 ejecutor.py - El router 90/10 real. Este archivo NUNCA llama a un LLM
 directamente. Solo decide, via if/elif, cual funcion determinista o
 cual funcion de LLM debe correr, siguiendo dag_schema.yaml.
+Actualizado: mission_id por tarea + Tenacity para reintentos con backoff.
 """
 import json
+import uuid
 from pathlib import Path
+
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from instalador_deterministico import instalar_componente
 from consultor_experto import consultar_experto_cerebras
@@ -16,44 +20,61 @@ RAIZ = Path(__file__).parent
 def ejecutar_tarea(tarea: dict) -> dict:
     """
     tarea = {"tipo": ..., "nombre": ..., "url": ..., "descripcion": ...}
-    Devuelve {"status": "PASS"|"GAP", "evidencia": {...}}
+    Devuelve {"status": "PASS"|"GAP", "mission_id": ..., "evidencia": {...}}
     """
+    mission_id = tarea.get("mission_id") or str(uuid.uuid4())
+    tarea = {**tarea, "mission_id": mission_id}
+
     if tarea["tipo"] == "instalar_paquete":
         ok = instalar_componente(tarea["nombre"], tarea["url"], RAIZ)
         if ok:
-            return {"status": "PASS", "evidencia": {"path": str(RAIZ / tarea["nombre"])}}
+            return {"status": "PASS", "mission_id": mission_id, "evidencia": {"path": str(RAIZ / tarea["nombre"])}}
         return investigar_comunidad(tarea)
 
     elif tarea["tipo"] == "evaluar_componente":
         respuesta = consultar_experto_cerebras(
             contexto=tarea, pregunta=f"Este componente encaja con YAIWES? {tarea}"
         )
-        return {"status": "PASS", "evidencia": {"respuesta": respuesta}}
+        return {"status": "PASS", "mission_id": mission_id, "evidencia": {"respuesta": respuesta}}
 
     elif tarea["tipo"] == "diseno_arquitectura":
         veredicto = verificar_con_claude(tarea)
-        return {"status": veredicto["status"], "evidencia": veredicto}
+        return {"status": veredicto["status"], "mission_id": mission_id, "evidencia": veredicto}
 
     elif tarea["tipo"] == "verificar_existencia":
         existe = (RAIZ / tarea["nombre"]).exists()
-        return {"status": "PASS", "evidencia": {"existe": existe}}
+        return {"status": "PASS", "mission_id": mission_id, "evidencia": {"existe": existe}}
 
     return investigar_comunidad(tarea)
 
 
-def investigar_comunidad(tarea: dict, max_intentos: int = 20) -> dict:
-    """Regla dura: nunca detenerse, nunca escalar sin intentar 20 formas."""
-    for intento in range(max_intentos):
-        respuesta = consultar_experto_cerebras(
-            contexto=tarea,
-            pregunta=f"Intento {intento+1}/20: como resolver este GAP? {tarea}",
-        )
-        if "RESUELTO" in respuesta.upper():
-            return {"status": "PASS", "evidencia": {"intento": intento + 1, "respuesta": respuesta}}
-    return {"status": "GAP", "evidencia": {"intentos": max_intentos, "nota": "registrado, no bloquea siguiente tarea"}}
+@retry(stop=stop_after_attempt(20), wait=wait_exponential(multiplier=1, min=2, max=60), reraise=False)
+def _intento_resolver_gap(tarea: dict, intento_actual: list) -> str:
+    """Un solo intento, envuelto por Tenacity para backoff exponencial real
+    entre reintentos (2s, 4s, 8s... hasta 60s), en vez de un for ciego."""
+    intento_actual[0] += 1
+    respuesta = consultar_experto_cerebras(
+        contexto=tarea,
+        pregunta=f"Intento {intento_actual[0]}/20: como resolver este GAP? {tarea}",
+    )
+    if "RESUELTO" not in respuesta.upper():
+        raise ValueError("aun no resuelto, Tenacity reintenta con backoff")
+    return respuesta
 
 
-def loop_principal(cola_tareas: list[dict]) -> None:
+def investigar_comunidad(tarea: dict) -> dict:
+    """Regla dura: nunca detenerse, nunca escalar sin intentar 20 formas.
+    Ahora con backoff exponencial real (Tenacity) entre intentos."""
+    mission_id = tarea.get("mission_id") or str(uuid.uuid4())
+    intento_actual = [0]
+    try:
+        respuesta = _intento_resolver_gap(tarea, intento_actual)
+        return {"status": "PASS", "mission_id": mission_id, "evidencia": {"intento": intento_actual[0], "respuesta": respuesta}}
+    except Exception:
+        return {"status": "GAP", "mission_id": mission_id, "evidencia": {"intentos": intento_actual[0], "nota": "registrado, no bloquea siguiente tarea"}}
+
+
+def loop_principal(cola_tareas: list) -> None:
     """No stop, no escala. Termina una, sigue con la otra."""
     while cola_tareas:
         tarea = cola_tareas.pop(0)
