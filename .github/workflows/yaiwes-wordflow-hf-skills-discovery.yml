@@ -1,0 +1,148 @@
+name: YAIWES Wordflow HF Skills Discovery
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-wordflow-hf-skills-discovery.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-wordflow-hf-skills-discovery
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EVIDENCE: '➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/HF_SKILL_LIBRARY_DISCOVERY_2026-09-15.json'
+      HF_TOKEN_PRIMARY: ${{ secrets.HF_TOKEN }}
+      HF_TOKEN_FALLBACK: ${{ secrets.HF_API_TOKEN }}
+    steps:
+      - name: Checkout minimal surfaces
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 8
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-wordflow-hf-skills-discovery.yml
+            /➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/
+
+      - name: Resolve auth without exposing secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="${HF_TOKEN_PRIMARY:-}"
+          if [ -z "$token" ]; then token="${HF_TOKEN_FALLBACK:-}"; fi
+          if [ -z "$token" ]; then echo 'HF_AUTH_SECRET_GAP' >&2; exit 21; fi
+          echo "::add-mask::$token"
+          echo "HF_TOKEN=$token" >> "$GITHUB_ENV"
+          echo 'HF_AUTH_SECRET_PRESENT=PASS'
+
+      - name: Install Hugging Face client
+        run: python3 -m pip install --disable-pip-version-check --no-input 'huggingface_hub>=0.30,<2'
+
+      - name: Discover repositories containing SKILL.md
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          from huggingface_hub import HfApi
+
+          token=os.environ['HF_TOKEN']
+          api=HfApi(token=token)
+          who=api.whoami(token=token)
+          account=who.get('name') or who.get('fullname') or who.get('user')
+          if not account:
+              raise SystemExit('HF_WHOAMI_GAP')
+
+          repos=[]
+          sources=(
+              ('model', api.list_models(author=account, token=token)),
+              ('dataset', api.list_datasets(author=account, token=token)),
+              ('space', api.list_spaces(author=account, token=token)),
+          )
+          for repo_type, iterator in sources:
+              for item in iterator:
+                  repo_id=getattr(item,'id',None) or getattr(item,'modelId',None)
+                  if not repo_id:
+                      continue
+                  try:
+                      files=api.list_repo_files(repo_id=repo_id, repo_type=repo_type, token=token)
+                  except Exception as exc:
+                      repos.append({'repo_id':repo_id,'repo_type':repo_type,'status':'READ_GAP','detail':type(exc).__name__})
+                      continue
+                  skill_files=sorted(p for p in files if p == 'SKILL.md' or p.endswith('/SKILL.md'))
+                  if not skill_files:
+                      continue
+                  info=api.repo_info(repo_id=repo_id, repo_type=repo_type, token=token)
+                  repos.append({
+                      'repo_id':repo_id,
+                      'repo_type':repo_type,
+                      'status':'SKILL_LIBRARY_CANDIDATE',
+                      'revision':getattr(info,'sha',None),
+                      'private':bool(getattr(info,'private',False)),
+                      'skill_count':len(skill_files),
+                      'skill_files':skill_files,
+                  })
+
+          candidates=[r for r in repos if r.get('status')=='SKILL_LIBRARY_CANDIDATE']
+          candidates.sort(key=lambda r:(-r['skill_count'],r['repo_id']))
+          verdict='PASS_SKILL_LIBRARY_DISCOVERED' if candidates else 'GAP_NO_SKILL_LIBRARY_FOUND'
+          evidence={
+              'schema':'yaiwes.hf-skill-library-discovery/v1',
+              'generated_at':datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z'),
+              'account':account,
+              'auth':'GITHUB_SECRET_PRESENT_AND_WHOAMI_PASS',
+              'token_persisted':False,
+              'candidate_count':len(candidates),
+              'total_skill_files':sum(r['skill_count'] for r in candidates),
+              'candidates':candidates,
+              'verdict':verdict,
+          }
+          p=Path(os.environ['EVIDENCE']);p.parent.mkdir(parents=True,exist_ok=True)
+          p.write_text(json.dumps(evidence,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          print(f"HF_SKILL_DISCOVERY={verdict} candidates={len(candidates)} skills={evidence['total_skill_files']}")
+          if not candidates:
+              raise SystemExit(22)
+          PY
+
+      - name: Persist discovery evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$EVIDENCE"
+          git commit -m 'evidence(wordflow): record authenticated HF skill library discovery'
+          ok=0
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            if git rebase origin/main && git push origin HEAD:main; then ok=1; break; fi
+            git rebase --abort || true
+            sleep $((attempt*2))
+          done
+          test "$ok" -eq 1
+
+      - name: Fresh remote readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git show "origin/main:$EVIDENCE" > /tmp/hf-skills.json
+          python3 - <<'PY'
+          import json
+          x=json.load(open('/tmp/hf-skills.json',encoding='utf-8'))
+          assert x['verdict']=='PASS_SKILL_LIBRARY_DISCOVERED'
+          assert x['candidate_count']>=1
+          assert x['total_skill_files']>=1
+          assert x['token_persisted'] is False
+          print('HF_SKILL_DISCOVERY_READBACK=PASS')
+          PY
