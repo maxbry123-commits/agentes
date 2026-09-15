@@ -1,0 +1,23 @@
+{
+  "schema": "yaiwes.download-extract.approved17.queue/v1",
+  "destination_root": "Core kernel Yaiwes",
+  "queue": [
+    {"id":"A17-001","source_repo":"https://github.com/fidelity/mabwiser.git","source_ref":"HEAD","slug":"mabwiser","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"A17-002","source_repo":"https://github.com/algorithmicsuperintelligence/openevolve.git","source_ref":"HEAD","slug":"openevolve","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"A17-003","source_repo":"https://github.com/assafelovic/gpt-researcher.git","source_ref":"HEAD","slug":"gpt-researcher","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"A17-004","source_repo":"https://github.com/bytedance/deer-flow.git","source_ref":"HEAD","slug":"deer-flow","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"A17-005","source_repo":"https://github.com/facebookresearch/faiss.git","source_ref":"HEAD","slug":"faiss","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"A17-006","source_repo":"https://github.com/splintered-reality/py_trees.git","source_ref":"HEAD","slug":"py-trees","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"A17-007","source_repo":"https://github.com/m-lundberg/simple-pid.git","source_ref":"HEAD","slug":"simple-pid","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"A17-008","source_repo":"https://github.com/danielfm/pybreaker.git","source_ref":"HEAD","slug":"pybreaker","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"A17-009","source_repo":"https://github.com/Yelp/detect-secrets.git","source_ref":"HEAD","slug":"detect-secrets","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"A17-010","source_repo":"https://github.com/semgrep/semgrep.git","source_ref":"HEAD","slug":"semgrep","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"A17-011","source_repo":"https://github.com/confident-ai/deepeval.git","source_ref":"HEAD","slug":"deepeval","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"A17-012","source_repo":"https://github.com/open-policy-agent/gatekeeper.git","source_ref":"HEAD","slug":"gatekeeper","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"A17-013","source_repo":"https://github.com/great-expectations/great_expectations.git","source_ref":"HEAD","slug":"great-expectations","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"A17-014","source_repo":"https://github.com/unitaryai/detoxify.git","source_ref":"HEAD","slug":"detoxify","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"A17-015","source_repo":"https://github.com/protectai/llm-guard.git","source_ref":"HEAD","slug":"llm-guard","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"A17-016","source_repo":"https://github.com/YashBansod/IPyHOP.git","source_ref":"HEAD","slug":"ipyhop","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"A17-017","source_repo":"https://github.com/nats-io/nats-server.git","source_ref":"HEAD","slug":"nats-server","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true}
+  ]
+}
