@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 26395,
+  "bundle_sha256": "bbb85a7f79c9d60cf61cec6ff7a52a491d57dcbe542a0427478e62a0f39cb47e",
+  "extracted_tree": {
+    "bytes": 108229,
+    "files": 17,
+    "sha256": "724a7867326abcefe9e5f28897d4f1c0c76defddd83e8a8330709d51b0b22828"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 26395,
+      "name": "pybreaker.bundle.zip.part-0001",
+      "sha256": "bbb85a7f79c9d60cf61cec6ff7a52a491d57dcbe542a0427478e62a0f39cb47e"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "pybreaker",
+  "source_bytes": 108229,
+  "source_commit": "3c436f208f5ed012532e2ece55cf3d571f4c3a66",
+  "source_files": 17,
+  "source_ref": "HEAD",
+  "source_repo": "https://github.com/danielfm/pybreaker.git",
+  "source_tree": {
+    "bytes": 108229,
+    "files": 17,
+    "sha256": "724a7867326abcefe9e5f28897d4f1c0c76defddd83e8a8330709d51b0b22828"
+  }
+}
