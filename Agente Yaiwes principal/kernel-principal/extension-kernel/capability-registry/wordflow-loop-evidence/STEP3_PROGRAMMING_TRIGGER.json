@@ -8,19 +8,19 @@
   "programming_cases": [
     {
       "case": "sum",
-      "handle": "c6e6b08f-c73b-4b8e-8c6f-41ce4213988c",
+      "handle": "d275983c-aa5c-4316-8969-c5cb4b2d944e",
       "status": "completed",
       "code_bytes": 34
     },
     {
       "case": "normalize",
-      "handle": "56955136-1418-4d09-a0eb-6f0801309c78",
+      "handle": "30137a48-e675-4975-8a90-4f5ddecd0157",
       "status": "completed",
       "code_bytes": 67
     },
     {
       "case": "classify",
-      "handle": "8cc1783e-ac1e-4831-8703-6bef0c315d85",
+      "handle": "6a9f68a2-4341-4bfa-b27b-e91a2766876e",
       "status": "completed",
       "code_bytes": 57
     }
