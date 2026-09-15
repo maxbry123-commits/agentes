@@ -1,0 +1,43 @@
+{
+  "bundle_bytes": 37115454,
+  "bundle_sha256": "b8ef91c10e98b235625796a67e58576ae7d7c59b1ac09d68135d1ebea4fdc767",
+  "extracted_tree": {
+    "bytes": 569812703,
+    "files": 10804,
+    "sha256": "408ea53d9105e114b755029c7dd567dc72dd6e5e1ed1d43a0fc7032dfdc13633"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "semgrep.bundle.zip.part-0001",
+      "sha256": "ad4ff87ac778a2b816bc281828e7a7910969e14454b81be5c3e14596e0349d99"
+    },
+    {
+      "bytes": 12582912,
+      "name": "semgrep.bundle.zip.part-0002",
+      "sha256": "49a67068975fdf7b32b29f27a8d8183bcd1fb8923c55dc877a02e98fefa17481"
+    },
+    {
+      "bytes": 11949630,
+      "name": "semgrep.bundle.zip.part-0003",
+      "sha256": "242961671c33fcf14a51ada0c0f525ffe30a19298169ecf1226066abdcd66ec9"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "semgrep",
+  "source_bytes": 569812703,
+  "source_commit": "0516c0f23a3dceac5c8f5ff3fecd402af4450182",
+  "source_files": 10804,
+  "source_ref": "HEAD",
+  "source_repo": "https://github.com/semgrep/semgrep.git",
+  "source_tree": {
+    "bytes": 569812703,
+    "files": 10804,
+    "sha256": "408ea53d9105e114b755029c7dd567dc72dd6e5e1ed1d43a0fc7032dfdc13633"
+  }
+}
