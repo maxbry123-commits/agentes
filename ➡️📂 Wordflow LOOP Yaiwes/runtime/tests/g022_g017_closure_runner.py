@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -41,10 +40,10 @@ def test_1_filesystem_and_positive_backend(tmp: Path) -> dict:
     candidate.mkdir()
     (candidate / "probe.txt").write_text("YAIWES_SANDBOX_OK\n")
     mount = f"{candidate}:/candidate:ro"
-    positive = run(docker_base("-v", mount, "python", "-c", "print(open('/candidate/probe.txt').read().strip())"))
+    positive = run(docker_base("-v", mount) + ["python", "-c", "print(open('/candidate/probe.txt').read().strip())"])
     if positive.returncode != 0 or "YAIWES_SANDBOX_OK" not in positive.stdout:
         raise AssertionError(f"positive backend failed: {positive.stderr}")
-    negative = run(docker_base("-v", mount, "python", "-c", "open('/candidate/forbidden.txt','w').write('x')"))
+    negative = run(docker_base("-v", mount) + ["python", "-c", "open('/candidate/forbidden.txt','w').write('x')"])
     if negative.returncode == 0 or (candidate / "forbidden.txt").exists():
         raise AssertionError("read-only candidate mount was writable")
     return {"id": 1, "name": "sandbox_filesystem_readonly", "result": "PASS", "positive_backend": True, "write_rejected": True}
@@ -58,7 +57,7 @@ def test_2_network_denied() -> dict:
         "except OSError:\n"
         " sys.exit(0)\n"
     )
-    p = run(docker_base("python", "-c", code))
+    p = run(docker_base() + ["python", "-c", code])
     if p.returncode != 0:
         raise AssertionError(f"network deny probe failed rc={p.returncode}: {p.stderr}")
     return {"id": 2, "name": "sandbox_network_none", "result": "PASS", "outbound_connection_blocked": True}
