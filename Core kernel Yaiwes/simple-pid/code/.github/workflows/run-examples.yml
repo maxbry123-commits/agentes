@@ -1,0 +1,42 @@
+name: examples
+
+on:
+  # push:
+  #   branches: [ master ]
+  # pull_request:
+  #   branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+
+    name: Run examples
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install .[examples]
+
+    - name: Run examples
+      run: |
+        cd examples/water_boiler/
+        NO_DISPLAY=1 python water_boiler.py
+
+    - name: Upload resulting figures
+      uses: actions/upload-artifact@v4
+      with:
+        name: result-py${{ matrix.python-version }}.png
+        path: examples/water_boiler/result-py${{ matrix.python-version }}.png
