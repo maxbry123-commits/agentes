@@ -1,0 +1,35 @@
+---
+name: Proposal
+description: Propose an enhancement or new feature.
+labels:
+  - proposal
+body:
+  - type: textarea
+    id: change
+    attributes:
+      label: Proposed change
+      description: This could be a behavior change, enhanced API, or a new feature.
+    validations:
+      required: true
+  - type: textarea
+    id: usecase
+    attributes:
+      label: Use case
+      description: What is the use case or general motivation for this proposal?
+    validations:
+      required: true
+  - type: textarea
+    id: contribute
+    attributes:
+      label: Contribution
+      description: |-
+        Are you intending or interested in contributing code for this proposal if accepted?
+    validations:
+      required: false
+  - type: checkboxes
+    id: no-ai-meat-proxy
+    attributes:
+      label: Submission acknowledgment
+      options:
+        - label: I am a human being writing in my own words and not an AI agent. I will not use an AI agent to communicate on my behalf in this issue, either directly or via copy-paste.
+          required: true

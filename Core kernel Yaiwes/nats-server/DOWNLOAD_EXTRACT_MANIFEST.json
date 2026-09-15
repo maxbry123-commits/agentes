@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 3464393,
+  "bundle_sha256": "b0179d2c7956a5bd6f192c68be91b2f53ec222f446ba8d4e1163dacf49a27342",
+  "extracted_tree": {
+    "bytes": 14359684,
+    "files": 598,
+    "sha256": "b1e7a62fe99f00b8ca0bb053de7a27c1e859b84368946d2d17370e3a441e7134"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 3464393,
+      "name": "nats-server.bundle.zip.part-0001",
+      "sha256": "b0179d2c7956a5bd6f192c68be91b2f53ec222f446ba8d4e1163dacf49a27342"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "nats-server",
+  "source_bytes": 14359684,
+  "source_commit": "973e238eaed7de34b6b5fa36935a1cd39a0385a9",
+  "source_files": 598,
+  "source_ref": "HEAD",
+  "source_repo": "https://github.com/nats-io/nats-server.git",
+  "source_tree": {
+    "bytes": 14359684,
+    "files": 598,
+    "sha256": "b1e7a62fe99f00b8ca0bb053de7a27c1e859b84368946d2d17370e3a441e7134"
+  }
+}

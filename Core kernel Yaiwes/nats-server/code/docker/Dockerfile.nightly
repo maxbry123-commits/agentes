@@ -1,0 +1,49 @@
+FROM --platform=$BUILDPLATFORM golang:alpine AS builder
+
+ARG VERSION="nightly"
+ARG GIT_COMMIT
+
+ARG TARGETOS
+ARG TARGETARCH
+
+ENV GOOS=$TARGETOS \
+    GOARCH=$TARGETARCH \
+    GO111MODULE=on \
+    CGO_ENABLED=0
+
+RUN apk add --no-cache ca-certificates
+RUN update-ca-certificates
+
+WORKDIR /src
+RUN mkdir -p /src/out/$GOOS/$GOARCH
+
+COPY ./nats-server/ /src/nats-server/
+COPY ./nsc/         /src/nsc/
+COPY ./natscli/     /src/natscli/
+
+RUN cd /src/nats-server && go build -trimpath \
+       -ldflags "-w -X server.serverVersion=${VERSION},server.gitCommit=${GIT_COMMIT}" \
+       -o /src/out/$TARGETOS/$TARGETARCH/nats-server .
+
+RUN cd /src/natscli && go build -trimpath \
+       -ldflags "-w -X main.version=${VERSION}" \
+       -o /src/out/$TARGETOS/$TARGETARCH/nats ./nats
+
+RUN cd /src/nsc && go build -trimpath \
+       -o /src/out/$TARGETOS/$TARGETARCH/nsc .
+
+FROM --platform=$TARGETPLATFORM alpine:latest
+
+ARG TARGETOS
+ARG TARGETARCH
+
+RUN apk add --no-cache tzdata
+
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt         /etc/ssl/certs/
+COPY --from=builder /src/out/$TARGETOS/$TARGETARCH/nats-server /bin/nats-server
+COPY --from=builder /src/out/$TARGETOS/$TARGETARCH/nats        /bin/nats
+COPY --from=builder /src/out/$TARGETOS/$TARGETARCH/nsc         /bin/nsc
+
+EXPOSE 4222 8222 6222 5222
+
+ENTRYPOINT ["/bin/nats-server"]
