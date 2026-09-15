@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 2443528,
+  "bundle_sha256": "17e06ff16a7637433df8c6048f3d2d58f4252593689df0b0ca8099a89398e703",
+  "extracted_tree": {
+    "bytes": 9918236,
+    "files": 1097,
+    "sha256": "02d61a3346cd2cda00df7245cd5090534f21af6ef63677a418b71ed12d8ea32b"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 2443528,
+      "name": "faiss.bundle.zip.part-0001",
+      "sha256": "17e06ff16a7637433df8c6048f3d2d58f4252593689df0b0ca8099a89398e703"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "faiss",
+  "source_bytes": 9918236,
+  "source_commit": "a74867cf56a73234ad5d957e40c35c9616d4d273",
+  "source_files": 1097,
+  "source_ref": "HEAD",
+  "source_repo": "https://github.com/facebookresearch/faiss.git",
+  "source_tree": {
+    "bytes": 9918236,
+    "files": 1097,
+    "sha256": "02d61a3346cd2cda00df7245cd5090534f21af6ef63677a418b71ed12d8ea32b"
+  }
+}
