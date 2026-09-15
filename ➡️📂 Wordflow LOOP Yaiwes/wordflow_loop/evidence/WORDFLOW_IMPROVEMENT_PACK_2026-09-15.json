@@ -1,0 +1,19 @@
+{
+  "capabilities": {
+    "execution_remains_sheriff_gated": true,
+    "files_1_to_100_intake": true,
+    "global_code_graph_30_of_30_untouched": true,
+    "literal_or_manifest_run_launcher": true,
+    "project_detection_and_architecture_seed": true,
+    "relevant_verified_skills_3_to_5": true,
+    "run_scoped_crazy_wall_state_checkpoint_dsl_dag": true
+  },
+  "github_run_id": "34974347746",
+  "result": "PASS_TESTED",
+  "schema": "yaiwes.wordflow-improvement-evidence/v1",
+  "source_sha": "f5a202e0520e053654f608595af04f93dc30de38",
+  "tests": {
+    "failed": 0,
+    "passed": 15
+  }
+}
