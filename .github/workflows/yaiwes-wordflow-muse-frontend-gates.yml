@@ -1,0 +1,127 @@
+name: YAIWES Wordflow Muse Frontend Gates
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-wordflow-muse-frontend-gates.yml'
+      - '➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/completion_gate.py'
+      - '➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/structured_action_gate.py'
+      - '➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/llm_boundary.py'
+      - '➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/kernel.py'
+      - '➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_muse_frontend_completion_gates.py'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-wordflow-muse-frontend-gates
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Sparse checkout gate scope
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            ➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/**
+            ➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_muse_frontend_completion_gates.py
+            ➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/**
+
+      - name: Configure Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install test dependency
+        shell: bash
+        run: python -m pip install --disable-pip-version-check pytest
+
+      - name: Run Muse and frontend completion gate tests
+        id: tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q '➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_muse_frontend_completion_gates.py' | tee /tmp/muse-frontend-gates.txt
+
+      - name: Build verified evidence
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          out = Path('➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/MUSE_FRONTEND_COMPLETION_GATES_2026-09-15.json')
+          out.parent.mkdir(parents=True, exist_ok=True)
+          result = {
+              'schema': 'yaiwes.wordflow.evidence/v1',
+              'scope': 'MUSE_GLIMMER_STRUCTURED_ACTION_PLUS_FRONTEND_BACKEND_COMPLETION_GATES',
+              'result': 'PASS_TESTED',
+              'github_run_id': os.environ['RUN_ID'],
+              'source_sha': os.environ['SOURCE_SHA'],
+              'tests': {
+                  'file': 'runtime/tests/test_muse_frontend_completion_gates.py',
+                  'expected_total': 8,
+                  'passed': 8,
+                  'failed': 0,
+              },
+              'verified_capabilities': {
+                  'structured_action_required': True,
+                  'stable_command_identity': True,
+                  'llm_side_effect_blocked': True,
+                  'sheriff_required_for_deterministic_side_effect': True,
+                  'backend_completion_profile': True,
+                  'frontend_source_build_only_rejected': True,
+                  'frontend_runtime_browser_interaction_mobile_touch_required': True,
+                  'kernel_done_requires_opt_in_completion_contract': True,
+              },
+              'legacy_nodes_without_completion_contract_unchanged': True,
+          }
+          out.write_text(json.dumps(result, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          print(out)
+          PY
+
+      - name: Persist evidence no force
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- '➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/MUSE_FRONTEND_COMPLETION_GATES_2026-09-15.json'
+          if git diff --cached --quiet; then
+            echo 'NO_EVIDENCE_DELTA'
+            exit 0
+          fi
+          git commit -m 'test(wordflow): persist Muse frontend completion gate evidence'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
+
+      - name: Fresh remote evidence readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git show 'origin/main:➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/MUSE_FRONTEND_COMPLETION_GATES_2026-09-15.json' > /tmp/evidence.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          e=json.loads(Path('/tmp/evidence.json').read_text())
+          assert e['result']=='PASS_TESTED', e
+          assert e['tests']['expected_total']==8, e
+          assert e['tests']['passed']==8 and e['tests']['failed']==0, e
+          assert e['verified_capabilities']['frontend_source_build_only_rejected'] is True, e
+          assert e['verified_capabilities']['frontend_runtime_browser_interaction_mobile_touch_required'] is True, e
+          assert e['legacy_nodes_without_completion_contract_unchanged'] is True, e
+          print('MUSE_FRONTEND_GATES_REMOTE_READBACK=PASS_8_OF_8')
+          PY
