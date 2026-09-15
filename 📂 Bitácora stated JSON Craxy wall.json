@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-15T22:58:14.374109Z",
+  "updated_at": "2026-09-15T22:58:24.456508Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -2417,14 +2417,14 @@
       "component": "AgentCgroup",
       "source": "Core kernel Yaiwes/AgentCgroup/",
       "current_step": 3,
-      "status": "IN_PROGRESS_STEP3",
+      "status": "VERIFIED_CLOSED",
       "abc": "C",
       "target": "Agente Yaiwes principal/execution-orchestration/container-pod-isolation/agentcgroup/",
-      "owner": "SOL GPT",
-      "lock": "CLAIMED",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-15T22:58:14.374109Z STEP3 claim; upstream no-root/no-eBPF unittest",
-        "after": "2026-09-15T22:58:04.925746Z STEP2 PASS Motor4 VERIFIED_CLOSED after BATCH_SIZE repair; provenance persisted; move_commit=93a21530f90adea8cb261da03684088858cdcb59"
+        "after": "2026-09-15T22:58:24.456508Z STEP3 PASS upstream test_agentcgroupd.py; no root/eBPF required; WIRE_NOT_NEEDED_DIRECT_BACKEND"
       },
       "evidence": [
         "director:MOVE_DIRECT_TO_FINAL_ALL_CORE_COMPONENTS_2026-09-14",
@@ -2441,7 +2441,12 @@
         "step2:fix:BATCH_SIZE_100",
         "step2:motor4:VERIFIED_CLOSED",
         "step2:move_commit:93a21530f90adea8cb261da03684088858cdcb59",
-        "step2:provenance:SOURCE_URL+SOURCE_COMMIT+SOURCE_SHA256+YAIWES_PROVENANCE"
+        "step2:provenance:SOURCE_URL+SOURCE_COMMIT+SOURCE_SHA256+YAIWES_PROVENANCE",
+        "step3:wire:NOT_NEEDED_DIRECT_BACKEND",
+        "step3:prune:NOT_NEEDED",
+        "step3:microtest:python_unittest_test_agentcgroupd:PASS",
+        "step3:privileged_eBPF_runtime:NOT_CLAIMED",
+        "step3:provenance_readback:PASS"
       ],
       "history": [
         {
@@ -2482,9 +2487,16 @@
           "actor": "SOL",
           "label": "SOL GPT",
           "event": "CLAIM_STEP3"
+        },
+        {
+          "at": "2026-09-15T22:58:24.456508Z",
+          "actor": "SOL",
+          "label": "SOL GPT",
+          "event": "STEP3_PASS_RELEASE",
+          "microtest": "python3 -m unittest -v test_agentcgroupd.py"
         }
       ],
-      "next_action": "STEP3_WIRE_PRUNE_IF_NEEDED_MICROTEST"
+      "next_action": "COMPLETE"
     },
     {
       "id": 39,
