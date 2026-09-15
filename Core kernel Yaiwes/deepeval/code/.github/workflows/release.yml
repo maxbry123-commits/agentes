@@ -1,0 +1,133 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pyproject.toml"
+      - "typescript/package.json"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Existing tag to release (e.g. python-v4.0.8 or typescript-v0.1.29)."
+        required: true
+
+permissions:
+  contents: write
+  actions: write
+  pull-requests: read
+
+concurrency:
+  group: release-${{ github.event.inputs.tag_name || github.ref_name }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine tags to release
+        id: tags
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          declare -a TAGS=()
+
+          add_tag() {
+            local tag="$1"
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              echo "Tag $tag already exists; skipping."
+            else
+              echo "Creating tag $tag."
+              git tag "$tag"
+              git push origin "$tag"
+              TAGS+=("$tag")
+            fi
+          }
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag_name }}"
+            case "$TAG" in
+              python-v*|typescript-v*) TAGS+=("$TAG") ;;
+              *) echo "::error::Tag '$TAG' must match python-v* or typescript-v*."; exit 1 ;;
+            esac
+          else
+            PY_VERSION=$(grep -m1 -E '^version = ' pyproject.toml | sed -E 's/^version = "([^"]+)".*/\1/')
+            TS_VERSION=$(jq -r .version typescript/package.json)
+            add_tag "python-v$PY_VERSION"
+            add_tag "typescript-v$TS_VERSION"
+          fi
+
+          echo "list=${TAGS[*]:-}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python
+        if: steps.tags.outputs.list != ''
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        if: steps.tags.outputs.list != ''
+        run: pip install rich pydantic deepeval
+
+      - name: Create draft releases
+        if: steps.tags.outputs.list != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          REPO: ${{ github.repository }}
+          TAGS: ${{ steps.tags.outputs.list }}
+        run: |
+          set -euo pipefail
+
+          for TAG in $TAGS; do
+            case "$TAG" in
+              python-v*)     SDK="Python";     PREFIX="python-v";     SDK_SLUG="python" ;;
+              typescript-v*) SDK="TypeScript"; PREFIX="typescript-v"; SDK_SLUG="typescript" ;;
+            esac
+
+            PREV=$(
+              { echo "$TAG"; git tag --list "${PREFIX}*"; } \
+                | grep -v '^$' | sort -u -V -r \
+                | awk -v cur="$TAG" 'found{print; exit} $0==cur{found=1}'
+            )
+
+            API_ARGS=(-f tag_name="$TAG")
+            if [ -n "$PREV" ]; then
+              API_ARGS+=(-f previous_tag_name="$PREV")
+            fi
+            BODY=$(gh api "repos/$REPO/releases/generate-notes" "${API_ARGS[@]}" --jq .body)
+
+            printf '%s' "$BODY" \
+              | python .scripts/changelog/release_notes.py --sdk "$SDK_SLUG" \
+                > notes.md
+
+            # Drafts are reviewed by hand, so a re-run for a tag that already has
+            # one would leave two to pick between. Drop the old one first.
+            gh api "repos/$REPO/releases" --paginate \
+              --jq ".[] | select(.draft and .tag_name == \"$TAG\") | .id" \
+              | while read -r ID; do
+                  echo "Removing stale draft $ID for $TAG."
+                  gh api -X DELETE "repos/$REPO/releases/$ID"
+                done
+
+            CREATE_ARGS=(--title "$SDK ${TAG#$PREFIX}" --draft --notes-file notes.md)
+            # GitHub has one "Latest" badge for the whole repo and picks the newest
+            # published, non-prerelease release for it — so a TypeScript release can
+            # claim the slot from Python. Marking TypeScript as a prerelease keeps
+            # the badge on Python, which is what a visitor to this repo expects.
+            if [ "$SDK" = "TypeScript" ]; then
+              CREATE_ARGS+=(--prerelease)
+            fi
+
+            gh release create "$TAG" "${CREATE_ARGS[@]}"
+
+            if [ "$SDK" = "Python" ]; then
+              gh workflow run changelog.yml -f tag="$TAG"
+            fi
+          done

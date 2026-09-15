@@ -1,0 +1,348 @@
+---
+id: metrics-argument-correctness
+title: Argument Correctness
+sidebar_label: Argument Correctness
+languages: [python, typescript]
+---
+<MetricTagsDisplayer
+  singleTurn={true}
+  usesLLMs={true}
+  agent={true}
+  referenceless={true}
+/>
+
+The argument correctness metric is an agentic LLM metric that assesses your LLM agent's ability to generate the correct arguments for the tools it calls. It is calculated by determining whether the arguments for each tool call is correct based on the input.
+
+:::info
+The `ArgumentCorrectnessMetric` uses an LLM to determine argument correctness, and is also referenceless. If you're looking to deterministically evaluate argument correctness, refer to the [tool correctness metric](/docs/metrics-tool-correctness) instead.
+:::
+
+## Required Arguments
+
+To use the `ArgumentCorrectnessMetric`, you'll have to provide the following arguments when creating an [`LLMTestCase`](/docs/evaluation-test-cases#llm-test-case):
+
+- `input`
+- <Term py="actual_output" ts="actualOutput"/>
+- <Term py="tools_called" ts="toolsCalled"/>
+
+Read the [How Is It Calculated](#how-is-it-calculated) section below to learn how test case parameters are used for metric calculation.
+
+## Usage
+
+The `ArgumentCorrectnessMetric()` can be used for [end-to-end](/docs/evaluation-end-to-end-llm-evals) evaluation:
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.metrics import ArgumentCorrectnessMetric
+from deepeval.test_case import LLMTestCase, ToolCall
+from deepeval import evaluate
+
+metric = ArgumentCorrectnessMetric(
+    threshold=0.7,
+    model="gpt-4",
+    include_reason=True
+)
+test_case = LLMTestCase(
+    input="When did Trump first raise tariffs?",
+    actual_output="Trump first raised tariffs in 2018 during the U.S.-China trade war.",
+    tools_called=[
+        ToolCall(
+            name="WebSearch Tool",
+            description="Tool to search for information on the web.",
+            input={"search_query": "Trump first raised tariffs year"}
+        ),
+        ToolCall(
+            name="History FunFact Tool",
+            description="Tool to provide a fun fact about the topic.",
+            input={"topic": "Trump tariffs"}
+        )
+    ]
+)
+
+# To run metric as a standalone
+# metric.measure(test_case)
+# print(metric.score, metric.reason)
+
+evaluate(test_cases=[test_case], metrics=[metric])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { ArgumentCorrectnessMetric } from "deepeval/metrics";
+import { LLMTestCase, ToolCall } from "deepeval/test-case";
+import { evaluate } from "deepeval";
+
+const metric = new ArgumentCorrectnessMetric({
+  threshold: 0.7,
+  model: "gpt-4",
+  includeReason: true,
+});
+const testCase = new LLMTestCase({
+  input: "When did Trump first raise tariffs?",
+  actualOutput: "Trump first raised tariffs in 2018 during the U.S.-China trade war.",
+  toolsCalled: [
+    new ToolCall({
+      name: "WebSearch Tool",
+      description: "Tool to search for information on the web.",
+      inputParameters: { search_query: "Trump first raised tariffs year" },
+    }),
+    new ToolCall({
+      name: "History FunFact Tool",
+      description: "Tool to provide a fun fact about the topic.",
+      inputParameters: { topic: "Trump tariffs" },
+    }),
+  ],
+});
+
+// To run metric as a standalone
+// await metric.measure(testCase);
+// console.log(metric.score, metric.reason);
+
+await evaluate([testCase], [metric]);
+```
+
+</Case>
+
+</Switch>
+
+<Switch>
+
+<Case id="python">
+
+There are **SEVEN** optional parameters when creating an `ArgumentCorrectnessMetric`:
+
+</Case>
+
+<Case id="typescript">
+
+There are **SIX** optional parameters when creating an `ArgumentCorrectnessMetric`:
+
+</Case>
+
+</Switch>
+
+- [Optional] `threshold`: a number representing the minimum passing threshold. Can also be set to <Term py="None" ts="null"/> to run the metric in [score-only mode](/docs/metrics-introduction#metric-thresholds). Defaulted to `0.5`.
+- [Optional] `model`: a string specifying which of OpenAI's GPT models to use, **OR** [any custom LLM model](/docs/metrics-introduction#using-a-custom-llm) of type `DeepEvalBaseLLM`. Defaulted to <DefaultLLMModel />.
+- [Optional] <Term py="include_reason" ts="includeReason"/>: a boolean which when set to <Term py="True" ts="true"/>, will include a reason for its evaluation score. Defaulted to <Term py="True" ts="true"/>.
+- [Optional] <Term py="strict_mode" ts="strictMode"/>: a boolean which when set to <Term py="True" ts="true"/>, enforces a binary metric score: 1 for perfection, 0 otherwise. It also overrides the current threshold and sets it to 1. Defaulted to <Term py="False" ts="false"/>.
+- <Only id="python">
+    [Optional] `async_mode`: a boolean which when set to `True`, enables [concurrent execution within the `measure()` method.](/docs/metrics-introduction#measuring-a-metric-in-async) Defaulted to `True`.
+  </Only>
+- [Optional] <Term py="verbose_mode" ts="verboseMode"/>: a boolean which when set to <Term py="True" ts="true"/>, prints the intermediate steps used to calculate said metric to the console, as outlined in the [How Is It Calculated](#how-is-it-calculated) section. Defaulted to <Term py="False" ts="false"/>.
+- [Optional] `flaky`: a boolean which when set to <Term py="True" ts="true"/>, [marks the metric as flaky](/docs/metrics-introduction#flaky-metrics). Defaulted to <Term py="False" ts="false"/>.
+
+### Within components
+
+You can also run the `ArgumentCorrectnessMetric` within nested components for [component-level](/docs/evaluation-component-level-llm-evals) evaluation.
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.dataset import EvaluationDataset, Golden
+from deepeval.tracing import observe, update_current_span
+...
+
+@observe(metrics=[metric])
+def inner_component():
+    # Set test case at runtime
+    test_case = LLMTestCase(input="...", actual_output="...", tools_called=[...])
+    update_current_span(test_case=test_case)
+    return
+
+@observe
+def llm_app(input: str):
+    # Component can be anything from an LLM call, retrieval, agent, tool use, etc.
+    inner_component()
+    return
+
+dataset = EvaluationDataset(goldens=[Golden(input="Hi!")])
+for golden in dataset.evals_iterator():
+    llm_app(golden.input)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { EvaluationDataset, Golden } from "deepeval/dataset";
+import { observe, updateCurrentSpan } from "deepeval/tracing";
+// ...
+
+const innerComponent = observe({
+  metrics: [metric],
+  fn: async () => {
+    // Set test case at runtime
+    const testCase = new LLMTestCase({
+      input: "...",
+      actualOutput: "...",
+      toolsCalled: [new ToolCall({ name: "..." })],
+    });
+    updateCurrentSpan({ testCase });
+  },
+});
+
+const llmApp = observe({
+  fn: async (input: string) => {
+    // Component can be anything from an LLM call, retrieval, agent, tool use, etc.
+    await innerComponent();
+  },
+});
+
+const dataset = new EvaluationDataset({ goldens: [new Golden({ input: "Hi!" })] });
+for await (const golden of dataset.evalsIterator()) {
+  await llmApp((golden as Golden).input);
+}
+```
+
+</Case>
+
+</Switch>
+
+### As a standalone
+
+You can also run the `ArgumentCorrectnessMetric` on a single test case as a standalone, one-off execution.
+
+<Switch>
+
+<Case id="python">
+
+```python
+...
+
+metric.measure(test_case)
+print(metric.score, metric.reason)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+// ...
+
+await metric.measure(testCase);
+console.log(metric.score, metric.reason);
+```
+
+</Case>
+
+</Switch>
+
+:::caution
+This is great for debugging or if you wish to build your own evaluation pipeline, but you will **NOT** get the benefits (testing reports, Confident AI platform) and all the optimizations (speed, caching, computation) the `evaluate()` function or `deepeval test run` offers.
+:::
+
+## How Is It Calculated?
+
+The `ArgumentCorrectnessMetric` score is calculated according to the following equation:
+
+<Equation formula="\text{Argument Correctness} = \frac{\text{Number of Correctly Generated Input Parameters}}{\text{Total Number of Tool Calls}}" />
+
+The `ArgumentCorrectnessMetric` assesses the correctness of the arguments (input parameters) for each tool call, based on the task outlined in the input.
+
+:::note
+You can set the <Term py="verbose_mode" ts="verboseMode"/> of **ANY** `deepeval` metric to <Term py="True" ts="true"/> to debug the `measure()` method:
+
+<Switch>
+
+<Case id="python">
+
+```python
+...
+
+metric = ArgumentCorrectnessMetric(verbose_mode=True)
+metric.measure(test_case)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+// ...
+
+const metric = new ArgumentCorrectnessMetric({ verboseMode: true });
+await metric.measure(testCase);
+```
+
+</Case>
+
+</Switch>
+
+:::
+
+## FAQs
+
+<FAQs
+  qas={[
+    {
+      question: "My agent called the right tool but passed wrong arguments — which metric catches that?",
+      answer: (
+        <>
+          Argument Correctness. It scores the <strong>arguments</strong> per
+          tool call, judged by an LLM against the <code>input</code>.{" "}
+          <a href="/docs/metrics-tool-correctness">Tool Correctness</a> passes
+          such a run since the right tool was selected.
+        </>
+      ),
+    },
+    {
+      question: "Do I need expected tools for Argument Correctness?",
+      answer: (
+        <>
+          No — it's referenceless. Provide only <code>input</code>,{" "}
+          <Term py="actual_output" ts="actualOutput"/>, and <Term py="tools_called" ts="toolsCalled"/> on the{" "}
+          <a href="/docs/evaluation-test-cases#llm-test-case">
+            <code>LLMTestCase</code>
+          </a>
+          . An LLM judges whether each call's arguments fit the input.
+        </>
+      ),
+    },
+    {
+      question: "Tool Correctness vs Argument Correctness — right tool vs right inputs?",
+      answer: (
+        <>
+          Exactly.{" "}
+          <a href="/docs/metrics-tool-correctness">Tool Correctness</a> checks
+          "right tools?" deterministically against <Term py="expected_tools" ts="expectedTools"/>;
+          Argument Correctness checks "right inputs?" via an LLM. Use both to
+          verify selection and arguments.
+        </>
+      ),
+    },
+    {
+      question: "Is Argument Correctness deterministic or LLM-judged?",
+      answer: (
+        <>
+          LLM-judged: correct input parameters ÷ total tool calls, with an LLM
+          deciding correctness. For a deterministic comparison against expected
+          inputs, use{" "}
+          <a href="/docs/metrics-tool-correctness">Tool Correctness</a> with{" "}
+          <code>ToolCallParams.INPUT_PARAMETERS</code>.
+        </>
+      ),
+    },
+    {
+      question: "Can I use Argument Correctness with LangChain, OpenAI, or another framework?",
+      answer: (
+        <>
+          Yes. <code>deepeval</code> auto-traces agents built with{" "}
+          <a href="/integrations/frameworks/langchain">LangChain</a>,{" "}
+          <a href="/integrations/frameworks/openai">OpenAI</a>, LlamaIndex,
+          CrewAI, and more — see all{" "}
+          <a href="/integrations">framework integrations</a>.
+        </>
+      ),
+    },
+  ]}
+/>

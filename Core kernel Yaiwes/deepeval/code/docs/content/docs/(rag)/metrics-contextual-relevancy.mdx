@@ -1,0 +1,480 @@
+---
+id: metrics-contextual-relevancy
+title: Contextual Relevancy
+sidebar_label: Contextual Relevancy
+languages: [python, typescript]
+---
+<MetricTagsDisplayer singleTurn={true} rag={true} referenceless={true} />
+
+The contextual relevancy metric uses LLM-as-a-judge to measure the quality of your RAG pipeline's retriever by evaluating the overall relevance of the information presented in your <Term py="retrieval_context" ts="retrievalContext"/> for a given `input`. `deepeval`'s contextual relevancy metric is a self-explaining LLM-Eval, meaning it outputs a reason for its metric score.
+
+:::info
+Not sure if the `ContextualRelevancyMetric` is suitable for your use case? Run the follow command to find out:
+
+```bash
+deepeval recommend metrics
+```
+
+:::
+
+## Required Arguments
+
+To use the `ContextualRelevancyMetric`, you'll have to provide the following arguments when creating an [`LLMTestCase`](/docs/evaluation-test-cases#llm-test-case):
+
+- `input`
+- <Term py="actual_output" ts="actualOutput"/>
+- <Term py="retrieval_context" ts="retrievalContext"/>
+
+:::note
+Similar to `ContextualPrecisionMetric`, the `ContextualRelevancyMetric` uses <Term py="retrieval_context" ts="retrievalContext"/> from your RAG pipeline for evaluation.
+:::
+
+Read the [How Is It Calculated](#how-is-it-calculated) section below to learn how test case parameters are used for metric calculation.
+
+## Usage
+
+The `ContextualRelevancyMetric()` can be used for [end-to-end](/docs/evaluation-end-to-end-llm-evals) evaluation of text-based and multimodal test cases:
+
+<Tabs items={["Text Based", "Multimodal"]}>
+<Tab value="Text Based">
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.metrics import ContextualRelevancyMetric
+from deepeval.test_case import LLMTestCase
+from deepeval import evaluate
+
+# Replace this with the actual output from your LLM application
+actual_output = "We offer a 30-day full refund at no extra cost."
+
+# Replace this with the actual retrieved context from your RAG pipeline
+retrieval_context = ["All customers are eligible for a 30 day full refund at no extra cost."]
+
+metric = ContextualRelevancyMetric(
+    threshold=0.7,
+    model="gpt-4.1",
+    include_reason=True
+)
+test_case = LLMTestCase(
+    input="What if these shoes don't fit?",
+    actual_output=actual_output,
+    retrieval_context=retrieval_context
+)
+
+# To run metric as a standalone
+# metric.measure(test_case)
+# print(metric.score, metric.reason)
+
+evaluate(test_cases=[test_case], metrics=[metric])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { ContextualRelevancyMetric } from "deepeval/metrics";
+import { LLMTestCase } from "deepeval/test-case";
+import { evaluate } from "deepeval";
+
+// Replace this with the actual output from your LLM application
+const actualOutput = "We offer a 30-day full refund at no extra cost.";
+
+// Replace this with the actual retrieved context from your RAG pipeline
+const retrievalContext = ["All customers are eligible for a 30 day full refund at no extra cost."];
+
+const metric = new ContextualRelevancyMetric({
+  threshold: 0.7,
+  model: "gpt-4.1",
+  includeReason: true,
+});
+const testCase = new LLMTestCase({
+  input: "What if these shoes don't fit?",
+  actualOutput,
+  retrievalContext,
+});
+
+// To run metric as a standalone
+// await metric.measure(testCase);
+// console.log(metric.score, metric.reason);
+
+await evaluate([testCase], [metric]);
+```
+
+</Case>
+
+</Switch>
+
+</Tab>
+<Tab value="Multimodal">
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.metrics import ContextualRelevancyMetric
+from deepeval.test_case import LLMTestCase, MLLMImage
+from deepeval import evaluate
+
+# Replace this with the actual retrieved context from your RAG pipeline
+retrieval_context = [
+    f"The Eiffel Tower {MLLMImage(...)} is a wrought-iron lattice tower built in the late 19th century.",
+    f"...",
+]
+
+metric = ContextualRelevancyMetric(
+    threshold=0.7,
+    model="gpt-4.1",
+    include_reason=True
+)
+test_case = LLMTestCase(
+    input=f"Tell me about this landmark in France: {MLLMImage(...)}",
+    actual_output=f"This appears to be Eiffel Tower, which is a famous landmark in France"
+    retrieval_context=retrieval_context
+)
+
+# To run metric as a standalone
+# metric.measure(test_case)
+# print(metric.score, metric.reason)
+
+evaluate(test_cases=[test_case], metrics=[metric])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { ContextualRelevancyMetric } from "deepeval/metrics";
+import { LLMTestCase, MLLMImage } from "deepeval/test-case";
+import { evaluate } from "deepeval";
+
+// Replace this with the actual retrieved context from your RAG pipeline
+const retrievalContext = [
+  `The Eiffel Tower ${new MLLMImage({ url: "..." })} is a wrought-iron lattice tower built in the late 19th century.`,
+  `...`,
+];
+
+const metric = new ContextualRelevancyMetric({
+  threshold: 0.7,
+  model: "gpt-4.1",
+  includeReason: true,
+});
+const testCase = new LLMTestCase({
+  input: `Tell me about this landmark in France: ${new MLLMImage({ url: "..." })}`,
+  actualOutput: `This appears to be Eiffel Tower, which is a famous landmark in France`,
+  retrievalContext,
+});
+
+// To run metric as a standalone
+// await metric.measure(testCase);
+// console.log(metric.score, metric.reason);
+
+await evaluate([testCase], [metric]);
+```
+
+</Case>
+
+</Switch>
+
+</Tab>
+</Tabs>
+
+<Switch>
+
+<Case id="python">
+
+There are **EIGHT** optional parameters when creating a `ContextualRelevancyMetricMetric`:
+
+</Case>
+
+<Case id="typescript">
+
+There are **SEVEN** optional parameters when creating a `ContextualRelevancyMetricMetric`:
+
+</Case>
+
+</Switch>
+
+- [Optional] `threshold`: a number representing the minimum passing threshold. Can also be set to <Term py="None" ts="null"/> to run the metric in [score-only mode](/docs/metrics-introduction#metric-thresholds). Defaulted to `0.5`.
+- [Optional] `model`: a string specifying which of OpenAI's GPT models to use, **OR** [any custom LLM model](/docs/metrics-introduction#using-a-custom-llm) of type `DeepEvalBaseLLM`. Defaulted to <DefaultLLMModel />.
+- [Optional] <Term py="include_reason" ts="includeReason"/>: a boolean which when set to <Term py="True" ts="true"/>, will include a reason for its evaluation score. Defaulted to <Term py="True" ts="true"/>.
+- [Optional] <Term py="strict_mode" ts="strictMode"/>: a boolean which when set to <Term py="True" ts="true"/>, enforces a binary metric score: 1 for perfection, 0 otherwise. It also overrides the current threshold and sets it to 1. Defaulted to <Term py="False" ts="false"/>.
+- <Only id="python">
+    [Optional] `async_mode`: a boolean which when set to `True`, enables [concurrent execution within the `measure()` method.](/docs/metrics-introduction#measuring-metrics-in-async) Defaulted to `True`.
+  </Only>
+- [Optional] <Term py="verbose_mode" ts="verboseMode"/>: a boolean which when set to <Term py="True" ts="true"/>, prints the intermediate steps used to calculate said metric to the console, as outlined in the [How Is It Calculated](#how-is-it-calculated) section. Defaulted to <Term py="False" ts="false"/>.
+- [Optional] <Term py="evaluation_template" ts="evaluationTemplate"/>: a class of type `ContextualRelevancyTemplate`, which allows you to override the default prompt templates used to compute the `ContextualRelevancyMetric` score. You can learn what the default prompts looks like [here](https://github.com/confident-ai/deepeval/blob/main/deepeval/metrics/contextual_relevancy/template.py), and should read the [How Is It Calculated](#how-is-it-calculated) section below to understand how you can tailor it to your needs. Defaulted to `deepeval`'s `ContextualRelevancyTemplate`.
+- [Optional] `flaky`: a boolean which when set to <Term py="True" ts="true"/>, [marks the metric as flaky](/docs/metrics-introduction#flaky-metrics). Defaulted to <Term py="False" ts="false"/>.
+
+### Within components
+
+You can also run the `ContextualRelevancyMetric` within nested components for [component-level](/docs/evaluation-component-level-llm-evals) evaluation.
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.dataset import EvaluationDataset, Golden
+from deepeval.tracing import observe, update_current_span
+...
+
+@observe(metrics=[metric])
+def inner_component():
+    # Set test case at runtime
+    test_case = LLMTestCase(input="...", actual_output="...")
+    update_current_span(test_case=test_case)
+    return
+
+@observe
+def llm_app(input: str):
+    # Component can be anything from an LLM call, retrieval, agent, tool use, etc.
+    inner_component()
+    return
+
+dataset = EvaluationDataset(goldens=[Golden(input="Hi!")])
+for golden in dataset.evals_iterator():
+    llm_app(golden.input)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { EvaluationDataset, Golden } from "deepeval/dataset";
+import { observe, updateCurrentSpan } from "deepeval/tracing";
+// ...
+
+const innerComponent = observe({
+  metrics: [metric],
+  fn: async () => {
+    // Set test case at runtime
+    const testCase = new LLMTestCase({ input: "...", actualOutput: "..." });
+    updateCurrentSpan({ testCase });
+  },
+});
+
+const llmApp = observe({
+  fn: async (input: string) => {
+    // Component can be anything from an LLM call, retrieval, agent, tool use, etc.
+    await innerComponent();
+  },
+});
+
+const dataset = new EvaluationDataset({ goldens: [new Golden({ input: "Hi!" })] });
+for await (const golden of dataset.evalsIterator()) {
+  await llmApp((golden as Golden).input);
+}
+```
+
+</Case>
+
+</Switch>
+
+### As a standalone
+
+You can also run the `ContextualRelevancyMetric` on a single test case as a standalone, one-off execution.
+
+<Switch>
+
+<Case id="python">
+
+```python
+...
+
+metric.measure(test_case)
+print(metric.score, metric.reason)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+// ...
+
+await metric.measure(testCase);
+console.log(metric.score, metric.reason);
+```
+
+</Case>
+
+</Switch>
+
+:::caution
+This is great for debugging or if you wish to build your own evaluation pipeline, but you will **NOT** get the benefits (testing reports, Confident AI platform) and all the optimizations (speed, caching, computation) the `evaluate()` function or `deepeval test run` offers.
+:::
+
+## How Is It Calculated?
+
+The `ContextualRelevancyMetric` score is calculated according to the following equation:
+
+<Equation formula="\text{Contextual Relevancy} = \frac{\text{Number of Relevant Statements}}{\text{Total Number of Statements}}" />
+
+Although similar to how the `AnswerRelevancyMetric` is calculated, the `ContextualRelevancyMetric` first uses an LLM to extract all statements made in the <Term py="retrieval_context" ts="retrievalContext"/> instead, before using the same LLM to classify whether each statement is relevant to the `input`.
+
+## Customize Your Template
+
+Since `deepeval`'s `ContextualRelevancyMetric` is evaluated by LLM-as-a-judge, you can likely improve your metric accuracy by [overriding `deepeval`'s default prompt templates](/docs/metrics-introduction#customizing-metric-prompts). This is especially helpful if:
+
+- You're using a [custom evaluation LLM](/guides/guides-using-custom-llms), especially for smaller models that have weaker instruction following capabilities.
+- You want to customize the examples used in the default `ContextualRelevancyTemplate` to better align with your expectations.
+
+:::tip
+You can learn what the default `ContextualRelevancyTemplate` looks like [here on GitHub](https://github.com/confident-ai/deepeval/blob/main/deepeval/metrics/contextual_relevancy/template.py), and should read the [How Is It Calculated](#how-is-it-calculated) section above to understand how you can tailor it to your needs.
+:::
+
+Here's a quick example of how you can override the relevancy classification step of the `ContextualRelevancyMetric` algorithm:
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.metrics.contextual_relevancy import ContextualRelevancyTemplate
+from deepeval.metrics import ContextualRelevancyMetric
+
+# Define custom template
+class CustomTemplate(ContextualRelevancyTemplate):
+    @staticmethod
+    def generate_verdicts(input: str, context: str):
+        return f"""Based on the input and context, please generate a JSON object to indicate whether each statement found in the context is relevant to the provided input.
+
+Example JSON:
+{{
+    "verdicts": [
+        {{
+            "verdict": "yes",
+            "statement": "...",
+        }}
+    ]
+}}
+**
+
+Input:
+{input}
+
+Context:
+{context}
+
+JSON:
+"""
+
+# Inject custom template to metric
+metric = ContextualRelevancyMetric(evaluation_template=CustomTemplate)
+metric.measure(...)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { ContextualRelevancyMetric } from "deepeval/metrics";
+
+// Inject custom template to metric
+const metric = new ContextualRelevancyMetric({
+  evaluationTemplate: {
+    generateVerdicts: ({ input, context }) =>
+      `Based on the input and context, please generate a JSON object to indicate whether each statement found in the context is relevant to the provided input.
+
+Example JSON:
+{
+    "verdicts": [
+        {
+            "verdict": "yes",
+            "statement": "...",
+        }
+    ]
+}
+**
+
+Input:
+${input}
+
+Context:
+${context}
+
+JSON:
+`,
+  },
+});
+await metric.measure(testCase);
+```
+
+Each override receives the template's variables as its first argument, and the default renderer as its second, so you can extend a prompt instead of replacing it:
+
+```typescript
+const metric = new ContextualRelevancyMetric({
+  evaluationTemplate: {
+    generateVerdicts: (vars, renderDefault) =>
+      `${renderDefault(vars)}\n\nTreat a heading as its own statement.`,
+  },
+});
+```
+
+</Case>
+
+</Switch>
+
+## FAQs
+
+<FAQs
+  qas={[
+    {
+      question:
+        "Why is my contextual relevancy low even though the right answer was retrieved?",
+      answer: (
+        <>
+          It measures signal-to-noise, not just presence. It scores the fraction
+          of statements in <Term py="retrieval_context" ts="retrievalContext"/> relevant to the{" "}
+          <code>input</code>, so the right passage buried in irrelevant text
+          still scores low. The fix is usually less noisy context.
+        </>
+      ),
+    },
+    {
+      question: "What does a low contextual relevancy score tell me to change?",
+      answer: (
+        <>
+          Too much irrelevant material in your <Term py="retrieval_context" ts="retrievalContext"/>.
+          Lower top-K to return fewer marginal chunks and shrink chunk size for
+          more focused nodes — the most direct ways to raise the relevant ratio.
+        </>
+      ),
+    },
+    {
+      question:
+        "How is Contextual Relevancy different from Answer Relevancy?",
+      answer: (
+        <>
+          Opposite ends of the pipeline. Contextual relevancy grades your
+          retriever via <Term py="retrieval_context" ts="retrievalContext"/>, while{" "}
+          <a href="/docs/metrics-answer-relevancy">Answer Relevancy</a> grades
+          your generator via <Term py="actual_output" ts="actualOutput"/>. Clean context with an
+          off-topic answer points to the generator; noisy context to the
+          retriever.
+        </>
+      ),
+    },
+    {
+      question: "Do I need a ground-truth answer to run it?",
+      answer: (
+        <>
+          No. It's referenceless — judging <Term py="retrieval_context" ts="retrievalContext"/> purely
+          against the <code>input</code> with no <Term py="expected_output" ts="expectedOutput"/>,
+          unlike reference-based{" "}
+          <a href="/docs/metrics-contextual-recall">Contextual Recall</a>. That
+          makes it usable on live traffic without labeled data.
+        </>
+      ),
+    },
+  ]}
+/>
+

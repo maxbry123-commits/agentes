@@ -1,0 +1,212 @@
+---
+id: multimodal-metrics-image-reference
+title: Image Reference
+sidebar_label: Image Reference
+languages: [python, typescript]
+---
+<MetricTagsDisplayer singleTurn={true} custom={true} />
+
+The Image Reference metric evaluates how accurately images **are referred to or explained** by accompanying text. `deepeval`'s Image Reference metric is self-explaining within MLLM-Eval, meaning it provides a rationale for its assigned score.
+
+:::info
+Image Reference evaluates MLLM responses containing text accompanied by retrieved or generated images.
+:::
+
+## Required Arguments
+
+To use the `ImageReference`, you'll have to provide the following arguments when creating a [`LLMTestCase`](/docs/evaluation-test-cases#llm-test-case):
+
+- `input`
+- <Term py="actual_output" ts="actualOutput"/>
+
+:::note
+Remember that the <Term py="actual_output" ts="actualOutput"/> of an `LLMTestCase` is a list of strings and `Image` objects. If multiple images are provided in the actual output, The final score will be the average of each image's reference score.
+:::
+
+The `input` and <Term py="actual_output" ts="actualOutput"/> are required to create an `LLMTestCase` (and hence required by all metrics) even though they might not be used for metric calculation. Read the [How Is It Calculated](#how-is-it-calculated) section below to learn more.
+
+## Usage
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.test_case import LLMTestCase, MLLMImage
+from deepeval.metrics import ImageReferenceMetric
+from deepeval import evaluate
+
+metric = ImageReferenceMetric(
+    threshold=0.7,
+    include_reason=True,
+)
+m_test_case = LLMTestCase(
+    input=f"Provide step-by-step instructions on how to fold a paper airplane.",
+    # Replace with your MLLM app output
+    actual_output=f"""
+        1. Take the sheet of paper and fold it lengthwise:
+        {MLLMImage(url="./paper_plane_1", local=True)}
+        2. Unfold the paper. Fold the top left and right corners towards the center.
+        {MLLMImage(url="./paper_plane_2", local=True)}
+        ...
+    """
+)
+
+
+evaluate(test_cases=[m_test_case], metrics=[metric])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { LLMTestCase, MLLMImage } from "deepeval/test-case";
+import { ImageReferenceMetric } from "deepeval/metrics";
+import { evaluate } from "deepeval";
+
+const metric = new ImageReferenceMetric({
+  threshold: 0.7,
+});
+const mTestCase = new LLMTestCase({
+  input: "Provide step-by-step instructions on how to fold a paper airplane.",
+  // Replace with your MLLM app output
+  actualOutput: `
+        1. Take the sheet of paper and fold it lengthwise:
+        ${new MLLMImage({ url: "./paper_plane_1", local: true })}
+        2. Unfold the paper. Fold the top left and right corners towards the center.
+        ${new MLLMImage({ url: "./paper_plane_2", local: true })}
+        ...
+    `,
+});
+
+
+await evaluate([mTestCase], [metric]);
+```
+
+</Case>
+
+</Switch>
+
+<Switch>
+
+<Case id="python">
+
+There are **SIX** optional parameters when creating a `ImageReferenceMetric`:
+
+</Case>
+
+<Case id="typescript">
+
+There are **FIVE** optional parameters when creating a `ImageReferenceMetric`:
+
+</Case>
+
+</Switch>
+
+- [Optional] `threshold`: a number representing the minimum passing threshold. Can also be set to <Term py="None" ts="null"/> to run the metric in [score-only mode](/docs/metrics-introduction#metric-thresholds). Defaulted to `0.5`.
+- [Optional] <Term py="strict_mode" ts="strictMode"/>: a boolean which when set to <Term py="True" ts="true"/>, enforces a binary metric score: 1 for perfection, 0 otherwise. It also overrides the current threshold and sets it to 1. Defaulted to <Term py="False" ts="false"/>.
+- <Only id="python">
+    [Optional] `async_mode`: a boolean which when set to `True`, enables [concurrent execution within the `measure()` method.](/docs/metrics-introduction#measuring-metrics-in-async) Defaulted to `True`.
+  </Only>
+- [Optional] <Term py="verbose_mode" ts="verboseMode"/>: a boolean which when set to <Term py="True" ts="true"/>, prints the intermediate steps used to calculate said metric to the console, as outlined in the [How Is It Calculated](#how-is-it-calculated) section. Defaulted to <Term py="False" ts="false"/>.
+- [Optional] <Term py="max_context_size" ts="maxContextSize"/>: a number representing the maximum number of characters in each context, as outlined in the [How Is It Calculated](#how-is-it-calculated) section. Defaulted to <Term py="None" ts="null"/>.
+- [Optional] `flaky`: a boolean which when set to <Term py="True" ts="true"/>, [marks the metric as flaky](/docs/metrics-introduction#flaky-metrics). Defaulted to <Term py="False" ts="false"/>.
+
+### As a standalone
+
+You can also run the `ImageReferenceMetric` on a single test case as a standalone, one-off execution.
+
+<Switch>
+
+<Case id="python">
+
+```python
+...
+
+metric.measure(m_test_case)
+print(metric.score, metric.reason)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+// ...
+
+await metric.measure(mTestCase);
+console.log(metric.score, metric.reason);
+```
+
+</Case>
+
+</Switch>
+
+## How Is It Calculated?
+
+The `ImageReference` score is calculated as follows:
+
+1. **Individual Image Reference**: Each image's reference score is based on the text directly above and below the image, limited by a <Term py="max_context_size" ts="maxContextSize"/> in characters. If <Term py="max_context_size" ts="maxContextSize"/> is not supplied, all available text is used. The equation can be expressed as:
+
+<Equation formula="R_i = f(\text{Context}_{\text{above}}, \text{Context}_{\text{below}}, \text{Image}_i)" />
+
+2. **Final Score**: The overall `ImageReference` score is the average of all individual image reference scores for each image:
+
+<Equation formula="O = \frac{\sum_{i=1}^n R_i}{n}" />
+
+## FAQs
+
+<FAQs
+  qas={[
+    {
+      question:
+        "How is Image Reference different from Image Helpfulness and Image Coherence?",
+      answer: (
+        <>
+          Image Reference checks whether each image is <em>referred to or
+          explained</em> by nearby text, while{" "}
+          <a href="/docs/multimodal-metrics-image-helpfulness">
+            <code>ImageHelpfulness</code>
+          </a>{" "}
+          checks comprehension value and{" "}
+          <a href="/docs/multimodal-metrics-image-coherence">
+            <code>ImageCoherence</code>
+          </a>{" "}
+          checks narrative alignment.
+        </>
+      ),
+    },
+    {
+      question: "How does the metric handle an output with multiple images?",
+      answer: (
+        <>
+          Each <code>MLLMImage</code> is scored from the text immediately above
+          and below it, and the result is the <strong>average</strong> across
+          all images (<code>O = (ΣR_i) / n</code>). One well-referenced image
+          can't mask another the text never explains.
+        </>
+      ),
+    },
+    {
+      question: "What does max context size control?",
+      answer: (
+        <>
+          It caps how many characters above and below each image feed its
+          reference score. Defaults to <Term py="None" ts="null"/> (all surrounding text);
+          lower it when images sit close together.
+        </>
+      ),
+    },
+    {
+      question: "What does a low Image Reference score usually indicate?",
+      answer: (
+        <>
+          An image dropped in without neighboring text pointing to it —
+          e.g. a diagram between two steps that never mention it. Inspect{" "}
+          <code>metric.reason</code> to see which image lacked grounding text.
+        </>
+      ),
+    },
+  ]}
+/>

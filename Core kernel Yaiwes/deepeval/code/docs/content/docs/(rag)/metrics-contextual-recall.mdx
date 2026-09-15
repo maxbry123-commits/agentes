@@ -1,0 +1,490 @@
+---
+id: metrics-contextual-recall
+title: Contextual Recall
+sidebar_label: Contextual Recall
+languages: [python, typescript]
+---
+<MetricTagsDisplayer singleTurn={true} rag={true} referenceBased={true} />
+
+The contextual recall metric uses LLM-as-a-judge to measure the quality of your RAG pipeline's retriever by evaluating the extent of which the <Term py="retrieval_context" ts="retrievalContext"/> aligns with the <Term py="expected_output" ts="expectedOutput"/>. `deepeval`'s contextual recall metric is a self-explaining LLM-Eval, meaning it outputs a reason for its metric score.
+
+:::info
+Not sure if the `ContextualRecallMetric` is suitable for your use case? Run the follow command to find out:
+
+```bash
+deepeval recommend metrics
+```
+
+:::
+
+## Required Arguments
+
+To use the `ContextualRecallMetric`, you'll have to provide the following arguments when creating an [`LLMTestCase`](/docs/evaluation-test-cases#llm-test-case):
+
+- `input`
+- <Term py="actual_output" ts="actualOutput"/>
+- <Term py="expected_output" ts="expectedOutput"/>
+- <Term py="retrieval_context" ts="retrievalContext"/>
+
+Read the [How Is It Calculated](#how-is-it-calculated) section below to learn how test case parameters are used for metric calculation.
+
+## Usage
+
+The `ContextualRecallMetric()` can be used for [end-to-end](/docs/evaluation-end-to-end-llm-evals) evaluation of text-based and multimodal test cases:
+
+<Tabs items={["Text Based", "Multimodal"]}>
+<Tab value="Text Based">
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.metrics import ContextualRecallMetric
+from deepeval.test_case import LLMTestCase
+from deepeval import evaluate
+
+# Replace this with the actual output from your LLM application
+actual_output = "We offer a 30-day full refund at no extra cost."
+
+# Replace this with the expected output from your RAG generator
+expected_output = "You are eligible for a 30 day full refund at no extra cost."
+
+# Replace this with the actual retrieved context from your RAG pipeline
+retrieval_context = ["All customers are eligible for a 30 day full refund at no extra cost."]
+
+metric = ContextualRecallMetric(
+    threshold=0.7,
+    model="gpt-4",
+    include_reason=True
+)
+test_case = LLMTestCase(
+    input="What if these shoes don't fit?",
+    actual_output=actual_output,
+    expected_output=expected_output,
+    retrieval_context=retrieval_context
+)
+
+# To run metric as a standalone
+# metric.measure(test_case)
+# print(metric.score, metric.reason)
+
+evaluate(test_cases=[test_case], metrics=[metric])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { ContextualRecallMetric } from "deepeval/metrics";
+import { LLMTestCase } from "deepeval/test-case";
+import { evaluate } from "deepeval";
+
+// Replace this with the actual output from your LLM application
+const actualOutput = "We offer a 30-day full refund at no extra cost.";
+
+// Replace this with the expected output from your RAG generator
+const expectedOutput = "You are eligible for a 30 day full refund at no extra cost.";
+
+// Replace this with the actual retrieved context from your RAG pipeline
+const retrievalContext = ["All customers are eligible for a 30 day full refund at no extra cost."];
+
+const metric = new ContextualRecallMetric({
+  threshold: 0.7,
+  model: "gpt-4",
+  includeReason: true,
+});
+const testCase = new LLMTestCase({
+  input: "What if these shoes don't fit?",
+  actualOutput,
+  expectedOutput,
+  retrievalContext,
+});
+
+// To run metric as a standalone
+// await metric.measure(testCase);
+// console.log(metric.score, metric.reason);
+
+await evaluate([testCase], [metric]);
+```
+
+</Case>
+
+</Switch>
+
+</Tab>
+<Tab value="Multimodal">
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.test_case import LLMTestCase, MLLMImage
+from deepeval.metrics import ContextualRecallMetric
+from deepeval import evaluate
+
+# Replace this with the actual retrieved context from your RAG pipeline
+retrieval_context = [
+    f"The Eiffel Tower {MLLMImage(...)} is a wrought-iron lattice tower built in the late 19th century.",
+    f"...",
+]
+
+metric = ContextualRecallMetric(
+    threshold=0.7,
+    model="gpt-4.1",
+    include_reason=True
+)
+test_case = LLMTestCase(
+    input=f"Tell me about this landmark in France: {MLLMImage(...)}",
+    actual_output=f"This appears to be Eiffel Tower, which is a famous landmark in France"
+    expected_output=f"The Eiffel Tower is located in Paris, France. {MLLMImage(...)}",
+    retrieval_context=retrieval_context
+)
+
+# To run metric as a standalone
+# metric.measure(test_case)
+# print(metric.score, metric.reason)
+
+evaluate(test_cases=[test_case], metrics=[metric])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { LLMTestCase, MLLMImage } from "deepeval/test-case";
+import { ContextualRecallMetric } from "deepeval/metrics";
+import { evaluate } from "deepeval";
+
+// Replace this with the actual retrieved context from your RAG pipeline
+const retrievalContext = [
+  `The Eiffel Tower ${new MLLMImage({ url: "..." })} is a wrought-iron lattice tower built in the late 19th century.`,
+  `...`,
+];
+
+const metric = new ContextualRecallMetric({
+  threshold: 0.7,
+  model: "gpt-4.1",
+  includeReason: true,
+});
+const testCase = new LLMTestCase({
+  input: `Tell me about this landmark in France: ${new MLLMImage({ url: "..." })}`,
+  actualOutput: `This appears to be Eiffel Tower, which is a famous landmark in France`,
+  expectedOutput: `The Eiffel Tower is located in Paris, France. ${new MLLMImage({ url: "..." })}`,
+  retrievalContext,
+});
+
+// To run metric as a standalone
+// await metric.measure(testCase);
+// console.log(metric.score, metric.reason);
+
+await evaluate([testCase], [metric]);
+```
+
+</Case>
+
+</Switch>
+
+</Tab>
+</Tabs>
+
+<Switch>
+
+<Case id="python">
+
+There are **EIGHT** optional parameters when creating a `ContextualRecallMetric`:
+
+</Case>
+
+<Case id="typescript">
+
+There are **SEVEN** optional parameters when creating a `ContextualRecallMetric`:
+
+</Case>
+
+</Switch>
+
+- [Optional] `threshold`: a number representing the minimum passing threshold. Can also be set to <Term py="None" ts="null"/> to run the metric in [score-only mode](/docs/metrics-introduction#metric-thresholds). Defaulted to `0.5`.
+- [Optional] `model`: a string specifying which of OpenAI's GPT models to use, **OR** [any custom LLM model](/docs/metrics-introduction#using-a-custom-llm) of type `DeepEvalBaseLLM`. Defaulted to <DefaultLLMModel />.
+- [Optional] <Term py="include_reason" ts="includeReason"/>: a boolean which when set to <Term py="True" ts="true"/>, will include a reason for its evaluation score. Defaulted to <Term py="True" ts="true"/>.
+- [Optional] <Term py="strict_mode" ts="strictMode"/>: a boolean which when set to <Term py="True" ts="true"/>, enforces a binary metric score: 1 for perfection, 0 otherwise. It also overrides the current threshold and sets it to 1. Defaulted to <Term py="False" ts="false"/>.
+- <Only id="python">
+    [Optional] `async_mode`: a boolean which when set to `True`, enables [concurrent execution within the `measure()` method.](/docs/metrics-introduction#measuring-metrics-in-async) Defaulted to `True`.
+  </Only>
+- [Optional] <Term py="verbose_mode" ts="verboseMode"/>: a boolean which when set to <Term py="True" ts="true"/>, prints the intermediate steps used to calculate said metric to the console, as outlined in the [How Is It Calculated](#how-is-it-calculated) section. Defaulted to <Term py="False" ts="false"/>.
+- [Optional] <Term py="evaluation_template" ts="evaluationTemplate"/>: a class of type `ContextualRecallTemplate`, which allows you to [override the default prompts](#customize-your-template) used to compute the `ContextualRecallMetric` score. Defaulted to `deepeval`'s `ContextualRecallTemplate`.
+- [Optional] `flaky`: a boolean which when set to <Term py="True" ts="true"/>, [marks the metric as flaky](/docs/metrics-introduction#flaky-metrics). Defaulted to <Term py="False" ts="false"/>.
+
+### Within components
+
+You can also run the `ContextualRecallMetric` within nested components for [component-level](/docs/evaluation-component-level-llm-evals) evaluation.
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.dataset import EvaluationDataset, Golden
+from deepeval.tracing import observe, update_current_span
+...
+
+@observe(metrics=[metric])
+def inner_component():
+    # Set test case at runtime
+    test_case = LLMTestCase(input="...", actual_output="...")
+    update_current_span(test_case=test_case)
+    return
+
+@observe
+def llm_app(input: str):
+    # Component can be anything from an LLM call, retrieval, agent, tool use, etc.
+    inner_component()
+    return
+
+dataset = EvaluationDataset(goldens=[Golden(input="Hi!")])
+for golden in dataset.evals_iterator():
+    llm_app(golden.input)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { EvaluationDataset, Golden } from "deepeval/dataset";
+import { observe, updateCurrentSpan } from "deepeval/tracing";
+// ...
+
+const innerComponent = observe({
+  metrics: [metric],
+  fn: async () => {
+    // Set test case at runtime
+    const testCase = new LLMTestCase({ input: "...", actualOutput: "..." });
+    updateCurrentSpan({ testCase });
+  },
+});
+
+const llmApp = observe({
+  fn: async (input: string) => {
+    // Component can be anything from an LLM call, retrieval, agent, tool use, etc.
+    await innerComponent();
+  },
+});
+
+const dataset = new EvaluationDataset({ goldens: [new Golden({ input: "Hi!" })] });
+for await (const golden of dataset.evalsIterator()) {
+  await llmApp((golden as Golden).input);
+}
+```
+
+</Case>
+
+</Switch>
+
+### As a standalone
+
+You can also run the `ContextualRecallMetric` on a single test case as a standalone, one-off execution.
+
+<Switch>
+
+<Case id="python">
+
+```python
+...
+
+metric.measure(test_case)
+print(metric.score, metric.reason)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+// ...
+
+await metric.measure(testCase);
+console.log(metric.score, metric.reason);
+```
+
+</Case>
+
+</Switch>
+
+:::caution
+This is great for debugging or if you wish to build your own evaluation pipeline, but you will **NOT** get the benefits (testing reports, Confident AI platform) and all the optimizations (speed, caching, computation) the `evaluate()` function or `deepeval test run` offers.
+:::
+
+## How Is It Calculated?
+
+The `ContextualRecallMetric` score is calculated according to the following equation:
+
+<Equation formula="\text{Contextual Recall} = \frac{\text{Number of Attributable Statements}}{\text{Total Number of Statements}}" />
+
+The `ContextualRecallMetric` first uses an LLM to extract all **statements made in the <Term py="expected_output" ts="expectedOutput"/>**, before using the same LLM to classify whether each statement can be attributed to nodes in the <Term py="retrieval_context" ts="retrievalContext"/>.
+
+:::info
+We use the <Term py="expected_output" ts="expectedOutput"/> instead of the <Term py="actual_output" ts="actualOutput"/> because we're measuring the quality of the RAG retriever for a given ideal output.
+:::
+
+A higher contextual recall score represents a greater ability of the retrieval system to capture all relevant information from the total available relevant set within your knowledge base.
+
+## Customize Your Template
+
+Since `deepeval`'s `ContextualRecallMetric` is evaluated by LLM-as-a-judge, you can likely improve your metric accuracy by [overriding `deepeval`'s default prompt templates](/docs/metrics-introduction#customizing-metric-prompts). This is especially helpful if:
+
+- You're using a [custom evaluation LLM](/guides/guides-using-custom-llms), especially for smaller models that have weaker instruction following capabilities.
+- You want to customize the examples used in the default `ContextualRecallTemplate` to better align with your expectations.
+
+:::tip
+You can learn what the default `ContextualRecallTemplate` looks like [here on GitHub](https://github.com/confident-ai/deepeval/blob/main/deepeval/metrics/contextual_recall/template.py), and should read the [How Is It Calculated](#how-is-it-calculated) section above to understand how you can tailor it to your needs.
+:::
+
+Here's a quick example of how you can override the relevancy classification step of the `ContextualRecallMetric` algorithm:
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.metrics.contextual_recall import ContextualRecallTemplate
+from deepeval.metrics import ContextualRecallMetric
+
+# Define custom template
+class CustomTemplate(ContextualRecallTemplate):
+    @staticmethod
+    def generate_verdicts(expected_output: str, retrieval_context: List[str]):
+        return f"""For EACH sentence in the given expected output below, determine whether the sentence can be attributed to the nodes of retrieval contexts.
+
+Example JSON:
+{{
+    "verdicts": [
+        {{
+            "verdict": "yes",
+            "reason": "..."
+        }},
+    ]
+}}
+
+Expected Output:
+{expected_output}
+
+Retrieval Context:
+{retrieval_context}
+
+JSON:
+"""
+
+# Inject custom template to metric
+metric = ContextualRecallMetric(evaluation_template=CustomTemplate)
+metric.measure(...)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { ContextualRecallMetric } from "deepeval/metrics";
+
+// Inject custom template to metric
+const metric = new ContextualRecallMetric({
+  evaluationTemplate: {
+    generateVerdicts: ({ expectedOutput, contextToDisplay }) =>
+      `For EACH sentence in the given expected output below, determine whether the sentence can be attributed to the nodes of retrieval contexts.
+
+Example JSON:
+{
+    "verdicts": [
+        {
+            "verdict": "yes",
+            "reason": "..."
+        },
+    ]
+}
+
+Expected Output:
+${expectedOutput}
+
+Retrieval Context:
+${contextToDisplay}
+
+JSON:
+`,
+  },
+});
+await metric.measure(testCase);
+```
+
+Each override receives the template's variables as its first argument, and the default renderer as its second, so you can extend a prompt instead of replacing it:
+
+```typescript
+const metric = new ContextualRecallMetric({
+  evaluationTemplate: {
+    generateVerdicts: (vars, renderDefault) =>
+      `${renderDefault(vars)}\n\nTreat a paraphrase as attributable.`,
+  },
+});
+```
+
+</Case>
+
+</Switch>
+
+## FAQs
+
+<FAQs
+  qas={[
+    {
+      question: "Does contextual recall tell me if I'm missing relevant chunks?",
+      answer: (
+        <>
+          Yes — exactly what it measures. It breaks <Term py="expected_output" ts="expectedOutput"/>{" "}
+          into statements and checks how many trace back to a node in{" "}
+          <Term py="retrieval_context" ts="retrievalContext"/>. Any statement that can't signals
+          information your retriever failed to surface.
+        </>
+      ),
+    },
+    {
+      question:
+        "My contextual recall is low — which retriever knobs should I tune?",
+      answer: (
+        <>
+          Needed information never made it into the{" "}
+          <Term py="retrieval_context" ts="retrievalContext"/>. Usual levers: increase top-K, adjust
+          chunk size so facts aren't split, and swap in a stronger embedding
+          model so relevant passages rank within your cutoff.
+        </>
+      ),
+    },
+    {
+      question: "Why does it use expected output instead of actual output?",
+      answer: (
+        <>
+          Recall measures whether the retriever fetched everything needed for
+          the ideal answer, so it attributes <Term py="expected_output" ts="expectedOutput"/>{" "}
+          (ground truth) to the <Term py="retrieval_context" ts="retrievalContext"/>. Using{" "}
+          <Term py="actual_output" ts="actualOutput"/> would let a bad answer unfairly drag down a
+          good retriever.
+        </>
+      ),
+    },
+    {
+      question: "How is Contextual Recall different from Contextual Precision?",
+      answer: (
+        <>
+          Recall is completeness — did the retriever pull in all relevant
+          information?{" "}
+          <a href="/docs/metrics-contextual-precision">Contextual Precision</a>{" "}
+          is ordering — are relevant chunks ranked above irrelevant ones? Want
+          both high.
+        </>
+      ),
+    },
+  ]}
+/>
+

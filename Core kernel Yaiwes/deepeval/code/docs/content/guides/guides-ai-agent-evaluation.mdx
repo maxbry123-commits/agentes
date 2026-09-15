@@ -1,0 +1,619 @@
+---
+id: guides-ai-agent-evaluation
+title: AI Agent Evaluation
+sidebar_label: AI Agent Evaluation
+languages: [python]
+---
+
+import { ASSETS } from "@site/src/assets";
+
+**AI agent evaluation** is the process of measuring how well an agent reasons, selects and calls tools, and completes tasks—at the scope that matches each failure mode—so you can pinpoint exactly what's broken. But first, what is an AI agent?
+
+An AI agent is an LLM-powered system that autonomously reasons about tasks, creates plans, and executes actions using external tools to accomplish user goals. Unlike simple LLM applications that respond to single prompts, agents operate in loops—reasoning, acting, observing results, and adapting their approach until the task is complete.
+
+:::info
+AI agents consist of two layers: the **reasoning layer** (powered by LLMs) handles planning and decision-making, while the **action layer** (powered by tools like function calling) executes actions in the real world. These layers work together iteratively until the task is complete.
+:::
+
+Since a successful agent outcome depends on both reasoning and action, AI agent evaluation uses three complementary scopes:
+
+- **End-to-end (black-box output)** evaluates only the agent's observable input and final output, without inspecting internal execution.
+- **Trajectory-based** evaluates the complete, ordered execution trace—including reasoning, tool calls, observations, and intermediate steps—to judge how the agent reached its outcome.
+- **Component-level (step-wise)** evaluates a single span or decision in isolation, such as the LLM span that selected a tool and generated its arguments.
+
+This guide uses trajectory metrics for full-trace planning and execution quality, and component-level metrics for individual tool-calling decisions. See [trajectory-based evaluation](/docs/evaluation-trajectory-based-llm-evals) for the full scope model.
+
+Whatever stack you're on, you'll find real, copy-pasteable code examples for **10+ popular agent frameworks** below—LangChain, LangGraph, OpenAI Agents, Pydantic AI, CrewAI, Google ADK, and more.
+
+_For a comprehensive breakdown of each agentic metric, see the [AI Agent Evaluation Metrics guide](/guides/guides-ai-agent-evaluation-metrics). To understand where this all fits in the agent stack, read [what an eval harness is and why it matters](/blog/what-is-an-eval-harness)._
+
+## Common Pitfalls in AI Agent Pipelines
+
+An AI agent pipeline involves reasoning (planning) and action (tool calling) steps that iterate until task completion. The reasoning layer decides _what_ to do, while the action layer carries out _how_ to do it.
+
+<ImageDisplayer
+  src="https://images.ctfassets.net/otwaplf7zuwf/U833Rl3xfX0xq7UCDbpgA/b57e854f9f8444639b12773f9cee77f8/ai-agent.png"
+  alt="AI Agent"
+/>
+
+The **reasoning layer** contains your LLM and is responsible for understanding tasks, creating plans, and deciding which tools to use. The **action layer** contains your tools (function calls, APIs, etc.) and is responsible for executing those decisions. Together, they loop until the task is complete or fails.
+
+### Reasoning Layer
+
+The reasoning layer, powered by your LLM, is responsible for planning and decision-making. This typically involves:
+
+1. **Understanding the user's intent** by analyzing the input to determine the underlying task and goals.
+2. **Decomposing complex tasks** into smaller, manageable sub-tasks that can be executed sequentially or in parallel.
+3. **Creating a coherent strategy** that outlines the steps needed to accomplish the task.
+4. **Deciding which tools to use** and in what order based on the current context.
+
+The quality of your agent's reasoning is primarily affected by:
+
+- **LLM choice**: Different models have varying reasoning capabilities. Larger models like `gpt-4o` or `claude-3.5-sonnet` typically reason better than smaller models, but at higher cost and latency.
+- **Prompt template**: The system prompt and instructions given to the LLM heavily influence how it approaches tasks. A well-crafted prompt guides the LLM to reason step-by-step, consider edge cases, and produce coherent plans.
+- **Temperature**: Lower temperatures produce more deterministic, focused reasoning; higher temperatures may lead to more creative but potentially inconsistent plans.
+
+:::tip
+The prompt template is arguebly the most important factor when improving the reasoning layer.
+:::
+
+Here are the key questions AI agent evaluation aims to solve in the reasoning layer:
+
+- **Is your agent creating effective plans?** A good plan should be logical, complete, and efficient for accomplishing the task. Poor plans lead to wasted steps, missed requirements, or outright failure.
+- **Is the plan appropriately scoped?** Plans that are too granular waste resources, while plans that are too high-level leave critical details unaddressed.
+- **Does the plan account for dependencies?** Some sub-tasks must be completed before others can begin. A good plan respects these dependencies.
+- **Is your agent following its own plan?** An agent that creates a good plan but then deviates from it during execution undermines its own reasoning.
+
+### Action Layer
+
+The action layer is where your agent interacts with external systems through tools (function calls, APIs, databases, etc.). This is often where things go wrong. The action layer typically involves:
+
+1. **Selecting the right tool** from the available options based on the current sub-task.
+2. **Generating correct arguments** for the tool call based on the input and context.
+3. **Calling tools in the correct sequence** when there are dependencies between operations.
+4. **Processing tool outputs** and passing results back to the reasoning layer.
+
+The quality of your agent's tool calling is primarily affected by:
+
+- **Available tools**: The set of tools you expose to your agent determines what actions it can take. Too many tools can confuse the LLM; too few may leave gaps in capability.
+- **Tool descriptions**: Clear, unambiguous descriptions help the LLM understand when and how to use each tool. Vague descriptions lead to incorrect tool selection.
+- **Tool schemas**: Well-defined input/output schemas with proper types, required fields, and examples help the LLM generate correct arguments.
+- **Tool naming**: Intuitive, descriptive tool names (e.g., `SearchFlights` vs `api_call_1`) make it easier for the LLM to select the right tool.
+
+:::caution
+Tool use failures are among the most common issues in AI agents. Even state-of-the-art LLMs can struggle with selecting appropriate tools, generating valid arguments, and respecting tool call ordering.
+:::
+
+Here are the key questions AI agent evaluation aims to solve in the action layer:
+
+- **Is your agent selecting the correct tools?** With multiple tools available, the agent must choose the one best suited for each sub-task. Selecting a `Calculator` tool when a `WebSearch` is needed will lead to task failure.
+- **Is your agent calling the right number of tools?** Calling too few tools means the task won't be completed; calling unnecessary tools wastes resources and can introduce errors.
+- **Is your agent calling tools in the correct order?** Some tasks require specific sequencing—you can't book a flight before searching for available options.
+- **Is your agent supplying correct arguments?** Even with the right tool selected, incorrect arguments will cause failures. For example, calling a `WeatherAPI` with `{"city": "San Francisco"}` when the tool expects `{"location": "San Francisco, CA, USA"}` may return errors or incorrect data.
+- **Are argument values extracted correctly from context?** The agent must accurately parse user input and previous tool outputs to construct valid arguments.
+- **Are tool descriptions clear enough?** Ambiguous or incomplete tool descriptions can confuse the LLM about when and how to use each tool.
+
+### Overall Execution
+
+The overall execution encompasses the agentic loop where reasoning and action layers work together iteratively. This involves:
+
+1. **Orchestrating the reasoning-action loop** where the LLM reasons, calls tools, observes results, and reasons again.
+2. **Handling errors and edge cases** gracefully, adapting the approach when things don't go as expected.
+3. **Iterating until the task is complete** or determining that completion is not possible.
+
+Here are some questions AI agent evaluation can answer about overall execution:
+
+- **Did your agent complete the task?** This is the ultimate measure of success—did the agent accomplish what the user asked for?
+- **Is your agent executing efficiently?** The agent should complete tasks without unnecessary or redundant steps. An agent that calls the same tool multiple times with identical arguments, or takes circuitous paths to simple goals, wastes time and resources.
+- **Is your agent handling failures appropriately?** When a tool call fails or returns unexpected results, the agent should adapt rather than repeatedly trying the same failed approach.
+- **Is your agent staying on task?** The agent should remain focused on the user's original request rather than going off on tangents or performing unrequested actions.
+
+## Agent Evals In Development
+
+Evaluating agents in development is all about benchmarking with datasets and metrics. Your metrics can score black-box outputs, complete trajectories, or individual components, while datasets make sure you're comparing different iterations of your agents on the [same set of goldens.](/docs/evaluation-datasets)
+
+Development evals help answer questions like:
+
+- **Which agent version performs best?** Compare different implementations side-by-side on the same dataset.
+- **Will changing a prompt affect overall success?** Test prompt variations and measure their impact on task completion.
+- **Is my new tool helping or hurting?** Evaluate whether adding or modifying tools improves agent performance.
+- **Where is my agent failing?** Pinpoint whether issues stem from poor planning, wrong tool selection, or incorrect arguments.
+
+But first, you'll have to tell `deepeval` what components are within your AI agent in order for metrics to operate. You can do this via [LLM tracing.](/docs/evaluation-llm-tracing) LLM tracing is a great way to help `deepeval` map out the entire execution trace of AI agents, and involves adding an `@observe` decorator to functions within your AI agent, and adds no latency to your AI agent.
+
+<ImageDisplayer src={ASSETS.componentLevelEvals} alt="component level evals" />
+
+Let's look at the example below to see how we can setup tracing on an example flight booking agent that uses OpenAI as the LLM:
+
+```python
+import json
+
+from openai import OpenAI
+from deepeval.tracing import observe
+from deepeval.dataset import Golden, EvaluationDataset
+
+client = OpenAI()
+tools = [...]  # See tools schema below
+
+@observe(type="tool")
+def search_flights(origin, destination, date):
+    # Simulated flight search
+    return [{"id": "FL123", "price": 450}, {"id": "FL456", "price": 380}]
+
+@observe(type="tool")
+def book_flight(flight_id):
+    # Simulated booking
+    return {"confirmation": "CONF-789", "flight_id": flight_id}
+
+@observe(type="llm")
+def call_openai(messages):
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=messages,
+        tools=tools
+    )
+    return response
+
+@observe(type="agent")
+def travel_agent(user_input):
+    messages = [{"role": "user", "content": user_input}]
+
+    # LLM reasons about which tool to call
+    response = call_openai(messages)
+    tool_call = response.choices[0].message.tool_calls[0]
+    args = json.loads(tool_call.function.arguments)
+
+    # Execute the tool
+    flights = search_flights(args["origin"], args["destination"], args["date"])
+
+    # LLM decides to book the cheapest
+    cheapest = min(flights, key=lambda x: x["price"])
+    messages.append({"role": "assistant", "content": f"Found flights. Booking cheapest: {cheapest['id']}"})
+
+    booking = book_flight(cheapest["id"])
+
+    return f"Booked flight {cheapest['id']} for ${cheapest['price']}. Confirmation: {booking['confirmation']}"
+```
+
+<details>
+
+<summary>View OpenAI tools schema</summary>
+
+```python
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_flights",
+            "description": "Search for available flights between two cities",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "origin": {"type": "string"},
+                    "destination": {"type": "string"},
+                    "date": {"type": "string"}
+                },
+                "required": ["origin", "destination", "date"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "book_flight",
+            "description": "Book a specific flight by ID",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "flight_id": {"type": "string"}
+                },
+                "required": ["flight_id"]
+            }
+        }
+    }
+]
+```
+
+</details>
+
+In this example, we've decorated each component of our agent with `@observe()` to create a full execution trace:
+
+- `@observe(type="tool")` on `search_flights` and `book_flight` — marks these as tool spans, representing the action layer where the agent interacts with external systems.
+- `@observe(type="llm")` on `call_openai` — marks this as an LLM span, capturing the reasoning layer where OpenAI decides which tool to call.
+- `@observe(type="agent")` on `travel_agent` — marks this as the top-level agent span that orchestrates the entire flow.
+
+When `travel_agent()` is called, `deepeval` automatically captures the nested execution: the agent span contains the LLM span (reasoning) and tool spans (actions), forming a tree structure that metrics can analyze.
+
+:::tip
+The `type` parameter is optional but recommended—it helps `deepeval` understand your agent's architecture and enables better visualization on [Confident AI](https://confident-ai.com). If you don't specify a type, it defaults to a custom span.
+:::
+
+Another thing that is recommended is logging into Confident AI — an AI quality platform `deepeval` integrates with natively. If you've set your `CONFIDENT_API_KEY` or run `deepeval login`, test runs will appear automatically on the platform whenever you run an evaluation as you will quickly learn,
+
+<VideoDisplayer
+  src={ASSETS.gettingStartedAgentEvalsEndToEnd}
+  confidentUrl="https://www.confident-ai.com/docs/llm-evaluation/dashboards/testing-reports"
+  label="Agent evals test reports on Confident AI"
+  description="Run agent evals locally and get a test report on the platform."
+/>
+
+### Evaluating the Reasoning Layer
+
+`deepeval` offers two trajectory metrics to evaluate your agent's reasoning and planning capabilities:
+
+- [`PlanQualityMetric`](/docs/metrics-plan-quality): evaluates whether the **plan** your agent generates is logical, complete, and efficient for accomplishing the given task.
+
+- [`PlanAdherenceMetric`](/docs/metrics-plan-adherence): evaluates whether your agent **follows its own plan** during execution, or deviates from the intended strategy.
+
+A **combination of these two metrics is needed** because you want to make sure the agent creates good plans AND follows them consistently. Evaluating the reasoning layer ensures your agent has a solid foundation before action begins. First create these two metrics in `deepeval`:
+
+```python
+from deepeval.metrics import PlanQualityMetric, PlanAdherenceMetric
+
+plan_quality = PlanQualityMetric()
+plan_adherence = PlanAdherenceMetric()
+```
+
+:::info
+All metrics in `deepeval` allow you to set passing `threshold`s, turn on `strict_mode` and `include_reason`, and use literally **ANY** LLM for evaluation. You can learn about each metric in detail, including the algorithm used to calculate them, on their individual documentation pages:
+
+- [`PlanQualityMetric`](/docs/metrics-plan-quality)
+- [`PlanAdherenceMetric`](/docs/metrics-plan-adherence)
+
+:::
+
+Finally, loop your traced AI agent over a [dataset](/docs/evaluation-datasets) you've prepared while defining `PlanAdherenceMetric` and `PlanQualityMetric` as trajectory metrics. They require tracing because they inspect planning and execution across the complete ordered trace:
+
+```python
+from deepeval.dataset import EvaluationDataset, Golden
+
+# Create dataset
+dataset = EvaluationDataset(goldens=[
+    Golden(input="Book a flight from NYC to London for next Monday")
+])
+
+# Loop through dataset with metrics
+for golden in dataset.evals_iterator(metrics=[plan_quality, plan_adherence]):
+    travel_agent(golden.input)
+```
+
+The `travel_agent` in this example can be any `@observe` decorated agent. Whatever decorated function runs inside `evals_iterator`, `deepeval` will automatically collect the traces and run the specified metrics on them.
+
+**Congratulations 🎉!** You've just learnt how to evaluate your AI agent's reasoning capabilities, lets move on to the action layer.
+
+### Evaluating the Action Layer
+
+`deepeval` offers two LLM evaluation metrics to evaluate your agent's tool calling ability:
+
+- [`ToolCorrectnessMetric`](/docs/metrics-tool-correctness): evaluates whether your agent **selects the right tools** and calls them in the expected manner based on a list of expected tools.
+
+- [`ArgumentCorrectnessMetric`](/docs/metrics-argument-correctness): evaluates whether your agent **generates correct arguments** for each tool call based on the input and context.
+
+These are **component-level metrics** and should be placed strictly on the LLM component of your agent (e.g., `call_openai`), since this is where tool calling decisions are made. The LLM is responsible for selecting which tools to use and generating the arguments—so that's exactly where we want to evaluate.
+
+:::note
+Tool selection and argument generation are both critical—calling the right tool with wrong arguments is just as problematic as calling the wrong tool entirely.
+:::
+
+To begin, define your metrics:
+
+```python
+from deepeval.metrics import ToolCorrectnessMetric, ArgumentCorrectnessMetric
+
+tool_correctness = ToolCorrectnessMetric()
+argument_correctness = ArgumentCorrectnessMetric()
+```
+
+Then, add the metrics to the **LLM component** of your AI agent:
+
+```python
+# Add metrics=[...] to @observe
+@observe(type="llm", metrics=[tool_correctness, argument_correctness])
+def call_openai(messages):
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=messages,
+        tools=tools
+    )
+    return response
+```
+
+Lastly, run your traced AI agent with the added metrics:
+
+```python
+from deepeval.dataset import EvaluationDataset, Golden
+
+# Create dataset
+dataset = EvaluationDataset(goldens=[
+    Golden(input="What's the weather like in San Francisco and should I bring an umbrella?")
+])
+
+# Evaluate with action layer metrics
+for golden in dataset.evals_iterator():
+    weather_agent(golden.input)
+```
+
+The `tools_called` contains the actual tools your agent invoked (with their arguments), and `expected_tools` defines what tools should have been called. Visit their respective metric documentation pages to learn how they're calculated:
+
+- [`ToolCorrectnessMetric`](/docs/metrics-tool-correctness)
+- [`ArgumentCorrectnessMetric`](/docs/metrics-argument-correctness)
+
+Let's move on to evaluating the overall execution of your AI agent.
+
+:::caution
+When using `ToolCorrectnessMetric`, you can configure the strictness level using `evaluation_params`. By default, only tool names are compared, but you can also require input parameters and outputs to match.
+:::
+
+### Evaluating Overall Execution
+
+`deepeval` offers two trajectory metrics to evaluate your agent's overall execution:
+
+- [`TaskCompletionMetric`](/docs/metrics-task-completion): evaluates whether your agent **successfully accomplishes the intended task** by analyzing the complete ordered execution trace.
+
+- [`StepEfficiencyMetric`](/docs/metrics-step-efficiency): evaluates whether your agent **completes tasks efficiently** by checking the complete ordered trace for unnecessary or redundant steps.
+
+:::note
+An agent might complete a task but do so inefficiently, wasting tokens and time. Conversely, an efficient agent that doesn't complete the task provides no value. Both metrics are essential for comprehensive execution evaluation.
+:::
+
+These metrics analyze the complete ordered agent trace to assess execution quality:
+
+```python
+from deepeval.metrics import TaskCompletionMetric, StepEfficiencyMetric
+
+task_completion = TaskCompletionMetric()
+step_efficiency = StepEfficiencyMetric()
+```
+
+Lastly, same as above, run your AI agent with these metrics:
+
+```python
+from deepeval.dataset import EvaluationDataset, Golden
+
+# Create dataset
+dataset = EvaluationDataset(goldens=[
+    Golden(input="Book the cheapest flight from NYC to LA for tomorrow")
+])
+
+# Evaluate the complete trajectory with execution metrics
+for golden in dataset.evals_iterator(metrics=[task_completion, step_efficiency]):
+    travel_agent(golden.input)
+```
+
+The `TaskCompletionMetric` will assess whether the agent actually booked a flight as requested, while `StepEfficiencyMetric` will evaluate whether the agent took the most direct path to completion.
+
+:::info
+Both `TaskCompletionMetric` and `StepEfficiencyMetric` are trajectory metrics. They cannot be used standalone and **MUST** be used with tracing through `evals_iterator` or the `observe` decorator.
+:::
+
+## End-to-End vs Trajectory vs Component-Level Evals
+
+AI agent evaluation can operate at three different scopes:
+
+- **End-to-end evals** — Score the final black-box output from the agent's input and output, without requiring or inspecting its internal trace.
+
+- **Trajectory evals** — The reasoning metrics (`PlanQualityMetric`, `PlanAdherenceMetric`) and execution metrics (`TaskCompletionMetric`, `StepEfficiencyMetric`) are passed to `evals_iterator(metrics=[...])`. They require tracing and evaluate the complete ordered sequence of reasoning, tool calls, observations, and other steps.
+
+- **Component-level evals** — The action layer metrics (`ToolCorrectnessMetric`, `ArgumentCorrectnessMetric`) are attached directly to the `@observe` decorator on the LLM component via `@observe(metrics=[...])`. They evaluate the single span where the tool-calling decision is made.
+
+This distinction matters because different metrics need different scopes:
+
+| Metric Type                  | Scope                  | Why                                                                                         |
+| ---------------------------- | ---------------------- | ------------------------------------------------------------------------------------------- |
+| Final-output quality         | End-to-end (black-box) | Scores the result without depending on internal implementation details                      |
+| Reasoning & execution        | Trajectory             | Needs the complete ordered trace to assess planning, adherence, completion, and efficiency |
+| Tool selection and arguments | Component-level        | Scores the individual LLM span where the tool-calling decision happens                      |
+
+You can learn more about when to use each approach in the [end-to-end evals](/docs/evaluation-end-to-end-llm-evals), [trajectory-based evals](/docs/evaluation-trajectory-based-llm-evals), and [component-level evals](/docs/evaluation-component-level-llm-evals) documentation.
+
+### Using Custom Evals
+
+The agentic metrics covered above are useful but generic. What if you need to evaluate something specific to your use case—like whether your agent maintains a professional tone, follows company guidelines, or explains its reasoning clearly?
+
+This is where [`GEval`](/docs/metrics-llm-evals) comes in. G-Eval is a framework that uses LLM-as-a-judge to evaluate outputs based on **any custom criteria** you define in plain English. Depending on the test case and evaluation target, it can be applied to black-box outputs or specific components.
+
+## Evaluating AI agents In CI/CD
+
+Once your agent passes in development, you'll want to guard against regressions on every push or PR. `deepeval` plugs into `pytest` via `assert_test()` and the `deepeval test run` command, so your agent evals run like any other test suite—locally in development, and automatically in CI/CD.
+
+Instrument your agent based on your tech stack, then parametrize a `pytest` test over your goldens and call `assert_test()`. Since your agent is traced, `deepeval` builds each test case automatically—no manual extraction of inputs and outputs:
+
+<include cwd>snippets/evaluation/cicd-agent-framework-tabs.mdx</include>
+
+Then run your test suite with `deepeval test run`, which layers LLM-specific features on top of `pytest`:
+
+```bash
+deepeval test run test_llm_app.py
+```
+
+Drop this command into a `.yml` workflow and failing metrics will fail the build, so agent regressions get caught before they ship. For the complete CI/CD walkthrough—including a ready-to-use GitHub Actions config—see the [AI Agent Evaluation Quickstart](/docs/getting-started-agents).
+
+## Evaluating AI agents with coding assistants
+
+More and more agents are being built _by_ coding assistants like Claude Code. But here's the catch: a coding agent's harness — `CLAUDE.md`, hooks, skills, plugins, MCP servers — is built to get the right context into the model and ship good code. It has **no native concept of measuring an agent's output against ground truth.** A test is green or red, but there's no `assertEqual` for "was this response faithful?"
+
+<ClaudeCodeTerminal />
+
+That gap is exactly what an **eval harness** fills, and DeepEval _is_ the eval harness for AI agents. Because skills load on demand, dropping it into your coding agent is a one-liner:
+
+```bash
+npx skills add confident-ai/deepeval --skill "deepeval"
+```
+
+From there, Claude Code can drive the whole loop itself — generate datasets, run `deepeval test run`, and inspect locally captured traces — turning "add evals and fix the failures" into something it can actually act on.
+
+_For the full picture of where the eval harness sits in the agent stack and how it plugs into a coding agent's own harness, read [Eval harness: what it is, how to use it, and why you should care](/blog/what-is-an-eval-harness)._
+
+## Agent Evals In Production
+
+In production, the goal shifts from benchmarking to **continuous performance monitoring**. Unlike development where you run evals on datasets, production evals need to:
+
+- **Run asynchronously** — never block your agent's responses
+- **Avoid resource overhead** — no local metric initialization or LLM judge calls
+- **Track trends over time** — monitor quality degradation before users notice
+
+While you could spin up a separate evaluation server, [Confident AI](https://confident-ai.com) handles this seamlessly. Here's how to set it up:
+
+### Create a Metric Collection
+
+Log in to Confident AI and create a metric collection containing the metrics you want to run in production:
+
+<VideoDisplayer
+  src={ASSETS.metricsCreateCollection}
+  confidentUrl="/docs/llm-tracing/evaluations"
+  label="Run online evals on Confident AI"
+  description="Create a metric collection to score production traffic automatically."
+/>
+
+### Reference the Collection
+
+Replace your local `metrics=[...]` with `metric_collection`:
+
+```python
+# Reference your Confident AI metric collection by name
+@observe(metric_collection="my-agent-metrics")
+def call_openai(messages):
+    ...
+```
+
+That's it. Whenever your agent runs, `deepeval` automatically exports traces to Confident AI in an OpenTelemetry-like fashion—no additional code required. Confident AI then evaluates these traces asynchronously using your metric collection and stores the results for you to analyze.
+
+<VideoDisplayer
+  src={ASSETS.tracingTraces}
+  confidentUrl="/docs/llm-tracing/evaluations"
+  label="Track agent performance over time on Confident AI"
+  description="Monitor traces and metric scores as your agent runs in production."
+/>
+
+:::tip
+To get started, run `deepeval login` in your terminal and follow the [Confident AI LLM tracing setup guide](https://www.confident-ai.com/docs/llm-tracing/quickstart).
+:::
+
+## Conclusion
+
+In this guide, you learned that AI agents can fail at multiple layers:
+
+- **Reasoning layer** — poor planning, ignored dependencies, plan deviation
+- **Action layer** — wrong tool selection, incorrect arguments, bad call ordering
+- **Overall execution** — incomplete tasks, inefficient steps, going off-task
+
+To catch these issues, `deepeval` provides metrics you can apply at different scopes:
+
+| Scope                  | Use Case                           | Example Metrics                                                                           |
+| ---------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------- |
+| End-to-end (black-box) | Evaluate the final output only     | Output-focused metrics and custom `GEval` criteria                                        |
+| Trajectory             | Evaluate the complete ordered trace | `PlanQualityMetric`, `PlanAdherenceMetric`, `TaskCompletionMetric`, `StepEfficiencyMetric` |
+| Component-level        | Evaluate a single span or decision | `ToolCorrectnessMetric`, `ArgumentCorrectnessMetric`                                      |
+
+:::info[Development vs Production]
+
+- **Development** — Benchmark and compare agent iterations using datasets with locally defined metrics
+- **Production** — Export traces to Confident AI and evaluate asynchronously to monitor performance over time
+
+:::
+
+With proper evaluation in place, you can catch regressions before users do, pinpoint exactly where your agent is failing, make data-driven decisions about which version to ship, and continuously monitor quality in production.
+
+## FAQs
+
+<FAQs
+  qas={[
+    {
+      question: "What is AI agent evaluation?",
+      answer:
+        "AI agent evaluation measures how well an autonomous LLM system reasons, plans, selects and calls tools, and completes tasks. It can score the final black-box output end-to-end, the complete ordered execution trace as a trajectory, or a single component span such as an LLM tool-calling decision.",
+    },
+    {
+      question:
+        "How is AI agent evaluation different from regular LLM evaluation?",
+      answer:
+        "Standard LLM evaluation commonly scores one input-output pair. AI agent evaluation can additionally score the complete ordered trajectory of reasoning steps, tool calls, observations, and intermediate decisions, or isolate a single component—so you can pinpoint whether failures came from bad planning, wrong tool selection, incorrect arguments, or incomplete task execution.",
+    },
+    {
+      question: "Which AI agent metrics should I use in DeepEval?",
+      answer: (
+        <>
+          For most agents, start with <code>PlanQualityMetric</code> and{" "}
+          <code>PlanAdherenceMetric</code> for reasoning,{" "}
+          <code>ToolCorrectnessMetric</code> and{" "}
+          <code>ArgumentCorrectnessMetric</code> for the action layer, and{" "}
+          <code>TaskCompletionMetric</code> with{" "}
+          <code>StepEfficiencyMetric</code> for trajectory-level execution
+          quality. The planning and execution metrics require tracing and score
+          the complete ordered trace; the tool metrics remain component-level.
+        </>
+      ),
+    },
+    {
+      question:
+        "What is the difference between end-to-end, trajectory, and component-level agent evals?",
+      answer: (
+        <>
+          End-to-end evals score the final black-box output without inspecting
+          internal execution. Trajectory evals use tracing and score the
+          complete ordered trace—use them for plan quality, plan adherence, task
+          completion, and step efficiency. Component-level evals are attached
+          via <code>@observe(metrics=[...])</code> and score a specific span
+          such as the LLM tool-calling decision—use them for tool selection and
+          argument correctness.
+        </>
+      ),
+    },
+    {
+      question: "Do I need tracing to evaluate AI agents?",
+      answer: (
+        <>
+          Trajectory and component-level agent metrics require tracing because
+          they read either the complete ordered trace or a specific span. Wrap
+          your agent functions with <code>@observe</code> and the trace is built
+          automatically. Black-box end-to-end output evaluation does not need
+          internal tracing.
+        </>
+      ),
+    },
+    {
+      question: "Can I write custom AI agent evaluation metrics?",
+      answer: (
+        <>
+          Yes. Use <code>GEval</code> for subjective natural-language criteria
+          like reasoning clarity or professional tone, and{" "}
+          <code>DAGMetric</code> for deterministic decision-tree logic. Apply
+          custom metrics at the scope supported by their test case and
+          evaluation parameters.
+        </>
+      ),
+    },
+    {
+      question: "How do I run AI agent evaluation in production?",
+      answer: (
+        <>
+          Run development evaluations locally with DeepEval, then export traces
+          to <a href="https://confident-ai.com">Confident AI</a> for
+          asynchronous production evaluation. Attach metric collections to your
+          agent and LLM spans so the platform scores live traffic without adding
+          latency to your application.
+        </>
+      ),
+    },
+  ]}
+/>
+
+## Next Steps And Additional Resources
+
+While `deepeval` handles the metrics and evaluation logic, [Confident AI](https://confident-ai.com) is the platform that brings everything together. It solves the infrastructure overhead so you can focus on building better agents:
+
+- **LLM Observability** — Visualize traces, debug failures, and understand exactly where your agent went wrong
+- **Async Production Evals** — Run evaluations without blocking your agent or consuming production resources
+- **Dataset Management** — Curate and version golden datasets on the cloud
+- **Performance Tracking** — Monitor quality trends over time and catch degradation early
+- **Shareable Reports** — Generate testing reports you can share with your team
+
+Ready to get started? Here's what to do next:
+
+1. **Login to Confident AI** — Run `deepeval login` in your terminal to connect your account
+2. **Understand trajectory evaluation** — Learn how to score complete ordered agent traces in the [trajectory-based evaluation guide](/docs/evaluation-trajectory-based-llm-evals)
+3. **Explore the metrics** — Learn how each metric works, including calculation formulas and configuration options, in the [AI Agent Evaluation Metrics guide](/guides/guides-ai-agent-evaluation-metrics)
+4. **Read the full guide** — For a deeper dive into single-turn vs multi-turn agents, common misconceptions, and best practices, check out [AI Agent Evaluation: The Definitive Guide](https://www.confident-ai.com/blog/definitive-ai-agent-evaluation-guide)
+5. **Join the community** — Have questions? Join the [DeepEval Discord](https://discord.com/invite/a3K9c8GRGt)—we're happy to help!
+
+**Congratulations 🎉!** You now have the knowledge to build robust evaluation pipelines for your AI agents.

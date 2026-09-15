@@ -1,0 +1,360 @@
+---
+id: metrics-tool-correctness
+title: Tool Correctness
+sidebar_label: Tool Correctness
+languages: [python, typescript]
+---
+<MetricTagsDisplayer
+  singleTurn={true}
+  usesLLMs={true}
+  agent={true}
+  referenceless={true}
+/>
+
+The tool correctness metric is an agentic LLM metric that assesses your LLM agent's function/tool calling ability. It is calculated by comparing whether every tool that is expected to be used was indeed called and if the selection of the tools made by the LLM agent were the most optimal.
+
+:::note
+The `ToolCorrectnessMetric` allows you to define the **strictness** of correctness. By default, it considers matching tool names to be correct, but you can also require input parameters and output to match.
+:::
+
+## Required Arguments
+
+To use the `ToolCorrectnessMetric`, you'll have to provide the following arguments when creating an [`LLMTestCase`](/docs/evaluation-test-cases#llm-test-case):
+
+- `input`
+- <Term py="actual_output" ts="actualOutput"/>
+- <Term py="tools_called" ts="toolsCalled"/>
+- <Term py="expected_tools" ts="expectedTools"/>
+
+Read the [How Is It Calculated](#how-is-it-calculated) section below to learn how test case parameters are used for metric calculation.
+
+## Usage
+
+The `ToolCorrectnessMetric()` can be used for [end-to-end](/docs/evaluation-end-to-end-llm-evals) evaluation of text-based and multimodal test cases:
+
+<Tabs items={["Text Based", "Multimodal"]}>
+<Tab value="Text Based">
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.test_case import LLMTestCase, ToolCall
+from deepeval.metrics import ToolCorrectnessMetric
+from deepeval import evaluate
+
+test_case = LLMTestCase(
+    input="What if these shoes don't fit?",
+    actual_output="We offer a 30-day full refund at no extra cost.",
+    # Replace this with the tools that was actually used by your LLM agent
+    tools_called=[ToolCall(name="WebSearch"), ToolCall(name="ToolQuery")],
+    expected_tools=[ToolCall(name="WebSearch")],
+)
+metric = ToolCorrectnessMetric()
+
+# To run metric as a standalone
+# metric.measure(test_case)
+# print(metric.score, metric.reason)
+
+evaluate(test_cases=[test_case], metrics=[metric])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { LLMTestCase, ToolCall } from "deepeval/test-case";
+import { ToolCorrectnessMetric } from "deepeval/metrics";
+import { evaluate } from "deepeval";
+
+const testCase = new LLMTestCase({
+  input: "What if these shoes don't fit?",
+  actualOutput: "We offer a 30-day full refund at no extra cost.",
+  // Replace this with the tools that was actually used by your LLM agent
+  toolsCalled: [new ToolCall({ name: "WebSearch" }), new ToolCall({ name: "ToolQuery" })],
+  expectedTools: [new ToolCall({ name: "WebSearch" })],
+});
+const metric = new ToolCorrectnessMetric();
+
+// To run metric as a standalone
+// await metric.measure(testCase);
+// console.log(metric.score, metric.reason);
+
+await evaluate([testCase], [metric]);
+```
+
+</Case>
+
+</Switch>
+
+</Tab>
+<Tab value="Multimodal">
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.test_case import LLMTestCase, MLLMImage
+from deepeval.metrics import ToolCorrectnessMetric
+from deepeval import evaluate
+
+metric = ToolCorrectnessMetric(
+    threshold=0.7,
+    model="gpt-4.1",
+    include_reason=True
+)
+test_case = LLMTestCase(
+    input=f"What's in this image? {MLLMImage(...)}",
+    actual_output=f"The image shows a pair of running shoes."
+    tools_called=[ToolCall(name="ImageAnalysis"), ToolCall(name="ToolQuery")],
+    expected_tools=[ToolCall(name="ImageAnalysis")],
+)
+
+# To run metric as a standalone
+# metric.measure(test_case)
+# print(metric.score, metric.reason)
+
+evaluate(test_cases=[test_case], metrics=[metric])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { LLMTestCase, ToolCall, MLLMImage } from "deepeval/test-case";
+import { ToolCorrectnessMetric } from "deepeval/metrics";
+import { evaluate } from "deepeval";
+
+const metric = new ToolCorrectnessMetric({
+  threshold: 0.7,
+  model: "gpt-4.1",
+  includeReason: true,
+});
+const testCase = new LLMTestCase({
+  input: `What's in this image? ${new MLLMImage({ url: "https://shoe-images.com/shoes.png" })}`,
+  actualOutput: "The image shows a pair of running shoes.",
+  toolsCalled: [new ToolCall({ name: "ImageAnalysis" }), new ToolCall({ name: "ToolQuery" })],
+  expectedTools: [new ToolCall({ name: "ImageAnalysis" })],
+});
+
+// To run metric as a standalone
+// await metric.measure(testCase);
+// console.log(metric.score, metric.reason);
+
+await evaluate([testCase], [metric]);
+```
+
+</Case>
+
+</Switch>
+
+</Tab>
+</Tabs>
+
+There are **NINE** optional parameters when creating a `ToolCorrectnessMetric`:
+
+- [Optional] <Term py="available_tools" ts="availableTools"/>: a list of `ToolCall`s that give context on all the tools that were available to your LLM agent. This list is used to evaluate your agent's tool selection capability.
+- [Optional] `threshold`: a number representing the minimum passing threshold. Can also be set to <Term py="None" ts="null"/> to run the metric in [score-only mode](/docs/metrics-introduction#metric-thresholds). Defaulted to `0.5`.
+- [Optional] <Term py="evaluation_params" ts="evaluationParams"/>: A list of `ToolCallParams` indicating the strictness of the correctness criteria, available options are `ToolCallParams.INPUT_PARAMETERS` and `ToolCallParams.OUTPUT`. For example, supplying a list containing `ToolCallParams.INPUT_PARAMETERS` but excluding `ToolCallParams.OUTPUT`, will deem a tool correct if the tool name and input parameters match, even if the output does not. Defaults to a an empty list.
+- [Optional] <Term py="include_reason" ts="includeReason"/>: a boolean which when set to <Term py="True" ts="true"/>, will include a reason for its evaluation score. Defaulted to <Term py="True" ts="true"/>.
+- [Optional] <Term py="strict_mode" ts="strictMode"/>: a boolean which when set to <Term py="True" ts="true"/>, enforces a binary metric score: 1 for perfection, 0 otherwise. It also overrides the current threshold and sets it to 1. Defaulted to <Term py="False" ts="false"/>.
+- [Optional] <Term py="verbose_mode" ts="verboseMode"/>: a boolean which when set to <Term py="True" ts="true"/>, prints the intermediate steps used to calculate said metric to the console, as outlined in the [How Is It Calculated](#how-is-it-calculated) section. Defaulted to <Term py="False" ts="false"/>.
+- [Optional] <Term py="should_consider_ordering" ts="shouldConsiderOrdering"/>: a boolean which when set to <Term py="True" ts="true"/>, will consider the ordering in which the tools were called in. For example, if `expected_tools=[ToolCall(name="WebSearch"), ToolCall(name="ToolQuery"), ToolCall(name="WebSearch")]` and `tools_called=[ToolCall(name="WebSearch"), ToolCall(name="WebSearch"),  ToolCall(name="ToolQuery")]`, the metric will consider the tool calling to be correct. Applies to the tool name matching that is always performed, and defaulted to <Term py="False" ts="false"/>.
+- [Optional] <Term py="should_exact_match" ts="shouldExactMatch"/>: a boolean which when set to <Term py="True" ts="true"/>, will required the <Term py="tools_called" ts="toolsCalled"/> and <Term py="expected_tools" ts="expectedTools"/> to be exactly the same. Applies to the tool name and type matching that is always performed, and additionally checks `ToolCallParams.INPUT_PARAMETERS` and `ToolCallParams.OUTPUT` when they are included in <Term py="evaluation_params" ts="evaluationParams"/>. Defaulted to <Term py="False" ts="false"/>.
+- [Optional] `flaky`: a boolean which when set to <Term py="True" ts="true"/>, [marks the metric as flaky](/docs/metrics-introduction#flaky-metrics). Defaulted to <Term py="False" ts="false"/>.
+
+:::info
+Since <Term py="should_exact_match" ts="shouldExactMatch"/> is a stricter criteria than <Term py="should_consider_ordering" ts="shouldConsiderOrdering"/>, setting <Term py="should_consider_ordering" ts="shouldConsiderOrdering"/> will have no effect when <Term py="should_exact_match" ts="shouldExactMatch"/> is set to <Term py="True" ts="true"/>.
+:::
+
+### Within components
+
+You can also run the `ToolCorrectnessMetric` within nested components for [component-level](/docs/evaluation-component-level-llm-evals) evaluation.
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.dataset import EvaluationDataset, Golden
+from deepeval.tracing import observe, update_current_span
+...
+
+@observe(metrics=[metric])
+def inner_component():
+    # Set test case at runtime
+    test_case = LLMTestCase(input="...", actual_output="...")
+    update_current_span(test_case=test_case)
+    return
+
+@observe
+def llm_app(input: str):
+    # Component can be anything from an LLM call, retrieval, agent, tool use, etc.
+    inner_component()
+    return
+
+dataset = EvaluationDataset(goldens=[Golden(input="Hi!")])
+for golden in dataset.evals_iterator():
+    llm_app(golden.input)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { EvaluationDataset, Golden } from "deepeval/dataset";
+import { observe, updateCurrentSpan } from "deepeval/tracing";
+// ...
+
+const innerComponent = observe({
+  metrics: [metric],
+  fn: async () => {
+    // Set test case at runtime
+    const testCase = new LLMTestCase({ input: "...", actualOutput: "..." });
+    updateCurrentSpan({ testCase });
+  },
+});
+
+const llmApp = observe({
+  fn: async (input: string) => {
+    // Component can be anything from an LLM call, retrieval, agent, tool use, etc.
+    await innerComponent();
+  },
+});
+
+const dataset = new EvaluationDataset({ goldens: [new Golden({ input: "Hi!" })] });
+for await (const golden of dataset.evalsIterator()) {
+  await llmApp((golden as Golden).input);
+}
+```
+
+</Case>
+
+</Switch>
+
+### As a standalone
+
+You can also run the `ToolCorrectnessMetric` on a single test case as a standalone, one-off execution.
+
+<Switch>
+
+<Case id="python">
+
+```python
+...
+
+metric.measure(test_case)
+print(metric.score, metric.reason)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+// ...
+
+await metric.measure(testCase);
+console.log(metric.score, metric.reason);
+```
+
+</Case>
+
+</Switch>
+
+:::caution
+This is great for debugging or if you wish to build your own evaluation pipeline, but you will **NOT** get the benefits (testing reports, Confident AI platform) and all the optimizations (speed, caching, computation) the `evaluate()` function or `deepeval test run` offers.
+:::
+
+## How Is It Calculated?
+
+:::note
+The `ToolCorrectnessMetric`, unlike all other `deepeval` metrics, uses both deterministic and non-deterministic evaluation to give a final score. It uses <Term py="tools_called" ts="toolsCalled"/>, <Term py="expected_tools" ts="expectedTools"/> and <Term py="available_tools" ts="availableTools"/> to find the final score.
+:::
+
+The **tool correctness metric** score is calculated using the following steps:
+
+1. Find the deterministic score for <Term py="tools_called" ts="toolsCalled"/> using the <Term py="expected_tools" ts="expectedTools"/> using the following equation:
+
+<Equation
+  formula="\text{Tool Correctness} = \frac{\text{Number of Correctly Used Tools (or Correct Input Parameters/Outputs)}}{\text{Total Number of Tools Called}}
+"
+/>
+
+- This metric assesses the accuracy of your agent's tool usage by comparing the <Term py="tools_called" ts="toolsCalled"/> by your LLM agent to the list of <Term py="expected_tools" ts="expectedTools"/>. A score of 1 indicates that every tool utilized by your LLM agent were called correctly according to the list of <Term py="expected_tools" ts="expectedTools"/>, <Term py="should_consider_ordering" ts="shouldConsiderOrdering"/>, and <Term py="should_exact_match" ts="shouldExactMatch"/>, while a score of 0 signifies that none of the <Term py="tools_called" ts="toolsCalled"/> were called correctly.
+
+:::info
+If <Term py="should_exact_match" ts="shouldExactMatch"/> is not specified and `ToolCallParams.INPUT_PARAMETERS` is included in <Term py="evaluation_params" ts="evaluationParams"/>, correctness may be a percentage score based on the proportion of correct input parameters (assuming the name and output are correct, if applicable).
+:::
+
+2. If the <Term py="available_tools" ts="availableTools"/> are provided, the `ToolCorrectnessMetric` also uses an LLM to find whether the <Term py="tools_called" ts="toolsCalled"/> were the most optimal for the given task using the <Term py="available_tools" ts="availableTools"/> as reference. The final score is the **minimum of both scores**. If <Term py="available_tools" ts="availableTools"/> is not provided, the LLM-based evaluation does not take place.
+
+## FAQs
+
+<FAQs
+  qas={[
+    {
+      question: "Does Tool Correctness use an LLM?",
+      answer: (
+        <>
+          Mostly not. The core score is deterministic — <Term py="tools_called" ts="toolsCalled"/>{" "}
+          vs <Term py="expected_tools" ts="expectedTools"/>, counting matches. An LLM is only used
+          if you pass <Term py="available_tools" ts="availableTools"/> to judge optimality, and the
+          final score is the <strong>minimum</strong> of both.
+        </>
+      ),
+    },
+    {
+      question: "How do I make matching stricter than just tool names?",
+      answer: (
+        <>
+          Add <code>ToolCallParams.INPUT_PARAMETERS</code> or{" "}
+          <code>ToolCallParams.OUTPUT</code> to <Term py="evaluation_params" ts="evaluationParams"/> to
+          also match inputs/outputs. Use{" "}
+          <Term py="should_consider_ordering=True" ts="shouldConsiderOrdering: true"/> for call order, or{" "}
+          <Term py="should_exact_match=True" ts="shouldExactMatch: true"/> for identical lists (overrides
+          ordering).
+        </>
+      ),
+    },
+    {
+      question: "Tool Correctness vs Argument Correctness — what's the difference?",
+      answer: (
+        <>
+          Tool Correctness checks the <strong>right tools</strong> were called,
+          deterministically against <Term py="expected_tools" ts="expectedTools"/>.{" "}
+          <a href="/docs/metrics-argument-correctness">Argument Correctness</a>{" "}
+          checks the <strong>arguments</strong> passed to those tools, via an LLM
+          with no reference.
+        </>
+      ),
+    },
+    {
+      question: "Can I evaluate whether the agent picked the best tool, not just a valid one?",
+      answer: (
+        <>
+          Yes — pass <Term py="available_tools" ts="availableTools"/> and an LLM judges whether the{" "}
+          <Term py="tools_called" ts="toolsCalled"/> were optimal. Without it, the metric only
+          checks calls against <Term py="expected_tools" ts="expectedTools"/> deterministically.
+        </>
+      ),
+    },
+    {
+      question: "Can I use Tool Correctness with LangChain, OpenAI, or another framework?",
+      answer: (
+        <>
+          Yes. <code>deepeval</code> auto-traces agents built with{" "}
+          <a href="/integrations/frameworks/langchain">LangChain</a>,{" "}
+          <a href="/integrations/frameworks/openai">OpenAI</a>, LlamaIndex,
+          CrewAI, and more — see all{" "}
+          <a href="/integrations">framework integrations</a>.
+        </>
+      ),
+    },
+  ]}
+/>

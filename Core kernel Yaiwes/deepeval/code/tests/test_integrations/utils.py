@@ -1,0 +1,605 @@
+import asyncio
+import json
+import re
+import os
+
+from typing import Dict, Any
+from functools import wraps
+import inspect
+from deepeval.utils import get_or_create_event_loop
+
+
+def is_generate_mode() -> bool:
+    """
+    Check if schema generation mode is enabled.
+
+    Can be enabled via environment variable: GENERATE_SCHEMAS=true pytest ...
+
+    Returns:
+        True if schemas should be generated, False if they should be asserted.
+    """
+    return os.environ.get("GENERATE_SCHEMAS", "").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+
+
+def _compute_tools_used(obj: Dict[str, Any]) -> bool:
+    """
+    Compute whether tools were used in a trace object.
+
+    Returns True if any of these conditions hold:
+    - non-empty root.toolSpans
+    - non-empty root.toolsCalled
+    - any AI message with non-empty tool_calls
+    - any baseSpan[*].toolsCalled non-empty
+    """
+    # Check root.toolsCalled
+    if obj.get("toolsCalled") and len(obj["toolsCalled"]) > 0:
+        return True
+
+    # Check AI messages with tool_calls in various locations
+    def check_messages(messages):
+        if not messages:
+            return False
+        for msg in messages:
+            if isinstance(msg, dict) and msg.get("type") == "ai":
+                # LangChain drift: tool_calls may appear either at top-level or under additional_kwargs
+                tool_calls = msg.get("tool_calls", [])
+                if (
+                    tool_calls
+                    and isinstance(tool_calls, list)
+                    and len(tool_calls) > 0
+                ):
+                    return True
+                additional = msg.get("additional_kwargs", {})
+                if isinstance(additional, dict):
+                    tc2 = additional.get("tool_calls", [])
+                    if tc2 and isinstance(tc2, list) and len(tc2) > 0:
+                        return True
+        return False
+
+    # Check root input/output messages
+    if obj.get("input") and isinstance(obj["input"], dict):
+        if check_messages(obj["input"].get("messages")):
+            return True
+    if obj.get("output") and isinstance(obj["output"], dict):
+        if check_messages(obj["output"].get("messages")):
+            return True
+
+    # Check baseSpans
+    for span in obj.get("baseSpans", []):
+        if isinstance(span, dict):
+            if span.get("toolsCalled") and len(span["toolsCalled"]) > 0:
+                return True
+            # Also check messages inside baseSpans
+            if span.get("input") and isinstance(span["input"], dict):
+                if check_messages(span["input"].get("messages")):
+                    return True
+            if span.get("output") and isinstance(span["output"], dict):
+                if check_messages(span["output"].get("messages")):
+                    return True
+
+    return False
+
+
+def assert_json_object_structure(
+    expected_json_obj: Dict[str, Any], actual_json_obj: Dict[str, Any]
+) -> bool:
+    """
+    Validate that actual_json_obj matches the structure and data types of expected_json_obj.
+
+    Rules:
+    - Dicts: keys must match (with allowed drift for LangChain v1.x fields).
+    - Lists: compared pairwise (same length required), EXCEPT for unordered paths.
+    - Primitives: types must match exactly. Int/float are interchangeable.
+    - Preserves no-tools semantics: if expected implies no tools, actual must have no tools.
+
+    Unordered list paths (order-insensitive comparison):
+    - root.baseSpans, root.llmSpans, root.toolSpans
+    - Any path ending with .toolsCalled or .tool_calls
+    """
+    # Paths where list ordering is not guaranteed (async/parallel execution)
+    UNORDERED_SPAN_PATHS = {"root.baseSpans", "root.llmSpans", "root.toolSpans"}
+
+    def _is_unordered_path(path: str) -> bool:
+        """Check if the path should use unordered comparison."""
+        if path in UNORDERED_SPAN_PATHS:
+            return True
+        # toolsCalled can appear at root or nested in baseSpans
+        if path.endswith(".toolsCalled"):
+            return True
+        # tool_calls appear inside AI messages at various nesting levels
+        if path.endswith(".tool_calls"):
+            return True
+        return False
+
+    def _normalize_tool_call(call_dict: Dict[str, Any]) -> tuple:
+        """
+        Normalize a tool call for matching purposes.
+        Returns (tool_name, frozenset(arg_keys)).
+        """
+        if not isinstance(call_dict, dict):
+            return (None, frozenset())
+
+        # toolsCalled format: {"name": ..., "inputParameters": {...}}
+        # tool_calls format: {"name": ..., "args": {...}}
+        name = call_dict.get("name", "")
+        args = call_dict.get("inputParameters") or call_dict.get("args") or {}
+        if isinstance(args, dict):
+            return (name, frozenset(args.keys()))
+        return (name, frozenset())
+
+    # def _normalize_tool_call(call_dict: Dict[str, Any]) -> tuple:
+    #     if not isinstance(call_dict, dict):
+    #         return (None, ())
+    #     name = call_dict.get("name", "")
+    #     args = call_dict.get("inputParameters") or call_dict.get("args") or {}
+    #     if not isinstance(args, dict):
+    #         return (name, ())
+    #     items = []
+    #     for k, v in args.items():
+    #         if isinstance(v, (str, int, float, bool)) or v is None:
+    #             items.append((k, v))
+    #         else:
+    #             items.append((k, "__nonprimitive__"))
+    #     return (name, tuple(sorted(items)))
+
+    def _normalize_span(span_dict: Dict[str, Any]) -> tuple:
+        if not isinstance(span_dict, dict):
+            return (None, None)
+        span_type = span_dict.get("type", span_dict.get("spanType", ""))
+        span_name = span_dict.get("name", "")
+        return (span_type, span_name)
+
+    def _match_unordered_lists(
+        expected_list: list,
+        actual_list: list,
+        path: str,
+        compare_fn,
+    ) -> bool:
+        """
+        Match elements from expected_list to actual_list without requiring order.
+        Each expected element must find exactly one unmatched actual element
+        with the same normalized key.
+        """
+        is_tool_call_list = path.endswith(".toolsCalled") or path.endswith(
+            ".tool_calls"
+        )
+
+        # Normalize elements
+        if is_tool_call_list:
+            expected_keys = [_normalize_tool_call(e) for e in expected_list]
+            actual_keys = [_normalize_tool_call(a) for a in actual_list]
+        else:
+            expected_keys = [_normalize_span(e) for e in expected_list]
+            actual_keys = [_normalize_span(a) for a in actual_list]
+
+        # Track which actual elements have been matched
+        matched_actual_indices = set()
+
+        for exp_idx, exp_key in enumerate(expected_keys):
+            found_match = False
+            for act_idx, act_key in enumerate(actual_keys):
+                if act_idx in matched_actual_indices:
+                    continue
+                if exp_key == act_key:
+                    # Found a match - now do deep structural comparison
+                    if compare_fn(
+                        actual_list[act_idx],
+                        expected_list[exp_idx],
+                        f"{path}[expected={exp_idx} matched actual={act_idx}]",
+                    ):
+                        matched_actual_indices.add(act_idx)
+                        found_match = True
+                        break
+                    # If structure doesn't match, try next candidate with same key
+                    # (there may be multiple elements with the same normalized key)
+
+            if not found_match:
+                # Try to find ANY element with matching key for error reporting
+                matching_keys = [
+                    i
+                    for i, k in enumerate(actual_keys)
+                    if k == exp_key and i not in matched_actual_indices
+                ]
+                if not matching_keys:
+                    print(
+                        f"❌ No matching element at '{path}' for expected[{exp_idx}]:"
+                    )
+                    print(f"   Expected key: {exp_key}")
+                    available = [
+                        actual_keys[i]
+                        for i in range(len(actual_keys))
+                        if i not in matched_actual_indices
+                    ]
+                    print(f"   Available keys: {available}")
+                return False
+
+        return True
+
+    # Validate tools-used invariant at the top level before detailed comparison.
+    # This ensures we never mask a regression where tools appear unexpectedly.
+    expected_tools_used = (
+        _compute_tools_used(expected_json_obj)
+        if isinstance(expected_json_obj, dict)
+        else _compute_tools_used(expected_json_obj[0])
+    )
+    actual_tools_used = (
+        _compute_tools_used(actual_json_obj)
+        if isinstance(actual_json_obj, dict)
+        else _compute_tools_used(actual_json_obj[0])
+    )
+
+    if expected_tools_used != actual_tools_used:
+        print("❌ Tools-used invariant violation:")
+        print(f"   Expected tools_used: {expected_tools_used}")
+        print(f"   Actual tools_used: {actual_tools_used}")
+        if not expected_tools_used and actual_tools_used:
+            print("   Regression: tools were called when none were expected")
+        else:
+            print(
+                "   Regression: no tools were called when tools were expected"
+            )
+        return False
+
+    def _require_dict_keys(d: Any, required_keys: set, path: str) -> bool:
+        if not isinstance(d, dict):
+            print(
+                f"❌ Type mismatch at '{path}': expected dict, got {type(d).__name__}"
+            )
+            print(f"   Value: {d}")
+            return False
+        missing = required_keys - set(d.keys())
+        if missing:
+            print(f"❌ Missing required keys at '{path}': {missing}")
+            return False
+        return True
+
+    def _require_str_field(d: Dict[str, Any], key: str, path: str) -> bool:
+        v = d.get(key)
+        if not isinstance(v, str):
+            print(
+                f"❌ Type mismatch at '{path}.{key}': expected str, got {type(v).__name__}"
+            )
+            print(f"   Value: {v}")
+            return False
+        return True
+
+    def _compare(actual: Any, expected: Any, path: str = "root") -> bool:
+        # Dict vs Dict
+        if isinstance(expected, dict):
+            if not isinstance(actual, dict):
+                print(f"❌ Type mismatch at '{path}':")
+                print("   Expected: dict")
+                print(f"   Got: {type(actual).__name__}")
+                print(f"   Value: {actual}")
+                return False
+
+            # Filter out keys to ignore globally
+            keys_to_ignore = {"tokenIntervals"}
+            expected_keys = set(expected.keys()) - keys_to_ignore
+            actual_keys = set(actual.keys()) - keys_to_ignore
+
+            # Schema drift handling for LangChain v1.x (narrow allowlist)
+            schema_drift_config = {
+                # response_metadata gained new fields in v1.x
+                ".response_metadata": {
+                    "allowed_extra": {"model_provider", "service_tier"},
+                    "allowed_missing": set(),
+                },
+            }
+
+            allowed_extras = set()
+            allowed_missing = set()
+            for suffix, config in schema_drift_config.items():
+                if path.endswith(suffix):
+                    allowed_extras = config.get("allowed_extra", set())
+                    allowed_missing = config.get("allowed_missing", set())
+                    break
+
+            # Keys that are allowed to be extra on message objects
+            # usage_metadata was added in later LangChain versions
+            if re.search(r"\.messages\[\d+\]$", path):
+                allowed_extras = allowed_extras | {"usage_metadata"}
+
+            # In LangChain v1.x, tool_calls moved from additional_kwargs to top-level
+            # on AI messages. Allow tool_calls to be missing from additional_kwargs.
+            if re.search(r"\.messages\[\d+\]\.additional_kwargs$", path):
+                allowed_missing = allowed_missing | {"tool_calls"}
+
+            # At root level, toolsCalled key presence can vary due to tracer behavior.
+            # The tools-used invariant check above ensures semantic correctness.
+            # Evidence: test_multiple_tools, test_async_parallel_tools showed key
+            # presence flipping while tools_used semantics remained consistent.
+            if path == "root":
+                allowed_extras = allowed_extras | {"toolsCalled"}
+                allowed_missing = allowed_missing | {"toolsCalled"}
+
+            # Check for missing or extra keys (accounting for schema drift)
+            missing_keys = expected_keys - actual_keys - allowed_missing
+            extra_keys = actual_keys - expected_keys - allowed_extras
+
+            if missing_keys:
+                print(f"❌ Missing keys at '{path}': {missing_keys}")
+                return False
+            if extra_keys:
+                print(f"❌ Extra keys at '{path}': {extra_keys}")
+                return False
+
+            # Compare keys that exist in both (skip allowed_missing keys not in actual)
+            for key in expected_keys:
+                if key not in actual_keys and key in allowed_missing:
+                    continue
+                # Skip toolsCalled comparison at root since semantics are checked above
+                if path == "root" and key == "toolsCalled":
+                    # Still validate structure if both have it
+                    if key in actual_keys and key in expected_keys:
+                        if not _compare(
+                            actual[key], expected[key], f"{path}.{key}"
+                        ):
+                            return False
+                    continue
+                if not _compare(actual[key], expected[key], f"{path}.{key}"):
+                    return False
+            return True
+
+        # List vs List
+        if isinstance(expected, list):
+            if not isinstance(actual, list):
+                print(f"❌ Type mismatch at '{path}':")
+                print("   Expected: list")
+                print(f"   Got: {type(actual).__name__}")
+                print(f"   Value: {actual}")
+                return False
+
+            # For unordered paths (parallel/async tool calls and spans),
+            # use order-insensitive matching instead of pairwise comparison.
+            if _is_unordered_path(path):
+                # Require exact cardinality for unordered lists (spans + tool calls)
+                if len(actual) != len(expected):
+                    print(
+                        f"❌ Length mismatch at '{path}': expected {len(expected)}, got {len(actual)}"
+                    )
+                    return False
+                return _match_unordered_lists(expected, actual, path, _compare)
+
+            # For ordered arrays, require exact length and pairwise match
+            if len(actual) != len(expected):
+                print(
+                    f"❌ Length mismatch at '{path}': expected {len(expected)}, got {len(actual)}"
+                )
+                return False
+
+            for idx, (actual_elem, expected_elem) in enumerate(
+                zip(actual, expected)
+            ):
+                if not _compare(actual_elem, expected_elem, f"{path}[{idx}]"):
+                    return False
+            return True
+
+        # Primitives: exact type match, except int/float interchangeable
+        number_types = (int, float)
+        if (
+            type(expected) in number_types
+            and type(actual) in number_types
+            and not isinstance(actual, bool)
+            and not isinstance(expected, bool)
+        ):
+            return True
+
+        if type(actual) is not type(expected):
+            print(f"❌ Type mismatch at '{path}':")
+            print(f"   Expected: {type(expected).__name__}")
+            print(f"   Got: {type(actual).__name__}")
+            print(f"   Expected value: {expected}")
+            print(f"   Actual value: {actual}")
+            return False
+
+        return True
+
+    return _compare(actual_json_obj, expected_json_obj)
+
+
+def load_trace_data(file_path: str):
+    with open(file_path, "r") as file:
+        return json.load(file)
+
+
+# Global storage for trace dicts - shared across all imports
+_TRACE_STORAGE: Dict[str, Dict[str, Any]] = {}
+
+
+def _store_trace_for_upload(trace_dict: Dict[str, Any]):
+    """Store trace dict for upload by conftest.py hook."""
+    # Get current test nodeid from pytest environment
+    nodeid = os.environ.get("PYTEST_CURRENT_TEST", "")
+    if nodeid:
+        # PYTEST_CURRENT_TEST format: "path/to/test.py::TestClass::test_method (call)"
+        # Strip the phase suffix
+        nodeid = nodeid.rsplit(" ", 1)[0]
+
+    if not nodeid:
+        return
+
+    # Store in module-level dict
+    _TRACE_STORAGE[nodeid] = trace_dict
+
+
+def get_stored_trace(nodeid: str) -> Dict[str, Any]:
+    """Retrieve and remove a stored trace dict."""
+    return _TRACE_STORAGE.pop(nodeid, None)
+
+
+def generate_trace_json(json_path: str):
+    """
+    Decorator that generates and saves trace data to a JSON file.
+
+    Usage:
+        @generate_trace_json("path/to/output.json")
+        async def my_function():
+            await some_llm_app("input")
+
+    Args:
+        json_path: Path where the trace JSON will be saved
+    """
+
+    def decorator(func):
+        @wraps(func)
+        async def async_wrapper(*args, **kwargs):
+            from deepeval.tracing.trace_test_manager import (
+                trace_testing_manager,
+            )
+
+            try:
+                trace_testing_manager.test_name = json_path
+                result = await func(*args, **kwargs)
+                actual_dict = await trace_testing_manager.wait_for_test_dict()
+
+                with open(json_path, "w") as f:
+                    json.dump(actual_dict, f, indent=2)
+
+                return result
+            finally:
+                trace_testing_manager.test_name = None
+                trace_testing_manager.test_dict = None
+
+        @wraps(func)
+        def sync_wrapper(*args, **kwargs):
+            from deepeval.tracing.trace_test_manager import (
+                trace_testing_manager,
+            )
+
+            try:
+                trace_testing_manager.test_name = json_path
+                result = func(*args, **kwargs)
+
+                # For sync functions, we need to handle the async wait differently
+                loop = get_or_create_event_loop()
+                actual_dict = loop.run_until_complete(
+                    trace_testing_manager.wait_for_test_dict()
+                )
+
+                with open(json_path, "w") as f:
+                    json.dump(actual_dict, f, indent=2)
+
+                return result
+            finally:
+                trace_testing_manager.test_name = None
+                trace_testing_manager.test_dict = None
+
+        if inspect.iscoroutinefunction(func):
+            return async_wrapper
+        else:
+            return sync_wrapper
+
+    return decorator
+
+
+def _assert_trace_capture_succeeded(
+    actual_dict: Dict[str, Any], expected_dict: Dict[str, Any], json_path: str
+) -> None:
+    """Sanity guard against silent no-op trace capture.
+
+    ``trace_testing_manager.wait_for_test_dict()`` returns ``{}`` after a
+    timeout when nothing populated ``test_dict`` (e.g. the integration's
+    OTel spans were routed to OTLP instead of REST, so
+    ``trace_manager.end_trace`` — the only writer — never ran). If the
+    expected schema also happens to be ``{}`` (e.g. a freshly-created
+    empty file pending generation), the structural compare passes
+    trivially and the test gives false confidence.
+
+    This guard makes that situation loud: an empty actual_dict is
+    treated as a hard failure regardless of expected content, with a
+    pointer to the most likely cause and the schema regeneration
+    command. It does NOT replace the structural compare — it runs
+    BEFORE it, since once ``actual_dict`` is empty the compare has
+    nothing meaningful to say.
+    """
+    if actual_dict != {}:
+        return
+    raise AssertionError(
+        "Trace capture produced an empty dict for " f"{json_path!r}.\n"
+    )
+
+
+def assert_trace_json(json_path: str):
+    """
+    Decorator that tests trace data against an expected JSON file.
+
+    Usage:
+        @pytest.mark.asyncio
+        @test_trace_json("path/to/expected.json")
+        async def test_my_function():
+            await some_llm_app("input")
+
+    Args:
+        json_path: Path to the expected trace JSON file
+
+    Raises:
+        AssertionError: If the actual trace doesn't match the expected structure
+    """
+
+    def decorator(func):
+        @wraps(func)
+        async def async_wrapper(*args, **kwargs):
+            from deepeval.tracing.trace_test_manager import (
+                trace_testing_manager,
+            )
+
+            try:
+                trace_testing_manager.test_name = json_path
+                result = await func(*args, **kwargs)
+                actual_dict = await trace_testing_manager.wait_for_test_dict()
+                expected_dict = load_trace_data(json_path)
+
+                # Store trace for upload (does not mutate)
+                _store_trace_for_upload(actual_dict)
+
+                _assert_trace_capture_succeeded(
+                    actual_dict, expected_dict, json_path
+                )
+                assert assert_json_object_structure(expected_dict, actual_dict)
+
+                return result
+            finally:
+                trace_testing_manager.test_name = None
+                trace_testing_manager.test_dict = None
+
+        @wraps(func)
+        def sync_wrapper(*args, **kwargs):
+            from deepeval.tracing.trace_test_manager import (
+                trace_testing_manager,
+            )
+
+            try:
+                trace_testing_manager.test_name = json_path
+                result = func(*args, **kwargs)
+
+                # For sync functions, we need to handle the async wait differently
+                loop = get_or_create_event_loop()
+                actual_dict = loop.run_until_complete(
+                    trace_testing_manager.wait_for_test_dict()
+                )
+                expected_dict = load_trace_data(json_path)
+
+                # Store trace for upload (does not mutate)
+                _store_trace_for_upload(actual_dict)
+
+                _assert_trace_capture_succeeded(
+                    actual_dict, expected_dict, json_path
+                )
+                assert assert_json_object_structure(expected_dict, actual_dict)
+
+                return result
+            finally:
+                trace_testing_manager.test_name = None
+                trace_testing_manager.test_dict = None
+
+        if inspect.iscoroutinefunction(func):
+            return async_wrapper
+        else:
+            return sync_wrapper
+
+    return decorator

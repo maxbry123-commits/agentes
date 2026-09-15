@@ -1,0 +1,9 @@
+{
+  "title": "Algorithms",
+  "pages": [
+    "prompt-optimization-gepa",
+    "prompt-optimization-miprov2",
+    "prompt-optimization-simba",
+    "prompt-optimization-copro"
+  ]
+}

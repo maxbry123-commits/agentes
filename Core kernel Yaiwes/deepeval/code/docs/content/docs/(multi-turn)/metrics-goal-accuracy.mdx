@@ -1,0 +1,198 @@
+---
+id: metrics-goal-accuracy
+title: Goal Accuracy
+sidebar_label: Goal Accuracy
+languages: [python, typescript]
+---
+<MetricTagsDisplayer usesLLMs={true} multiTurn={true} agent={true} referenceless={true} />
+
+The Goal Accuracy metric is a multi-turn agentic metric that evaluates your LLM agent's abilities **on planning and executing the plan to finish a task or reach a goal**. It is a self-explaining eval, which means it outputs a reason for its metric score.
+
+## Required Arguments
+
+To use the `GoalAccuracyMetric`, you'll have to provide the following arguments when creating a [`ConversationalTestCase`](https://www.deepeval.com/docs/evaluation-multiturn-test-cases):
+
+- `turns`
+
+You can learn more about how it is calculated [here](#how-is-it-calculated).
+
+## Usage
+
+The `GoalAccuracyMetric()` can be used for [end-to-end](/docs/evaluation-end-to-end-llm-evals) multi-turn evaluations of agents.
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.test_case import Turn, ConversationalTestCase, ToolCall
+from deepeval.metrics import GoalAccuracyMetric
+from deepeval import evaluate
+
+convo_test_case = ConversationalTestCase(
+    turns=[
+        Turn(role="...", content="..."), 
+        Turn(role="...", content="...", tools_called=[...])
+    ],
+)
+metric = GoalAccuracyMetric(threshold=0.5)
+
+# To run metric as a standalone
+# metric.measure(convo_test_case)
+# print(metric.score, metric.reason)
+
+evaluate(test_cases=[convo_test_case], metrics=[metric])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { Turn, ConversationalTestCase, ToolCall } from "deepeval/test-case";
+import { GoalAccuracyMetric } from "deepeval/metrics";
+import { evaluate } from "deepeval";
+
+const convoTestCase = new ConversationalTestCase({
+  turns: [
+    new Turn({ role: "user", content: "..." }),
+    new Turn({ role: "assistant", content: "...", toolsCalled: [new ToolCall({ name: "..." })] }),
+  ],
+});
+const metric = new GoalAccuracyMetric({ threshold: 0.5 });
+
+// To run metric as a standalone
+// await metric.measure(convoTestCase);
+// console.log(metric.score, metric.reason);
+
+await evaluate([convoTestCase], [metric]);
+```
+
+</Case>
+
+</Switch>
+
+<Switch>
+
+<Case id="python">
+
+There are **SEVEN** optional parameters when creating a `GoalAccuracyMetric`:
+
+</Case>
+
+<Case id="typescript">
+
+There are **SIX** optional parameters when creating a `GoalAccuracyMetric`:
+
+</Case>
+
+</Switch>
+
+- [Optional] `threshold`: a number representing the minimum passing threshold. Can also be set to <Term py="None" ts="null"/> to run the metric in [score-only mode](/docs/metrics-introduction#metric-thresholds). Defaulted to `0.5`.
+- [Optional] `model`: a string specifying which of OpenAI's GPT models to use, **OR** [any custom LLM model](/docs/metrics-introduction#using-a-custom-llm) of type `DeepEvalBaseLLM`. Defaulted to <DefaultLLMModel />.
+- [Optional] <Term py="include_reason" ts="includeReason"/>: a boolean which when set to <Term py="True" ts="true"/>, will include a reason for its evaluation score. Defaulted to <Term py="True" ts="true"/>.
+- [Optional] <Term py="strict_mode" ts="strictMode"/>: a boolean which when set to <Term py="True" ts="true"/>, enforces a binary metric score: 1 for perfection, 0 otherwise. It also overrides the current threshold and sets it to 1. Defaulted to <Term py="False" ts="false"/>.
+- <Only id="python">
+    [Optional] `async_mode`: a boolean which when set to `True`, enables [concurrent execution within the `measure()` method.](/docs/metrics-introduction#measuring-a-metric-in-async) Defaulted to `True`.
+  </Only>
+- [Optional] <Term py="verbose_mode" ts="verboseMode"/>: a boolean which when set to <Term py="True" ts="true"/>, prints the intermediate steps used to calculate said metric to the console, as outlined in the [How Is It Calculated](#how-is-it-calculated) section. Defaulted to <Term py="False" ts="false"/>.
+- [Optional] `flaky`: a boolean which when set to <Term py="True" ts="true"/>, [marks the metric as flaky](/docs/metrics-introduction#flaky-metrics). Defaulted to <Term py="False" ts="false"/>.
+
+### As a standalone
+
+You can also run the `GoalAccuracyMetric` on a single test case as a standalone, one-off execution.
+
+<Switch>
+
+<Case id="python">
+
+```python
+...
+
+metric.measure(convo_test_case)
+print(metric.score, metric.reason)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+...
+
+await metric.measure(convoTestCase);
+console.log(metric.score, metric.reason);
+```
+
+</Case>
+
+</Switch>
+
+:::caution
+This is great for debugging or if you wish to build your own evaluation pipeline, but you will **NOT** get the benefits (testing reports) and all the optimizations (speed, caching, computation) the `evaluate()` function or `deepeval test run` offers.
+:::
+
+## How Is It Calculated
+
+The `GoalAccuracyMetric` score is calculated using the following steps:
+
+- Find **individual goals and steps** taken by your LLM agent for each user-assistat interactions.
+- Find **goal accuracy scores** for each of the goal-steps pairs using the evaluation model.
+- Find **plan quality and plan adherence scores** for each of the goal-step pairs using the evaluation model.
+
+<Equation formula="\text{Goal Accuracy Score} = \frac{\text{Goal Evaluation Score + Plan Evaluation Score}}{\text{2}}" />
+
+:::info
+The `GoalAccuracyMetric` extracts the task from user's messages in each interaction and evaluates the steps taken by the LLM agent to find its plan and how accurately it has finished the task or reached the goal in that interaction.
+:::
+
+## FAQs
+
+<FAQs
+  qas={[
+    {
+      question:
+        "My agent answered every message but still failed the user's actual goal — will this catch it?",
+      answer: (
+        <>
+          Yes. <code>GoalAccuracyMetric</code> extracts the underlying task from
+          the user's messages and judges whether the agent's plan and steps
+          actually reached it. A conversation can look responsive turn by turn
+          yet score low if the goal was never accomplished.
+        </>
+      ),
+    },
+    {
+      question: "What's the difference between the goal score and the plan score?",
+      answer: (
+        <>
+          The final score averages a <strong>goal evaluation score</strong> (did
+          it reach the goal) and a <strong>plan evaluation score</strong>{" "}
+          (plan quality and adherence). The average reflects both reaching the
+          goal and how well it was planned.
+        </>
+      ),
+    },
+    {
+      question: "How does it know the goal if I never pass an expected outcome?",
+      answer: (
+        <>
+          It infers the goal from the <code>"user"</code> messages, then
+          evaluates the steps taken to satisfy it. You only supply{" "}
+          <code>turns</code> on the <code>ConversationalTestCase</code>.
+        </>
+      ),
+    },
+    {
+      question: "Does it account for tool calls when scoring the plan?",
+      answer: (
+        <>
+          Yes. Turns can include <Term py="tools_called" ts="toolsCalled"/>, and the metric
+          factors tool usage into the plan it reconstructs and how well that
+          plan reached the goal.
+        </>
+      ),
+    },
+  ]}
+/>
+
