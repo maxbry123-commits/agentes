@@ -16,7 +16,7 @@
     ["codex","external","Core kernel razonamiento repo para Yaiwes/Codex/Codex","dir"],
     ["smolagents","external","Core kernel razonamiento repo para Yaiwes/SmolAgents","dir"],
     ["hermes","target","Core kernel Yaiwes/Hermes-Agent","dir"],
-    ["openclaw","external","openclaw.mjs","file"],
+    ["openclaw","target","Core kernel Yaiwes/OpenClaw","dir"],
     ["aider","external","Core kernel razonamiento repo para Yaiwes/Aider/Aider","dir"],
     ["muse_glimmer","target","Core kernel Yaiwes/Meta-Muse-Glimmer-Agent-2026","dir"],
     ["kimi_k","external","Core kernel razonamiento repo para Yaiwes/Kimi-K2.5/Kimi-K2.5","dir"],
