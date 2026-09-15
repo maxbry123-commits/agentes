@@ -1,0 +1,16 @@
+{
+  "schema": "seals-team.task-contract/v1",
+  "copia_id": "Seals team 1 YAIWES",
+  "estado": "READY_FOR_FIRST_TEST",
+  "nodo_reclamado": null,
+  "instrucciones": "Esta copia aun no ha reclamado ningun nodo. Es la primera prueba del sistema antes de clonar a mas copias.",
+  "variables_de_entorno_requeridas": [
+    "CEREBRAS_API_KEY_1",
+    "CEREBRAS_API_KEY_2",
+    "CEREBRAS_API_KEY_3",
+    "CEREBRAS_API_KEY_4",
+    "CEREBRAS_API_KEY_5",
+    "CEREBRAS_API_KEY_6"
+  ],
+  "nota_seguridad": "Las 6 keys compartidas en el chat deben rotarse antes de usar este contrato en produccion."
+}
