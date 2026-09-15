@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-15T22:49:01.212132Z",
+  "updated_at": "2026-09-15T22:49:11.054669Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -2331,22 +2331,27 @@
       "id": 37,
       "component": "Agent-xpu-LLM-xpu",
       "source": "Core kernel Yaiwes/Agent-xpu-LLM-xpu/",
-      "current_step": 1,
-      "status": "IN_PROGRESS_STEP1",
-      "abc": null,
-      "target": null,
-      "owner": "SOL GPT",
-      "lock": "CLAIMED",
+      "current_step": 2,
+      "status": "PASS_STEP1",
+      "abc": "B",
+      "target": "Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/agent-xpu-llm-xpu/",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-15T22:49:01.212132Z fresh main claim node37; source=Core kernel Yaiwes/Agent-xpu-LLM-xpu; target pending validated analysis",
-        "after": null
+        "after": "2026-09-15T22:49:11.054669Z STEP1 PASS: B workflow/pool; local LLM inference runtime with concurrency+batching+scheduling -> canonical execution-engine-pool/parallel-dispatch/agent-xpu-llm-xpu"
       },
       "evidence": [
         "director:MOVE_DIRECT_TO_FINAL_ALL_CORE_COMPONENTS_2026-09-14",
         "step1:before:path:Core kernel Yaiwes/Agent-xpu-LLM-xpu",
         "step1:before:tree:55e306071b3777fddf2be4b1139b14a10a026e89",
         "ficha:Claude readme/FICHA-ADN-TECNICA-YAIWES.md:blob:98ce04d52ded873516e8c6c8291855650ac7cf58",
-        "step1:claim:fresh_main:886a233d7990738d266e207881df026a1b0e3d1a"
+        "step1:claim:fresh_main:886a233d7990738d266e207881df026a1b0e3d1a",
+        "step1:readme:code/README.md:PASS",
+        "step1:classification:B",
+        "step1:reason:on-device LLM inference engine + concurrent agentic calls + continuous batching + priority scheduling",
+        "step1:architecture:execution-engine-pool/parallel-dispatch",
+        "step1:target:Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/agent-xpu-llm-xpu/"
       ],
       "history": [
         {
@@ -2361,9 +2366,15 @@
           "actor": "SOL",
           "label": "SOL GPT",
           "event": "CLAIM_STEP1"
+        },
+        {
+          "at": "2026-09-15T22:49:11.054669Z",
+          "actor": "SOL",
+          "label": "SOL GPT",
+          "event": "STEP1_PASS_RELEASE"
         }
       ],
-      "next_action": "STEP1_ANALYZE_ABC_DESTINATION"
+      "next_action": "STEP2_MOVE_WITH_CANONICAL_MOTOR"
     },
     {
       "id": 38,
