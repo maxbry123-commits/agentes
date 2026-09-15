@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-15T22:54:33.572536Z",
+  "updated_at": "2026-09-15T22:54:41.286524Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -2416,22 +2416,27 @@
       "id": 38,
       "component": "AgentCgroup",
       "source": "Core kernel Yaiwes/AgentCgroup/",
-      "current_step": 1,
-      "status": "IN_PROGRESS_STEP1",
-      "abc": null,
-      "target": null,
-      "owner": "SOL GPT",
-      "lock": "CLAIMED",
+      "current_step": 2,
+      "status": "PASS_STEP1",
+      "abc": "C",
+      "target": "Agente Yaiwes principal/execution-orchestration/container-pod-isolation/agentcgroup/",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-15T22:54:33.572536Z STEP1 claim fresh main=d69f140e550436fd8d0544212d9a86ae61b682be",
-        "after": null
+        "after": "2026-09-15T22:54:41.286524Z STEP1 PASS: deterministic eBPF/cgroup isolation capability -> canonical execution-orchestration/container-pod-isolation/agentcgroup"
       },
       "evidence": [
         "director:MOVE_DIRECT_TO_FINAL_ALL_CORE_COMPONENTS_2026-09-14",
         "step1:before:path:Core kernel Yaiwes/AgentCgroup",
         "step1:before:tree:a7dbc45c88566a8258c55161c204b3165aaab7ac",
         "ficha:Claude readme/FICHA-ADN-TECNICA-YAIWES.md:blob:98ce04d52ded873516e8c6c8291855650ac7cf58",
-        "step1:claim:fresh_main:d69f140e550436fd8d0544212d9a86ae61b682be"
+        "step1:claim:fresh_main:d69f140e550436fd8d0544212d9a86ae61b682be",
+        "step1:readme:code/README.md:PASS",
+        "step1:classification:C",
+        "step1:reason:eBPF+cgroup deterministic CPU/memory isolation for sandboxed AI coding agents",
+        "step1:architecture:execution-orchestration/container-pod-isolation",
+        "step1:target:Agente Yaiwes principal/execution-orchestration/container-pod-isolation/agentcgroup/"
       ],
       "history": [
         {
@@ -2446,9 +2451,15 @@
           "actor": "SOL",
           "label": "SOL GPT",
           "event": "CLAIM_STEP1"
+        },
+        {
+          "at": "2026-09-15T22:54:41.286524Z",
+          "actor": "SOL",
+          "label": "SOL GPT",
+          "event": "STEP1_PASS_RELEASE"
         }
       ],
-      "next_action": "STEP1_ANALYZE_ABC_DESTINATION"
+      "next_action": "STEP2_MOVE_WITH_CANONICAL_MOTOR"
     },
     {
       "id": 39,
