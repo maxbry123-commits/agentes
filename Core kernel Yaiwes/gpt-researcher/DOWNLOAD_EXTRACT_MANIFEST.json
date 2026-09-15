@@ -1,0 +1,38 @@
+{
+  "bundle_bytes": 14802193,
+  "bundle_sha256": "c3eaa065e31ddf500f24461f30d98f4bc3102cb870db8a5a418f36653b2423a1",
+  "extracted_tree": {
+    "bytes": 27672673,
+    "files": 820,
+    "sha256": "0ab44dbab264fd88d362b02101403c8a2666848de531770acb4160d819e566d6"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "gpt-researcher.bundle.zip.part-0001",
+      "sha256": "0ceb9dc6045835805c68f0832bbc3d3276c128a4a1c854fefb0a991922febc9d"
+    },
+    {
+      "bytes": 2219281,
+      "name": "gpt-researcher.bundle.zip.part-0002",
+      "sha256": "6dceb3e97f27042f782ff63554f51238bd3807fb2474004c0b8abc34f32a033f"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "gpt-researcher",
+  "source_bytes": 27672673,
+  "source_commit": "6f998577d547b1e54ec662dac63583aa11e3b84b",
+  "source_files": 820,
+  "source_ref": "HEAD",
+  "source_repo": "https://github.com/assafelovic/gpt-researcher.git",
+  "source_tree": {
+    "bytes": 27672673,
+    "files": 820,
+    "sha256": "0ab44dbab264fd88d362b02101403c8a2666848de531770acb4160d819e566d6"
+  }
+}
