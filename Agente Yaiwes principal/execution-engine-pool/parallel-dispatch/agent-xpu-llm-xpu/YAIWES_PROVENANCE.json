@@ -1,0 +1,8 @@
+{
+  "schema": "yaiwes.provenance/v1",
+  "source_url": "https://github.com/xinming-wei/LLM.xpu.git",
+  "source_commit": "689be270aa29bb88447e3867cd97d85a55f454d5",
+  "source_sha256": "128904fa67d4ccc75ed7655054e90fda9a7c6a5b879974f5c0f07a4ab3178217",
+  "source_manifest": "DOWNLOAD_EXTRACT_MANIFEST.json",
+  "move_motor_blob": "9a21facfe11327cf60a2afca8f415ad52f0ecbe5"
+}
