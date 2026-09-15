@@ -67,3 +67,12 @@ No restaurarlas ni inventarlas sin source canónico.
 
 ## Histórico local conservado
 Fleet=18 · Council12=12 · routing/fail-closed local. Evidence histórica `wordflow_loop/evidence/FINAL_3STEP_CLOSURE_TEST_2026-09-10.json`. Esto no sustituye pruebas externas autenticadas.
+
+
+## Cierre físico G-022 + G-017 — 2026-09-15
+
+- GitHub Actions run: `34931798702`
+- G-022: PASS físico — Docker aislado, filesystem RO, red denegada y límites de memoria/tiempo comprobados.
+- G-017: PASS — hash content-addressed, promoción atómica, health/smoke reales y rollback verificado.
+- Gate: `PASS_4_OF_4`; CODE_GRAPH: `30/30`.
+- Evidencia: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G022_PHYSICAL_SANDBOX_CLOSURE_2026-09-15.json` y `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G017_DETERMINISTIC_DEPLOYMENT_CLOSURE_2026-09-15.json`.

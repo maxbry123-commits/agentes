@@ -458,3 +458,11 @@ El módulo y archivo de tests exactos de `main` fueron ejecutados en un entorno 
 
 ## CG-0064 — Gate de cierre
 Esta escritura alinea la octava fuente requerida (BITÁCORA) con `0019`. G-013 no se declara PASS por esta sola escritura: el cierre exige read-back posterior de las 8 fuentes, `CONSISTENT` sin drift/conflicts/missing, evidencia G-013 actualizada y actualización CAS de TASK-NODES/STATE/CHECKPOINT. `G-019` permanece bloqueado hasta ese cierre.
+
+## Cierre físico G-022 + G-017 — 2026-09-15
+
+- GitHub Actions run: `34931798702`
+- G-022: PASS físico — Docker aislado, filesystem RO, red denegada y límites de memoria/tiempo comprobados.
+- G-017: PASS — hash content-addressed, promoción atómica, health/smoke reales y rollback verificado.
+- Gate: `PASS_4_OF_4`; CODE_GRAPH: `30/30`.
+- Evidencia: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G022_PHYSICAL_SANDBOX_CLOSURE_2026-09-15.json` y `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G017_DETERMINISTIC_DEPLOYMENT_CLOSURE_2026-09-15.json`.

@@ -1,0 +1,52 @@
+{
+  "checks": {
+    "capabilities_dropped": true,
+    "filesystem_readonly": true,
+    "memory_limit_enforced": true,
+    "network_denied": true,
+    "no_new_privileges": true,
+    "positive_backend_execution": true,
+    "secrets_mounted": false,
+    "wall_timeout_enforced": true
+  },
+  "container_image": "python:3.12-alpine",
+  "container_image_id": "sha256:28eb0cb65acb65b970e85c0dc57d10067868fae8dd00d072413df273132123ac",
+  "date": "2026-09-15",
+  "docker_server": "28.0.4",
+  "finished_at": 1789449165,
+  "g022_closed": true,
+  "gap_id": "G-022",
+  "github_run_id": "34931798702",
+  "github_sha": "e788c526b8a9101440cb3a9a1e2fe347154dfeb0",
+  "physical_tests": [
+    {
+      "id": 1,
+      "name": "sandbox_filesystem_readonly",
+      "positive_backend": true,
+      "result": "PASS",
+      "write_rejected": true
+    },
+    {
+      "id": 2,
+      "name": "sandbox_network_none",
+      "outbound_connection_blocked": true,
+      "result": "PASS"
+    },
+    {
+      "id": 3,
+      "memory_rejected": true,
+      "name": "sandbox_resource_limits",
+      "result": "PASS",
+      "timeout_elapsed_seconds": 3.008,
+      "timeout_returncode": -9,
+      "wall_timeout_rejected": true
+    }
+  ],
+  "result": "PASS_PHYSICAL_ISOLATION_ENFORCED",
+  "runner": "GitHub Actions 1000004905",
+  "runner_os": "Linux",
+  "schema": "yaiwes.g022.physical-sandbox-closure/v1",
+  "started_at": 1789449160,
+  "tests_passed": 4,
+  "tests_total": 4
+}
