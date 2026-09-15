@@ -62,6 +62,22 @@
       "sandbox_test": "PENDING_G022"
     },
     {
+      "id": "codebase_memory_mcp",
+      "decision": "ADAPT",
+      "role": "codebase_structural_memory_preanalysis_via_mcp",
+      "source_repo": "DeusData/codebase-memory-mcp",
+      "source_commit": "2058d49a04b785315c9f5bb56b6e2365822b576b",
+      "license": "MIT",
+      "acquisition": "QUEUED_CANONICAL_MOTOR_PENDING_EXECUTION",
+      "queue": "wordflow_loop/intake/COMP-CODEBASE-MEMORY-MCP.queue.json",
+      "adapter": "wordflow_loop/adapters/codebase_memory_mcp_adapter.py",
+      "ficha": "wordflow_loop/contracts/ficha.codebase_memory_mcp.v2.json",
+      "adapter_state": "IMPLEMENTED_FAIL_CLOSED_LOCAL_TEST_PASS_5_OF_5",
+      "fables": "PENDING_RUNTIME_REGISTRATION_AFTER_ACQUISITION",
+      "sandbox_test": "BLOCKED_BY_G022",
+      "activation": "FAIL_CLOSED_UNTIL_MOTOR_READBACK_FABLES_SANDBOX"
+    },
+    {
       "id": "graphology",
       "decision": "DEFER",
       "role": "js_ts_graph_state_for_visual_ui",
