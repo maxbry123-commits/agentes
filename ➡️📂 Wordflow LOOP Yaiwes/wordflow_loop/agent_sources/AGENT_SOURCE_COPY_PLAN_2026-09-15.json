@@ -1,0 +1,32 @@
+{
+  "schema":"yaiwes.agent-source-copy-plan/v1",
+  "created_at":"2026-09-15",
+  "authorized_root":"➡️📂 Wordflow LOOP Yaiwes",
+  "destination_root":"➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources",
+  "copy_motor":"➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de copiar archivos/motor_3_copy_batches.py",
+  "copy_motor_expected_git_blob":"3689924361ce4a1a9fde4ae2b6f6009c37a6042d",
+  "external_source_repo":"maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
+  "external_source_commit":"6c44c5c4d7fcc7b1e941c5e24dde59fd2ad40e3f",
+  "rules":{"final_destination_mutation":"CANONICAL_COPY_MOTOR_ONLY","collision_policy":"fail","batch_size":100,"source_is_retained":true,"symlinks_allowed":false,"max_file_bytes":99614720,"force_push":false,"git_lfs":false,"presence_is_not_runtime_integration":true},
+  "agents":[
+    ["opencode","external","OpenCode/OpenCode","dir"],
+    ["openhands","external","OpenHands/OpenHands","dir"],
+    ["claude_code","external","Core kernel razonamiento repo para Yaiwes/Claude-Code/Claude-Code","dir"],
+    ["mimo_code","external","Core kernel razonamiento repo para Yaiwes/MiMo","dir"],
+    ["codex","external","Core kernel razonamiento repo para Yaiwes/Codex/Codex","dir"],
+    ["smolagents","external","Core kernel razonamiento repo para Yaiwes/SmolAgents","dir"],
+    ["hermes","target","Core kernel Yaiwes/Hermes-Agent","dir"],
+    ["openclaw","external","openclaw.mjs","file"],
+    ["aider","external","Core kernel razonamiento repo para Yaiwes/Aider/Aider","dir"],
+    ["muse_glimmer","target","Core kernel Yaiwes/Meta-Muse-Glimmer-Agent-2026","dir"],
+    ["kimi_k","external","Core kernel razonamiento repo para Yaiwes/Kimi-K2.5/Kimi-K2.5","dir"],
+    ["qwen_code","external","Core kernel razonamiento repo para Yaiwes/Qwen-Agent/Qwen-Agent","dir"],
+    ["cline","external","Core kernel razonamiento repo para Yaiwes/Cline/Cline","dir"],
+    ["agent_zero","external","Agent-Zero","dir"],
+    ["opendev","external","OpenDev","dir"],
+    ["research_agent_lab","external","Research Agent Lab","dir"],
+    ["mirothinker","external","MiroThinker","dir"],
+    ["goose","unresolved",null,null]
+  ],
+  "unresolved":{"goose":"SOURCE_NOT_FOUND_IN_CURRENT_REPO_TREES; do not invent path"}
+}
