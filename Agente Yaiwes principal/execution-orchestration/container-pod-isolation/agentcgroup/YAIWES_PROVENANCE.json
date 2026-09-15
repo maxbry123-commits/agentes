@@ -1,0 +1,8 @@
+{
+  "schema": "yaiwes.provenance/v1",
+  "source_url": "https://github.com/eunomia-bpf/agentcgroup.git",
+  "source_commit": "551ca1689b7d2d30db6b8a8613414750103cc68b",
+  "source_sha256": "a35a1e1984e46da68663e8b621dee4340495720c01be249bccfe481fd5905f14",
+  "source_manifest": "DOWNLOAD_EXTRACT_MANIFEST.json",
+  "move_motor_blob": "9a21facfe11327cf60a2afca8f415ad52f0ecbe5"
+}
