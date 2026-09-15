@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-15T22:32:18.336856Z",
+  "updated_at": "2026-09-15T22:32:30.664426Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -2278,21 +2278,28 @@
       "component": "A2A-Protocol",
       "source": "Core kernel Yaiwes/A2A-Protocol/",
       "current_step": 1,
-      "status": "PENDING_STEP1",
+      "status": "GAP",
       "abc": null,
       "target": null,
-      "owner": "SOL GPT",
-      "lock": "CLAIMED",
+      "owner": null,
+      "lock": "FREE",
       "checkpoint": {
         "before": "2026-09-15T22:32:18.336856Z fresh main=3f8b05aef01cb6f351f1b634baa823a2cf44e743; STEP1 claim; source=Core kernel Yaiwes/A2A-Protocol; exact target still unresolved",
-        "after": null
+        "after": "2026-09-15T22:32:30.664426Z STEP1 GAP: A2A function/domain validated but exact authoritative final target absent; no move performed"
       },
       "evidence": [
         "director:MOVE_DIRECT_TO_FINAL_ALL_CORE_COMPONENTS_2026-09-14",
         "step1:before:path:Core kernel Yaiwes/A2A-Protocol",
         "step1:before:tree:7e5a9733f8953ad3be0da97d9d0fc6f43b3f76f0",
         "ficha:Claude readme/FICHA-ADN-TECNICA-YAIWES.md:blob:98ce04d52ded873516e8c6c8291855650ac7cf58",
-        "step1:claim:fresh_main:3f8b05aef01cb6f351f1b634baa823a2cf44e743"
+        "step1:claim:fresh_main:3f8b05aef01cb6f351f1b634baa823a2cf44e743",
+        "step1:readme:Core kernel Yaiwes/A2A-Protocol/code/README.md:PASS",
+        "step1:function:A2A_agent_to_agent_interoperability_complements_MCP",
+        "step1:ficha:CAPA_3_COORDINACION:PASS",
+        "step1:domain_candidate:Agente Yaiwes principal/mesh-routing-collaboration/",
+        "step1:physical_mesh_children:apisix-api-gateway,caddy-gateway",
+        "step1:GAP:wall_target_null_and_no_authoritative_exact_A2A_subroute_in_FICHA_or_PLAN",
+        "step1:NO_MOVE_PERFORMED"
       ],
       "history": [
         {
@@ -2308,6 +2315,14 @@
           "label": "SOL GPT",
           "event": "CLAIM_STEP1",
           "base_sha": "3f8b05aef01cb6f351f1b634baa823a2cf44e743"
+        },
+        {
+          "at": "2026-09-15T22:32:30.664426Z",
+          "actor": "SOL",
+          "label": "SOL GPT",
+          "event": "STEP1_GAP_RELEASE",
+          "cause": "exact_authoritative_target_missing",
+          "no_move": true
         }
       ],
       "next_action": "STEP1_ANALYZE_ABC_DESTINATION"
