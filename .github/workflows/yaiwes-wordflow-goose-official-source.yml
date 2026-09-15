@@ -73,7 +73,7 @@ jobs:
           find '➡️📂 Wordflow LOOP Yaiwes' -type d -name __pycache__ -prune -exec rm -rf {} + || true
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- \
+          git add --sparse -- \
             '➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/goose' \
             '➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/AGENT_SOURCE_COPY_2026-09-15.json' \
             '➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/GOOSE_OFFICIAL_ACQUISITION_2026-09-15.json' \
@@ -127,3 +127,4 @@ jobs:
 
 # user-directed trigger 2026-09-15: execute existing canonical Goose closure workflow
 # user-directed rerun 2026-09-15: include tracked-symlink normalization fix
+# persistence fix 2026-09-15: verified generated Goose path is outside sparse definition, so stage it explicitly with git add --sparse
