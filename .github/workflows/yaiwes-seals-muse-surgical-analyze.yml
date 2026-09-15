@@ -21,6 +21,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo 'SEALS_FRESH_ANALYSIS_V2'
           for z in 'Core kernel Yaiwes/Download code Yaiwes/Muse-Agent_0001.zip' 'Core kernel Yaiwes/Download code Yaiwes/MUSE-KnowledgeXLab_0001.zip'; do
             echo "=== ZIP:$z ==="
             test -f "$z"
@@ -35,6 +36,6 @@ jobs:
               printf '%05d %s\n' "$c" "${f#$d/}"
             done | sort -rn | head -30
             echo '--- git metadata ---'
-            find "$d" -path '*/.git/HEAD' -o -path '*/.git/config' | head -10
+            find "$d" \( -path '*/.git/HEAD' -o -path '*/.git/config' \) | head -10
             rm -rf "$d"
           done
