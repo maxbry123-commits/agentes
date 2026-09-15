@@ -1,43 +1,390 @@
 {
-  "contract": "tel.workflow/v4",
-  "mode": "FAIL_CLOSED_EXECUTION_LOOP",
-  "step": 3,
-  "status": "READY_FOR_REAL_AGENT_TEST",
-  "scope_root": "➡️📂 Wordflow LOOP Yaiwes/",
-  "routing": "deterministic_exact_id_then_slot_role",
-  "canonical_adapter": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_adapter.py",
-  "ready_for_test_manifest": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/AGENT_FLEET_READY_FOR_TEST.json",
-  "step3_evidence": {
-    "run_id": 34406268016,
-    "job_id": 102649876845,
-    "head_sha": "05ce5fc43a599da1ae9e80f485450d52aede07a1",
-    "conclusion": "success",
-    "evidence_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/STEP3_AGENT_FLEET_VERIFY.json"
-  },
-  "agents": [
-    {"slot":1,"agent_id":"opencode","display_name":"OpenCode","roles":["writer","executor","final_reviewer"],"transport":"command_env","command_env":"YAIWES_OPENCODE_COMMAND","source_repo":"maxbry123-commits/Agentes-motores-Wordflow-YAIWES","source_path":"OpenCode/OpenCode","source_tree_sha":"3e72d587a460f8ad64f95f2e13b50ad8f6385e4f","status":"WIRED_VERIFIED"},
-    {"slot":2,"agent_id":"openhands","display_name":"OpenHands","roles":["review","repair","final_reviewer"],"transport":"command_env","command_env":"YAIWES_OPENHANDS_COMMAND","source_repo":"maxbry123-commits/Agentes-motores-Wordflow-YAIWES","source_path":"OpenHands/OpenHands","source_tree_sha":"5598f214c8cdfdd7d62e0fae4f4bd9764694a935","status":"WIRED_VERIFIED"},
-    {"slot":3,"agent_id":"claude_code","display_name":"Claude Code CLI","roles":["flow_review","wiring_review","auditor"],"transport":"http_env","url_env":"YAIWES_CLAUDE_CODE_URL","token_env":"YAIWES_CLAUDE_CODE_TOKEN","source_repo":"maxbry123-commits/Agentes-motores-Wordflow-YAIWES","source_path":"Core kernel razonamiento repo para Yaiwes/Claude-Code/Claude-Code","source_tree_sha":"8bc6f609eba4da05eb2ce306be68463189006385","status":"WIRED_VERIFIED"},
-    {"slot":4,"agent_id":"mimo_code","display_name":"MiMo Code","roles":["flow_review","wiring_review","auditor"],"transport":"http_env","url_env":"YAIWES_MIMO_CODE_URL","token_env":"YAIWES_MIMO_CODE_TOKEN","source_repo":"maxbry123-commits/Agentes-motores-Wordflow-YAIWES","source_path":"Core kernel razonamiento repo para Yaiwes/MiMo","source_tree_sha":"c308e0a6b45a022ba8e0b13f889661b64237895e","status":"WIRED_VERIFIED"},
-    {"slot":5,"agent_id":"codex","display_name":"Codex","roles":["auditor","debug","code_review"],"transport":"command_env","command_env":"YAIWES_CODEX_COMMAND","source_repo":"maxbry123-commits/Agentes-motores-Wordflow-YAIWES","source_path":"Core kernel razonamiento repo para Yaiwes/Codex/Codex","source_tree_sha":"52ef893c734cbf627d9633d8d3208972a29212c7","status":"WIRED_VERIFIED"},
-    {"slot":6,"agent_id":"smolagents","display_name":"SmolAgents","roles":["auditor","council"],"transport":"command_env","command_env":"YAIWES_SMOLAGENTS_COMMAND","source_repo":"maxbry123-commits/Agentes-motores-Wordflow-YAIWES","source_path":"Core kernel razonamiento repo para Yaiwes/SmolAgents","status":"WIRED_VERIFIED"},
-    {"slot":7,"agent_id":"hermes","display_name":"Hermes","roles":["auditor","worker"],"transport":"command_env","command_env":"YAIWES_HERMES_COMMAND","source_repo":"operator_runtime","source_path":null,"source_status":"EXTERNAL_NOT_VENDORED","status":"WIRED_VERIFIED_EXTERNAL_RUNTIME"},
-    {"slot":8,"agent_id":"openclaw","display_name":"OpenClaw","roles":["auditor","coordinator","gateway"],"transport":"http_env","url_env":"YAIWES_OPENCLAW_URL","token_env":"YAIWES_OPENCLAW_TOKEN","source_repo":"maxbry123-commits/Agentes-motores-Wordflow-YAIWES","source_path":"openclaw.mjs","source_blob_sha":"6d91a09519c131186a8bea7448acaaeb336486f1","status":"WIRED_VERIFIED"},
-    {"slot":9,"agent_id":"aider","display_name":"Aider","roles":["editor","council"],"transport":"command_env","command_env":"YAIWES_AIDER_COMMAND","source_repo":"maxbry123-commits/Agentes-motores-Wordflow-YAIWES","source_path":"Core kernel razonamiento repo para Yaiwes/Aider/Aider","source_tree_sha":"f83ceb02bf62b860748b050c03361bd0dd1b7d47","status":"WIRED_VERIFIED"},
-    {"slot":10,"agent_id":"muse_glimmer","display_name":"Muse/Glimmer Code","roles":["council","reviewer"],"transport":"command_env","command_env":"YAIWES_MUSE_GLIMMER_COMMAND","source_repo":"operator_runtime","source_path":null,"source_status":"EXTERNAL_NOT_VENDORED","status":"WIRED_VERIFIED_EXTERNAL_RUNTIME"},
-    {"slot":11,"agent_id":"kimi_k","display_name":"Kimi K Code","roles":["council","reviewer"],"transport":"command_env","command_env":"YAIWES_KIMI_COMMAND","source_repo":"maxbry123-commits/Agentes-motores-Wordflow-YAIWES","source_path":"Core kernel razonamiento repo para Yaiwes/Kimi-K2.5/Kimi-K2.5","source_tree_sha":"851f463176c72f8fda9e0aea7b41e6ab91a51af2","status":"WIRED_VERIFIED"},
-    {"slot":12,"agent_id":"qwen_code","display_name":"Qwen Code","roles":["council","reviewer"],"transport":"command_env","command_env":"YAIWES_QWEN_COMMAND","source_repo":"maxbry123-commits/Agentes-motores-Wordflow-YAIWES","source_path":"Core kernel razonamiento repo para Yaiwes/Qwen-Agent/Qwen-Agent","source_tree_sha":"7c86e0151a39a82b2507dd461f1ee9f5732be1ed","status":"WIRED_VERIFIED"},
-    {"slot":13,"agent_id":"cline","display_name":"Cline","roles":["coder","auxiliary"],"transport":"command_env","command_env":"YAIWES_CLINE_COMMAND","source_repo":"maxbry123-commits/Agentes-motores-Wordflow-YAIWES","source_path":"Core kernel razonamiento repo para Yaiwes/Cline/Cline","source_tree_sha":"42e6fb4827285a3309130e9fa4a59b4f4de6a1ff","status":"WIRED_VERIFIED"},
-    {"slot":14,"agent_id":"goose","display_name":"Goose","roles":["research","auxiliary"],"transport":"command_env","command_env":"YAIWES_GOOSE_COMMAND","source_repo":"operator_runtime","source_path":null,"source_status":"EXTERNAL_NOT_VENDORED","status":"WIRED_VERIFIED_EXTERNAL_RUNTIME"},
-    {"slot":15,"agent_id":"agent_zero","display_name":"Agent-Zero","roles":["fallback_worker"],"transport":"command_env","command_env":"YAIWES_AGENT_ZERO_COMMAND","source_repo":"maxbry123-commits/Agentes-motores-Wordflow-YAIWES","source_path":"Agent-Zero","status":"WIRED_VERIFIED"},
-    {"slot":16,"agent_id":"opendev","display_name":"OpenDev","roles":["fallback_coder"],"transport":"command_env","command_env":"YAIWES_OPENDEV_COMMAND","source_repo":"maxbry123-commits/Agentes-motores-Wordflow-YAIWES","source_path":"OpenDev","status":"WIRED_VERIFIED"},
-    {"slot":17,"agent_id":"research_agent_lab","display_name":"Research Agent Lab","roles":["research"],"transport":"command_env","command_env":"YAIWES_RESEARCH_AGENT_LAB_COMMAND","source_repo":"maxbry123-commits/Agentes-motores-Wordflow-YAIWES","source_path":"Research Agent Lab","status":"WIRED_VERIFIED"},
-    {"slot":18,"agent_id":"mirothinker","display_name":"MiroThinker","roles":["reasoning","reviewer"],"transport":"command_env","command_env":"YAIWES_MIROTHINKER_COMMAND","source_repo":"maxbry123-commits/Agentes-motores-Wordflow-YAIWES","source_path":"MiroThinker","status":"WIRED_VERIFIED"}
-  ],
-  "canonical_council12": ["claude_code","openclaw","hermes","codex","aider","opencode","openhands","mimo_code","muse_glimmer","kimi_k","smolagents","qwen_code"],
-  "additional_selected": ["agent_zero","opendev","research_agent_lab","mirothinker"],
   "additional_not_selected_reason": "Council12 already covers multi-agent consensus; only fallback worker/coder, research, and reasoning gaps were added.",
-  "source_traceability_status": "15_LOCATED_3_EXTERNAL_NOT_VENDORED_NO_FAKE_PATHS",
+  "additional_selected": [
+    "agent_zero",
+    "opendev",
+    "research_agent_lab",
+    "mirothinker"
+  ],
+  "agents": [
+    {
+      "agent_id": "opencode",
+      "command_env": "YAIWES_OPENCODE_COMMAND",
+      "display_name": "OpenCode",
+      "local_source_copy_status": "COPIED_AND_READBACK_VERIFIED",
+      "local_source_manifest_sha256": "fe0582a7a2b599652185988b57d8d3fcc4ff58128ea0a3356b263457345ef037",
+      "local_source_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/opencode",
+      "local_source_runtime_claim": false,
+      "roles": [
+        "writer",
+        "executor",
+        "final_reviewer"
+      ],
+      "slot": 1,
+      "source_path": "OpenCode/OpenCode",
+      "source_repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
+      "source_tree_sha": "3e72d587a460f8ad64f95f2e13b50ad8f6385e4f",
+      "status": "WIRED_VERIFIED",
+      "transport": "command_env"
+    },
+    {
+      "agent_id": "openhands",
+      "command_env": "YAIWES_OPENHANDS_COMMAND",
+      "display_name": "OpenHands",
+      "local_source_copy_status": "COPIED_AND_READBACK_VERIFIED",
+      "local_source_manifest_sha256": "56de0a25ca13132b6ba07dab5b82ce975bc65e64f6349942e3bcf41a552853a0",
+      "local_source_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/openhands",
+      "local_source_runtime_claim": false,
+      "roles": [
+        "review",
+        "repair",
+        "final_reviewer"
+      ],
+      "slot": 2,
+      "source_path": "OpenHands/OpenHands",
+      "source_repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
+      "source_tree_sha": "5598f214c8cdfdd7d62e0fae4f4bd9764694a935",
+      "status": "WIRED_VERIFIED",
+      "transport": "command_env"
+    },
+    {
+      "agent_id": "claude_code",
+      "display_name": "Claude Code CLI",
+      "local_source_copy_status": "COPIED_AND_READBACK_VERIFIED",
+      "local_source_manifest_sha256": "028773f8517bc63c8b52ed8557cfb4f07efa255514c8e955a3f437b39a40ab54",
+      "local_source_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/claude_code",
+      "local_source_runtime_claim": false,
+      "roles": [
+        "flow_review",
+        "wiring_review",
+        "auditor"
+      ],
+      "slot": 3,
+      "source_path": "Core kernel razonamiento repo para Yaiwes/Claude-Code/Claude-Code",
+      "source_repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
+      "source_tree_sha": "8bc6f609eba4da05eb2ce306be68463189006385",
+      "status": "WIRED_VERIFIED",
+      "token_env": "YAIWES_CLAUDE_CODE_TOKEN",
+      "transport": "http_env",
+      "url_env": "YAIWES_CLAUDE_CODE_URL"
+    },
+    {
+      "agent_id": "mimo_code",
+      "display_name": "MiMo Code",
+      "local_source_copy_status": "COPIED_AND_READBACK_VERIFIED",
+      "local_source_manifest_sha256": "a7138f7634d8b3e08e8c0648614ce1f712c02dd2722b67480d3a4ef36d5d9420",
+      "local_source_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/mimo_code",
+      "local_source_runtime_claim": false,
+      "roles": [
+        "flow_review",
+        "wiring_review",
+        "auditor"
+      ],
+      "slot": 4,
+      "source_path": "Core kernel razonamiento repo para Yaiwes/MiMo",
+      "source_repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
+      "source_tree_sha": "c308e0a6b45a022ba8e0b13f889661b64237895e",
+      "status": "WIRED_VERIFIED",
+      "token_env": "YAIWES_MIMO_CODE_TOKEN",
+      "transport": "http_env",
+      "url_env": "YAIWES_MIMO_CODE_URL"
+    },
+    {
+      "agent_id": "codex",
+      "command_env": "YAIWES_CODEX_COMMAND",
+      "display_name": "Codex",
+      "local_source_copy_status": "COPIED_AND_READBACK_VERIFIED",
+      "local_source_manifest_sha256": "6f862fb4dd7b143c32d30f2c592c93ac5400d289184c7b961ee65f7740659478",
+      "local_source_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/codex",
+      "local_source_runtime_claim": false,
+      "roles": [
+        "auditor",
+        "debug",
+        "code_review"
+      ],
+      "slot": 5,
+      "source_path": "Core kernel razonamiento repo para Yaiwes/Codex/Codex",
+      "source_repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
+      "source_tree_sha": "52ef893c734cbf627d9633d8d3208972a29212c7",
+      "status": "WIRED_VERIFIED",
+      "transport": "command_env"
+    },
+    {
+      "agent_id": "smolagents",
+      "command_env": "YAIWES_SMOLAGENTS_COMMAND",
+      "display_name": "SmolAgents",
+      "local_source_copy_status": "COPIED_AND_READBACK_VERIFIED",
+      "local_source_manifest_sha256": "e4831e20ac6bdde875e2d723c578079cb550b4e4348841019195ccb7c6ff1422",
+      "local_source_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/smolagents",
+      "local_source_runtime_claim": false,
+      "roles": [
+        "auditor",
+        "council"
+      ],
+      "slot": 6,
+      "source_path": "Core kernel razonamiento repo para Yaiwes/SmolAgents",
+      "source_repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
+      "status": "WIRED_VERIFIED",
+      "transport": "command_env"
+    },
+    {
+      "agent_id": "hermes",
+      "command_env": "YAIWES_HERMES_COMMAND",
+      "display_name": "Hermes",
+      "local_source_copy_status": "COPIED_AND_READBACK_VERIFIED",
+      "local_source_manifest_sha256": "251be016e7e0f31aeefef7705ce3781215e0f81719e4760054f314cdddac3997",
+      "local_source_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/hermes",
+      "local_source_runtime_claim": false,
+      "roles": [
+        "auditor",
+        "worker"
+      ],
+      "slot": 7,
+      "source_path": null,
+      "source_repo": "operator_runtime",
+      "source_status": "EXTERNAL_NOT_VENDORED",
+      "status": "WIRED_VERIFIED_EXTERNAL_RUNTIME",
+      "transport": "command_env"
+    },
+    {
+      "agent_id": "openclaw",
+      "display_name": "OpenClaw",
+      "local_source_copy_status": "COPIED_AND_READBACK_VERIFIED",
+      "local_source_manifest_sha256": "8a0e48c98ee6e0120984cc87a17bf39835151ea48af6758c37e759b6c61d581c",
+      "local_source_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/openclaw",
+      "local_source_runtime_claim": false,
+      "roles": [
+        "auditor",
+        "coordinator",
+        "gateway"
+      ],
+      "slot": 8,
+      "source_blob_sha": "6d91a09519c131186a8bea7448acaaeb336486f1",
+      "source_path": "openclaw.mjs",
+      "source_repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
+      "status": "WIRED_VERIFIED",
+      "token_env": "YAIWES_OPENCLAW_TOKEN",
+      "transport": "http_env",
+      "url_env": "YAIWES_OPENCLAW_URL"
+    },
+    {
+      "agent_id": "aider",
+      "command_env": "YAIWES_AIDER_COMMAND",
+      "display_name": "Aider",
+      "local_source_copy_status": "COPIED_AND_READBACK_VERIFIED",
+      "local_source_manifest_sha256": "3575d6085e998b8608c04434563c3fea6f5f4842c6a6a9068722a0e55600b70c",
+      "local_source_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/aider",
+      "local_source_runtime_claim": false,
+      "roles": [
+        "editor",
+        "council"
+      ],
+      "slot": 9,
+      "source_path": "Core kernel razonamiento repo para Yaiwes/Aider/Aider",
+      "source_repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
+      "source_tree_sha": "f83ceb02bf62b860748b050c03361bd0dd1b7d47",
+      "status": "WIRED_VERIFIED",
+      "transport": "command_env"
+    },
+    {
+      "agent_id": "muse_glimmer",
+      "command_env": "YAIWES_MUSE_GLIMMER_COMMAND",
+      "display_name": "Muse/Glimmer Code",
+      "local_source_copy_status": "COPIED_AND_READBACK_VERIFIED",
+      "local_source_manifest_sha256": "b7a3dfa1890decb0533007cc6e6991d24653b6abe8c30103c5273c0001863771",
+      "local_source_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/muse_glimmer",
+      "local_source_runtime_claim": false,
+      "roles": [
+        "council",
+        "reviewer"
+      ],
+      "slot": 10,
+      "source_path": null,
+      "source_repo": "operator_runtime",
+      "source_status": "EXTERNAL_NOT_VENDORED",
+      "status": "WIRED_VERIFIED_EXTERNAL_RUNTIME",
+      "transport": "command_env"
+    },
+    {
+      "agent_id": "kimi_k",
+      "command_env": "YAIWES_KIMI_COMMAND",
+      "display_name": "Kimi K Code",
+      "local_source_copy_status": "COPIED_AND_READBACK_VERIFIED",
+      "local_source_manifest_sha256": "345b6e6cfcc3cb6cc9462679885abeea40ea2000ab07e1122e0720484a3d0432",
+      "local_source_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/kimi_k",
+      "local_source_runtime_claim": false,
+      "roles": [
+        "council",
+        "reviewer"
+      ],
+      "slot": 11,
+      "source_path": "Core kernel razonamiento repo para Yaiwes/Kimi-K2.5/Kimi-K2.5",
+      "source_repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
+      "source_tree_sha": "851f463176c72f8fda9e0aea7b41e6ab91a51af2",
+      "status": "WIRED_VERIFIED",
+      "transport": "command_env"
+    },
+    {
+      "agent_id": "qwen_code",
+      "command_env": "YAIWES_QWEN_COMMAND",
+      "display_name": "Qwen Code",
+      "local_source_copy_status": "COPIED_AND_READBACK_VERIFIED",
+      "local_source_manifest_sha256": "6943981aa26c0c63dc3c88f58c66451f9ed9be018fe6022ec75cae210dad5051",
+      "local_source_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/qwen_code",
+      "local_source_runtime_claim": false,
+      "roles": [
+        "council",
+        "reviewer"
+      ],
+      "slot": 12,
+      "source_path": "Core kernel razonamiento repo para Yaiwes/Qwen-Agent/Qwen-Agent",
+      "source_repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
+      "source_tree_sha": "7c86e0151a39a82b2507dd461f1ee9f5732be1ed",
+      "status": "WIRED_VERIFIED",
+      "transport": "command_env"
+    },
+    {
+      "agent_id": "cline",
+      "command_env": "YAIWES_CLINE_COMMAND",
+      "display_name": "Cline",
+      "local_source_copy_status": "COPIED_AND_READBACK_VERIFIED",
+      "local_source_manifest_sha256": "f14b7f997e0f40760d337069a7b3b5499a5c909aebe92203c086b5dd3ca268a2",
+      "local_source_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/cline",
+      "local_source_runtime_claim": false,
+      "roles": [
+        "coder",
+        "auxiliary"
+      ],
+      "slot": 13,
+      "source_path": "Core kernel razonamiento repo para Yaiwes/Cline/Cline",
+      "source_repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
+      "source_tree_sha": "42e6fb4827285a3309130e9fa4a59b4f4de6a1ff",
+      "status": "WIRED_VERIFIED",
+      "transport": "command_env"
+    },
+    {
+      "agent_id": "goose",
+      "command_env": "YAIWES_GOOSE_COMMAND",
+      "display_name": "Goose",
+      "local_source_copy_status": "COPIED_AND_READBACK_VERIFIED",
+      "local_source_manifest_sha256": "c1b3226b34121bb2996c8f4ce1ca473d1e3af4fec8e9dc9e3ab6aa48b68b53c6",
+      "local_source_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/goose",
+      "local_source_runtime_claim": false,
+      "official_source_commit": "a23a8cd5b138954bc8962cba623c2d8ecd375512",
+      "official_source_repo": "aaif-goose/goose",
+      "roles": [
+        "research",
+        "auxiliary"
+      ],
+      "slot": 14,
+      "source_normalization": "TRACKED_INTERNAL_SYMLINKS_MATERIALIZED_TO_REGULAR_FILES",
+      "source_path": null,
+      "source_repo": "operator_runtime",
+      "source_status": "OFFICIAL_SOURCE_MIRRORED_VERIFIED_RUNTIME_UNCHANGED",
+      "status": "WIRED_VERIFIED_EXTERNAL_RUNTIME",
+      "transport": "command_env"
+    },
+    {
+      "agent_id": "agent_zero",
+      "command_env": "YAIWES_AGENT_ZERO_COMMAND",
+      "display_name": "Agent-Zero",
+      "local_source_copy_status": "COPIED_AND_READBACK_VERIFIED",
+      "local_source_manifest_sha256": "978ef7a3ee543bb62865ccc19568f55c8693c788fe84e1a8fa79554f53608c16",
+      "local_source_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/agent_zero",
+      "local_source_runtime_claim": false,
+      "roles": [
+        "fallback_worker"
+      ],
+      "slot": 15,
+      "source_path": "Agent-Zero",
+      "source_repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
+      "status": "WIRED_VERIFIED",
+      "transport": "command_env"
+    },
+    {
+      "agent_id": "opendev",
+      "command_env": "YAIWES_OPENDEV_COMMAND",
+      "display_name": "OpenDev",
+      "local_source_copy_status": "COPIED_AND_READBACK_VERIFIED",
+      "local_source_manifest_sha256": "e34098d0c37a1d40640e259151a998ec600a46e5e0548303666e90a02358bb2a",
+      "local_source_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/opendev",
+      "local_source_runtime_claim": false,
+      "roles": [
+        "fallback_coder"
+      ],
+      "slot": 16,
+      "source_path": "OpenDev",
+      "source_repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
+      "status": "WIRED_VERIFIED",
+      "transport": "command_env"
+    },
+    {
+      "agent_id": "research_agent_lab",
+      "command_env": "YAIWES_RESEARCH_AGENT_LAB_COMMAND",
+      "display_name": "Research Agent Lab",
+      "local_source_copy_status": "COPIED_AND_READBACK_VERIFIED",
+      "local_source_manifest_sha256": "353c21f063cc71cc5ac653a7088c98e055fcb39e7014901f471d2898c55b0100",
+      "local_source_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/research_agent_lab",
+      "local_source_runtime_claim": false,
+      "roles": [
+        "research"
+      ],
+      "slot": 17,
+      "source_path": "Research Agent Lab",
+      "source_repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
+      "status": "WIRED_VERIFIED",
+      "transport": "command_env"
+    },
+    {
+      "agent_id": "mirothinker",
+      "command_env": "YAIWES_MIROTHINKER_COMMAND",
+      "display_name": "MiroThinker",
+      "local_source_copy_status": "COPIED_AND_READBACK_VERIFIED",
+      "local_source_manifest_sha256": "81dee47218bc72499841c763a57dd6122e4bcfb76c451f7508dbaca02055f7cd",
+      "local_source_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/mirothinker",
+      "local_source_runtime_claim": false,
+      "roles": [
+        "reasoning",
+        "reviewer"
+      ],
+      "slot": 18,
+      "source_path": "MiroThinker",
+      "source_repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
+      "status": "WIRED_VERIFIED",
+      "transport": "command_env"
+    }
+  ],
+  "canonical_adapter": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_adapter.py",
+  "canonical_council12": [
+    "claude_code",
+    "openclaw",
+    "hermes",
+    "codex",
+    "aider",
+    "opencode",
+    "openhands",
+    "mimo_code",
+    "muse_glimmer",
+    "kimi_k",
+    "smolagents",
+    "qwen_code"
+  ],
+  "closure_rule": "Repository wiring is ready for real tests. External runtime execution is not claimed until its authorized command/API/MCP endpoint is injected and invoked with evidence.",
+  "contract": "tel.workflow/v4",
+  "local_source_evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/AGENT_SOURCE_COPY_2026-09-15.json",
+  "mode": "FAIL_CLOSED_EXECUTION_LOOP",
+  "ready_for_test_manifest": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/AGENT_FLEET_READY_FOR_TEST.json",
+  "routing": "deterministic_exact_id_then_slot_role",
   "runtime_status": "READY_FOR_TEST_RUNTIME_ENV_REQUIRED",
-  "closure_rule": "Repository wiring is ready for real tests. External runtime execution is not claimed until its authorized command/API/MCP endpoint is injected and invoked with evidence."
+  "scope_root": "➡️📂 Wordflow LOOP Yaiwes/",
+  "source_traceability_status": "18_OF_18_LOCAL_SOURCE_MIRRORS_VERIFIED_RUNTIME_STATUS_UNCHANGED",
+  "status": "READY_FOR_REAL_AGENT_TEST",
+  "step": 3,
+  "step3_evidence": {
+    "conclusion": "success",
+    "evidence_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/STEP3_AGENT_FLEET_VERIFY.json",
+    "head_sha": "05ce5fc43a599da1ae9e80f485450d52aede07a1",
+    "job_id": 102649876845,
+    "run_id": 34406268016
+  }
 }

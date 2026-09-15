@@ -8,9 +8,15 @@
   "external_source_commit": "6c44c5c4d7fcc7b1e941c5e24dde59fd2ad40e3f",
   "external_source_repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
   "failures": 0,
+  "goose_official_source": {
+    "acquisition": "LOCKED_DOWNLOAD_EXTRACT_ENGINE_THEN_CANONICAL_COPY_MOTOR",
+    "commit": "a23a8cd5b138954bc8962cba623c2d8ecd375512",
+    "repo": "aaif-goose/goose",
+    "source_normalization": "TRACKED_INTERNAL_SYMLINKS_MATERIALIZED_TO_REGULAR_FILES"
+  },
   "plan": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/AGENT_SOURCE_COPY_PLAN_2026-09-15.json",
   "presence_is_not_runtime_integration": true,
-  "resolved_total": 17,
+  "resolved_total": 18,
   "results": [
     {
       "agent_id": "opencode",
@@ -252,13 +258,35 @@
     },
     {
       "agent_id": "goose",
+      "bundle_parts": 26,
+      "bundle_sha256": "94c7f8f27ebfad773fa2eb71893c6db737cb623232940bb7b59757380842e37b",
+      "bytes_total": 359711474,
+      "checkout": "official_download_extract",
       "destination": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/goose",
-      "detail": "SOURCE_NOT_FOUND_IN_CURRENT_REPO_TREES; do not invent path",
-      "status": "UNRESOLVED_SOURCE"
+      "download_extract_engine_blob_sha": "91e6e4486692eab314be5c7130d8310d3c855397",
+      "download_extract_verified": true,
+      "extraction_verified": true,
+      "file_count": 2464,
+      "manifest_sha256": "c1b3226b34121bb2996c8f4ce1ca473d1e3af4fec8e9dc9e3ab6aa48b68b53c6",
+      "materialization_map_sha256": "4a83ef0a784ed087510e423fb12321651eff89807252feeff7dce8dbdb7b562d",
+      "materialized_symlinks": 34,
+      "motor_blob_sha": "3689924361ce4a1a9fde4ae2b6f6009c37a6042d",
+      "motor_verdict": "VERIFIED_CLOSED",
+      "official_git_tree_sha": "4bb43fc0bfecfbc412d827dcbd34a5a8a811c43a",
+      "reconstruction_verified": true,
+      "runtime_integration_claimed": false,
+      "source_commit": "a23a8cd5b138954bc8962cba623c2d8ecd375512",
+      "source_kind": "dir",
+      "source_normalization": "TRACKED_INTERNAL_SYMLINKS_MATERIALIZED_TO_REGULAR_FILES",
+      "source_path": ".",
+      "source_repo": "aaif-goose/goose",
+      "source_tree_sha256": "b213818c833a2c8c85e6b20314d55e05912a449c593f6191ebe9cc859ea37d86",
+      "state_file": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/agent-source-copy-state/goose.json",
+      "status": "COPIED_AND_READBACK_VERIFIED"
     }
   ],
   "schema": "yaiwes.agent-source-copy-evidence/v1",
-  "unresolved_total": 1,
-  "verdict": "PARTIAL_VERIFIED_17_OF_18",
-  "verified_total": 17
+  "unresolved_total": 0,
+  "verdict": "VERIFIED_18_OF_18",
+  "verified_total": 18
 }
