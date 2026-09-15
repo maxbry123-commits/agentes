@@ -1,0 +1,113 @@
+name: YAIWES Wordflow Goose Official Source
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-wordflow-goose-official-source.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-wordflow-goose-official-source
+  cancel-in-progress: false
+
+jobs:
+  goose-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    steps:
+      - name: Sparse checkout exact closure scope
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            ➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/canonical_motor_gate.py
+            ➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/agent_source_copy_runner.py
+            ➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/goose_official_acquisition_runner.py
+            ➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/AGENT_SOURCE_COPY_2026-09-15.json
+            ➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_registry.json
+            ➡️📂motores de descarga extracción copiado movimiento archivos agentes/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py
+            ➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de copiar archivos/motor_3_copy_batches.py
+
+      - name: Validate immutable motor composition
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            '➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/canonical_motor_gate.py' \
+            '➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/agent_source_copy_runner.py' \
+            '➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/goose_official_acquisition_runner.py' \
+            '➡️📂motores de descarga extracción copiado movimiento archivos agentes/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py' \
+            '➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de copiar archivos/motor_3_copy_batches.py'
+
+      - name: Download extract and canonical-copy Goose
+        id: goose
+        shell: bash
+        run: |
+          set +e
+          python '➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/goose_official_acquisition_runner.py' \
+            --repo-root "$GITHUB_WORKSPACE" \
+            2>&1 | tee /tmp/goose-source.out
+          rc=${PIPESTATUS[0]}
+          echo "runner_rc=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Persist only verified Goose outputs no force
+        if: steps.goose.outputs.runner_rc == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          find '➡️📂 Wordflow LOOP Yaiwes' -type d -name __pycache__ -prune -exec rm -rf {} + || true
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            '➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/goose' \
+            '➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/AGENT_SOURCE_COPY_2026-09-15.json' \
+            '➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/GOOSE_OFFICIAL_ACQUISITION_2026-09-15.json' \
+            '➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/agent-source-copy-state/goose.json' \
+            '➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_registry.json'
+          git commit -m 'copy(wordflow): close Goose official source mirror 18-of-18'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
+
+      - name: Fresh remote 18-of-18 readback
+        if: steps.goose.outputs.runner_rc == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git show 'origin/main:➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/AGENT_SOURCE_COPY_2026-09-15.json' > /tmp/aggregate.json
+          git show 'origin/main:➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/GOOSE_OFFICIAL_ACQUISITION_2026-09-15.json' > /tmp/goose.json
+          git show 'origin/main:➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_registry.json' > /tmp/registry.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          a=json.loads(Path('/tmp/aggregate.json').read_text())
+          g=json.loads(Path('/tmp/goose.json').read_text())
+          r=json.loads(Path('/tmp/registry.json').read_text())
+          assert a['verdict']=='VERIFIED_18_OF_18', a
+          assert a['verified_total']==18 and a['unresolved_total']==0 and a['failures']==0, a
+          assert g['verdict']=='VERIFIED_CLOSED', g
+          assert g['official_source']['pinned_commit']=='a23a8cd5b138954bc8962cba623c2d8ecd375512', g
+          assert r['source_traceability_status']=='18_OF_18_LOCAL_SOURCE_MIRRORS_VERIFIED_RUNTIME_STATUS_UNCHANGED', r['source_traceability_status']
+          goose=[x for x in r['agents'] if x['agent_id']=='goose'][0]
+          assert goose['local_source_copy_status']=='COPIED_AND_READBACK_VERIFIED', goose
+          assert goose['local_source_runtime_claim'] is False, goose
+          print('GOOSE_REMOTE_READBACK=PASS')
+          print('AGENT_SOURCES=VERIFIED_18_OF_18')
+          PY
+
+      - name: Final fail-closed verdict
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ '${{ steps.goose.outputs.runner_rc }}' != '0' ]; then
+            echo 'GOOSE_SOURCE_GAP'
+            tail -n 120 /tmp/goose-source.out || true
+            exit 1
+          fi
+          echo 'YAIWES_AGENT_SOURCE_COPY=VERIFIED_18_OF_18'
