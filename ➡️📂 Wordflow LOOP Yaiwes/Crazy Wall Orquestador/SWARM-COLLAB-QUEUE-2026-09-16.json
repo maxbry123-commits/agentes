@@ -1,0 +1,120 @@
+{
+  "schema": "yaiwes.swarm-collaboration-queue/v1",
+  "project": "Wordflow LOOP Yaiwes",
+  "repo": "maxbry123-commits/agentes",
+  "branch": "main",
+  "mode": "FAIL_CLOSED_3_STEPS",
+  "authoritative_root": "➡️📂 Wordflow LOOP Yaiwes/",
+  "historical_code_graph": {
+    "status": "CODE_GRAPH_CLOSED_VERIFIED_30_OF_30",
+    "preserve": true,
+    "reopen_without_new_evidence": false
+  },
+  "claim_protocol": {
+    "one_chat_one_node": true,
+    "one_path_one_writer": true,
+    "read_fresh_before_claim": true,
+    "claim_states": ["FREE", "CLAIMED", "IN_PROGRESS", "GAP", "BLOCKED", "CLOSED"],
+    "claim_required_before_write": true,
+    "claim_fields": ["owner", "claimed_at", "base_sha"],
+    "release_on_close": true,
+    "force_push": false,
+    "max_execution_steps": 3,
+    "evidence_required": true,
+    "pass_without_real_test": false
+  },
+  "nodes": [
+    {
+      "id": "WF-HF-01",
+      "task": "Hugging Face skills E2E: remote discovery, verified catalog, acquisition/sync to workspace, load/use 3-5 relevant skills per task",
+      "state": "IN_PROGRESS",
+      "owner": "ORCHESTRATOR_SOL",
+      "write_scope": [
+        "➡️📂 Wordflow LOOP Yaiwes/workspace/skills/",
+        "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/",
+        "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/",
+        "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/"
+      ],
+      "dependencies": [],
+      "close_gate": "authenticated discovery + persisted provenance + verified catalog + 3-5 relevant skills selected and actually loadable/usable + evidence"
+    },
+    {
+      "id": "WF-COPY-02",
+      "task": "Verify agents used by Wordflow are physically inside the Wordflow root; copy only missing agent sources with canonical Motores and preserve provenance",
+      "state": "FREE",
+      "owner": null,
+      "write_scope": [
+        "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/",
+        "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/"
+      ],
+      "dependencies": [],
+      "close_gate": "inventory + source provenance + canonical motor execution for missing only + source/destination readback + path/SHA256 evidence"
+    },
+    {
+      "id": "WF-PROFILES-03",
+      "task": "Close organized workspace profiles and per-agent memory for the 18-agent fleet without duplicating runtime claims",
+      "state": "FREE",
+      "owner": null,
+      "write_scope": [
+        "➡️📂 Wordflow LOOP Yaiwes/workspace/profiles/",
+        "➡️📂 Wordflow LOOP Yaiwes/workspace/memory/agents/",
+        "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/"
+      ],
+      "dependencies": [],
+      "close_gate": "18/18 profile linkage + 18/18 non-authoritative memory linkage + no secrets/private reasoning + readback evidence"
+    },
+    {
+      "id": "WF-INTAKE-04",
+      "task": "Run and close the 1-100 file intake E2E: identify project, audit documents, architecture seed, code destination and evidence",
+      "state": "FREE",
+      "owner": null,
+      "write_scope": [
+        "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/project_intake_pipeline.py",
+        "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/",
+        "➡️📂 Wordflow LOOP Yaiwes/workspace/runs/",
+        "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/"
+      ],
+      "dependencies": [],
+      "close_gate": "representative real E2E intake + project identification + architecture output + destination mapping + reproducible evidence"
+    },
+    {
+      "id": "WF-AUTOLOOP-05",
+      "task": "Close automatic instruction/file to Task Contract + DSL/DAG + Crazy Wall + STATE + CHECKPOINT + bitacora and RUN launcher E2E",
+      "state": "FREE",
+      "owner": null,
+      "write_scope": [
+        "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/auto_loop_builder.py",
+        "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/run_launcher.py",
+        "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/",
+        "➡️📂 Wordflow LOOP Yaiwes/workspace/runs/",
+        "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/"
+      ],
+      "dependencies": [],
+      "close_gate": "real isolated RUN creates all run artifacts and preserves global 30/30 state"
+    },
+    {
+      "id": "WF-RECOVERY-06",
+      "task": "Close continuity/watchdog runtime wiring and Codebase Memory MCP runtime activation/readback",
+      "state": "FREE",
+      "owner": null,
+      "write_scope": [
+        "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/continuity_supervisor.py",
+        "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/",
+        "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/adapters/",
+        "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/contracts/",
+        "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/"
+      ],
+      "dependencies": [],
+      "close_gate": "retry/resume/block-isolation/independent-progress proven in real queue path + MCP runtime registration/readback evidence"
+    }
+  ],
+  "global_gates": {
+    "preserve_global_30_of_30": true,
+    "no_duplicate_orchestrator": true,
+    "no_duplicate_motor": true,
+    "no_fake_pass": true,
+    "no_secret_values_in_repo_or_logs": true,
+    "readback_after_write": true,
+    "path_sha256_for_touched_files": true
+  }
+}
