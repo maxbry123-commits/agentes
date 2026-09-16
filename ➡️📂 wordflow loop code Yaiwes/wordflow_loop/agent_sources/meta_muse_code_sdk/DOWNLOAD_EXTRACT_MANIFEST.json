@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 633149,
+  "bundle_sha256": "5a507beccc1aec3e93730dfbf74bd124a02959026dc7fae3fc7d4dfe353b7657",
+  "extracted_tree": {
+    "bytes": 1977724,
+    "files": 222,
+    "sha256": "f1ef57c4167c566a7273c4f0c8ba01d24ac8fe553659344b2f07199bf8c6f3cb"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 633149,
+      "name": "Meta-Muse-Code-SDK-2026.bundle.zip.part-0001",
+      "sha256": "5a507beccc1aec3e93730dfbf74bd124a02959026dc7fae3fc7d4dfe353b7657"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Meta-Muse-Code-SDK-2026",
+  "source_bytes": 1977724,
+  "source_commit": "fbce769ccb75ab971d00e01a00fe076de4c773fc",
+  "source_files": 222,
+  "source_ref": "fbce769ccb75ab971d00e01a00fe076de4c773fc",
+  "source_repo": "meta-models/muse-code-sdk",
+  "source_tree": {
+    "bytes": 1977724,
+    "files": 222,
+    "sha256": "f1ef57c4167c566a7273c4f0c8ba01d24ac8fe553659344b2f07199bf8c6f3cb"
+  }
+}
