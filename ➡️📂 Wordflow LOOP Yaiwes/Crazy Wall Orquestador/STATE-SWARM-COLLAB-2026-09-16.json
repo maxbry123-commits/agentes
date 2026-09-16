@@ -1,0 +1,24 @@
+{
+  "schema": "yaiwes.swarm-state/v1",
+  "project": "Wordflow LOOP Yaiwes",
+  "repo": "maxbry123-commits/agentes",
+  "branch": "main",
+  "mode": "FAIL_CLOSED_3_STEPS",
+  "queue": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/SWARM-COLLAB-QUEUE-2026-09-16.json",
+  "bitacora": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/BITACORA-SWARM-COLLAB-2026-09-16.md",
+  "historical_state": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/STATE.json",
+  "historical_state_status": "CODE_GRAPH_CLOSED_VERIFIED_30_OF_30",
+  "preserve_historical_state": true,
+  "active_node": "WF-HF-01",
+  "active_owner": "ORCHESTRATOR_SOL",
+  "free_nodes": [
+    "WF-COPY-02",
+    "WF-PROFILES-03",
+    "WF-INTAKE-04",
+    "WF-AUTOLOOP-05",
+    "WF-RECOVERY-06"
+  ],
+  "claim_rule": "READ_FRESH -> CLAIM_ONE_FREE_NODE -> RECORD_OWNER_CLAIMED_AT_BASE_SHA -> EXECUTE_MAX_3_STEPS -> TEST -> EVIDENCE -> CLOSE_OR_BLOCK -> RELEASE",
+  "collision_policy": "FAIL_CLOSED",
+  "next": "parallel independent claims"
+}
