@@ -1,0 +1,51 @@
+name: Meta Agent Cookbook download + extract
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: meta-agent-cookbook-download-extract
+  cancel-in-progress: false
+
+jobs:
+  download-extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build single-destination queue
+        run: |
+          python - <<'PY'
+          import json
+          src='Motores/📂Motor descarga de componentes y extracción de zip/queue.meta-2026-agents.json'
+          out='/tmp/meta-agent-cookbook.queue.json'
+          q=json.load(open(src,encoding='utf-8'))
+          q['queue']=[x for x in q['queue'] if x['id']=='meta-2026-003-agent-cookbook']
+          assert len(q['queue'])==1
+          json.dump(q,open(out,'w',encoding='utf-8'),ensure_ascii=False,indent=2)
+          PY
+      - name: Run canonical YAIWES queue motor
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          QUEUE_FILE: /tmp/meta-agent-cookbook.queue.json
+          STATE_FILE: /tmp/meta-agent-cookbook.state.json
+          ENGINE_PATH: Motores/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py
+          INDEX_PATH: /tmp/META-AGENT-COOKBOOK-INDEX.md
+          MAX_RETRIES: '3'
+        run: python 'Motores/📂Motor descarga de componentes y extracción de zip/motor_2_queue_download_extract.py'
+      - name: Verify destination
+        run: |
+          git fetch origin main
+          git checkout -f main
+          git reset --hard origin/main
+          test -f 'Core kernel Yaiwes/Meta-Agent-Cookbook-2026/DOWNLOAD_EXTRACT_MANIFEST.json'
+          test -d 'Core kernel Yaiwes/Meta-Agent-Cookbook-2026/code/04_muse_code'
+          test -d 'Core kernel Yaiwes/Meta-Agent-Cookbook-2026/code/03_use_cases/13_macos_cua'
