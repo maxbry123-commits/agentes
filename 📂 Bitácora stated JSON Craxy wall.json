@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.crazy-wall.integration-watchdog/v6-strict-3-steps",
-  "updated_at": "2026-09-15T22:58:24.456508Z",
+  "updated_at": "2026-09-17T23:29:00Z",
   "repository": "maxbry123-commits/agentes",
   "branch": "main",
   "mode": "FAIL_CLOSED_STRICT_3_STEPS_MULTI_AI",
@@ -9394,6 +9394,12 @@
       "actor": "SOL",
       "label": "SOL integración 3",
       "event": "USER_REACTIVATED_SOL3_PHYSICAL_INVENTORY_LOOP_AG2_STEP1_PASS_STEP2_CLAIM"
+    },
+    {
+      "timestamp": "2026-09-17T23:29:00Z",
+      "source": "DIRECTOR_USER_CURRENT_CHAT",
+      "directive": "Forensic X-Ray + integration plan + closure plan + hourly ChatGPT watchdog execution.",
+      "status": "ACTIVE"
     }
   ],
   "director_authorizations": [
@@ -9494,5 +9500,473 @@
         }
       ]
     }
-  ]
+  ],
+  "closure_plan_2026_09_17": {
+    "schema": "yaiwes.closure-plan/v1",
+    "status": "ACTIVE",
+    "authorized_by": "DIRECTOR_USER_CURRENT_CHAT",
+    "executor": "CHATGPT_WATCHDOG_HOURLY",
+    "authoritative_root": "➡️📂 wordflow loop code Yaiwes",
+    "destination_agent_sources": "➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/",
+    "forensic_xray": {
+      "root_components_detected": 16,
+      "agent_source_trees_present": 20,
+      "current_fleet_registered": 18,
+      "meta_sources_present_not_registered_as_workers": 2,
+      "public_minimax_kimi_acquisition_targets": 13,
+      "source_not_public_products": 6,
+      "recursive_tree_entries_observed_at_least": 49296,
+      "recursive_tree_scan_truncated": true,
+      "conclusion": "PRESENCE != RUNTIME_INTEGRATION; 18 current fleet entries are wired/ready-for-test and explicitly do not claim local-source runtime."
+    },
+    "root_inventory": [
+      {
+        "name": "Crazy Wall Orquestador",
+        "kind": "control_plane",
+        "integration": "Autoridad de tareas/estado/checkpoint; mantener una sola fuente de coordinación."
+      },
+      {
+        "name": "runtime",
+        "kind": "runtime_kernel",
+        "integration": "Kernel/DAG/FSM/governance/recovery/intake/tests; owner del control determinista."
+      },
+      {
+        "name": "wordflow_loop",
+        "kind": "orchestration_package",
+        "integration": "Contracts/adapters/fleet/plugins/workflows/evidence; punto principal de wiring."
+      },
+      {
+        "name": "workspace",
+        "kind": "run_state",
+        "integration": "Runs/checkpoints temporales; no sustituye STATE/Crazy Wall."
+      },
+      {
+        "name": "➡️📂motores de descarga extracción copiado movimiento archivos agentes",
+        "kind": "canonical_motors",
+        "integration": "Motores inmutables para adquisición/copy/move con hash/read-back."
+      },
+      {
+        "name": "📂 Capa de persistencia open mythos",
+        "kind": "persistence_layer",
+        "integration": "Conectar detrás de State/Memory ports sólo tras X-Ray; no duplicar fuente de verdad."
+      },
+      {
+        "name": "📂 Capa workflow GitHub Action",
+        "kind": "workflow_host",
+        "integration": "Host de ejecución sólo cuando autorizado; nunca fuente de verdad."
+      },
+      {
+        "name": "📂 Capa workflow evolución",
+        "kind": "workflow_evolution",
+        "integration": "Capacidad/patrones de evolución bajo policy; no auto-mutación sin gate."
+      },
+      {
+        "name": "📂 archivos download",
+        "kind": "staging_acquisition",
+        "integration": "Staging de descarga; presencia aquí no implica integración."
+      },
+      {
+        "name": "📂 notas auditoría Claude",
+        "kind": "audit_notes",
+        "integration": "Referencia; no prevalece sobre read-back físico."
+      },
+      {
+        "name": "GUIA-MAESTRA-EJECUCION-LOOP-V4-WORDFLOW-YAIWES.md",
+        "kind": "governance_doc",
+        "integration": "Contrato operativo de referencia."
+      },
+      {
+        "name": "HANDOFF.md",
+        "kind": "handoff",
+        "integration": "Continuidad; reconciliar en CL-013."
+      },
+      {
+        "name": "PLAN-PROGRAMACION-11-OBJETIVOS-Y-AGENTES.md",
+        "kind": "plan_doc",
+        "integration": "Referencia de objetivos/agentes; reconciliar sin duplicar cola."
+      },
+      {
+        "name": "➡️📂 README arquitectura Wordflow LOOP Yaiwes.md",
+        "kind": "architecture_doc",
+        "integration": "Arquitectura autoritativa complementaria; reconciliar en cierre."
+      },
+      {
+        "name": "➡️📂 readme indice agentes.md",
+        "kind": "agent_index",
+        "integration": "Índice; actualizar tras adquisición/integración."
+      },
+      {
+        "name": "➡️📂 readme wordflow loop Yaiwes.md",
+        "kind": "project_readme",
+        "integration": "Overview; actualizar sólo después de evidencia."
+      }
+    ],
+    "existing_agent_sources": [
+      {
+        "id": "agent_zero",
+        "present": true,
+        "fleet_registered": true,
+        "runtime_truth": "WIRED_READY_FOR_TEST; local source runtime NOT claimed",
+        "plan": "Preserve source; real transport probe + behavior/fail-closed/read-back before runtime PASS."
+      },
+      {
+        "id": "aider",
+        "present": true,
+        "fleet_registered": true,
+        "runtime_truth": "WIRED_READY_FOR_TEST; local source runtime NOT claimed",
+        "plan": "Preserve source; real transport probe + behavior/fail-closed/read-back before runtime PASS."
+      },
+      {
+        "id": "claude_code",
+        "present": true,
+        "fleet_registered": true,
+        "runtime_truth": "WIRED_READY_FOR_TEST; local source runtime NOT claimed",
+        "plan": "Preserve source; real transport probe + behavior/fail-closed/read-back before runtime PASS."
+      },
+      {
+        "id": "cline",
+        "present": true,
+        "fleet_registered": true,
+        "runtime_truth": "WIRED_READY_FOR_TEST; local source runtime NOT claimed",
+        "plan": "Preserve source; real transport probe + behavior/fail-closed/read-back before runtime PASS."
+      },
+      {
+        "id": "codex",
+        "present": true,
+        "fleet_registered": true,
+        "runtime_truth": "WIRED_READY_FOR_TEST; local source runtime NOT claimed",
+        "plan": "Preserve source; real transport probe + behavior/fail-closed/read-back before runtime PASS."
+      },
+      {
+        "id": "goose",
+        "present": true,
+        "fleet_registered": true,
+        "runtime_truth": "WIRED_READY_FOR_TEST; local source runtime NOT claimed",
+        "plan": "Preserve source; real transport probe + behavior/fail-closed/read-back before runtime PASS."
+      },
+      {
+        "id": "hermes",
+        "present": true,
+        "fleet_registered": true,
+        "runtime_truth": "WIRED_READY_FOR_TEST; local source runtime NOT claimed",
+        "plan": "Preserve source; real transport probe + behavior/fail-closed/read-back before runtime PASS."
+      },
+      {
+        "id": "kimi_k",
+        "present": true,
+        "fleet_registered": true,
+        "runtime_truth": "WIRED_READY_FOR_TEST; local source runtime NOT claimed",
+        "plan": "Preserve source; real transport probe + behavior/fail-closed/read-back before runtime PASS."
+      },
+      {
+        "id": "mimo_code",
+        "present": true,
+        "fleet_registered": true,
+        "runtime_truth": "WIRED_READY_FOR_TEST; local source runtime NOT claimed",
+        "plan": "Preserve source; real transport probe + behavior/fail-closed/read-back before runtime PASS."
+      },
+      {
+        "id": "mirothinker",
+        "present": true,
+        "fleet_registered": true,
+        "runtime_truth": "WIRED_READY_FOR_TEST; local source runtime NOT claimed",
+        "plan": "Preserve source; real transport probe + behavior/fail-closed/read-back before runtime PASS."
+      },
+      {
+        "id": "muse_glimmer",
+        "present": true,
+        "fleet_registered": true,
+        "runtime_truth": "WIRED_READY_FOR_TEST; local source runtime NOT claimed",
+        "plan": "Preserve source; real transport probe + behavior/fail-closed/read-back before runtime PASS."
+      },
+      {
+        "id": "openclaw",
+        "present": true,
+        "fleet_registered": true,
+        "runtime_truth": "WIRED_READY_FOR_TEST; local source runtime NOT claimed",
+        "plan": "Preserve source; real transport probe + behavior/fail-closed/read-back before runtime PASS."
+      },
+      {
+        "id": "opencode",
+        "present": true,
+        "fleet_registered": true,
+        "runtime_truth": "WIRED_READY_FOR_TEST; local source runtime NOT claimed",
+        "plan": "Preserve source; real transport probe + behavior/fail-closed/read-back before runtime PASS."
+      },
+      {
+        "id": "opendev",
+        "present": true,
+        "fleet_registered": true,
+        "runtime_truth": "WIRED_READY_FOR_TEST; local source runtime NOT claimed",
+        "plan": "Preserve source; real transport probe + behavior/fail-closed/read-back before runtime PASS."
+      },
+      {
+        "id": "openhands",
+        "present": true,
+        "fleet_registered": true,
+        "runtime_truth": "WIRED_READY_FOR_TEST; local source runtime NOT claimed",
+        "plan": "Preserve source; real transport probe + behavior/fail-closed/read-back before runtime PASS."
+      },
+      {
+        "id": "qwen_code",
+        "present": true,
+        "fleet_registered": true,
+        "runtime_truth": "WIRED_READY_FOR_TEST; local source runtime NOT claimed",
+        "plan": "Preserve source; real transport probe + behavior/fail-closed/read-back before runtime PASS."
+      },
+      {
+        "id": "research_agent_lab",
+        "present": true,
+        "fleet_registered": true,
+        "runtime_truth": "WIRED_READY_FOR_TEST; local source runtime NOT claimed",
+        "plan": "Preserve source; real transport probe + behavior/fail-closed/read-back before runtime PASS."
+      },
+      {
+        "id": "smolagents",
+        "present": true,
+        "fleet_registered": true,
+        "runtime_truth": "WIRED_READY_FOR_TEST; local source runtime NOT claimed",
+        "plan": "Preserve source; real transport probe + behavior/fail-closed/read-back before runtime PASS."
+      },
+      {
+        "id": "meta_agent_cookbook",
+        "present": true,
+        "fleet_registered": false,
+        "runtime_truth": "SOURCE_LIBRARY",
+        "plan": "Integrar como patterns/skills/research/governance references; no worker salvo evidencia contraria."
+      },
+      {
+        "id": "meta_muse_code_sdk",
+        "present": true,
+        "fleet_registered": false,
+        "runtime_truth": "SESSION_SDK",
+        "plan": "Integrar lifecycle/session/approval/resume/checkpoint; no worker salvo evidencia contraria."
+      }
+    ],
+    "acquisitions": [
+      {
+        "id": "minimax_mcode",
+        "source": "npm:@minimax-ai/code",
+        "kind": "agent_runtime",
+        "plan": "Pin versión+integridad; extraer/publicar; AgentFleet candidate; ACP/command transport.",
+        "status": "PENDING_CLOSURE"
+      },
+      {
+        "id": "minimax_mini_agent",
+        "source": "MiniMax-AI/Mini-Agent",
+        "kind": "agent_runtime",
+        "plan": "AgentFleet worker candidate; preserve internal agent loop; ACP/MCP transport if verified.",
+        "status": "PENDING_CLOSURE"
+      },
+      {
+        "id": "minimax_openroom",
+        "source": "MiniMax-AI/OpenRoom",
+        "kind": "ui_agent_runtime",
+        "plan": "UI/frontend specialized worker or external adapter; preserve own workflow.",
+        "status": "PENDING_CLOSURE"
+      },
+      {
+        "id": "minimax_mmx_cli",
+        "source": "MiniMax-AI/cli",
+        "kind": "infra_cli",
+        "plan": "Tool/Plugin capability, not fleet worker by default.",
+        "status": "PENDING_CLOSURE"
+      },
+      {
+        "id": "minimax_code_plugins",
+        "source": "MiniMax-AI/MiniMax-Code-Plugins",
+        "kind": "plugins",
+        "plan": "Mount behind existing Plugin/Skill bus.",
+        "status": "PENDING_CLOSURE"
+      },
+      {
+        "id": "minimax_mcp",
+        "source": "MiniMax-AI/MiniMax-MCP",
+        "kind": "mcp_infra",
+        "plan": "MCP tool server/client capability behind existing port.",
+        "status": "PENDING_CLOSURE"
+      },
+      {
+        "id": "minimax_mcp_js",
+        "source": "MiniMax-AI/MiniMax-MCP-JS",
+        "kind": "mcp_infra",
+        "plan": "JS MCP capability; avoid duplicate owner.",
+        "status": "PENDING_CLOSURE"
+      },
+      {
+        "id": "minimax_coding_plan_mcp",
+        "source": "MiniMax-AI/MiniMax-Coding-Plan-MCP",
+        "kind": "planning_tool",
+        "plan": "Planning tool under deterministic policy boundary.",
+        "status": "PENDING_CLOSURE"
+      },
+      {
+        "id": "kimi_code",
+        "source": "MoonshotAI/kimi-code",
+        "kind": "agent_runtime",
+        "plan": "AgentFleet coder candidate; ACP/MCP transport; preserve internal subagents.",
+        "status": "PENDING_CLOSURE"
+      },
+      {
+        "id": "kimi_cli",
+        "source": "MoonshotAI/kimi-cli",
+        "kind": "legacy_agent_runtime",
+        "plan": "Legacy/fallback only if NO_VALUE_GAP passes; avoid duplicate Kimi owner.",
+        "status": "PENDING_CLOSURE"
+      },
+      {
+        "id": "kimi_agent_sdk",
+        "source": "MoonshotAI/kimi-agent-sdk",
+        "kind": "sdk",
+        "plan": "Provider/agent SDK adapter; not separate worker by default.",
+        "status": "PENDING_CLOSURE"
+      },
+      {
+        "id": "kimi_agent_rs",
+        "source": "MoonshotAI/kimi-agent-rs",
+        "kind": "sdk_runtime",
+        "plan": "Rust runtime/transport library behind adapter.",
+        "status": "PENDING_CLOSURE"
+      },
+      {
+        "id": "kimi_researcher",
+        "source": "MoonshotAI/Kimi-Researcher",
+        "kind": "research_reference",
+        "plan": "Research capability/reference only if runnable source and value demonstrated.",
+        "status": "PENDING_CLOSURE"
+      }
+    ],
+    "source_not_public": [
+      {
+        "name": "MiniMax Agent Web",
+        "status": "SOURCE_NOT_PUBLIC",
+        "plan": "Only official API/runtime integration if available."
+      },
+      {
+        "name": "MiniMax Code Desktop",
+        "status": "SOURCE_NOT_PUBLIC",
+        "plan": "Do not treat tracker repo as source."
+      },
+      {
+        "name": "MaxClaw",
+        "status": "SOURCE_NOT_PUBLIC",
+        "plan": "No source acquisition unless official source/package appears."
+      },
+      {
+        "name": "MaxHermes",
+        "status": "SOURCE_NOT_PUBLIC",
+        "plan": "No source acquisition unless official source/package appears."
+      },
+      {
+        "name": "Kimi Agent",
+        "status": "SOURCE_NOT_PUBLIC",
+        "plan": "Cloud product reference; official API/runtime only."
+      },
+      {
+        "name": "Kimi Claw",
+        "status": "SOURCE_NOT_PUBLIC",
+        "plan": "Cloud product reference; official API/runtime only."
+      }
+    ],
+    "integration_architecture": {
+      "outer_control": "Wordflow runtime/Crazy Wall owns contract, DAG, policy, evidence, retries and closure.",
+      "agents": "Agent internal loops own their internal reasoning/tools; Wordflow observes normalized boundary events/results.",
+      "transports": "Keep command_env/http_env/existing_adapter; add ACP/stdio only if X-Ray proves required and testable.",
+      "meta": "Cookbook -> skills/patterns; Muse SDK -> session/continuity.",
+      "infrastructure": "MiniMax/Kimi SDK/MCP/plugins -> existing Plugin/Tool ports; never create competing bus.",
+      "ui": "OpenRoom -> specialized UI/frontend worker/capability, not control-plane owner.",
+      "legacy": "kimi-cli -> fallback only if it adds unique value."
+    },
+    "closure_dag": [
+      {
+        "id": "CL-001",
+        "status": "PASS",
+        "task": "X-Ray physical inventory/reconciliation"
+      },
+      {
+        "id": "CL-002",
+        "status": "PENDING",
+        "task": "Acquire/publish public MiniMax/Kimi"
+      },
+      {
+        "id": "CL-003",
+        "status": "PENDING",
+        "task": "Resolve official mcode NPM acquisition"
+      },
+      {
+        "id": "CL-004",
+        "status": "PENDING",
+        "task": "Resolve Kimi symlink-safe acquisition"
+      },
+      {
+        "id": "CL-005",
+        "status": "PENDING",
+        "task": "Destination manifests/hash/read-back reconciliation"
+      },
+      {
+        "id": "CL-006",
+        "status": "PENDING",
+        "task": "X-Ray 1×1 and ADOPT/ADAPT/REJECT classification"
+      },
+      {
+        "id": "CL-007",
+        "status": "PENDING",
+        "task": "Agent Fleet expansion/classification"
+      },
+      {
+        "id": "CL-008",
+        "status": "PENDING",
+        "task": "ACP/stdio or official transport integration"
+      },
+      {
+        "id": "CL-009",
+        "status": "PENDING",
+        "task": "Meta Cookbook + Muse SDK integration"
+      },
+      {
+        "id": "CL-010",
+        "status": "PENDING",
+        "task": "MiniMax infrastructure integration"
+      },
+      {
+        "id": "CL-011",
+        "status": "PENDING",
+        "task": "Kimi SDK/research integration"
+      },
+      {
+        "id": "CL-012",
+        "status": "PENDING",
+        "task": "Runtime probes/tests/fail-closed/sandbox/read-back"
+      },
+      {
+        "id": "CL-013",
+        "status": "PENDING",
+        "task": "Global cross-verification + 3 refutations + 100% closure"
+      }
+    ],
+    "gaps": [
+      "13 public MiniMax/Kimi acquisitions not closed until destination read-back.",
+      "mcode NPM package needs official package acquisition path with integrity evidence.",
+      "kimi-code and kimi-cli symlinks conflict with canonical fail-closed extraction policy.",
+      "AgentFleet has no ACP transport today.",
+      "18 current agents are wired but real runtime requires configured command/API and evidence.",
+      "Meta Cookbook and Muse SDK are present but not yet integrated into their intended non-worker layers.",
+      "Closed-source products cannot be source-integrated; classify SOURCE_NOT_PUBLIC and use official API/runtime only if available."
+    ],
+    "final_acceptance": [
+      "Exact provenance/ref or package version for each acquired component.",
+      "Extraction + destination presence + SHA/read-back in main.",
+      "ADOPT/ADAPT/REJECT decision for every source component.",
+      "Agent registration only when agency + transport are demonstrated.",
+      "Runtime health/behavior/failure-path/sandbox/memory/evidence tests for every active agent.",
+      "No broken required paths/imports; no unreviewed duplicate owner.",
+      "STATE/TASK-NODES/CHECKPOINT/HANDOFF reconciled.",
+      "3 refutations and global cross-check.",
+      "100% in-scope gates PASS; SOURCE_NOT_PUBLIC items explicitly excluded from source-acquisition gate."
+    ],
+    "commits": {
+      "task_nodes": "9066af89d805348c623c63432617ef47db944f63",
+      "state": "e13096cbcde1b19e1871b3eee3dcfb53d5b4458b"
+    }
+  }
 }
