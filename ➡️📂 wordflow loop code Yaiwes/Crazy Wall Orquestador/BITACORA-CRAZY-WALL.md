@@ -466,3 +466,12 @@ Esta escritura alinea la octava fuente requerida (BITÁCORA) con `0019`. G-013 n
 - G-017: PASS — hash content-addressed, promoción atómica, health/smoke reales y rollback verificado.
 - Gate: `PASS_4_OF_4`; CODE_GRAPH: `30/30`.
 - Evidencia: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G022_PHYSICAL_SANDBOX_CLOSURE_2026-09-15.json` y `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G017_DETERMINISTIC_DEPLOYMENT_CLOSURE_2026-09-15.json`.
+
+## CHATGPT WATCHDOG — XRAY + CLOSURE START — 2026-09-17
+- Nodo: `CL-002` reclamado por `CHATGPT_CURRENT_RUN`; Step 1 RESEARCH=PASS, Step 2 EXECUTE=IN_PROGRESS.
+- X-Ray fresh: 16 componentes raíz; 20 árboles en `agent_sources`; fleet=18; Meta auxiliares=2; adapters=2; runtime/core directos observados=38.
+- Integración fijada en `PLAN-LOOP-30-TAREAS.md`: fleet existente se preserva; Meta→skills/continuidad; MiniMax→agent/UI/infra; Kimi→agent/SDK/research; sin bus paralelo.
+- Evidencia adquisición existente: HF jobs `6aabbfbc5527934177eedf37`, `6aabc049f76d6a098a712c01`, `6aabc077f76d6a098a712c0b`.
+- GAP CL-002: `PUBLISH_READBACK_PENDING`; no se cuenta ningún componente remoto como entregado hasta presencia + hash/read-back en `main`.
+- GAPs posteriores: CL-003 NPM mcode; CL-004 symlinks kimi-code/kimi-cli.
+- Próxima acción: continuar CL-002 con publicación verificable al destino exacto `➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/`.
