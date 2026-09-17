@@ -2,9 +2,9 @@
   "contract": "tel.workflow/v4",
   "project": "Wordflow LOOP Yaiwes",
   "mode": "FAIL_CLOSED_EXECUTION_LOOP",
-  "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
-  "status": "CODE_GRAPH_CLOSED_VERIFIED_30_OF_30",
-  "current_node": null,
+  "authorized_write_root": "➡️📂 wordflow loop code Yaiwes/",
+  "status": "CODE_GRAPH_30_OF_30_PRESERVED__CLOSURE_PLAN_ACTIVE",
+  "current_node": "CL-002",
   "checkpoint_id": "WFLOOP-CODE-GRAPH-20260911-0019",
   "queue_mode": "DAG_DEPENDENCIES_PLUS_PARALLEL_INDEPENDENT",
   "historical_local_closure": {
@@ -184,9 +184,9 @@
   },
   "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
   "next_actions": [
-    "CODE_GRAPH 30/30 gaps verified closed",
-    "Preserve fail-closed gates and run regression tests on future runtime changes",
-    "AUTH_PROVIDER_TEST_PENDING remains separate historical/external-auth work and is not one of the 30 CODE_GRAPH gaps"
+    "CL-002: acquire/publish MiniMax/Kimi public components to exact agent_sources destination with read-back.",
+    "CL-003/CL-004: resolve NPM mcode and symlink-safe Kimi acquisition gaps without weakening canonical motors.",
+    "Continue CL-005..CL-013 by DAG dependency; do not claim runtime PASS from source presence."
   ],
   "g017_deployment": {
     "status": "CLOSED_VERIFIED_DETERMINISTIC_DEPLOYMENT",
@@ -195,5 +195,62 @@
     "github_actions_run": "34931798702",
     "health_smoke": "PASS_REAL",
     "rollback": "PASS_VERIFIED"
+  },
+  "closure_plan_2026_09_17": {
+    "schema": "yaiwes.closure-plan/v1",
+    "created_at": "2026-09-17T23:29:00Z",
+    "status": "ACTIVE",
+    "executor": "CHATGPT_WATCHDOG_HOURLY",
+    "task_nodes_commit": "9066af89d805348c623c63432617ef47db944f63",
+    "destination_agent_sources": "➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/",
+    "forensic_snapshot": {
+      "project_root_components": 16,
+      "agent_source_trees_present": 20,
+      "fleet_registered": 18,
+      "meta_sources_present_not_fleet_registered": 2,
+      "public_minimax_kimi_acquisition_targets": 13,
+      "recursive_tree_entries_observed_at_least": 49296,
+      "recursive_tree_scan_truncated": true
+    },
+    "truth": {
+      "source_presence_is_runtime_integration": false,
+      "current_fleet_runtime_status": "READY_FOR_TEST_RUNTIME_ENV_REQUIRED",
+      "local_source_runtime_claim": false,
+      "meta_agent_cookbook": "PRESENT_NOT_FLEET; target=skills/patterns",
+      "meta_muse_code_sdk": "PRESENT_NOT_FLEET; target=session/continuity"
+    },
+    "acquisition_targets": [
+      "npm:@minimax-ai/code",
+      "MiniMax-AI/Mini-Agent",
+      "MiniMax-AI/OpenRoom",
+      "MiniMax-AI/cli",
+      "MiniMax-AI/MiniMax-Code-Plugins",
+      "MiniMax-AI/MiniMax-MCP",
+      "MiniMax-AI/MiniMax-MCP-JS",
+      "MiniMax-AI/MiniMax-Coding-Plan-MCP",
+      "MoonshotAI/kimi-code",
+      "MoonshotAI/kimi-cli",
+      "MoonshotAI/kimi-agent-sdk",
+      "MoonshotAI/kimi-agent-rs",
+      "MoonshotAI/Kimi-Researcher"
+    ],
+    "completed": [
+      "CL-001"
+    ],
+    "pending": [
+      "CL-002",
+      "CL-003",
+      "CL-004",
+      "CL-005",
+      "CL-006",
+      "CL-007",
+      "CL-008",
+      "CL-009",
+      "CL-010",
+      "CL-011",
+      "CL-012",
+      "CL-013"
+    ],
+    "final_gate": "100_PERCENT_IN_SCOPE_PASS_OR_EXPLICIT_SOURCE_NOT_PUBLIC_CLASSIFICATION"
   }
 }
