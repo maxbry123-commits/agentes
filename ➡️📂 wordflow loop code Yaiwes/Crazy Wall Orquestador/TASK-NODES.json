@@ -769,6 +769,371 @@
       "gaps": [],
       "version": 1,
       "checker": "ASTRA_GPT"
+    },
+    {
+      "id": "CL-001",
+      "task": "X-Ray forense fresh de raíz Wordflow, agent_sources, runtime, adapters, motores y Crazy Wall; reconciliar presencia física vs integración real.",
+      "status": "PASS",
+      "claimed_by": "CHATGPT_CURRENT_RUN",
+      "depends_on": [],
+      "steps": [
+        {
+          "id": "1_RESEARCH",
+          "status": "PASS"
+        },
+        {
+          "id": "2_EXECUTE",
+          "status": "PASS"
+        },
+        {
+          "id": "3_VALIDATE",
+          "status": "PASS"
+        }
+      ],
+      "evidence": [
+        "repo:main physical root read-back",
+        "➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources",
+        "➡️📂 wordflow loop code Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_registry.json"
+      ],
+      "gaps": [],
+      "version": 1,
+      "checker": "CHATGPT_WATCHDOG"
+    },
+    {
+      "id": "CL-002",
+      "task": "Cerrar descarga/extracción/publicación de componentes públicos MiniMax/Kimi al destino exacto agent_sources con provenance, hash y read-back.",
+      "status": "PENDING",
+      "claimed_by": null,
+      "depends_on": [
+        "CL-001"
+      ],
+      "steps": [
+        {
+          "id": "1_RESEARCH",
+          "status": "PENDING"
+        },
+        {
+          "id": "2_EXECUTE",
+          "status": "PENDING"
+        },
+        {
+          "id": "3_VALIDATE",
+          "status": "PENDING"
+        }
+      ],
+      "evidence": [],
+      "gaps": [],
+      "version": 1,
+      "checker": "CHATGPT_WATCHDOG"
+    },
+    {
+      "id": "CL-003",
+      "task": "Resolver adquisición oficial NPM de @minimax-ai/code/mcode con versión/integridad exactas y publicación verificable.",
+      "status": "PENDING",
+      "claimed_by": null,
+      "depends_on": [
+        "CL-001"
+      ],
+      "steps": [
+        {
+          "id": "1_RESEARCH",
+          "status": "PENDING"
+        },
+        {
+          "id": "2_EXECUTE",
+          "status": "PENDING"
+        },
+        {
+          "id": "3_VALIDATE",
+          "status": "PENDING"
+        }
+      ],
+      "evidence": [],
+      "gaps": [],
+      "version": 1,
+      "checker": "CHATGPT_WATCHDOG"
+    },
+    {
+      "id": "CL-004",
+      "task": "Resolver kimi-code y kimi-cli bloqueados por symlinks sin debilitar motores; mantener provenance y seguridad.",
+      "status": "PENDING",
+      "claimed_by": null,
+      "depends_on": [
+        "CL-001"
+      ],
+      "steps": [
+        {
+          "id": "1_RESEARCH",
+          "status": "PENDING"
+        },
+        {
+          "id": "2_EXECUTE",
+          "status": "PENDING"
+        },
+        {
+          "id": "3_VALIDATE",
+          "status": "PENDING"
+        }
+      ],
+      "evidence": [],
+      "gaps": [],
+      "version": 1,
+      "checker": "CHATGPT_WATCHDOG"
+    },
+    {
+      "id": "CL-005",
+      "task": "Reconciliar manifiestos y destino: ningún componente cuenta como entregado sin presencia física + hash/read-back en main.",
+      "status": "PENDING",
+      "claimed_by": null,
+      "depends_on": [
+        "CL-002",
+        "CL-003",
+        "CL-004"
+      ],
+      "steps": [
+        {
+          "id": "1_RESEARCH",
+          "status": "PENDING"
+        },
+        {
+          "id": "2_EXECUTE",
+          "status": "PENDING"
+        },
+        {
+          "id": "3_VALIDATE",
+          "status": "PENDING"
+        }
+      ],
+      "evidence": [],
+      "gaps": [],
+      "version": 1,
+      "checker": "CHATGPT_WATCHDOG"
+    },
+    {
+      "id": "CL-006",
+      "task": "X-Ray 1×1 de los 20 agent_sources y nuevas adquisiciones; clasificar AGENT/SKILL/SDK/UI/PLUGIN/INFRA/REFERENCE y ADOPT/ADAPT/REJECT.",
+      "status": "PENDING",
+      "claimed_by": null,
+      "depends_on": [
+        "CL-005"
+      ],
+      "steps": [
+        {
+          "id": "1_RESEARCH",
+          "status": "PENDING"
+        },
+        {
+          "id": "2_EXECUTE",
+          "status": "PENDING"
+        },
+        {
+          "id": "3_VALIDATE",
+          "status": "PENDING"
+        }
+      ],
+      "evidence": [],
+      "gaps": [],
+      "version": 1,
+      "checker": "CHATGPT_WATCHDOG"
+    },
+    {
+      "id": "CL-007",
+      "task": "Expandir Agent Fleet sólo con agentes reales, conservando 18 existentes y añadiendo nuevos únicamente con contrato/roles/transporte demostrados.",
+      "status": "PENDING",
+      "claimed_by": null,
+      "depends_on": [
+        "CL-006"
+      ],
+      "steps": [
+        {
+          "id": "1_RESEARCH",
+          "status": "PENDING"
+        },
+        {
+          "id": "2_EXECUTE",
+          "status": "PENDING"
+        },
+        {
+          "id": "3_VALIDATE",
+          "status": "PENDING"
+        }
+      ],
+      "evidence": [],
+      "gaps": [],
+      "version": 1,
+      "checker": "CHATGPT_WATCHDOG"
+    },
+    {
+      "id": "CL-008",
+      "task": "Implementar/verificar transporte ACP/stdio u otro transporte oficial requerido para Mini-Agent, Kimi Code y mcode; normalizar eventos/resultados sin chain-of-thought.",
+      "status": "PENDING",
+      "claimed_by": null,
+      "depends_on": [
+        "CL-007"
+      ],
+      "steps": [
+        {
+          "id": "1_RESEARCH",
+          "status": "PENDING"
+        },
+        {
+          "id": "2_EXECUTE",
+          "status": "PENDING"
+        },
+        {
+          "id": "3_VALIDATE",
+          "status": "PENDING"
+        }
+      ],
+      "evidence": [],
+      "gaps": [],
+      "version": 1,
+      "checker": "CHATGPT_WATCHDOG"
+    },
+    {
+      "id": "CL-009",
+      "task": "Integrar Meta Agent Cookbook como skills/patrones y Meta Muse Code SDK como sesión/continuidad/approval/resume, salvo X-Ray contrario.",
+      "status": "PENDING",
+      "claimed_by": null,
+      "depends_on": [
+        "CL-006"
+      ],
+      "steps": [
+        {
+          "id": "1_RESEARCH",
+          "status": "PENDING"
+        },
+        {
+          "id": "2_EXECUTE",
+          "status": "PENDING"
+        },
+        {
+          "id": "3_VALIDATE",
+          "status": "PENDING"
+        }
+      ],
+      "evidence": [],
+      "gaps": [],
+      "version": 1,
+      "checker": "CHATGPT_WATCHDOG"
+    },
+    {
+      "id": "CL-010",
+      "task": "Integrar infraestructura MiniMax mmx/Plugins/MCP/MCP-JS/Coding-Plan-MCP detrás de ports/bus existentes; no crear bus paralelo.",
+      "status": "PENDING",
+      "claimed_by": null,
+      "depends_on": [
+        "CL-006"
+      ],
+      "steps": [
+        {
+          "id": "1_RESEARCH",
+          "status": "PENDING"
+        },
+        {
+          "id": "2_EXECUTE",
+          "status": "PENDING"
+        },
+        {
+          "id": "3_VALIDATE",
+          "status": "PENDING"
+        }
+      ],
+      "evidence": [],
+      "gaps": [],
+      "version": 1,
+      "checker": "CHATGPT_WATCHDOG"
+    },
+    {
+      "id": "CL-011",
+      "task": "Integrar kimi-agent-sdk/kimi-agent-rs como SDK/transport y Kimi-Researcher como research capability si pasa NO_VALUE_GAP; kimi-cli legacy/fallback salvo valor demostrado.",
+      "status": "PENDING",
+      "claimed_by": null,
+      "depends_on": [
+        "CL-006"
+      ],
+      "steps": [
+        {
+          "id": "1_RESEARCH",
+          "status": "PENDING"
+        },
+        {
+          "id": "2_EXECUTE",
+          "status": "PENDING"
+        },
+        {
+          "id": "3_VALIDATE",
+          "status": "PENDING"
+        }
+      ],
+      "evidence": [],
+      "gaps": [],
+      "version": 1,
+      "checker": "CHATGPT_WATCHDOG"
+    },
+    {
+      "id": "CL-012",
+      "task": "Ejecutar probes/tests 1×1 de runtime, health, behavior, failure fail-closed, sandbox, memory y read-back; reparar GAP y repetir.",
+      "status": "PENDING",
+      "claimed_by": null,
+      "depends_on": [
+        "CL-008",
+        "CL-009",
+        "CL-010",
+        "CL-011"
+      ],
+      "steps": [
+        {
+          "id": "1_RESEARCH",
+          "status": "PENDING"
+        },
+        {
+          "id": "2_EXECUTE",
+          "status": "PENDING"
+        },
+        {
+          "id": "3_VALIDATE",
+          "status": "PENDING"
+        }
+      ],
+      "evidence": [],
+      "gaps": [],
+      "version": 1,
+      "checker": "CHATGPT_WATCHDOG"
+    },
+    {
+      "id": "CL-013",
+      "task": "Verificación cruzada global y cierre: Crazy Wall/STATE/CHECKPOINT/HANDOFF, duplicados/orphans/rutas rotas, 3 refutaciones, 100% gates en scope.",
+      "status": "PENDING",
+      "claimed_by": null,
+      "depends_on": [
+        "CL-012"
+      ],
+      "steps": [
+        {
+          "id": "1_RESEARCH",
+          "status": "PENDING"
+        },
+        {
+          "id": "2_EXECUTE",
+          "status": "PENDING"
+        },
+        {
+          "id": "3_VALIDATE",
+          "status": "PENDING"
+        }
+      ],
+      "evidence": [],
+      "gaps": [],
+      "version": 1,
+      "checker": "CHATGPT_WATCHDOG"
     }
-  ]
+  ],
+  "closure_phase": {
+    "id": "CLOSURE-2026-09-17",
+    "status": "ACTIVE",
+    "authorized_by": "DIRECTOR_USER_CURRENT_CHAT",
+    "created_at": "2026-09-17T23:29:00Z",
+    "rule": "RESEARCH->EXECUTE->VALIDATE; one active writer/path; FAIL_CLOSED; 100_PASS_REQUIRED"
+  }
 }
