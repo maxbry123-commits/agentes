@@ -14,3 +14,8 @@
 {"number": 2, "parts": 18, "slug": "crewAI", "source": "https://github.com/crewAIInc/crewAI.git", "source_commit": "381fef73be1803d0b4676f88cbae57d332cb9cac", "status": "COMPLETE"}
 {"number": 3, "parts": 3, "slug": "autogen", "source": "https://github.com/microsoft/autogen.git", "source_commit": "027ecf0a379bcc1d09956d46d12d44a3ad9cee14", "status": "COMPLETE"}
 {"number": 4, "parts": 2, "slug": "dspy", "source": "https://github.com/stanfordnlp/dspy.git", "source_commit": "59ce7601ec40cd2160ac64f476f9053efdc1599e", "status": "COMPLETE"}
+{"number": 1, "parts": 1, "slug": "Omniroute", "source": "https://github.com/diegosouzapw/OmniRoute.git", "source_commit": "9688032451fc52017df537fd6f7b86baa49503fc", "status": "COMPLETE"}
+{"number": 2, "parts": 1, "slug": "Orca", "source": "https://github.com/stablyai/orca.git", "source_commit": "8e8a9b38ea2b9a2a621bc891304efa072826e7d5", "status": "COMPLETE"}
+{"number": 3, "parts": 1, "slug": "Omarchy", "source": "https://github.com/omacom/omarchy.git", "source_commit": "9c5482c58dbe4974de337450754885083c91eada", "status": "COMPLETE"}
+{"number": 4, "parts": 1, "slug": "Anydoc", "source": "https://github.com/firecrawl/anydoc.git", "source_commit": "261fc257d17c3eab0f673be31c408fd9fdc2171a", "status": "COMPLETE"}
+{"number": 5, "parts": 1, "slug": "Skill Design de Anthropic", "source": "https://github.com/anthropics/skills.git", "source_commit": "34040c9c568585f6929bedeaad110ad08f079624", "status": "COMPLETE"}
