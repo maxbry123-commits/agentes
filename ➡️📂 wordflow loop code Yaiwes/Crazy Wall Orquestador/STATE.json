@@ -3,7 +3,7 @@
   "project": "Wordflow LOOP Yaiwes",
   "mode": "FAIL_CLOSED_EXECUTION_LOOP",
   "authorized_write_root": "➡️📂 wordflow loop code Yaiwes/",
-  "status": "CODE_GRAPH_30_OF_30_PRESERVED__CLOSURE_PLAN_ACTIVE",
+  "status": "CODE_GRAPH_30_OF_30_PRESERVED__CLOSURE_PLAN_ACTIVE__CL002_IN_PROGRESS",
   "current_node": "CL-002",
   "checkpoint_id": "WFLOOP-CODE-GRAPH-20260911-0019",
   "queue_mode": "DAG_DEPENDENCIES_PLUS_PARALLEL_INDEPENDENT",
@@ -184,9 +184,10 @@
   },
   "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
   "next_actions": [
-    "CL-002: acquire/publish MiniMax/Kimi public components to exact agent_sources destination with read-back.",
-    "CL-003/CL-004: resolve NPM mcode and symlink-safe Kimi acquisition gaps without weakening canonical motors.",
-    "Continue CL-005..CL-013 by DAG dependency; do not claim runtime PASS from source presence."
+    "CL-002 IN_PROGRESS: publish/read-back verified MiniMax/Kimi GitHub components into exact agent_sources destination.",
+    "CL-003: resolve official npm @minimax-ai/code acquisition with exact integrity.",
+    "CL-004: resolve kimi-code/kimi-cli symlink-safe acquisition without weakening canonical motors.",
+    "CL-005..CL-013: reconcile, classify, integrate, test, global-close by DAG."
   ],
   "g017_deployment": {
     "status": "CLOSED_VERIFIED_DETERMINISTIC_DEPLOYMENT",
@@ -199,7 +200,7 @@
   "closure_plan_2026_09_17": {
     "schema": "yaiwes.closure-plan/v1",
     "created_at": "2026-09-17T23:29:00Z",
-    "status": "ACTIVE",
+    "status": "ACTIVE_CL002_IN_PROGRESS",
     "executor": "CHATGPT_WATCHDOG_HOURLY",
     "task_nodes_commit": "9066af89d805348c623c63432617ef47db944f63",
     "destination_agent_sources": "➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/",
@@ -208,9 +209,12 @@
       "agent_source_trees_present": 20,
       "fleet_registered": 18,
       "meta_sources_present_not_fleet_registered": 2,
-      "public_minimax_kimi_acquisition_targets": 13,
-      "recursive_tree_entries_observed_at_least": 49296,
-      "recursive_tree_scan_truncated": true
+      "adapters_present": [
+        "browser_use_adapter.py",
+        "codebase_memory_mcp_adapter.py"
+      ],
+      "runtime_core_modules_observed": 38,
+      "public_minimax_kimi_acquisition_targets": 13
     },
     "truth": {
       "source_presence_is_runtime_integration": false,
@@ -251,6 +255,82 @@
       "CL-012",
       "CL-013"
     ],
-    "final_gate": "100_PERCENT_IN_SCOPE_PASS_OR_EXPLICIT_SOURCE_NOT_PUBLIC_CLASSIFICATION"
+    "final_gate": "100_PERCENT_IN_SCOPE_PASS_OR_EXPLICIT_SOURCE_NOT_PUBLIC_CLASSIFICATION",
+    "last_xray_at": "2026-09-17T23:35:00Z",
+    "integration_map": {
+      "control_plane": [
+        "Crazy Wall Orquestador",
+        "HANDOFF.md",
+        "STATE.json",
+        "CHECKPOINT.json",
+        "TASK-NODES.json",
+        "BITACORA-CRAZY-WALL.md"
+      ],
+      "execution_core": [
+        "runtime/src/core",
+        "wordflow_loop/contracts",
+        "wordflow_loop/workflows",
+        "wordflow_loop/adapters",
+        "wordflow_loop/plugins",
+        "wordflow_loop/skills"
+      ],
+      "acquisition": [
+        "➡️📂motores de descarga extracción copiado movimiento archivos agentes",
+        "wordflow_loop/agent_sources",
+        "📂 archivos download"
+      ],
+      "persistence": [
+        "📂 Capa de persistencia open mythos",
+        "runtime/src/core/continuity_supervisor.py",
+        "runtime/src/core/agent_memory_loader.py"
+      ],
+      "deployment_validation": [
+        "📂 Capa workflow GitHub Action",
+        "runtime/tests",
+        "wordflow_loop/evidence"
+      ],
+      "existing_fleet_sources": [
+        "agent_zero",
+        "aider",
+        "claude_code",
+        "cline",
+        "codex",
+        "goose",
+        "hermes",
+        "kimi_k",
+        "mimo_code",
+        "mirothinker",
+        "muse_glimmer",
+        "openclaw",
+        "opencode",
+        "opendev",
+        "openhands",
+        "qwen_code",
+        "research_agent_lab",
+        "smolagents"
+      ],
+      "skills_sdk_sources": {
+        "meta_agent_cookbook": "CL-009 skills/patterns",
+        "meta_muse_code_sdk": "CL-009 session/continuity/approval/resume"
+      },
+      "minimax_targets": {
+        "Mini-Agent": "CL-006 classify -> CL-007 fleet -> CL-008 transport",
+        "OpenRoom": "CL-006 classify UI/agent -> CL-010 only if value",
+        "mcode": "CL-003 acquisition -> CL-007 fleet -> CL-008 ACP/stdio",
+        "mmx CLI": "CL-010 infrastructure",
+        "Code Plugins": "CL-010 plugin layer",
+        "MiniMax MCP": "CL-010 MCP port",
+        "MiniMax MCP JS": "CL-010 MCP JS port",
+        "Coding Plan MCP": "CL-010 planning capability"
+      },
+      "kimi_targets": {
+        "kimi-code": "CL-004 acquisition -> CL-007 fleet -> CL-008 ACP/stdio",
+        "kimi-cli": "CL-004 acquisition -> CL-011 legacy/fallback only if value",
+        "kimi-agent-sdk": "CL-011 SDK/transport",
+        "kimi-agent-rs": "CL-011 SDK/transport",
+        "Kimi-Researcher": "CL-011 research capability subject to NO_VALUE_GAP"
+      },
+      "invariant": "NO_SOURCE_PRESENCE_EQUALS_RUNTIME_PASS"
+    }
   }
 }
