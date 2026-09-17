@@ -54,7 +54,7 @@ Basura real se elimina, previa revision de contenido.
 AGENTS.md, .github, .cursor (se quedan sueltos)
 Agente Yaiwes principal/
 Core kernel Yaiwes/
-Seals team YAIWES/ (incluye Comand Center/, seals_core/, Seals team 1 YAIWES/, _fuentes_extraidas/)
+Seals team YAIWES/ (incluye Command Center/, seals_core/, Seals team 1 YAIWES/, _fuentes_extraidas/)
 Componente open source Yaiwes/
 Claude notas/ (esta raiz)
 Motores de descarga y extraccion/
@@ -84,11 +84,54 @@ Pendiente decision: Meta-Muse-Code-SDK-2026 y Meta-Agent-Cookbook-2026
 (descargados fuera de alcance, pausados).
 Variables de entorno pendientes en GitHub Secrets: CEREBRAS_API_KEY_1 a 6,
 ANTHROPIC_API_KEY, GITHUB_TOKEN.
-Comand Center ubicado DENTRO de Seals team YAIWES (correccion 2026-09-16).
+Command Center ubicado DENTRO de Seals team YAIWES (correccion 2026-09-16).
 
 ## 6. CORRECCIONES DE PROCESO REGISTRADAS
 
 - 2026-09-15: cree Claude notas duplicando Claude readme sin buscar primero.
 - 2026-09-16: Claude notas es ahora el nombre oficial, reemplaza a Claude readme.
-- 2026-09-16: cree Comand Center como raiz suelta indebida, corregido dentro de Seals team YAIWES.
+- 2026-09-16: cree Command Center como raiz suelta indebida, corregido dentro de Seals team YAIWES.
 - 2026-09-16: raiz completa tenia duplicados reales por hash y variantes con emoji, en consolidacion via Sol.
+
+## 7. AUDITORIA COMPLETA WORDFLOW LOOP + PENDIENTES NUEVOS (2026-09-17)
+
+Cobertura 100% lograda: 21/21 carpetas de Wordflow Loop auditadas.
+Documentos creados en "arquitectura wordflow loop code Yaiwes/" (16
+archivos): indice general, Parte 1-5 (formato Glimmer por fase), Anexo
+1-4, 3 SCHEMAS (refactorizacion con 15 reglas fuente, frontend
+browser-verified con texto verbatim del Director, plantillas RAG con
+formato YAML definido), 2 PROMPTS para Sol (investigar capacidad
+frontend del Fleet de 18 agentes, descargar 4 componentes nuevos sin
+Crazy Wall), 1 RESOLUCION de 3 pendientes, 1 DISENO de servidor MCP.
+
+Hallazgos mayores: Enchufe Universal YA integrado en uek/ (30KB), 2do
+sistema de Crazy Wall completo en "Crazy Wall Orquestador/" (pendiente
+comparar antes de fusionar, prompt ya escrito para Sol), 13 subcarpetas
+de templates/skills/plugins/prompts en wordflow_loop/wordflow_loop/
+TODAS VACIAS, mis 20 documentos originales estan en el repo con notas
+X-Ray propias marcadas "AUDITADO/PROPUESTA, no integrado" (criterio:
+integrar selectivamente por gap real, nunca todo de golpe).
+
+MCP confirmado por el Director: contexto compartido entre agentes = Model
+Context Protocol de Anthropic. Requisito adicional: lo que un agente
+descubre debe compartirse con los demas (no solo con el kernel). Diseno
+ya escrito (DISENO-MCP-contexto-compartido.md) - servidor MCP con 3
+recursos (crazy_wall_state lectura, mission_context lectura/escritura
+controlada, enchufe_universal_tools). Regla de seguridad: MCP comparte
+CONTEXTO nunca AUTORIDAD - el Kernel sigue siendo el unico que decide PASS.
+
+### PENDIENTE NUEVO: sistema de preguntas previas (tipo Claude) para Yaiwes y UI Yaiwes
+
+El Director pidio evaluar si se puede crear, para Yaiwes y para UI Yaiwes,
+un sistema de preguntas aclaratorias ANTES de ejecutar una tarea (como el
+que usa Claude con el usuario) - un paso previo de analisis para enfocar
+y entender antes de continuar, en vez de ejecutar sobre ambiguedad.
+MARCADO COMO PENDIENTE, sin disenar todavia - requiere decidir: se activa
+siempre, o solo cuando el DAG detecta ambiguedad real (campo faltante,
+2 interpretaciones posibles)? Pendiente de instruccion del Director para
+disenarlo a fondo.
+
+Herramientas nuevas anotadas por el Director, sin verificar (web_search
+no disponible en este turno): Omniroute, Orca, Omarchy, Anydoc - prompt
+de descarga ya escrito para Sol, categoria "PENDIENTE DE VERIFICACION POR
+SOL AL DESCARGAR".
