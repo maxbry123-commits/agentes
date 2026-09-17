@@ -110,8 +110,8 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -f -- 'Core kernel Yaiwes/Download code Yaiwes/RESEARCH_DOWNLOAD_MANIFEST.jsonl' 'Wordflow loop code Yaiwes' 'Core kernel Yaiwes/orca'
           git rm -- "$self"
-          git fetch origin main
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
           git commit -m 'download(yaiwes): pin volatile sources at runtime HEAD'
+          git fetch origin main
+          git rebase origin/main
           git push origin HEAD:main
           echo "PUBLISHED_COMMIT=$(git rev-parse HEAD)"
