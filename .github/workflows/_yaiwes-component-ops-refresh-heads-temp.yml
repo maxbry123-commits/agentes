@@ -1,0 +1,117 @@
+name: YAIWES Refresh Volatile Component HEADs TEMP
+
+on:
+  push:
+    paths:
+      - '.github/workflows/_yaiwes-component-ops-refresh-heads-temp.yml'
+
+permissions:
+  contents: write
+
+env:
+  GIT_LFS_SKIP_SMUDGE: '1'
+  GIT_TERMINAL_PROMPT: '0'
+
+jobs:
+  refresh-heads:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout exact target surfaces
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 3
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/_yaiwes-component-ops-refresh-heads-temp.yml
+            /Core kernel Yaiwes/Download code Yaiwes/RESEARCH_DOWNLOAD_MANIFEST.jsonl
+            /Wordflow loop code Yaiwes/
+            /Core kernel Yaiwes/orca/
+
+      - name: Resolve real HEAD then clone exact commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/yaiwes-refresh-heads"
+          mkdir -p "$root"
+          OMNI_URL='https://github.com/diegosouzapw/OmniRoute.git'
+          ORCA_URL='https://github.com/stablyai/orca.git'
+          OMNI_SHA="$(git ls-remote "$OMNI_URL" 'refs/heads/release/v3.8.51' | awk 'NR==1{print $1}')"
+          ORCA_SHA="$(git ls-remote "$ORCA_URL" 'refs/heads/main' | awk 'NR==1{print $1}')"
+          test -n "$OMNI_SHA" && test -n "$ORCA_SHA"
+          printf '%s\n' "$OMNI_SHA" > "$root/omni.sha"
+          printf '%s\n' "$ORCA_SHA" > "$root/orca.sha"
+          clone_pin() {
+            name="$1" url="$2" sha="$3"
+            dst="$root/$name"
+            git init -q "$dst"
+            git -C "$dst" remote add origin "$url"
+            git -C "$dst" fetch --depth=1 --no-tags origin "$sha"
+            git -C "$dst" checkout -q --detach FETCH_HEAD
+            test "$(git -C "$dst" rev-parse HEAD)" = "$sha"
+            if git -C "$dst" ls-files -s | awk '$1==160000 {found=1} END{exit !found}'; then exit 71; fi
+          }
+          clone_pin omniroute "$OMNI_URL" "$OMNI_SHA"
+          clone_pin orca "$ORCA_URL" "$ORCA_SHA"
+          echo "OMNI_SOURCE_HEAD=$OMNI_SHA"
+          echo "ORCA_SOURCE_HEAD=$ORCA_SHA"
+
+      - name: Materialize and validate exact source trees
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/yaiwes-refresh-heads"
+          OMNI_SHA="$(cat "$root/omni.sha")"
+          ORCA_SHA="$(cat "$root/orca.sha")"
+          mkdir -p 'Wordflow loop code Yaiwes' 'Core kernel Yaiwes/orca'
+          rsync -a --delete --exclude='/.git/' "$root/omniroute/" 'Wordflow loop code Yaiwes/'
+          rsync -a --delete --exclude='/.git/' "$root/orca/" 'Core kernel Yaiwes/orca/'
+          test "$(git -C "$root/omniroute" rev-parse HEAD)" = "$OMNI_SHA"
+          test "$(git -C "$root/orca" rev-parse HEAD)" = "$ORCA_SHA"
+          test -z "$(rsync -ani --delete --exclude='/.git/' "$root/omniroute/" 'Wordflow loop code Yaiwes/')"
+          test -z "$(rsync -ani --delete --exclude='/.git/' "$root/orca/" 'Core kernel Yaiwes/orca/')"
+          echo 'SOURCE_COMMIT_EQUALS_DOWNLOADED_COMMIT=PASS_2_OF_2'
+          echo 'DESTINATION_TREE_EQUALS_VERIFIED_SOURCE=PASS_2_OF_2'
+
+      - name: Update canonical manifest with runtime HEADs
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/yaiwes-refresh-heads"
+          export OMNI_SHA="$(cat "$root/omni.sha")"
+          export ORCA_SHA="$(cat "$root/orca.sha")"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path('Core kernel Yaiwes/Download code Yaiwes/RESEARCH_DOWNLOAD_MANIFEST.jsonl')
+          rows=[]
+          found=set()
+          for line in p.read_text(encoding='utf-8').splitlines():
+              if not line.strip(): continue
+              x=json.loads(line)
+              if x.get('slug')=='Omniroute':
+                  x={'number':1,'parts':1,'slug':'Omniroute','source':'https://github.com/diegosouzapw/OmniRoute.git','source_commit':os.environ['OMNI_SHA'],'status':'COMPLETE'}; found.add('Omniroute')
+              elif x.get('slug')=='Orca':
+                  x={'number':2,'parts':1,'slug':'Orca','source':'https://github.com/stablyai/orca.git','source_commit':os.environ['ORCA_SHA'],'status':'COMPLETE'}; found.add('Orca')
+              rows.append(x)
+          assert found=={'Omniroute','Orca'}, found
+          p.write_text('\n'.join(json.dumps(x,ensure_ascii=False) for x in rows)+'\n',encoding='utf-8')
+          PY
+
+      - name: Publish refreshed HEAD snapshots and self-remove
+        shell: bash
+        run: |
+          set -euo pipefail
+          self='.github/workflows/_yaiwes-component-ops-refresh-heads-temp.yml'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f -- 'Core kernel Yaiwes/Download code Yaiwes/RESEARCH_DOWNLOAD_MANIFEST.jsonl' 'Wordflow loop code Yaiwes' 'Core kernel Yaiwes/orca'
+          git rm -- "$self"
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          git commit -m 'download(yaiwes): pin volatile sources at runtime HEAD'
+          git push origin HEAD:main
+          echo "PUBLISHED_COMMIT=$(git rev-parse HEAD)"
