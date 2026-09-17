@@ -1,0 +1,149 @@
+name: yaiwes-download-5-components
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/yaiwes-download-5-components.yml'
+permissions:
+  contents: write
+jobs:
+  download-validate-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Download exact verified commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          clone_exact() {
+            src="$1"; sha="$2"; out="$3"
+            rm -rf "$out"
+            git init -q "$out"
+            git -C "$out" remote add origin "$src"
+            git -C "$out" fetch -q --depth=1 origin "$sha"
+            git -C "$out" checkout -q --detach FETCH_HEAD
+            test "$(git -C "$out" rev-parse HEAD)" = "$sha"
+          }
+          mkdir -p /tmp/yaiwes-src
+          clone_exact https://github.com/diegosouzapw/OmniRoute.git 176d632a2db454e06b6fa3bc63e009be97c3508f /tmp/yaiwes-src/omniroute
+          clone_exact https://github.com/stablyai/orca.git 03714183b8676be0c82a36720eda33623e012089 /tmp/yaiwes-src/orca
+          clone_exact https://github.com/omacom/omarchy.git 9c5482c58dbe4974de337450754885083c91eada /tmp/yaiwes-src/omarchy
+          clone_exact https://github.com/firecrawl/anydoc.git 261fc257d17c3eab0f673be31c408fd9fdc2171a /tmp/yaiwes-src/anydoc
+          clone_exact https://github.com/anthropics/skills.git 34040c9c568585f6929bedeaad110ad08f079624 /tmp/yaiwes-src/anthropic
+      - name: Materialize requested destinations
+        shell: bash
+        run: |
+          set -euo pipefail
+          sync_tree() {
+            src="$1"; dst="$2"
+            mkdir -p "$dst"
+            rsync -a --delete --exclude='.git/' "$src/" "$dst/"
+          }
+          sync_tree /tmp/yaiwes-src/omniroute "Wordflow loop code Yaiwes"
+          sync_tree /tmp/yaiwes-src/orca "Core kernel Yaiwes/orca"
+          sync_tree /tmp/yaiwes-src/omarchy "Core kernel Yaiwes/omarchy"
+          sync_tree /tmp/yaiwes-src/anydoc "Core kernel Yaiwes/anydoc"
+          sync_tree /tmp/yaiwes-src/anthropic/skills/skill-creator "Skills agente/skill-design-anthropic"
+      - name: Update manifest and evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          p=Path("Core kernel Yaiwes/Download code Yaiwes/RESEARCH_DOWNLOAD_MANIFEST.jsonl")
+          lines=[json.loads(x) for x in p.read_text().splitlines() if x.strip()]
+          slugs={"Omniroute","Orca","Omarchy","Anydoc","Skill Design de Anthropic"}
+          lines=[x for x in lines if x.get("slug") not in slugs]
+          add=[
+            {"number":1,"parts":1,"slug":"Omniroute","source":"https://github.com/diegosouzapw/OmniRoute.git","source_commit":"176d632a2db454e06b6fa3bc63e009be97c3508f","status":"COMPLETE"},
+            {"number":2,"parts":1,"slug":"Orca","source":"https://github.com/stablyai/orca.git","source_commit":"03714183b8676be0c82a36720eda33623e012089","status":"COMPLETE"},
+            {"number":3,"parts":1,"slug":"Omarchy","source":"https://github.com/omacom/omarchy.git","source_commit":"9c5482c58dbe4974de337450754885083c91eada","status":"COMPLETE"},
+            {"number":4,"parts":1,"slug":"Anydoc","source":"https://github.com/firecrawl/anydoc.git","source_commit":"261fc257d17c3eab0f673be31c408fd9fdc2171a","status":"COMPLETE"},
+            {"number":5,"parts":1,"slug":"Skill Design de Anthropic","source":"https://github.com/anthropics/skills.git","source_commit":"34040c9c568585f6929bedeaad110ad08f079624","status":"COMPLETE"},
+          ]
+          p.write_text("\n".join(json.dumps(x,ensure_ascii=False,separators=(", ",": ")) for x in lines+add)+"\n")
+          report="""# EVIDENCIA — DESCARGA DE 5 COMPONENTES — AGENTE YAIWES
+
+> Discrepancia documental: la misión contiene **5 componentes**, pero se conserva exactamente el nombre solicitado del archivo `EVIDENCIA-DESCARGA-4-COMPONENTES.md`.
+
+## Flujo
+`RESEARCH → EXECUTE → VALIDATE`
+
+## Evidencia
+COMPONENT: Omniroute
+SOURCE: https://github.com/diegosouzapw/OmniRoute.git
+SOURCE VERIFIED: YES — repositorio describe un AI gateway con múltiples proveedores/modelos
+SOURCE COMMIT: 176d632a2db454e06b6fa3bc63e009be97c3508f
+DESTINATION: Wordflow loop code Yaiwes/
+DESTINATION EXISTS: YES
+DOWNLOADED COMMIT: 176d632a2db454e06b6fa3bc63e009be97c3508f
+STATUS: COMPLETE
+GAP: NONE
+
+COMPONENT: Orca
+SOURCE: https://github.com/stablyai/orca.git
+SOURCE VERIFIED: YES — ADE gráfico para flota de agentes paralelos, desktop/mobile/remote
+SOURCE COMMIT: 03714183b8676be0c82a36720eda33623e012089
+DESTINATION: Core kernel Yaiwes/orca/
+DESTINATION EXISTS: YES
+DOWNLOADED COMMIT: 03714183b8676be0c82a36720eda33623e012089
+STATUS: COMPLETE
+GAP: NONE
+
+COMPONENT: Omarchy
+SOURCE: https://github.com/omacom/omarchy.git
+SOURCE VERIFIED: YES — proyecto de DHH/37signals para entorno Linux basado en Arch; no es una librería
+SOURCE COMMIT: 9c5482c58dbe4974de337450754885083c91eada
+DESTINATION: Core kernel Yaiwes/omarchy/
+DESTINATION EXISTS: YES
+DOWNLOADED COMMIT: 9c5482c58dbe4974de337450754885083c91eada
+STATUS: COMPLETE
+GAP: NONE
+
+COMPONENT: Anydoc
+SOURCE: https://github.com/firecrawl/anydoc.git
+SOURCE VERIFIED: YES — conversor de documentos a GitHub-Flavored Markdown implementado en Rust
+SOURCE COMMIT: 261fc257d17c3eab0f673be31c408fd9fdc2171a
+DESTINATION: Core kernel Yaiwes/anydoc/
+DESTINATION EXISTS: YES
+DOWNLOADED COMMIT: 261fc257d17c3eab0f673be31c408fd9fdc2171a
+STATUS: COMPLETE
+GAP: NONE
+
+COMPONENT: Skill Design de Anthropic — skill-creator
+SOURCE: https://github.com/anthropics/skills.git
+SOURCE VERIFIED: YES — organización oficial anthropics; subárbol exacto skills/skill-creator
+SOURCE COMMIT: 34040c9c568585f6929bedeaad110ad08f079624
+DESTINATION: Skills agente/skill-design-anthropic/
+DESTINATION EXISTS: YES
+DOWNLOADED COMMIT: 34040c9c568585f6929bedeaad110ad08f079624
+STATUS: COMPLETE
+GAP: NONE
+
+## Validación
+Los cinco repositorios se clonaron a los SHA fijados y cada `git rev-parse HEAD` se comparó antes de materializar. Los destinos se materializaron sin los metadatos transitorios `.git`. El manifest canónico quedó actualizado únicamente después de esas comprobaciones.
+
+Resultado: **5/5 COMPLETE**.
+"""
+          Path("Claude notas/EVIDENCIA-DESCARGA-4-COMPONENTES.md").write_text(report)
+          PY
+      - name: Validate destinations and publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "Wordflow loop code Yaiwes"
+          test -d "Core kernel Yaiwes/orca"
+          test -d "Core kernel Yaiwes/omarchy"
+          test -d "Core kernel Yaiwes/anydoc"
+          test -f "Skills agente/skill-design-anthropic/SKILL.md"
+          grep -q '"source_commit": "176d632a2db454e06b6fa3bc63e009be97c3508f"' "Core kernel Yaiwes/Download code Yaiwes/RESEARCH_DOWNLOAD_MANIFEST.jsonl"
+          grep -q '"source_commit": "03714183b8676be0c82a36720eda33623e012089"' "Core kernel Yaiwes/Download code Yaiwes/RESEARCH_DOWNLOAD_MANIFEST.jsonl"
+          rm -f .github/workflows/yaiwes-download-5-components.yml
+          git config user.name "yaiwes-component-ops"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "chore(yaiwes): refresh verified 5 components" || true
+          git push origin HEAD:main
