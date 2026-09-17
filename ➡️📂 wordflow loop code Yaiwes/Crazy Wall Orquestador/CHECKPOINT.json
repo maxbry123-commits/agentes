@@ -2,9 +2,9 @@
   "checkpoint_id": "WFLOOP-CODE-GRAPH-20260911-0019",
   "contract": "tel.workflow/v4",
   "mode": "FAIL_CLOSED_EXECUTION_LOOP",
-  "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
-  "status": "CODE_GRAPH_CLOSED_VERIFIED_30_OF_30",
-  "current_node": null,
+  "authorized_write_root": "➡️📂 wordflow loop code Yaiwes/",
+  "status": "CODE_GRAPH_30_OF_30_PRESERVED__CLOSURE_PLAN_ACTIVE",
+  "current_node": "CL-002",
   "claimed_by": null,
   "queue": "DAG_DEPENDENCIES_PLUS_PARALLEL_INDEPENDENT",
   "historical_closure": {
@@ -64,12 +64,37 @@
     ],
     "four_test_gate": "PASS_4_OF_4"
   },
-  "active_node": null,
+  "active_node": "CL-002",
   "blocked_dependency": null,
   "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
   "foreign_owned_active": [
     "COMP-BROWSER-USE:SOL_ORCHESTRATOR"
   ],
-  "next_action": "CODE_GRAPH_30_OF_30_CLOSED; PRESERVE_REGRESSION_GATES",
-  "recovery_entrypoint": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md"
+  "next_action": "CLOSURE-2026-09-17 ACTIVE: execute CL-002; CL-003/CL-004 may proceed when eligible; do not claim runtime PASS from presence.",
+  "recovery_entrypoint": "➡️📂 wordflow loop code Yaiwes/HANDOFF.md",
+  "closure_phase": {
+    "id": "CLOSURE-2026-09-17",
+    "status": "ACTIVE",
+    "task_nodes_commit": "9066af89d805348c623c63432617ef47db944f63",
+    "state_commit": "e13096cbcde1b19e1871b3eee3dcfb53d5b4458b",
+    "bitacora_commit": "2e8cf31976bd43c265cd2d10557f5f65be7618b7",
+    "completed": [
+      "CL-001"
+    ],
+    "pending": [
+      "CL-002",
+      "CL-003",
+      "CL-004",
+      "CL-005",
+      "CL-006",
+      "CL-007",
+      "CL-008",
+      "CL-009",
+      "CL-010",
+      "CL-011",
+      "CL-012",
+      "CL-013"
+    ],
+    "next_action": "Execute CL-002 and continue DAG dependencies; preserve FAIL_CLOSED and exact read-back."
+  }
 }
