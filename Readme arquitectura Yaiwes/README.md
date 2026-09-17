@@ -1310,3 +1310,9 @@ Contrato vigente: `PASO 1 MOVE 1-20 -> PASO 2 CABLEAR/PODAR 1x1 SIN TESTS -> PAS
 | 20 | CodeUltraFeedback | `WIRED_NO_TEST` | `-` |
 
 **Regla:** en este paso no se ejecutaron tests.
+
+
+## GAP — Skills frontend materializados 2026-09-17
+- Impeccable (`pbakaus/impeccable`, source commit `f2c7051853848826aac2f4646581d62a732155ad`) — `GAP: COMPONENTE DESCARGADO/COPIADO. INTEGRACIÓN PENDIENTE.`
+- Anthropic Frontend Design (`anthropics/skills`) — `GAP: COMPONENTE DESCARGADO/COPIADO. INTEGRACIÓN PENDIENTE.`
+- Anthropic Skill Creator / Skills Design (`anthropics/skills`) — `GAP: COMPONENTE DESCARGADO/COPIADO. INTEGRACIÓN PENDIENTE.`
