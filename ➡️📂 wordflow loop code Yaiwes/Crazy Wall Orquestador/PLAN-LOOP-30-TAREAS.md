@@ -41,3 +41,40 @@ Fan-out solo entre tareas independientes y con ownership explícito. Dependencia
 
 ## Regla de cierre
 Cada GAP requiere source/provenance + decisión + implementación cuando corresponda + test/simulación + read-back/commit + persistencia. Presencia de archivo no equivale a PASS. `AUTH_PROVIDER_TEST_PENDING` permanece abierto hasta evidencia autenticada real.
+
+# CIERRE ACTIVO — CLOSURE-2026-09-17
+
+Estado: `ACTIVE / CL-002 IN_PROGRESS`. El histórico G-001..G-030 permanece cerrado y no se reabre por este plan.
+
+## X-Ray forense fresh
+- Raíz del proyecto: 16 componentes directos.
+- `agent_sources`: 20 árboles de fuente + manifiesto; 18 pertenecen al fleet registrado y 2 son Meta auxiliares.
+- Fleet: 18 agentes registrados; presencia de source **no** equivale a runtime PASS.
+- Adapters observados: `browser_use_adapter.py`, `codebase_memory_mcp_adapter.py`.
+- Core observado: 38 módulos directos en `runtime/src/core`.
+
+## Mapa de integración
+- **Control/orquestación:** Crazy Wall + TASK-NODES + STATE + CHECKPOINT + BITÁCORA + HANDOFF.
+- **Core:** runtime/core + contracts + workflows + adapters + plugins + skills; reutilizar `event_bus.py`, `dag_engine.py`, `component_intake.py`, `reuse_selector.py`, `completion_gate.py` y gates existentes; prohibido crear bus paralelo.
+- **Fleet existente (18):** conservar registro y roles; sólo ampliar tras pruebas de transporte/runtime.
+- **Meta:** `meta_agent_cookbook` → skills/patrones; `meta_muse_code_sdk` → sesión/continuidad/approval/resume (CL-009).
+- **MiniMax:** Mini-Agent/mcode → candidatos fleet; OpenRoom → UI/agent capability; mmx/Plugins/MCP/MCP-JS/Coding-Plan-MCP → infraestructura detrás de ports existentes (CL-010).
+- **Kimi:** kimi-code → candidato fleet; kimi-cli → legacy/fallback; kimi-agent-sdk + kimi-agent-rs → SDK/transporte; Kimi-Researcher → research si supera NO_VALUE_GAP (CL-011).
+
+## Cola de cierre autoritativa
+1. **CL-001 PASS** — X-Ray de raíz, runtime, adapters, motores y Crazy Wall.
+2. **CL-002 IN_PROGRESS** — descarga/extracción/publicación MiniMax/Kimi GitHub con provenance/hash/read-back.
+3. **CL-003 PENDING** — adquisición NPM exacta de `@minimax-ai/code`/mcode.
+4. **CL-004 PENDING** — kimi-code/kimi-cli con symlinks sin debilitar motores.
+5. **CL-005 PENDING** — reconciliar destino/manifiestos; ningún entregado sin read-back en main.
+6. **CL-006 PENDING** — X-Ray 1×1 y clasificación AGENT/SKILL/SDK/UI/PLUGIN/INFRA/REFERENCE + ADOPT/ADAPT/REJECT.
+7. **CL-007 PENDING** — ampliar fleet sólo con agentes reales y contrato/roles/transporte demostrados.
+8. **CL-008 PENDING** — ACP/stdio/transporte oficial para Mini-Agent/Kimi Code/mcode; eventos normalizados.
+9. **CL-009 PENDING** — Meta Cookbook + Muse SDK integrados en skills/continuidad.
+10. **CL-010 PENDING** — infraestructura MiniMax detrás del bus/ports existentes.
+11. **CL-011 PENDING** — SDKs Kimi + Researcher; kimi-cli sólo si aporta valor.
+12. **CL-012 PENDING** — probes runtime/health/fail-closed/sandbox/memory/read-back; reparar y repetir.
+13. **CL-013 PENDING** — cross-check global, duplicados/orphans/rutas, 3 refutaciones y cierre 100% del scope.
+
+## Gate final
+`100% PASS en scope OR SOURCE_NOT_PUBLIC explícito`; TESTED evidence y read-back obligatorios. `AUTH_PROVIDER_TEST_PENDING` no se convierte en PASS sin ejecución autenticada real.
