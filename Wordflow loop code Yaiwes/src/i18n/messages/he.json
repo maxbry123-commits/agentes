@@ -3288,6 +3288,10 @@
     "models": "דגמים",
     "autoBalance": "איזון אוטומטי",
     "advancedSettings": "הגדרות מתקדמות",
+    "targetTimeout": "זמן קצוב ליעד (שניות)",
+    "comboTimeout": "זמן קצוב לשילוב (שניות)",
+    "inheritRequestTimeout": "בירושה",
+    "inheritComboSafetyTimeout": "בירושה (10 דקות)",
     "retryDelay": "נסה שוב עיכוב (מילישניות)",
     "concurrencyPerModel": "במקביל / דגם",
     "queueTimeout": "זמן קצוב לתור (מילישניות)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "כאשר היא מופעלת, כל שגיאה במעלה הזרם מפעילה כשל מיידי ליעד המשולב הבא, ומדלגת על כל הניסיונות החוזרים וכתובות האתרים החלופיות.",
       "maxSetRetries": "מספר הפעמים כדי לנסות שוב את היעד המלא שהוגדר כאשר כל יעד נכשל. 0 = אין ניסיון חוזר ברמה מוגדרת.",
       "setRetryDelayMs": "עיכוב בין ניסיונות ניסיון חוזר ברמה מוגדרת, נותן לבעיות חולפות זמן לפתור.",
+      "targetTimeoutMs": "זמן קצוב אופציונלי לכל יעד. אם השדה ריק, הזמן הקצוב הנוכחי לבקשה יועבר בירושה; ערכים גדולים יותר יוגבלו לזמן קצוב זה.",
+      "comboTimeoutMs": "תקציב זמן כולל אופציונלי לשילוב כולו, עבור כל יעדי המעבר בעת כשל. אם השדה ריק, מנגנון עצירת התקיעות לאחר 10 דקות יישאר בתוקף; ערך חיובי יחליף אותו. יש להגדיר זמן ארוך יותר מהזמן הקצוב ליעד, כדי שיישאר זמן למעבר בעת כשל.",
       "disableSessionStickiness": "בצע רוטציה לחיבור שונה בכל בקשה במקום להצמיד שיחה שלמה לחיבור אחד לפי ה-hash של ההודעה הראשונה. דורס את ברירת המחדל הגלובלית. השאר על Inherit כדי לשמר פגיעות במטמון הפרומפט (prompt-cache hits) עבור צ'אטים מרובי-סבבים."
     },
     "templatesTitle": "תבניות מהירות",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "מקסימום מנסה שוב",
     "retryDelayLabel": "נסה שוב עיכוב (מילישניות)",
     "timeoutLabel": "זמן קצוב (ms)",
+    "targetTimeout": "זמן קצוב ליעד (שניות)",
+    "comboTimeout": "זמן קצוב לשילוב (שניות)",
+    "inheritRequestTimeout": "העברת הזמן הקצוב לבקשה בירושה",
+    "inheritComboSafetyTimeout": "העברת מנגנון עצירת התקיעות לאחר 10 דקות בירושה",
+    "targetTimeoutHint": "כברירת מחדל, יעדי השילוב יורשים את הזמן הקצוב הנוכחי לבקשה. יש להגדיר כאן ערך נמוך יותר רק אם נדרש מעבר מהיר יותר בעת כשל.",
+    "comboTimeoutHint": "תקציב הזמן הכולל לשילוב כולו, עבור יעדי המעבר בעת כשל. אם השדה ריק, מנגנון עצירת התקיעות לאחר 10 דקות יישאר בתוקף. יש להגדיר זמן ארוך יותר מהזמן הקצוב ליעד, כדי שיישאר זמן למעבר בעת כשל.",
     "healthCheck": "בדיקת בריאות",
     "healthCheckDesc": "בדוק מראש את זמינות הספק",
     "trackMetrics": "עקוב אחר מדדים",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "בצורה פרואקטיבית לקצר תוצאות כלי ארוכות",
-        "description": "מקטין את תוצאות הכלים מעל 2,000 תווים במהלך דחיסת Lite. הגנה על עודף חירום עשויה עדיין לקצץ תוכן כאשר ההקשר חורג מתקציב המודל."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

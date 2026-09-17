@@ -3288,6 +3288,10 @@
     "models": "Modeller",
     "autoBalance": "Otomatik Dengele",
     "advancedSettings": "Gelişmiş Ayarlar",
+    "targetTimeout": "Hedef zaman aşımı (saniye)",
+    "comboTimeout": "Kombinasyon zaman aşımı (saniye)",
+    "inheritRequestTimeout": "devral",
+    "inheritComboSafetyTimeout": "devral (10 dk.)",
     "retryDelay": "Yeniden Deneme Gecikmesi (ms)",
     "concurrencyPerModel": "Eşzamanlılık / Model",
     "queueTimeout": "Kuyruk Zaman Aşımı (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Etkinleştirildiğinde, herhangi bir yukarı akış hatası, tüm yeniden denemeleri ve geri dönüş URL'lerini atlayarak bir sonraki birleşik hedefe anında yük devretmeyi tetikler.",
       "maxSetRetries": "Her hedef başarısız olduğunda tam hedef kümesinin yeniden denenme sayısı. 0 = ayar düzeyinde yeniden deneme yok.",
       "setRetryDelayMs": "Ayar düzeyinde yeniden deneme girişimleri arasındaki gecikme, geçici sorunların çözülmesi için zaman tanır.",
+      "targetTimeoutMs": "Hedef başına isteğe bağlı zaman aşımı. Boş bırakılırsa geçerli istek zaman aşımı devralınır; daha büyük değerler bu zaman aşımıyla sınırlandırılır.",
+      "comboTimeoutMs": "Tüm yük devretme hedeflerini kapsayan, kombinasyonun tamamı için isteğe bağlı toplam geçen süre sınırı. Boş bırakılırsa 10 dakikalık takılma durdurucusu korunur; pozitif bir değer bunun yerini alır. Yük devretme için yeterli süre kalması amacıyla bunu Hedef zaman aşımından daha uzun tutun.",
       "disableSessionStickiness": "Tüm bir konuşmayı ilk mesaj karmasına göre tek bir bağlantıya sabitlemek yerine her istekte farklı bir bağlantıya geçiş yapın. Genel varsayılanı geçersiz kılar. Çok turlu sohbetlerde prompt önbelleği isabetlerini korumak için Devral olarak bırakın."
     },
     "templatesTitle": "Hızlı şablonlar",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Maksimum Yeniden Deneme Sayısı",
     "retryDelayLabel": "Yeniden Deneme Gecikmesi (ms)",
     "timeoutLabel": "Zaman aşımı (ms)",
+    "targetTimeout": "Hedef zaman aşımı (saniye)",
+    "comboTimeout": "Kombinasyon zaman aşımı (saniye)",
+    "inheritRequestTimeout": "İstek zaman aşımını devral",
+    "inheritComboSafetyTimeout": "10 dakikalık takılma durdurucusunu devral",
+    "targetTimeoutHint": "Kombinasyon hedefleri varsayılan olarak geçerli istek zaman aşımını devralır. Yalnızca daha hızlı geri dönüş istediğinizde burada daha düşük bir değer ayarlayın.",
+    "comboTimeoutHint": "Yük devretme hedeflerini kapsayan, kombinasyonun tamamı için toplam geçen süre sınırı. Boş bırakılırsa 10 dakikalık takılma durdurucusu korunur. Yük devretme için yeterli süre kalması amacıyla bunu Hedef zaman aşımından daha uzun tutun.",
     "healthCheck": "Sağlık Kontrolü",
     "healthCheckDesc": "Sağlayıcının kullanılabilirliğini önceden kontrol edin",
     "trackMetrics": "Metrikleri Takip Et",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Uzun araç sonuçlarını proaktif olarak kısaltın",
-        "description": "Lite sıkıştırma sırasında 2.000 karakterin üzerindeki araç sonuçlarını keser. Acil taşma koruması, bağlam model bütçesini aştığında içeriği hala kesebilir."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

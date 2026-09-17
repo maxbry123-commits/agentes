@@ -3288,6 +3288,10 @@
     "models": "Modeliai",
     "autoBalance": "Automatinis balansavimas",
     "advancedSettings": "Papildomi nustatymai",
+    "targetTimeout": "Tikslinio taško skirtasis laikas (sekundėmis)",
+    "comboTimeout": "Derinio skirtasis laikas (sekundėmis)",
+    "inheritRequestTimeout": "paveldėti",
+    "inheritComboSafetyTimeout": "paveldėti (10 min.)",
     "retryDelay": "Pakartojimo delsa (ms)",
     "concurrencyPerModel": "Lygiagretumas / modelis",
     "queueTimeout": "Eilės skirtasis laikas (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Kai įjungta, bet kokia aukštesnio lygio klaida iškart perjungia į kitą kombinacijos tikslinį objektą, praleidžiant visus pakartotinius bandymus ir atsarginius URL adresus.",
       "maxSetRetries": "Kiek kartų kartoti visą tikslinių objektų rinkinį, kai visi tiksliniai objektai nepavyksta. 0 = nėra rinkinio lygio pakartojimo.",
       "setRetryDelayMs": "Delsa tarp rinkinio lygio pakartotinių bandymų, suteikianti laiko laikinoms problemoms išsisprendus.",
+      "targetTimeoutMs": "Pasirenkamas kiekvieno tikslinio taško skirtasis laikas. Jei laukas tuščias, paveldimas dabartinės užklausos skirtasis laikas; didesnės reikšmės apribojamos iki šio laiko.",
+      "comboTimeoutMs": "Pasirenkamas bendras viso derinio vykdymo laiko limitas, taikomas visiems perjungimo tiksliniams taškams. Jei laukas tuščias, paliekamas 10 minučių apsaugos nuo užstrigimo limitas; teigiama reikšmė jį pakeičia. Nustatykite ilgesnį laiką nei tikslinio taško skirtasis laikas, kad liktų laiko perjungimui.",
       "disableSessionStickiness": "Rotuokite prie skirtingo ryšio su kiekviena užklausa, vietoj to, kad prisegtumėte visą pokalbį prie vieno ryšio pagal pirmojo pranešimo maišos vertę. Pakeičia bendrą numatytąjį nustatymą. Palikite reikšmę „Paveldėti“, kad būtų išsaugoti krešmenos (prompt-cache) pataikymai daugiapakopiams pokalbiams."
     },
     "templatesTitle": "Greiti šablonai",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Didžiausias pakartotinių bandymų skaičius",
     "retryDelayLabel": "Delsa tarp pakartotinių bandymų (ms)",
     "timeoutLabel": "Skirtasis laikas (ms)",
+    "targetTimeout": "Tikslinio taško skirtasis laikas (sekundėmis)",
+    "comboTimeout": "Derinio skirtasis laikas (sekundėmis)",
+    "inheritRequestTimeout": "Paveldėti užklausos skirtąjį laiką",
+    "inheritComboSafetyTimeout": "Paveldėti 10 minučių apsaugos nuo užstrigimo limitą",
+    "targetTimeoutHint": "Pagal numatytuosius nustatymus derinio tiksliniai taškai paveldi dabartinės užklausos skirtąjį laiką. Čia nustatykite mažesnę reikšmę tik tada, kai norite greitesnio perjungimo.",
+    "comboTimeoutHint": "Bendras viso derinio vykdymo laiko limitas, taikomas perjungimo tiksliniams taškams. Jei laukas tuščias, paliekamas 10 minučių apsaugos nuo užstrigimo limitas. Nustatykite ilgesnį laiką nei tikslinio taško skirtasis laikas, kad liktų laiko perjungimui.",
     "healthCheck": "Būklės patikra",
     "healthCheckDesc": "Iš anksto tikrinti teikėjo pasiekiamumą",
     "trackMetrics": "Stebėti metrikas",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Iš anksto trumpinti ilgus įrankių rezultatus",
-        "description": "Naudojant „Lite“ glaudinimą, sutrumpinami ilgesni nei 2 000 simbolių įrankių rezultatai. Avarinė apsauga nuo perpildymo vis tiek gali apkarpyti turinį, kai kontekstas viršija modelio limitą."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

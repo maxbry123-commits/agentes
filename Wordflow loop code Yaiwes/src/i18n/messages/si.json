@@ -3288,6 +3288,10 @@
     "models": "මාදිලි",
     "autoBalance": "ස්වයංක්රීය සමතුලිතකරණය",
     "advancedSettings": "උසස් සැකසුම්",
+    "targetTimeout": "ඉලක්ක කාල සීමාව (තත්පර)",
+    "comboTimeout": "Combo කාල සීමාව (තත්පර)",
+    "inheritRequestTimeout": "උරුම කරගන්න",
+    "inheritComboSafetyTimeout": "උරුම කරගන්න (මිනිත්තු 10)",
     "retryDelay": "නැවත උත්සාහ කිරීමේ ප්රමාදය (ms)",
     "concurrencyPerModel": "සමගාමීත්වය / මාදිලිය",
     "queueTimeout": "පෝලිමේ කාල සීමාව (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "සක්රිය කළ විට, ඕනෑම ඉහළ ධාරා දෝෂයක් සියලු නැවත උත්සාහ සහ fallback URLs මඟහැර, ඊළඟ සංයෝජන ඉලක්කය වෙත වහාම අසාර්ථකත්ව මාරුවක් සිදු කරයි.",
       "maxSetRetries": "සෑම ඉලක්කයක්ම අසාර්ථක වූ විට සම්පූර්ණ ඉලක්ක කට්ටලය නැවත උත්සාහ කරන වාර ගණන. 0 = කට්ටල මට්ටමේ නැවත උත්සාහයක් නැත.",
       "setRetryDelayMs": "තාවකාලික ගැටලු විසඳීමට කාලය ලබා දෙමින්, කට්ටල මට්ටමේ නැවත උත්සාහයන් අතර ප්රමාදය.",
+      "targetTimeoutMs": "එක් එක් ඉලක්කය සඳහා විකල්ප කාල සීමාව. හිස්ව තැබුවහොත් වත්මන් ඉල්ලීම් කාල සීමාව උරුම කරගනී; ඊට වඩා විශාල අගයන් එම කාල සීමාවට සීමා කෙරේ.",
+      "comboTimeoutMs": "සියලුම failover ඉලක්ක හරහා සම්පූර්ණ Combo සඳහා වන විකල්ප සැබෑ කාල අයවැය. හිස්ව තැබුවහොත් මිනිත්තු 10ක hang-stop එක පවත්වා ගනී; ධන අගයක් එය ප්රතිස්ථාපනය කරයි. failover සඳහා තවමත් කාලය තිබෙන පරිදි මෙය ඉලක්ක කාල සීමාවට වඩා දිගුව තබන්න.",
       "disableSessionStickiness": "පළමු පණිවිඩයේ hash එක අනුව සම්පූර්ණ සංවාදයක් එක් සම්බන්ධතාවකට ස්ථිර කිරීම වෙනුවට, සෑම ඉල්ලීමකදීම වෙනත් සම්බන්ධතාවකට මාරු වන්න. මෙය ගෝලීය පෙරනිමිය අභිබවා යයි. බහු වාර සංවාද සඳහා prompt-cache ප්රතිලාභ රඳවා ගැනීමට Inherit ලෙස තබන්න."
     },
     "templatesTitle": "ඉක්මන් සැකිලි",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "උපරිම නැවත උත්සාහ ගණන",
     "retryDelayLabel": "නැවත උත්සාහ කිරීමේ ප්රමාදය (ms)",
     "timeoutLabel": "කාල සීමාව (ms)",
+    "targetTimeout": "ඉලක්ක කාල සීමාව (තත්පර)",
+    "comboTimeout": "Combo කාල සීමාව (තත්පර)",
+    "inheritRequestTimeout": "ඉල්ලීම් කාල සීමාව උරුම කරගන්න",
+    "inheritComboSafetyTimeout": "මිනිත්තු 10ක hang-stop එක උරුම කරගන්න",
+    "targetTimeoutHint": "පෙරනිමියෙන් Combo ඉලක්ක වත්මන් ඉල්ලීම් කාල සීමාව උරුම කරගනී. ඔබට වඩා ඉක්මන් fallback එකක් අවශ්ය විට පමණක් මෙහි අඩු අගයක් සකසන්න.",
+    "comboTimeoutHint": "failover ඉලක්ක හරහා සම්පූර්ණ Combo සඳහා වන සැබෑ කාල අයවැය. හිස්ව තැබුවහොත් මිනිත්තු 10ක hang-stop එක පවත්වා ගනී. failover සඳහා තවමත් කාලය තිබෙන පරිදි මෙය ඉලක්ක කාල සීමාවට වඩා දිගුව තබන්න.",
     "healthCheck": "සෞඛ්ය පරීක්ෂාව",
     "healthCheckDesc": "සපයන්නාගේ ලබාගත හැකි බව පෙර පරීක්ෂා කරන්න",
     "trackMetrics": "මිතික නිරීක්ෂණය කරන්න",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "දිගු මෙවලම් ප්රතිඵල කල්තියා කප්පාදු කරන්න",
-        "description": "Lite සම්පීඩනය අතරතුර අක්ෂර 2,000 ඉක්මවන මෙවලම් ප්රතිඵල කප්පාදු කරයි. සන්දර්භය ආකෘතියේ සීමාව ඉක්මවන විට හදිසි අතිප්රවාහ ආරක්ෂණය මඟින් තවදුරටත් අන්තර්ගතය කප්පාදු කළ හැක."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

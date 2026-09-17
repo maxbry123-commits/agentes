@@ -106,7 +106,8 @@ RUN test -f package-lock.json \
 RUN --mount=type=cache,id=s/92ca8a61-c1ba-421f-a389-d48ac7258c2d-npm-cache,target=/root/.npm \
   npm ci --include=optional --no-audit --no-fund --legacy-peer-deps --ignore-scripts \
   && (cd node_modules/better-sqlite3 \
-      && node /usr/local/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js rebuild) \
+      && node /usr/local/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js rebuild --force_build=1) \
+  && test -f node_modules/better-sqlite3/build/Release/better_sqlite3.node \
   && node -e "require('better-sqlite3')(':memory:').close()" \
   && node -e "const wreq=require('wreq-js'); if(typeof wreq.createTransport!=='function') process.exit(1)"
 
@@ -253,6 +254,7 @@ COPY --from=builder /app/.build/next/standalone ./
 # Next.js tracing. bootstrap-env requires SQLite BEFORE the standalone server
 # starts, so guarantee the complete package independent of trace behaviour.
 COPY --from=builder /app/node_modules/better-sqlite3 ./node_modules/better-sqlite3
+RUN test -f /app/node_modules/better-sqlite3/build/Release/better_sqlite3.node
 # migrations land at <standalone>/migrations via assembleStandalone; point the runtime at them.
 ENV OMNIROUTE_MIGRATIONS_DIR=/app/migrations
 

@@ -3288,6 +3288,10 @@
     "models": "Modellen",
     "autoBalance": "Automatische balans",
     "advancedSettings": "Geavanceerde instellingen",
+    "targetTimeout": "Doeltime-out (seconden)",
+    "comboTimeout": "Combinatietime-out (seconden)",
+    "inheritRequestTimeout": "overnemen",
+    "inheritComboSafetyTimeout": "overnemen (10 min.)",
     "retryDelay": "Vertraging opnieuw proberen (ms)",
     "concurrencyPerModel": "Gelijktijdigheid / model",
     "queueTimeout": "Wachtrijtime-out (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Indien ingeschakeld, activeert elke upstream-fout onmiddellijke failover naar het volgende combo-doel, waarbij alle nieuwe pogingen en reserve-URL's worden overgeslagen.",
       "maxSetRetries": "Aantal keren dat de volledige doelset opnieuw moet worden geprobeerd als elk doel mislukt. 0 = geen nieuwe poging op ingesteld niveau.",
       "setRetryDelayMs": "Vertraging tussen nieuwe pogingen op ingesteld niveau, waardoor tijdelijke problemen de tijd krijgen om op te lossen.",
+      "targetTimeoutMs": "Optionele time-out per doel. Indien leeg, wordt de huidige time-out van de aanvraag overgenomen; hogere waarden worden tot die time-out beperkt.",
+      "comboTimeoutMs": "Optioneel totaal tijdsbudget voor de volledige combinatie, gemeten volgens de wandklok en verdeeld over alle failover-doelen. Indien leeg, blijft de beveiliging tegen vastlopen van 10 minuten van kracht; een positieve waarde vervangt deze. Stel dit langer in dan de doeltime-out, zodat er voldoende tijd overblijft voor failover.",
       "disableSessionStickiness": "Roteer naar een andere verbinding bij elk verzoek in plaats van een heel gesprek vast te pinnen op één verbinding via de hash van het eerste bericht. Overschrijft de globale standaardinstelling. Laat op Overnemen staan om prompt-cache hits te behouden voor chats met meerdere beurten."
     },
     "templatesTitle": "Snelle sjablonen",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Maximaal aantal nieuwe pogingen",
     "retryDelayLabel": "Vertraging opnieuw proberen (ms)",
     "timeoutLabel": "Time-out (ms)",
+    "targetTimeout": "Doeltime-out (seconden)",
+    "comboTimeout": "Combinatietime-out (seconden)",
+    "inheritRequestTimeout": "Time-out van aanvraag overnemen",
+    "inheritComboSafetyTimeout": "Beveiliging tegen vastlopen van 10 minuten overnemen",
+    "targetTimeoutHint": "Combinatiedoelen nemen standaard de huidige time-out van de aanvraag over. Stel hier alleen een lagere waarde in als je sneller wilt terugvallen.",
+    "comboTimeoutHint": "Totaal tijdsbudget voor de volledige combinatie, gemeten volgens de wandklok en verdeeld over de failover-doelen. Indien leeg, blijft de beveiliging tegen vastlopen van 10 minuten van kracht. Stel dit langer in dan de doeltime-out, zodat er voldoende tijd overblijft voor failover.",
     "healthCheck": "Gezondheidscontrole",
     "healthCheckDesc": "Controleer vooraf de beschikbaarheid van de provider",
     "trackMetrics": "Houd statistieken bij",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Proactief lange toolresultaten inkorten",
-        "description": "Truncateert toolresultaten boven de 2.000 tekens tijdens Lite-compressie. Noodoverloopbescherming kan nog steeds inhoud inkorten wanneer de context het modelbudget overschrijdt."
+        "description": "Kort lange toolresultaten in tijdens Lite-compressie. De limiet wordt gezet door het veld Maximale toolresultaatlengte (of OMNIROUTE_LITE_MAX_TOOL_LENGTH als het veld leeg is). Noodoverloopbescherming kan nog steeds inhoud inkorten wanneer de context het modelbudget overschrijdt."
+      },
+      "maxToolLength": {
+        "label": "Maximale toolresultaatlengte",
+        "description": "Tekenlimiet voor proactief inkorten. Standaard 2000. Overschrijf met OMNIROUTE_LITE_MAX_TOOL_LENGTH als het veld leeg is."
       }
     },
     "engineFields": {

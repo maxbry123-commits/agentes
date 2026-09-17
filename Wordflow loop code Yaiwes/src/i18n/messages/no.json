@@ -3288,6 +3288,10 @@
     "models": "Modeller",
     "autoBalance": "Autobalanse",
     "advancedSettings": "Avanserte innstillinger",
+    "targetTimeout": "Tidsavbrudd for mål (sekunder)",
+    "comboTimeout": "Tidsavbrudd for kombinasjon (sekunder)",
+    "inheritRequestTimeout": "arv",
+    "inheritComboSafetyTimeout": "arv (10 min)",
     "retryDelay": "Forsinkelse på nytt (ms)",
     "concurrencyPerModel": "Samtidighet / modell",
     "queueTimeout": "Tidsavbrudd for kø (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Når den er aktivert, utløser enhver oppstrømsfeil umiddelbar failover til neste kombinasjonsmål, og hopper over alle gjenforsøk og reservenettadresser.",
       "maxSetRetries": "Antall ganger å prøve hele målet satt på nytt når hvert mål mislykkes. 0 = ingen forsøk på nytt på satt nivå.",
       "setRetryDelayMs": "Forsinkelse mellom gjenforsøk på sett-nivå, noe som gir forbigående problemer tid til å løse.",
+      "targetTimeoutMs": "Valgfritt tidsavbrudd per mål. Hvis feltet er tomt, arves gjeldende tidsavbrudd for forespørselen. Større verdier begrenses til dette tidsavbruddet.",
+      "comboTimeoutMs": "Valgfritt samlet tidsbudsjett for hele kombinasjonen på tvers av alle failover-mål. Hvis feltet er tomt, beholdes 10-minuttersgrensen mot heng. En positiv verdi erstatter den. Sett denne høyere enn tidsavbruddet for mål, slik at failover fortsatt får tid.",
       "disableSessionStickiness": "Roter til en annen tilkobling ved hver forespørsel i stedet for å låse en hel samtale til én tilkobling basert på hashen til første melding. Overstyrer den globale standarden. La stå på Arv for å bevare prompt-cache-treff for flertrinns-samtaler."
     },
     "templatesTitle": "Hurtigmaler",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Max prøver på nytt",
     "retryDelayLabel": "Forsinkelse på nytt (ms)",
     "timeoutLabel": "Tidsavbrudd (ms)",
+    "targetTimeout": "Tidsavbrudd for mål (sekunder)",
+    "comboTimeout": "Tidsavbrudd for kombinasjon (sekunder)",
+    "inheritRequestTimeout": "Arv tidsavbrudd for forespørsel",
+    "inheritComboSafetyTimeout": "Arv 10-minuttersgrense mot heng",
+    "targetTimeoutHint": "Kombinasjonsmål arver som standard gjeldende tidsavbrudd for forespørselen. Angi en lavere verdi her bare når du ønsker raskere reservebytte.",
+    "comboTimeoutHint": "Samlet tidsbudsjett for hele kombinasjonen på tvers av failover-mål. Hvis feltet er tomt, beholdes 10-minuttersgrensen mot heng. Sett denne høyere enn tidsavbruddet for mål, slik at failover fortsatt får tid.",
     "healthCheck": "Helsesjekk",
     "healthCheckDesc": "Forhåndssjekk leverandørens tilgjengelighet",
     "trackMetrics": "Spor beregninger",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Proaktivt forkorte lange verktøyresultater",
-        "description": "Trimmerer verktøyresultater over 2 000 tegn under Lite-komprimering. Nødsituasjonsbeskyttelse kan fortsatt trimme innhold når konteksten overskrider modellbudsjettet."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

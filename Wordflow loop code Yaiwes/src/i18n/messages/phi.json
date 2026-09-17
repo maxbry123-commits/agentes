@@ -3288,6 +3288,10 @@
     "models": "Mga modelo",
     "autoBalance": "Awtomatikong balanse",
     "advancedSettings": "Mga Advanced na Setting",
+    "targetTimeout": "Timeout ng target (segundo)",
+    "comboTimeout": "Timeout ng combo (segundo)",
+    "inheritRequestTimeout": "manahin",
+    "inheritComboSafetyTimeout": "manahin (10 minuto)",
     "retryDelay": "Subukan muli ang Pagkaantala (ms)",
     "concurrencyPerModel": "Concurrency / Modelo",
     "queueTimeout": "Timeout ng Queue (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Kapag pinagana, ang anumang upstream na error ay magti-trigger ng agarang failover sa susunod na combo target, na nilalaktawan ang lahat ng muling pagsubok at fallback na URL.",
       "maxSetRetries": "Bilang ng beses na muling subukan ang buong target na itinakda kapag nabigo ang bawat target. 0 = walang set-level na muling subukan.",
       "setRetryDelayMs": "Pagkaantala sa pagitan ng mga set-level na muling pagsubok, na nagbibigay ng mga lumilipas na isyu ng oras upang malutas.",
+      "targetTimeoutMs": "Opsyonal na timeout para sa bawat target. Kapag walang laman, minamana nito ang kasalukuyang timeout ng request; nililimitahan sa timeout na iyon ang mas malalaking value.",
+      "comboTimeoutMs": "Opsyonal na kabuuang wall-clock budget ng combo para sa lahat ng failover target. Kapag walang laman, pinananatili ang 10 minutong hang-stop; pinapalitan ito ng positibong value. Panatilihin itong mas mahaba kaysa sa timeout ng target upang may oras pa rin ang failover.",
       "disableSessionStickiness": "Mag-rotate sa ibang koneksyon sa bawat request sa halip na i-pin ang buong pag-uusap sa isang koneksyon sa pamamagitan ng first-message hash. Ino-override ang global default. Iwanan sa Inherit upang mapanatili ang mga prompt-cache hit para sa mga multi-turn chat."
     },
     "templatesTitle": "Mabilisang template",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Max na muling sumusubok",
     "retryDelayLabel": "Subukan muli ang Pagkaantala (ms)",
     "timeoutLabel": "Timeout (ms)",
+    "targetTimeout": "Timeout ng target (segundo)",
+    "comboTimeout": "Timeout ng combo (segundo)",
+    "inheritRequestTimeout": "Manahin ang timeout ng request",
+    "inheritComboSafetyTimeout": "Manahin ang 10 minutong hang-stop",
+    "targetTimeoutHint": "Bilang default, minamana ng mga target ng combo ang kasalukuyang timeout ng request. Magtakda lamang dito ng mas mababang value kapag gusto mo ng mas mabilis na fallback.",
+    "comboTimeoutHint": "Kabuuang wall-clock budget ng combo para sa mga failover target. Kapag walang laman, pinananatili ang 10 minutong hang-stop. Panatilihin itong mas mahaba kaysa sa timeout ng target upang may oras pa rin ang failover.",
     "healthCheck": "Pagsusuri sa Kalagayan",
     "healthCheckDesc": "Paunang suriin ang availability ng provider",
     "trackMetrics": "Subaybayan ang Sukatan",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Proaktibong putulin ang mahahabang resulta ng tool",
-        "description": "Pinaputol ang mga resulta ng tool na higit sa 2,000 na karakter sa panahon ng Lite compression. Ang emergency overflow protection ay maaari pa ring magbawas ng nilalaman kapag ang konteksto ay lumampas sa budget ng modelo."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

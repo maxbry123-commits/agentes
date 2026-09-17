@@ -150,6 +150,8 @@ export const updateKeyPermissionsSchema = z
     allowedEndpoints: z.array(z.string().trim().min(1).max(64)).max(20).optional(),
     streamDefaultMode: z.enum(["legacy", "json"]).optional(),
     compressionEnabled: z.boolean().optional(),
+    allowAutoCombos: z.boolean().optional(),
+    catalogScope: z.enum(["all", "combos", "models"]).optional(),
     cacheDefaultMode: z.enum(["legacy", "bypass"]).optional(),
     disableNonPublicModels: z.boolean().optional(),
     allowUsageCommand: z.boolean().optional(),
@@ -208,6 +210,8 @@ export const updateKeyPermissionsSchema = z
       value.allowedEndpoints === undefined &&
       value.streamDefaultMode === undefined &&
       value.compressionEnabled === undefined &&
+      value.allowAutoCombos === undefined &&
+      value.catalogScope === undefined &&
       value.cacheDefaultMode === undefined &&
       value.disableNonPublicModels === undefined &&
       value.allowUsageCommand === undefined &&

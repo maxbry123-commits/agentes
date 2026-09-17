@@ -3288,6 +3288,10 @@
     "models": "Modeli",
     "autoBalance": "Samodejno uravnoteženje",
     "advancedSettings": "Napredne nastavitve",
+    "targetTimeout": "Časovna omejitev cilja (sekunde)",
+    "comboTimeout": "Časovna omejitev kombinacije (sekunde)",
+    "inheritRequestTimeout": "podeduj",
+    "inheritComboSafetyTimeout": "podeduj (10 min)",
     "retryDelay": "Zakasnitev ponovnega poskusa (ms)",
     "concurrencyPerModel": "Sočasnost/model",
     "queueTimeout": "Časovna omejitev čakalne vrste (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Ko je ta možnost omogočena, vsaka napaka nadrejene storitve sproži takojšen preklop na naslednji cilj kombinacije, pri čemer se preskočijo vsi ponovni poskusi in nadomestni URL-ji.",
       "maxSetRetries": "Kolikokrat naj se poskus s celotnim naborom ciljev ponovi, kadar so vsi cilji neuspešni. 0 = brez ponovnega poskusa na ravni nabora.",
       "setRetryDelayMs": "Zamik med ponovnimi poskusi na ravni nabora, ki začasnim težavam omogoči dovolj časa za razrešitev.",
+      "targetTimeoutMs": "Izbirna časovna omejitev za posamezen cilj. Če je polje prazno, se podeduje trenutna časovna omejitev zahteve; večje vrednosti so omejene na to časovno omejitev.",
+      "comboTimeoutMs": "Izbirni skupni časovni okvir kombinacije za vse cilje ob preklopu. Če je polje prazno, ostane 10-minutna varovalka pred zastojem; pozitivna vrednost jo nadomesti. Ta vrednost naj bo daljša od časovne omejitve cilja, da ostane dovolj časa za preklop.",
       "disableSessionStickiness": "Ob vsaki zahtevi preklopite na drugo povezavo, namesto da bi celoten pogovor pripeli na eno povezavo z zgoščeno vrednostjo prvega sporočila. Preglasi globalno privzeto nastavitev. Pustite nastavljeno na Podeduj, da ohranite zadetke predpomnilnika pozivov pri večkrožnih klepetih."
     },
     "templatesTitle": "Hitre predloge",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Največ ponovnih poskusov",
     "retryDelayLabel": "Zamik ponovnega poskusa (ms)",
     "timeoutLabel": "Časovna omejitev (ms)",
+    "targetTimeout": "Časovna omejitev cilja (sekunde)",
+    "comboTimeout": "Časovna omejitev kombinacije (sekunde)",
+    "inheritRequestTimeout": "Podeduj časovno omejitev zahteve",
+    "inheritComboSafetyTimeout": "Podeduj 10-minutno varovalko pred zastojem",
+    "targetTimeoutHint": "Cilji kombinacije privzeto podedujejo trenutno časovno omejitev zahteve. Nižjo vrednost nastavite le, če želite hitrejši preklop.",
+    "comboTimeoutHint": "Skupni časovni okvir kombinacije za vse cilje ob preklopu. Če je polje prazno, ostane 10-minutna varovalka pred zastojem. Ta vrednost naj bo daljša od časovne omejitve cilja, da ostane dovolj časa za preklop.",
     "healthCheck": "Preverjanje stanja",
     "healthCheckDesc": "Predhodno preveri razpoložljivost ponudnika",
     "trackMetrics": "Spremljanje metrik",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Vnaprej skrajšaj dolge rezultate orodij",
-        "description": "Med lahkim stiskanjem skrajša rezultate orodij, daljše od 2.000 znakov. Zaščita pred prekoračitvijo v sili lahko še vedno obreže vsebino, ko kontekst preseže proračun modela."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

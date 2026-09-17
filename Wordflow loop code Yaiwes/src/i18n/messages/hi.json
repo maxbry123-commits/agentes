@@ -3288,6 +3288,10 @@
     "models": "मॉडल",
     "autoBalance": "स्वत: संतुलन",
     "advancedSettings": "उन्नत सेटिंग्स",
+    "targetTimeout": "टार्गेट टाइमआउट (सेकंड)",
+    "comboTimeout": "कॉम्बो टाइमआउट (सेकंड)",
+    "inheritRequestTimeout": "इनहेरिट करें",
+    "inheritComboSafetyTimeout": "इनहेरिट करें (10 मिनट)",
     "retryDelay": "पुनः प्रयास विलंब (एमएस)",
     "concurrencyPerModel": "समवर्ती/मॉडल",
     "queueTimeout": "कतार समय समाप्ति (एमएस)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "सक्षम होने पर, कोई भी अपस्ट्रीम त्रुटि अगले कॉम्बो लक्ष्य के लिए तत्काल विफलता को ट्रिगर करती है, सभी पुनर्प्रयासों और फ़ॉलबैक यूआरएल को छोड़ देती है।",
       "maxSetRetries": "प्रत्येक लक्ष्य विफल होने पर पूर्ण लक्ष्य सेट को पुनः प्रयास करने की संख्या। 0 = कोई सेट-स्तरीय पुनः प्रयास नहीं।",
       "setRetryDelayMs": "सेट-स्तरीय पुनः प्रयास प्रयासों के बीच विलंब, क्षणिक मुद्दों को हल करने का समय देना।",
+      "targetTimeoutMs": "प्रति-टार्गेट वैकल्पिक टाइमआउट। खाली छोड़ने पर वर्तमान अनुरोध टाइमआउट इनहेरिट होता है; इससे बड़े मान उस टाइमआउट तक सीमित कर दिए जाते हैं।",
+      "comboTimeoutMs": "सभी फ़ेलओवर टार्गेट के लिए पूरे कॉम्बो का वैकल्पिक वॉल-क्लॉक बजट। खाली छोड़ने पर 10-मिनट का हैंग-स्टॉप बना रहता है; कोई धनात्मक मान इसे बदल देता है। इसे टार्गेट टाइमआउट से अधिक रखें, ताकि फ़ेलओवर के लिए समय बचा रहे।",
       "disableSessionStickiness": "पहले-संदेश के हैश द्वारा पूरी बातचीत को एक कनेक्शन पर पिन करने के बजाय हर अनुरोध पर एक अलग कनेक्शन पर रोटेट करें। यह वैश्विक डिफ़ॉल्ट को ओवरराइड करता है। मल्टी-टर्न चैट के लिए प्रॉम्प्ट-कैश हिट्स को सुरक्षित रखने के लिए इसे Inherit पर छोड़ दें।"
     },
     "templatesTitle": "त्वरित टेम्प्लेट",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "अधिकतम पुनर्प्रयास",
     "retryDelayLabel": "पुनः प्रयास विलंब (एमएस)",
     "timeoutLabel": "टाइमआउट (एमएस)",
+    "targetTimeout": "टार्गेट टाइमआउट (सेकंड)",
+    "comboTimeout": "कॉम्बो टाइमआउट (सेकंड)",
+    "inheritRequestTimeout": "अनुरोध टाइमआउट इनहेरिट करें",
+    "inheritComboSafetyTimeout": "10-मिनट का हैंग-स्टॉप इनहेरिट करें",
+    "targetTimeoutHint": "डिफ़ॉल्ट रूप से कॉम्बो टार्गेट वर्तमान अनुरोध टाइमआउट इनहेरिट करते हैं। केवल तेज़ फ़ॉलबैक चाहने पर ही यहाँ कम मान सेट करें।",
+    "comboTimeoutHint": "फ़ेलओवर टार्गेट के लिए पूरे कॉम्बो का वॉल-क्लॉक बजट। खाली छोड़ने पर 10-मिनट का हैंग-स्टॉप बना रहता है। इसे टार्गेट टाइमआउट से अधिक रखें, ताकि फ़ेलओवर के लिए समय बचा रहे।",
     "healthCheck": "स्वास्थ्य जांच",
     "healthCheckDesc": "प्रदाता उपलब्धता की पूर्व-जाँच करें",
     "trackMetrics": "ट्रैक मेट्रिक्स",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "सक्रिय रूप से लंबे टूल परिणामों को संक्षिप्त करें",
-        "description": "Lite संकुचन के दौरान 2,000 वर्णों से अधिक के उपकरण परिणामों को काटता है। आपातकालीन ओवरफ्लो सुरक्षा तब भी सामग्री को काट सकती है जब संदर्भ मॉडल बजट से अधिक हो जाता है।"
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

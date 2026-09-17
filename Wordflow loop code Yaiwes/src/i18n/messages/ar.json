@@ -3288,6 +3288,10 @@
     "models": "نماذج",
     "autoBalance": "التوازن التلقائي",
     "advancedSettings": "الإعدادات المتقدمة",
+    "targetTimeout": "مهلة الهدف (بالثواني)",
+    "comboTimeout": "مهلة المجموعة (بالثواني)",
+    "inheritRequestTimeout": "استخدام القيمة الموروثة",
+    "inheritComboSafetyTimeout": "استخدام القيمة الموروثة (10 دقائق)",
     "retryDelay": "تأخير إعادة المحاولة (ملي ثانية)",
     "concurrencyPerModel": "التزامن/النموذج",
     "queueTimeout": "مهلة قائمة الانتظار (مللي ثانية)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "عند التمكين، يؤدي أي خطأ في المنبع إلى تبديل احتياطي فوري إلى الهدف التالي في المجموعة، مع تخطي جميع المحاولات وعناوين URL الاحتياطية.",
       "maxSetRetries": "عدد مرات إعادة محاولة المجموعة كاملة بعد فشل جميع أهدافها. 0 = لا توجد إعادة محاولة على مستوى المجموعة.",
       "setRetryDelayMs": "التأخير بين محاولات إعادة المجموعة، لإتاحة وقت لحل المشكلات العابرة.",
+      "targetTimeoutMs": "مهلة اختيارية لكل هدف. إذا تُركت فارغة، فسترث مهلة الطلب الحالية؛ وتُقيَّد القيم الأكبر بتلك المهلة.",
+      "comboTimeoutMs": "ميزانية زمنية اختيارية للمجموعة بأكملها وفقًا لساعة الحائط، تشمل جميع أهداف تجاوز الفشل. إذا تُركت فارغة، فسيظل حد إيقاف التعليق البالغ 10 دقائق؛ وتحل محله أي قيمة موجبة. اجعل هذه المدة أطول من مهلة الهدف ليظل هناك وقت لتجاوز الفشل.",
       "disableSessionStickiness": "التدوير إلى اتصال مختلف مع كل طلب بدلاً من ربط محادثة كاملة باتصال واحد عبر هاش الرسالة الأولى. يتجاوز هذا الإعداد الافتراضي العام. اتركه على 'توريث' للحفاظ على نجاحات ذاكرة التخزين المؤقت للمطالبات للمحادثات متعددة الأدوار."
     },
     "templatesTitle": "قوالب سريعة",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "الحد الأقصى لإعادات المحاولة",
     "retryDelayLabel": "تأخير إعادة المحاولة (ملي ثانية)",
     "timeoutLabel": "المهلة (مللي ثانية)",
+    "targetTimeout": "مهلة الهدف (بالثواني)",
+    "comboTimeout": "مهلة المجموعة (بالثواني)",
+    "inheritRequestTimeout": "استخدام مهلة الطلب الموروثة",
+    "inheritComboSafetyTimeout": "استخدام حد إيقاف التعليق الموروث البالغ 10 دقائق",
+    "targetTimeoutHint": "ترث أهداف المجموعة مهلة الطلب الحالية افتراضيًا. عيّن قيمة أقل هنا فقط عندما تريد رجوعًا احتياطيًا أسرع.",
+    "comboTimeoutHint": "ميزانية زمنية للمجموعة بأكملها وفقًا لساعة الحائط، تشمل أهداف تجاوز الفشل. إذا تُركت فارغة، فسيظل حد إيقاف التعليق البالغ 10 دقائق. اجعل هذه المدة أطول من مهلة الهدف ليظل هناك وقت لتجاوز الفشل.",
     "healthCheck": "فحص الصحة",
     "healthCheckDesc": "التحقق المسبق من توفر الموفر",
     "trackMetrics": "تتبع المقاييس",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "قم بقطع نتائج الأدوات الطويلة بشكل استباقي",
-        "description": "يقطع نتائج الأداة التي تتجاوز 2000 حرف أثناء ضغط Lite. قد تقوم حماية الفائض الطارئة بتقليص المحتوى عندما يتجاوز السياق ميزانية النموذج."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

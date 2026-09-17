@@ -176,6 +176,10 @@ export const comboRuntimeConfigSchema = z
     fallbackDelayMs: z.coerce.number().int().min(0).max(60000).optional(),
     timeoutMs: z.coerce.number().int().min(1000).optional(),
     targetTimeoutMs: z.coerce.number().int().min(0).max(MAX_TIMER_TIMEOUT_MS).optional(),
+    // Whole-combo wall-clock budget. 0 (default) means unlimited iteration;
+    // the 10-minute COMBO_LOOP_SAFETY_TIMEOUT_MS hang-stop still applies.
+    // A positive value replaces that safety net for this combo.
+    comboTimeoutMs: z.coerce.number().int().min(0).max(MAX_TIMER_TIMEOUT_MS).optional(),
     concurrencyPerModel: z.coerce.number().int().min(1).max(20).optional(),
     queueTimeoutMs: z.coerce.number().int().min(1000).max(120000).optional(),
     // #3872: pre-cascade semaphore queue depth (round-robin). 0 = fail over immediately.
@@ -350,6 +354,9 @@ export const createComboSchema = z
   .object({
     name: comboNameSchema,
     description: z.string().max(2000).optional(),
+    // Optional label advertised as `display_name` in /v1/models. Lets a combo
+    // carry a machine-oriented name while clients show something readable.
+    displayName: z.string().trim().max(200).optional(),
     models: z.array(comboModelEntry).min(1, "a combo requires at least one model"),
     strategy: comboStrategySchema.optional().default("priority"),
     config: comboRuntimeConfigSchema.optional(),
@@ -409,6 +416,7 @@ export const updateComboSchema = z
   .object({
     name: comboNameSchema.optional(),
     description: z.string().max(2000).optional().nullable(),
+    displayName: z.string().trim().max(200).optional().nullable(),
     // An update may not remove every model from a combo, or a working combo
     // loses every target. Creation refuses an empty list too: since the CLI
     // gained --models (#10954), an empty draft has no remaining legitimate path.
@@ -444,6 +452,7 @@ export const updateComboSchema = z
     if (
       value.name === undefined &&
       value.description === undefined &&
+      value.displayName === undefined &&
       value.models === undefined &&
       value.strategy === undefined &&
       value.config === undefined &&

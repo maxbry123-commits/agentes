@@ -3288,6 +3288,10 @@
     "models": "Ụdị",
     "autoBalance": "Hazie nguzozi na-akpaghị aka",
     "advancedSettings": "Ntọala Dị Elu",
+    "targetTimeout": "Oge ngwụcha ebumnuche (sekọnd)",
+    "comboTimeout": "Oge ngwụcha ngwakọta (sekọnd)",
+    "inheritRequestTimeout": "keta",
+    "inheritComboSafetyTimeout": "keta (nkeji 10)",
     "retryDelay": "Oge nchere tupu ịnwale ọzọ (ms)",
     "concurrencyPerModel": "Ọrụ n'otu oge / Ụdị",
     "queueTimeout": "Oke oge n'ahịrị (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Mgbe enyere ya ikike, njehie upstream ọ bụla na-akpalite ịgafe ozugbo na combo target na-esote, na-amafere retries na fallback URLs niile.",
       "maxSetRetries": "Ọnụọgụ ugboro a ga-anwaleghachi target set zuru ezu mgbe target niile dara. 0 = enweghị set-level retry.",
       "setRetryDelayMs": "Oge nkwụsị n'etiti mbọ set-level retry, iji nye nsogbu na-adịru nwa oge ohere idozi onwe ha.",
+      "targetTimeoutMs": "Oge ngwụcha nhọrọ maka ebumnuche ọ bụla. Ọ bụrụ na ọ tọgbọ chakoo, ọ ga-eketa oge ngwụcha nke arịrịọ dị ugbu a; a ga-amachi ụkpụrụ ndị ka ukwuu n'oge ngwụcha ahụ.",
+      "comboTimeoutMs": "Oge nhọrọ zuru ezu nke ngwakọta niile nwere ike iji gafee ebumnuche failover niile. Ọ bụrụ na ọ tọgbọ chakoo, ọ ga-edowe nkwụsị mgbochi ịkwụgide nke nkeji 10; ụkpụrụ dị mma ga-anọchi ya. Mee ka nke a dị ogologo karịa oge ngwụcha ebumnuche ka failover ka nwee oge.",
       "disableSessionStickiness": "Gbanwee gaa na connection dị iche n'arịrịọ ọ bụla kama ijikọ mkparịta ụka dum na otu connection site na hash nke ozi mbụ. Nke a na-akagbu global default. Hapụ ya na Inherit iji chekwaa prompt-cache hits maka nkata nwere ọtụtụ ntụgharị."
     },
     "templatesTitle": "Templates ngwa ngwa",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Ọnụọgụ Nnwale Ọzọ Kachasị Elu",
     "retryDelayLabel": "Oge Nchere Tupu Nnwale Ọzọ (ms)",
     "timeoutLabel": "Oge Njedebe (ms)",
+    "targetTimeout": "Oge ngwụcha ebumnuche (sekọnd)",
+    "comboTimeout": "Oge ngwụcha ngwakọta (sekọnd)",
+    "inheritRequestTimeout": "Keta oge ngwụcha arịrịọ",
+    "inheritComboSafetyTimeout": "Keta nkwụsị mgbochi ịkwụgide nke nkeji 10",
+    "targetTimeoutHint": "Ebumnuche ngwakọta na-eketa oge ngwụcha nke arịrịọ dị ugbu a na ndabara. Tọọ ụkpụrụ dị ala ebe a naanị mgbe ịchọrọ fallback ngwa ngwa.",
+    "comboTimeoutHint": "Oge zuru ezu nke ngwakọta niile nwere ike iji gafee ebumnuche failover. Ọ bụrụ na ọ tọgbọ chakoo, ọ ga-edowe nkwụsị mgbochi ịkwụgide nke nkeji 10. Mee ka nke a dị ogologo karịa oge ngwụcha ebumnuche ka failover ka nwee oge.",
     "healthCheck": "Nlele Ahụike",
     "healthCheckDesc": "Buru ụzọ lelee ma onye na-eweta ọrụ dị",
     "trackMetrics": "Sochie Metrik",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Buru ụzọ belata nsonaazụ ngwaọrụ ndị toro ogologo",
-        "description": "Na-ebelata nsonaazụ ngwaọrụ karịrị mkpụrụedemede 2,000 n'oge mkpokọta Lite. Nchedo mberede megide njupụta ka nwere ike ibelata ọdịnaya mgbe konteks gafere oke model."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

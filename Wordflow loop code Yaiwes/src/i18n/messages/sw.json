@@ -3288,6 +3288,10 @@
     "models": "Miundo",
     "autoBalance": "Sawazisha kiotomatiki",
     "advancedSettings": "Mipangilio ya Kina",
+    "targetTimeout": "Muda wa mwisho wa lengo (sekunde)",
+    "comboTimeout": "Muda wa mwisho wa mchanganyiko (sekunde)",
+    "inheritRequestTimeout": "rithi",
+    "inheritComboSafetyTimeout": "rithi (dakika 10)",
     "retryDelay": "Kuchelewa kwa Jaribio Jipya (ms)",
     "concurrencyPerModel": "Uendeshaji Sambamba / Muundo",
     "queueTimeout": "Muda wa Kuisha wa Foleni (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Inapowashwa, hitilafu yoyote ya mkondo wa juu husababisha kushindwa mara moja kwa shabaha ya mseto inayofuata, kuruka majaribio yote na URL mbadala.",
       "maxSetRetries": "Idadi ya mara za kujaribu tena lengo kamili lililowekwa wakati kila lengo limeshindwa. 0 = hakuna kiwango cha kuweka tena.",
       "setRetryDelayMs": "Kucheleweshwa kati ya majaribio ya kujaribu tena kiwango kilichowekwa, na kutoa muda wa kutatua masuala ya muda mfupi.",
+      "targetTimeoutMs": "Muda wa mwisho wa hiari kwa kila lengo. Ikiwa ni tupu, hurithi muda wa mwisho wa ombi la sasa; thamani kubwa zaidi huwekewa kikomo cha muda huo.",
+      "comboTimeoutMs": "Kikomo cha hiari cha muda halisi kwa mchanganyiko mzima katika malengo yote ya ubadilishaji baada ya hitilafu. Ikiwa ni tupu, husalia na kikomo cha kusimamisha kukwama cha dakika 10; thamani chanya hukibadilisha. Weka muda huu kuwa mrefu kuliko Muda wa mwisho wa lengo ili ubadilishaji baada ya hitilafu bado uwe na muda.",
       "disableSessionStickiness": "Zungusha hadi kwenye muunganisho tofauti kwenye kila ombi badala ya kubandika mazungumzo yote kwenye muunganisho mmoja kwa kutumia hashi ya ujumbe wa kwanza. Hubatilisha chaguo-msingi la kimataifa. Acha kwenye Inherit ili kuhifadhi prompt-cache hits kwa soga za zamu nyingi."
     },
     "templatesTitle": "Violezo vya haraka",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Idadi ya Juu ya Majaribio Tena",
     "retryDelayLabel": "Ucheleweshaji wa Kujaribu Tena (ms)",
     "timeoutLabel": "Muda wa Kusubiri (ms)",
+    "targetTimeout": "Muda wa mwisho wa lengo (sekunde)",
+    "comboTimeout": "Muda wa mwisho wa mchanganyiko (sekunde)",
+    "inheritRequestTimeout": "Rithi muda wa mwisho wa ombi",
+    "inheritComboSafetyTimeout": "Rithi kikomo cha kusimamisha kukwama cha dakika 10",
+    "targetTimeoutHint": "Kwa chaguo-msingi, malengo ya mchanganyiko hurithi muda wa mwisho wa ombi la sasa. Weka thamani ndogo hapa ikiwa tu unataka ubadilishaji wa haraka baada ya hitilafu.",
+    "comboTimeoutHint": "Kikomo cha muda halisi kwa mchanganyiko mzima katika malengo ya ubadilishaji baada ya hitilafu. Ikiwa ni tupu, husalia na kikomo cha kusimamisha kukwama cha dakika 10. Weka muda huu kuwa mrefu kuliko Muda wa mwisho wa lengo ili ubadilishaji baada ya hitilafu bado uwe na muda.",
     "healthCheck": "Ukaguzi wa Afya",
     "healthCheckDesc": "Kagua mapema upatikanaji wa mtoa huduma",
     "trackMetrics": "Fuatilia Vipimo",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Kukata matokeo marefu ya zana kwa njia ya kujiandaa",
-        "description": "Hupunguza matokeo ya zana zaidi ya herufi 2,000 wakati wa kufinya Lite. Ulinzi wa dharura wa kupita kiasi bado unaweza kukata maudhui wakati muktadha unazidi bajeti ya mfano."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

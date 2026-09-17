@@ -3288,6 +3288,10 @@
     "models": "Modelle",
     "autoBalance": "Automatischer Ausgleich",
     "advancedSettings": "Erweiterte Einstellungen",
+    "targetTimeout": "Ziel-Timeout (Sekunden)",
+    "comboTimeout": "Combo-Timeout (Sekunden)",
+    "inheritRequestTimeout": "übernehmen",
+    "inheritComboSafetyTimeout": "übernehmen (10 Min.)",
     "retryDelay": "Wiederholungsverzögerung (ms)",
     "concurrencyPerModel": "Parallelität / Modell",
     "queueTimeout": "Warteschlangen-Timeout (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Wenn diese Option aktiviert ist, löst jeder Upstream-Fehler ein sofortiges Failover zum nächsten Kombinationsziel aus, wobei alle Wiederholungsversuche und Fallback-URLs übersprungen werden.",
       "maxSetRetries": "Anzahl der Wiederholungsversuche mit dem vollständigen Zielsatz, wenn jedes Ziel fehlschlägt. 0 = kein Wiederholungsversuch auf festgelegter Ebene.",
       "setRetryDelayMs": "Verzögerung zwischen Wiederholungsversuchen auf Satzebene, sodass vorübergehende Probleme Zeit zur Lösung haben.",
+      "targetTimeoutMs": "Optionaler Timeout pro Ziel. Wenn leer, wird der aktuelle Anfrage-Timeout übernommen; höhere Werte werden auf diesen Timeout begrenzt.",
+      "comboTimeoutMs": "Optionales Gesamtzeitbudget für das gesamte Combo über alle Failover-Ziele hinweg. Wenn leer, bleibt der 10-minütige Schutz vor Hängen bestehen; ein positiver Wert ersetzt ihn. Dieser Wert sollte länger als der Ziel-Timeout sein, damit noch Zeit für Failover bleibt.",
       "disableSessionStickiness": "Bei jeder Anfrage zu einer anderen Verbindung wechseln, anstatt eine gesamte Konversation anhand des Hashs der ersten Nachricht an eine Verbindung zu binden. Überschreibt den globalen Standardwert. Auf „Inherit“ belassen, um Prompt-Cache-Treffer für Multi-Turn-Chats beizubehalten."
     },
     "templatesTitle": "Schnellvorlagen",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Max. Wiederholungsversuche",
     "retryDelayLabel": "Wiederholungsverzögerung (ms)",
     "timeoutLabel": "Zeitüberschreitung (ms)",
+    "targetTimeout": "Ziel-Timeout (Sekunden)",
+    "comboTimeout": "Combo-Timeout (Sekunden)",
+    "inheritRequestTimeout": "Anfrage-Timeout übernehmen",
+    "inheritComboSafetyTimeout": "10-minütigen Schutz vor Hängen übernehmen",
+    "targetTimeoutHint": "Combo-Ziele übernehmen standardmäßig den aktuellen Anfrage-Timeout. Legen Sie hier nur dann einen niedrigeren Wert fest, wenn Sie einen schnelleren Fallback wünschen.",
+    "comboTimeoutHint": "Gesamtzeitbudget für das gesamte Combo über alle Failover-Ziele hinweg. Wenn leer, bleibt der 10-minütige Schutz vor Hängen bestehen. Dieser Wert sollte länger als der Ziel-Timeout sein, damit noch Zeit für Failover bleibt.",
     "healthCheck": "Gesundheitscheck",
     "healthCheckDesc": "Überprüfen Sie vorab die Verfügbarkeit des Anbieters",
     "trackMetrics": "Verfolgen Sie Metriken",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Proaktiv lange Tool-Ergebnisse kürzen",
-        "description": "Trimmt die Toolergebnisse über 2.000 Zeichen während der Lite-Kompression. Der Notüberlauf-Schutz kann den Inhalt weiterhin kürzen, wenn der Kontext das Modellbudget überschreitet."
+        "description": "Kürzt lange Tool-Ergebnisse während der Lite-Kompression. Die Obergrenze setzt das Feld „Maximale Tool-Ergebnis-Länge“ (oder OMNIROUTE_LITE_MAX_TOOL_LENGTH, wenn das Feld leer ist). Der Notüberlauf-Schutz kann den Inhalt weiter kürzen, wenn der Kontext das Modellbudget überschreitet."
+      },
+      "maxToolLength": {
+        "label": "Maximale Tool-Ergebnis-Länge",
+        "description": "Zeichenobergrenze für die vorausschauende Kürzung von Tool-Ergebnissen. Standard 2000. Überschreiben mit OMNIROUTE_LITE_MAX_TOOL_LENGTH, wenn das Feld leer ist."
       }
     },
     "engineFields": {

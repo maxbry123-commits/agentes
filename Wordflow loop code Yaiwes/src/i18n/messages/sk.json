@@ -3288,6 +3288,10 @@
     "models": "Modelky",
     "autoBalance": "Automatické vyváženie",
     "advancedSettings": "Rozšírené nastavenia",
+    "targetTimeout": "Časový limit cieľa (sekundy)",
+    "comboTimeout": "Časový limit kombinácie (sekundy)",
+    "inheritRequestTimeout": "zdediť",
+    "inheritComboSafetyTimeout": "zdediť (10 min)",
     "retryDelay": "Oneskorenie opätovného pokusu (ms)",
     "concurrencyPerModel": "Súbežnosť / Model",
     "queueTimeout": "Časový limit fronty (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Ak je táto možnosť povolená, akákoľvek chyba proti prúdu spúšťa okamžité prepnutie na ďalší kombinovaný cieľ, čím sa preskočia všetky opakované pokusy a záložné adresy URL.",
       "maxSetRetries": "Počet opakovaní celej množiny cieľov, keď každý cieľ zlyhá. 0 = žiadny opakovaný pokus na úrovni nastavenia.",
       "setRetryDelayMs": "Oneskorenie medzi pokusmi o opakovanie na nastavenej úrovni, čo dáva prechodným problémom čas na vyriešenie.",
+      "targetTimeoutMs": "Voliteľný časový limit pre každý cieľ. Ak je pole prázdne, zdedí sa aktuálny časový limit požiadavky; vyššie hodnoty sa obmedzia na tento limit.",
+      "comboTimeoutMs": "Voliteľný celkový časový limit kombinácie zahŕňajúci všetky záložné ciele. Ak je pole prázdne, zachová sa 10-minútový limit proti zaseknutiu; kladná hodnota ho nahradí. Nastavte ho na dlhší čas než Časový limit cieľa, aby zostal čas na prepnutie na záložný cieľ.",
       "disableSessionStickiness": "Striedať pripojenia pri každej požiadavke namiesto priradenia celej konverzácie k jednému pripojeniu podľa hash-u prvej správy. Prepíše globálne predvolené nastavenie. Ponechajte na Zdediť pre zachovanie zásahov do vyrovnávacej pamäte výziev (prompt-cache) pri viacúrovňových chatoch."
     },
     "templatesTitle": "Rýchle šablóny",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Maximálny počet opakovaní",
     "retryDelayLabel": "Oneskorenie opätovného pokusu (ms)",
     "timeoutLabel": "Časový limit (ms)",
+    "targetTimeout": "Časový limit cieľa (sekundy)",
+    "comboTimeout": "Časový limit kombinácie (sekundy)",
+    "inheritRequestTimeout": "Zdediť časový limit požiadavky",
+    "inheritComboSafetyTimeout": "Zdediť 10-minútový limit proti zaseknutiu",
+    "targetTimeoutHint": "Ciele kombinácie predvolene zdedia aktuálny časový limit požiadavky. Nižšiu hodnotu tu nastavte iba vtedy, ak chcete rýchlejšie prepnutie na záložný cieľ.",
+    "comboTimeoutHint": "Celkový časový limit kombinácie zahŕňajúci všetky záložné ciele. Ak je pole prázdne, zachová sa 10-minútový limit proti zaseknutiu. Nastavte ho na dlhší čas než Časový limit cieľa, aby zostal čas na prepnutie na záložný cieľ.",
     "healthCheck": "Kontrola zdravotného stavu",
     "healthCheckDesc": "Vopred skontrolujte dostupnosť poskytovateľa",
     "trackMetrics": "Sledovať metriky",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Proaktívne skrátiť dlhé výsledky nástroja",
-        "description": "Zrezáva výsledky nástroja nad 2 000 znakov počas Lite kompresie. Núdzová ochrana pred pretečením môže stále skrátiť obsah, keď kontext presiahne rozpočet modelu."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

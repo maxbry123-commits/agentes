@@ -3288,6 +3288,10 @@
     "models": "Mallit",
     "autoBalance": "Automaattinen tasapainotus",
     "advancedSettings": "Lisäasetukset",
+    "targetTimeout": "Kohteen aikakatkaisu (sekuntia)",
+    "comboTimeout": "Yhdistelmän aikakatkaisu (sekuntia)",
+    "inheritRequestTimeout": "peri",
+    "inheritComboSafetyTimeout": "peri (10 min)",
     "retryDelay": "Uudelleenyrityksen viive (ms)",
     "concurrencyPerModel": "Samanaikaisuus / malli",
     "queueTimeout": "Jonon aikakatkaisu (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Kun tämä on käytössä, kaikki ylävirran virheet laukaisevat välittömän vikasietoisuuden seuraavaan yhdistelmäkohteeseen ohittaen kaikki uudelleenyritykset ja vara-URL-osoitteet.",
       "maxSetRetries": "Kuinka monta kertaa koko tavoitejoukkoa yritetään uudelleen, kun jokainen tavoite epäonnistuu. 0 = ei asetustason uudelleenyritystä.",
       "setRetryDelayMs": "Viive asetustason uudelleenyritysten välillä, mikä antaa ohimeneville ongelmille aikaa ratkaista.",
+      "targetTimeoutMs": "Valinnainen kohdekohtainen aikakatkaisu. Tyhjä arvo perii nykyisen pyynnön aikakatkaisun; sitä suuremmat arvot rajoitetaan kyseiseen aikakatkaisuun.",
+      "comboTimeoutMs": "Valinnainen koko yhdistelmän seinäkelloaikaan perustuva aikaraja kaikille varakohteille. Tyhjä arvo säilyttää 10 minuutin jumittumisen estävän aikakatkaisun; positiivinen arvo korvaa sen. Aseta tämä kohteen aikakatkaisua pidemmäksi, jotta varakohteisiin siirtymiselle jää aikaa.",
       "disableSessionStickiness": "Vaihda eri yhteyteen jokaisella pyynnöllä sen sijaan, että koko keskustelu kiinnitettäisiin yhteen yhteyteen ensimmäisen viestin tiivisteen perusteella. Ohittaa globaalin oletuksen. Jätä valintaan Inherit säilyttääksesi prompt-välimuistin osumat monivaiheisissa keskusteluissa."
     },
     "templatesTitle": "Pikamallit",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Max Uudelleenyritykset",
     "retryDelayLabel": "Uudelleenyrityksen viive (ms)",
     "timeoutLabel": "Aikakatkaisu (ms)",
+    "targetTimeout": "Kohteen aikakatkaisu (sekuntia)",
+    "comboTimeout": "Yhdistelmän aikakatkaisu (sekuntia)",
+    "inheritRequestTimeout": "Peri pyynnön aikakatkaisu",
+    "inheritComboSafetyTimeout": "Peri 10 minuutin jumittumisen estävä aikakatkaisu",
+    "targetTimeoutHint": "Yhdistelmän kohteet perivät oletusarvoisesti nykyisen pyynnön aikakatkaisun. Aseta tähän pienempi arvo vain, jos haluat nopeamman siirtymisen varakohteeseen.",
+    "comboTimeoutHint": "Koko yhdistelmän seinäkelloaikaan perustuva aikaraja kaikille varakohteille. Tyhjä arvo säilyttää 10 minuutin jumittumisen estävän aikakatkaisun. Aseta tämä kohteen aikakatkaisua pidemmäksi, jotta varakohteisiin siirtymiselle jää aikaa.",
     "healthCheck": "Terveystarkastus",
     "healthCheckDesc": "Tarkista palveluntarjoajan saatavuus etukäteen",
     "trackMetrics": "Seuraa mittareita",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Proaktiivisesti lyhennä pitkiä työkalutuloksia",
-        "description": "Lyhentää työkalun tuloksia yli 2 000 merkkiä Lite-puristuksen aikana. Hätätilanteen ylivuotosuojaus voi silti leikata sisältöä, kun konteksti ylittää mallin budjetin."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

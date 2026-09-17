@@ -3288,6 +3288,10 @@
     "models": "مدلها",
     "autoBalance": "تعادل خودکار",
     "advancedSettings": "تنظیمات پیشرفته",
+    "targetTimeout": "مهلت زمانی مقصد (ثانیه)",
+    "comboTimeout": "مهلت زمانی ترکیب (ثانیه)",
+    "inheritRequestTimeout": "ارثبری",
+    "inheritComboSafetyTimeout": "ارثبری (۱۰ دقیقه)",
     "retryDelay": "تأخیر تلاش مجدد (ms)",
     "concurrencyPerModel": "همزمانی / مدل",
     "queueTimeout": "مهلت انتظار صف (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "هنگامی که فعال باشد، هر خطای بالادستی باعث شکست فوری به هدف ترکیبی بعدی می‌شود، و از همه تلاش‌های مجدد و نشانی‌های اینترنتی برگشتی صرفنظر می‌کند.",
       "maxSetRetries": "تعداد دفعاتی که در صورت شکست هر هدف، مجموعه کامل هدف را دوباره امتحان کنید. 0 = بدون تلاش مجدد در سطح مجموعه.",
       "setRetryDelayMs": "تأخیر بین تلاش‌های مجدد در سطح مجموعه، به مشکلات گذرا زمان می‌دهد تا حل شوند.",
+      "targetTimeoutMs": "مهلت زمانی اختیاری برای هر مقصد. اگر خالی باشد، مهلت زمانی درخواست فعلی را به ارث میبرد؛ مقادیر بزرگتر به همان مهلت محدود میشوند.",
+      "comboTimeoutMs": "بودجه زمانی اختیاری کل ترکیب بر اساس زمان واقعی، برای همه مقصدهای جایگزین. اگر خالی باشد، حد توقف ۱۰ دقیقهای برای جلوگیری از هنگ حفظ میشود؛ یک مقدار مثبت جایگزین آن میشود. این مقدار را بیشتر از مهلت زمانی مقصد در نظر بگیرید تا برای جایگزینی همچنان زمان کافی وجود داشته باشد.",
       "disableSessionStickiness": "چرخش به یک اتصال متفاوت در هر درخواست به جای پین کردن کل مکالمه به یک اتصال بر اساس هش پیام اول. پیش‌فرض سراسری را بازنویسی می‌کند. برای حفظ موارد اصابت prompt-cache در گفتگوهای چندمرحله‌ای، روی Inherit بگذارید."
     },
     "templatesTitle": "قالبهای آماده",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "حداکثر تلاش مجدد",
     "retryDelayLabel": "تأخیر تلاش مجدد (میلیثانیه)",
     "timeoutLabel": "زمان انتظار (میلیثانیه)",
+    "targetTimeout": "مهلت زمانی مقصد (ثانیه)",
+    "comboTimeout": "مهلت زمانی ترکیب (ثانیه)",
+    "inheritRequestTimeout": "ارثبری مهلت زمانی درخواست",
+    "inheritComboSafetyTimeout": "ارثبری حد توقف ۱۰ دقیقهای برای جلوگیری از هنگ",
+    "targetTimeoutHint": "مقصدهای ترکیب بهطور پیشفرض مهلت زمانی درخواست فعلی را به ارث میبرند. فقط زمانی مقدار کمتری را اینجا تنظیم کنید که جایگزینی سریعتری میخواهید.",
+    "comboTimeoutHint": "بودجه زمانی کل ترکیب بر اساس زمان واقعی، برای مقصدهای جایگزین. اگر خالی باشد، حد توقف ۱۰ دقیقهای برای جلوگیری از هنگ حفظ میشود. این مقدار را بیشتر از مهلت زمانی مقصد در نظر بگیرید تا برای جایگزینی همچنان زمان کافی وجود داشته باشد.",
     "healthCheck": "بررسی سلامت",
     "healthCheckDesc": "بررسی اولیه دسترسپذیری ارائهدهنده",
     "trackMetrics": "ردیابی معیارها",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "به‌طور پیش‌گیرانه نتایج طولانی ابزار را کوتاه کنید",
-        "description": "نتایج ابزار را در طول فشرده‌سازی Lite بیش از ۲,۰۰۰ کاراکتر کوتاه می‌کند. حفاظت از سرریز اضطراری ممکن است هنوز محتوا را زمانی که زمینه از بودجه مدل فراتر رود، کوتاه کند."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

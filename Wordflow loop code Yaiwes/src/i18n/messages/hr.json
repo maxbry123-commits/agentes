@@ -3288,6 +3288,10 @@
     "models": "Modeli",
     "autoBalance": "Automatsko uravnotežavanje",
     "advancedSettings": "Napredne postavke",
+    "targetTimeout": "Vremensko ograničenje cilja (sekunde)",
+    "comboTimeout": "Vremensko ograničenje kombinacije (sekunde)",
+    "inheritRequestTimeout": "naslijedi",
+    "inheritComboSafetyTimeout": "naslijedi (10 min)",
     "retryDelay": "Odgoda ponovnog pokušaja (ms)",
     "concurrencyPerModel": "Istovremenost / Model",
     "queueTimeout": "Vremensko ograničenje reda čekanja (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Kada je omogućeno, svaka greška uzvodnog poslužitelja pokreće trenutačni prelazak na sljedeći ciljni kombinirani element, preskačući sve ponovne pokušaje i rezervne URL-ove.",
       "maxSetRetries": "Broj ponovnih pokušaja cijelog skupa ciljeva kada svaki cilj ne uspije. 0 = bez ponovnog pokušaja na razini skupa.",
       "setRetryDelayMs": "Odgoda između ponovnih pokušaja na razini skupa, dajući prolaznim problemima vremena za rješavanje.",
+      "targetTimeoutMs": "Neobavezno vremensko ograničenje po cilju. Ako je prazno, nasljeđuje se trenutačno vremensko ograničenje zahtjeva; veće vrijednosti ograničavaju se na to vremensko ograničenje.",
+      "comboTimeoutMs": "Neobavezni ukupni vremenski okvir kombinacije za sve ciljeve prebacivanja u slučaju pogreške. Ako je prazno, zadržava se 10-minutna zaštita od zastoja; pozitivna vrijednost zamjenjuje je. Postavite ga dulje od vremenskog ograničenja cilja kako bi ostalo dovoljno vremena za prebacivanje u slučaju pogreške.",
       "disableSessionStickiness": "Rotacija na drugu vezu pri svakom zahtjevu umjesto vezivanja cijelog razgovora za jednu vezu prema raspršivanju prve poruke. Nadjačava globalno zadano. Ostavite na Naslijedi kako biste sačuvali pogotke predmemorije upita za razgovore s više izmjena."
     },
     "templatesTitle": "Brzi predlošci",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Maks. broj ponovnih pokušaja",
     "retryDelayLabel": "Odgoda ponovnog pokušaja (ms)",
     "timeoutLabel": "Vremensko ograničenje (ms)",
+    "targetTimeout": "Vremensko ograničenje cilja (sekunde)",
+    "comboTimeout": "Vremensko ograničenje kombinacije (sekunde)",
+    "inheritRequestTimeout": "Naslijedi vremensko ograničenje zahtjeva",
+    "inheritComboSafetyTimeout": "Naslijedi 10-minutnu zaštitu od zastoja",
+    "targetTimeoutHint": "Ciljevi kombinacije prema zadanim postavkama nasljeđuju trenutačno vremensko ograničenje zahtjeva. Ovdje postavite nižu vrijednost samo ako želite brže prebacivanje na zamjenski cilj.",
+    "comboTimeoutHint": "Ukupni vremenski okvir kombinacije za sve ciljeve prebacivanja u slučaju pogreške. Ako je prazno, zadržava se 10-minutna zaštita od zastoja. Postavite ga dulje od vremenskog ograničenja cilja kako bi ostalo dovoljno vremena za prebacivanje u slučaju pogreške.",
     "healthCheck": "Provjera zdravlja",
     "healthCheckDesc": "Prethodna provjera dostupnosti pružatelja",
     "trackMetrics": "Prati metriku",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Proaktivno skraćivanje dugih rezultata alata",
-        "description": "Skraćuje rezultate alata dulje od 2 000 znakova tijekom Lite kompresije. Zaštita od hitnog prelijevanja može i dalje smanjiti sadržaj kada kontekst premaši proračun modela."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

@@ -3288,6 +3288,10 @@
     "models": "模型",
     "autoBalance": "自動平衡",
     "advancedSettings": "高階設定",
+    "targetTimeout": "目標逾時（秒）",
+    "comboTimeout": "組合逾時（秒）",
+    "inheritRequestTimeout": "沿用",
+    "inheritComboSafetyTimeout": "沿用（10 分鐘）",
     "retryDelay": "重試延遲（毫秒）",
     "concurrencyPerModel": "每模型併發數",
     "queueTimeout": "排隊超時（毫秒）",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "啟用後，任何上游錯誤都會觸發立即故障轉移到下一個組合目標，跳過所有重試和回退 URL。",
       "maxSetRetries": "每個目標失敗時重試完整目標集的次數。 0 = 沒有設定級別重試。",
       "setRetryDelayMs": "設定級別重試嘗試之間的延遲，為暫時性問題提供解決時間。",
+      "targetTimeoutMs": "選用的個別目標逾時。留空會沿用目前的請求逾時；較大的值將以該逾時為上限。",
+      "comboTimeoutMs": "選用的整個組合執行時間上限，涵蓋所有容錯移轉目標。留空會保留 10 分鐘的防卡死限制；正值則會取代此限制。請將此值設為長於目標逾時，讓容錯移轉仍有足夠時間。",
       "disableSessionStickiness": "在每次請求時輪換到不同的連線，而不是根據首則訊息雜湊將整個對話固定到單一連線。覆寫全域預設值。保留為「繼承」以保留多輪對話的提示快取命中效果。"
     },
     "templatesTitle": "快捷模板",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "最大重試次數",
     "retryDelayLabel": "重試延遲（毫秒）",
     "timeoutLabel": "超時（毫秒）",
+    "targetTimeout": "目標逾時（秒）",
+    "comboTimeout": "組合逾時（秒）",
+    "inheritRequestTimeout": "沿用請求逾時",
+    "inheritComboSafetyTimeout": "沿用 10 分鐘防卡死限制",
+    "targetTimeoutHint": "組合目標預設會沿用目前的請求逾時。只有在您希望更快切換至備援時，才在此設定較低的值。",
+    "comboTimeoutHint": "涵蓋所有容錯移轉目標的整個組合執行時間上限。留空會保留 10 分鐘的防卡死限制。請將此值設為長於目標逾時，讓容錯移轉仍有足夠時間。",
     "healthCheck": "健康檢查",
     "healthCheckDesc": "預先檢查提供者的可用性",
     "trackMetrics": "跟蹤指標",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "主動截斷長工具結果",
-        "description": "在輕量壓縮期間，截斷超過 2,000 個字符的工具結果。當上下文超過模型預算時，緊急溢出保護仍可能修剪內容。"
+        "description": "在輕量壓縮期間截斷過長的工具結果。截斷上限由「最大工具結果長度」欄位決定；該欄位未設定時使用 OMNIROUTE_LITE_MAX_TOOL_LENGTH。當上下文超過模型預算時，緊急溢出保護仍可能修剪內容。"
+      },
+      "maxToolLength": {
+        "label": "最大工具結果長度",
+        "description": "主動截斷工具結果的字元上限。預設 2000。該欄位未設定時可用 OMNIROUTE_LITE_MAX_TOOL_LENGTH 覆寫。"
       }
     },
     "engineFields": {

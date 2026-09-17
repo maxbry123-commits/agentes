@@ -3288,6 +3288,10 @@
     "models": "મોડેલો",
     "autoBalance": "સ્વતઃ-સંતુલન",
     "advancedSettings": "અદ્યતન સેટિંગ્સ",
+    "targetTimeout": "ટાર્ગેટ સમયસમાપ્તિ (સેકન્ડ)",
+    "comboTimeout": "કોમ્બો સમયસમાપ્તિ (સેકન્ડ)",
+    "inheritRequestTimeout": "વારસામાં લો",
+    "inheritComboSafetyTimeout": "વારસામાં લો (10 મિનિટ)",
     "retryDelay": "પુનઃપ્રયાસ વિલંબ (ms)",
     "concurrencyPerModel": "સમાંતરતા / મોડેલ",
     "queueTimeout": "કતાર સમયસમાપ્તિ (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "જ્યારે સક્ષમ હોય, ત્યારે કોઈપણ અપસ્ટ્રીમ ભૂલ આગામી કોમ્બો લક્ષ્ય પર તાત્કાલિક નિષ્ફળતાને ટ્રિગર કરે છે, તમામ પુનઃપ્રયાસો અને ફોલબેક URL ને છોડીને.",
       "maxSetRetries": "જ્યારે દરેક લક્ષ્ય નિષ્ફળ જાય ત્યારે સંપૂર્ણ લક્ષ્ય સેટ કરવાનો ફરીથી પ્રયાસ કરવાની સંખ્યા. 0 = કોઈ સેટ-લેવલ પુનઃપ્રયાસ નથી.",
       "setRetryDelayMs": "સેટ-લેવલના પુનઃપ્રયાસના પ્રયાસો વચ્ચે વિલંબ, ક્ષણિક સમસ્યાઓ ઉકેલવા માટે સમય આપે છે.",
+      "targetTimeoutMs": "દરેક ટાર્ગેટ માટે વૈકલ્પિક સમયસમાપ્તિ. ખાલી રાખવાથી વર્તમાન વિનંતી સમયસમાપ્તિ વારસામાં મળે છે; મોટા મૂલ્યોને તે સમયસમાપ્તિ સુધી મર્યાદિત કરવામાં આવે છે.",
+      "comboTimeoutMs": "તમામ ફેઇલઓવર ટાર્ગેટ માટે વૈકલ્પિક સંપૂર્ણ-કોમ્બો વૉલ-ક્લૉક સમય મર્યાદા. ખાલી રાખવાથી 10-મિનિટનો હેંગ-સ્ટોપ જળવાઈ રહે છે; ધન મૂલ્ય તેને બદલે છે. ફેઇલઓવર માટે પૂરતો સમય રહે તે માટે આને ટાર્ગેટ સમયસમાપ્તિ કરતાં લાંબું રાખો.",
       "disableSessionStickiness": "પ્રથમ-સંદેશ હેશ દ્વારા સમગ્ર વાતચીતને એક કનેક્શન પર પિન કરવાને બદલે દરેક વિનંતી પર અલગ કનેક્શન પર ફેરવો. વૈશ્વિક ડિફૉલ્ટને ઓવરરાઇડ કરે છે. મલ્ટિ-ટર્ન ચેટ્સ માટે પ્રોમ્પ્ટ-કૅશ હિટ્સ સાચવવા માટે Inherit પર રહેવા દો."
     },
     "templatesTitle": "ઝડપી ટેમ્પ્લેટ્સ",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "મહત્તમ પુનઃપ્રયાસો",
     "retryDelayLabel": "પુનઃપ્રયાસ વિલંબ (ms)",
     "timeoutLabel": "સમયમર્યાદા (ms)",
+    "targetTimeout": "ટાર્ગેટ સમયસમાપ્તિ (સેકન્ડ)",
+    "comboTimeout": "કોમ્બો સમયસમાપ્તિ (સેકન્ડ)",
+    "inheritRequestTimeout": "વિનંતી સમયસમાપ્તિ વારસામાં લો",
+    "inheritComboSafetyTimeout": "10-મિનિટનો હેંગ-સ્ટોપ વારસામાં લો",
+    "targetTimeoutHint": "કોમ્બો ટાર્ગેટ મૂળભૂત રીતે વર્તમાન વિનંતી સમયસમાપ્તિ વારસામાં લે છે. ફક્ત જ્યારે તમે વધુ ઝડપી ફૉલબૅક ઇચ્છતા હો ત્યારે જ અહીં ઓછું મૂલ્ય સેટ કરો.",
+    "comboTimeoutHint": "ફેઇલઓવર ટાર્ગેટ માટે સંપૂર્ણ-કોમ્બો વૉલ-ક્લૉક સમય મર્યાદા. ખાલી રાખવાથી 10-મિનિટનો હેંગ-સ્ટોપ જળવાઈ રહે છે. ફેઇલઓવર માટે પૂરતો સમય રહે તે માટે આને ટાર્ગેટ સમયસમાપ્તિ કરતાં લાંબું રાખો.",
     "healthCheck": "સ્થિતિ તપાસ",
     "healthCheckDesc": "પ્રદાતાની ઉપલબ્ધતાની પૂર્વ-તપાસ કરો",
     "trackMetrics": "મેટ્રિક્સ ટ્રૅક કરો",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "પ્રતિસાદી રીતે લાંબા ટૂલ પરિણામોને ટૂંકા કરો",
-        "description": "લાઇટ સંકોચન દરમિયાન 2,000 અક્ષરોની ઉપર ટૂલ પરિણામોને કાપે છે. તાત્કાલિક ઓવરફ્લો સુરક્ષા ત્યારે પણ સામગ્રીને કાપી શકે છે જ્યારે સંદર્ભ મોડેલ બજેટને પાર કરે છે."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

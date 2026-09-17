@@ -3288,6 +3288,10 @@
     "models": "Modelos",
     "autoBalance": "Auto-balancear",
     "advancedSettings": "Configurações Avançadas",
+    "targetTimeout": "Tempo limite do destino (segundos)",
+    "comboTimeout": "Tempo limite da combinação (segundos)",
+    "inheritRequestTimeout": "herdar",
+    "inheritComboSafetyTimeout": "herdar (10 min)",
     "retryDelay": "Intervalo de Tentativa (ms)",
     "concurrencyPerModel": "Concorrência / Modelo",
     "queueTimeout": "Timeout da Fila (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Quando ativado, qualquer erro upstream aciona o failover imediato para o próximo destino combinado, ignorando todas as novas tentativas e URLs substitutos.",
       "maxSetRetries": "Número de vezes para tentar novamente o destino completo definido quando todos os alvos falharem. 0 = nenhuma nova tentativa de nível definido.",
       "setRetryDelayMs": "Atraso entre novas tentativas de nível definido, dando tempo para que problemas transitórios sejam resolvidos.",
+      "targetTimeoutMs": "Tempo limite opcional por destino. Se ficar vazio, herda o tempo limite atual da solicitação; valores maiores são limitados a esse tempo.",
+      "comboTimeoutMs": "Orçamento opcional de tempo total da combinação, medido pelo relógio, abrangendo todos os destinos de failover. Se ficar vazio, mantém a interrupção de segurança de 10 minutos; um valor positivo a substitui. Mantenha esse valor maior que o tempo limite do destino para que o failover ainda tenha tempo de ocorrer.",
       "disableSessionStickiness": "Alterna para uma conexão diferente a cada requisição, em vez de fixar toda a conversa em uma conexão pelo hash da primeira mensagem. Sobrescreve o padrão global. Deixe em Herdar para preservar acertos de cache de prompt em conversas com múltiplos turnos."
     },
     "templatesTitle": "Templates rápidos",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Máx. Tentativas",
     "retryDelayLabel": "Atraso entre Tentativas (ms)",
     "timeoutLabel": "Tempo limite (ms)",
+    "targetTimeout": "Tempo limite do destino (segundos)",
+    "comboTimeout": "Tempo limite da combinação (segundos)",
+    "inheritRequestTimeout": "Herdar o tempo limite da solicitação",
+    "inheritComboSafetyTimeout": "Herdar a interrupção de segurança de 10 minutos",
+    "targetTimeoutHint": "Por padrão, os destinos da combinação herdam o tempo limite atual da solicitação. Defina um valor menor aqui somente se quiser um fallback mais rápido.",
+    "comboTimeoutHint": "Orçamento de tempo total da combinação, medido pelo relógio, abrangendo os destinos de failover. Se ficar vazio, mantém a interrupção de segurança de 10 minutos. Mantenha esse valor maior que o tempo limite do destino para que o failover ainda tenha tempo de ocorrer.",
     "healthCheck": "Verificação de Saúde",
     "healthCheckDesc": "Verificar disponibilidade do provedor antes",
     "trackMetrics": "Rastrear Métricas",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Truncar proativamente resultados longos de ferramentas",
-        "description": "Trunca os resultados da ferramenta com mais de 2.000 caracteres durante a compressão Lite. A proteção de transbordo de emergência ainda pode cortar o conteúdo quando o contexto excede o orçamento do modelo."
+        "description": "Trunca resultados longos de ferramenta durante a compressão Lite. O limite é definido pelo campo Comprimento máximo do resultado da ferramenta (ou OMNIROUTE_LITE_MAX_TOOL_LENGTH se estiver vazio). A proteção de transbordo de emergência ainda pode recortar conteúdo quando o contexto excede o orçamento do modelo."
+      },
+      "maxToolLength": {
+        "label": "Comprimento máximo do resultado da ferramenta",
+        "description": "Limite de caracteres para o recorte proativo. Padrão 2000. Substitua com OMNIROUTE_LITE_MAX_TOOL_LENGTH se o campo estiver vazio."
       }
     },
     "engineFields": {

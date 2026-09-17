@@ -3288,6 +3288,10 @@
     "models": "Modelos",
     "autoBalance": "Equilibrio automático",
     "advancedSettings": "Configuración avanzada",
+    "targetTimeout": "Tiempo de espera del destino (segundos)",
+    "comboTimeout": "Tiempo de espera de la combinación (segundos)",
+    "inheritRequestTimeout": "heredar",
+    "inheritComboSafetyTimeout": "heredar (10 min)",
     "retryDelay": "Retardo de reintento (ms)",
     "concurrencyPerModel": "Concurrencia / Modelo",
     "queueTimeout": "Tiempo de espera de cola (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Cuando está habilitado, cualquier error ascendente desencadena una conmutación por error inmediata al siguiente destino combinado, omitiendo todos los reintentos y las URL alternativas.",
       "maxSetRetries": "Número de veces que se reintenta el conjunto de objetivos completo cuando todos los objetivos fallan. 0 = ningún reintento de nivel establecido.",
       "setRetryDelayMs": "Retraso entre reintentos de nivel establecido, lo que da tiempo a los problemas transitorios para resolverse.",
+      "targetTimeoutMs": "Tiempo de espera opcional por destino. Si se deja vacío, hereda el tiempo de espera actual de la solicitud; los valores superiores se limitan a ese tiempo de espera.",
+      "comboTimeoutMs": "Presupuesto opcional de tiempo total para toda la combinación en todos los destinos de conmutación por error. Si se deja vacío, se mantiene el límite de seguridad de 10 minutos para bloqueos; un valor positivo lo sustituye. Debe ser mayor que el tiempo de espera del destino para que la conmutación por error siga teniendo tiempo.",
       "disableSessionStickiness": "Cambia a una conexión diferente en cada solicitud, en lugar de fijar toda una conversación a una sola conexión mediante el hash del primer mensaje. Anula el valor predeterminado global. Déjalo en Heredar para conservar los aciertos de la caché de prompts en chats con varios turnos."
     },
     "templatesTitle": "Plantillas rápidas",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Reintentos máximos",
     "retryDelayLabel": "Retardo de reintento (ms)",
     "timeoutLabel": "Tiempo de espera (ms)",
+    "targetTimeout": "Tiempo de espera del destino (segundos)",
+    "comboTimeout": "Tiempo de espera de la combinación (segundos)",
+    "inheritRequestTimeout": "Heredar el tiempo de espera de la solicitud",
+    "inheritComboSafetyTimeout": "Heredar el límite de seguridad de 10 minutos para bloqueos",
+    "targetTimeoutHint": "De forma predeterminada, los destinos de la combinación heredan el tiempo de espera actual de la solicitud. Establezca aquí un valor inferior solo si desea una conmutación más rápida.",
+    "comboTimeoutHint": "Presupuesto de tiempo total para toda la combinación en todos los destinos de conmutación por error. Si se deja vacío, se mantiene el límite de seguridad de 10 minutos para bloqueos. Debe ser mayor que el tiempo de espera del destino para que la conmutación por error siga teniendo tiempo.",
     "healthCheck": "Control de salud",
     "healthCheckDesc": "Verificar previamente la disponibilidad del proveedor",
     "trackMetrics": "Seguimiento de métricas",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Truncar proactivamente los resultados largos de la herramienta",
-        "description": "Trunca los resultados de la herramienta a más de 2,000 caracteres durante la compresión Lite. La protección de desbordamiento de emergencia aún puede recortar contenido cuando el contexto excede el presupuesto del modelo."
+        "description": "Trunca resultados de herramienta largos durante la compresión Lite. El tope lo fija el campo Longitud máxima del resultado de herramienta (o OMNIROUTE_LITE_MAX_TOOL_LENGTH si está vacío). La protección de desbordamiento de emergencia aún puede recortar contenido cuando el contexto excede el presupuesto del modelo."
+      },
+      "maxToolLength": {
+        "label": "Longitud máxima del resultado de herramienta",
+        "description": "Tope de caracteres para el recorte proactivo. Predeterminado 2000. Se puede sustituir con OMNIROUTE_LITE_MAX_TOOL_LENGTH si el campo está vacío."
       }
     },
     "engineFields": {

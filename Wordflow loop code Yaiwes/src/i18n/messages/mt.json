@@ -3288,6 +3288,10 @@
     "models": "Mudelli",
     "autoBalance": "Bilanċ awtomatiku",
     "advancedSettings": "Settings Avvanzati",
+    "targetTimeout": "Limitu taż-żmien għall-mira (sekondi)",
+    "comboTimeout": "Limitu taż-żmien għall-combo (sekondi)",
+    "inheritRequestTimeout": "iret",
+    "inheritComboSafetyTimeout": "iret (10 minuti)",
     "retryDelay": "Dewmien qabel Tentattiv Mill-Ġdid (ms)",
     "concurrencyPerModel": "Eżekuzzjonijiet Simultanji / Mudell",
     "queueTimeout": "Skadenza tal-Kju (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Meta din tkun attivata, kwalunkwe żball upstream jattiva failover immedjat lejn il-mira li jmiss tal-kombinazzjoni, filwaqt li jaqbeż it-tentattivi mill-ġdid u l-URLs ta' fallback kollha.",
       "maxSetRetries": "L-għadd ta' drabi li jerġa' jiġi ppruvat is-sett sħiħ tal-miri meta kull mira tfalli. 0 = ebda tentattiv mill-ġdid fil-livell tas-sett.",
       "setRetryDelayMs": "Id-dewmien bejn tentattivi mill-ġdid fil-livell tas-sett, biex il-problemi temporanji jingħataw ħin jissolvew.",
+      "targetTimeoutMs": "Limitu taż-żmien fakultattiv għal kull mira. Jekk jitħalla vojt, jiret il-limitu taż-żmien tat-talba attwali; valuri akbar jiġu limitati għal dak il-limitu.",
+      "comboTimeoutMs": "Baġit fakultattiv ta’ ħin reali għall-combo kollu, għall-miri alternattivi kollha. Jekk jitħalla vojt, jinżamm il-limitu ta’ sikurezza ta’ 10 minuti; valur pożittiv jissostitwih. Żomm dan itwal mil-limitu taż-żmien għall-mira sabiex il-qlib għal mira alternattiva xorta jkollu biżżejjed ħin.",
       "disableSessionStickiness": "Aqleb għal konnessjoni differenti ma' kull talba minflok torbot konverżazzjoni sħiħa ma' konnessjoni waħda permezz tal-hash tal-ewwel messaġġ. Dan jieħu post il-konfigurazzjoni prestabbilita globali. Ħallih fuq Inherit biex tippreserva l-hits fil-cache tal-prompt għal chats b'diversi skambji."
     },
     "templatesTitle": "Mudelli ta' malajr",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Tentattivi Massimi mill-Ġdid",
     "retryDelayLabel": "Dewmien bejn it-Tentattivi (ms)",
     "timeoutLabel": "Limitu ta' Żmien (ms)",
+    "targetTimeout": "Limitu taż-żmien għall-mira (sekondi)",
+    "comboTimeout": "Limitu taż-żmien għall-combo (sekondi)",
+    "inheritRequestTimeout": "Iret il-limitu taż-żmien tat-talba",
+    "inheritComboSafetyTimeout": "Iret il-limitu ta’ sikurezza ta’ 10 minuti",
+    "targetTimeoutHint": "B’mod awtomatiku, il-miri tal-combo jirtu l-limitu taż-żmien tat-talba attwali. Issettja valur aktar baxx hawnhekk biss meta tkun trid qlib aktar malajr għal mira alternattiva.",
+    "comboTimeoutHint": "Baġit ta’ ħin reali għall-combo kollu, għall-miri alternattivi. Jekk jitħalla vojt, jinżamm il-limitu ta’ sikurezza ta’ 10 minuti. Żomm dan itwal mil-limitu taż-żmien għall-mira sabiex il-qlib għal mira alternattiva xorta jkollu biżżejjed ħin.",
     "healthCheck": "Kontroll tal-Istat",
     "healthCheckDesc": "Iċċekkja minn qabel id-disponibbiltà tal-fornitur",
     "trackMetrics": "Intraċċa l-Metriċi",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Qassar b'mod proattiv ir-riżultati twal tal-għodda",
-        "description": "Iqassar ir-riżultati tal-għodda li jaqbżu l-2,000 karattru waqt il-kompressjoni Lite. Il-protezzjoni ta' emerġenza kontra t-tagħbija żejda xorta tista' tqassar il-kontenut meta l-kuntest jaqbeż il-limitu tal-mudell."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

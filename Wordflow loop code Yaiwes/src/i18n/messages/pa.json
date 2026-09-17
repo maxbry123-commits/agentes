@@ -3288,6 +3288,10 @@
     "models": "ਮਾਡਲ",
     "autoBalance": "ਆਟੋ-ਬੈਲੈਂਸ",
     "advancedSettings": "ਉੱਨਤ ਸੈਟਿੰਗਾਂ",
+    "targetTimeout": "ਟੀਚਾ ਸਮਾਂ-ਸੀਮਾ (ਸਕਿੰਟ)",
+    "comboTimeout": "ਕੌਂਬੋ ਸਮਾਂ-ਸੀਮਾ (ਸਕਿੰਟ)",
+    "inheritRequestTimeout": "ਵਿਰਾਸਤ ਵਿੱਚ ਲਓ",
+    "inheritComboSafetyTimeout": "ਵਿਰਾਸਤ ਵਿੱਚ ਲਓ (10 ਮਿੰਟ)",
     "retryDelay": "ਮੁੜ-ਕੋਸ਼ਿਸ਼ ਵਿੱਚ ਦੇਰੀ (ms)",
     "concurrencyPerModel": "ਸਮਕਾਲੀਤਾ / ਮਾਡਲ",
     "queueTimeout": "ਕਤਾਰ ਟਾਈਮਆਉਟ (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "ਸਮਰੱਥ ਹੋਣ 'ਤੇ, ਕੋਈ ਵੀ ਅੱਪਸਟ੍ਰੀਮ ਗਲਤੀ ਸਾਰੀਆਂ ਮੁੜ ਕੋਸ਼ਿਸ਼ਾਂ ਅਤੇ ਫਾਲਬੈਕ URLs ਨੂੰ ਛੱਡ ਕੇ ਅਗਲੇ ਕੌਂਬੋ ਟਾਰਗੇਟ ਵੱਲ ਤੁਰੰਤ ਫੇਲਓਵਰ ਸ਼ੁਰੂ ਕਰਦੀ ਹੈ।",
       "maxSetRetries": "ਹਰ ਟਾਰਗੇਟ ਦੇ ਅਸਫਲ ਹੋਣ 'ਤੇ ਪੂਰੇ ਟਾਰਗੇਟ ਸੈੱਟ ਦੀ ਮੁੜ ਕੋਸ਼ਿਸ਼ ਕਰਨ ਦੀ ਗਿਣਤੀ। 0 = ਕੋਈ ਸੈੱਟ-ਪੱਧਰੀ ਮੁੜ ਕੋਸ਼ਿਸ਼ ਨਹੀਂ।",
       "setRetryDelayMs": "ਸੈੱਟ-ਪੱਧਰੀ ਮੁੜ-ਕੋਸ਼ਿਸ਼ਾਂ ਵਿਚਕਾਰ ਦੇਰੀ, ਤਾਂ ਜੋ ਅਸਥਾਈ ਸਮੱਸਿਆਵਾਂ ਨੂੰ ਹੱਲ ਹੋਣ ਲਈ ਸਮਾਂ ਮਿਲ ਸਕੇ।",
+      "targetTimeoutMs": "ਹਰੇਕ ਟੀਚੇ ਲਈ ਵਿਕਲਪਿਕ ਸਮਾਂ-ਸੀਮਾ। ਖਾਲੀ ਹੋਣ 'ਤੇ ਮੌਜੂਦਾ ਬੇਨਤੀ ਸਮਾਂ-ਸੀਮਾ ਵਿਰਾਸਤ ਵਿੱਚ ਮਿਲਦੀ ਹੈ; ਵੱਡੇ ਮੁੱਲ ਉਸ ਸਮਾਂ-ਸੀਮਾ ਤੱਕ ਸੀਮਿਤ ਕੀਤੇ ਜਾਂਦੇ ਹਨ।",
+      "comboTimeoutMs": "ਸਾਰੇ ਫੇਲਓਵਰ ਟੀਚਿਆਂ ਲਈ ਵਿਕਲਪਿਕ ਪੂਰੇ ਕੌਂਬੋ ਦਾ ਅਸਲ-ਸਮਾਂ ਬਜਟ। ਖਾਲੀ ਹੋਣ 'ਤੇ 10-ਮਿੰਟ ਦਾ ਹੈਂਗ-ਸਟਾਪ ਬਰਕਰਾਰ ਰਹਿੰਦਾ ਹੈ; ਇੱਕ ਧਨਾਤਮਕ ਮੁੱਲ ਇਸਨੂੰ ਬਦਲ ਦਿੰਦਾ ਹੈ। ਇਸਨੂੰ ਟੀਚਾ ਸਮਾਂ-ਸੀਮਾ ਨਾਲੋਂ ਵੱਧ ਰੱਖੋ, ਤਾਂ ਜੋ ਫੇਲਓਵਰ ਲਈ ਹਾਲੇ ਵੀ ਸਮਾਂ ਰਹੇ।",
       "disableSessionStickiness": "ਪਹਿਲੇ ਸੁਨੇਹੇ ਦੇ ਹੈਸ਼ ਰਾਹੀਂ ਪੂਰੀ ਗੱਲਬਾਤ ਨੂੰ ਇੱਕ ਕਨੈਕਸ਼ਨ ਨਾਲ ਜੋੜ ਕੇ ਰੱਖਣ ਦੀ ਬਜਾਏ, ਹਰ ਬੇਨਤੀ ਲਈ ਕਿਸੇ ਵੱਖਰੇ ਕਨੈਕਸ਼ਨ 'ਤੇ ਬਦਲੋ। ਇਹ ਗਲੋਬਲ ਡਿਫੌਲਟ ਨੂੰ ਓਵਰਰਾਈਡ ਕਰਦਾ ਹੈ। ਬਹੁ-ਵਾਰੀ ਚੈਟਾਂ ਲਈ ਪ੍ਰੌਮਪਟ-ਕੈਸ਼ ਹਿੱਟਾਂ ਨੂੰ ਬਰਕਰਾਰ ਰੱਖਣ ਵਾਸਤੇ Inherit 'ਤੇ ਛੱਡੋ।"
     },
     "templatesTitle": "ਤੁਰੰਤ ਟੈਂਪਲੇਟ",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "ਵੱਧ ਤੋਂ ਵੱਧ ਮੁੜ-ਕੋਸ਼ਿਸ਼ਾਂ",
     "retryDelayLabel": "ਮੁੜ-ਕੋਸ਼ਿਸ਼ ਵਿੱਚ ਦੇਰੀ (ms)",
     "timeoutLabel": "ਸਮਾਂ-ਸੀਮਾ (ms)",
+    "targetTimeout": "ਟੀਚਾ ਸਮਾਂ-ਸੀਮਾ (ਸਕਿੰਟ)",
+    "comboTimeout": "ਕੌਂਬੋ ਸਮਾਂ-ਸੀਮਾ (ਸਕਿੰਟ)",
+    "inheritRequestTimeout": "ਬੇਨਤੀ ਸਮਾਂ-ਸੀਮਾ ਵਿਰਾਸਤ ਵਿੱਚ ਲਓ",
+    "inheritComboSafetyTimeout": "10-ਮਿੰਟ ਦਾ ਹੈਂਗ-ਸਟਾਪ ਵਿਰਾਸਤ ਵਿੱਚ ਲਓ",
+    "targetTimeoutHint": "ਮੂਲ ਰੂਪ ਵਿੱਚ ਕੌਂਬੋ ਟੀਚੇ ਮੌਜੂਦਾ ਬੇਨਤੀ ਸਮਾਂ-ਸੀਮਾ ਵਿਰਾਸਤ ਵਿੱਚ ਲੈਂਦੇ ਹਨ। ਇੱਥੇ ਘੱਟ ਮੁੱਲ ਸਿਰਫ਼ ਉਦੋਂ ਸੈੱਟ ਕਰੋ ਜਦੋਂ ਤੁਸੀਂ ਤੇਜ਼ ਫਾਲਬੈਕ ਚਾਹੁੰਦੇ ਹੋ।",
+    "comboTimeoutHint": "ਫੇਲਓਵਰ ਟੀਚਿਆਂ ਲਈ ਪੂਰੇ ਕੌਂਬੋ ਦਾ ਅਸਲ-ਸਮਾਂ ਬਜਟ। ਖਾਲੀ ਹੋਣ 'ਤੇ 10-ਮਿੰਟ ਦਾ ਹੈਂਗ-ਸਟਾਪ ਬਰਕਰਾਰ ਰਹਿੰਦਾ ਹੈ। ਇਸਨੂੰ ਟੀਚਾ ਸਮਾਂ-ਸੀਮਾ ਨਾਲੋਂ ਵੱਧ ਰੱਖੋ, ਤਾਂ ਜੋ ਫੇਲਓਵਰ ਲਈ ਹਾਲੇ ਵੀ ਸਮਾਂ ਰਹੇ।",
     "healthCheck": "ਸਿਹਤ ਜਾਂਚ",
     "healthCheckDesc": "ਪ੍ਰਦਾਤਾ ਦੀ ਉਪਲਬਧਤਾ ਦੀ ਪਹਿਲਾਂ ਜਾਂਚ ਕਰੋ",
     "trackMetrics": "ਮੈਟ੍ਰਿਕਸ ਟ੍ਰੈਕ ਕਰੋ",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "ਲੰਬੇ ਟੂਲ ਨਤੀਜਿਆਂ ਨੂੰ ਪਹਿਲਾਂ ਹੀ ਕੱਟੋ",
-        "description": "Lite ਸੰਕੁਚਨ ਦੌਰਾਨ 2,000 ਅੱਖਰਾਂ ਤੋਂ ਵੱਧ ਦੇ ਟੂਲ ਨਤੀਜਿਆਂ ਨੂੰ ਕੱਟਦਾ ਹੈ। ਜਦੋਂ ਸੰਦਰਭ ਮਾਡਲ ਬਜਟ ਤੋਂ ਵੱਧ ਜਾਂਦਾ ਹੈ, ਤਾਂ ਐਮਰਜੈਂਸੀ ਓਵਰਫ਼ਲੋ ਸੁਰੱਖਿਆ ਹਾਲੇ ਵੀ ਸਮੱਗਰੀ ਨੂੰ ਕੱਟ ਸਕਦੀ ਹੈ।"
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

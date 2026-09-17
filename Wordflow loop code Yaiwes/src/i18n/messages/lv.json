@@ -3288,6 +3288,10 @@
     "models": "Modeļi",
     "autoBalance": "Automātiskā balansēšana",
     "advancedSettings": "Papildu iestatījumi",
+    "targetTimeout": "Mērķa taimauts (sekundēs)",
+    "comboTimeout": "Kombinācijas taimauts (sekundēs)",
+    "inheritRequestTimeout": "mantot",
+    "inheritComboSafetyTimeout": "mantot (10 min)",
     "retryDelay": "Atkārtotā mēģinājuma aizture (ms)",
     "concurrencyPerModel": "Vienlaicīgums / modelis",
     "queueTimeout": "Rindas noildze (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Kad iespējots, jebkura augšējā kļūda izraisa tūlītēju pāreju uz nākamo kombinācijas mērķi, izlaižot visus mēģinājumus un rezerves URL.",
       "maxSetRetries": "Reižu skaits, cik reizes mēģināt pilnu mērķu kopu, kad katrs mērķis neizdodas. 0 = nav kopas līmeņa mēģinājuma.",
       "setRetryDelayMs": "Aizkave starp kopas līmeņa mēģinājumiem, dodot laiku pagaidu problēmām atrisināties.",
+      "targetTimeoutMs": "Neobligāts katra mērķa taimauts. Ja lauks ir tukšs, tiek mantots pašreizējais pieprasījuma taimauts; lielākas vērtības tiek ierobežotas līdz šim taimautam.",
+      "comboTimeoutMs": "Neobligāts kopējais kombinācijas izpildes laika ierobežojums visiem kļūmjpārlēces mērķiem. Ja lauks ir tukšs, tiek saglabāts 10 minūšu aizsardzības taimauts; pozitīva vērtība to aizstāj. Iestatiet to ilgāku par mērķa taimautu, lai kļūmjpārlēcei joprojām būtu pietiekami daudz laika.",
       "disableSessionStickiness": "Rotējiet uz citu savienojumu pie katras pieprasījuma, nevis piespraužot visu sarunu pie viena savienojuma pēc pirmās ziņas heša. Aizstāj globālo noklusējumu. Atstājiet Iedzimt, lai saglabātu uzvedību vairāku gājienu tērzēšanās gadījumā."
     },
     "templatesTitle": "Ātrie veidnes",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Maksimālais atkārtojumu skaits",
     "retryDelayLabel": "Atkārtojuma aizture (ms)",
     "timeoutLabel": "Noildze (ms)",
+    "targetTimeout": "Mērķa taimauts (sekundēs)",
+    "comboTimeout": "Kombinācijas taimauts (sekundēs)",
+    "inheritRequestTimeout": "Mantot pieprasījuma taimautu",
+    "inheritComboSafetyTimeout": "Mantot 10 minūšu aizsardzības taimautu",
+    "targetTimeoutHint": "Pēc noklusējuma kombinācijas mērķi manto pašreizējo pieprasījuma taimautu. Iestatiet šeit mazāku vērtību tikai tad, ja vēlaties ātrāku pārslēgšanos uz rezerves mērķi.",
+    "comboTimeoutHint": "Kopējais kombinācijas izpildes laika ierobežojums visiem kļūmjpārlēces mērķiem. Ja lauks ir tukšs, tiek saglabāts 10 minūšu aizsardzības taimauts. Iestatiet to ilgāku par mērķa taimautu, lai kļūmjpārlēcei joprojām būtu pietiekami daudz laika.",
     "healthCheck": "Veselības pārbaude",
     "healthCheckDesc": "Iepriekš pārbaudīt nodrošinātāja pieejamību",
     "trackMetrics": "Izsekot metrikas",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Proaktīvi saīsināt garus rīka rezultātus",
-        "description": "Saīsina rīka rezultātus, kas pārsniedz 2,000 rakstzīmes Lite saspiešanas laikā. Avārijas pārsnieguma aizsardzība var joprojām samazināt saturu, kad konteksts pārsniedz modeļa budžetu."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

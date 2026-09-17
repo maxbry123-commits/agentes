@@ -3288,6 +3288,10 @@
     "models": "Àwọn àwòṣe",
     "autoBalance": "Ṣe ìwọ̀ntúnwọ̀nsì láìfọwọ́ṣe",
     "advancedSettings": "Àwọn Ètò Ìlọsíwájú",
+    "targetTimeout": "Àkókò ìparí ibi àfojúsùn (ìṣẹ́jú-àáyá)",
+    "comboTimeout": "Àkókò ìparí Combo (ìṣẹ́jú-àáyá)",
+    "inheritRequestTimeout": "jogún",
+    "inheritComboSafetyTimeout": "jogún (ìṣẹ́jú 10)",
     "retryDelay": "Àkókò Ìdádúró Ṣáájú Àtúngbìyànjú (ms)",
     "concurrencyPerModel": "Iṣẹ́-pọ̀-lẹ́ẹ̀kan / Àwòṣe",
     "queueTimeout": "Àkókò Ìdádúró Lórí Ìlà (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Nígbà tí a bá mú un ṣiṣẹ́, àṣìṣe upstream èyíkéyìí máa ń fa ìyípadà lẹ́sẹ̀kẹsẹ̀ sí ibi-àfojúsùn àpapọ̀ tó kàn, láìṣe gbogbo àwọn àtúnwá àti fallback URLs.",
       "maxSetRetries": "Iye ìgbà láti tún gbogbo àkójọpọ̀ ibi-àfojúsùn gbìyànjú nígbà tí gbogbo ibi-àfojúsùn bá kùnà. 0 = kò sí àtúnwá ní ìpele àkójọpọ̀.",
       "setRetryDelayMs": "Àkókò ìdádúró láàárín àwọn ìgbìyànjú àtúnwá ní ìpele àkójọpọ̀, láti fún àwọn ìṣòro ìgbà díẹ̀ láyè láti yanjú.",
+      "targetTimeoutMs": "Àkókò ìparí àṣàyàn fún ibi àfojúsùn kọ̀ọ̀kan. Tí ó bá ṣófo, yóò jogún àkókò ìparí ìbéèrè lọ́wọ́lọ́wọ́; àwọn iye tó tóbi jù yóò ní ààlà sí àkókò ìparí náà.",
+      "comboTimeoutMs": "Ìwọ̀n àkókò gidi àṣàyàn fún gbogbo Combo kọjá gbogbo àwọn ibi àfojúsùn ìyípadà nígbà ìkùnà. Tí ó bá ṣófo, yóò pa ìdádúró ìdènà dídì ti ìṣẹ́jú 10 mọ́; iye tó dára yóò rọ́pò ó. Jẹ́ kí èyí gùn ju Àkókò ìparí ibi àfojúsùn lọ kí ìyípadà nígbà ìkùnà lè ṣì ní àkókò.",
       "disableSessionStickiness": "Yí padà sí àsopọ̀ míì lórí gbogbo ìbéèrè dípò fífi gbogbo ìjíròrò kan mọ́ àsopọ̀ kan nípasẹ̀ hash ìfiránṣẹ́ àkọ́kọ́. Èyí yí ìṣètò àgbáyé àiyipada padà. Fi sí Jogún láti pa prompt-cache hits mọ́ fún àwọn ìjíròrò ọlọ́pọ̀ ìpele."
     },
     "templatesTitle": "Àwọn àdàkọ kíákíá",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Àwọn Àtúnṣe Tó Pọ̀ Jù",
     "retryDelayLabel": "Ìdádúró Àtúnṣe (ms)",
     "timeoutLabel": "Àkókò Ìdádúró Tó Pọ̀ Jù (ms)",
+    "targetTimeout": "Àkókò ìparí ibi àfojúsùn (ìṣẹ́jú-àáyá)",
+    "comboTimeout": "Àkókò ìparí Combo (ìṣẹ́jú-àáyá)",
+    "inheritRequestTimeout": "Jogún àkókò ìparí ìbéèrè",
+    "inheritComboSafetyTimeout": "Jogún ìdádúró ìdènà dídì ti ìṣẹ́jú 10",
+    "targetTimeoutHint": "Ní àìyẹsẹ̀, àwọn ibi àfojúsùn Combo máa ń jogún àkókò ìparí ìbéèrè lọ́wọ́lọ́wọ́. Ṣètò iye tó kéré sí i níbí nìkan tí o bá fẹ́ ìpadà sí aṣàyàn mìíràn tó yára.",
+    "comboTimeoutHint": "Ìwọ̀n àkókò gidi fún gbogbo Combo kọjá àwọn ibi àfojúsùn ìyípadà nígbà ìkùnà. Tí ó bá ṣófo, yóò pa ìdádúró ìdènà dídì ti ìṣẹ́jú 10 mọ́. Jẹ́ kí èyí gùn ju Àkókò ìparí ibi àfojúsùn lọ kí ìyípadà nígbà ìkùnà lè ṣì ní àkókò.",
     "healthCheck": "Àyẹ̀wò Ìlera",
     "healthCheckDesc": "Ṣàyẹ̀wò wíwà olupèsè ṣáájú",
     "trackMetrics": "Tọpinpin Àwọn Mẹ́tíríkì",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Gé àwọn àbájáde irinṣẹ́ gígùn kúrú ṣáájú",
-        "description": "Ó ń gé àwọn àbájáde irinṣẹ́ tó ju ohun kikọ 2,000 lọ kúrú nígbà ìfúnpọ̀ Fúyẹ́. Ààbò pajawiri fún àkúnwọ́sílẹ̀ ṣì lè gé àkóónú kúrú nígbà tí ọ̀rọ̀ àyíká bá kọjá iye tí mọ́dẹ̀lì gbà."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

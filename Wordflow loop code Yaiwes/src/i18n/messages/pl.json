@@ -3288,6 +3288,10 @@
     "models": "Modele",
     "autoBalance": "Auto-balans",
     "advancedSettings": "Ustawienia zaawansowane",
+    "targetTimeout": "Limit czasu celu (sekundy)",
+    "comboTimeout": "Limit czasu kombinacji (sekundy)",
+    "inheritRequestTimeout": "dziedzicz",
+    "inheritComboSafetyTimeout": "dziedzicz (10 min)",
     "retryDelay": "Opóźnienie ponownej próby (ms)",
     "concurrencyPerModel": "Współbieżność / Model",
     "queueTimeout": "Timeout kolejki (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Po włączeniu, każdy błąd upstream wyzwala natychmiastowy failover na kolejny cel combo, pomijając wszystkie próby ponowienia i fallback URLs.",
       "maxSetRetries": "Liczba prób ponowienia dla całego zestawu docelowego, gdy każdy cel zawiedzie. 0 = brak ponowienia na poziomie zestawu.",
       "setRetryDelayMs": "Opóźnienie między próbami ponowienia na poziomie zestawu, dające czas na rozwiązanie problemów przejściowych.",
+      "targetTimeoutMs": "Opcjonalny limit czasu dla każdego celu. Puste pole powoduje odziedziczenie bieżącego limitu czasu żądania; większe wartości są ograniczane do tego limitu.",
+      "comboTimeoutMs": "Opcjonalny całkowity budżet czasu zegarowego kombinacji dla wszystkich celów przełączania awaryjnego. Puste pole zachowuje 10-minutowe zabezpieczenie przed zawieszeniem; wartość dodatnia je zastępuje. Ustaw wartość dłuższą niż limit czasu celu, aby pozostał czas na przełączenie awaryjne.",
       "disableSessionStickiness": "Rotuj do innego połączenia przy każdym żądaniu zamiast przypinać całą konwersację do jednego połączenia na podstawie skrótu (hash) pierwszej wiadomości. Nadpisuje globalną wartość domyślną. Pozostaw jako Inherit, aby zachować trafienia prompt-cache dla czatów wieloturowych."
     },
     "templatesTitle": "Szybkie szablony",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Maksymalna liczba retries",
     "retryDelayLabel": "Opóźnienie retry (ms)",
     "timeoutLabel": "Limit czasu (ms)",
+    "targetTimeout": "Limit czasu celu (sekundy)",
+    "comboTimeout": "Limit czasu kombinacji (sekundy)",
+    "inheritRequestTimeout": "Dziedzicz limit czasu żądania",
+    "inheritComboSafetyTimeout": "Dziedzicz 10-minutowe zabezpieczenie przed zawieszeniem",
+    "targetTimeoutHint": "Domyślnie cele kombinacji dziedziczą bieżący limit czasu żądania. Ustaw tutaj niższą wartość tylko wtedy, gdy chcesz przyspieszyć przełączenie awaryjne.",
+    "comboTimeoutHint": "Całkowity budżet czasu zegarowego kombinacji dla celów przełączania awaryjnego. Puste pole zachowuje 10-minutowe zabezpieczenie przed zawieszeniem. Ustaw wartość dłuższą niż limit czasu celu, aby pozostał czas na przełączenie awaryjne.",
     "healthCheck": "Kontrola stanu",
     "healthCheckDesc": "Wstępne sprawdzanie dostępności provider",
     "trackMetrics": "Śledzenie metryk",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Proaktywnie skracaj długie wyniki narzędzi",
-        "description": "Obcina wyniki narzędzia powyżej 2 000 znaków podczas kompresji Lite. Ochrona przed przepełnieniem w trybie awaryjnym może nadal przycinać treść, gdy kontekst przekracza budżet modelu."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

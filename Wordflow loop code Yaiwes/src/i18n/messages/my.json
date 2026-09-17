@@ -3288,6 +3288,10 @@
     "models": "Model များ",
     "autoBalance": "အလိုအလျောက် ချိန်ညှိခြင်း",
     "advancedSettings": "အဆင့်မြင့် ဆက်တင်များ",
+    "targetTimeout": "ပစ်မှတ် အချိန်ကုန်ဆုံးမှု (စက္ကန့်)",
+    "comboTimeout": "Combo အချိန်ကုန်ဆုံးမှု (စက္ကန့်)",
+    "inheritRequestTimeout": "ဆက်ခံမည်",
+    "inheritComboSafetyTimeout": "ဆက်ခံမည် (10 မိနစ်)",
     "retryDelay": "ပြန်လည်ကြိုးစားမှု နှောင့်နှေးချိန် (ms)",
     "concurrencyPerModel": "တစ် Model လျှင် တစ်ပြိုင်နက်လုပ်ဆောင်မှု",
     "queueTimeout": "တန်းစီမှု အချိန်ကန့်သတ်ချက် (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "ဖွင့်ထားသည့်အခါ upstream error တစ်ခုခု ဖြစ်ပေါ်လျှင် retry အားလုံးနှင့် fallback URL များကို ကျော်၍ နောက် combo target သို့ ချက်ချင်း failover လုပ်သည်။",
       "maxSetRetries": "target အားလုံး မအောင်မြင်သည့်အခါ target အစုတစ်ခုလုံးကို ထပ်မံကြိုးစားမည့် အကြိမ်အရေအတွက်။ 0 = set အဆင့် retry မရှိပါ။",
       "setRetryDelayMs": "ယာယီပြဿနာများ ပြေလည်ရန် အချိန်ပေးသည့် set-level ပြန်လည်ကြိုးစားမှုများအကြား စောင့်ဆိုင်းချိန်။",
+      "targetTimeoutMs": "ပစ်မှတ်တစ်ခုချင်းစီအတွက် ရွေးချယ်သတ်မှတ်နိုင်သော အချိန်ကုန်ဆုံးမှု။ ဗလာထားပါက လက်ရှိ တောင်းဆိုမှု အချိန်ကုန်ဆုံးမှုကို ဆက်ခံမည်ဖြစ်ပြီး ပိုကြီးသောတန်ဖိုးများကို ထိုအချိန်ကုန်ဆုံးမှုအထိ ကန့်သတ်မည်။",
+      "comboTimeoutMs": "Failover ပစ်မှတ်အားလုံးအတွက် Combo တစ်ခုလုံး၏ ရွေးချယ်သတ်မှတ်နိုင်သော အမှန်တကယ်ကြာချိန် ကန့်သတ်ချက်။ ဗလာထားပါက 10 မိနစ်ကြာ ရပ်တန့်ခြင်းမရှိမှု ကာကွယ်ချက်ကို ဆက်လက်အသုံးပြုမည်ဖြစ်ပြီး အပေါင်းတန်ဖိုးတစ်ခု သတ်မှတ်ပါက ၎င်းကို အစားထိုးမည်။ Failover အတွက် အချိန်ကျန်ရှိစေရန် ဤတန်ဖိုးကို ပစ်မှတ် အချိန်ကုန်ဆုံးမှုထက် ပိုကြာအောင်ထားပါ။",
       "disableSessionStickiness": "စကားဝိုင်းတစ်ခုလုံးကို ပထမမက်ဆေ့ချ် hash ဖြင့် ချိတ်ဆက်မှုတစ်ခုတည်းတွင် ပုံသေထားမည့်အစား တောင်းဆိုမှုတိုင်းတွင် မတူညီသော ချိတ်ဆက်မှုတစ်ခုသို့ ပြောင်းသုံးပါ။ Global မူလသတ်မှတ်ချက်ကို အစားထိုးပါမည်။ အလှည့်များစွာပါသော ချတ်များအတွက် prompt-cache hit များကို ထိန်းသိမ်းရန် Inherit အဖြစ်ထားပါ။"
     },
     "templatesTitle": "အမြန်သုံး တမ်းပလိတ်များ",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "အများဆုံး ပြန်လည်ကြိုးစားမှုအကြိမ်ရေ",
     "retryDelayLabel": "ပြန်လည်ကြိုးစားရန် စောင့်ဆိုင်းချိန် (ms)",
     "timeoutLabel": "အချိန်ကုန်ဆုံးကန့်သတ်ချက် (ms)",
+    "targetTimeout": "ပစ်မှတ် အချိန်ကုန်ဆုံးမှု (စက္ကန့်)",
+    "comboTimeout": "Combo အချိန်ကုန်ဆုံးမှု (စက္ကန့်)",
+    "inheritRequestTimeout": "တောင်းဆိုမှု အချိန်ကုန်ဆုံးမှုကို ဆက်ခံမည်",
+    "inheritComboSafetyTimeout": "10 မိနစ်ကြာ ရပ်တန့်ခြင်းမရှိမှု ကာကွယ်ချက်ကို ဆက်ခံမည်",
+    "targetTimeoutHint": "Combo ပစ်မှတ်များသည် မူလအားဖြင့် လက်ရှိ တောင်းဆိုမှု အချိန်ကုန်ဆုံးမှုကို ဆက်ခံသည်။ ပိုမိုမြန်ဆန်စွာ အရန်ပစ်မှတ်သို့ ပြောင်းလိုမှသာ ဤနေရာတွင် ပိုနည်းသောတန်ဖိုးကို သတ်မှတ်ပါ။",
+    "comboTimeoutHint": "Failover ပစ်မှတ်များအားလုံးအတွက် Combo တစ်ခုလုံး၏ အမှန်တကယ်ကြာချိန် ကန့်သတ်ချက်။ ဗလာထားပါက 10 မိနစ်ကြာ ရပ်တန့်ခြင်းမရှိမှု ကာကွယ်ချက်ကို ဆက်လက်အသုံးပြုမည်။ Failover အတွက် အချိန်ကျန်ရှိစေရန် ဤတန်ဖိုးကို ပစ်မှတ် အချိန်ကုန်ဆုံးမှုထက် ပိုကြာအောင်ထားပါ။",
     "healthCheck": "အခြေအနေ စစ်ဆေးမှု",
     "healthCheckDesc": "Provider ရရှိနိုင်မှုကို ကြိုတင်စစ်ဆေးရန်",
     "trackMetrics": "မက်ထရစ်များကို ခြေရာခံရန်",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "ရှည်လျားသော tool ရလဒ်များကို ကြိုတင်ဖြတ်တောက်ပါ",
-        "description": "ပေါ့ပါးသော ချုံ့ခြင်းအတွင်း စာလုံးရေ 2,000 ကျော်သည့် tool ရလဒ်များကို ဖြတ်တောက်သည်။ ဆက်စပ်အကြောင်းအရာသည် မော်ဒယ်၏ သတ်မှတ်ပမာဏကို ကျော်လွန်ပါက အရေးပေါ် လျှံထွက်မှုကာကွယ်ရေးက အကြောင်းအရာကို ဆက်လက်ဖြတ်တောက်နိုင်သည်။"
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

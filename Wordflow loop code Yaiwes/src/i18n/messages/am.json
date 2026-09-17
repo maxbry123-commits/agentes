@@ -3288,6 +3288,10 @@
     "models": "ሞዴሎች",
     "autoBalance": "ራስ-ሰር ማመጣጠን",
     "advancedSettings": "የላቁ ቅንብሮች",
+    "targetTimeout": "የዒላማ ጊዜ ገደብ (ሰከንዶች)",
+    "comboTimeout": "የጥምር ጊዜ ገደብ (ሰከንዶች)",
+    "inheritRequestTimeout": "ውረስ",
+    "inheritComboSafetyTimeout": "ውረስ (10 ደቂቃ)",
     "retryDelay": "የድጋሚ ሙከራ መዘግየት (ሚሊሰከንድ)",
     "concurrencyPerModel": "በአንድ ሞዴል የሚከናወኑ ተጓዳኝ ሂደቶች",
     "queueTimeout": "የወረፋ ጊዜ ገደብ (ሚሊሰከንድ)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "ሲነቃ፣ ማንኛውም የወደላይ አገልግሎት ስህተት ሁሉንም ዳግም ሙከራዎችና ተተኪ URLs በመዝለል ወዲያውኑ ወደ ቀጣዩ የጥምር ዒላማ እንዲሸጋገር ያደርጋል።",
       "maxSetRetries": "እያንዳንዱ ዒላማ ሲሳካ ሙሉውን የዒላማ ስብስብ ዳግም የሚሞከርበት ብዛት። 0 = በስብስብ ደረጃ ዳግም ሙከራ የለም።",
       "setRetryDelayMs": "ጊዜያዊ ችግሮች እንዲፈቱ ጊዜ የሚሰጥ፣ በስብስብ ደረጃ የዳግም ሙከራዎች መካከል ያለ መዘግየት።",
+      "targetTimeoutMs": "ለእያንዳንዱ ዒላማ አማራጭ የጊዜ ገደብ። ባዶ ከሆነ የአሁኑን የጥያቄ ጊዜ ገደብ ይወርሳል፤ ከፍ ያሉ እሴቶች በዚያ ጊዜ ገደብ ይገደባሉ።",
+      "comboTimeoutMs": "በሁሉም የመተኪያ ዒላማዎች ላይ ለጠቅላላው ጥምር አማራጭ የግድግዳ-ሰዓት በጀት። ባዶ ከሆነ የ10 ደቂቃውን የመንጠልጠል ማቆሚያ ያቆያል፤ አዎንታዊ እሴት ይተካዋል። መተኪያው አሁንም ጊዜ እንዲኖረው ይህን ከዒላማ ጊዜ ገደብ የበለጠ ያድርጉት።",
       "disableSessionStickiness": "ሙሉውን ውይይት በመጀመሪያው መልዕክት ሃሽ ወደ አንድ ግንኙነት ከማሰር ይልቅ በእያንዳንዱ ጥያቄ ወደ ተለየ ግንኙነት ያዙሩ። ዓለም አቀፉን ነባሪ ቅንብር ይተካል። ለባለብዙ-ዙር ውይይቶች የፕሮምፕት መሸጎጫ ስኬቶችን ለማቆየት Inherit ላይ ይተዉት።"
     },
     "templatesTitle": "ፈጣን አብነቶች",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "ከፍተኛው የድጋሚ ሙከራዎች ብዛት",
     "retryDelayLabel": "የድጋሚ ሙከራ መዘግየት (ms)",
     "timeoutLabel": "የጊዜ ገደብ (ms)",
+    "targetTimeout": "የዒላማ ጊዜ ገደብ (ሰከንዶች)",
+    "comboTimeout": "የጥምር ጊዜ ገደብ (ሰከንዶች)",
+    "inheritRequestTimeout": "የጥያቄ ጊዜ ገደብን ውረስ",
+    "inheritComboSafetyTimeout": "የ10 ደቂቃ የመንጠልጠል ማቆሚያን ውረስ",
+    "targetTimeoutHint": "የጥምር ዒላማዎች በነባሪ የአሁኑን የጥያቄ ጊዜ ገደብ ይወርሳሉ። ፈጣን መተኪያ ሲፈልጉ ብቻ እዚህ ዝቅተኛ እሴት ያዘጋጁ።",
+    "comboTimeoutHint": "በመተኪያ ዒላማዎች ላይ ለጠቅላላው ጥምር የግድግዳ-ሰዓት በጀት። ባዶ ከሆነ የ10 ደቂቃውን የመንጠልጠል ማቆሚያ ያቆያል። መተኪያው አሁንም ጊዜ እንዲኖረው ይህን ከዒላማ ጊዜ ገደብ የበለጠ ያድርጉት።",
     "healthCheck": "የጤናማነት ምርመራ",
     "healthCheckDesc": "የአቅራቢውን ዝግጁነት አስቀድሞ ይፈትሹ",
     "trackMetrics": "መለኪያዎችን ይከታተሉ",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "ረጅም የመሣሪያ ውጤቶችን አስቀድሞ ቀንስ",
-        "description": "በቀላል ጭመቃ ጊዜ ከ2,000 ቁምፊዎች በላይ የሆኑ የመሣሪያ ውጤቶችን ይቀንሳል። ዐውዱ ከሞዴሉ በጀት ሲያልፍ የአደጋ ጊዜ የመጠን ማለፍ መከላከያው አሁንም ይዘትን ሊቀንስ ይችላል።"
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

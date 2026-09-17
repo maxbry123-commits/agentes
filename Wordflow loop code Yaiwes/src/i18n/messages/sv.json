@@ -3288,6 +3288,10 @@
     "models": "Modeller",
     "autoBalance": "Automatisk balansering",
     "advancedSettings": "Avancerade inställningar",
+    "targetTimeout": "Timeout för mål (sekunder)",
+    "comboTimeout": "Timeout för kombination (sekunder)",
+    "inheritRequestTimeout": "ärv",
+    "inheritComboSafetyTimeout": "ärv (10 min)",
     "retryDelay": "Försök igen fördröjning (ms)",
     "concurrencyPerModel": "Samtidighet / Modell",
     "queueTimeout": "Timeout för kö (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "När det är aktiverat utlöser alla uppströmsfel omedelbar failover till nästa kombinationsmål, och hoppar över alla återförsök och reserv-URL:er.",
       "maxSetRetries": "Antal gånger för att försöka igen med hela måluppsättningen när varje mål misslyckas. 0 = inget nytt försök på inställd nivå.",
       "setRetryDelayMs": "Fördröjning mellan återförsök på inställd nivå, vilket ger övergående problem tid att lösa.",
+      "targetTimeoutMs": "Valfri timeout per mål. Om fältet är tomt ärvs den aktuella timeouten för begäran; högre värden begränsas till denna timeout.",
+      "comboTimeoutMs": "Valfri total tidsbudget för hela kombinationen över alla redundansmål. Om fältet är tomt behålls säkerhetsgränsen på 10 minuter; ett positivt värde ersätter den. Ange en längre tid än timeouten för mål så att redundansväxlingen fortfarande hinner genomföras.",
       "disableSessionStickiness": "Rotera till en annan anslutning vid varje förfrågan istället för att fästa en hel konversation vid en anslutning via det första meddelandets hash. Åsidosätter det globala standardvärdet. Lämna på Ärv för att bevara promptcache-träffar för multi-turn-chattar."
     },
     "templatesTitle": "Snabbmallar",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Max försöker igen",
     "retryDelayLabel": "Försök igen fördröjning (ms)",
     "timeoutLabel": "Tidsgräns (ms)",
+    "targetTimeout": "Timeout för mål (sekunder)",
+    "comboTimeout": "Timeout för kombination (sekunder)",
+    "inheritRequestTimeout": "Ärv timeout för begäran",
+    "inheritComboSafetyTimeout": "Ärv säkerhetsgränsen på 10 minuter",
+    "targetTimeoutHint": "Kombinationsmål ärver den aktuella timeouten för begäran som standard. Ange endast ett lägre värde här om du vill ha snabbare redundansväxling.",
+    "comboTimeoutHint": "Total tidsbudget för hela kombinationen över redundansmålen. Om fältet är tomt behålls säkerhetsgränsen på 10 minuter. Ange en längre tid än timeouten för mål så att redundansväxlingen fortfarande hinner genomföras.",
     "healthCheck": "Hälsokontroll",
     "healthCheckDesc": "Kontrollera leverantörens tillgänglighet i förväg",
     "trackMetrics": "Spåra mätvärden",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Proaktivt trunkera långa verktygsresultat",
-        "description": "Avskär resultat från verktyget över 2 000 tecken under Lite-komprimering. Nödfallsöversvämningsskydd kan fortfarande trimma innehåll när kontexten överskrider modellens budget."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

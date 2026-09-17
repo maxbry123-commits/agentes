@@ -3288,6 +3288,10 @@
     "models": "ماڈلز",
     "autoBalance": "خودکار توازن",
     "advancedSettings": "اعلیٰ ترتیبات",
+    "targetTimeout": "ہدف کا ٹائم آؤٹ (سیکنڈ)",
+    "comboTimeout": "کومبو ٹائم آؤٹ (سیکنڈ)",
+    "inheritRequestTimeout": "وراثت میں لیں",
+    "inheritComboSafetyTimeout": "وراثت میں لیں (10 منٹ)",
     "retryDelay": "دوبارہ کوشش میں تاخیر (ms)",
     "concurrencyPerModel": "ہم وقتی / ماڈل",
     "queueTimeout": "قطار کا وقت ختم ہونے کی حد (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "فعال ہونے پر، کوئی بھی اپ اسٹریم خرابی اگلے کومبو ہدف پر فوری ناکامی کو متحرک کرتی ہے، تمام دوبارہ کوششوں اور فال بیک URLs کو چھوڑ کر۔",
       "maxSetRetries": "جب ہر ٹارگٹ ناکام ہوجاتا ہے تو مکمل ٹارگٹ سیٹ پر دوبارہ کوشش کرنے کی تعداد۔ 0 = کوئی سیٹ لیول دوبارہ کوشش نہیں۔",
       "setRetryDelayMs": "سیٹ لیول کی دوبارہ کوشش کی کوششوں کے درمیان تاخیر، عارضی مسائل کو حل کرنے کا وقت دیتا ہے۔",
+      "targetTimeoutMs": "ہر ہدف کے لیے اختیاری ٹائم آؤٹ۔ خالی چھوڑنے پر موجودہ درخواست کا ٹائم آؤٹ وراثت میں ملتا ہے؛ بڑی اقدار اسی ٹائم آؤٹ تک محدود کر دی جاتی ہیں۔",
+      "comboTimeoutMs": "تمام فیل اوور اہداف کے لیے پورے کومبو کا اختیاری مجموعی دورانیہ۔ خالی چھوڑنے پر 10 منٹ کا ہینگ-اسٹاپ برقرار رہتا ہے؛ مثبت قدر اسے بدل دیتی ہے۔ اسے ہدف کے ٹائم آؤٹ سے زیادہ رکھیں تاکہ فیل اوور کے لیے وقت باقی رہے۔",
       "disableSessionStickiness": "پہلے پیغام کے ہیش کے ذریعے پوری گفتگو کو ایک کنکشن پر پن کرنے کے بجائے ہر درخواست پر ایک مختلف کنکشن پر روٹیٹ کریں۔ یہ گلوبل ڈیفالٹ کو اوور رائیڈ کرتا ہے۔ ملٹی ٹرن چیٹس کے لیے پرامپٹ کیش ہٹس کو برقرار رکھنے کے لیے اسے Inherit پر چھوڑیں۔"
     },
     "templatesTitle": "فوری ٹیمپلیٹس",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "دوبارہ کوششوں کی زیادہ سے زیادہ تعداد",
     "retryDelayLabel": "دوبارہ کوشش میں تاخیر (ms)",
     "timeoutLabel": "ٹائم آؤٹ (ms)",
+    "targetTimeout": "ہدف کا ٹائم آؤٹ (سیکنڈ)",
+    "comboTimeout": "کومبو ٹائم آؤٹ (سیکنڈ)",
+    "inheritRequestTimeout": "درخواست کا ٹائم آؤٹ وراثت میں لیں",
+    "inheritComboSafetyTimeout": "10 منٹ کا ہینگ-اسٹاپ وراثت میں لیں",
+    "targetTimeoutHint": "کومبو اہداف بطور ڈیفالٹ موجودہ درخواست کا ٹائم آؤٹ وراثت میں لیتے ہیں۔ یہاں کم قدر صرف اس وقت مقرر کریں جب آپ تیز تر فال بیک چاہتے ہوں۔",
+    "comboTimeoutHint": "فیل اوور اہداف کے لیے پورے کومبو کا مجموعی دورانیہ۔ خالی چھوڑنے پر 10 منٹ کا ہینگ-اسٹاپ برقرار رہتا ہے۔ اسے ہدف کے ٹائم آؤٹ سے زیادہ رکھیں تاکہ فیل اوور کے لیے وقت باقی رہے۔",
     "healthCheck": "صحت کی جانچ",
     "healthCheckDesc": "فراہم کنندہ کی دستیابی پہلے سے جانچیں",
     "trackMetrics": "میٹرکس ٹریک کریں",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "پیشگی طور پر طویل ٹول کے نتائج کو کاٹ دیں",
-        "description": "Lite کمپریشن کے دوران 2,000 کرداروں سے زیادہ کے ٹول کے نتائج کو کاٹ دیتا ہے۔ ایمرجنسی اوورفلو پروٹیکشن اب بھی مواد کو کم کر سکتا ہے جب سیاق و سباق ماڈل کے بجٹ سے تجاوز کر جائے۔"
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

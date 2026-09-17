@@ -3288,6 +3288,10 @@
     "models": "Model",
     "autoBalance": "Keseimbangan otomatis",
     "advancedSettings": "Pengaturan Lanjutan",
+    "targetTimeout": "Batas waktu target (detik)",
+    "comboTimeout": "Batas waktu kombo (detik)",
+    "inheritRequestTimeout": "warisi",
+    "inheritComboSafetyTimeout": "warisi (10 menit)",
     "retryDelay": "Penundaan Coba Lagi (md)",
     "concurrencyPerModel": "Konkurensi / Model",
     "queueTimeout": "Batas Waktu Antrian (md)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Jika diaktifkan, kesalahan upstream apa pun akan langsung memicu failover ke target kombo berikutnya, sehingga melewatkan semua percobaan ulang dan URL cadangan.",
       "maxSetRetries": "Berapa kali untuk mencoba kembali set target penuh ketika setiap target gagal. 0 = tidak ada percobaan ulang pada tingkat set.",
       "setRetryDelayMs": "Penundaan antara upaya percobaan ulang tingkat set, memberikan waktu untuk menyelesaikan masalah sementara.",
+      "targetTimeoutMs": "Batas waktu opsional per target. Jika kosong, mewarisi batas waktu permintaan saat ini; nilai yang lebih besar dibatasi hingga batas waktu tersebut.",
+      "comboTimeoutMs": "Anggaran waktu nyata opsional untuk seluruh kombo di semua target failover. Jika kosong, penghentian proses macet tetap 10 menit; nilai positif akan menggantikannya. Tetapkan lebih lama daripada batas waktu Target agar failover tetap memiliki waktu.",
       "disableSessionStickiness": "Rotasikan ke koneksi yang berbeda pada setiap permintaan alih-alih menyematkan seluruh percakapan ke satu koneksi berdasarkan hash pesan pertama. Mengabaikan default global. Biarkan pada Inherit untuk mempertahankan hit prompt-cache untuk obrolan multi-turn."
     },
     "templatesTitle": "Templat cepat",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Percobaan Ulang Maks",
     "retryDelayLabel": "Penundaan Coba Lagi (md)",
     "timeoutLabel": "Batas waktu (md)",
+    "targetTimeout": "Batas waktu target (detik)",
+    "comboTimeout": "Batas waktu kombo (detik)",
+    "inheritRequestTimeout": "Warisi batas waktu permintaan",
+    "inheritComboSafetyTimeout": "Warisi penghentian proses macet 10 menit",
+    "targetTimeoutHint": "Secara default, target kombo mewarisi batas waktu permintaan saat ini. Tetapkan nilai yang lebih rendah di sini hanya jika Anda menginginkan fallback yang lebih cepat.",
+    "comboTimeoutHint": "Anggaran waktu nyata untuk seluruh kombo di semua target failover. Jika kosong, penghentian proses macet tetap 10 menit. Tetapkan lebih lama daripada batas waktu Target agar failover tetap memiliki waktu.",
     "healthCheck": "Pemeriksaan Kesehatan",
     "healthCheckDesc": "Periksa terlebih dahulu ketersediaan penyedia",
     "trackMetrics": "Lacak Metrik",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Secara proaktif memotong hasil alat yang panjang",
-        "description": "Memotong hasil alat lebih dari 2.000 karakter selama kompresi Lite. Perlindungan overflow darurat mungkin masih memangkas konten ketika konteks melebihi anggaran model."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

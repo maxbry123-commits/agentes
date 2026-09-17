@@ -3288,6 +3288,10 @@
     "models": "Múnlaí",
     "autoBalance": "Cothromú uathoibríoch",
     "advancedSettings": "Socruithe Casta",
+    "targetTimeout": "Teorainn ama na sprice (soicindí)",
+    "comboTimeout": "Teorainn ama na teaglaime (soicindí)",
+    "inheritRequestTimeout": "faigh le hoidhreacht",
+    "inheritComboSafetyTimeout": "faigh le hoidhreacht (10 nóiméad)",
     "retryDelay": "Moill Athiarrachta (ms)",
     "concurrencyPerModel": "Comhreathachas / Múnla",
     "queueTimeout": "Am Feithimh Có (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Nuair a chuirtear ar siúl é, spreagann aon earráid suas an sruth failover láithreach chuig an gcéad sprioc comhcheangail eile, ag scipeáil gach iarracht athrá agus URLanna fallback.",
       "maxSetRetries": "Líon na n-uaireanta chun an tacar spriocanna iomlán a athrá nuair a theipeann ar gach sprioc. 0 = gan aon athrá ar leibhéal tacair.",
       "setRetryDelayMs": "Moill idir iarrachtaí athrá ar leibhéal tacair, ag tabhairt am do cheisteanna neamhbhuan réiteach.",
+      "targetTimeoutMs": "Teorainn ama roghnach do gach sprioc. Má fhágtar bán é, faightear teorainn ama reatha na hiarrata le hoidhreacht; cuirtear teorainn leis na luachanna is mó de réir na teorann ama sin.",
+      "comboTimeoutMs": "Buiséad roghnach ama clogbhunaithe don teaglaim iomlán thar na spriocanna aistrithe teipe go léir. Má fhágtar bán é, coinnítear an stopall crochta 10 nóiméad; cuirtear luach dearfach ina ionad. Coinnigh é seo níos faide ná Teorainn ama na sprice ionas go mbeidh am fós ag an aistriú teipe.",
       "disableSessionStickiness": "Uainigh go nasc difriúil ar gach iarratas in ionad comhrá iomlán a phionnáil le nasc amháin trí hash na chéad teachtaireachta. Sáraíonn sé an réamhshocrú domhanda. Fág ar Inherit é chun buaillí taisce leideanna a chaomhnú do chomhráite ilbhabhta."
     },
     "templatesTitle": "Teimpléid Thapa",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Uasmhéid Iarrachtaí",
     "retryDelayLabel": "Moil ar Iarracht (ms)",
     "timeoutLabel": "Am Amach (ms)",
+    "targetTimeout": "Teorainn ama na sprice (soicindí)",
+    "comboTimeout": "Teorainn ama na teaglaime (soicindí)",
+    "inheritRequestTimeout": "Faigh teorainn ama na hiarrata le hoidhreacht",
+    "inheritComboSafetyTimeout": "Faigh stopall crochta 10 nóiméad le hoidhreacht",
+    "targetTimeoutHint": "Faigheann spriocanna teaglaime teorainn ama reatha na hiarrata le hoidhreacht de réir réamhshocraithe. Ná socraigh luach níos ísle anseo ach amháin nuair is mian leat cúltaca níos tapúla.",
+    "comboTimeoutHint": "Buiséad ama clogbhunaithe don teaglaim iomlán thar na spriocanna aistrithe teipe. Má fhágtar bán é, coinnítear an stopall crochta 10 nóiméad. Coinnigh é seo níos faide ná Teorainn ama na sprice ionas go mbeidh am fós ag an aistriú teipe.",
     "healthCheck": "Seiceáil Sláinte",
     "healthCheckDesc": "Réamh-seiceáil infhaighteacht soláthraithe",
     "trackMetrics": "Rianú Méadrachta",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Bearr torthaí fada uirlisí go réamhghníomhach",
-        "description": "Gearrann sé torthaí uirlisí os cionn 2,000 carachtar le linn comhbhrú Éadrom. Féadfaidh cosaint éigeandála ró-shreafa fós bearradh a dhéanamh ar ábhar nuair a sháraíonn an comhthéacs buiséad an mhúnla."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

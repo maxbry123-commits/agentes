@@ -3288,6 +3288,10 @@
     "models": "Modèles",
     "autoBalance": "Équilibre automatique",
     "advancedSettings": "Paramètres avancés",
+    "targetTimeout": "Délai d’expiration de la cible (secondes)",
+    "comboTimeout": "Délai d’expiration du combo (secondes)",
+    "inheritRequestTimeout": "hériter",
+    "inheritComboSafetyTimeout": "hériter (10 min)",
     "retryDelay": "Délai de nouvelle tentative (ms)",
     "concurrencyPerModel": "Concurrence / Modèle",
     "queueTimeout": "Délai d'expiration de la file d'attente (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Lorsqu'elle est activée, toute erreur en amont déclenche un basculement immédiat vers la cible combinée suivante, ignorant toutes les tentatives et les URL de secours.",
       "maxSetRetries": "Nombre de fois où il faut réessayer l'ensemble de cibles complet lorsque chaque cible échoue. 0 = aucune nouvelle tentative de niveau défini.",
       "setRetryDelayMs": "Délai entre les tentatives de nouvelle tentative au niveau de l'ensemble, ce qui donne le temps aux problèmes transitoires de se résoudre.",
+      "targetTimeoutMs": "Délai d’expiration facultatif par cible. Si le champ est vide, le délai d’expiration actuel de la requête est hérité ; les valeurs supérieures sont plafonnées à ce délai.",
+      "comboTimeoutMs": "Budget de temps total facultatif pour l’ensemble du combo, couvrant toutes les cibles de basculement. Si le champ est vide, le délai de sécurité de 10 minutes contre les blocages est conservé ; une valeur positive le remplace. Définissez une durée supérieure au délai d’expiration de la cible afin de laisser suffisamment de temps au basculement.",
       "disableSessionStickiness": "Passer à une connexion différente à chaque requête au lieu de figer une conversation entière sur une seule connexion via le hachage du premier message. Remplace le comportement par défaut global. Laisser sur Hériter pour préserver les correspondances de cache de prompt pour les discussions multi-tours."
     },
     "templatesTitle": "Modèles rapides",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Nombre maximal de tentatives",
     "retryDelayLabel": "Délai de nouvelle tentative (ms)",
     "timeoutLabel": "Délai d'expiration (ms)",
+    "targetTimeout": "Délai d’expiration de la cible (secondes)",
+    "comboTimeout": "Délai d’expiration du combo (secondes)",
+    "inheritRequestTimeout": "Hériter du délai d’expiration de la requête",
+    "inheritComboSafetyTimeout": "Hériter du délai de sécurité de 10 minutes contre les blocages",
+    "targetTimeoutHint": "Par défaut, les cibles du combo héritent du délai d’expiration actuel de la requête. Définissez ici une valeur inférieure uniquement si vous souhaitez un basculement plus rapide.",
+    "comboTimeoutHint": "Budget de temps total pour l’ensemble du combo, couvrant les cibles de basculement. Si le champ est vide, le délai de sécurité de 10 minutes contre les blocages est conservé. Définissez une durée supérieure au délai d’expiration de la cible afin de laisser suffisamment de temps au basculement.",
     "healthCheck": "Bilan de santé",
     "healthCheckDesc": "Pré-vérifier la disponibilité du fournisseur",
     "trackMetrics": "Suivre les métriques",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Tronquer proactivement les longs résultats d'outils",
-        "description": "Tronque les résultats des outils à plus de 2 000 caractères lors de la compression Lite. La protection d'urgence contre les débordements peut toujours réduire le contenu lorsque le contexte dépasse le budget du modèle."
+        "description": "Tronque les longs résultats d'outils pendant la compression Lite. Le plafond est défini par le champ Longueur maximale des résultats d'outil (ou OMNIROUTE_LITE_MAX_TOOL_LENGTH s'il n'est pas renseigné). La protection d'urgence contre le débordement peut encore couper le contenu lorsque le contexte dépasse le budget du modèle."
+      },
+      "maxToolLength": {
+        "label": "Longueur maximale des résultats d'outil",
+        "description": "Plafond de caractères pour la troncature proactive des résultats d'outil. Défaut 2000. Surcharge via OMNIROUTE_LITE_MAX_TOOL_LENGTH si le champ est vide."
       }
     },
     "engineFields": {

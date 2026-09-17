@@ -3288,6 +3288,10 @@
     "models": "Modely",
     "autoBalance": "Auto-vyvážení",
     "advancedSettings": "Pokročilé nastavení",
+    "targetTimeout": "Časový limit cíle (sekundy)",
+    "comboTimeout": "Časový limit kombinace (sekundy)",
+    "inheritRequestTimeout": "zdědit",
+    "inheritComboSafetyTimeout": "zdědit (10 min)",
     "retryDelay": "Zpoždění opakování (ms)",
     "concurrencyPerModel": "Souběh / Model",
     "queueTimeout": "Časový limit fronty (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Je-li tato možnost povolena, jakákoliv chyba proti proudu spustí okamžité převzetí služeb při selhání na další kombinovaný cíl a přeskočí všechny opakované pokusy a záložní adresy URL.",
       "maxSetRetries": "Počet opakování celé cílové sady, když selže každý cíl. 0 = žádný opakovaný pokus na úrovni nastavení.",
       "setRetryDelayMs": "Prodleva mezi pokusy o opakování na úrovni nastavení, což dává přechodným problémům čas na vyřešení.",
+      "targetTimeoutMs": "Volitelný časový limit pro jednotlivé cíle. Je-li pole prázdné, převezme se aktuální časový limit požadavku; vyšší hodnoty budou omezeny na tento limit.",
+      "comboTimeoutMs": "Volitelný celkový časový limit kombinace pro všechny záložní cíle. Je-li pole prázdné, zůstane zachována 10minutová pojistka proti zamrznutí; kladná hodnota ji nahradí. Nastavte jej na delší dobu než časový limit cíle, aby zbyl čas na přepnutí na záložní cíl.",
       "disableSessionStickiness": "Střídat připojení při každém požadavku namísto připnutí celé konverzace k jednomu připojení podle hashe první zprávy. Přepisuje globální výchozí nastavení. Ponechte nastaveno na Zdědit pro zachování zásahů do mezipaměti výzev (prompt-cache) u vícekrokových chatů."
     },
     "templatesTitle": "Rychlé šablony",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Max opakování",
     "retryDelayLabel": "Zpoždění opakování (ms)",
     "timeoutLabel": "Časový limit (ms)",
+    "targetTimeout": "Časový limit cíle (sekundy)",
+    "comboTimeout": "Časový limit kombinace (sekundy)",
+    "inheritRequestTimeout": "Převzít časový limit požadavku",
+    "inheritComboSafetyTimeout": "Převzít 10minutovou pojistku proti zamrznutí",
+    "targetTimeoutHint": "Cíle kombinace ve výchozím nastavení přebírají aktuální časový limit požadavku. Nižší hodnotu zde nastavte pouze v případě, že chcete rychlejší přepnutí na záložní cíl.",
+    "comboTimeoutHint": "Celkový časový limit kombinace pro všechny záložní cíle. Je-li pole prázdné, zůstane zachována 10minutová pojistka proti zamrznutí. Nastavte jej na delší dobu než časový limit cíle, aby zbyl čas na přepnutí na záložní cíl.",
     "healthCheck": "Kontrola stavu",
     "healthCheckDesc": "Předběžná kontrola dostupnosti poskytovatele",
     "trackMetrics": "Sledování metrik",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Proaktivně zkracujte dlouhé výsledky nástrojů",
-        "description": "Zkracuje výsledky nástroje na více než 2 000 znaků během Lite komprese. Ochrana proti přetečení v nouzi může stále oříznout obsah, když kontext překročí rozpočet modelu."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

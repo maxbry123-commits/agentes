@@ -558,6 +558,7 @@ detection above).
 | `OMNIROUTE_CONFIG_HOT_RELOAD_MS`                | `5000`                                              | `src/lib/config/hotReload.ts`                               | Polling interval (ms) for config hot-reload. Lower than `1000` is rejected.                                                                                             |
 | `OMNIROUTE_DISABLE_REDIS_AUTH_CACHE`            | _(enabled)_                                         | `src/lib/db/apiKeys.ts`                                     | Set `1` to bypass the Redis-backed API-key auth cache (forces DB reads).                                                                                                |
 | `OMNIROUTE_RTK_TRUST_PROJECT_FILTERS`           | `0`                                                 | `open-sse/services/compression/engines/rtk/filterLoader.ts` | Trust user-managed RTK project filter rules without strict signature checks.                                                                                            |
+| `OMNIROUTE_LITE_MAX_TOOL_LENGTH`                | `2000`                                              | `open-sse/services/compression/lite.ts`                     | Character cap for Lite proactive tool-result truncation when `lite.maxToolLength` is unset. Range 256–1000000. Dashboard setting wins over this env.                     |
 | `OMNI_COMPRESSION_WORKERS`                      | `2`                                                 | `open-sse/services/compression/compressionWorkerPool.ts`    | Maximum concurrent synchronous RTK/Caveman workers; excess jobs wait FIFO.                                                                                               |
 | `OMNI_COMPRESSION_WORKER_TIMEOUT_MS`            | `120000`                                            | `open-sse/services/compression/compressionWorkerPool.ts`    | Per-job timeout in milliseconds. Timed-out workers are terminated and the request fails open unchanged.                                                                  |
 | `OMNI_COMPRESSION_WORKER_IDLE_MS`               | `60000`                                             | `open-sse/services/compression/compressionWorkerPool.ts`    | Idle lifetime in milliseconds before an unused compression worker is terminated.                                                                                        |
@@ -820,6 +821,12 @@ Combo target attempts inherit the resolved upstream request timeout (`FETCH_TIME
 `REQUEST_TIMEOUT_MS` when it supplies the fetch default). Set `targetTimeoutMs` in a combo,
 combo defaults, or provider override only to make combo fallback faster; values above the
 current upstream timeout are capped to the upstream timeout.
+
+`comboTimeoutMs` is a separate whole-combo wall-clock budget across failover targets.
+Leave it unset or `0` to keep unlimited iteration (the 10-minute
+`COMBO_LOOP_SAFETY_TIMEOUT_MS` hang-stop still applies). A positive value replaces that
+safety net for the combo. Keep `comboTimeoutMs` longer than `targetTimeoutMs` so failover
+still has time after a slow first target.
 
 ### Circuit Breaker Thresholds
 

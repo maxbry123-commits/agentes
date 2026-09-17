@@ -3288,6 +3288,10 @@
     "models": "Modele",
     "autoBalance": "Auto-echilibrare",
     "advancedSettings": "Setări avansate",
+    "targetTimeout": "Timp de expirare pentru țintă (secunde)",
+    "comboTimeout": "Timp de expirare pentru combinație (secunde)",
+    "inheritRequestTimeout": "moștenește",
+    "inheritComboSafetyTimeout": "moștenește (10 min)",
     "retryDelay": "Întârziere reîncercare (ms)",
     "concurrencyPerModel": "Concurență / Model",
     "queueTimeout": "Timp de așteptare la coadă (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Când este activată, orice eroare în amonte declanșează transferarea imediată la următoarea țintă combinată, omitând toate reîncercările și adresele URL de rezervă.",
       "maxSetRetries": "Numărul de ori pentru a reîncerca setul de ținte complet atunci când fiecare țintă eșuează. 0 = nicio reîncercare la nivel de set.",
       "setRetryDelayMs": "Întârziere între încercările de reîncercare la nivel de set, dând timp pentru rezolvare problemelor tranzitorii.",
+      "targetTimeoutMs": "Timp de expirare opțional pentru fiecare țintă. Dacă este necompletat, moștenește timpul de expirare al solicitării curente; valorile mai mari sunt limitate la acel timp de expirare.",
+      "comboTimeoutMs": "Buget opțional de timp total pentru întreaga combinație, pentru toate țintele de failover. Dacă este necompletat, se păstrează oprirea de siguranță după 10 minute; o valoare pozitivă o înlocuiește. Păstrați această valoare mai mare decât timpul de expirare pentru țintă, astfel încât failover-ul să aibă în continuare suficient timp.",
       "disableSessionStickiness": "Rotiți la o conexiune diferită la fiecare solicitare în loc de a fixa o întreagă conversație la o singură conexiune prin hash-ul primului mesaj. Suprascrie valoarea implicită globală. Lăsați pe Inherit pentru a păstra hiturile de prompt-cache pentru chaturile cu mai multe runde."
     },
     "templatesTitle": "Șabloane rapide",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Reîncercări maxime",
     "retryDelayLabel": "Întârziere reîncercare (ms)",
     "timeoutLabel": "Timp de expirare (ms)",
+    "targetTimeout": "Timp de expirare pentru țintă (secunde)",
+    "comboTimeout": "Timp de expirare pentru combinație (secunde)",
+    "inheritRequestTimeout": "Moștenește timpul de expirare al solicitării",
+    "inheritComboSafetyTimeout": "Moștenește oprirea de siguranță după 10 minute",
+    "targetTimeoutHint": "În mod implicit, țintele combinației moștenesc timpul de expirare al solicitării curente. Setați aici o valoare mai mică doar dacă doriți o comutare de rezervă mai rapidă.",
+    "comboTimeoutHint": "Bugetul de timp total pentru întreaga combinație, pentru toate țintele de failover. Dacă este necompletat, se păstrează oprirea de siguranță după 10 minute. Păstrați această valoare mai mare decât timpul de expirare pentru țintă, astfel încât failover-ul să aibă în continuare suficient timp.",
     "healthCheck": "Verificare de sănătate",
     "healthCheckDesc": "Verificați prealabil disponibilitatea furnizorului",
     "trackMetrics": "Urmăriți valorile",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Trunchiați proactiv rezultatele lungi ale instrumentului",
-        "description": "Trunchiază rezultatele instrumentului peste 2.000 de caractere în timpul compresiei Lite. Protecția de suprasarcină de urgență poate tăia în continuare conținutul atunci când contextul depășește bugetul modelului."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

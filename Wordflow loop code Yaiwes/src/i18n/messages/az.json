@@ -3288,6 +3288,10 @@
     "models": "Modellər",
     "autoBalance": "Avtomatik balanslaşdırma",
     "advancedSettings": "Qabaqcıl parametrlər",
+    "targetTimeout": "Hədəf üçün vaxt limiti (saniyə)",
+    "comboTimeout": "Kombinasiya üçün vaxt limiti (saniyə)",
+    "inheritRequestTimeout": "miras al",
+    "inheritComboSafetyTimeout": "miras al (10 dəq.)",
     "retryDelay": "Təkrar cəhd gecikməsi (ms)",
     "concurrencyPerModel": "Model üzrə paralellik",
     "queueTimeout": "Növbənin gözləmə müddəti (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Aktivləşdirildikdə, istənilən yuxarı xəta bütün təkrar cəhdləri və ehtiyat URL-ləri atlayaraq, dərhal növbəti kombinasiya hədəfinə keçidi tetikler.",
       "maxSetRetries": "Hər hədəf uğursuz olduqda tam hədəf setini yenidən sınamaq üçün neçə dəfə. 0 = müəyyən səviyyəli təkrar cəhd yoxdur.",
       "setRetryDelayMs": "Müəyyən səviyyəli təkrar cəhdlər arasında gecikmə, keçici məsələlərin həlli üçün vaxt verir.",
+      "targetTimeoutMs": "Hər hədəf üçün ixtiyari vaxt limiti. Boş saxlanıldıqda cari sorğunun vaxt limiti miras alınır; daha böyük dəyərlər həmin vaxt limiti ilə məhdudlaşdırılır.",
+      "comboTimeoutMs": "Ehtiyat hədəflərə keçid də daxil olmaqla bütün kombinasiya üçün ixtiyari ümumi real vaxt limiti. Boş saxlanıldıqda ilişib qalmanın qarşısını alan 10 dəqiqəlik limit qorunur; müsbət dəyər onu əvəz edir. Ehtiyat hədəfə keçid üçün vaxt qalması məqsədilə bunu Hədəf üçün vaxt limitindən daha uzun təyin edin.",
       "disableSessionStickiness": "Bütün söhbəti ilk mesajın heşinə görə bir bağlantıya bağlamaq əvəzinə, hər sorğuda fərqli bir bağlantıya keçin. Qlobal standartı üstələyir. Çoxdönüşlü söhbətlər üçün prompt-cache hitlərini qorumaq üçün İrsi olaraq saxlayın."
     },
     "templatesTitle": "Sürətli şablonlar",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Maksimum təkrar cəhd sayı",
     "retryDelayLabel": "Təkrar cəhd gecikməsi (ms)",
     "timeoutLabel": "Taymaut (ms)",
+    "targetTimeout": "Hədəf üçün vaxt limiti (saniyə)",
+    "comboTimeout": "Kombinasiya üçün vaxt limiti (saniyə)",
+    "inheritRequestTimeout": "Sorğunun vaxt limitini miras al",
+    "inheritComboSafetyTimeout": "İlişib qalmanın qarşısını alan 10 dəqiqəlik limiti miras al",
+    "targetTimeoutHint": "Kombinasiya hədəfləri standart olaraq cari sorğunun vaxt limitini miras alır. Yalnız ehtiyat hədəfə daha sürətli keçid istədiyiniz halda burada daha aşağı dəyər təyin edin.",
+    "comboTimeoutHint": "Ehtiyat hədəflərə keçid də daxil olmaqla bütün kombinasiya üçün ümumi real vaxt limiti. Boş saxlanıldıqda ilişib qalmanın qarşısını alan 10 dəqiqəlik limit qorunur. Ehtiyat hədəfə keçid üçün vaxt qalması məqsədilə bunu Hədəf üçün vaxt limitindən daha uzun təyin edin.",
     "healthCheck": "Sağlamlıq yoxlaması",
     "healthCheckDesc": "Provayderin əlçatanlığını əvvəlcədən yoxlayın",
     "trackMetrics": "Metrikaları izləyin",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Uzun alət nəticələrini proaktiv şəkildə qısaldın",
-        "description": "Lite sıxma zamanı 2,000 simvoldan çox olan alət nəticələrini qısaldır. Fövqəladə daşma qorunması kontekst model büdcəsini aşdıqda hələ də məzmunu qısalda bilər."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

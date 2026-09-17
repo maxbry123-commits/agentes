@@ -3288,6 +3288,10 @@
     "models": "model",
     "autoBalance": "Imbangan automatik",
     "advancedSettings": "Tetapan Lanjutan",
+    "targetTimeout": "Tamat masa sasaran (saat)",
+    "comboTimeout": "Tamat masa kombo (saat)",
+    "inheritRequestTimeout": "warisi",
+    "inheritComboSafetyTimeout": "warisi (10 min)",
     "retryDelay": "Cuba Semula Kelewatan (ms)",
     "concurrencyPerModel": "Keserentakan / Model",
     "queueTimeout": "Waktu Beratur (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Apabila didayakan, sebarang ralat huluan mencetuskan kegagalan serta-merta ke sasaran kombo seterusnya, melangkau semua percubaan semula dan URL sandaran.",
       "maxSetRetries": "Bilangan kali untuk mencuba semula sasaran penuh yang ditetapkan apabila setiap sasaran gagal. 0 = tiada percubaan semula peringkat set.",
       "setRetryDelayMs": "Kelewatan antara percubaan percubaan semula peringkat set, memberikan masa untuk menyelesaikan masalah sementara.",
+      "targetTimeoutMs": "Tamat masa pilihan bagi setiap sasaran. Jika kosong, tamat masa permintaan semasa akan diwarisi; nilai yang lebih besar akan dihadkan kepada tamat masa tersebut.",
+      "comboTimeoutMs": "Bajet masa jam dinding pilihan bagi keseluruhan kombo merentas semua sasaran failover. Jika kosong, penghenti tergantung 10 minit dikekalkan; nilai positif akan menggantikannya. Pastikan tempoh ini lebih panjang daripada Tamat masa sasaran supaya failover masih mempunyai masa.",
       "disableSessionStickiness": "Putar ke sambungan berbeza pada setiap permintaan dan bukannya menambat keseluruhan perbualan ke satu sambungan mengikut hash mesej pertama. Mengatasi lalai global. Biarkan pada Warisi untuk mengekalkan hit cache gesaan bagi sembang berbilang pusingan."
     },
     "templatesTitle": "Templat pantas",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Max Cuba Semula",
     "retryDelayLabel": "Cuba Semula Kelewatan (ms)",
     "timeoutLabel": "Tamat masa (ms)",
+    "targetTimeout": "Tamat masa sasaran (saat)",
+    "comboTimeout": "Tamat masa kombo (saat)",
+    "inheritRequestTimeout": "Warisi tamat masa permintaan",
+    "inheritComboSafetyTimeout": "Warisi penghenti tergantung 10 minit",
+    "targetTimeoutHint": "Sasaran kombo mewarisi tamat masa permintaan semasa secara lalai. Tetapkan nilai yang lebih rendah di sini hanya apabila anda mahukan sandaran yang lebih pantas.",
+    "comboTimeoutHint": "Bajet masa jam dinding bagi keseluruhan kombo merentas sasaran failover. Jika kosong, penghenti tergantung 10 minit dikekalkan. Pastikan tempoh ini lebih panjang daripada Tamat masa sasaran supaya failover masih mempunyai masa.",
     "healthCheck": "Pemeriksaan Kesihatan",
     "healthCheckDesc": "Prasemak ketersediaan pembekal",
     "trackMetrics": "Metrik Jejak",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Secara proaktif memendekkan hasil alat yang panjang",
-        "description": "Memendekkan hasil alat melebihi 2,000 aksara semasa pemampatan Lite. Perlindungan limpahan kecemasan mungkin masih memotong kandungan apabila konteks melebihi bajet model."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

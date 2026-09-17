@@ -3288,6 +3288,10 @@
     "models": "मॉडेल्स",
     "autoBalance": "स्वयं-संतुलन",
     "advancedSettings": "प्रगत सेटिंग्ज",
+    "targetTimeout": "लक्ष्य कालबाह्यता (सेकंद)",
+    "comboTimeout": "कॉम्बो कालबाह्यता (सेकंद)",
+    "inheritRequestTimeout": "वारसा घ्या",
+    "inheritComboSafetyTimeout": "वारसा घ्या (10 मिनिटे)",
     "retryDelay": "पुनःप्रयत्न विलंब (ms)",
     "concurrencyPerModel": "समवर्तीता / मॉडेल",
     "queueTimeout": "रांग कालबाह्यता (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "सक्षम केल्यावर, कोणतीही अपस्ट्रीम त्रुटी पुढील कॉम्बो लक्ष्यावर त्वरित फेलओव्हर ट्रिगर करते, सर्व पुन्हा प्रयत्न आणि फॉलबॅक URL वगळते.",
       "maxSetRetries": "प्रत्येक लक्ष्य अयशस्वी झाल्यावर पूर्ण लक्ष्य सेट करण्याचा पुन्हा प्रयत्न करण्याची संख्या. 0 = सेट-स्तरीय पुन्हा प्रयत्न नाही.",
       "setRetryDelayMs": "सेट-लेव्हल पुन्हा प्रयत्न करण्याच्या प्रयत्नांमध्ये विलंब, क्षणिक समस्यांचे निराकरण करण्यासाठी वेळ देते.",
+      "targetTimeoutMs": "प्रत्येक लक्ष्यासाठी पर्यायी कालबाह्यता. रिक्त ठेवल्यास सध्याच्या विनंतीची कालबाह्यता वारशाने घेतली जाते; मोठी मूल्ये त्या कालबाह्यतेपर्यंत मर्यादित केली जातात.",
+      "comboTimeoutMs": "सर्व फेलओव्हर लक्ष्यांसाठी संपूर्ण कॉम्बोचे पर्यायी वास्तविक-वेळ बजेट. रिक्त ठेवल्यास 10 मिनिटांचा हँग-स्टॉप कायम राहतो; धन मूल्याने तो बदलला जातो. फेलओव्हरसाठी पुरेसा वेळ मिळावा म्हणून हे लक्ष्य कालबाह्यतेपेक्षा जास्त ठेवा.",
       "disableSessionStickiness": "पहिल्या-संदेश हॅशद्वारे संपूर्ण संभाषण एकाच कनेक्शनवर पिन करण्याऐवजी प्रत्येक विनंतीवर वेगळ्या कनेक्शनवर रोटेट करा. ग्लोबल डीफॉल्ट ओव्हरराइड करते. मल्टी-टर्न चॅट्ससाठी प्रॉम्प्ट-कॅशे हिट्स जतन करण्यासाठी Inherit वर ठेवा."
     },
     "templatesTitle": "द्रुत टेम्पलेट्स",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "कमाल पुनःप्रयत्न",
     "retryDelayLabel": "पुनःप्रयत्न विलंब (ms)",
     "timeoutLabel": "टाइमआउट (ms)",
+    "targetTimeout": "लक्ष्य कालबाह्यता (सेकंद)",
+    "comboTimeout": "कॉम्बो कालबाह्यता (सेकंद)",
+    "inheritRequestTimeout": "विनंतीची कालबाह्यता वारशाने घ्या",
+    "inheritComboSafetyTimeout": "10 मिनिटांचा हँग-स्टॉप वारशाने घ्या",
+    "targetTimeoutHint": "डीफॉल्टनुसार कॉम्बो लक्ष्ये सध्याच्या विनंतीची कालबाह्यता वारशाने घेतात. अधिक जलद फॉलबॅक हवा असेल, तरच येथे कमी मूल्य सेट करा.",
+    "comboTimeoutHint": "फेलओव्हर लक्ष्यांसाठी संपूर्ण कॉम्बोचे वास्तविक-वेळ बजेट. रिक्त ठेवल्यास 10 मिनिटांचा हँग-स्टॉप कायम राहतो. फेलओव्हरसाठी पुरेसा वेळ मिळावा म्हणून हे लक्ष्य कालबाह्यतेपेक्षा जास्त ठेवा.",
     "healthCheck": "स्थिती तपासणी",
     "healthCheckDesc": "प्रदात्याची उपलब्धता आधी तपासा",
     "trackMetrics": "मेट्रिक्सचा मागोवा घ्या",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "सक्रियपणे लांब साधन परिणाम कमी करा",
-        "description": "Lite संकुचनादरम्यान 2,000 वर्णांपेक्षा जास्त टूल परिणाम कमी करतो. आपत्कालीन ओव्हरफ्लो संरक्षणाने मॉडेल बजेट ओलांडल्यास सामग्री कमी केली जाऊ शकते."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

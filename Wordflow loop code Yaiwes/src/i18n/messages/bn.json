@@ -3288,6 +3288,10 @@
     "models": "মডেলসমূহ",
     "autoBalance": "স্বয়ংক্রিয় ভারসাম্য",
     "advancedSettings": "উন্নত সেটিংস",
+    "targetTimeout": "টার্গেট টাইমআউট (সেকেন্ড)",
+    "comboTimeout": "কম্বো টাইমআউট (সেকেন্ড)",
+    "inheritRequestTimeout": "উত্তরাধিকারসূত্রে নিন",
+    "inheritComboSafetyTimeout": "উত্তরাধিকারসূত্রে নিন (১০ মিনিট)",
     "retryDelay": "পুনঃচেষ্টার বিলম্ব (ms)",
     "concurrencyPerModel": "সমসাময়িকতা / মডেল",
     "queueTimeout": "সারির সময়সীমা (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "সক্রিয় করা হলে, যেকোনো আপস্ট্রিম ত্রুটি পরবর্তী কম্বো টার্গেটে অবিলম্বে ব্যর্থতা ট্রিগার করে, সমস্ত পুনঃপ্রচার এবং ফলব্যাক URL এড়িয়ে যায়।",
       "maxSetRetries": "প্রতিটি লক্ষ্য ব্যর্থ হলে পূর্ণ লক্ষ্য সেট করার জন্য পুনরায় চেষ্টা করার সংখ্যা। 0 = কোনো সেট-লেভেল পুনঃপ্রচেষ্টা নয়।",
       "setRetryDelayMs": "সেট-লেভেলের পুনঃপ্রচেষ্টার মধ্যে বিলম্ব, ক্ষণস্থায়ী সমস্যা সমাধানের জন্য সময় দেয়।",
+      "targetTimeoutMs": "প্রতি-টার্গেটের জন্য ঐচ্ছিক টাইমআউট। খালি রাখলে বর্তমান রিকোয়েস্ট টাইমআউট উত্তরাধিকারসূত্রে নেয়; বড় মানগুলো ওই টাইমআউটের মধ্যে সীমাবদ্ধ করা হয়।",
+      "comboTimeoutMs": "সব ফেইলওভার টার্গেট মিলিয়ে পুরো কম্বোর জন্য ঐচ্ছিক ওয়াল-ক্লক সময়সীমা। খালি রাখলে ১০-মিনিটের হ্যাং-স্টপ বহাল থাকে; একটি ধনাত্মক মান দিলে এটি প্রতিস্থাপিত হয়। এটি টার্গেট টাইমআউটের চেয়ে বেশি রাখুন, যাতে ফেইলওভারের জন্য পর্যাপ্ত সময় থাকে।",
       "disableSessionStickiness": "প্রথম-বার্তার হ্যাশ দ্বারা একটি সম্পূর্ণ কথোপকথনকে একটি সংযোগে পিন করার পরিবর্তে প্রতিটি অনুরোধে একটি ভিন্ন সংযোগে রোটেট করুন। গ্লোবাল ডিফল্ট ওভাররাইড করে। মাল্টি-টার্ন চ্যাটের জন্য প্রম্পট-ক্যাশ হিট সংরক্ষণ করতে Inherit-এ রেখে দিন।"
     },
     "templatesTitle": "দ্রুত টেমপ্লেট",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "সর্বোচ্চ পুনঃচেষ্টা",
     "retryDelayLabel": "পুনঃচেষ্টার বিলম্ব (ms)",
     "timeoutLabel": "টাইমআউট (ms)",
+    "targetTimeout": "টার্গেট টাইমআউট (সেকেন্ড)",
+    "comboTimeout": "কম্বো টাইমআউট (সেকেন্ড)",
+    "inheritRequestTimeout": "রিকোয়েস্ট টাইমআউট উত্তরাধিকারসূত্রে নিন",
+    "inheritComboSafetyTimeout": "১০-মিনিটের হ্যাং-স্টপ উত্তরাধিকারসূত্রে নিন",
+    "targetTimeoutHint": "ডিফল্টভাবে কম্বো টার্গেটগুলো বর্তমান রিকোয়েস্ট টাইমআউট উত্তরাধিকারসূত্রে নেয়। শুধু দ্রুত ফলব্যাক চাইলে এখানে কম মান নির্ধারণ করুন।",
+    "comboTimeoutHint": "ফেইলওভার টার্গেটগুলো মিলিয়ে পুরো কম্বোর ওয়াল-ক্লক সময়সীমা। খালি রাখলে ১০-মিনিটের হ্যাং-স্টপ বহাল থাকে। এটি টার্গেট টাইমআউটের চেয়ে বেশি রাখুন, যাতে ফেইলওভারের জন্য পর্যাপ্ত সময় থাকে।",
     "healthCheck": "স্বাস্থ্য পরীক্ষা",
     "healthCheckDesc": "প্রোভাইডারের উপলভ্যতা আগেই পরীক্ষা করুন",
     "trackMetrics": "মেট্রিক্স ট্র্যাক করুন",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "সক্রিয়ভাবে দীর্ঘ টুলের ফলাফল কেটে ফেলুন",
-        "description": "লাইট সংকোচনের সময় ২,০০০ অক্ষরের বেশি টুলের ফলাফল কেটে ফেলা হয়। জরুরি ওভারফ্লো সুরক্ষা এখনও কনটেন্ট কেটে ফেলতে পারে যখন প্রসঙ্গ মডেল বাজেট অতিক্রম করে।"
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

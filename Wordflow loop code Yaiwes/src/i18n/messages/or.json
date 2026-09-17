@@ -3288,6 +3288,10 @@
     "models": "ମଡେଲ୍ଗୁଡ଼ିକ",
     "autoBalance": "ସ୍ୱୟଂଚାଳିତ ସନ୍ତୁଳନ",
     "advancedSettings": "ଉନ୍ନତ ସେଟିଂସ୍",
+    "targetTimeout": "ଟାର୍ଗେଟ୍ ସମୟସୀମା (ସେକେଣ୍ଡ)",
+    "comboTimeout": "କମ୍ବୋ ସମୟସୀମା (ସେକେଣ୍ଡ)",
+    "inheritRequestTimeout": "ଉତ୍ତରାଧିକାର କରନ୍ତୁ",
+    "inheritComboSafetyTimeout": "ଉତ୍ତରାଧିକାର କରନ୍ତୁ (10 ମିନିଟ୍)",
     "retryDelay": "ପୁନଃପ୍ରୟାସ ବିଳମ୍ବ (ms)",
     "concurrencyPerModel": "ସମସାମୟିକତା / ମଡେଲ୍",
     "queueTimeout": "କ୍ୟୁ ସମୟସୀମା (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "ସକ୍ଷମ ଥିଲେ, ଯେକୌଣସି ଅପ୍ଷ୍ଟ୍ରିମ୍ ତ୍ରୁଟି ସମସ୍ତ ପୁନଃଚେଷ୍ଟା ଏବଂ ଫଲ୍ବ୍ୟାକ୍ URL ଏଡ଼ାଇ ପରବର୍ତ୍ତୀ କମ୍ବୋ ଟାର୍ଗେଟ୍କୁ ତୁରନ୍ତ ଫେଲ୍ଓଭର୍ କରେ।",
       "maxSetRetries": "ପ୍ରତ୍ୟେକ ଟାର୍ଗେଟ୍ ବିଫଳ ହେଲେ ସମ୍ପୂର୍ଣ୍ଣ ଟାର୍ଗେଟ୍ ସେଟ୍କୁ କେତେଥର ପୁନଃଚେଷ୍ଟା କରାଯିବ। 0 = ସେଟ୍-ସ୍ତରୀୟ ପୁନଃଚେଷ୍ଟା ନାହିଁ।",
       "setRetryDelayMs": "ସେଟ୍-ସ୍ତରୀୟ ପୁନଃଚେଷ୍ଟାଗୁଡ଼ିକ ମଧ୍ୟରେ ବିଳମ୍ବ, ଯାହା ଅସ୍ଥାୟୀ ସମସ୍ୟାଗୁଡ଼ିକୁ ସମାଧାନ ହେବା ପାଇଁ ସମୟ ଦିଏ।",
+      "targetTimeoutMs": "ପ୍ରତ୍ୟେକ ଟାର୍ଗେଟ୍ ପାଇଁ ଇଚ୍ଛାଧୀନ ସମୟସୀମା। ଖାଲି ରଖିଲେ ବର୍ତ୍ତମାନର ଅନୁରୋଧ ସମୟସୀମା ଉତ୍ତରାଧିକାର ହୁଏ; ଅଧିକ ମୂଲ୍ୟଗୁଡ଼ିକୁ ସେହି ସମୟସୀମାରେ ସୀମିତ କରାଯାଏ।",
+      "comboTimeoutMs": "ସମସ୍ତ ଫେଲଓଭର୍ ଟାର୍ଗେଟ୍ ପାଇଁ ଇଚ୍ଛାଧୀନ ସମ୍ପୂର୍ଣ୍ଣ-କମ୍ବୋ ୱାଲ୍-କ୍ଲକ୍ ସମୟ ବଜେଟ୍। ଖାଲି ରଖିଲେ 10-ମିନିଟ୍ର ହ୍ୟାଙ୍ଗ୍-ଷ୍ଟପ୍ ବଜାୟ ରହେ; ଏକ ଧନାତ୍ମକ ମୂଲ୍ୟ ଏହାକୁ ବଦଳାଏ। ଫେଲଓଭର୍ ପାଇଁ ଯଥେଷ୍ଟ ସମୟ ରହିବାକୁ ଏହାକୁ ଟାର୍ଗେଟ୍ ସମୟସୀମାଠାରୁ ଅଧିକ ରଖନ୍ତୁ।",
       "disableSessionStickiness": "ପ୍ରଥମ ସନ୍ଦେଶର ହ୍ୟାଶ୍ ଆଧାରରେ ସମ୍ପୂର୍ଣ୍ଣ କଥୋପକଥନକୁ ଗୋଟିଏ ସଂଯୋଗରେ ସ୍ଥିର ରଖିବା ପରିବର୍ତ୍ତେ, ପ୍ରତ୍ୟେକ ଅନୁରୋଧରେ ଏକ ଭିନ୍ନ ସଂଯୋଗକୁ ପରିବର୍ତ୍ତନ କରନ୍ତୁ। ଏହା ଗ୍ଲୋବାଲ୍ ଡିଫଲ୍ଟକୁ ଓଭରରାଇଡ୍ କରେ। ବହୁ-ପର୍ଯ୍ୟାୟ ଚାଟ୍ଗୁଡ଼ିକ ପାଇଁ ପ୍ରମ୍ପ୍ଟ-କ୍ୟାଶ୍ ହିଟ୍ ବଜାୟ ରଖିବାକୁ ଏହାକୁ ଇନହେରିଟ୍ରେ ରଖନ୍ତୁ।"
     },
     "templatesTitle": "ଦ୍ରୁତ ଟେମ୍ପଲେଟ୍ଗୁଡ଼ିକ",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "ସର୍ବାଧିକ ପୁନଃଚେଷ୍ଟା",
     "retryDelayLabel": "ପୁନଃଚେଷ୍ଟା ବିଳମ୍ବ (ms)",
     "timeoutLabel": "ସମୟସୀମା (ms)",
+    "targetTimeout": "ଟାର୍ଗେଟ୍ ସମୟସୀମା (ସେକେଣ୍ଡ)",
+    "comboTimeout": "କମ୍ବୋ ସମୟସୀମା (ସେକେଣ୍ଡ)",
+    "inheritRequestTimeout": "ଅନୁରୋଧ ସମୟସୀମା ଉତ୍ତରାଧିକାର କରନ୍ତୁ",
+    "inheritComboSafetyTimeout": "10-ମିନିଟ୍ର ହ୍ୟାଙ୍ଗ୍-ଷ୍ଟପ୍ ଉତ୍ତରାଧିକାର କରନ୍ତୁ",
+    "targetTimeoutHint": "ଡିଫଲ୍ଟ ଭାବରେ କମ୍ବୋ ଟାର୍ଗେଟ୍ଗୁଡ଼ିକ ବର୍ତ୍ତମାନର ଅନୁରୋଧ ସମୟସୀମା ଉତ୍ତରାଧିକାର କରନ୍ତି। କେବଳ ଦ୍ରୁତତର ଫଲ୍ବ୍ୟାକ୍ ଚାହୁଁଥିଲେ ଏଠାରେ ଏକ କମ୍ ମୂଲ୍ୟ ସେଟ୍ କରନ୍ତୁ।",
+    "comboTimeoutHint": "ଫେଲଓଭର୍ ଟାର୍ଗେଟ୍ଗୁଡ଼ିକ ପାଇଁ ସମ୍ପୂର୍ଣ୍ଣ-କମ୍ବୋ ୱାଲ୍-କ୍ଲକ୍ ସମୟ ବଜେଟ୍। ଖାଲି ରଖିଲେ 10-ମିନିଟ୍ର ହ୍ୟାଙ୍ଗ୍-ଷ୍ଟପ୍ ବଜାୟ ରହେ। ଫେଲଓଭର୍ ପାଇଁ ଯଥେଷ୍ଟ ସମୟ ରହିବାକୁ ଏହାକୁ ଟାର୍ଗେଟ୍ ସମୟସୀମାଠାରୁ ଅଧିକ ରଖନ୍ତୁ।",
     "healthCheck": "ସ୍ୱାସ୍ଥ୍ୟ ଯାଞ୍ଚ",
     "healthCheckDesc": "ପ୍ରଦାତାଙ୍କ ଉପଲବ୍ଧତା ପୂର୍ବରୁ ଯାଞ୍ଚ କରନ୍ତୁ",
     "trackMetrics": "ମେଟ୍ରିକ୍ସ ଟ୍ରାକ୍ କରନ୍ତୁ",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "ଲମ୍ବା ଟୁଲ୍ ଫଳାଫଳଗୁଡ଼ିକୁ ଆଗୁଆ କାଟଛାଣ୍ଟ କରନ୍ତୁ",
-        "description": "ଲାଇଟ୍ ସଂକୁଚନ ସମୟରେ 2,000 ଅକ୍ଷରରୁ ଅଧିକ ଟୁଲ୍ ଫଳାଫଳକୁ କାଟଛାଣ୍ଟ କରେ। ପ୍ରସଙ୍ଗ ମଡେଲ୍ର ବଜେଟ୍ ଅତିକ୍ରମ କଲେ ଜରୁରୀ ଓଭରଫ୍ଲୋ ସୁରକ୍ଷା ତଥାପି ବିଷୟବସ୍ତୁକୁ ଛୋଟ କରିପାରେ।"
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

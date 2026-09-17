@@ -3288,6 +3288,10 @@
     "models": "Modellar",
     "autoBalance": "Avtomatik muvozanatlash",
     "advancedSettings": "Kengaytirilgan sozlamalar",
+    "targetTimeout": "Maqsadli tugash vaqti (soniya)",
+    "comboTimeout": "Kombinatsiya tugash vaqti (soniya)",
+    "inheritRequestTimeout": "meros olish",
+    "inheritComboSafetyTimeout": "meros olish (10 daqiqa)",
     "retryDelay": "Qayta urinish kechikishi (ms)",
     "concurrencyPerModel": "Parallel soʻrovlar / Model",
     "queueTimeout": "Navbat kutish chegarasi (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Yoqilganda, yuqori oqimdagi har qanday xato barcha qayta urinishlar va zaxira URL manzillarini o‘tkazib yuborib, darhol keyingi kombinatsiya maqsadiga o‘tishni ishga tushiradi.",
       "maxSetRetries": "Har bir maqsad muvaffaqiyatsiz bo‘lganda to‘liq maqsadlar to‘plamini qayta sinash soni. 0 = to‘plam darajasida qayta urinish yo‘q.",
       "setRetryDelayMs": "Vaqtinchalik muammolar bartaraf bo‘lishi uchun imkon beruvchi to‘plam darajasidagi qayta urinishlar orasidagi kechikish.",
+      "targetTimeoutMs": "Har bir maqsad uchun ixtiyoriy tugash vaqti. Bo‘sh qoldirilsa, joriy so‘rovning tugash vaqti meros olinadi; kattaroq qiymatlar shu vaqt bilan cheklanadi.",
+      "comboTimeoutMs": "Barcha zaxira maqsadlar bo‘ylab butun kombinatsiya uchun ixtiyoriy umumiy vaqt chegarasi. Bo‘sh qoldirilsa, 10 daqiqalik osilib qolishni to‘xtatish chegarasi saqlanadi; musbat qiymat uni almashtiradi. Zaxiraga o‘tish uchun yetarli vaqt qolishi uchun buni maqsadli tugash vaqtidan uzunroq qilib belgilang.",
       "disableSessionStickiness": "Birinchi xabar xeshi orqali butun suhbatni bitta ulanishga biriktirish o‘rniga, har bir so‘rovda boshqa ulanishga o‘ting. Global standart sozlamani bekor qiladi. Ko‘p bosqichli chatlarda prompt keshi mos kelishini saqlab qolish uchun «Meros qilib olish» holatida qoldiring."
     },
     "templatesTitle": "Tezkor shablonlar",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Maksimal qayta urinishlar",
     "retryDelayLabel": "Qayta urinish kechikishi (ms)",
     "timeoutLabel": "Kutish vaqti (ms)",
+    "targetTimeout": "Maqsadli tugash vaqti (soniya)",
+    "comboTimeout": "Kombinatsiya tugash vaqti (soniya)",
+    "inheritRequestTimeout": "So‘rovning tugash vaqtini meros olish",
+    "inheritComboSafetyTimeout": "10 daqiqalik osilib qolishni to‘xtatish chegarasini meros olish",
+    "targetTimeoutHint": "Kombinatsiya maqsadlari sukut bo‘yicha joriy so‘rovning tugash vaqtini meros oladi. Faqat tezroq zaxiraga o‘tishni istasangiz, bu yerda pastroq qiymat belgilang.",
+    "comboTimeoutHint": "Zaxira maqsadlar bo‘ylab butun kombinatsiya uchun umumiy vaqt chegarasi. Bo‘sh qoldirilsa, 10 daqiqalik osilib qolishni to‘xtatish chegarasi saqlanadi. Zaxiraga o‘tish uchun yetarli vaqt qolishi uchun buni maqsadli tugash vaqtidan uzunroq qilib belgilang.",
     "healthCheck": "Holatni tekshirish",
     "healthCheckDesc": "Provayder mavjudligini oldindan tekshirish",
     "trackMetrics": "Ko‘rsatkichlarni kuzatish",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Uzun vosita natijalarini oldindan qisqartirish",
-        "description": "Yengil siqish vaqtida 2 000 belgidan uzun vosita natijalarini qisqartiradi. Kontekst model budjetidan oshganda, favqulodda to‘lib ketishdan himoya mexanizmi kontentni baribir qisqartirishi mumkin."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

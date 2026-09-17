@@ -3288,6 +3288,10 @@
     "models": "Modelli",
     "autoBalance": "Bilanciamento automatico",
     "advancedSettings": "Impostazioni avanzate",
+    "targetTimeout": "Timeout della destinazione (secondi)",
+    "comboTimeout": "Timeout della combo (secondi)",
+    "inheritRequestTimeout": "eredita",
+    "inheritComboSafetyTimeout": "eredita (10 min)",
     "retryDelay": "Ritardo tentativi (ms)",
     "concurrencyPerModel": "Concorrenza/modello",
     "queueTimeout": "Timeout coda (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Se abilitato, qualsiasi errore upstream attiva il failover immediato alla successiva destinazione combinata, saltando tutti i tentativi e gli URL di fallback.",
       "maxSetRetries": "Numero di volte per riprovare l'intero set di destinazioni quando ogni destinazione fallisce. 0 = nessun tentativo a livello di set.",
       "setRetryDelayMs": "Ritardo tra i tentativi a livello di set, dando tempo ai problemi temporanei di risolversi.",
+      "targetTimeoutMs": "Timeout facoltativo per ciascuna destinazione. Se vuoto, eredita il timeout della richiesta corrente; i valori superiori vengono limitati a tale timeout.",
+      "comboTimeoutMs": "Budget temporale complessivo facoltativo della combo, calcolato sul tempo reale e condiviso tra tutte le destinazioni di failover. Se vuoto, mantiene il limite di sicurezza di 10 minuti contro i blocchi; un valore positivo lo sostituisce. Impostalo su un valore superiore al timeout della destinazione, affinché il failover abbia ancora tempo per essere eseguito.",
       "disableSessionStickiness": "Ruota su una connessione diversa a ogni richiesta invece di associare un'intera conversazione a una singola connessione tramite l'hash del primo messaggio. Esegue l'override del valore predefinito globale. Lascia su Eredita per preservare i riscontri della cache dei prompt per le chat a più turni."
     },
     "templatesTitle": "Modelli rapidi",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Numero massimo di tentativi",
     "retryDelayLabel": "Ritardo tentativi (ms)",
     "timeoutLabel": "Tempo limite (ms)",
+    "targetTimeout": "Timeout della destinazione (secondi)",
+    "comboTimeout": "Timeout della combo (secondi)",
+    "inheritRequestTimeout": "Eredita il timeout della richiesta",
+    "inheritComboSafetyTimeout": "Eredita il limite di sicurezza di 10 minuti contro i blocchi",
+    "targetTimeoutHint": "Per impostazione predefinita, le destinazioni della combo ereditano il timeout della richiesta corrente. Imposta qui un valore inferiore solo se desideri un fallback più rapido.",
+    "comboTimeoutHint": "Budget temporale complessivo della combo, calcolato sul tempo reale e condiviso tra le destinazioni di failover. Se vuoto, mantiene il limite di sicurezza di 10 minuti contro i blocchi. Impostalo su un valore superiore al timeout della destinazione, affinché il failover abbia ancora tempo per essere eseguito.",
     "healthCheck": "Controllo dello stato di salute",
     "healthCheckDesc": "Verifica preventiva la disponibilità del fornitore",
     "trackMetrics": "Tieni traccia delle metriche",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Truncare proattivamente i risultati degli strumenti lunghi",
-        "description": "Tronca i risultati degli strumenti oltre 2.000 caratteri durante la compressione Lite. La protezione di overflow di emergenza potrebbe comunque ridurre il contenuto quando il contesto supera il budget del modello."
+        "description": "Tronca i risultati lunghi degli strumenti durante la compressione Lite. Il tetto è impostato dal campo Lunghezza massima del risultato strumento (o OMNIROUTE_LITE_MAX_TOOL_LENGTH se vuoto). La protezione di overflow di emergenza può comunque tagliare il contenuto quando il contesto supera il budget del modello."
+      },
+      "maxToolLength": {
+        "label": "Lunghezza massima del risultato strumento",
+        "description": "Limite di caratteri per il troncamento proattivo. Predefinito 2000. Sovrascrivibile con OMNIROUTE_LITE_MAX_TOOL_LENGTH se il campo è vuoto."
       }
     },
     "engineFields": {

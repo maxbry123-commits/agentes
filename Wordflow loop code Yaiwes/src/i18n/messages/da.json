@@ -3288,6 +3288,10 @@
     "models": "Modeller",
     "autoBalance": "Automatisk balancering",
     "advancedSettings": "Avancerede indstillinger",
+    "targetTimeout": "Timeout for mål (sekunder)",
+    "comboTimeout": "Timeout for kombination (sekunder)",
+    "inheritRequestTimeout": "nedarv",
+    "inheritComboSafetyTimeout": "nedarv (10 min.)",
     "retryDelay": "Forsinkelse af forsøg igen (ms)",
     "concurrencyPerModel": "Samtidighed / Model",
     "queueTimeout": "Timeout for kø (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Når den er aktiveret, udløser enhver upstream-fejl øjeblikkelig failover til det næste kombinationsmål, hvorved alle genforsøg og reserve-URL'er springes over.",
       "maxSetRetries": "Antallet af gange at prøve det fulde målsæt igen, når hvert mål mislykkes. 0 = ingen genforsøg på indstillet niveau.",
       "setRetryDelayMs": "Forsinkelse mellem genforsøg på sæt-niveau, hvilket giver forbigående problemer tid til at løse.",
+      "targetTimeoutMs": "Valgfri timeout pr. mål. Hvis feltet er tomt, nedarves den aktuelle timeout for anmodningen; større værdier begrænses til denne timeout.",
+      "comboTimeoutMs": "Valgfrit samlet tidsbudget for hele kombinationen på tværs af alle failover-mål. Hvis feltet er tomt, bevares 10-minuttersgrænsen for fastlåste processer; en positiv værdi erstatter den. Sørg for, at dette er længere end Timeout for mål, så der stadig er tid til failover.",
       "disableSessionStickiness": "Roter til en anden forbindelse ved hver anmodning i stedet for at fastlåse en hel samtale til én forbindelse via hash-værdien for den første besked. Tilsidesætter den globale standard. Lad stå på Nedarv for at bevare prompt-cache-hits for samtaler med flere ture."
     },
     "templatesTitle": "Hurtige skabeloner",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Max forsøger igen",
     "retryDelayLabel": "Forsinkelse af forsøg igen (ms)",
     "timeoutLabel": "Tidsgrænse (ms)",
+    "targetTimeout": "Timeout for mål (sekunder)",
+    "comboTimeout": "Timeout for kombination (sekunder)",
+    "inheritRequestTimeout": "Nedarv timeout for anmodning",
+    "inheritComboSafetyTimeout": "Nedarv 10-minuttersgrænse for fastlåste processer",
+    "targetTimeoutHint": "Kombinationsmål nedarver som standard den aktuelle timeout for anmodningen. Angiv kun en lavere værdi her, når du ønsker hurtigere fallback.",
+    "comboTimeoutHint": "Samlet tidsbudget for hele kombinationen på tværs af failover-mål. Hvis feltet er tomt, bevares 10-minuttersgrænsen for fastlåste processer. Sørg for, at dette er længere end Timeout for mål, så der stadig er tid til failover.",
     "healthCheck": "Sundhedstjek",
     "healthCheckDesc": "Forhåndstjek udbyderens tilgængelighed",
     "trackMetrics": "Spor metrics",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Proaktivt afkort lange værktøjsresultater",
-        "description": "Afkorter værktøjsresultater over 2.000 tegn under Lite-komprimering. Nødoverløbsbeskyttelse kan stadig trimme indhold, når konteksten overskrider modelbudgettet."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

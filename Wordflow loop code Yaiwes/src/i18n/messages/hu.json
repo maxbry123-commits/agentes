@@ -3288,6 +3288,10 @@
     "models": "Modellek",
     "autoBalance": "Automatikus egyensúly",
     "advancedSettings": "Speciális beállítások",
+    "targetTimeout": "Cél időkorlátja (másodperc)",
+    "comboTimeout": "Kombináció időkorlátja (másodperc)",
+    "inheritRequestTimeout": "öröklés",
+    "inheritComboSafetyTimeout": "öröklés (10 perc)",
     "retryDelay": "Újrapróbálkozás késleltetése (ms)",
     "concurrencyPerModel": "Egyidejűség / Modell",
     "queueTimeout": "Sor időtúllépése (ms)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "Ha engedélyezve van, minden felfelé irányuló hiba azonnali feladatátvételt vált ki a következő kombinált célponthoz, és kihagy minden újrapróbálkozást és tartalék URL-t.",
       "maxSetRetries": "A teljes célkészlet újrapróbálkozásainak száma, amikor minden cél meghiúsul. 0 = nincs beállított szintű újrapróbálkozás.",
       "setRetryDelayMs": "Késleltetés a beállított szintű újrapróbálkozások között, így az átmeneti problémáknak van ideje megoldani.",
+      "targetTimeoutMs": "Opcionális célonkénti időkorlát. Ha üres, az aktuális kérési időkorlátot örökli; a nagyobb értékek erre az időkorlátra lesznek korlátozva.",
+      "comboTimeoutMs": "Opcionális, a teljes kombinációra vonatkozó teljes futásiidő-keret az összes feladatátvételi célon. Ha üres, megmarad a 10 perces elakadás elleni leállítás; pozitív érték esetén ez lecserélődik. Állítsa ezt a cél időkorlátjánál hosszabbra, hogy maradjon idő a feladatátvételre.",
       "disableSessionStickiness": "Minden kérésnél váltson át egy másik kapcsolatra, ahelyett, hogy a teljes beszélgetést egyetlen kapcsolathoz rögzítené az első üzenet hash-e alapján. Felülírja a globális alapértelmezést. Hagyja az Inherit beállításon a prompt-cache találatok megőrzéséhez a többfordulós csevegéseknél."
     },
     "templatesTitle": "Gyors sablonok",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "Max újrapróbálkozás",
     "retryDelayLabel": "Újrapróbálkozás késleltetése (ms)",
     "timeoutLabel": "Időtúllépés (ms)",
+    "targetTimeout": "Cél időkorlátja (másodperc)",
+    "comboTimeout": "Kombináció időkorlátja (másodperc)",
+    "inheritRequestTimeout": "Kérési időkorlát öröklése",
+    "inheritComboSafetyTimeout": "A 10 perces elakadás elleni leállítás öröklése",
+    "targetTimeoutHint": "A kombináció céljai alapértelmezés szerint az aktuális kérési időkorlátot öröklik. Csak akkor állítson be itt alacsonyabb értéket, ha gyorsabb tartalékra váltást szeretne.",
+    "comboTimeoutHint": "A teljes kombinációra vonatkozó teljes futásiidő-keret a feladatátvételi célokon. Ha üres, megmarad a 10 perces elakadás elleni leállítás. Állítsa ezt a cél időkorlátjánál hosszabbra, hogy maradjon idő a feladatátvételre.",
     "healthCheck": "állapotfelmérés",
     "healthCheckDesc": "Előzetesen ellenőrizze a szolgáltató elérhetőségét",
     "trackMetrics": "Kövesse nyomon a mérőszámokat",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "Proaktívan vágja le a hosszú eszközeredményeket",
-        "description": "A Lite tömörítés során a szerszám eredményeit 2,000 karakter felett levágja. Vészhelyzeti túlfolyás elleni védelem esetén a tartalom még mindig csökkenhet, ha a kontextus meghaladja a modell költségvetését."
+        "description": "Truncates long tool results during Lite compression. The Maximum tool-result length field (or OMNIROUTE_LITE_MAX_TOOL_LENGTH when that field is unset) sets the cap. Emergency overflow protection may still trim content when the context exceeds the model budget."
+      },
+      "maxToolLength": {
+        "label": "Maximum tool-result length",
+        "description": "Character cap for proactive tool-result truncation. Default 2000. Override with OMNIROUTE_LITE_MAX_TOOL_LENGTH when this field is unset."
       }
     },
     "engineFields": {

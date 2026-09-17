@@ -3288,6 +3288,10 @@
     "models": "모델",
     "autoBalance": "자동 균형",
     "advancedSettings": "고급 설정",
+    "targetTimeout": "대상 시간 제한(초)",
+    "comboTimeout": "콤보 시간 제한(초)",
+    "inheritRequestTimeout": "상속",
+    "inheritComboSafetyTimeout": "상속(10분)",
     "retryDelay": "재시도 지연(ms)",
     "concurrencyPerModel": "동시성/모델",
     "queueTimeout": "대기열 시간 초과(밀리초)",
@@ -3434,6 +3438,8 @@
       "failoverBeforeRetry": "활성화되면 업스트림 오류가 발생하면 모든 재시도 및 대체 URL을 건너뛰고 다음 콤보 대상으로 즉시 장애 조치가 실행됩니다.",
       "maxSetRetries": "모든 대상이 실패할 경우 전체 대상 세트를 재시도하는 횟수입니다. 0 = 설정 수준 재시도가 없습니다.",
       "setRetryDelayMs": "설정 수준 재시도 사이의 지연을 통해 일시적인 문제를 해결할 시간을 제공합니다.",
+      "targetTimeoutMs": "대상별 시간 제한(선택 사항)입니다. 비워 두면 현재 요청 시간 제한을 상속하며, 더 큰 값은 해당 시간 제한으로 제한됩니다.",
+      "comboTimeoutMs": "모든 장애 조치 대상에 걸쳐 적용되는 전체 콤보의 경과 시간 예산(선택 사항)입니다. 비워 두면 10분 중단 방지 제한이 유지되며, 양수 값을 입력하면 이 제한을 대체합니다. 장애 조치를 수행할 시간을 확보할 수 있도록 대상 시간 제한보다 길게 설정하세요.",
       "disableSessionStickiness": "첫 번째 메시지 해시로 전체 대화를 하나의 연결에 고정하는 대신, 요청마다 다른 연결로 순환합니다. 글로벌 기본값을 재정의합니다. 다회차 대화에서 프롬프트 캐시 적중을 유지하려면 상속(Inherit)으로 두세요."
     },
     "templatesTitle": "빠른 템플릿",
@@ -7202,6 +7208,12 @@
     "maxRetriesLabel": "최대 재시도 횟수",
     "retryDelayLabel": "재시도 지연(ms)",
     "timeoutLabel": "시간 초과(밀리초)",
+    "targetTimeout": "대상 시간 제한(초)",
+    "comboTimeout": "콤보 시간 제한(초)",
+    "inheritRequestTimeout": "요청 시간 제한 상속",
+    "inheritComboSafetyTimeout": "10분 중단 방지 제한 상속",
+    "targetTimeoutHint": "콤보 대상은 기본적으로 현재 요청 시간 제한을 상속합니다. 더 빠른 대체 전환이 필요한 경우에만 여기에서 더 낮은 값을 설정하세요.",
+    "comboTimeoutHint": "장애 조치 대상 전체에 적용되는 전체 콤보의 경과 시간 예산입니다. 비워 두면 10분 중단 방지 제한이 유지됩니다. 장애 조치를 수행할 시간을 확보할 수 있도록 대상 시간 제한보다 길게 설정하세요.",
     "healthCheck": "상태 확인",
     "healthCheckDesc": "제공업체 가용성 사전 확인",
     "trackMetrics": "추적 지표",
@@ -8596,7 +8608,11 @@
       },
       "compressToolResults": {
         "label": "긴 도구 결과를 사전적으로 잘라내기",
-        "description": "Lite 압축 중 2,000자를 초과하는 도구 결과를 잘라냅니다. 모델 예산을 초과하는 경우 긴급 오버플로우 보호가 여전히 콘텐츠를 잘라낼 수 있습니다."
+        "description": "Lite 압축 중 긴 도구 결과를 잘라냅니다. 상한은 '최대 도구 결과 길이' 필드(미설정 시 OMNIROUTE_LITE_MAX_TOOL_LENGTH)로 정합니다. 모델 예산을 초과하는 경우 긴급 오버플로우 보호가 여전히 콘텐츠를 잘라낼 수 있습니다."
+      },
+      "maxToolLength": {
+        "label": "최대 도구 결과 길이",
+        "description": "도구 결과 선행 잘라내기 문자 상한. 기본값 2000. 이 필드를 비우면 OMNIROUTE_LITE_MAX_TOOL_LENGTH로 덮어씁니다."
       }
     },
     "engineFields": {
