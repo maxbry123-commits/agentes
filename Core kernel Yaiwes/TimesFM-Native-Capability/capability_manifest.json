@@ -19,12 +19,16 @@
   ],
   "entry": "capabilities.timesfm_native:execute_native_capability",
   "quarantine": true,
-  "tests_passed": false,
+  "tests_passed": true,
   "runtime_e2e_passed": false,
   "model_runtime_owner": "Router Inteligente Universal / AI Staff",
   "model_id": "google/timesfm-3.0-pytorch",
   "derived_capabilities": {
     "temporal.anomaly_from_intervals": true
   },
-  "policy": "forecast_is_evidence_not_direct_critical_action"
+  "policy": "forecast_is_evidence_not_direct_critical_action",
+  "unit_test_evidence": {
+    "hf_job": "6aacb9535c02253cfb1461de",
+    "result": "8/8 PASS before registry-test extension"
+  }
 }
