@@ -162,3 +162,17 @@ El watchdog horario `Watchdog LOOP Yaiwes` fue cancelado/desactivado por orden d
   "watchdog_loop_yaiwes_active": false
 }
 ```
+
+
+## YAIWES-TIMESFM-NATIVE-CAPABILITY
+- Estado global: `GAP_PENDING`.
+- Nota: **GAP pendiente: integrar TimesFM como inteligencia temporal externa seleccionable nativamente por el Kernel YAIWES. TimesFM no es agente; es un modelo especializado. La Skill/adapter permite al agente descubrir e invocar esta capacidad.**
+- GAP-01 descargar Skill/software ligero: `PASS`.
+- GAP-02 crear adapter: `PASS`.
+- GAP-03 registrar capability: `PASS`.
+- GAP-04 decisión semántica Kernel: `PASS`.
+- GAP-05 conectar modelo Router Inteligente Universal / AI Staff: `GAP_PENDING` — no hay endpoint/runtime verificado y no se redescargan pesos en Core kernel.
+- GAP-06 request/response: `PASS`.
+- GAP-07 tests: `PARTIAL_PASS` — 9/9 unit/routing + preflight PASS; inferencia real pendiente.
+- GAP-08 documentación/trazabilidad: `PASS`.
+- Evidencia: `Core kernel Yaiwes/TimesFM-Native-Capability/STATE.json` y `TEST_EVIDENCE.json`.
