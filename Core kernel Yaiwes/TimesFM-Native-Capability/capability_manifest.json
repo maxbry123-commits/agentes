@@ -1,0 +1,30 @@
+{
+  "schema": "yaiwes.native-capability/v1",
+  "id": "timesfm.external.temporal",
+  "name": "TimesFM Native Temporal Capability",
+  "version": "1.0.0",
+  "status": "GAP_PENDING_MODEL_RUNTIME_E2E",
+  "provider": "timesfm",
+  "type": "external_ai_capability",
+  "capabilities": [
+    "temporal.forecast",
+    "temporal.anomaly_from_intervals"
+  ],
+  "aliases": [
+    "forecast",
+    "temporal_prediction",
+    "trend_prediction",
+    "multivariate_forecast",
+    "uncertainty_forecast"
+  ],
+  "entry": "capabilities.timesfm_native:execute_native_capability",
+  "quarantine": true,
+  "tests_passed": false,
+  "runtime_e2e_passed": false,
+  "model_runtime_owner": "Router Inteligente Universal / AI Staff",
+  "model_id": "google/timesfm-3.0-pytorch",
+  "derived_capabilities": {
+    "temporal.anomaly_from_intervals": true
+  },
+  "policy": "forecast_is_evidence_not_direct_critical_action"
+}
