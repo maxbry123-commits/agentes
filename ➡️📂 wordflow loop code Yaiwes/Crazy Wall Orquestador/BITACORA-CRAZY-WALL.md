@@ -496,3 +496,10 @@ Esta escritura alinea la octava fuente requerida (BITÁCORA) con `0019`. G-013 n
 - ZIP sanitizado SHA256: `b5ae5edd6a930e141d9199ec54c97e1c985627aa7f339b6ca77ae65b3f5b2191`.
 - `CLAUDE.md` SHA256 = `AGENTS.md` SHA256 = `ed905e17e95d5ce6324a0a9868a792c2d141e72501129bdb3466881c8ef5a3bb`.
 - Estado: **SYMLINK_GAP=CLOSED**. Publicación física en `Wordflow loop code Yaiwes/AgentSkills/` e integración siguen PENDING.
+
+
+## COMPONENT-OPS — MATERIALIZATION VERIFIED — 2026-09-17
+- PonytailPlugin → `Wordflow loop code Yaiwes/PonytailPlugin/` — 101 archivos runtime materializados; source motor dry-run=166 archivos; runtime test Job `6aacbcfe5c02253cfb146287` COMPLETED. Se omiten assets/docs/examples y el workflow raíz ejecutable por política; el fixture CI upstream se usó solo de forma efímera durante test.
+- AgentSkills → `Wordflow loop code Yaiwes/AgentSkills/` — 22 archivos core/skills-ref materializados; `CLAUDE.md` dereferenced a contenido idéntico de `AGENTS.md`; Job `6aacbb57b1dc2b62dc5906ff` = **40/40 PASS**.
+- Orca → `Wordflow loop code Yaiwes/Orca/` — árbol destino exacto `4a70b119890500c638cdc5e5115bc13a97fee974`, 27,324 blobs; read-back exact-tree verificado.
+- Descarga/materialización: **CLOSED** para estos tres. Integración funcional Wordflow permanece `PENDING` hasta pruebas reales de wiring.
