@@ -524,3 +524,5 @@ Esta escritura alinea la octava fuente requerida (BITÁCORA) con `0019`. G-013 n
 - Gate restante: wiring + test real por componente antes de PASS de integración.
 
 - Gitlinks no autorizados eliminados de ambos destinos; `.gitmodules` ausente. Continuar únicamente con motores canónicos.
+
+- DOWNLOAD/EXTRACT GATE: 8/8 VERIFIED_CLOSED = 100% PASS. Publicación física/materialización en destino sigue PENDING; no se cuenta como instalación. Gitlinks/.gitmodules no autorizados: AUSENTES.
