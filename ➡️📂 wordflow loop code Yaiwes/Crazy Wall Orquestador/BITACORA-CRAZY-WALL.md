@@ -660,3 +660,12 @@ Esta escritura alinea la octava fuente requerida (BITÁCORA) con `0019`. G-013 n
 - Última presencia física validada en `main`: `minimax_mcp/` parcial; 12 destinos restantes ausentes.
 - Acción para Claude: ejecutar el Motor 4 único en un runtime autenticado que pueda clonar `maxbry123-commits/agentes`, preparar el SOURCE_DIR agregado con los 13 refs ya registrados, mover al DEST_DIR exacto, commit/push a `main`, clonar fresco y validar PATH + SHA256 + read-back 13/13.
 - Prohibido: GitHub Actions, gitlinks/submodules, force push, declarar PASS antes del read-back 13/13.
+
+
+## MOTOR 4 ÚNICO — 13/13 MOVE VERIFIED — 2026-09-18
+- Job: `6aad9e4c51992417dfcc7d5c`.
+- Motor 3 canónico `3689924361ce4a1a9fde4ae2b6f6009c37a6042d`: preparación/materialización de symlinks, 11614/11614, failed=0, pending=0.
+- Motor 4 canónico `9a21facfe11327cf60a2afca8f415ad52f0ecbe5`: UNA sola pasada sobre los 13; moved_or_verified=11614, failed=0, pending=0, source_files_remaining=0, VERIFIED_CLOSED.
+- DEST runtime: 13/13 árboles presentes y hasheados.
+- GitHub Actions=NO; GITHUB_TOKEN en Motor 4=NO; gitlinks/submodules=NO.
+- Estado: `MOVE_RUNTIME=13/13 PASS`; `MATERIALIZATION_MAIN=PENDING_READBACK`. No declarar PASS global hasta presencia física 13/13 en `main`.
