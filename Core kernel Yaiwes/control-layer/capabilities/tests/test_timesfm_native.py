@@ -11,7 +11,11 @@ from capabilities.timesfm_native import (
     anomaly_from_intervals,
     execute_native_capability,
     route_native_capability,
+    register_timesfm,
 )
+
+
+from registry.method_registry import MethodRegistry
 
 
 class TimesFMNativeCapabilityTests(unittest.TestCase):
@@ -68,6 +72,13 @@ class TimesFMNativeCapabilityTests(unittest.TestCase):
         self.assertIn("point_forecast", result)
         self.assertIn("quantiles", result)
         self.assertIn("metadata", result)
+
+    def test_method_registry_discovers_timesfm_while_quarantined(self):
+        reg = MethodRegistry()
+        rec = register_timesfm(reg)
+        found = reg.resolve_capability("temporal.forecast", only_active=False)
+        self.assertEqual(found[0].manifest.id, "timesfm.external.temporal")
+        self.assertFalse(rec.manifest.active)
 
     def test_anomaly_is_derived_capability(self):
         out = anomaly_from_intervals([1.0, 9.0], [0.0, 0.0], [2.0, 3.0])
