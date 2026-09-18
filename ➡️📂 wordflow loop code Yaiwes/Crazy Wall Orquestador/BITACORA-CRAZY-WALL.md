@@ -507,10 +507,10 @@ Esta escritura alinea la octava fuente requerida (BITÁCORA) con `0019`. G-013 n
 
 ## COMPONENT-OPS — 4 ANIMATION/VIDEO SKILLS — 2026-09-17
 - Destino: `Wordflow loop code Yaiwes/`.
-- manim-skill → `https://github.com/vumichien/manim-skill` @ `70ccd68cf4dea135973f899b25fb408ddf5946c5` — DOWNLOAD/EXTRACT=RUNNING; MATERIALIZATION=PENDING; INTEGRATION=PENDING.
-- skill-canvas-video → `https://github.com/siegerts/skill-canvas-video` @ `6419a14d9fddb5003c66e0567d927ad57f1e4f06` — DOWNLOAD/EXTRACT=RUNNING; MATERIALIZATION=PENDING; INTEGRATION=PENDING.
-- chat-animation → `https://github.com/xue-xiaobao/chat-animation` @ `d114e627833e2461efcc233d7a63a18cf85b149a` — DOWNLOAD/EXTRACT=RUNNING; MATERIALIZATION=PENDING; INTEGRATION=PENDING.
-- taste-skill → `https://github.com/Leonxlnx/taste-skill` @ `e79ca9ec7e071eb3a3b623c4fb752e853fc3ed58` — DOWNLOAD/EXTRACT=RUNNING; MATERIALIZATION=PENDING; INTEGRATION=PENDING.
+- manim-skill → `https://github.com/vumichien/manim-skill` @ `70ccd68cf4dea135973f899b25fb408ddf5946c5` — DOWNLOAD/EXTRACT=VERIFIED_CLOSED; MATERIALIZATION=PENDING; INTEGRATION=PENDING.
+- skill-canvas-video → `https://github.com/siegerts/skill-canvas-video` @ `6419a14d9fddb5003c66e0567d927ad57f1e4f06` — DOWNLOAD/EXTRACT=VERIFIED_CLOSED; MATERIALIZATION=PENDING; INTEGRATION=PENDING.
+- chat-animation → `https://github.com/xue-xiaobao/chat-animation` @ `d114e627833e2461efcc233d7a63a18cf85b149a` — DOWNLOAD/EXTRACT=VERIFIED_CLOSED; MATERIALIZATION=PENDING; INTEGRATION=PENDING.
+- taste-skill → `https://github.com/Leonxlnx/taste-skill` @ `e79ca9ec7e071eb3a3b623c4fb752e853fc3ed58` — DOWNLOAD/EXTRACT=VERIFIED_CLOSED; MATERIALIZATION=PENDING; INTEGRATION=PENDING.
 - Gate: materialización física + read-back/hash antes de integración.
 
 
@@ -522,3 +522,5 @@ Esta escritura alinea la octava fuente requerida (BITÁCORA) con `0019`. G-013 n
 - chat-animation: DOWNLOAD/EXTRACT=`VERIFIED_CLOSED`; MATERIALIZATION=`PINNED_SUBMODULE_VERIFIED`; INTEGRATION=`PENDING`; source commit `d114e627833e2461efcc233d7a63a18cf85b149a`.
 - taste-skill: DOWNLOAD/EXTRACT=`VERIFIED_CLOSED`; MATERIALIZATION=`PINNED_SUBMODULE_VERIFIED`; INTEGRATION=`PENDING`; source commit `e79ca9ec7e071eb3a3b623c4fb752e853fc3ed58`.
 - Gate restante: wiring + test real por componente antes de PASS de integración.
+
+- Gitlinks no autorizados eliminados de ambos destinos; `.gitmodules` ausente. Continuar únicamente con motores canónicos.
