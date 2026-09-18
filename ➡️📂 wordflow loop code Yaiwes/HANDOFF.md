@@ -90,3 +90,26 @@ Estado verificable:
 - CL-004: Motor 3 materializó los symlinks de `kimi-code` y `kimi-cli` como archivos regulares, dejando 0 symlinks; 4.471/4.471 y 988/988 archivos, respectivamente. Publicación cross-repo sigue pendiente porque GitHub rechaza reutilizar trees externas y el bulk blob write quedó bloqueado por controles del conector.
 
 Regla de continuación: no usar GitHub Actions para estas adquisiciones; mantener motores canónicos, SHA/read-back y FAIL_CLOSED. No contar dry-runs o staging como entregado.
+
+## Notas de integración — componentes MiniMax / Kimi / Orca — auditoría 2026-09-18
+
+Regla de verdad: **descarga/extracción temporal verificada no equivale a presencia física en `wordflow_loop/agent_sources/` ni a integración runtime**. Solo Orca está publicado físicamente en el destino nuevo en este checkpoint.
+
+| Componente | Evidencia de adquisición | Presencia física en agent_sources | Nota de integración |
+|---|---|---|---|
+| Orca | Motor 3; tree `4a70b119890500c638cdc5e5115bc13a97fee974`; commit `50b657b4a914f6fcc4452f1cb74cc08ff08146c6` | **SÍ**: `agent_sources/orca` | Fuente interna ya replicada. No implica runtime PASS por sí sola. |
+| MiniMax Mini-Agent | commit `d76a4f6389688cabda39c224a6cdfa274215d47c`; Motor 2 dry-run verificado | **NO** | CL-006 clasificación → CL-007 fleet si pasa gates → CL-008 transporte. |
+| MiniMax OpenRoom | commit `02468154c4d99f8925916425bf444d672454fb3d`; Motor 2 dry-run verificado | **NO** | CL-006 clasificar UI/agent; CL-010 solo si aporta valor único. |
+| MiniMax mmx CLI | commit `bfbb4cb75ec343149eaccfd668c5011aa27bcf2b`; Motor 2 dry-run verificado | **NO** | CL-010 infraestructura; no crear bus paralelo. |
+| MiniMax Code Plugins | commit `d592f422893846c2aac48f8b407a92bd0293c6b1`; Motor 2 dry-run verificado | **NO** | CL-010 capa plugin detrás de ports/bus existentes. |
+| MiniMax MCP | commit `0856b9aef8a9d676bb63bdd6b6426d7b640a3b7a`; 28 archivos; tree hash `cf3ed570...` | **NO** | CL-010 MCP port. |
+| MiniMax MCP JS | commit `8032f830203a1c61e56760b1680db923654bcb1b`; 38 archivos; tree hash `d3d0e65f...` | **NO** | CL-010 MCP JS port. |
+| MiniMax Coding Plan MCP | commit `5dbf3494d7dac35d154958e0c1dab03910b89bbd`; 27 archivos; tree hash `daa6bf47...` | **NO** | CL-010 planning capability. |
+| @minimax-ai/code / mcode | npm `0.4.10`; shasum `f4564e4fe8c92f4f496efb75e9718b28716be126`; instalación efímera PASS | **NO** | CL-003 adquisición física → CL-007 fleet → CL-008 ACP/stdio. |
+| Kimi Code | commit `1fddc16e3ea2de4c26a18acd764380adf9e2ed64`; Motor 3: 4.471 archivos, symlink materializado | **NO** | CL-004 publicación → CL-007 fleet → CL-008 ACP/stdio. |
+| Kimi CLI | commit `86f136422a0aae6b217ea49e7ea1d2e8a1defcd2`; Motor 3: 988 archivos, 2 symlinks materializados | **NO** | CL-004 publicación; CL-011 legacy/fallback solo si demuestra valor. |
+| Kimi Agent SDK | commit `ed4be6be5280d02191da88bbafb3f828dcd33d72`; Motor 2 dry-run verificado | **NO** | CL-011 SDK/transport. |
+| Kimi Agent RS | commit `f9186cd20b28c02d33721c05fd248e65d56e3e53`; 172 archivos; tree hash `39a2cc96...` | **NO** | CL-011 SDK/transport. |
+| Kimi Researcher | commit `9406d821348471bceb6d5fa0b7eba05411106f93`; 16 archivos; tree hash `ce5d2be3...` | **NO** | CL-011 research capability, sujeto a NO_VALUE_GAP. |
+
+**GAP común de publicación:** `PUBLISH_TRANSPORT_SECURITY_GATE`. La adquisición/verificación existe, pero los 13 objetivos nuevos MiniMax/Kimi/mcode todavía no cuentan como entregados físicamente en `agent_sources/`. No marcar CL-002/003/004 como PASS hasta presencia física + hash/read-back en `main`.
