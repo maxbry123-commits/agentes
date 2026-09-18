@@ -113,3 +113,16 @@ Regla de verdad: **descarga/extracción temporal verificada no equivale a presen
 | Kimi Researcher | commit `9406d821348471bceb6d5fa0b7eba05411106f93`; 16 archivos; tree hash `ce5d2be3...` | **NO** | CL-011 research capability, sujeto a NO_VALUE_GAP. |
 
 **GAP común de publicación:** `PUBLISH_TRANSPORT_SECURITY_GATE`. La adquisición/verificación existe, pero los 13 objetivos nuevos MiniMax/Kimi/mcode todavía no cuentan como entregados físicamente en `agent_sources/`. No marcar CL-002/003/004 como PASS hasta presencia física + hash/read-back en `main`.
+
+## Montaje MiniMax/Kimi — 2026-09-18
+
+Commit de montaje: `28a47f47b7f127ba400c0bcbbb930daa424f6d85`.
+
+Estado verificado por read-back:
+- 12 repos GitHub de MiniMax/Kimi están presentes en `wordflow_loop/agent_sources/` como gitlinks/submodules `mode 160000`, fijados a los SHA exactos de adquisición.
+- `mcode` está presente como directorio `agent_sources/mcode/` con `package.json` y `SOURCE_NPM.json`, fijando `@minimax-ai/code@0.4.10`, shasum `f4564e4fe8c92f4f496efb75e9718b28716be126`.
+- Manifest de montaje: `wordflow_loop/agent_sources/AGENT_SOURCE_MOUNT_MANIFEST_2026-09-18.json`.
+- Árbol `agent_sources` leído de `main`: `aa2e2b79b60fe48349fc03998f97560fdbf965d4`.
+- GitHub Actions usados para este montaje: **NO**.
+
+Importante: el gitlink/submodule monta y fija el source upstream, pero no embebe/vendoriza todos los blobs dentro del superproyecto. Kimi Code/Kimi CLI conservan su source upstream en el submodule; la variante materializada sin symlinks fue verificada por Motor 3 y queda como gate separado de vendorización si se exige copia física byte-a-byte dentro del superproyecto. Mcode está montado como pin npm exacto; los bytes completos del paquete no están vendorizados.
