@@ -503,3 +503,12 @@ Esta escritura alinea la octava fuente requerida (BITÁCORA) con `0019`. G-013 n
 - AgentSkills → `Wordflow loop code Yaiwes/AgentSkills/` — 22 archivos core/skills-ref materializados; `CLAUDE.md` dereferenced a contenido idéntico de `AGENTS.md`; Job `6aacbb57b1dc2b62dc5906ff` = **40/40 PASS**.
 - Orca → `Wordflow loop code Yaiwes/Orca/` — árbol destino exacto `4a70b119890500c638cdc5e5115bc13a97fee974`, 27,324 blobs; read-back exact-tree verificado.
 - Descarga/materialización: **CLOSED** para estos tres. Integración funcional Wordflow permanece `PENDING` hasta pruebas reales de wiring.
+
+
+## COMPONENT-OPS — 4 ANIMATION/VIDEO SKILLS — 2026-09-17
+- Destino: `Wordflow loop code Yaiwes/`.
+- manim-skill → `https://github.com/vumichien/manim-skill` @ `70ccd68cf4dea135973f899b25fb408ddf5946c5` — DOWNLOAD/EXTRACT=RUNNING; MATERIALIZATION=PENDING; INTEGRATION=PENDING.
+- skill-canvas-video → `https://github.com/siegerts/skill-canvas-video` @ `6419a14d9fddb5003c66e0567d927ad57f1e4f06` — DOWNLOAD/EXTRACT=RUNNING; MATERIALIZATION=PENDING; INTEGRATION=PENDING.
+- chat-animation → `https://github.com/xue-xiaobao/chat-animation` @ `d114e627833e2461efcc233d7a63a18cf85b149a` — DOWNLOAD/EXTRACT=RUNNING; MATERIALIZATION=PENDING; INTEGRATION=PENDING.
+- taste-skill → `https://github.com/Leonxlnx/taste-skill` @ `e79ca9ec7e071eb3a3b623c4fb752e853fc3ed58` — DOWNLOAD/EXTRACT=RUNNING; MATERIALIZATION=PENDING; INTEGRATION=PENDING.
+- Gate: materialización física + read-back/hash antes de integración.
