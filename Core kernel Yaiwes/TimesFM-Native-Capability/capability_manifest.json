@@ -28,7 +28,15 @@
   },
   "policy": "forecast_is_evidence_not_direct_critical_action",
   "unit_test_evidence": {
-    "hf_job": "6aacb9535c02253cfb1461de",
-    "result": "8/8 PASS before registry-test extension"
+    "hf_job": "6aacbb8d5c02253cfb14623b",
+    "result": "9/9 PASS"
+  },
+  "preflight_evidence": {
+    "hf_job": "6aacbbe4b1dc2b62dc590715",
+    "result": "PASS_NO_MODEL_WEIGHTS"
+  },
+  "documentation": {
+    "architecture_readme": true,
+    "crazy_wall": true
   }
 }
