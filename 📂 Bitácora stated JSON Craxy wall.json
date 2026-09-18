@@ -10004,5 +10004,37 @@
       ],
       "note": "PENDING PARA CLAUDE Y SOL: descargar/materializar, validar read-back/hash y luego integrar. No marcar integración PASS sin prueba."
     }
+  },
+  "native_capabilities": {
+    "YAIWES-TIMESFM-NATIVE-CAPABILITY": {
+      "status": "GAP_PENDING",
+      "provider": "timesfm",
+      "capabilities": [
+        "temporal.forecast",
+        "temporal.anomaly_from_intervals"
+      ],
+      "destination": "Core kernel Yaiwes/TimesFM-Native-Capability/",
+      "source": "https://github.com/google-research/timesfm",
+      "source_commit": "e31dadd84cb26bd5153fde6687502b8312e918fb",
+      "model": "google/timesfm-3.0-pytorch",
+      "model_weights_in_core": false,
+      "gaps": {
+        "GAP-01": "PASS",
+        "GAP-02": "PASS",
+        "GAP-03": "PASS",
+        "GAP-04": "PASS",
+        "GAP-05": "GAP_PENDING",
+        "GAP-06": "PASS",
+        "GAP-07": "PARTIAL_PASS_REAL_INFERENCE_PENDING",
+        "GAP-08": "PASS"
+      },
+      "tests": {
+        "unit_routing_registry": "9/9 PASS",
+        "hf_job": "6aacbb8d5c02253cfb14623b",
+        "preflight_job": "6aacbbe4b1dc2b62dc590715",
+        "real_model_inference": false
+      },
+      "note": "GAP pendiente: integrar TimesFM como inteligencia temporal externa seleccionable nativamente por el Kernel YAIWES. TimesFM no es agente; es un modelo especializado. La Skill/adapter permite al agente descubrir e invocar esta capacidad."
+    }
   }
 }
