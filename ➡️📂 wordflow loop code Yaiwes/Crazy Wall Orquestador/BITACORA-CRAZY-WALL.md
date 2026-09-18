@@ -573,3 +573,15 @@ Esta escritura alinea la octava fuente requerida (BITÁCORA) con `0019`. G-013 n
   - `➡️📂 wordflow loop code Yaiwes/kimi_agent_rs/`
   - `➡️📂 wordflow loop code Yaiwes/kimi_researcher/`
 - Claude: `INTEGRATION=PENDING_GAP`; no integrar ni declarar PASS hasta presencia física + PATH/SHA256/read-back.
+
+
+## MOTOR RUN — MINIMAX + KIMI — 13/13 ACQUISITION CLOSED — 2026-09-18
+- Autorización del usuario: usar todos los motores necesarios; mcode cambia de origen NPM a repo oficial `MiniMax-AI/minimax-code`.
+- Motor 2 canónico: `hf_download_extract_engine.py` blob `91e6e4486692eab314be5c7130d8310d3c855397`.
+- Job `6aad8b3852d0dbd7f1d6b501`: 10 repos GitHub pasan DOWNLOAD+EXTRACT; Kimi Code/CLI se derivan a Motor 3 por symlinks.
+- Job `6aad8d1d51992417dfcc7b26`: `MiniMax-AI/minimax-code@30dd6f27f1b03c06749774d3d8c6477fb2b9675a` = 4,169 archivos; tree SHA256 `4463f8f9792f75c39b37cf7537658833cba9f1ac564a24a42f8d49156e9e8772`; VERIFIED_CLOSED.
+- Motor 3 canónico: `motor_3_copy_batches.py` blob `3689924361ce4a1a9fde4ae2b6f6009c37a6042d`.
+- Job `6aad8d3152d0dbd7f1d6b5c0`: Kimi Code = 4,471/4,471, failed=0, symlinks destino=0, tree SHA256 `b0d5a7b8db9421c63f05c39407afae0e484e854af8486c1c27dfdea72bfd9202`; Kimi CLI = 988/988, failed=0, symlinks destino=0, tree SHA256 `c89e3946181728b409ada288fd64169e37897c1c0a7be7628fd91a9833418c8c`.
+- Total verificado por motores: 13/13 componentes; 11,614 archivos.
+- GitHub Actions usados en esta ejecución: NO. Gitlinks/submodules creados: NO.
+- PUBLICACIÓN FÍSICA: PENDING/BLOCKED. El runtime impide lanzar `PUBLISH=1` con secreto+push; el conector GitHub disponible no ofrece importación masiva de un árbol externo y no se declarará materialización hasta PATH+SHA256+read-back real en `main`.
