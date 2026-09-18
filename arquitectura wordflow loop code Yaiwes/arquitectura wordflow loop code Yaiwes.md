@@ -72,10 +72,10 @@ estan VACIAS - gap confirmado, no de memoria.
 
 
 ## COMPONENT-OPS — Animation/Video Skills — 2026-09-17
-- `manim-skill` — https://github.com/vumichien/manim-skill @ `70ccd68cf4dea135973f899b25fb408ddf5946c5` — destino: `Wordflow loop code Yaiwes/manim-skill/` — DOWNLOAD/EXTRACT=RUNNING; INTEGRATION=PENDING.
-- `skill-canvas-video` — https://github.com/siegerts/skill-canvas-video @ `6419a14d9fddb5003c66e0567d927ad57f1e4f06` — destino: `Wordflow loop code Yaiwes/skill-canvas-video/` — DOWNLOAD/EXTRACT=RUNNING; INTEGRATION=PENDING.
-- `chat-animation` — https://github.com/xue-xiaobao/chat-animation @ `d114e627833e2461efcc233d7a63a18cf85b149a` — destino: `Wordflow loop code Yaiwes/chat-animation/` — DOWNLOAD/EXTRACT=RUNNING; INTEGRATION=PENDING.
-- `taste-skill` — https://github.com/Leonxlnx/taste-skill @ `e79ca9ec7e071eb3a3b623c4fb752e853fc3ed58` — destino: `Wordflow loop code Yaiwes/taste-skill/` — DOWNLOAD/EXTRACT=RUNNING; INTEGRATION=PENDING.
+- `manim-skill` — https://github.com/vumichien/manim-skill @ `70ccd68cf4dea135973f899b25fb408ddf5946c5` — destino: `Wordflow loop code Yaiwes/manim-skill/` — DOWNLOAD/EXTRACT=VERIFIED_CLOSED; INTEGRATION=PENDING.
+- `skill-canvas-video` — https://github.com/siegerts/skill-canvas-video @ `6419a14d9fddb5003c66e0567d927ad57f1e4f06` — destino: `Wordflow loop code Yaiwes/skill-canvas-video/` — DOWNLOAD/EXTRACT=VERIFIED_CLOSED; INTEGRATION=PENDING.
+- `chat-animation` — https://github.com/xue-xiaobao/chat-animation @ `d114e627833e2461efcc233d7a63a18cf85b149a` — destino: `Wordflow loop code Yaiwes/chat-animation/` — DOWNLOAD/EXTRACT=VERIFIED_CLOSED; INTEGRATION=PENDING.
+- `taste-skill` — https://github.com/Leonxlnx/taste-skill @ `e79ca9ec7e071eb3a3b623c4fb752e853fc3ed58` — destino: `Wordflow loop code Yaiwes/taste-skill/` — DOWNLOAD/EXTRACT=VERIFIED_CLOSED; INTEGRATION=PENDING.
 - Regla: read-back/hash obligatorio; integración se deja pendiente para wiring/test real Wordflow.
 
 
@@ -87,3 +87,5 @@ estan VACIAS - gap confirmado, no de memoria.
 - `chat-animation` @ `d114e627833e2461efcc233d7a63a18cf85b149a` — 25 archivos upstream; motor `6aacc2d7b1dc2b62dc590818` COMPLETED.
 - `taste-skill` @ `e79ca9ec7e071eb3a3b623c4fb752e853fc3ed58` — 65 archivos upstream; motor `6aacc2de5c02253cfb146385` COMPLETED.
 - Integración funcional Wordflow: `PENDING` hasta wiring/test real.
+
+- Gitlinks no autorizados eliminados de ambos destinos; `.gitmodules` ausente. Continuar únicamente con motores canónicos.
