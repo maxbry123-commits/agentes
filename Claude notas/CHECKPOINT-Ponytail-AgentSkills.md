@@ -1,18 +1,14 @@
-CHECKPOINT 2026-09-18 - Ponytail y AgentSkills CONFIRMADOS REALES
-Correccion: Claude fallo en no encontrarlos antes por buscar mal.
-Sol tenia razon esta vez, no alucino.
+CHECKPOINT 2026-09-18 continuacion - contenido real de frontend/
 
-Wordflow loop code Yaiwes/PonytailPlugin/ - 36 entradas raiz, plugin
-real y completo (init.py 7.8KB, README 23.5KB, soporte multi-plataforma,
-tests, skills, hooks, commands, benchmarks, ponytail-mcp).
+wordflow loop code Yaiwes/frontend/ contiene directo: AGENTS.md,
+CLAUDE.md, package.json, Dockerfile, electron/, playwright.config.ts,
+y 4 carpetas clave: PonytailPlugin/ (36 archivos, confirmado real),
+AgentSkills/ (es el repo de la especificacion abierta Agent Skills de
+Anthropic, NO 24 skills concretos, apunta a github.com/anthropics/skills,
+skills-ref/ vacia), Orca/ (presente sin registro previo), @omniroute/
+(presente sin registro previo).
 
-Wordflow loop code Yaiwes/AgentSkills/ - 7 entradas raiz (AGENTS.md,
-CLAUDE.md, LICENSE, README.md, package.json, skills-ref con
-probablemente las 24 habilidades, pendiente confirmar).
+Correccion: 24 habilidades no localizadas, es un producto distinto.
 
-Ambos sueltos en la raiz, pendientes de organizar en el plan de
-unificacion ya aprobado (backend/frontend dentro de un solo mundo).
-
-Pendiente inmediato: leer skills-ref y los README antes de cablear.
-Sigue pendiente: mover Seals team YAIWES con Comand Center dentro hacia
-Wordflow loop code Yaiwes/backend/, proyecto ajeno hacia frontend/.
+Pendiente: leer contenido real de Orca y omniroute, buscar 24 skills en
+otro lado si existen, convertir PonytailPlugin en contrato DSL/DAG.
