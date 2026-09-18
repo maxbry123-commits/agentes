@@ -1,10 +1,10 @@
 """
-ejecutor.py - FIX P0-01, P0-02, P0-03, P0-04, P0-09, P0-11 (auditoria 5x).
+ejecutor.py - FIX P0-01, P0-02, P0-03, P0-04, P0-09, P0-11, P0-13/14/15/17.
 P0-01: cada tarea valida su ruta contra dag_schema.yaml FRESCO (dag_engine.py).
-P0-09 NUEVO: loop_principal ahora SI reencola lo que devuelve el watchdog
-(antes se ignoraba el retorno de watchdog_check()).
-P0-11 NUEVO: idempotencia real via idempotencia.py - mismo command_id +
-mismo payload = REPLAY; mismo command_id + payload distinto = CONFLICT.
+P0-09: loop_principal reencola lo que devuelve el watchdog.
+P0-11: idempotencia real via idempotencia.py.
+P0-13/14/15/17: instalar_componente ahora devuelve ToolResult tipado
+(antes bool), consumido aqui correctamente.
 """
 import json
 import uuid
@@ -32,14 +32,12 @@ def ejecutar_tarea(tarea: dict) -> dict:
     tarea = {**tarea, "mission_id": mission_id}
     command_id = tarea.get("command_id", mission_id)
 
-    # P0-11 FIX: chequeo de idempotencia ANTES de tocar cualquier side effect.
     accion, resultado_previo = REGISTRO_GLOBAL.verificar(command_id, tarea)
     if accion == "REPLAY":
         return {**resultado_previo, "idempotencia": "REPLAY_RESULTADO_PREVIO"}
     if accion == "IDEMPOTENCY_CONFLICT":
         return {"status": "GAP", "mission_id": mission_id, "evidencia": {"motivo": "IDEMPOTENCY_CONFLICT_MISMO_ID_DISTINTO_PAYLOAD"}}
 
-    # P0-01 FIX: validar contra el DAG cargado fresco ANTES de ejecutar.
     dag_ok, dag_info = dag_engine.validar_ruta_de_tipo(tarea["tipo"])
     if not dag_ok:
         resultado = {"status": "GAP", "mission_id": mission_id, "evidencia": {"motivo": "DAG_NO_DECLARA_ESTA_RUTA", "detalle": dag_info}}
@@ -48,11 +46,13 @@ def ejecutar_tarea(tarea: dict) -> dict:
     nodo_dag = dag_info
 
     if tarea["tipo"] == "instalar_paquete":
-        ok = instalar_componente(tarea["nombre"], tarea["url"], RAIZ)
-        if ok:
-            resultado = {"status": "PASS", "mission_id": mission_id, "nodo_dag": nodo_dag, "evidencia": {"path": str(RAIZ / tarea["nombre"])}}
+        # P0-13/14/15/17 FIX: instalar_componente ahora devuelve ToolResult.
+        tool_result = instalar_componente(tarea["nombre"], tarea["url"], RAIZ)
+        if tool_result.ok:
+            resultado = {"status": "PASS", "mission_id": mission_id, "nodo_dag": nodo_dag, "evidencia": {"artifacts": tool_result.artifacts, "receipt": tool_result.receipt}}
         else:
-            resultado = investigar_comunidad(tarea)
+            # P0-17: el error se vuelve OBSERVATION, nunca un GAP mudo.
+            resultado = {"status": "GAP", "mission_id": mission_id, "nodo_dag": nodo_dag, "evidencia": tool_result.como_observacion()}
         REGISTRO_GLOBAL.registrar_resultado(command_id, tarea, resultado)
         return resultado
 
@@ -109,7 +109,6 @@ def loop_principal(cola_tareas: list) -> None:
         tarea = cola_tareas.pop(0)
         resultado = ejecutar_tarea(tarea)
         registrar_evidencia(tarea, resultado)
-    # P0-09 FIX: el retorno del watchdog ya NO se ignora, se reencola de verdad.
     activar_watchdog(cola_tareas)
     if cola_tareas:
         loop_principal(cola_tareas)
