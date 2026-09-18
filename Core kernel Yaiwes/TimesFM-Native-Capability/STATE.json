@@ -45,7 +45,7 @@
     },
     "GAP-08": {
       "task": "documentación y trazabilidad",
-      "status": "IN_PROGRESS"
+      "status": "PASS"
     }
   },
   "acceptance": {
@@ -57,7 +57,15 @@
     "router_runtime_accessible": false,
     "real_inference": false,
     "structured_response_unit_verified": true,
-    "architecture_readme": false,
-    "crazy_wall": false
+    "architecture_readme": true,
+    "crazy_wall": true
+  },
+  "last_verified": {
+    "unit_routing_registry": "9/9 PASS",
+    "unit_job": "6aacbb8d5c02253cfb14623b",
+    "preflight_job": "6aacbbe4b1dc2b62dc590715",
+    "architecture_commit": "0e6d458e6732652ae8f063d52534394aa15effc1",
+    "crazy_wall_commit": "22165bf6e761da43ce9864a2568d6fde234e7a42",
+    "remaining_gate": "GAP-05 Router/AI Staff runtime + real TimesFM inference"
   }
 }
