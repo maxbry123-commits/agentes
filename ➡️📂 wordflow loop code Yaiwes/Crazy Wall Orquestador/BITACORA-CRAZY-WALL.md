@@ -637,3 +637,16 @@ Esta escritura alinea la octava fuente requerida (BITÁCORA) con `0019`. G-013 n
 - Orden para Claude: localizar/recrear los 13 árboles desde los refs+hashes registrados usando únicamente motores canónicos; ejecutar Motor 3→Motor 4 hacia la raíz autorizada y publicar al repo; después exigir PATH + SHA256 + read-back por los 13 antes de integración.
 - Prohibido: GitHub Actions, gitlinks/submodules, declarar PASS por la existencia histórica de `/tmp/finalroot`.
 - Estado: `MOTOR3/MOTOR4_HISTORY=13/13 PASS`; `MATERIALIZATION_MAIN=1/13 PARTIAL`; `CLAUDE_HANDOFF=READY`.
+
+
+## HANDOFF CLAUDE — UBICACIÓN + MOTOR 3→4 + PUBLICACIÓN FINAL — 2026-09-18
+- Director/usuario autoriza usar todos los motores necesarios para cerrar MiniMax+Kimi; GitHub Actions y gitlinks/submodules siguen prohibidos.
+- Destino final obligatorio: `➡️📂 wordflow loop code Yaiwes/` en `maxbry123-commits/agentes@main`.
+- Ubicación temporal comprobada del lote completo: job HF `6aad964e51992417dfcc7c95`, raíz efímera `/tmp/finalroot/`.
+- En ese job, Motor 3 `Motores/➡️📂motor de copiar archivos/motor_3_copy_batches.py` blob `3689924361ce4a1a9fde4ae2b6f6009c37a6042d` + Motor 4 `Motores/➡️📂motor de moves archivos/motor_4_move_batches.py` blob `9a21facfe11327cf60a2afca8f415ad52f0ecbe5` cerraron 13/13: failed=0, pending=0, source_files_remaining=0.
+- IMPORTANTE: `/tmp/finalroot/` pertenecía a un job ya COMPLETED y no es almacenamiento durable; para publicar hay que regenerar desde los refs fijados y ejecutar Motor 3→4 directamente dentro de un clone/worktree del repo destino.
+- Intento de publicación `6aad95f452d0dbd7f1d6b7b0` falló con `fatal: could not read Username for 'https://github.com'`.
+- Validación fresh de la credencial del runtime: job `6aad984551992417dfcc7ce7` → `GITHUB_AUTH_HTTP_401`. No usar esa credencial para push.
+- Estado real en `main`: solo `➡️📂 wordflow loop code Yaiwes/minimax_mcp/` está parcialmente materializado; los otros 12 paths no existen todavía.
+- Refs fuente fijados: Mini-Agent `d76a4f6389688cabda39c224a6cdfa274215d47c`; OpenRoom `02468154c4d99f8925916425bf444d672454fb3d`; MiniMax cli `bfbb4cb75ec343149eaccfd668c5011aa27bcf2b`; Code Plugins `d592f422893846c2aac48f8b407a92bd0293c6b1`; MiniMax MCP `0856b9aef8a9d676bb63bdd6b6426d7b640a3b7a`; MCP-JS `8032f830203a1c61e56760b1680db923654bcb1b`; Coding-Plan-MCP `5dbf3494d7dac35d154958e0c1dab03910b89bbd`; kimi-code `1fddc16e3ea2de4c26a18acd764380adf9e2ed64`; kimi-cli `86f136422a0aae6b217ea49e7ea1d2e8a1defcd2`; kimi-agent-sdk `ed4be6be5280d02191da88bbafb3f828dcd33d72`; kimi-agent-rs `f9186cd20b28c02d33721c05fd248e65d56e3e53`; Kimi-Researcher `9406d821348471bceb6d5fa0b7eba05411106f93`; mcode/minimax-code `30dd6f27f1b03c06749774d3d8c6477fb2b9675a`.
+- Gate Claude: regenerar → Motor 3 → Motor 4 hacia el destino exacto → commit/push con una credencial GitHub válida → read-back de los 13 paths → comparar PATH + files + SHA256 con la evidencia del job `6aad964e51992417dfcc7c95`; solo entonces MATERIALIZATION=13/13 PASS e iniciar integración.
