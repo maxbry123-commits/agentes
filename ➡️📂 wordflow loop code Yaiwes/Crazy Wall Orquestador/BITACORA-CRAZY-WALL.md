@@ -624,3 +624,16 @@ Esta escritura alinea la octava fuente requerida (BITÁCORA) con `0019`. G-013 n
 - Publicación por HF Job con credencial: BLOCKED; la inyección usada no aportó una credencial GitHub válida para push. Publicación por Git Data cross-repo: BLOCKED; GitHub acepta únicamente objetos que ya existen en el repo destino.
 - Estado para Claude: `ACQUISITION/MOTOR3/MOTOR4=13/13 PASS`; `MATERIALIZATION_MAIN=1/13 PRESENT`; `INTEGRATION=BLOCKED`.
 - Orden a Claude: NO declarar integración ni PASS global hasta que los 13 paths existan en `main` y cada uno pase PATH + SHA256 + read-back contra los hashes anteriores.
+
+
+## HANDOFF CLAUDE — UBICACIÓN TEMPORAL MINIMAX/KIMI + MOVIMIENTO PENDIENTE — 2026-09-18
+- Evidencia recuperada del Job HF `6aad964e51992417dfcc7c95` (COMPLETED): Motor 3 → Motor 4 procesó 13/13 con `VERIFIED_CLOSED`, `failed=0`, `pending=0`, `source_files_remaining=0`.
+- Runtime efímero exacto usado por ese job: `ROOT=/tmp/finalroot`; staging `/tmp/stage/<slug>`; fuentes `/tmp/srcs/<slug>`; estados `/tmp/states/<slug>.*.json`.
+- Motor 3: `Motores/➡️📂motor de copiar archivos/motor_3_copy_batches.py` blob `3689924361ce4a1a9fde4ae2b6f6009c37a6042d`.
+- Motor 4: `Motores/➡️📂motor de moves archivos/motor_4_move_batches.py` blob `9a21facfe11327cf60a2afca8f415ad52f0ecbe5`.
+- IMPORTANTE: `/tmp/finalroot` pertenecía al contenedor efímero del job ya COMPLETED; no asumir que sigue montado o accesible. Los logs del job son la evidencia persistente de aquel movimiento.
+- Destino GitHub autorizado: `maxbry123-commits/agentes/main/➡️📂 wordflow loop code Yaiwes/<slug>/`.
+- Read-back actual de main: solo `minimax_mcp/` está parcialmente materializado; los otros 12 paths no existen todavía.
+- Orden para Claude: localizar/recrear los 13 árboles desde los refs+hashes registrados usando únicamente motores canónicos; ejecutar Motor 3→Motor 4 hacia la raíz autorizada y publicar al repo; después exigir PATH + SHA256 + read-back por los 13 antes de integración.
+- Prohibido: GitHub Actions, gitlinks/submodules, declarar PASS por la existencia histórica de `/tmp/finalroot`.
+- Estado: `MOTOR3/MOTOR4_HISTORY=13/13 PASS`; `MATERIALIZATION_MAIN=1/13 PARTIAL`; `CLAUDE_HANDOFF=READY`.
