@@ -21,7 +21,7 @@
     "evidence": "wordflow_loop/evidence/ORCA_ADDITIONAL_DESTINATION_MOTOR3_2026-09-17.json"
   },
   "cl002": {
-    "status": "IN_PROGRESS",
+    "status": "IN_PROGRESS_FAIL_CLOSED_PUBLICATION_SECURITY_GATE",
     "motor2_blob": "91e6e4486692eab314be5c7130d8310d3c855397",
     "latest_validation_job": "6aac8e87b1dc2b62dc58fe79",
     "verified": [
@@ -64,7 +64,20 @@
     "publication_gaps": [
       "CONNECTED_GITHUB_SECURITY_CONTROL_BLOCKED_BULK_SOURCE_BLOB_WRITE",
       "CONNECTED_GITHUB_CANNOT_DECODE_BINARY_REPO_BLOBS_FOR_KIMI_RESEARCHER"
-    ]
+    ],
+    "secret_ref_probe": {
+      "status": "PRESENT_NO_VALUE_EXPOSED",
+      "job": "6aac90a25c02253cfb145899",
+      "variable": "GITHUB_TOKEN"
+    },
+    "transport_probe": {
+      "exact_blob_sha_match": true,
+      "tested_blob": "b13e833219334a15562ff31833e4ea9388954cdb",
+      "bulk_cross_repo_transfer": "BLOCKED_BY_CONNECTED_TOOL_SECURITY",
+      "motor2_publish1_launch": "BLOCKED_BEFORE_JOB_CREATION_BY_TOOL_SECURITY",
+      "branch_mutation": false,
+      "github_actions_used": false
+    }
   },
   "cl003": {
     "status": "IN_PROGRESS_ARTIFACT_VERIFIED_PUBLICATION_PENDING",
@@ -110,7 +123,7 @@
     "gap": "CROSS_REPO_TREE_REUSE_REJECTED_422_AND_BULK_BLOB_PUBLICATION_BLOCKED"
   },
   "next_queue": [
-    "CL-002 publication transport",
+    "CL-002 solve non-GitHub-Actions publication transport under canonical motor contract",
     "CL-003 npm artifact publication",
     "CL-004 materialized Kimi trees publication",
     "CL-005..CL-013"
