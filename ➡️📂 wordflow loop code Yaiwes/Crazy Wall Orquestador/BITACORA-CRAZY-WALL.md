@@ -512,3 +512,13 @@ Esta escritura alinea la octava fuente requerida (BITÁCORA) con `0019`. G-013 n
 - chat-animation → `https://github.com/xue-xiaobao/chat-animation` @ `d114e627833e2461efcc233d7a63a18cf85b149a` — DOWNLOAD/EXTRACT=RUNNING; MATERIALIZATION=PENDING; INTEGRATION=PENDING.
 - taste-skill → `https://github.com/Leonxlnx/taste-skill` @ `e79ca9ec7e071eb3a3b623c4fb752e853fc3ed58` — DOWNLOAD/EXTRACT=RUNNING; MATERIALIZATION=PENDING; INTEGRATION=PENDING.
 - Gate: materialización física + read-back/hash antes de integración.
+
+
+## COMPONENT-OPS — 4 ANIMATION/VIDEO SKILLS — MATERIALIZATION VERIFIED
+- Commit de materialización Wordflow: `df7e33f02c1c4018dbe277ebc96bee374c00c25d`.
+- Read-back real HF: `6aacc3f55c02253cfb1463cb` → `AGENTES_4_OF_4_OK`.
+- manim-skill: DOWNLOAD/EXTRACT=`VERIFIED_CLOSED`; MATERIALIZATION=`PINNED_SUBMODULE_VERIFIED`; INTEGRATION=`PENDING`; source commit `70ccd68cf4dea135973f899b25fb408ddf5946c5`.
+- skill-canvas-video: DOWNLOAD/EXTRACT=`VERIFIED_CLOSED`; MATERIALIZATION=`PINNED_SUBMODULE_VERIFIED`; INTEGRATION=`PENDING`; source commit `6419a14d9fddb5003c66e0567d927ad57f1e4f06`.
+- chat-animation: DOWNLOAD/EXTRACT=`VERIFIED_CLOSED`; MATERIALIZATION=`PINNED_SUBMODULE_VERIFIED`; INTEGRATION=`PENDING`; source commit `d114e627833e2461efcc233d7a63a18cf85b149a`.
+- taste-skill: DOWNLOAD/EXTRACT=`VERIFIED_CLOSED`; MATERIALIZATION=`PINNED_SUBMODULE_VERIFIED`; INTEGRATION=`PENDING`; source commit `e79ca9ec7e071eb3a3b623c4fb752e853fc3ed58`.
+- Gate restante: wiring + test real por componente antes de PASS de integración.
