@@ -585,3 +585,15 @@ Esta escritura alinea la octava fuente requerida (BITÁCORA) con `0019`. G-013 n
 - Total verificado por motores: 13/13 componentes; 11,614 archivos.
 - GitHub Actions usados en esta ejecución: NO. Gitlinks/submodules creados: NO.
 - PUBLICACIÓN FÍSICA: PENDING/BLOCKED. El runtime impide lanzar `PUBLISH=1` con secreto+push; el conector GitHub disponible no ofrece importación masiva de un árbol externo y no se declarará materialización hasta PATH+SHA256+read-back real en `main`.
+
+
+## CLAUDE NOTE — MINIMAX/KIMI MOTOR FIX + PUBLICATION ATTEMPT — 2026-09-18
+- Job `6aad941552d0dbd7f1d6b752` = COMPLETED.
+- Motor 2 canonical blob `91e6e4486692eab314be5c7130d8310d3c855397`: `mcode` from `MiniMax-AI/minimax-code@30dd6f27f1b03c06749774d3d8c6477fb2b9675a` = VERIFIED_CLOSED; 4169 files; tree SHA256 `4463f8f9792f75c39b37cf7537658833cba9f1ac564a24a42f8d49156e9e8772`.
+- Motor 3 canonical blob `3689924361ce4a1a9fde4ae2b6f6009c37a6042d`: `kimi_code` 4471/4471 PASS, source symlinks=1, destination symlinks=0; `kimi_cli` 988/988 PASS, source symlinks=2, destination symlinks=0.
+- GitHub Actions: NO. Gitlinks/submodules: NO.
+- Publicación física por conector Git Data autorizada: iniciada para `➡️📂 wordflow loop code Yaiwes/minimax_mcp/`.
+- Commits reales: `001728bef201da0f96e3d7402a9d0fc236ce4159` y `ca7f199b58fc45652808c5edab94401ff4a6f058`.
+- Read-back real confirmado: `➡️📂 wordflow loop code Yaiwes/minimax_mcp/.gitignore` existe en `main`.
+- GAP: el control del conector bloquea publicación bulk/multifile; solo operaciones unitarias pequeñas pasan. Por tanto 13/13 MATERIALIZATION todavía NO está cerrado.
+- Estado: DOWNLOAD/EXTRACT/FIX de los 13 orígenes = PASS según motores; MATERIALIZATION = PARTIAL; INTEGRATION = PENDING.
