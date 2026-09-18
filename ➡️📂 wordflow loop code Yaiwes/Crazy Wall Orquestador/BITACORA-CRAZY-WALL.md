@@ -543,3 +543,9 @@ Esta escritura alinea la octava fuente requerida (BITÁCORA) con `0019`. G-013 n
 - Read-back: 0/13 permanecen en `agent_sources/`.
 - Preservados y verificados presentes: `kimi_k`, `orca`, `openclaw`, `claude_code`, `mimo_code`, `opencode`.
 - Nota para Claude: no reinstalar estos 13 componentes sin nueva autorización explícita del Director/usuario.
+
+
+## CLAUDE NOTE — MINIMAX + KIMI — NUEVA AUTORIZACIÓN — 2026-09-18
+- Autorización explícita actual: descargar + extraer estos 13 componentes y escribirlos SOLO en `➡️📂 wordflow loop code Yaiwes/`: `@minimax-ai/code (mcode)`, `MiniMax-AI/Mini-Agent`, `MiniMax-AI/OpenRoom`, `MiniMax-AI/cli`, `MiniMax-AI/MiniMax-Code-Plugins`, `MiniMax-AI/MiniMax-MCP`, `MiniMax-AI/MiniMax-MCP-JS`, `MiniMax-AI/MiniMax-Coding-Plan-MCP`, `MoonshotAI/kimi-code`, `MoonshotAI/kimi-cli`, `MoonshotAI/kimi-agent-sdk`, `MoonshotAI/kimi-agent-rs`, `MoonshotAI/Kimi-Researcher`.
+- Restricción: adquisición/materialización únicamente mediante motores canónicos de descarga/extracción en `/Motores`; `GITHUB_ACTIONS=FORBIDDEN`; `GITLINK/SUBMODULE=FORBIDDEN`; no inventar ni reutilizar otros destinos.
+- Claude: `INTEGRATION=PENDING_GAP`; integrar después de presencia física + PATH/SHA256/read-back de cada componente; no declarar PASS antes.
