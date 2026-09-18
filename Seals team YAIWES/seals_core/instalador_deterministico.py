@@ -1,13 +1,14 @@
 """
-instalador_deterministico.py - FIX P0-13, P0-14, P0-15, P0-17 (auditoria 5x).
-P0-13: se resuelve y registra el commit exacto tras el clone.
-P0-14: directorio existente ya NO equivale a instalado - se verifica
-       source_commit registrado + integridad.
-P0-15: pasa por sheriff_policy.aprobar() ANTES de tocar el filesystem.
-P0-17: devuelve ToolResult tipado, nunca un bool plano que oculte el error.
+instalador_deterministico.py - FIX P0-13, P0-14, P0-15, P0-17, P1-28.
+P1-28 NUEVO: workspace aislado -> acquisition -> inspect -> install ->
+local test -> promote. Si algo falla en cualquier paso, se descarta el
+workspace temporal completo (rollback real), nunca queda a medias en el
+destino final.
 """
 import json
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from sheriff_policy import StructuredAction, aprobar
@@ -20,37 +21,45 @@ def instalar_componente(nombre: str, repo_url: str, carpeta_destino: Path) -> To
     if not ok_policy:
         return ToolResult(ok=False, error_type="POLICY_DENIED", stderr=motivo_policy)
 
-    destino = carpeta_destino / nombre
-    manifest_path = destino / ".instalacion_manifest.json"
+    destino_final = carpeta_destino / nombre
+    manifest_path = destino_final / ".instalacion_manifest.json"
 
-    if destino.exists():
-        ok_previo, motivo = _verificar_instalacion_previa(destino, repo_url, manifest_path)
+    if destino_final.exists():
+        ok_previo, motivo = _verificar_instalacion_previa(destino_final, repo_url, manifest_path)
         if ok_previo:
             return ToolResult(ok=True, receipt=f"ya_instalado_verificado:{motivo}")
         return ToolResult(ok=False, error_type="INTEGRITY_MISMATCH", stderr=motivo)
 
-    try:
-        subprocess.run(["git", "clone", repo_url, str(destino)], check=True, capture_output=True, timeout=60, text=True)
-    except subprocess.CalledProcessError as e:
-        return ToolResult(ok=False, error_type="GIT_CLONE_FAILED", stderr=e.stderr or "", exit_code=e.returncode)
-    except subprocess.TimeoutExpired:
-        return ToolResult(ok=False, error_type="TIMEOUT", stderr="git clone excedio 60s")
-
-    commit_real = _resolver_commit_actual(destino)
-    if commit_real is None:
-        return ToolResult(ok=False, error_type="COMMIT_RESOLUTION_FAILED", stderr="no se pudo leer el commit tras clonar")
-
-    manifest = {"repo_url": repo_url, "source_commit": commit_real, "nombre": nombre}
-    manifest_path.write_text(json.dumps(manifest))
-
-    req = destino / "requirements.txt"
-    if req.exists():
+    # P1-28 FIX: workspace temporal aislado. Si algo falla, se borra
+    # completo (rollback) - el destino final nunca queda a medias.
+    with tempfile.TemporaryDirectory(prefix="seals_staging_") as staging:
+        staging_path = Path(staging) / nombre
         try:
-            subprocess.run(["pip", "install", "-r", str(req), "--break-system-packages"], check=True, capture_output=True, timeout=120, text=True)
+            subprocess.run(["git", "clone", repo_url, str(staging_path)], check=True, capture_output=True, timeout=60, text=True)
         except subprocess.CalledProcessError as e:
-            return ToolResult(ok=False, error_type="PIP_INSTALL_FAILED", stderr=e.stderr or "", artifacts=[str(destino)])
+            return ToolResult(ok=False, error_type="GIT_CLONE_FAILED", stderr=e.stderr or "", exit_code=e.returncode)
+        except subprocess.TimeoutExpired:
+            return ToolResult(ok=False, error_type="TIMEOUT", stderr="git clone excedio 60s")
 
-    return ToolResult(ok=True, artifacts=[str(destino)], receipt=f"SOURCE_COMMIT=={commit_real}")
+        commit_real = _resolver_commit_actual(staging_path)
+        if commit_real is None:
+            return ToolResult(ok=False, error_type="COMMIT_RESOLUTION_FAILED", stderr="no se pudo leer el commit tras clonar")
+
+        req = staging_path / "requirements.txt"
+        if req.exists():
+            try:
+                subprocess.run(["pip", "install", "-r", str(req), "--break-system-packages"], check=True, capture_output=True, timeout=120, text=True)
+            except subprocess.CalledProcessError as e:
+                # ROLLBACK: el staging se descarta al salir del `with`, nada llega al destino final.
+                return ToolResult(ok=False, error_type="PIP_INSTALL_FAILED", stderr=e.stderr or "")
+
+        # PROMOTE: solo si todo lo anterior paso, se mueve al destino final.
+        (staging_path / ".instalacion_manifest.json").write_text(
+            json.dumps({"repo_url": repo_url, "source_commit": commit_real, "nombre": nombre})
+        )
+        shutil.move(str(staging_path), str(destino_final))
+
+    return ToolResult(ok=True, artifacts=[str(destino_final)], receipt=f"SOURCE_COMMIT=={commit_real}:promovido_desde_staging")
 
 
 def _resolver_commit_actual(destino: Path) -> str | None:
