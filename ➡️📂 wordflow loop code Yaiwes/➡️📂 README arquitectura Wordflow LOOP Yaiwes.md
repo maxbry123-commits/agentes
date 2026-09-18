@@ -129,3 +129,15 @@ Estado: consultar `TASK-NODES.json`; no reabrir si está PASS.
 
 ## Estado operativo actual de SOL_1
 Checkpoint `0019`. Nodo único actual `G-013`, reclamado por `SOL_1`, con GAP `SOURCE_OF_TRUTH_DRIFT`. `G-018` pertenece a `SOL_2` y no se toca. `G-019` permanece pendiente hasta que G-013 cierre. `AUTH_PROVIDER_TEST_PENDING` permanece abierto.
+
+## Motor de descarga — recuperación 2026-09-17
+
+Autoridad operativa: `Crazy Wall Orquestador/MOTOR-DESCARGA-RECOVERY-CHECKPOINT-2026-09-17.json`.
+
+Flujo vigente:
+`READ_FRESH → RESEARCH → MOTOR DOWNLOAD/EXTRACT/COPY/MOVE → SHA/READBACK → GAP/FIX/RETEST → README → CRAZY WALL → EVIDENCE → VALIDACIÓN FINAL`.
+
+Destino de fuentes de agentes:
+`wordflow_loop/agent_sources/`.
+
+Orca ya está replicado y verificado en ese destino. CL-002/003/004 permanecen fail-closed hasta publicación/read-back físico de MiniMax/Kimi/mcode; una descarga temporal o una extracción remota no equivale a entrega.
