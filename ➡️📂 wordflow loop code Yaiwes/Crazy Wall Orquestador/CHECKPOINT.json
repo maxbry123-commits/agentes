@@ -70,7 +70,7 @@
   "foreign_owned_active": [
     "COMP-BROWSER-USE:SOL_ORCHESTRATOR"
   ],
-  "next_action": "Continue CL-002 publication/read-back using canonical motors; use recovery checkpoint above; do not count dry-run extracts as delivered.",
+  "next_action": "Continue CL-002 publication/read-back using canonical motors; use recovery checkpoint above; do not count dry-run extracts as delivered. | Claude queue added: review agents for Frontend/Code and LOOP/workflow reuse after CL-005.",
   "recovery_entrypoint": "➡️📂 wordflow loop code Yaiwes/HANDOFF.md",
   "closure_phase": {
     "id": "CLOSURE-2026-09-17",
@@ -113,5 +113,18 @@
     "cl003": "ARTIFACT_VERIFIED_PUBLICATION_PENDING",
     "cl004": "MOTOR3_VERIFIED_PUBLICATION_PENDING",
     "next_action": "Continue CL-002 publication transport without GitHub Actions; then CL-003 npm artifact publication and CL-004 materialized Kimi publication. Keep FAIL_CLOSED."
+  },
+  "claude_pending_queue": {
+    "status": "PENDING_NOT_CLAIMED",
+    "assigned_to": "CLAUDE",
+    "nodes": [
+      "CLAUDE-AGENT-REVIEW-01",
+      "CLAUDE-FRONTEND-CODE-INTEGRATION-02",
+      "CLAUDE-LOOP-WORKFLOW-REUSE-03",
+      "CLAUDE-INTEGRATION-VALIDATION-04"
+    ],
+    "dependency_gate": "CL-005",
+    "task_nodes_commit": "82018bf63b3a9ec490c6e463e1de83db2b1aa2bb",
+    "rule": "Do not start integration until physical agent_sources publication/read-back is reconciled; then execute 1x1 and update evidence."
   }
 }
