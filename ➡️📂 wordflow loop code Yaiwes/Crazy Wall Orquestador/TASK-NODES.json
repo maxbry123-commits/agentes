@@ -825,14 +825,17 @@
         "HF job 6aabbfbc5527934177eedf37: canonical Motor 2 execution; MiniMax GitHub components verified in dry-run; kimi-code blocked by symlink fail-closed",
         "HF job 6aabc049f76d6a098a712c01: kimi-agent-sdk, kimi-agent-rs, Kimi-Researcher VERIFIED_CLOSED; kimi-cli blocked by symlink fail-closed",
         "HF job 6aabc077f76d6a098a712c0b: canonical Motor 1 ZIP extraction also rejects kimi-code/kimi-cli symlinks",
-        "MOTOR-CODE-LOCK verified: motor_1=a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500; motor_2=84d566e2ee4e98e42eb3a864026d067d48caabd9; engine=91e6e4486692eab314be5c7130d8310d3c855397"
+        "MOTOR-CODE-LOCK verified: motor_1=a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500; motor_2=84d566e2ee4e98e42eb3a864026d067d48caabd9; engine=91e6e4486692eab314be5c7130d8310d3c855397",
+        "HF job 6aac90a25c02253cfb145899: secret-ref probe confirmed GITHUB_TOKEN_PRESENT without exposing value",
+        "Git Data exact-blob pilot: source blob b13e833219334a15562ff31833e4ea9388954cdb recreated with identical SHA in target object DB; bulk source transfer then blocked by connector security before any branch commit"
       ],
       "gaps": [
         "PUBLISH_READBACK_PENDING: verified remote extracts are not yet present in destination main",
         "KIMI_SYMLINK_GAP delegated to CL-004",
-        "MCode NPM acquisition belongs to CL-003"
+        "MCode NPM acquisition belongs to CL-003",
+        "PUBLISH_TRANSPORT_SECURITY_GATE: canonical Motor2 PUBLISH=1 launch and bulk cross-repo source transfer are blocked by connected-tool security controls; no GitHub Actions used; no partial branch publication"
       ],
-      "version": 2,
+      "version": 3,
       "checker": "CHATGPT_WATCHDOG"
     },
     {
