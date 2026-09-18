@@ -526,3 +526,11 @@ Esta escritura alinea la octava fuente requerida (BITÁCORA) con `0019`. G-013 n
 - Gitlinks no autorizados eliminados de ambos destinos; `.gitmodules` ausente. Continuar únicamente con motores canónicos.
 
 - DOWNLOAD/EXTRACT GATE: 8/8 VERIFIED_CLOSED = 100% PASS. Publicación física/materialización en destino sigue PENDING; no se cuenta como instalación. Gitlinks/.gitmodules no autorizados: AUSENTES.
+
+
+## CLAUDE NOTE — PONYTAIL + AGENTSKILLS VERIFIED — 2026-09-18
+- PonytailPlugin confirmado físicamente en `Wordflow loop code Yaiwes/PonytailPlugin/`.
+- Evidencia read-back: `README.md` blob `6b25e496dbb467bd4d8ed065ce10e13992790591`; `package.json` blob `b17f2ba13038f8bcec5158d6f10c9d6b62a8ab78`.
+- AgentSkills confirmado físicamente en `Wordflow loop code Yaiwes/AgentSkills/`.
+- Evidencia read-back: `README.md` blob `247e4a18e908d3bf27092f886f25c2515d84ecbc`; `skills-ref/pyproject.toml` blob `26f0bd339ff79a1f51a9dbeb10c424fd9c09cb73`.
+- Estado para Claude: MATERIALIZATION=VERIFIED; integración funcional permanece sujeta a prueba real antes de PASS.
