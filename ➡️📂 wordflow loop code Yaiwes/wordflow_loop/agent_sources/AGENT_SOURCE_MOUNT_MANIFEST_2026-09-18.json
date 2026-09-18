@@ -1,0 +1,75 @@
+{
+  "schema": "yaiwes.agent-source-mounts/v1",
+  "timestamp": "2026-09-18T00:49:00-05:00",
+  "method": "GIT_SUBMODULE_PINNED_SHA_FOR_GITHUB_SOURCES__NPM_PIN_FOR_MCODE",
+  "github_actions_used": false,
+  "components": {
+    "minimax_mini_agent": {
+      "url": "https://github.com/MiniMax-AI/Mini-Agent.git",
+      "commit": "d76a4f6389688cabda39c224a6cdfa274215d47c",
+      "mount": "gitlink-submodule"
+    },
+    "minimax_openroom": {
+      "url": "https://github.com/MiniMax-AI/OpenRoom.git",
+      "commit": "02468154c4d99f8925916425bf444d672454fb3d",
+      "mount": "gitlink-submodule"
+    },
+    "minimax_mmx_cli": {
+      "url": "https://github.com/MiniMax-AI/cli.git",
+      "commit": "bfbb4cb75ec343149eaccfd668c5011aa27bcf2b",
+      "mount": "gitlink-submodule"
+    },
+    "minimax_code_plugins": {
+      "url": "https://github.com/MiniMax-AI/MiniMax-Code-Plugins.git",
+      "commit": "d592f422893846c2aac48f8b407a92bd0293c6b1",
+      "mount": "gitlink-submodule"
+    },
+    "minimax_mcp": {
+      "url": "https://github.com/MiniMax-AI/MiniMax-MCP.git",
+      "commit": "0856b9aef8a9d676bb63bdd6b6426d7b640a3b7a",
+      "mount": "gitlink-submodule"
+    },
+    "minimax_mcp_js": {
+      "url": "https://github.com/MiniMax-AI/MiniMax-MCP-JS.git",
+      "commit": "8032f830203a1c61e56760b1680db923654bcb1b",
+      "mount": "gitlink-submodule"
+    },
+    "minimax_coding_plan_mcp": {
+      "url": "https://github.com/MiniMax-AI/MiniMax-Coding-Plan-MCP.git",
+      "commit": "5dbf3494d7dac35d154958e0c1dab03910b89bbd",
+      "mount": "gitlink-submodule"
+    },
+    "kimi_code": {
+      "url": "https://github.com/MoonshotAI/kimi-code.git",
+      "commit": "1fddc16e3ea2de4c26a18acd764380adf9e2ed64",
+      "mount": "gitlink-submodule"
+    },
+    "kimi_cli": {
+      "url": "https://github.com/MoonshotAI/kimi-cli.git",
+      "commit": "86f136422a0aae6b217ea49e7ea1d2e8a1defcd2",
+      "mount": "gitlink-submodule"
+    },
+    "kimi_agent_sdk": {
+      "url": "https://github.com/MoonshotAI/kimi-agent-sdk.git",
+      "commit": "ed4be6be5280d02191da88bbafb3f828dcd33d72",
+      "mount": "gitlink-submodule"
+    },
+    "kimi_agent_rs": {
+      "url": "https://github.com/MoonshotAI/kimi-agent-rs.git",
+      "commit": "f9186cd20b28c02d33721c05fd248e65d56e3e53",
+      "mount": "gitlink-submodule"
+    },
+    "kimi_researcher": {
+      "url": "https://github.com/MoonshotAI/Kimi-Researcher.git",
+      "commit": "9406d821348471bceb6d5fa0b7eba05411106f93",
+      "mount": "gitlink-submodule"
+    }
+  },
+  "mcode": {
+    "package": "@minimax-ai/code",
+    "version": "0.4.10",
+    "shasum": "f4564e4fe8c92f4f496efb75e9718b28716be126",
+    "mount": "npm-pin-manifest",
+    "full_package_bytes_vendored": false
+  }
+}

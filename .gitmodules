@@ -1,0 +1,36 @@
+[submodule "minimax_mini_agent"]
+	path = ➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/minimax_mini_agent
+	url = https://github.com/MiniMax-AI/Mini-Agent.git
+[submodule "minimax_openroom"]
+	path = ➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/minimax_openroom
+	url = https://github.com/MiniMax-AI/OpenRoom.git
+[submodule "minimax_mmx_cli"]
+	path = ➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/minimax_mmx_cli
+	url = https://github.com/MiniMax-AI/cli.git
+[submodule "minimax_code_plugins"]
+	path = ➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/minimax_code_plugins
+	url = https://github.com/MiniMax-AI/MiniMax-Code-Plugins.git
+[submodule "minimax_mcp"]
+	path = ➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/minimax_mcp
+	url = https://github.com/MiniMax-AI/MiniMax-MCP.git
+[submodule "minimax_mcp_js"]
+	path = ➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/minimax_mcp_js
+	url = https://github.com/MiniMax-AI/MiniMax-MCP-JS.git
+[submodule "minimax_coding_plan_mcp"]
+	path = ➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/minimax_coding_plan_mcp
+	url = https://github.com/MiniMax-AI/MiniMax-Coding-Plan-MCP.git
+[submodule "kimi_code"]
+	path = ➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/kimi_code
+	url = https://github.com/MoonshotAI/kimi-code.git
+[submodule "kimi_cli"]
+	path = ➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/kimi_cli
+	url = https://github.com/MoonshotAI/kimi-cli.git
+[submodule "kimi_agent_sdk"]
+	path = ➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/kimi_agent_sdk
+	url = https://github.com/MoonshotAI/kimi-agent-sdk.git
+[submodule "kimi_agent_rs"]
+	path = ➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/kimi_agent_rs
+	url = https://github.com/MoonshotAI/kimi-agent-rs.git
+[submodule "kimi_researcher"]
+	path = ➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/kimi_researcher
+	url = https://github.com/MoonshotAI/Kimi-Researcher.git
