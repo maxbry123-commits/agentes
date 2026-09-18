@@ -187,7 +187,8 @@
     "CL-002 IN_PROGRESS: publish/read-back verified MiniMax/Kimi GitHub components into exact agent_sources destination.",
     "CL-003: resolve official npm @minimax-ai/code acquisition with exact integrity.",
     "CL-004: resolve kimi-code/kimi-cli symlink-safe acquisition without weakening canonical motors.",
-    "CL-005..CL-013: reconcile, classify, integrate, test, global-close by DAG."
+    "CL-005..CL-013: reconcile, classify, integrate, test, global-close by DAG.",
+    "Claude pending queue registered: after CL-005, execute CLAUDE-AGENT-REVIEW-01 -> Frontend/Code integration + LOOP/workflow reuse -> validation."
   ],
   "g017_deployment": {
     "status": "CLOSED_VERIFIED_DETERMINISTIC_DEPLOYMENT",
@@ -332,5 +333,30 @@
       },
       "invariant": "NO_SOURCE_PRESENCE_EQUALS_RUNTIME_PASS"
     }
+  },
+  "claude_pending_queue": {
+    "status": "PENDING",
+    "assigned_to": "CLAUDE",
+    "created_at": "2026-09-18T00:49:00-05:00",
+    "prerequisite": "CL-005 must close physical publication/read-back before CLAUDE-AGENT-REVIEW-01 becomes executable",
+    "nodes": [
+      "CLAUDE-AGENT-REVIEW-01",
+      "CLAUDE-FRONTEND-CODE-INTEGRATION-02",
+      "CLAUDE-LOOP-WORKFLOW-REUSE-03",
+      "CLAUDE-INTEGRATION-VALIDATION-04"
+    ],
+    "scope": {
+      "frontend": "Review/adapt approved agent capabilities for maxbry123-commits/frontend without duplicating runtime/state engines.",
+      "code": "Review/integrate approved agents into Wordflow Code Yaiwes using existing fleet/adapters/transports/contracts.",
+      "loop_workflow": "Inspect LOOP/workflow/retry/resume/checkpoint/fan-out/fan-in/handoff patterns and REUSE/ADAPT/REJECT only mechanisms that improve existing Wordflow LOOP."
+    },
+    "invariants": [
+      "PENDING does not equal claimed or PASS",
+      "NO_PARALLEL_ORCHESTRATOR",
+      "NO_DUPLICATE_SCHEDULER",
+      "SOURCE_PRESENCE_DOES_NOT_EQUAL_RUNTIME_INTEGRATION",
+      "READ_FRESH_BEFORE_WRITE",
+      "TEST_AND_READBACK_BEFORE_PASS"
+    ]
   }
 }
