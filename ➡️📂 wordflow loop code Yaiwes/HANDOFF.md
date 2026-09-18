@@ -76,3 +76,17 @@ Fleet=18 · Council12=12 · routing/fail-closed local. Evidence histórica `word
 - G-017: PASS — hash content-addressed, promoción atómica, health/smoke reales y rollback verificado.
 - Gate: `PASS_4_OF_4`; CODE_GRAPH: `30/30`.
 - Evidencia: `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G022_PHYSICAL_SANDBOX_CLOSURE_2026-09-15.json` y `➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G017_DETERMINISTIC_DEPLOYMENT_CLOSURE_2026-09-15.json`.
+
+
+## Recuperación Motor de descarga — 2026-09-17
+
+Watchdog activo: `Motor de descarga` (cadencia horaria).  
+Checkpoint operativo: `Crazy Wall Orquestador/MOTOR-DESCARGA-RECOVERY-CHECKPOINT-2026-09-17.json`.
+
+Estado verificable:
+- Orca: destino adicional `wordflow_loop/agent_sources/orca` cerrado con Motor 3 canónico; 27.324/27.324 archivos; source/target tree `4a70b119890500c638cdc5e5115bc13a97fee974`; commit de publicación `50b657b4a914f6fcc4452f1cb74cc08ff08146c6`.
+- CL-002: continúa `IN_PROGRESS`. Motor 2 volvió a verificar MiniMax-MCP, MiniMax-MCP-JS, MiniMax-Coding-Plan-MCP, kimi-agent-rs y Kimi-Researcher; publicación conectada queda bloqueada por transporte de blobs/código/binarios, no por descarga/extracción.
+- CL-003: `@minimax-ai/code@0.4.10` oficial verificado por npm; integridad y shasum fijados; instalación efímera PASS con `mcode --version = 0.4.10`; no declara repositorio fuente público; publicación física del tarball sigue pendiente.
+- CL-004: Motor 3 materializó los symlinks de `kimi-code` y `kimi-cli` como archivos regulares, dejando 0 symlinks; 4.471/4.471 y 988/988 archivos, respectivamente. Publicación cross-repo sigue pendiente porque GitHub rechaza reutilizar trees externas y el bulk blob write quedó bloqueado por controles del conector.
+
+Regla de continuación: no usar GitHub Actions para estas adquisiciones; mantener motores canónicos, SHA/read-back y FAIL_CLOSED. No contar dry-runs o staging como entregado.
