@@ -597,3 +597,30 @@ Esta escritura alinea la octava fuente requerida (BITÁCORA) con `0019`. G-013 n
 - Read-back real confirmado: `➡️📂 wordflow loop code Yaiwes/minimax_mcp/.gitignore` existe en `main`.
 - GAP: el control del conector bloquea publicación bulk/multifile; solo operaciones unitarias pequeñas pasan. Por tanto 13/13 MATERIALIZATION todavía NO está cerrado.
 - Estado: DOWNLOAD/EXTRACT/FIX de los 13 orígenes = PASS según motores; MATERIALIZATION = PARTIAL; INTEGRATION = PENDING.
+
+
+## CLAUDE NOTE — MINIMAX + KIMI — MOTOR 3→4 TRACEABILITY + DESTINATION READ-BACK — 2026-09-18
+- Destino autorizado exacto: `➡️📂 wordflow loop code Yaiwes/`.
+- Job de motores: `6aad964e51992417dfcc7c95` = `COMPLETED`.
+- Motor 3: `Motores/➡️📂motor de copiar archivos/motor_3_copy_batches.py` blob `3689924361ce4a1a9fde4ae2b6f6009c37a6042d`.
+- Motor 4: `Motores/➡️📂motor de moves archivos/motor_4_move_batches.py` blob `9a21facfe11327cf60a2afca8f415ad52f0ecbe5`.
+- Resultado Motor 3→4: 13/13 `VERIFIED_CLOSED`; failed=0; pending=0; source_files_remaining=0 por componente.
+- Trazabilidad:
+  1. `minimax_mini_agent` ← `MiniMax-AI/Mini-Agent@d76a4f6389688cabda39c224a6cdfa274215d47c` — 366 files — SHA256 `953f2d2002838cef35a550c94f66c66d33d088220618cb7d2187b5b8b7512d6d`.
+  2. `minimax_openroom` ← `MiniMax-AI/OpenRoom@02468154c4d99f8925916425bf444d672454fb3d` — 255 files — SHA256 `7e0de2b18a4cfa83191f9b8087219ec6e65a349ab0dc06f8c4ab79aa5bae0fb0`.
+  3. `minimax_mmx_cli` ← `MiniMax-AI/cli@bfbb4cb75ec343149eaccfd668c5011aa27bcf2b` — 186 files — SHA256 `dffce05be90a7a99e61048f69c1428cf7e8e9451bb44e4ccf8222b8435203272`.
+  4. `minimax_code_plugins` ← `MiniMax-AI/MiniMax-Code-Plugins@d592f422893846c2aac48f8b407a92bd0293c6b1` — 602 files — SHA256 `df265b629e5ae0cbc1b5b44539c32846d0c7ae46399150ec9368af186bd92c5f`.
+  5. `minimax_mcp` ← `MiniMax-AI/MiniMax-MCP@0856b9aef8a9d676bb63bdd6b6426d7b640a3b7a` — 28 files — SHA256 `cf3ed570ea0658a6774f7152ecafba4e40c40ca8c72d71cc6c695898d502c8a6`.
+  6. `minimax_mcp_js` ← `MiniMax-AI/MiniMax-MCP-JS@8032f830203a1c61e56760b1680db923654bcb1b` — 38 files — SHA256 `d3d0e65f3dfb5031c1dd03aba4546999f638612f05d2c8c802e1215ba2c300fa`.
+  7. `minimax_coding_plan_mcp` ← `MiniMax-AI/MiniMax-Coding-Plan-MCP@5dbf3494d7dac35d154958e0c1dab03910b89bbd` — 27 files — SHA256 `daa6bf47e75d5037b21add5889aeb25c50d3c73b094ebf44e17641a23d46fd3e`.
+  8. `kimi_code` ← `MoonshotAI/kimi-code@1fddc16e3ea2de4c26a18acd764380adf9e2ed64` — 4471 files — SHA256 `d089d98cec39bfc3d33a1c440314db626d873f6c6dfbdecccd73bdc965eab2a4`; symlink `CLAUDE.md` materializado por Motor 3.
+  9. `kimi_cli` ← `MoonshotAI/kimi-cli@86f136422a0aae6b217ea49e7ea1d2e8a1defcd2` — 988 files — SHA256 `8222e948f81836cc5b8ea4fee71aaec90be933aba2f936d99c9da4dce62dc57d`; 2 symlinks materializados por Motor 3.
+  10. `kimi_agent_sdk` ← `MoonshotAI/kimi-agent-sdk@ed4be6be5280d02191da88bbafb3f828dcd33d72` — 296 files — SHA256 `a9b70b8043eda00dd76553f443c3de0a8e93ade3cdbe38c7ec91d67d414b71fe`.
+  11. `kimi_agent_rs` ← `MoonshotAI/kimi-agent-rs@f9186cd20b28c02d33721c05fd248e65d56e3e53` — 172 files — SHA256 `39a2cc961cdc6e342e62c9d11d992c2608293574d2c907745da5e7e2821138d0`.
+  12. `kimi_researcher` ← `MoonshotAI/Kimi-Researcher@9406d821348471bceb6d5fa0b7eba05411106f93` — 16 files — SHA256 `ce5d2be372b1ae91c9018d7582720dfdac5254e0ad5f38a6c296fcbcf2afb00e`.
+  13. `mcode` ← `MiniMax-AI/minimax-code@30dd6f27f1b03c06749774d3d8c6477fb2b9675a` — 4169 files — SHA256 `4d21e6800dd058123a5c527bf7a703ec966cdebef364902e531c1d07090ac34c`.
+- GitHub Actions usados: NO. Gitlinks/submodules creados: NO.
+- Read-back de `main` tras los intentos de publicación: SOLO `➡️📂 wordflow loop code Yaiwes/minimax_mcp/` está presente; los otros 12 destinos todavía no aparecen.
+- Publicación por HF Job con credencial: BLOCKED; la inyección usada no aportó una credencial GitHub válida para push. Publicación por Git Data cross-repo: BLOCKED; GitHub acepta únicamente objetos que ya existen en el repo destino.
+- Estado para Claude: `ACQUISITION/MOTOR3/MOTOR4=13/13 PASS`; `MATERIALIZATION_MAIN=1/13 PRESENT`; `INTEGRATION=BLOCKED`.
+- Orden a Claude: NO declarar integración ni PASS global hasta que los 13 paths existan en `main` y cada uno pase PATH + SHA256 + read-back contra los hashes anteriores.
