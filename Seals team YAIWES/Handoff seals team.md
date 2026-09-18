@@ -1,45 +1,43 @@
-# Handoff seals team.md
+Handoff seals team.md
 
-## Estado: CODIGO COMPLETO. Solo falta prueba real.
+## Estado real (corregido 2026-09-18, P2-31 - version anterior tenia drift)
+CODIGO SUSTANCIALMENTE MEJORADO tras auditoria externa de 5 pasadas (32
+gaps P0/P1/P2 encontrados). 27 de 32 gaps cerrados con CODE+TEST+EVIDENCE
+en 8 salidas. Pendientes explicitos abajo. NO se declara VERIFIED_CLOSED
+hasta que el veredicto final de esta misma salida lo confirme.
 
-## Que es esto
-El primer agente ejecutor determinista del enjambre Seals Team. Un solo
-codigo, N copias (Seals team 1, 2, 3 YAIWES), cada una diferenciada solo
-por su task_contract.json.
+## Numeros reales (la version anterior decia 229 componentes y
+## "requirements.txt aun no existe" - ambos eran drift, corregido aqui)
+Inventario real: 248 componentes (verificado en vivo, campo real
+wall_status, 213 en PENDING_STEP1 al momento de esta auditoria).
+requirements.txt SI existe, con pyyaml agregado. requirements.lock.txt
+pendiente (tarea real dada a Sol, ver PROMPT-Sol-requirements-lock.md).
 
-## Archivos, todos terminados
-- Seals team.md -> constitucion (reglas duras)
-- dag_schema.yaml -> flujo fijo de 11 nodos, sin LLM decidiendo el flujo
-- seals_core/ejecutor.py -> router 90/10 real (if/elif)
-- seals_core/instalador_deterministico.py -> git clone + pip install, 0% LLM
-- seals_core/consultor_experto.py -> 5-10% LLM via Cerebras, rota 6 keys por variable de entorno
-- seals_core/verificador.py -> CODIGO REAL (no placeholder), llama claude_agent_sdk, model claude-sonnet-5, bajo volumen
-- watchdog.py -> CODIGO REAL (no placeholder), lee inventario via GitHub API con GITHUB_TOKEN
-- Seals team 1 YAIWES/task_contract.json -> lista, sin nodo reclamado
-- _fuentes_extraidas/ -> mecanismos extraidos de Muse-Agent y MUSE-KnowledgeXLab (evidencia real, sha256+commit)
+## Archivos reales de seals_core/ (lista completa actualizada)
+ejecutor.py, dag_engine.py, instalador_deterministico.py,
+consultor_experto.py, verificador.py, evidence.py, goal_tracking.py,
+crazy_wall_adapter.py, idempotencia.py, tool_result.py, sheriff_policy.py,
+stuck_detector.py, research_real.py, work_surface.py, worker_bootstrap.py,
+isolation.py, recovery_types.py, llm_output_schema.py, crash_resume.py,
+router_modelos.py, tests/ (8 archivos de test).
 
-## Variables de entorno requeridas (GitHub Secrets, NUNCA en codigo)
-- CEREBRAS_API_KEY_1 a CEREBRAS_API_KEY_6
-- ANTHROPIC_API_KEY (para verificador.py)
-- GITHUB_TOKEN (para watchdog.py, lectura del inventario)
+## Variables de entorno requeridas (GitHub Secrets, nunca en codigo)
+CEREBRAS_API_KEY_1 a 6 (SOLO PARA PRUEBAS - en produccion via Router
+Inteligente Universal, ver Claude notas/REQUISITO-50-mundos-y-Router-
+Universal.md), ANTHROPIC_API_KEY, GITHUB_TOKEN.
 
-## Que va a trabajar el modelo (primera prueba, en orden)
-1. Director agrega las 4 variables de entorno arriba en GitHub Secrets.
-2. Se asigna 1 nodo real PENDING_STEP1 del inventario (229 componentes)
-   al task_contract.json de "Seals team 1 YAIWES".
-3. Se corre seals_core/ejecutor.py -> loop_principal() con ese nodo como
-   cola inicial.
-4. Se verifica evidencia real: archivo evidencia_local.jsonl generado +
-   componente movido/instalado + entrada en Crazy Wall.
-5. Solo si el paso 4 cierra con evidencia real, se clona a "Seals team 2
-   YAIWES" y "Seals team 3 YAIWES" (mismo codigo, distinto contrato).
-
-## Pendiente, fuera de este agente (no bloquea la prueba)
-- Meta-Muse-Code-SDK-2026 y Meta-Agent-Cookbook-2026: Sol los descargo
-  completos sin que se le pidiera. Pausados, sin usar, sin aprobar.
-- pyproject.toml / requirements.txt del agente: aun no creado. Dependencias
-  usadas: requests, claude-agent-sdk. Crear antes de correr en un entorno
-  limpio.
+## Pendiente explicito, no oculto (no bloquea la primera prueba)
+- P1-24 (MetaCua/CUA-MCP): no verificado, no integrado - la propia
+  auditoria exige no declarar esto sin leer implementacion real primero.
+- P1-30 parcial: faltan tests especificos de crash/recovery end-to-end
+  y de wrong-source-commit con git real (los actuales usan mocks).
+- Meta-Muse-Code-SDK-2026 y Meta-Agent-Cookbook-2026: descargados fuera
+  de alcance por Sol, pausados sin usar.
+- Requisito de 50+ mundos independientes: arquitectura base lista
+  (task_contract.json por worker, worker_bootstrap.py valida identidad),
+  pero el generador de Readme+Handoff+Crazy Wall+System prompt POR
+  WORKER (para los 50+) todavia no esta escrito - es la ultima pieza
+  antes de escalar de 1 a 50+ copias.
 
 ## Como retomar si se pierde el contexto
 Leer, en este orden: Claude notas/memoria.md (fuente unica autoritativa)
