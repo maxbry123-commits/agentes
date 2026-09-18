@@ -177,3 +177,9 @@ Estado verificado por read-back:
 - GitHub Actions usados para este montaje: **NO**.
 
 Importante: el gitlink/submodule monta y fija el source upstream, pero no embebe/vendoriza todos los blobs dentro del superproyecto. Kimi Code/Kimi CLI conservan su source upstream en el submodule; la variante materializada sin symlinks fue verificada por Motor 3 y queda como gate separado de vendorización si se exige copia física byte-a-byte dentro del superproyecto. Mcode está montado como pin npm exacto; los bytes completos del paquete no están vendorizados.
+
+
+## CLAUDE NOTE — MINIMAX + KIMI — NUEVA AUTORIZACIÓN — 2026-09-18
+- Autorización explícita actual: descargar + extraer estos 13 componentes y escribirlos SOLO en `➡️📂 wordflow loop code Yaiwes/`: `@minimax-ai/code (mcode)`, `MiniMax-AI/Mini-Agent`, `MiniMax-AI/OpenRoom`, `MiniMax-AI/cli`, `MiniMax-AI/MiniMax-Code-Plugins`, `MiniMax-AI/MiniMax-MCP`, `MiniMax-AI/MiniMax-MCP-JS`, `MiniMax-AI/MiniMax-Coding-Plan-MCP`, `MoonshotAI/kimi-code`, `MoonshotAI/kimi-cli`, `MoonshotAI/kimi-agent-sdk`, `MoonshotAI/kimi-agent-rs`, `MoonshotAI/Kimi-Researcher`.
+- Restricción: adquisición/materialización únicamente mediante motores canónicos de descarga/extracción en `/Motores`; `GITHUB_ACTIONS=FORBIDDEN`; `GITLINK/SUBMODULE=FORBIDDEN`; no inventar ni reutilizar otros destinos.
+- Claude: `INTEGRATION=PENDING_GAP`; integrar después de presencia física + PATH/SHA256/read-back de cada componente; no declarar PASS antes.
