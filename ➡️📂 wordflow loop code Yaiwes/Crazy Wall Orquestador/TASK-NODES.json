@@ -1151,6 +1151,152 @@
       "gaps": [],
       "version": 1,
       "checker": "CHATGPT_WATCHDOG"
+    },
+    {
+      "id": "CLAUDE-AGENT-REVIEW-01",
+      "task": "Revisar 1×1 los agentes/fuentes nuevos MiniMax/Kimi/mcode y los agent_sources existentes para decidir integración real en Frontend y Wordflow Code Yaiwes. Clasificar AGENT/SDK/UI/PLUGIN/INFRA/REFERENCE y ADOPT/ADAPT/REJECT; no confundir presencia de source con runtime integrado.",
+      "status": "PENDING",
+      "claimed_by": null,
+      "assigned_to": "CLAUDE",
+      "depends_on": [
+        "CL-005"
+      ],
+      "steps": [
+        {
+          "id": "1_RESEARCH",
+          "status": "PENDING"
+        },
+        {
+          "id": "2_EXECUTE",
+          "status": "PENDING"
+        },
+        {
+          "id": "3_VALIDATE",
+          "status": "PENDING"
+        }
+      ],
+      "destinations": [
+        "maxbry123-commits/frontend",
+        "maxbry123-commits/agentes/➡️📂 wordflow loop code Yaiwes"
+      ],
+      "requirements": [
+        "READ_FRESH",
+        "1_PATH_1_WRITER",
+        "NO_PARALLEL_ORCHESTRATOR",
+        "PROVENANCE_AND_READBACK"
+      ],
+      "evidence": [],
+      "gaps": [],
+      "version": 1,
+      "checker": "CLAUDE"
+    },
+    {
+      "id": "CLAUDE-FRONTEND-CODE-INTEGRATION-02",
+      "task": "Diseñar y ejecutar integración selectiva de los agentes aprobados dentro de Frontend y Wordflow Code Yaiwes mediante adapters/ports existentes. Para Frontend revisar capacidades de UI/agent-surface/importación/preview; para Code revisar fleet, transporte, SDK/MCP/stdio/ACP y contratos. Reutilizar arquitectura existente y no crear buses/runtimes duplicados.",
+      "status": "PENDING",
+      "claimed_by": null,
+      "assigned_to": "CLAUDE",
+      "depends_on": [
+        "CLAUDE-AGENT-REVIEW-01"
+      ],
+      "steps": [
+        {
+          "id": "1_RESEARCH",
+          "status": "PENDING"
+        },
+        {
+          "id": "2_EXECUTE",
+          "status": "PENDING"
+        },
+        {
+          "id": "3_VALIDATE",
+          "status": "PENDING"
+        }
+      ],
+      "destinations": [
+        "maxbry123-commits/frontend",
+        "maxbry123-commits/agentes/➡️📂 wordflow loop code Yaiwes"
+      ],
+      "requirements": [
+        "ADAPTER_FIRST",
+        "REUSE_EXISTING_PORTS",
+        "FAIL_CLOSED",
+        "TEST_EVIDENCE"
+      ],
+      "evidence": [],
+      "gaps": [],
+      "version": 1,
+      "checker": "CLAUDE"
+    },
+    {
+      "id": "CLAUDE-LOOP-WORKFLOW-REUSE-03",
+      "task": "Auditar los mecanismos LOOP, workflow, planning, retry, resume, checkpoint, fan-out/fan-in, agent handoff y supervisión presentes en los agentes MiniMax/Kimi y fuentes existentes. Extraer únicamente patrones con valor demostrado para mejorar Workflow LOOP Code Yaiwes; clasificar cada mecanismo REUSE/ADAPT/REJECT y cablearlo al workflow existente sin introducir un segundo scheduler/orquestador.",
+      "status": "PENDING",
+      "claimed_by": null,
+      "assigned_to": "CLAUDE",
+      "depends_on": [
+        "CLAUDE-AGENT-REVIEW-01"
+      ],
+      "steps": [
+        {
+          "id": "1_RESEARCH",
+          "status": "PENDING"
+        },
+        {
+          "id": "2_EXECUTE",
+          "status": "PENDING"
+        },
+        {
+          "id": "3_VALIDATE",
+          "status": "PENDING"
+        }
+      ],
+      "destination": "maxbry123-commits/agentes/➡️📂 wordflow loop code Yaiwes",
+      "requirements": [
+        "COMPARE_EXISTING_LOOP_FIRST",
+        "NO_DUPLICATE_SCHEDULER",
+        "CHECKPOINT_RESUME_COMPATIBLE",
+        "FAIL_CLOSED"
+      ],
+      "evidence": [],
+      "gaps": [],
+      "version": 1,
+      "checker": "CLAUDE"
+    },
+    {
+      "id": "CLAUDE-INTEGRATION-VALIDATION-04",
+      "task": "Validar de extremo a extremo las integraciones aprobadas de Frontend + Code + mejoras LOOP/workflow: runtime/health/behavior/failure, reload/resume/checkpoint, trazabilidad, hashes/read-back y regresiones. Documentar GAPS y repararlos antes de marcar PASS; actualizar README arquitectura, HANDOFF, STATE/CHECKPOINT y evidencia.",
+      "status": "PENDING",
+      "claimed_by": null,
+      "assigned_to": "CLAUDE",
+      "depends_on": [
+        "CLAUDE-FRONTEND-CODE-INTEGRATION-02",
+        "CLAUDE-LOOP-WORKFLOW-REUSE-03"
+      ],
+      "steps": [
+        {
+          "id": "1_RESEARCH",
+          "status": "PENDING"
+        },
+        {
+          "id": "2_EXECUTE",
+          "status": "PENDING"
+        },
+        {
+          "id": "3_VALIDATE",
+          "status": "PENDING"
+        }
+      ],
+      "requirements": [
+        "TEST_BEFORE_PASS",
+        "READBACK",
+        "NO_FALSE_PASS",
+        "UPDATE_CRAZY_WALL_AND_HANDOFF"
+      ],
+      "evidence": [],
+      "gaps": [],
+      "version": 1,
+      "checker": "CLAUDE"
     }
   ],
   "closure_phase": {
@@ -1159,5 +1305,6 @@
     "authorized_by": "DIRECTOR_USER_CURRENT_CHAT",
     "created_at": "2026-09-17T23:29:00Z",
     "rule": "RESEARCH->EXECUTE->VALIDATE; one active writer/path; FAIL_CLOSED; 100_PASS_REQUIRED"
-  }
+  },
+  "updated_at": "2026-09-18T00:49:00-05:00"
 }
