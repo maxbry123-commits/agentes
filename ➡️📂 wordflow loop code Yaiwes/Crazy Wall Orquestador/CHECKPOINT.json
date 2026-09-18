@@ -70,7 +70,7 @@
   "foreign_owned_active": [
     "COMP-BROWSER-USE:SOL_ORCHESTRATOR"
   ],
-  "next_action": "Continue CL-002 publication/read-back using canonical acquisition path; do not count remote dry-run extracts as delivered.",
+  "next_action": "Continue CL-002 publication/read-back using canonical motors; use recovery checkpoint above; do not count dry-run extracts as delivered.",
   "recovery_entrypoint": "➡️📂 wordflow loop code Yaiwes/HANDOFF.md",
   "closure_phase": {
     "id": "CLOSURE-2026-09-17",
@@ -102,5 +102,16 @@
       "plan_commit": "7d20b5f408834a6f9b0c6b1f579c307f2fa252f5",
       "bitacora_commit": "80ed4135ecf56462910569ee17359e4486a0d4e3"
     }
+  },
+  "motor_descarga_recovery": {
+    "checkpoint": "➡️📂 wordflow loop code Yaiwes/Crazy Wall Orquestador/MOTOR-DESCARGA-RECOVERY-CHECKPOINT-2026-09-17.json",
+    "checkpoint_commit": "dac65bac9f1982944ad1df15c053b32874e46982",
+    "watchdog": "Motor de descarga",
+    "status": "ACTIVE_CL002_CL003_CL004_RECOVERY",
+    "orca_additional_destination": "VERIFIED_CLOSED",
+    "cl002": "IN_PROGRESS_PUBLICATION_TRANSPORT_GAPS",
+    "cl003": "ARTIFACT_VERIFIED_PUBLICATION_PENDING",
+    "cl004": "MOTOR3_VERIFIED_PUBLICATION_PENDING",
+    "next_action": "Continue CL-002 publication transport without GitHub Actions; then CL-003 npm artifact publication and CL-004 materialized Kimi publication. Keep FAIL_CLOSED."
   }
 }
