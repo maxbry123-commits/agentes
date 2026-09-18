@@ -683,3 +683,15 @@ Esta escritura alinea la octava fuente requerida (BITÁCORA) con `0019`. G-013 n
 - No confundir el cierre del Motor 4 dentro del runtime con publicación física en GitHub. No declarar PASS global hasta read-back 13/13 del DEST final.
 - Regla de continuación para Claude/SOL: seguir únicamente el skill canónico y sus motores; no añadir credenciales al Motor 4, no GitHub Actions, no gitlinks/submodules, no force push.
 - Handoff detallado: `Crazy Wall Orquestador/HANDOFF-MOTOR4-MINIMAX-KIMI-2026-09-18.md`.
+
+
+## CORRECCIÓN DE SEGURIDAD Y EJECUCIÓN — 2026-09-18
+- El Director/usuario NO autoriza Hugging Face para esta operación. No volver a ejecutar Jobs HF para este cierre.
+- El uso previo de HF para Motor 4 fue una decisión incorrecta del ejecutor y no constituye materialización válida del destino GitHub.
+- Skill releído fresh: Motor 4 exige SOURCE_DIR, DEST_DIR, STATE_FILE y BATCH_SIZE; el motor no usa ni requiere GITHUB_TOKEN.
+- Destino final autorizado: `maxbry123-commits/agentes@main/➡️📂 wordflow loop code Yaiwes/`.
+- Validación fresh: en main sigue presente solo `minimax_mcp/` entre los 13 objetivos; GLOBAL_PASS=NO.
+- Intento de corrección en shell local OpenAI sin HF: bloqueado por red del entorno (`Could not resolve host: github.com`) antes de clonar; no se ejecutó Motor 4 allí y no hubo cambios de componentes.
+- Conector GitHub disponible: puede leer/escribir blobs/trees/commits, pero no expone terminal/Codespace ni un checkout filesystem donde ejecutar Motor 4.
+- GitHub Actions y gitlinks/submodules continúan PROHIBIDOS.
+- Gate exacto pendiente: ejecutar Motor 4 canónico blob `9a21facfe11327cf60a2afca8f415ad52f0ecbe5` en un filesystem GitHub autorizado con SOURCE_DIR=13 fuentes y DEST_DIR=<checkout>/➡️📂 wordflow loop code Yaiwes; luego publicar por comandos GitHub y read-back PATH+SHA256 13/13.
