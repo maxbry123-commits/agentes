@@ -9980,7 +9980,7 @@
       "integration_pass": false
     },
     "wordflow_components_2026_09_17": {
-      "status": "PENDING_DOWNLOAD_AND_INTEGRATION",
+      "status": "MATERIALIZATION_COMPLETE_INTEGRATION_PENDING",
       "destination": "Wordflow loop code Yaiwes/",
       "assigned_integration": [
         "Claude",
@@ -9991,18 +9991,34 @@
           "component": "PonytailPlugin",
           "source": "https://github.com/DietrichGebert/ponytail.git",
           "source_commit": "e3ba2aa6f1e6f0bc4d69eb09c9f0d0a93af56156",
-          "download": "PENDING",
-          "integration": "PENDING"
+          "download": "MATERIALIZED_RUNTIME_VERIFIED",
+          "integration": "PENDING",
+          "destination_files": 101,
+          "runtime_test": "PASS",
+          "evidence_job": "6aacbcfe5c02253cfb146287"
         },
         {
           "component": "AgentSkills",
           "source": "https://github.com/agentskills/agentskills.git",
           "source_commit": "69ef37e9424c0a7ea9dd2293b559e43ec8176379",
-          "download": "PENDING",
+          "download": "MATERIALIZED_CORE_VERIFIED",
+          "integration": "PENDING",
+          "destination_files": 22,
+          "runtime_test": "40/40 PASS",
+          "evidence_job": "6aacbb57b1dc2b62dc5906ff",
+          "gap": "CLOSED: SOURCE_SPECIAL_FILE_GAP:CLAUDE.md"
+        },
+        {
+          "component": "Orca",
+          "source": "https://github.com/stablyai/orca",
+          "destination": "Wordflow loop code Yaiwes/Orca",
+          "materialization": "READBACK_TREE_VERIFIED",
+          "destination_files": 27324,
+          "tree_sha": "4a70b119890500c638cdc5e5115bc13a97fee974",
           "integration": "PENDING"
         }
       ],
-      "note": "PENDING PARA CLAUDE Y SOL: descargar/materializar, validar read-back/hash y luego integrar. No marcar integración PASS sin prueba."
+      "note": "PonytailPlugin, AgentSkills y Orca están materializados/read-back verificados. Integración funcional Wordflow sigue pendiente para Claude/SOL; no marcar PASS sin prueba real."
     }
   },
   "native_capabilities": {
