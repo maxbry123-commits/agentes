@@ -26,7 +26,7 @@ TIMESFM_METHOD_MANIFEST: dict[str, Any] = {
     "outputs": ["point_forecast", "quantiles", "uncertainty", "metadata"],
     "contracts": ["forecast_is_evidence_not_direct_critical_action"],
     "quarantine": True,
-    "tests_passed": False,
+    "tests_passed": True,
     "entry": "capabilities.timesfm_native:execute_native_capability",
     "meta": {
         "provider": "timesfm",
