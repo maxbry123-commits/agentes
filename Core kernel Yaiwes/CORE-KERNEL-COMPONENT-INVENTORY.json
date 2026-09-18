@@ -1,9 +1,9 @@
 {
   "schema": "yaiwes.core-component-inventory/v1",
-  "generated_at": "2026-09-16T06:29:18.566951+00:00",
+  "generated_at": "2026-09-18T02:58:05.305067+00:00",
   "repository": "maxbry123-commits/agentes",
   "root": "Core kernel Yaiwes",
-  "component_count": 243,
+  "component_count": 247,
   "kernel_signal_count": 4,
   "components": [
     {
@@ -88,6 +88,20 @@
       "wall_node_id": 152,
       "wall_status": "PENDING_STEP1",
       "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "anydoc",
+      "path": "Core kernel Yaiwes/anydoc",
+      "bucket": "ROOT",
+      "readme": "Core kernel Yaiwes/anydoc/README.md",
+      "function_source": "Fast Rust library that converts documents (Word, PowerPoint, Excel, OpenDocument, RTF, EPUB, CSV, and PDF) into clean GitHub-Flavored Markdown. Includes bindings for Node.js, Python, and the browser (WebAssembly).",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
       "wall_target": null
     },
     {
@@ -1902,6 +1916,34 @@
       "wall_target": null
     },
     {
+      "name": "omarchy",
+      "path": "Core kernel Yaiwes/omarchy",
+      "bucket": "ROOT",
+      "readme": "Core kernel Yaiwes/omarchy/README.md",
+      "function_source": "Omarchy is a beautiful, fun & agentic Linux distribution by DHH.",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
+      "wall_target": null
+    },
+    {
+      "name": "omniroute",
+      "path": "Core kernel Yaiwes/omniroute",
+      "bucket": "ROOT",
+      "readme": "Core kernel Yaiwes/omniroute/README.md",
+      "function_source": "⭐ Star the repo if OMNIROUTE helped you save money and make your work easier.",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
+      "wall_target": null
+    },
+    {
       "name": "Open-Policy-Agent",
       "path": "Core kernel Yaiwes/Componentes recuperados A/Open-Policy-Agent",
       "bucket": "Componentes recuperados A",
@@ -2179,6 +2221,20 @@
       "wall_node_id": 109,
       "wall_status": "PENDING_STEP1",
       "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "orca",
+      "path": "Core kernel Yaiwes/orca",
+      "bucket": "ROOT",
+      "readme": "Core kernel Yaiwes/orca/README.md",
+      "function_source": "Run Codex, ClaudeCode, OpenCode or Pi side-by-side — each in its own worktree, tracked in one place.",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
       "wall_target": null
     },
     {
