@@ -1,0 +1,63 @@
+{
+  "schema": "yaiwes.native-capability-state/v1",
+  "node": "YAIWES-TIMESFM-NATIVE-CAPABILITY",
+  "mode": "FAIL_CLOSED",
+  "status": "GAP_PENDING",
+  "source_commit": "e31dadd84cb26bd5153fde6687502b8312e918fb",
+  "model": "google/timesfm-3.0-pytorch",
+  "model_weights_in_core_kernel": false,
+  "capability_ids": [
+    "temporal.forecast",
+    "temporal.anomaly_from_intervals"
+  ],
+  "gaps": {
+    "GAP-01": {
+      "task": "descargar Skill/software ligero",
+      "status": "PASS"
+    },
+    "GAP-02": {
+      "task": "crear adapter",
+      "status": "PASS"
+    },
+    "GAP-03": {
+      "task": "registrar capability",
+      "status": "PASS"
+    },
+    "GAP-04": {
+      "task": "añadir decisión semántica al kernel",
+      "status": "PASS"
+    },
+    "GAP-05": {
+      "task": "conectar con modelo del Router Inteligente Universal",
+      "status": "GAP_PENDING",
+      "reason": "No runtime endpoint/API/MCP del AI Staff verificado todavía; no se redescargan pesos en Core kernel."
+    },
+    "GAP-06": {
+      "task": "normalizar request/response",
+      "status": "PASS"
+    },
+    "GAP-07": {
+      "task": "tests",
+      "status": "PARTIAL_PASS",
+      "unit": "9/9 PASS",
+      "preflight": "PASS",
+      "real_model_inference": "PENDING"
+    },
+    "GAP-08": {
+      "task": "documentación y trazabilidad",
+      "status": "IN_PROGRESS"
+    }
+  },
+  "acceptance": {
+    "skill_installed": true,
+    "adapter_real": true,
+    "registry": true,
+    "semantic_routing": true,
+    "model_repository_accessible": true,
+    "router_runtime_accessible": false,
+    "real_inference": false,
+    "structured_response_unit_verified": true,
+    "architecture_readme": false,
+    "crazy_wall": false
+  }
+}
