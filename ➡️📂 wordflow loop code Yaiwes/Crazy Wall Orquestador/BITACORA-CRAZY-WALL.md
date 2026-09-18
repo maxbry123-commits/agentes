@@ -650,3 +650,13 @@ Esta escritura alinea la octava fuente requerida (BITÁCORA) con `0019`. G-013 n
 - Estado real en `main`: solo `➡️📂 wordflow loop code Yaiwes/minimax_mcp/` está parcialmente materializado; los otros 12 paths no existen todavía.
 - Refs fuente fijados: Mini-Agent `d76a4f6389688cabda39c224a6cdfa274215d47c`; OpenRoom `02468154c4d99f8925916425bf444d672454fb3d`; MiniMax cli `bfbb4cb75ec343149eaccfd668c5011aa27bcf2b`; Code Plugins `d592f422893846c2aac48f8b407a92bd0293c6b1`; MiniMax MCP `0856b9aef8a9d676bb63bdd6b6426d7b640a3b7a`; MCP-JS `8032f830203a1c61e56760b1680db923654bcb1b`; Coding-Plan-MCP `5dbf3494d7dac35d154958e0c1dab03910b89bbd`; kimi-code `1fddc16e3ea2de4c26a18acd764380adf9e2ed64`; kimi-cli `86f136422a0aae6b217ea49e7ea1d2e8a1defcd2`; kimi-agent-sdk `ed4be6be5280d02191da88bbafb3f828dcd33d72`; kimi-agent-rs `f9186cd20b28c02d33721c05fd248e65d56e3e53`; Kimi-Researcher `9406d821348471bceb6d5fa0b7eba05411106f93`; mcode/minimax-code `30dd6f27f1b03c06749774d3d8c6477fb2b9675a`.
 - Gate Claude: regenerar → Motor 3 → Motor 4 hacia el destino exacto → commit/push con una credencial GitHub válida → read-back de los 13 paths → comparar PATH + files + SHA256 con la evidencia del job `6aad964e51992417dfcc7c95`; solo entonces MATERIALIZATION=13/13 PASS e iniciar integración.
+
+
+## HANDOFF CLAUDE — MOTOR 4 ÚNICO / PUBLICACIÓN FINAL — 2026-09-18
+- Autorización del Director: mover los 13 componentes a `➡️📂 wordflow loop code Yaiwes/` usando **un solo motor**, Motor 4 canónico `motor_4_move_batches.py` blob `9a21facfe11327cf60a2afca8f415ad52f0ecbe5`.
+- Ejecución diseñada: un único `SOURCE_DIR` agregado con los 13 slugs → un único `DEST_DIR` raíz autorizada; `BATCH_SIZE=100`; `COLLISION_POLICY=fail`; aceptación `VERIFIED_CLOSED`, `failed=0`, `pending=0`, `source_files_remaining=0`.
+- Intento de runtime autenticado: bloqueado por control de seguridad **antes de crear el job** al incluir credencial de push; por tanto no hubo movimiento nuevo ni commit desde ese intento.
+- Fallback Git Data cross-repo probado: GitHub rechazó SHA de blob upstream con HTTP 422 (`tree.sha ... is not a valid blob`), así que no sirve para importar masivamente sin recrear blobs.
+- Última presencia física validada en `main`: `minimax_mcp/` parcial; 12 destinos restantes ausentes.
+- Acción para Claude: ejecutar el Motor 4 único en un runtime autenticado que pueda clonar `maxbry123-commits/agentes`, preparar el SOURCE_DIR agregado con los 13 refs ya registrados, mover al DEST_DIR exacto, commit/push a `main`, clonar fresco y validar PATH + SHA256 + read-back 13/13.
+- Prohibido: GitHub Actions, gitlinks/submodules, force push, declarar PASS antes del read-back 13/13.
