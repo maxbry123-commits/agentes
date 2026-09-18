@@ -1,8 +1,5 @@
 """
-ejecutor.py - El router 90/10 real. Este archivo NUNCA llama a un LLM
-directamente. Solo decide, via if/elif, cual funcion determinista o
-cual funcion de LLM debe correr, siguiendo dag_schema.yaml.
-Actualizado: mission_id por tarea + Tenacity para reintentos con backoff.
+ejecutor.py - FIX P0-02, P0-03, P0-04 (auditoria 5x). Ver Anexo para detalle.
 """
 import json
 import uuid
@@ -16,12 +13,14 @@ from verificador import verificar_con_claude
 
 RAIZ = Path(__file__).parent
 
+_PROVIDER_ERROR_PREFIXES = ("ERROR_CEREBRAS", "ERROR:", "ERROR_CLAUDE_SDK")
+
+
+def _es_error_de_provider(respuesta: str) -> bool:
+    return any(str(respuesta).startswith(p) for p in _PROVIDER_ERROR_PREFIXES)
+
 
 def ejecutar_tarea(tarea: dict) -> dict:
-    """
-    tarea = {"tipo": ..., "nombre": ..., "url": ..., "descripcion": ...}
-    Devuelve {"status": "PASS"|"GAP", "mission_id": ..., "evidencia": {...}}
-    """
     mission_id = tarea.get("mission_id") or str(uuid.uuid4())
     tarea = {**tarea, "mission_id": mission_id}
 
@@ -32,39 +31,34 @@ def ejecutar_tarea(tarea: dict) -> dict:
         return investigar_comunidad(tarea)
 
     elif tarea["tipo"] == "evaluar_componente":
-        respuesta = consultar_experto_cerebras(
-            contexto=tarea, pregunta=f"Este componente encaja con YAIWES? {tarea}"
-        )
+        respuesta = consultar_experto_cerebras(contexto=tarea, pregunta=f"Este componente encaja con YAIWES? {tarea}")
+        if _es_error_de_provider(respuesta):
+            return {"status": "GAP", "mission_id": mission_id, "evidencia": {"tipo_error": "PROVIDER_ERROR_OR_AUTH_ERROR", "respuesta": respuesta}}
         return {"status": "PASS", "mission_id": mission_id, "evidencia": {"respuesta": respuesta}}
 
     elif tarea["tipo"] == "diseno_arquitectura":
         veredicto = verificar_con_claude(tarea)
-        return {"status": veredicto["status"], "mission_id": mission_id, "evidencia": veredicto}
+        return {"status": veredicto["status"], "mission_id": mission_id, "evidencia": {**veredicto, "tipo_veredicto": "LLM_ADVISORY_OPINION_NO_ES_ORACLE_OBJETIVO"}}
 
     elif tarea["tipo"] == "verificar_existencia":
         existe = (RAIZ / tarea["nombre"]).exists()
-        return {"status": "PASS", "mission_id": mission_id, "evidencia": {"existe": existe}}
+        if not existe:
+            return {"status": "GAP", "mission_id": mission_id, "evidencia": {"existe": False, "motivo": "archivo_no_encontrado"}}
+        return {"status": "PASS", "mission_id": mission_id, "evidencia": {"existe": True}}
 
     return investigar_comunidad(tarea)
 
 
 @retry(stop=stop_after_attempt(20), wait=wait_exponential(multiplier=1, min=2, max=60), reraise=False)
 def _intento_resolver_gap(tarea: dict, intento_actual: list) -> str:
-    """Un solo intento, envuelto por Tenacity para backoff exponencial real
-    entre reintentos (2s, 4s, 8s... hasta 60s), en vez de un for ciego."""
     intento_actual[0] += 1
-    respuesta = consultar_experto_cerebras(
-        contexto=tarea,
-        pregunta=f"Intento {intento_actual[0]}/20: como resolver este GAP? {tarea}",
-    )
-    if "RESUELTO" not in respuesta.upper():
-        raise ValueError("aun no resuelto, Tenacity reintenta con backoff")
+    respuesta = consultar_experto_cerebras(contexto=tarea, pregunta=f"Intento {intento_actual[0]}/20: como resolver este GAP? {tarea}")
+    if _es_error_de_provider(respuesta) or "RESUELTO" not in respuesta.upper():
+        raise ValueError("aun no resuelto")
     return respuesta
 
 
 def investigar_comunidad(tarea: dict) -> dict:
-    """Regla dura: nunca detenerse, nunca escalar sin intentar 20 formas.
-    Ahora con backoff exponencial real (Tenacity) entre intentos."""
     mission_id = tarea.get("mission_id") or str(uuid.uuid4())
     intento_actual = [0]
     try:
@@ -75,7 +69,6 @@ def investigar_comunidad(tarea: dict) -> dict:
 
 
 def loop_principal(cola_tareas: list) -> None:
-    """No stop, no escala. Termina una, sigue con la otra."""
     while cola_tareas:
         tarea = cola_tareas.pop(0)
         resultado = ejecutar_tarea(tarea)
