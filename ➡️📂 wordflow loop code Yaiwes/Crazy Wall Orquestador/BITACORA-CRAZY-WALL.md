@@ -549,3 +549,27 @@ Esta escritura alinea la octava fuente requerida (BITÁCORA) con `0019`. G-013 n
 - Autorización explícita actual: descargar + extraer estos 13 componentes y escribirlos SOLO en `➡️📂 wordflow loop code Yaiwes/`: `@minimax-ai/code (mcode)`, `MiniMax-AI/Mini-Agent`, `MiniMax-AI/OpenRoom`, `MiniMax-AI/cli`, `MiniMax-AI/MiniMax-Code-Plugins`, `MiniMax-AI/MiniMax-MCP`, `MiniMax-AI/MiniMax-MCP-JS`, `MiniMax-AI/MiniMax-Coding-Plan-MCP`, `MoonshotAI/kimi-code`, `MoonshotAI/kimi-cli`, `MoonshotAI/kimi-agent-sdk`, `MoonshotAI/kimi-agent-rs`, `MoonshotAI/Kimi-Researcher`.
 - Restricción: adquisición/materialización únicamente mediante motores canónicos de descarga/extracción en `/Motores`; `GITHUB_ACTIONS=FORBIDDEN`; `GITLINK/SUBMODULE=FORBIDDEN`; no inventar ni reutilizar otros destinos.
 - Claude: `INTEGRATION=PENDING_GAP`; integrar después de presencia física + PATH/SHA256/read-back de cada componente; no declarar PASS antes.
+
+
+## CLAUDE NOTE — MINIMAX + KIMI MOTOR RUN — 2026-09-18
+- Runtime job real: `6aad8b3852d0dbd7f1d6b501` = COMPLETED.
+- Motor usado: `Motores/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py`; blob Git `91e6e4486692eab314be5c7130d8310d3c855397`.
+- GitHub Actions: NO. Gitlinks/submodules creados: NO. Motor 3/copiar/mover usado en este run: NO.
+- Resultado DOWNLOAD+EXTRACT con Motor canónico: 10/12 repos GitHub = `VERIFIED_CLOSED`; `kimi_code` bloqueado por `SOURCE_SPECIAL_FILE_GAP:CLAUDE.md`; `kimi_cli` bloqueado por `SOURCE_SPECIAL_FILE_GAP:packages/kimi-code/README.md,src/kimi_cli/CHANGELOG.md`.
+- `@minimax-ai/code (mcode)`: PENDING; el origen oficial registrado es artefacto NPM tar.gz y no fue procesado porque esta autorización limita el run a los motores de descarga/extracción actuales.
+- Publicación física en main: PENDING; el intento de lanzar el mismo motor con secreto+PUBLISH=1 fue bloqueado por el control de seguridad del runtime antes de crear job, por lo que no se usó vía alternativa.
+- Destinos autorizados pendientes de materialización/read-back:
+  - `➡️📂 wordflow loop code Yaiwes/mcode/`
+  - `➡️📂 wordflow loop code Yaiwes/minimax_mini_agent/`
+  - `➡️📂 wordflow loop code Yaiwes/minimax_openroom/`
+  - `➡️📂 wordflow loop code Yaiwes/minimax_mmx_cli/`
+  - `➡️📂 wordflow loop code Yaiwes/minimax_code_plugins/`
+  - `➡️📂 wordflow loop code Yaiwes/minimax_mcp/`
+  - `➡️📂 wordflow loop code Yaiwes/minimax_mcp_js/`
+  - `➡️📂 wordflow loop code Yaiwes/minimax_coding_plan_mcp/`
+  - `➡️📂 wordflow loop code Yaiwes/kimi_code/`
+  - `➡️📂 wordflow loop code Yaiwes/kimi_cli/`
+  - `➡️📂 wordflow loop code Yaiwes/kimi_agent_sdk/`
+  - `➡️📂 wordflow loop code Yaiwes/kimi_agent_rs/`
+  - `➡️📂 wordflow loop code Yaiwes/kimi_researcher/`
+- Claude: `INTEGRATION=PENDING_GAP`; no integrar ni declarar PASS hasta presencia física + PATH/SHA256/read-back.
