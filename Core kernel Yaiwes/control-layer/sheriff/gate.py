@@ -93,3 +93,24 @@ def gate(
         return GateResult(passed=False, decision=decision, failed_checks=failed)
 
     return GateResult(passed=True, decision=decision, failed_checks=failed)
+
+
+# Compatibility entrypoint used by control-layer/bootstrap.py.
+def run_sheriff(decision: Dict[str, Any], *, ledger=None, shadow_candidate: bool = False):
+    """Evaluate a Sentinela decision with the v2 five-state Sheriff model."""
+    from .estados import evaluate_from_sentinela
+
+    verdict = evaluate_from_sentinela(
+        decision,
+        shadow_candidate=shadow_candidate,
+    )
+    shadow_rec = None
+    if ledger is not None and verdict.shadow_only:
+        shadow_rec = ledger.append(
+            op_type=str(decision.get("suggested_op_type") or decision.get("op_type") or "unknown"),
+            set_hash=str(decision.get("set_hash") or ""),
+            fingerprint_hash=str(decision.get("fingerprint_hash") or ""),
+            contracts=list(decision.get("active_contracts") or ()),
+            meta={"sheriff_state": verdict.state.value},
+        )
+    return verdict, shadow_rec
