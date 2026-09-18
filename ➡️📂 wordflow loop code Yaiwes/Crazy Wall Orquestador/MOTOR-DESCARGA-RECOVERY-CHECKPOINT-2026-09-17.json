@@ -1,0 +1,118 @@
+{
+  "schema": "yaiwes.motor-download.recovery-checkpoint/v1",
+  "timestamp": "2026-09-17T20:08:00-05:00",
+  "watchdog": {
+    "name": "Motor de descarga",
+    "status": "ACTIVE_HOURLY",
+    "automation_id": "6aac7c12c4548191943fd97232d968c8"
+  },
+  "authoritative_destination": "➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/",
+  "orca": {
+    "status": "VERIFIED_CLOSED",
+    "source": "Core kernel Yaiwes/orca",
+    "destination": "➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/orca",
+    "motor": "motor_3_copy_batches",
+    "motor_blob": "3689924361ce4a1a9fde4ae2b6f6009c37a6042d",
+    "hf_job": "6aac8c48b1dc2b62dc58fe1f",
+    "files": 27324,
+    "source_tree": "4a70b119890500c638cdc5e5115bc13a97fee974",
+    "target_tree": "4a70b119890500c638cdc5e5115bc13a97fee974",
+    "publish_commit": "50b657b4a914f6fcc4452f1cb74cc08ff08146c6",
+    "evidence": "wordflow_loop/evidence/ORCA_ADDITIONAL_DESTINATION_MOTOR3_2026-09-17.json"
+  },
+  "cl002": {
+    "status": "IN_PROGRESS",
+    "motor2_blob": "91e6e4486692eab314be5c7130d8310d3c855397",
+    "latest_validation_job": "6aac8e87b1dc2b62dc58fe79",
+    "verified": [
+      {
+        "slug": "minimax_mcp",
+        "repo": "MiniMax-AI/MiniMax-MCP",
+        "commit": "0856b9aef8a9d676bb63bdd6b6426d7b640a3b7a",
+        "files": 28,
+        "tree_sha256": "cf3ed570ea0658a6774f7152ecafba4e40c40ca8c72d71cc6c695898d502c8a6"
+      },
+      {
+        "slug": "minimax_mcp_js",
+        "repo": "MiniMax-AI/MiniMax-MCP-JS",
+        "commit": "8032f830203a1c61e56760b1680db923654bcb1b",
+        "files": 38,
+        "tree_sha256": "d3d0e65f3dfb5031c1dd03aba4546999f638612f05d2c8c802e1215ba2c300fa"
+      },
+      {
+        "slug": "minimax_coding_plan_mcp",
+        "repo": "MiniMax-AI/MiniMax-Coding-Plan-MCP",
+        "commit": "5dbf3494d7dac35d154958e0c1dab03910b89bbd",
+        "files": 27,
+        "tree_sha256": "daa6bf47e75d5037b21add5889aeb25c50d3c73b094ebf44e17641a23d46fd3e"
+      },
+      {
+        "slug": "kimi_agent_rs",
+        "repo": "MoonshotAI/kimi-agent-rs",
+        "commit": "f9186cd20b28c02d33721c05fd248e65d56e3e53",
+        "files": 172,
+        "tree_sha256": "39a2cc961cdc6e342e62c9d11d992c2608293574d2c907745da5e7e2821138d0"
+      },
+      {
+        "slug": "kimi_researcher",
+        "repo": "MoonshotAI/Kimi-Researcher",
+        "commit": "9406d821348471bceb6d5fa0b7eba05411106f93",
+        "files": 16,
+        "tree_sha256": "ce5d2be372b1ae91c9018d7582720dfdac5254e0ad5f38a6c296fcbcf2afb00e"
+      }
+    ],
+    "publication_gaps": [
+      "CONNECTED_GITHUB_SECURITY_CONTROL_BLOCKED_BULK_SOURCE_BLOB_WRITE",
+      "CONNECTED_GITHUB_CANNOT_DECODE_BINARY_REPO_BLOBS_FOR_KIMI_RESEARCHER"
+    ]
+  },
+  "cl003": {
+    "status": "IN_PROGRESS_ARTIFACT_VERIFIED_PUBLICATION_PENDING",
+    "package": "@minimax-ai/code",
+    "version": "0.4.10",
+    "tarball": "https://registry.npmjs.org/@minimax-ai/code/-/code-0.4.10.tgz",
+    "integrity": "sha512-BXM9HWTDoK6kC8yS4dm3z59+jYN4PlN0t+lliywDWojLt+HM7KbKKVuGS4ffLNPHXa4o7cN44OzHz/EI7Lq4Zg==",
+    "shasum": "f4564e4fe8c92f4f496efb75e9718b28716be126",
+    "packed_bytes": 11170825,
+    "unpacked_bytes": 45477949,
+    "entries": 760,
+    "source_repository_declared": false,
+    "runtime_validation_job": "6aac8eec5c02253cfb145844",
+    "runtime_version": "0.4.10",
+    "binaries": [
+      "mcode",
+      "mcode-tools"
+    ],
+    "gap": "NPM_BINARY_ARTIFACT_PUBLICATION_TRANSPORT_NOT_AVAILABLE_THROUGH_CONNECTED_GITHUB"
+  },
+  "cl004": {
+    "status": "MOTOR3_VERIFIED_PUBLICATION_PENDING",
+    "job": "6aac8e01b1dc2b62dc58fe5b",
+    "kimi_code": {
+      "commit": "1fddc16e3ea2de4c26a18acd764380adf9e2ed64",
+      "source_symlinks": 1,
+      "materialized_files": 4471,
+      "dest_symlinks": 0,
+      "verdict": "VERIFIED_CLOSED"
+    },
+    "kimi_cli": {
+      "commit": "86f136422a0aae6b217ea49e7ea1d2e8a1defcd2",
+      "source_symlinks": 2,
+      "materialized_files": 988,
+      "dest_symlinks": 0,
+      "verdict": "VERIFIED_CLOSED"
+    },
+    "source_symlinks": [
+      "kimi-code: CLAUDE.md -> AGENTS.md",
+      "kimi-cli: packages/kimi-code/README.md -> ../../README.md",
+      "kimi-cli: src/kimi_cli/CHANGELOG.md -> ../../CHANGELOG.md"
+    ],
+    "gap": "CROSS_REPO_TREE_REUSE_REJECTED_422_AND_BULK_BLOB_PUBLICATION_BLOCKED"
+  },
+  "next_queue": [
+    "CL-002 publication transport",
+    "CL-003 npm artifact publication",
+    "CL-004 materialized Kimi trees publication",
+    "CL-005..CL-013"
+  ]
+}
