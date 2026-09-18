@@ -534,3 +534,12 @@ Esta escritura alinea la octava fuente requerida (BITÁCORA) con `0019`. G-013 n
 - AgentSkills confirmado físicamente en `Wordflow loop code Yaiwes/AgentSkills/`.
 - Evidencia read-back: `README.md` blob `247e4a18e908d3bf27092f886f25c2515d84ecbc`; `skills-ref/pyproject.toml` blob `26f0bd339ff79a1f51a9dbeb10c424fd9c09cb73`.
 - Estado para Claude: MATERIALIZATION=VERIFIED; integración funcional permanece sujeta a prueba real antes de PASS.
+
+
+## DIRECTOR CLEANUP — MINIMAX + KIMI — 2026-09-18
+- Orden: eliminar SOLO los 13 componentes MiniMax/Kimi indicados del destino `➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/`.
+- Eliminados: `mcode`, `minimax_mini_agent`, `minimax_openroom`, `minimax_mmx_cli`, `minimax_code_plugins`, `minimax_mcp`, `minimax_mcp_js`, `minimax_coding_plan_mcp`, `kimi_code`, `kimi_cli`, `kimi_agent_sdk`, `kimi_agent_rs`, `kimi_researcher`.
+- Commit: `80d756a8883e691f02ee9e17b53868c588ec1d2e`.
+- Read-back: 0/13 permanecen en `agent_sources/`.
+- Preservados y verificados presentes: `kimi_k`, `orca`, `openclaw`, `claude_code`, `mimo_code`, `opencode`.
+- Nota para Claude: no reinstalar estos 13 componentes sin nueva autorización explícita del Director/usuario.
