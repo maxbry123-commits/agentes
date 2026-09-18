@@ -475,3 +475,11 @@ Esta escritura alinea la octava fuente requerida (BITÁCORA) con `0019`. G-013 n
 - GAP CL-002: `PUBLISH_READBACK_PENDING`; no se cuenta ningún componente remoto como entregado hasta presencia + hash/read-back en `main`.
 - GAPs posteriores: CL-003 NPM mcode; CL-004 symlinks kimi-code/kimi-cli.
 - Próxima acción: continuar CL-002 con publicación verificable al destino exacto `➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/`.
+
+
+## COMPONENT-OPS — PONYTAIL + AGENTSKILLS — 2026-09-17
+- Destino autorizado: `Wordflow loop code Yaiwes/`.
+- PonytailPlugin → `DietrichGebert/ponytail` @ `e3ba2aa6f1e6f0bc4d69eb09c9f0d0a93af56156` — DOWNLOAD=PENDING; INTEGRATION=PENDING.
+- AgentSkills → `agentskills/agentskills` @ `69ef37e9424c0a7ea9dd2293b559e43ec8176379` — DOWNLOAD=PENDING; INTEGRATION=PENDING.
+- Asignación de integración: **Claude + SOL**.
+- Gate: descarga/materialización + read-back/hash antes de cambiar a integración; integración requiere prueba real antes de PASS.
