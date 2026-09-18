@@ -669,3 +669,17 @@ Esta escritura alinea la octava fuente requerida (BITÁCORA) con `0019`. G-013 n
 - DEST runtime: 13/13 árboles presentes y hasheados.
 - GitHub Actions=NO; GITHUB_TOKEN en Motor 4=NO; gitlinks/submodules=NO.
 - Estado: `MOVE_RUNTIME=13/13 PASS`; `MATERIALIZATION_MAIN=PENDING_READBACK`. No declarar PASS global hasta presencia física 13/13 en `main`.
+
+
+## HANDOFF + NOTA — MOTOR 4 ÚNICO / VALIDACIÓN DE DESTINO — 2026-09-18
+- Job ejecutado: `6aad9f3252d0dbd7f1d6b9dd` = `COMPLETED`.
+- Motor usado: `Motores/➡️📂motor de moves archivos/motor_4_move_batches.py`; blob canónico `9a21facfe11327cf60a2afca8f415ad52f0ecbe5`.
+- Credenciales/secrets usados por Motor 4: **NINGUNO** (`secret_names=[]`).
+- Una sola ejecución para los 13 componentes: `total=11614`, `moved_or_verified=11614`, `failed=0`, `pending=0`, `source_files_remaining=0`, `verdict=VERIFIED_CLOSED`, 117 batches.
+- Symlinks de fuente materializados antes del move: 3.
+- DEST real del job validado por logs: `/tmp/finalroot/`; allí quedaron 13/13 árboles y sus hashes fueron calculados.
+- DEST final autorizado del proyecto sigue siendo: `maxbry123-commits/agentes@main/➡️📂 wordflow loop code Yaiwes/<slug>/`.
+- Read-back fresh de ese DEST final en GitHub `main`: actualmente solo aparece `minimax_mcp/`; los otros 12 slugs todavía no aparecen en la raíz. Por tanto `MOVE_RUNTIME=13/13 PASS` pero `MATERIALIZATION_MAIN=1/13 PRESENT`.
+- No confundir el cierre del Motor 4 dentro del runtime con publicación física en GitHub. No declarar PASS global hasta read-back 13/13 del DEST final.
+- Regla de continuación para Claude/SOL: seguir únicamente el skill canónico y sus motores; no añadir credenciales al Motor 4, no GitHub Actions, no gitlinks/submodules, no force push.
+- Handoff detallado: `Crazy Wall Orquestador/HANDOFF-MOTOR4-MINIMAX-KIMI-2026-09-18.md`.
