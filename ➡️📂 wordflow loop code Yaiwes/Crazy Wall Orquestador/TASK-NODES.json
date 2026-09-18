@@ -830,15 +830,17 @@
         "Git Data exact-blob pilot: source blob b13e833219334a15562ff31833e4ea9388954cdb recreated with identical SHA in target object DB; bulk source transfer then blocked by connector security before any branch commit",
         "HF job 6aacd2415c02253cfb1466c9: fresh Motor2 verification MiniMax Mini-Agent 366/366 and Kimi Agent SDK 296/296; failed=0",
         "HF job 6aacd2af5c02253cfb1466e9: fresh Motor2 verification mmx CLI 186, Code Plugins 602, MiniMax MCP 28, MCP JS 38, Coding Plan MCP 27, Kimi Agent RS 172, Kimi Researcher 16; all extraction/hash verified",
-        "HF job 6aacd2945c02253cfb1466e7: Motor3 verification mcode 0.4.10 = 760/760 files and OpenRoom = 255/255; failed=0"
+        "HF job 6aacd2945c02253cfb1466e7: Motor3 verification mcode 0.4.10 = 760/760 files and OpenRoom = 255/255; failed=0",
+        "main commit 28a47f47b7f127ba400c0bcbbb930daa424f6d85: 12 MiniMax/Kimi GitHub sources mounted in agent_sources as mode-160000 pinned gitlinks; read-back tree aa2e2b79b60fe48349fc03998f97560fdbf965d4; all expected paths present",
+        "AGENT_SOURCE_MOUNT_MANIFEST_2026-09-18.json + .gitmodules read-back PASS"
       ],
       "gaps": [
-        "PUBLISH_READBACK_PENDING: verified remote extracts are not yet present in destination main",
         "KIMI_SYMLINK_GAP delegated to CL-004",
         "MCode NPM acquisition belongs to CL-003",
-        "PUBLISH_TRANSPORT_SECURITY_GATE: canonical Motor2 PUBLISH=1 launch and bulk cross-repo source transfer are blocked by connected-tool security controls; no GitHub Actions used; no partial branch publication"
+        "PUBLISH_TRANSPORT_SECURITY_GATE: canonical Motor2 PUBLISH=1 launch and bulk cross-repo source transfer are blocked by connected-tool security controls; no GitHub Actions used; no partial branch publication",
+        "GITLINK_MOUNT_PRESENT_BUT_FULL_VENDOR_TREE_NOT_EMBEDDED_IN_SUPERPROJECT"
       ],
-      "version": 4,
+      "version": 5,
       "checker": "CHATGPT_WATCHDOG"
     },
     {
@@ -865,12 +867,14 @@
       ],
       "evidence": [
         "HF job 6aacd2945c02253cfb1466e7: @minimax-ai/code@0.4.10 npm artifact shasum f4564e4fe8c92f4f496efb75e9718b28716be126; Motor3 copied/verified 760/760 files; failed=0",
-        "HF job 6aac8eec5c02253cfb145844: mcode --version = 0.4.10 runtime validation"
+        "HF job 6aac8eec5c02253cfb145844: mcode --version = 0.4.10 runtime validation",
+        "agent_sources/mcode exists physically with package.json + SOURCE_NPM.json; @minimax-ai/code pinned 0.4.10, shasum f4564e4fe8c92f4f496efb75e9718b28716be126"
       ],
       "gaps": [
-        "FINAL_AGENT_SOURCES_PUBLICATION_PENDING"
+        "FINAL_AGENT_SOURCES_PUBLICATION_PENDING",
+        "MCODE_FULL_PACKAGE_BYTES_NOT_VENDORED__NPM_PIN_MOUNT_ONLY"
       ],
-      "version": 2,
+      "version": 3,
       "checker": "CHATGPT_WATCHDOG"
     },
     {
@@ -896,12 +900,14 @@
         }
       ],
       "evidence": [
-        "HF job 6aacd25a5c02253cfb1466cf: fresh Motor3 kimi-code 4471/4471 and kimi-cli 988/988; failed=0; destination symlinks=0"
+        "HF job 6aacd25a5c02253cfb1466cf: fresh Motor3 kimi-code 4471/4471 and kimi-cli 988/988; failed=0; destination symlinks=0",
+        "agent_sources/kimi_code gitlink=1fddc16e3ea2de4c26a18acd764380adf9e2ed64; agent_sources/kimi_cli gitlink=86f136422a0aae6b217ea49e7ea1d2e8a1defcd2; both read-back mode 160000"
       ],
       "gaps": [
-        "FINAL_AGENT_SOURCES_PUBLICATION_PENDING"
+        "FINAL_AGENT_SOURCES_PUBLICATION_PENDING",
+        "MOUNTED_AS_UPSTREAM_GITLINKS__MATERIALIZED_SYMLINK_FREE_VENDOR_TREES_NOT_EMBEDDED"
       ],
-      "version": 2,
+      "version": 3,
       "checker": "CHATGPT_WATCHDOG"
     },
     {
