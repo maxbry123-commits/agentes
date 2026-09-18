@@ -1316,3 +1316,18 @@ Contrato vigente: `PASO 1 MOVE 1-20 -> PASO 2 CABLEAR/PODAR 1x1 SIN TESTS -> PAS
 - Impeccable (`pbakaus/impeccable`, source commit `f2c7051853848826aac2f4646581d62a732155ad`) — `GAP: COMPONENTE DESCARGADO/COPIADO. INTEGRACIÓN PENDIENTE.`
 - Anthropic Frontend Design (`anthropics/skills`) — `GAP: COMPONENTE DESCARGADO/COPIADO. INTEGRACIÓN PENDIENTE.`
 - Anthropic Skill Creator / Skills Design (`anthropics/skills`) — `GAP: COMPONENTE DESCARGADO/COPIADO. INTEGRACIÓN PENDIENTE.`
+
+
+## Native Temporal Intelligence / TimesFM
+
+Estado: `GAP_PENDING_MODEL_RUNTIME_E2E`.
+
+`YAIWES Agent → Kernel → Capability Router → decision policy → temporal.forecast → TimesFM adapter (MCP/API/local-service) → Router Inteligente Universal / AI Staff → TimesFM runtime → structured result → Kernel → Agent`
+
+- Capability nativa externa: `temporal.forecast`.
+- Capability derivada: `temporal.anomaly_from_intervals`; TimesFM no aporta anomaly detection nativa, se deriva de intervalos cuantiles.
+- Skill/software ligero oficial materializado en `Core kernel Yaiwes/TimesFM-Native-Capability/` desde `google-research/timesfm@e31dadd84cb26bd5153fde6687502b8312e918fb`.
+- Pesos del modelo: **NO** se almacenan en Core kernel. Runtime objetivo: Router Inteligente Universal / AI Staff, modelo `google/timesfm-3.0-pytorch`.
+- Kernel routing: selección explícita o semántica; tareas no temporales no invocan TimesFM; historial insuficiente o runtime ausente → `capability_unavailable`/no selección, sin forecast inventado.
+- Resultado de TimesFM = evidencia para decisión del Kernel/Agente; nunca ejecuta directamente una acción crítica.
+- Tests actuales: routing/registry/fail-closed/contrato estructurado `9/9 PASS`; preflight oficial sin pesos `PASS`. Cierre global bloqueado hasta endpoint/runtime real del Router + inferencia real.
