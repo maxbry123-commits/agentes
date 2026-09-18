@@ -127,5 +127,17 @@
     "CL-003 npm artifact publication",
     "CL-004 materialized Kimi trees publication",
     "CL-005..CL-013"
-  ]
+  ],
+  "latest_fresh_agent_acquisition": {
+    "timestamp": "2026-09-18T00:57:00-05:00",
+    "jobs": {
+      "mini_agent_and_kimi_agent_sdk": "6aacd2415c02253cfb1466c9",
+      "kimi_code_cli_motor3": "6aacd25a5c02253cfb1466cf",
+      "mcode_openroom_motor3": "6aacd2945c02253cfb1466e7",
+      "remaining_minimax_kimi_motor2": "6aacd2af5c02253cfb1466e9"
+    },
+    "verdict": "ACQUISITION_AND_MOTOR_VERIFICATION_PASS__FINAL_PUBLICATION_PENDING",
+    "github_actions_used": false,
+    "physical_agent_sources_publication": false
+  }
 }
