@@ -126,5 +126,14 @@
     "dependency_gate": "CL-005",
     "task_nodes_commit": "82018bf63b3a9ec490c6e463e1de83db2b1aa2bb",
     "rule": "Do not start integration until physical agent_sources publication/read-back is reconciled; then execute 1x1 and update evidence."
+  },
+  "agent_source_mount_status": {
+    "status": "MOUNTED",
+    "commit": "28a47f47b7f127ba400c0bcbbb930daa424f6d85",
+    "agent_sources_tree": "aa2e2b79b60fe48349fc03998f97560fdbf965d4",
+    "github_submodules": 12,
+    "mcode_mount": "NPM_PIN_MANIFEST",
+    "github_actions_used": false,
+    "note": "Sources are mounted/pinned. Gitlink mounts are not equivalent to vendored full source blobs; mcode full npm package bytes are not vendored."
   }
 }
