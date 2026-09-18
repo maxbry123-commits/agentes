@@ -22,5 +22,10 @@
     "accessible": true,
     "runtime_connected": false
   },
-  "verdict": "GAP_PENDING_MODEL_RUNTIME_E2E"
+  "verdict": "GAP_PENDING_MODEL_RUNTIME_E2E",
+  "documentation": {
+    "architecture_readme_commit": "0e6d458e6732652ae8f063d52534394aa15effc1",
+    "core_crazy_wall_commit": "22165bf6e761da43ce9864a2568d6fde234e7a42",
+    "global_crazy_wall_updated": true
+  }
 }
