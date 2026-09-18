@@ -1,7 +1,7 @@
 # Core kernel YAIWES — inventario completo de componentes
 
-- Generado: `2026-09-18T03:43:07.408909+00:00`
-- Componentes únicos: **247**
+- Generado: `2026-09-18T04:08:31.836383+00:00`
+- Componentes únicos: **248**
 - Señal de kernel: **4**
 
 Regla aprobada: material de kernel => **HOLD solo de ese material**; el resto del componente sigue integración estricta de 3 pasos.
@@ -1581,154 +1581,161 @@ Regla aprobada: material de kernel => **HOLD solo de ese material**; el resto de
 - Kernel: **NO**
 - Crazy Wall: nodo `136`, paso `1`, estado `PENDING_STEP1`, destino `None`
 
-## 226. Traefik
+## 226. TimesFM-Native-Capability
+- Ruta: `Core kernel Yaiwes/TimesFM-Native-Capability`
+- Grupo: `ROOT`
+- Función (extraída de README): README_FUNCTION_NOT_FOUND
+- Kernel: **NO**
+- Crazy Wall: sin nodo registrado todavía.
+
+## 227. Traefik
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/Traefik`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): Traefik (pronounced _traffic_) is a modern HTTP reverse proxy and load balancer that makes deploying microservices easy. Traefik integrates with your existing infrastructure components (Docker, Swarm mode, Kubernetes, Consul, Etcd, Rancher v2, Amazon ECS, ...) and configures itself automatically and dynamically. Pointing Traefik at your orchestrator should be the _only_ configuration step you need.
 - Kernel: **NO**
 - Crazy Wall: nodo `208`, paso `1`, estado `PENDING_STEP1`, destino `None`
 
-## 227. transitions
+## 228. transitions
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/transitions`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): A lightweight, object-oriented state machine implementation in Python with many extensions. Compatible with Python 2.7+ and 3.0+.
 - Kernel: **NO**
 - Crazy Wall: nodo `137`, paso `1`, estado `PENDING_STEP1`, destino `None`
 
-## 228. Tree-of-Thoughts
+## 229. Tree-of-Thoughts
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Tree-of-Thoughts`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): Official implementation for paper Tree of Thoughts: Deliberate Problem Solving with Large Language Models with code, prompts, model outputs. Also check its tweet thread in 1min.
 - Kernel: **NO**
 - Crazy Wall: nodo `138`, paso `1`, estado `PENDING_STEP1`, destino `None`
 
-## 229. Trigger-dev
+## 230. Trigger-dev
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Trigger-dev`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): Trigger.dev is the open-source platform for building AI workflows in TypeScript. Long-running tasks with retries, queues, observability, and elastic scaling.
 - Kernel: **NO**
 - Crazy Wall: nodo `139`, paso `1`, estado `PENDING_STEP1`, destino `None`
 
-## 230. TruLens
+## 231. TruLens
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/TruLens`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: nodo `140`, paso `1`, estado `PENDING_STEP1`, destino `None`
 
-## 231. txtai
+## 232. txtai
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/txtai`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): txtai is an all-in-one AI framework for semantic search, LLM orchestration and language model workflows.
 - Kernel: **NO**
 - Crazy Wall: nodo `141`, paso `1`, estado `PENDING_STEP1`, destino `None`
 
-## 232. Typer
+## 233. Typer
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/Typer`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): **Documentation**: https://typer.tiangolo.com
 - Kernel: **NO**
 - Crazy Wall: nodo `209`, paso `1`, estado `PENDING_STEP1`, destino `None`
 
-## 233. UltraFeedback
+## 234. UltraFeedback
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/UltraFeedback`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): **A large-scale, fine-grained, diverse preference dataset**
 - Kernel: **NO**
 - Crazy Wall: nodo `142`, paso `1`, estado `PENDING_STEP1`, destino `None`
 
-## 234. Unified-Planning
+## 235. Unified-Planning
 - Ruta: `Core kernel Yaiwes/Unified-Planning`
 - Grupo: `ROOT`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: sin nodo registrado todavía.
 
-## 235. Unleash
+## 236. Unleash
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Unleash`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): Unleash is a powerful open-source solution for feature management. It streamlines your development workflow, accelerates software delivery, and empowers teams to control how and when they roll out new features to end users. With Unleash, you can deploy code to production in smaller, more manageable releases at your own pace.
 - Kernel: **NO**
 - Crazy Wall: nodo `143`, paso `1`, estado `PENDING_STEP1`, destino `None`
 
-## 236. VictoriaMetrics
+## 237. VictoriaMetrics
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/VictoriaMetrics`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): VictoriaMetrics is a fast, cost-effective, and scalable solution for monitoring and managing time series data. It delivers high performance and reliability, making it an ideal choice for businesses of all sizes.
 - Kernel: **NO**
 - Crazy Wall: nodo `144`, paso `1`, estado `PENDING_STEP1`, destino `None`
 
-## 237. Visa-Trusted-Agent-Protocol
+## 238. Visa-Trusted-Agent-Protocol
 - Ruta: `Core kernel Yaiwes/Visa-Trusted-Agent-Protocol`
 - Grupo: `ROOT`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: nodo `253`, paso `1`, estado `PENDING_STEP1`, destino `None`
 
-## 238. vLLM-Semantic-Router
+## 239. vLLM-Semantic-Router
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/vLLM-Semantic-Router`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: nodo `145`, paso `1`, estado `PENDING_STEP1`, destino `None`
 
-## 239. VM_logo
+## 240. VM_logo
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/VM_logo`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: nodo `146`, paso `1`, estado `PENDING_STEP1`, destino `None`
 
-## 240. Voyager
+## 241. Voyager
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/Voyager`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): ______________________________________________________________________
 - Kernel: **NO**
 - Crazy Wall: nodo `210`, paso `1`, estado `PENDING_STEP1`, destino `None`
 
-## 241. WooAgent-OS
+## 242. WooAgent-OS
 - Ruta: `Core kernel Yaiwes/WooAgent-OS`
 - Grupo: `ROOT`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: nodo `254`, paso `1`, estado `PENDING_STEP1`, destino `None`
 
-## 242. XState
+## 243. XState
 - Ruta: `Core kernel Yaiwes/Componentes recuperados B/XState`
 - Grupo: `Componentes recuperados B`
 - Función (extraída de README): XState is a state management and orchestration solution for JavaScript and TypeScript apps. It has _zero_ dependencies, and is useful for frontend and backend application logic.
 - Kernel: **NO**
 - Crazy Wall: nodo `211`, paso `1`, estado `PENDING_STEP1`, destino `None`
 
-## 243. Z3
+## 244. Z3
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Z3`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): Z3 is a theorem prover from Microsoft Research. It is licensed under the MIT license. Windows binary distributions include C++ runtime redistributables
 - Kernel: **NO**
 - Crazy Wall: nodo `147`, paso `1`, estado `PENDING_STEP1`, destino `None`
 
-## 244. Zen-Engine
+## 245. Zen-Engine
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Zen-Engine`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): **Business logic humans can read and machines can run.** One copy of your rules: the owner reads it, every system runs it.
 - Kernel: **NO**
 - Crazy Wall: nodo `148`, paso `1`, estado `PENDING_STEP1`, destino `None`
 
-## 245. Zep
+## 246. Zep
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Zep`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: nodo `149`, paso `1`, estado `PENDING_STEP1`, destino `None`
 
-## 246. ZERA
+## 247. ZERA
 - Ruta: `Core kernel Yaiwes/ZERA`
 - Grupo: `ROOT`
 - Función (extraída de README): README_FUNCTION_NOT_FOUND
 - Kernel: **NO**
 - Crazy Wall: nodo `255`, paso `1`, estado `PENDING_STEP1`, destino `None`
 
-## 247. Zod
+## 248. Zod
 - Ruta: `Core kernel Yaiwes/Componentes recuperados A/Zod`
 - Grupo: `Componentes recuperados A`
 - Función (extraída de README): TypeScript-first schema validation with static type inference by @colinhacks

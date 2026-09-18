@@ -1,9 +1,9 @@
 {
   "schema": "yaiwes.core-component-inventory/v1",
-  "generated_at": "2026-09-18T03:43:07.408909+00:00",
+  "generated_at": "2026-09-18T04:08:31.836383+00:00",
   "repository": "maxbry123-commits/agentes",
   "root": "Core kernel Yaiwes",
-  "component_count": 247,
+  "component_count": 248,
   "kernel_signal_count": 4,
   "components": [
     {
@@ -3163,6 +3163,20 @@
       "wall_node_id": 136,
       "wall_status": "PENDING_STEP1",
       "wall_current_step": 1,
+      "wall_target": null
+    },
+    {
+      "name": "TimesFM-Native-Capability",
+      "path": "Core kernel Yaiwes/TimesFM-Native-Capability",
+      "bucket": "ROOT",
+      "readme": null,
+      "function_source": "README_FUNCTION_NOT_FOUND",
+      "kernel_signal": false,
+      "kernel_signals": [],
+      "kernel_policy": "INTEGRATE_BY_STRICT_3_STEPS",
+      "wall_node_id": null,
+      "wall_status": null,
+      "wall_current_step": null,
       "wall_target": null
     },
     {
