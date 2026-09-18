@@ -9978,6 +9978,31 @@
         "PENDING: INTEGRAR COMPONENTE DESCARGADO — Anthropic Skill Creator / Skills Design"
       ],
       "integration_pass": false
+    },
+    "wordflow_components_2026_09_17": {
+      "status": "PENDING_DOWNLOAD_AND_INTEGRATION",
+      "destination": "Wordflow loop code Yaiwes/",
+      "assigned_integration": [
+        "Claude",
+        "SOL"
+      ],
+      "tasks": [
+        {
+          "component": "PonytailPlugin",
+          "source": "https://github.com/DietrichGebert/ponytail.git",
+          "source_commit": "e3ba2aa6f1e6f0bc4d69eb09c9f0d0a93af56156",
+          "download": "PENDING",
+          "integration": "PENDING"
+        },
+        {
+          "component": "AgentSkills",
+          "source": "https://github.com/agentskills/agentskills.git",
+          "source_commit": "69ef37e9424c0a7ea9dd2293b559e43ec8176379",
+          "download": "PENDING",
+          "integration": "PENDING"
+        }
+      ],
+      "note": "PENDING PARA CLAUDE Y SOL: descargar/materializar, validar read-back/hash y luego integrar. No marcar integración PASS sin prueba."
     }
   }
 }
