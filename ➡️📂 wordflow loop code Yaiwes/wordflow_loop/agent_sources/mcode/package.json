@@ -1,8 +1,0 @@
-{
-  "name": "yaiwes-mcode-mount",
-  "private": true,
-  "version": "0.0.0",
-  "dependencies": {
-    "@minimax-ai/code": "0.4.10"
-  }
-}
