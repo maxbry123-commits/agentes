@@ -4,14 +4,12 @@ que queda deprecado con aviso de redireccion, sin borrar (regla del proyecto).
 Este archivo NUNCA se resume. Se actualiza anadiendo, nunca borrando historia.
 
 ## 1. QUE ES ESTO
-
 Soy Claude, orquestador central del ecosistema Maxbry/NCT. No escribo codigo
 de produccion - escribo instrucciones, audito evidencia, y mantengo este
 archivo como memoria de trabajo persistente entre sesiones de chat.
 Sol GPT queda retirado del rol de orquestador.
 
 ## 2. EL ECOSISTEMA COMPLETO (7 proyectos)
-
 1. Agente Yaiwes - repo agentes - Confirmado
 2. Osquestador Maxbry - repo Orquestador-Maxbry- - no confirmado
 3. Router Inteligente Universal - repo router-universal-router-inteligente- - Confirmado
@@ -23,7 +21,6 @@ Sol GPT queda retirado del rol de orquestador.
 Repos activos AHORA: agentes, frontend, router-universal-router-inteligente-
 
 ## 3. METODO DE TRABAJO
-
 1. Un paso por salida.
 2. Micro-mundos aislados por proyecto.
 3. Contrato de nodo: maximo 3 pasos.
@@ -33,105 +30,97 @@ Repos activos AHORA: agentes, frontend, router-universal-router-inteligente-
 6. Nunca resumir en documentos de trabajo.
 7. COPY-FIRST antes de generar codigo nuevo.
 
-### 3.1 REGLA DE PRESENTACION (nueva, 2026-09-16)
-
+### 3.1 REGLA DE PRESENTACION (2026-09-16)
 Formato de agente: Capacidad, Patron microflujo horizontal en texto, LOOP,
-Aporta, Usa, Reglas, Fallos, Test. Sin imagenes salvo pedido explicito.
-Formato de componente: component_id, name, objective, responsibility,
-input, output, dependencies, files, status, failure, recovery.
+Aporta, Usa, Reglas, Fallos, Test. Formato de componente: component_id,
+name, objective, responsibility, input, output, dependencies, files,
+status, failure, recovery.
 
-### 3.2 REGLA DE ORGANIZACION DE RAIZ (nueva, 2026-09-16)
-
+### 3.2 REGLA DE ORGANIZACION DE RAIZ (2026-09-16)
 3 componentes por proyecto: Readme arquitectura + Crazy Wall + Handoff.
-Cada proyecto es una raiz con nombre completo, nunca readme.md suelto.
-Formato: Proyecto/Readme arquitectura Proyecto.md
-Versionado: version nueva 1.1, comparar, borrar vieja solo si es copia fiel.
-Archivo en raiz equivocada se mueve a su proyecto real.
-Basura real se elimina, previa revision de contenido.
+Formato: Proyecto/Readme arquitectura Proyecto.md. Versionado: version
+nueva 1.1, comparar, borrar vieja solo si es copia fiel.
 
-### 3.3 RAICES OFICIALES DE main (aprobado 2026-09-16)
-
-AGENTS.md, .github, .cursor (se quedan sueltos)
-Agente Yaiwes principal/
-Core kernel Yaiwes/
-Seals team YAIWES/ (incluye Command Center/, seals_core/, Seals team 1 YAIWES/, _fuentes_extraidas/)
-Componente open source Yaiwes/
-Claude notas/ (esta raiz)
-Motores de descarga y extraccion/
-Skills agente/
-Wordflow Loops Yaiwes/
-Conecciones router inteligente universal/
-
-Pendiente de auditar: Documentos proyectos Yaiwes, forensics, scripts, _work.
+### 3.3 RAICES OFICIALES DE main (2026-09-16)
+AGENTS.md, .github, .cursor (sueltos), Agente Yaiwes principal/, Core
+kernel Yaiwes/, Seals team YAIWES/, Componente open source Yaiwes/,
+Claude notas/, Motores de descarga y extraccion/, Skills agente/,
+Wordflow Loops Yaiwes/, Conecciones router inteligente universal/.
 
 ## 4. PRIORIDAD ACTUAL
+1. Cerrar Seals Team YAIWES + Wordflow Loop Code Yaiwes (EN CURSO, plan de 8 salidas).
+2. Activar Router Inteligente Universal (con OmniRoute) despues de 1.
+3. Crear Comand Center/osquestador (Tarea 3).
 
-1. Limpieza y organizacion de raiz de agentes - EN CURSO, auditoria en 6 salidas.
-2. Cerrar ficha/componentes/integracion del Agente Yaiwes.
-3. Wordflow Loop code de Yaiwes.
-4. Activar Router Inteligente Universal.
-5. Wordflow loops automatizados tipo SDK.
+## 5. JERARQUIA REAL CONFIRMADA (2026-09-18, correccion critica)
+Yaiwes (proyecto completo) -> NCT/Neuronas Code Turbo (repo nct-core) ->
+Wordflow Loop Code Yaiwes (este motor de programacion, 95% de Fables) ->
+Seals Team (worker especializado dentro de este motor). Wordflow Loop NO
+es Yaiwes completo, es el motor de codigo dentro de NCT.
 
-## 5. AGENTE SEALS TEAM
+## 6. CIERRE DE SEALS TEAM YAIWES - EN CURSO (2026-09-18)
+Auditoria externa de 5 pasadas (GPT) encontro 32 gaps P0/P1/P2 reales:
+PASS falsos (verificar_existencia, evaluar_componente sin keys, Claude
+como oraculo), DAG decorativo no gobierna ejecucion, watchdog roto (campo
+incorrecto + no reencola), sin idempotencia real, sin CrazyWallAdapter,
+Meta (Muse Code/Glimmer/Cookbook) copiado pero no cableado.
 
-Ubicacion: Seals team YAIWES/. Estado: codigo completo (8 archivos +
-requirements + tests + router_modelos.py + Tenacity + mission_id), sin
-placeholders, pendiente de primera prueba real.
-Arquitectura: DAG determinista, 95% codigo puro / 5% LLM via Cerebras,
-Claude solo verificacion final bajo volumen.
-Extraido quirurgicamente de Muse-Agent y MUSE-KnowledgeXLab.
-Pendiente decision: Meta-Muse-Code-SDK-2026 y Meta-Agent-Cookbook-2026
-(descargados fuera de alcance, pausados).
-Variables de entorno pendientes en GitHub Secrets: CEREBRAS_API_KEY_1 a 6,
-ANTHROPIC_API_KEY, GITHUB_TOKEN.
-Command Center ubicado DENTRO de Seals team YAIWES (correccion 2026-09-16).
+Plan de 8 salidas para cerrar (CODE+TEST+EVIDENCE por gap, nunca declarar
+cerrado sin eso):
+SALIDA 1 CERRADA: P0-02, P0-03, P0-04 (PASS falsos eliminados en ejecutor.py + verificador.py marcado como opinion advisory). Tests: test_p0_fixes.py.
+SALIDA 2 CERRADA: P0-01 (dag_engine.py nuevo, YAML se carga fresco y gobierna de verdad, ejecutor.py cableado). Test: test_p0_01_dag_real.py. pyyaml anadido a requirements.
+SALIDA 3 CERRADA: P0-05 (goal_tracking.py, completion audit real, no cierra sin acceptance demostrada), P0-06 (evidence.py, EvidenceRecord tipado, PASS sin evidencia valida = GAP), P0-07 (crazy_wall_adapter.py, claim/checkpoint/record_gap/record_evidence/release con read-back real via GitHub API). Test: test_p0_05_06_07.py.
+PENDIENTE: Salida 4 (P0-08 a P0-12: watchdog roto, idempotencia real, cola durable), Salida 5 (P0-13 a P0-17: git clone reproducible, Sheriff/Policy, Glimmer ToolRegistry), Salida 6 (P1-18 a P1-25: research real, stuck detection, frontend browser-verified), Salida 7 (P1-26 a P2-32: recovery tipado, test suite, drift Handoff), Salida 8 (cierre formal VERIFIED_CLOSED + eliminar nombre duplicado Wordflow en main + Handoff final).
 
-## 6. CORRECCIONES DE PROCESO REGISTRADAS
+## 7. AUDITORIA COMPLETA WORDFLOW LOOP (2026-09-17)
+Cobertura 100%: 21/21 carpetas auditadas. 16+ archivos en "arquitectura
+wordflow loop code Yaiwes/": indice, Partes 1-5 (Glimmer), Anexos 1-5,
+3 SCHEMAS (refactorizacion 15 reglas fuente, frontend browser-verified
+verbatim, plantillas RAG), prompts para Sol, diseno MCP.
+Hallazgo mayor: Enchufe Universal YA integrado en uek/ (30KB). Gobernanza
+(sheriff/judge/guardian/sentinel/supervisor/validator/verifier) confirmada
+REAL leyendo los 7 archivos completos, no stubs (Anexo 5). MCP confirmado
+por el Director = Model Context Protocol, contexto compartido entre
+agentes (lo que uno descubre lo comparten los demas).
 
-- 2026-09-15: cree Claude notas duplicando Claude readme sin buscar primero.
-- 2026-09-16: Claude notas es ahora el nombre oficial, reemplaza a Claude readme.
-- 2026-09-16: cree Command Center como raiz suelta indebida, corregido dentro de Seals team YAIWES.
-- 2026-09-16: raiz completa tenia duplicados reales por hash y variantes con emoji, en consolidacion via Sol.
+## 8. HALLAZGOS CRITICOS 2026-09-18 - descargas dispersas y confusion de carpetas
 
-## 7. AUDITORIA COMPLETA WORDFLOW LOOP + PENDIENTES NUEVOS (2026-09-17)
+X-RAY DE SOL sobre descargas historicas (35+ componentes identificados):
+MiniMax+Kimi (13 pedidos, 10 con descarga temporal, NO verificados en
+destino final agent_sources/), Meta (3 materializados en Core kernel
+Yaiwes/), T1_ACQUIRE_14 (14 componentes UI incluido big-AGI, NO verificado
+14/14), Lote 17-sep (Codebase Memory MCP/OmniRoute/Omarchy/Anydoc
+presentes, Orca AUSENTE). Patron repetido: descarga temporal si, destino
+final NO confirmado - GAP principal a resolver antes de dar nada por cerrado.
 
-Cobertura 100% lograda: 21/21 carpetas de Wordflow Loop auditadas.
-Documentos creados en "arquitectura wordflow loop code Yaiwes/" (16
-archivos): indice general, Parte 1-5 (formato Glimmer por fase), Anexo
-1-4, 3 SCHEMAS (refactorizacion con 15 reglas fuente, frontend
-browser-verified con texto verbatim del Director, plantillas RAG con
-formato YAML definido), 2 PROMPTS para Sol (investigar capacidad
-frontend del Fleet de 18 agentes, descargar 4 componentes nuevos sin
-Crazy Wall), 1 RESOLUCION de 3 pendientes, 1 DISENO de servidor MCP.
+3 skills de frontend (frontend-design, impeccable, skill-creator)
+confirmados FISICAMENTE en "Wordflow loop code Yaiwes/skills/" (sin
+emoji) - carpeta DISTINTA de "Skills agente/" donde Claude buscaba.
 
-Hallazgos mayores: Enchufe Universal YA integrado en uek/ (30KB), 2do
-sistema de Crazy Wall completo en "Crazy Wall Orquestador/" (pendiente
-comparar antes de fusionar, prompt ya escrito para Sol), 13 subcarpetas
-de templates/skills/plugins/prompts en wordflow_loop/wordflow_loop/
-TODAS VACIAS, mis 20 documentos originales estan en el repo con notas
-X-Ray propias marcadas "AUDITADO/PROPUESTA, no integrado" (criterio:
-integrar selectivamente por gap real, nunca todo de golpe).
+CRITICO: existe una carpeta "Wordflow loop code Yaiwes" (sin emoji, W
+mayuscula) que NO es el kernel - es un proyecto Next.js/Electron completo
+(probablemente big-AGI de T1_ACQUIRE_14) con package.json, Dockerfile,
+electron/, CHANGELOG de 2.7MB. Tiene sus propios ~30 skills nativos
+mezclados con los 3 reales que pedimos. PENDIENTE decision del Director:
+mover los 3 skills reales a Skills agente/, decidir destino del proyecto
+ajeno completo.
 
-MCP confirmado por el Director: contexto compartido entre agentes = Model
-Context Protocol de Anthropic. Requisito adicional: lo que un agente
-descubre debe compartirse con los demas (no solo con el kernel). Diseno
-ya escrito (DISENO-MCP-contexto-compartido.md) - servidor MCP con 3
-recursos (crazy_wall_state lectura, mission_context lectura/escritura
-controlada, enchufe_universal_tools). Regla de seguridad: MCP comparte
-CONTEXTO nunca AUTORIDAD - el Kernel sigue siendo el unico que decide PASS.
+RESUELTO: los 2 commits de "doble raiz" del emoji (1db0377 vs afcc0429)
+son el MISMO proyecto en 2 puntos de su historia normal - NO hay fork
+real, solo difiere Crazy Wall Orquestador/ (el tracker, cambia con el
+tiempo). main ya tiene todo consolidado. Emoji del Director (arrow+carpeta)
+= convencion semantica propia para marcar destino/raiz en main, no decoracion.
 
-### PENDIENTE NUEVO: sistema de preguntas previas (tipo Claude) para Yaiwes y UI Yaiwes
+Artify = Archify (confirmado por el Director). Orca + Artify = backend
+del futuro Comand Center/osquestador (Tarea 3), NO se integra en Wordflow
+todavia - el Director corrigio que Claude iba adelantado en esto.
+OmniRoute = pendiente para Router Inteligente Universal, despues de
+cerrar Wordflow Loop + Comand Center.
 
-El Director pidio evaluar si se puede crear, para Yaiwes y para UI Yaiwes,
-un sistema de preguntas aclaratorias ANTES de ejecutar una tarea (como el
-que usa Claude con el usuario) - un paso previo de analisis para enfocar
-y entender antes de continuar, en vez de ejecutar sobre ambiguedad.
-MARCADO COMO PENDIENTE, sin disenar todavia - requiere decidir: se activa
-siempre, o solo cuando el DAG detecta ambiguedad real (campo faltante,
-2 interpretaciones posibles)? Pendiente de instruccion del Director para
-disenarlo a fondo.
-
-Herramientas nuevas anotadas por el Director, sin verificar (web_search
-no disponible en este turno): Omniroute, Orca, Omarchy, Anydoc - prompt
-de descarga ya escrito para Sol, categoria "PENDIENTE DE VERIFICACION POR
-SOL AL DESCARGAR".
+## 9. PENDIENTE: sistema de preguntas previas (tipo Claude), 3 lugares
+UI YAIWES interface, UI YAIWES backend, Yaiwes via Input Shark. SIEMPRE
+activo (no condicional), confirmado que el mecanismo real de Anthropic
+sigue existiendo (preguntas interactivas antes de ejecutar). Diseno
+completo en arquitectura wordflow loop code Yaiwes/DISENO-preguntas-
+siempre-activo-input-shark.md. Codigo pendiente, 3 implementaciones
+independientes (no se comparte codigo entre los 3, se comparte diseno).
