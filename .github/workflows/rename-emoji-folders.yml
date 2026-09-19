@@ -1,0 +1,41 @@
+name: Rename Emoji Folders (motor_4 driven)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Escribe RUN para confirmar"
+        required: true
+        default: ""
+
+jobs:
+  rename-emoji-folders:
+    if: ${{ github.event.inputs.confirm == 'RUN' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout agentes
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run motor_4 renames
+        run: python3 scripts_ci/run_motor4_rename.py
+
+      - name: Commit and push to agentes
+        run: |
+          git config user.email "maxbry123@gmail.com"
+          git config user.name "Maxbry via motor_4 GH Action"
+          git add -A
+          git diff --cached --quiet && echo "No changes to commit" || (git commit -m "rename: move content of 4 emoji-named root items to clean names via motor_4_move_batches" && git push origin HEAD:main)
+
+      - name: Read-back verification
+        run: |
+          echo "--- root top-level ---"
+          ls -la
+          echo "--- file count ---"
+          find . -type f | wc -l
