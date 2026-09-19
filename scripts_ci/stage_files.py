@@ -70,6 +70,12 @@ DROP_AFTER_STAGE: list[str] = [
     "wordflow loop code Yaiwes/➡️\U0001f4c2 README arquitectura Wordflow LOOP Yaiwes.md",
 ]
 
+# Collected across the whole run: (src, dst, why) for entries copytree
+# could not copy (broken symlinks, files git didn't materialize, etc).
+# These are logged but never fail the build -- the read-back step at the
+# end of the workflow makes any real gap visible.
+COPY_ERRORS: list[tuple[str, str, str]] = []
+
 
 def copy_one(src_rel: str, dst_rel: str) -> str:
     src = AGENTES_ROOT / src_rel
@@ -78,7 +84,25 @@ def copy_one(src_rel: str, dst_rel: str) -> str:
         return f"SKIP (not found): {src_rel}"
     dst.parent.mkdir(parents=True, exist_ok=True)
     if src.is_dir():
-        shutil.copytree(src, dst, dirs_exist_ok=True)
+        try:
+            shutil.copytree(src, dst, dirs_exist_ok=True)
+        except shutil.Error as e:
+            # copytree copies everything it can and only raises at the end
+            # with the full list of per-file failures (e.g. broken
+            # symlinks or entries git listed but didn't materialize on
+            # disk). Treat those as non-fatal: log each one and keep the
+            # rest of what was actually copied, instead of aborting the
+            # whole staging step.
+            for failure in e.args[0]:
+                # failure is (src_path, dst_path, error_str) most of the
+                # time, but be defensive about shape just in case.
+                if len(failure) == 3:
+                    fsrc, fdst, ferr = failure
+                else:
+                    fsrc, ferr = str(failure), ""
+                    fdst = ""
+                COPY_ERRORS.append((str(fsrc), str(fdst), str(ferr)))
+            return f"OK dir (with {len(e.args[0])} skipped entries): {src_rel} -> {dst_rel}"
         return f"OK dir: {src_rel} -> {dst_rel}"
     shutil.copy2(src, dst)
     return f"OK file: {src_rel} -> {dst_rel}"
@@ -112,6 +136,13 @@ def main() -> int:
             print(" ", m)
         # Non-fatal: continue, motor_3 will just have less to copy. The
         # read-back step at the end of the workflow will make gaps visible.
+
+    if COPY_ERRORS:
+        print(f"--- WARNING: {len(COPY_ERRORS)} individual entries could not be copied "
+              f"(broken symlinks / files not materialized by git) ---")
+        for fsrc, fdst, ferr in COPY_ERRORS:
+            print(f"  SKIP: {fsrc} ({ferr})")
+        # Also non-fatal, for the same reason as `missing` above.
 
     return 0
 
