@@ -1,0 +1,49 @@
+{
+  "timestamp_utc": "2026-09-19T04:12:47.363501Z",
+  "keys_presentes": [
+    "GROQ_API_KEY_1",
+    "GROQ_API_KEY_2",
+    "GROQ_API_KEY_3",
+    "GROQ_API_KEY_4",
+    "GROQ_API_KEY_5",
+    "GROQ_API_KEY_6",
+    "GROQ_API_KEY_7"
+  ],
+  "keys_faltantes": [],
+  "resultados": [
+    {
+      "modelo": "llama-3.3-70b-versatile",
+      "key_usada": "GROQ_API_KEY_1",
+      "http_status": 401,
+      "pass": false,
+      "motivo": "HTTP_401_NO_200",
+      "sha256_evidencia": "403bcc526466a2298c16db924ea5f55c871092ae5307a0b189fb05fb89a5a03a"
+    },
+    {
+      "modelo": "qwen/qwen3-32b",
+      "key_usada": "GROQ_API_KEY_2",
+      "http_status": 404,
+      "pass": false,
+      "motivo": "HTTP_404_NO_200",
+      "sha256_evidencia": "f093f1a1aeb8379d887e4734a5847b0508f73a08782249344cca306150a88ee4"
+    },
+    {
+      "modelo": "openai/gpt-oss-120b",
+      "key_usada": "GROQ_API_KEY_3",
+      "http_status": 200,
+      "pass": false,
+      "motivo": "CONTENT_VACIO",
+      "sha256_evidencia": "b7759271909760224c8fce1587ea77ee080ea7bdd7c923dce366405bb0f626d0"
+    },
+    {
+      "modelo": "moonshotai/kimi-k2-instruct",
+      "key_usada": "GROQ_API_KEY_4",
+      "http_status": 404,
+      "pass": false,
+      "motivo": "HTTP_404_NO_200",
+      "sha256_evidencia": "61489ad55903587cee8cbc4aa156d4aad02c9ee6b03b2ad06c2472a2431df733"
+    }
+  ],
+  "keys_ejercitadas_count": 4,
+  "veredicto_final": "FAIL"
+}
