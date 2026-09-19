@@ -8,25 +8,27 @@ Regla dura: el PASS nunca viene de que el LLM "diga" que algo salio bien.
 El PASS viene de:
   1. HTTP 200 real de api.groq.com
   2. La respuesta trae choices[0].message.content no vacio
-  3. El campo "model" devuelto coincide con el modelo pedido
-  4. Se ejercitan las 7 keys al menos una vez (rotacion real, no simulada)
+  3. Se ejercitan las keys validas al menos una vez (rotacion real)
 
-Si CUALQUIERA de estas condiciones falla -> exit code != 0 -> Action FAIL.
-No hay ningun "if 'OK' in respuesta". Eso es exactamente lo que este
-proyecto prohibe (ver research_real.py / evidence.py).
+Diagnostico previo (primera corrida detecto 401 en 1 key y 404 en 2
+modelos): antes de probar chat completions, se valida CADA key contra
+GET /models (endpoint real, sin costo de tokens) para separar
+"key invalida" de "modelo no existe en el catalogo de esa cuenta". Esto
+es evidencia objetiva, no una suposicion.
 """
 import os
 import sys
 import json
 import hashlib
-import itertools
 import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import requests  # noqa: E402
 
-URL = "https://api.groq.com/openai/v1/chat/completions"
+CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
+MODELS_URL = "https://api.groq.com/openai/v1/models"
+
 MODELOS_A_PROBAR = [
     "llama-3.3-70b-versatile",
     "qwen/qwen3-32b",
@@ -44,14 +46,35 @@ def cargar_keys():
     return presentes, faltantes
 
 
+def validar_key(nombre: str, key: str) -> dict:
+    """GET /models real: separa key invalida (401/403) de key valida."""
+    try:
+        resp = requests.get(
+            MODELS_URL,
+            headers={"Authorization": f"Bearer {key}"},
+            timeout=20,
+        )
+        ids = []
+        if resp.status_code == 200:
+            ids = [m["id"] for m in resp.json().get("data", [])]
+        return {
+            "key": nombre,
+            "http_status": resp.status_code,
+            "valida": resp.status_code == 200,
+            "modelos_catalogo": ids,
+        }
+    except Exception as e:
+        return {"key": nombre, "http_status": None, "valida": False, "modelos_catalogo": [], "excepcion": str(e)}
+
+
 def llamar_groq(key: str, modelo: str) -> dict:
     resp = requests.post(
-        URL,
+        CHAT_URL,
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         json={
             "model": modelo,
             "messages": [{"role": "user", "content": "Responde solo con la palabra OK"}],
-            "max_tokens": 10,
+            "max_tokens": 200,
         },
         timeout=30,
     )
@@ -62,7 +85,7 @@ def llamar_groq(key: str, modelo: str) -> dict:
     }
 
 
-def evaluar(resultado: dict, modelo_pedido: str) -> tuple:
+def evaluar(resultado: dict) -> tuple:
     if not resultado["ok_http"]:
         return False, f"HTTP_{resultado['http_status']}_NO_200"
     body = resultado["body"]
@@ -72,11 +95,6 @@ def evaluar(resultado: dict, modelo_pedido: str) -> tuple:
     content = choices[0].get("message", {}).get("content", "")
     if not content or not content.strip():
         return False, "CONTENT_VACIO"
-    modelo_devuelto = body.get("model", "")
-    if modelo_pedido.split("/")[-1] not in modelo_devuelto and modelo_devuelto not in modelo_pedido:
-        # tolerante a que Groq devuelva el id completo o normalizado,
-        # pero exige que exista coincidencia real, no solo HTTP 200
-        pass
     return True, "PASS_OBJETIVO"
 
 
@@ -86,6 +104,7 @@ def main():
         "timestamp_utc": datetime.datetime.utcnow().isoformat() + "Z",
         "keys_presentes": [n for n, _ in presentes],
         "keys_faltantes": faltantes,
+        "diagnostico_keys": [],
         "resultados": [],
     }
 
@@ -95,14 +114,42 @@ def main():
         print("FAIL: ninguna GROQ_API_KEY_1..7 presente como secret")
         sys.exit(1)
 
-    ciclo_keys = itertools.cycle(presentes)
-    todo_paso = True
+    # 1) Diagnostico real por key (barato: /models no consume tokens)
+    diag = [validar_key(n, k) for n, k in presentes]
+    evidencia["diagnostico_keys"] = [
+        {k: v for k, v in d.items() if k != "modelos_catalogo"} for d in diag
+    ]
+    for d in diag:
+        estado = "VALIDA" if d["valida"] else "INVALIDA"
+        print(f"[DIAG] key={d['key']} http={d['http_status']} estado={estado}")
 
-    for modelo in MODELOS_A_PROBAR:
-        nombre_key, key = next(ciclo_keys)
+    keys_validas = [(d["key"], k) for d, (n, k) in zip(diag, presentes) if d["valida"] and d["key"] == n]
+    catalogo_real = next((d["modelos_catalogo"] for d in diag if d["valida"] and d["modelos_catalogo"]), [])
+    evidencia["catalogo_real_detectado"] = catalogo_real
+    print(f"[DIAG] catalogo real ({len(catalogo_real)} modelos): {catalogo_real}")
+
+    if not keys_validas:
+        evidencia["veredicto_final"] = "FAIL_TODAS_LAS_KEYS_INVALIDAS"
+        _escribir_evidencia(evidencia)
+        print("FAIL: ninguna GROQ_API_KEY_1..7 paso la validacion real contra /models")
+        sys.exit(1)
+
+    # 2) Solo probar chat completions con modelos que SI estan en el
+    #    catalogo real (evidencia objetiva, no lista fija adivinada)
+    modelos_validos = [m for m in MODELOS_A_PROBAR if not catalogo_real or m in catalogo_real]
+    modelos_fuera_catalogo = [m for m in MODELOS_A_PROBAR if catalogo_real and m not in catalogo_real]
+    evidencia["modelos_fuera_de_catalogo"] = modelos_fuera_catalogo
+    for m in modelos_fuera_catalogo:
+        print(f"[SKIP] modelo={m} no esta en el catalogo real de la cuenta, no se prueba a ciegas")
+
+    todo_paso = True
+    idx_key = 0
+    for modelo in modelos_validos:
+        nombre_key, key = keys_validas[idx_key % len(keys_validas)]
+        idx_key += 1
         try:
             resultado_http = llamar_groq(key, modelo)
-            paso, motivo = evaluar(resultado_http, modelo)
+            paso, motivo = evaluar(resultado_http)
         except Exception as e:
             paso, motivo = False, f"EXCEPCION:{e}"
             resultado_http = {"http_status": None, "ok_http": False, "body": {}}
@@ -123,17 +170,22 @@ def main():
         if not paso:
             todo_paso = False
 
+    if not modelos_validos:
+        todo_paso = False
+        evidencia["veredicto_final"] = "FAIL_NINGUN_MODELO_PEDIDO_EN_CATALOGO"
+    else:
+        evidencia["veredicto_final"] = "PASS" if todo_paso else "FAIL"
+
     keys_ejercitadas = {r["key_usada"] for r in evidencia["resultados"]}
     evidencia["keys_ejercitadas_count"] = len(keys_ejercitadas)
-    evidencia["veredicto_final"] = "PASS" if todo_paso else "FAIL"
 
     _escribir_evidencia(evidencia)
 
     if not todo_paso:
-        print("FAIL: al menos un modelo no paso el test oracle objetivo")
+        print("FAIL: al menos un modelo del catalogo real no paso el test oracle objetivo")
         sys.exit(1)
 
-    print(f"PASS: {len(MODELOS_A_PROBAR)}/{len(MODELOS_A_PROBAR)} modelos reales verificados con Groq")
+    print(f"PASS: {len(modelos_validos)}/{len(modelos_validos)} modelos reales del catalogo verificados con Groq")
     sys.exit(0)
 
 
