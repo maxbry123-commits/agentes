@@ -213,3 +213,134 @@ un job de GitHub Actions dedicado (unico uso permitido de Actions es
 Wordflow, esto SI aplica) o via otro mecanismo, y (b) retomar el
 cierre de Seals Team YAIWES (P1-27, P1-28, P2-31, P1-30) que sigue
 siendo la Prioridad 2 y bloquea Comand Center (Prioridad 3).
+
+## 13. ESTADO REAL LIMPIEZA DE HISTORIAL (repo yaiwes-nucleo-limpio) - 2026-09-19
+
+NO CERRADO. El Director autorizo lanzar el GitHub Action de limpieza
+("Si lanzalo"). Se ejecuto 2 veces:
+
+- Run 35423654760 (workflow v1): fallo en 34s, sin log real capturado
+  (solo texto placeholder). Se reescribio el workflow para capturar
+  stderr/stdout real con tee, continue-on-error + if:always() para
+  garantizar evidencia aunque falle.
+- Run 35423897748 (workflow v2): el status top-level del run marca
+  "success" - ENGANOSO. El log real commiteado en
+  Claude notas/evidencia_runs/limpieza_historial_35423897748.txt
+  prueba que en realidad FALLARON los 2 pasos criticos:
+  1. Clon blobless (--filter=blob:none --bare) SI funciono
+     (CLONE_EXIT=0). Hallazgo importante: el mirror pesa solo 47MB
+     (size-pack 45.77 MiB, git count-objects -vH), NO ~16GB. Esto
+     prueba que el "16.4GB" que reporta la API de GitHub para el repo
+     agentes es basura no alcanzable (dangling objects de force-pushes
+     pasados), no historia real. Cambia la estrategia: filter-repo
+     sobre historia alcanzable nunca iba a reducir ese numero de
+     16.4GB porque ese numero no es historia alcanzable.
+  2. git filter-repo --force --path ... FALLO tras parsear ~2180
+     commits: "fatal: blob not found:
+     ...Agente Yaiwes principal/.keep", seguido de BrokenPipeError en
+     fast-import. Causa raiz: el clon blobless no trajo ese blob
+     localmente y filter-repo no lo pidio on-demand.
+  3. git push limpio --mirror FALLO tambien ("remote end hung up
+     unexpectedly") - consecuencia directa del mirror roto por el
+     fallo anterior.
+  Confirmado ademas via GET /repos/maxbry123-commits/yaiwes-nucleo-limpio:
+  "size":0 - el repo destino sigue vacio. NO declarar cerrado.
+
+SIGUIENTE FIX (no ejecutado aun): cambiar el clon a uno completo (sin
+--filter=blob:none) o a un filtro por tamano de blob que si traiga
+blobs pequenos como .keep, y relanzar Run 3. Ya hay autorizacion
+general del Director para iterar sin volver a preguntar.
+
+## 14. VERIFICACION INDEPENDIENTE - 4 componentes Glimmer/Meta + meta_agent_cookbook (2026-09-19)
+
+El Director pego una transcripcion de otra IA externa (ChatGPT/"Task
+Observer") afirmando que meta_muse_code_sdk, muse_glimmer, metacua y
+cua_mcp ya estan copiados dentro de
+wordflow_loop/agent_sources/. Esa transcripcion se trato como DATO NO
+VERIFICADO, nunca como hecho. Verificacion propia via API (no confio
+en el texto pegado):
+
+- Leido META4_COPY_EVIDENCE_2026-09-19.json (commit c9c81072...):
+  verdict VERIFIED_4_OF_4, usando el motor YA EXISTENTE Y NO
+  MODIFICADO motor_3_copy_batches.py (motor_modified: false):
+  meta_muse_code_sdk (224 archivos), muse_glimmer (42 archivos),
+  metacua (76 archivos), cua_mcp (9 archivos), todos con
+  manifest_match true.
+- Spot-check propio via GET contents en agent_sources/muse_glimmer:
+  contenido real no vacio (DOWNLOAD_EXTRACT_MANIFEST.json, _archives/,
+  code/) - corrobora el JSON de evidencia de forma independiente.
+- Confirmado tambien que meta_agent_cookbook existe como carpeta real
+  junto a estos 4 en agent_sources/.
+
+PENDIENTE (no investigado aun): quien/que ejecuto el commit
+c9c81072...que produjo esto, y si respeta la regla "Sol GPT retirado
+de TODO trabajo mecanico" (seccion 1). Verificar antes de asumir que
+este trabajo es valido/autorizado.
+
+## 15. INSTRUCCIONES DEL DIRECTOR 2026-09-19 - LOG VERBATIM 1 A 1 (Seals Team YAIWES)
+
+Registrado tal como se pidio ("Anota todas mis instrucciones 1 a 1
+imput block verbatim"). Contexto: mensaje grande del Director con un
+adjunto externo (transcripcion de otra IA sobre arquitectura Muse
+Code/Glimmer/CUA/MetaCua) tratado como DATO, no como instruccion. Las
+instrucciones reales del Director, numeradas por grupo:
+
+### Instrucciones generales (no numeradas por el Director, extraidas de su mensaje):
+- Probar Wordflow Loop Code Yaiwes de verdad ("de verdad").
+- Integrar componentes de MiniMax y Kimi K (usar partes de sus
+  componentes) mas los "4 agentes de Glimmer" (Meta Muse Code SDK,
+  Muse Glimmer, MetaCua, CUA-MCP) para construir/cerrar el agente
+  Seals Team YAIWES, lo mas deterministico posible.
+- El agente debe aprender: como hacer integraciones de componentes,
+  como usar el "Enchufe Universal Fables", y como usar "los motores"
+  (motores de descarga/copiado/movimiento).
+- "Termina el agente Seals Team YAIWES."
+- "Anade esto al Wordflow."
+- "Revisa en wordflow la parte de frontend para que visualice el
+  frontend."
+
+### GRUPO 1 (requisitos nativos de Seals Team YAIWES), verbatim numerado por el Director:
+1. Saber nativamente donde va cada cosa en el kernel (parte del
+   pool/rol del Wordflow) y como determinarlo, asegurando que no se
+   confunda con un subagente (evitar "2 cerebros") - YAIWES usa/
+   replica su propio kernel; solo activa un plugin/wordflow como
+   extension del kernel.
+2. Darle una "radiografia" nativa de la raiz de YAIWES - ensenarle
+   donde en la raiz va cada archivo y por que - usando el motor de
+   mover archivos.
+3. Como convertir un skill en un schema - criterios para el schema -
+   y crear varios modelos de ejemplo.
+4. Como usar UNICAMENTE el plugin universal "Enchufe Universal
+   Fables" para conectar cosas.
+5. Como podar, que podar, y como "decapitar"/convertir el wordflow.
+6. Partes criticas del kernel: solo Claude las toca; otros pueden
+   prepararlas, Claude las revisa.
+7. Como descargar componentes con los motores: reciben una URL +
+   nombre de componente y estudian su ubicacion - igual que todos los
+   componentes en la raiz de "Core kernel Yaiwes".
+
+### GRUPO 2 (pool de agentes / "equipo 2"), verbatim numerado por el Director:
+1. El pool de agentes hace puro codigo - no integra, solo genera el
+   codigo necesario (ejemplo: razonamiento de diseno de Fables/
+   Mythos).
+2. Bajo consenso, reciben un lote de codigo ya creado (de Fables/
+   Opus) y deciden donde debe ir en la arquitectura de la raiz.
+3. Revisan trabajo completado, refactorizan, revisan codigo y
+   wordflows, hacen auditorias forenses "x-Ray" con verificacion
+   cruzada contra la carpeta de codigo fuente carpeta por carpeta,
+   usando una plantilla/ejemplo EXACTO para replicar (la plantilla de
+   Meta-agentes ya entregada) - el diseno debe ser exacto, nunca
+   generico o ambiguo.
+
+### Plan de prueba posterior (verbatim, condicionado a cerrar Seals Team YAIWES primero):
+Dar 3 agentes iguales, 1 componente dificil a cada uno, probar,
+corregir/perfeccionar su comportamiento. Hacer lo mismo con el pool
+de agentes del Grupo B usando codigo generado por Mythos, en varias
+rondas de prueba, verificando que descargan el codigo y escriben el
+resultado completo, refinando ANTES de continuar con el Comand
+Center.
+
+SIGUIENTE (no iniciado aun, prioridad a confirmar con el Director):
+arrancar el trabajo arquitectonico de Grupo 1/Grupo 2 sobre Seals
+Team YAIWES, en paralelo con el fix tecnico de la seccion 13 (blob
+not found en filter-repo).
