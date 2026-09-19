@@ -1,0 +1,59 @@
+name: Build Yaiwes
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Escribe RUN para confirmar"
+        required: true
+        default: ""
+
+jobs:
+  build-yaiwes:
+    if: ${{ github.event.inputs.confirm == 'RUN' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout agentes
+        uses: actions/checkout@v4
+        with:
+          path: agentes
+          fetch-depth: 1
+
+      - name: Checkout Yaiwes
+        uses: actions/checkout@v4
+        with:
+          repository: maxbry123-commits/Yaiwes
+          path: yaiwes
+          token: ${{ secrets.YAIWES_PUSH_TOKEN }}
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build staging area
+        run: python3 agentes/scripts_ci/stage_files.py
+
+      - name: Run motor_3 copy
+        env:
+          SOURCE_DIR: /tmp/yaiwes-staging
+          DEST_DIR: ${{ github.workspace }}/yaiwes
+          STATE_FILE: /tmp/motor3-state.json
+          BATCH_SIZE: "50"
+          COLLISION_POLICY: replace
+        run: python3 agentes/scripts_ci/run_motor3.py
+
+      - name: Commit and push to Yaiwes
+        working-directory: yaiwes
+        run: |
+          git config user.email "maxbry123@gmail.com"
+          git config user.name "Maxbry via motor_3 GH Action"
+          git add -A
+          git diff --cached --quiet && echo "No changes to commit" || (git commit -m "build: consolidate curated Yaiwes scope via motor_3_copy_batches" && git push origin HEAD:main)
+
+      - name: Read-back verification
+        working-directory: yaiwes
+        run: |
+          ls -la
+          find . -type f | wc -l
