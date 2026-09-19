@@ -7,6 +7,12 @@ name: Wordflow Loop Code Yaiwes - Test Groq (real)
 # NOTA: el repo completo pesa >16GB (descargas de componentes en otras
 # carpetas). Este workflow usa sparse-checkout para traer SOLO la carpeta
 # seals_core; un checkout completo se cuelga/agota disco del runner.
+#
+# La evidencia se commitea de vuelta al repo (no solo como artifact) para
+# que quede como registro legible via API de contenidos.
+
+permissions:
+  contents: write
 
 on:
   workflow_dispatch: {}
@@ -36,6 +42,7 @@ jobs:
         run: pip install requests pyyaml
 
       - name: Run real Groq test oracle
+        id: test
         env:
           GROQ_API_KEY_1: ${{ secrets.GROQ_API_KEY_1 }}
           GROQ_API_KEY_2: ${{ secrets.GROQ_API_KEY_2 }}
@@ -45,12 +52,29 @@ jobs:
           GROQ_API_KEY_6: ${{ secrets.GROQ_API_KEY_6 }}
           GROQ_API_KEY_7: ${{ secrets.GROQ_API_KEY_7 }}
         run: |
+          set +e
           cd "➡️📂 wordflow loop code Yaiwes/backend/Seals team YAIWES/seals_core"
-          python tests/test_groq_real.py
+          python tests/test_groq_real.py 2>&1 | tee /tmp/groq_test_output.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+        shell: bash
 
-      - name: Upload evidence
+      - name: Commit evidence back to repo
+        if: always()
+        run: |
+          cp /tmp/groq_test_output.txt "➡️📂 wordflow loop code Yaiwes/backend/Seals team YAIWES/seals_core/tests/evidencia_runs/ultimo_run_console.txt" || true
+          git config user.name "wordflow-ci-bot"
+          git config user.email "ci@yaiwes.local"
+          git add "➡️📂 wordflow loop code Yaiwes/backend/Seals team YAIWES/seals_core/tests/evidencia_runs/" || true
+          git commit -m "ci: evidencia real test Groq run ${{ github.run_id }}" || echo "nada que commitear"
+          git push || echo "push fallo, se deja como artifact"
+
+      - name: Upload evidence (artifact respaldo)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: groq-test-evidence
-          path: "➡️📂 wordflow loop code Yaiwes/backend/Seals team YAIWES/seals_core/tests/evidencia_runs/*.json"
+          path: "➡️📂 wordflow loop code Yaiwes/backend/Seals team YAIWES/seals_core/tests/evidencia_runs/*"
+
+      - name: Fail job if test failed
+        if: steps.test.outputs.exit_code != '0'
+        run: exit 1
