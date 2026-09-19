@@ -147,73 +147,69 @@ mecanismo Groq ya montado) y en paralelo investigacion de componentes
 para Comand Center (Herder, MatPoco Skills, DeepSeek Harness, Open
 Montage, Mander Diffling, Orca).
 
-## 12. GAP REAL 2026-09-19 - MANIFEST MOUNT MINIMAX/KIMI NO COINCIDE CON EL FILESYSTEM
+## 12. GAP MINIMAX/KIMI - ABIERTO Y CERRADO EN LA MISMA SESION 2026-09-19
 
-ACLARACION PRIMERO (el Director dudaba de las APIs): las APIs Groq SI
-funcionan. Evidencia ya cerrada en #11 (PASS 3/3, run
-https://github.com/maxbry123-commits/agentes/actions/runs/35420819763,
-commit c12fe65). Eso no es lo que esta roto. Lo que SI esta roto es el
-mount de componentes MiniMax/Kimi, investigado ahora por instruccion
-directa del Director.
+ACLARACION (el Director dudaba de las APIs): las APIs Groq SI funcionan,
+ya cerrado en #11 (PASS 3/3, run 35420819763, commit c12fe65). El
+problema real que el Director intuia era otro: MiniMax/Kimi.
 
-EVIDENCIA REAL (leido con github_api/get_file, no supuesto):
+GAP ENCONTRADO (evidencia real via github_api/get_file):
+agent_sources/AGENT_SOURCE_MOUNT_MANIFEST_2026-09-18.json declaraba 12
+componentes (7 MiniMax + 5 Kimi, contando kimi_researcher) como
+"mount": "gitlink-submodule" con SHA pineado, pero NINGUNO estaba
+realmente montado: 0 de 12 carpetas en agent_sources/ existian (excepto
+kimi_k/, que solo tenia README+LICENSE+carpetas vacias, y no coincidia
+ni con el path ni con el contenido esperado). Confirmado con
+.gitmodules (SI existia en la raiz del repo, con los 12 paths y URLs
+correctos) vs. el arbol git real (mostraba "type":"dir" normal, no
+submodule real, en cada path declarado).
 
-Archivo agent_sources/AGENT_SOURCE_MOUNT_MANIFEST_2026-09-18.json
-declara 11 componentes como "mount": "gitlink-submodule" con SHA
-pineado:
-- minimax_mini_agent, minimax_openroom, minimax_mmx_cli,
-  minimax_code_plugins, minimax_mcp, minimax_mcp_js,
-  minimax_coding_plan_mcp (7 de MiniMax-AI)
-- kimi_code, kimi_cli, kimi_agent_sdk, kimi_agent_rs,
-  kimi_researcher (5 de MoonshotAI)
-Mas un pin npm: @minimax-ai/code v0.4.10.
+CIERRE REAL EJECUTADO (mismo turno, con aprobacion expresa del
+Director tras verificar tamanos reales via GitHub API antes de tocar
+nada - MiniMax ~22MB, Kimi ~152MB, total ~174MB, sin riesgo para el
+repo de 16.4GB):
+1. Se leyeron los 12 repos reales via GET /repos/<owner>/<repo> para
+   confirmar que existen, son publicos, y obtener su tamano real antes
+   de montar nada (no se monto nada a ciegas).
+2. Se creo un tree real via Git Data API (POST /git/trees) con
+   base_tree del commit actual, agregando 12 entradas
+   mode=160000 type=commit sha=<commit pineado del manifest> en
+   agent_sources/<nombre>, exactamente el metodo que declara el
+   manifest ("GIT_SUBMODULE_PINNED_SHA_FOR_GITHUB_SOURCES") pero que
+   nunca se habia ejecutado.
+3. Se creo el commit (POST /git/commits) y se actualizo la rama main
+   (PATCH /git/refs/heads/main) - commit real:
+   f13f8f9ef3fe4ef9e82a2beba748332d1732a4ad.
+4. VERIFICADO DESPUES (no antes) via GET contents de agent_sources/:
+   los 12 paths ahora devuelven git_url/html_url apuntando al repo
+   EXTERNO real (ej. kimi_cli -> https://github.com/MoonshotAI/
+   kimi-cli/tree/86f136422a0aae6b217ea49e7ea1d2e8a1defcd2), la firma
+   inequivoca de un submodule real, no una copia ni una carpeta vacia.
 
-REALIDAD DEL FILESYSTEM (GET contents de agent_sources/ completo):
-- NO existe carpeta minimax_mini_agent, openroom, mmx_cli,
-  code_plugins, minimax_mcp, mcp_js, ni coding_plan_mcp dentro de
-  agent_sources/. CERO de los 7 componentes MiniMax declarados existen
-  ahi.
-- Solo existe UNA carpeta relacionada a Kimi: kimi_k/, y su contenido
-  es README.md (33956 bytes) + LICENSE + 3 carpetas VACIAS (docs/,
-  figures/, tech_report.pdf.chunks/). Esto coincide con el patron del
-  repo Kimi-Researcher (paper/README), NO con kimi_code, kimi_cli,
-  kimi_agent_sdk ni kimi_agent_rs, que no tienen carpeta propia en
-  absoluto.
-- El campo "type" que devuelve la GitHub Contents API para kimi_k y
-  para las demas carpetas es "dir" (arbol normal), NO "submodule".
-  Un gitlink-submodule real aparece en la API como type=submodule con
-  su propio sha de commit. Osea: el manifest dice
-  "GIT_SUBMODULE_PINNED_SHA_FOR_GITHUB_SOURCES" pero NINGUNO de los 11
-  componentes esta montado como submodule real. Es un archivo de
-  intencion/plan, no un mount ejecutado.
-- Aparte, existe minimax_mcp/ pero FUERA de agent_sources/, en la
-  raiz de Wordflow Loop Code Yaiwes. Contenido real: solo
-  .env.example (231 bytes), .gitignore (121 bytes), .github/ vacio.
-  CERO codigo fuente. No corresponde a ninguno de los 7 componentes
-  MiniMax del manifest (ese manifest apunta a
-  MiniMax-AI/MiniMax-MCP.git commit 0856b9a, que no esta clonado aqui).
+PENDIENTE EXPLICITO (no cerrado, no ocultado):
+- La carpeta vieja agent_sources/kimi_k/ (README+LICENSE+vacios) quedo
+  intacta y duplicada junto al nuevo agent_sources/kimi_researcher/
+  (submodule real apuntando al mismo repo Kimi-Researcher). Es
+  redundante pero no rompe nada. Limpiar/fusionar en un paso futuro,
+  no ahora.
+- La carpeta suelta minimax_mcp/ fuera de agent_sources/ (en la raiz
+  de Wordflow Loop Code Yaiwes, solo .env.example+.gitignore) tambien
+  quedo intacta, sin relacion con el nuevo agent_sources/minimax_mcp/
+  (submodule real). Revisar en un paso futuro si hay que fusionar o
+  es un modulo de configuracion distinto.
+- Montar el gitlink NO trae el codigo fuente al repo agentes (por
+  diseno - eso es justo lo que evita que el repo crezca 174MB). Para
+  que Seals Team YAIWES pueda EJECUTAR codigo de estos agentes hace
+  falta un paso de "git submodule update --init" real en tiempo de
+  build/CI, algo que este entorno de Claude no puede hacer directo
+  (sin acceso de shell a git con red completa). Eso queda como
+  siguiente GAP a resolver: como el pool de agentes del frontend
+  consume estos submodules en runtime (via GitHub Actions con
+  submodule checkout, o via un paso de build server-side).
 
-VEREDICTO (GAP explicito, no se inventa nada):
-De 11 componentes MiniMax/Kimi declarados "montados", 0 estan
-realmente montados como submodule. 1 de 11 (kimi_researcher) tiene
-contenido parcial real pero es solo el README/paper, sin codigo
-ejecutable. Los otros 10 no tienen ni una carpeta. HOY no hay NADA
-de MiniMax ni Kimi K2 usable para Seals Team YAIWES ni para el pool
-de agentes del frontend, porque no hay codigo fuente real presente en
-el repo - el manifest fue escrito pero el mount nunca se ejecuto.
-
-CONTRASTE DE CONTROL (para que quede claro que no es un problema
-generico de la investigacion): agent_sources/orca/ SI esta
-completo y real (AGENTS.md 13341 bytes, README.md 17117 bytes,
-package.json 26270 bytes, pnpm-lock.yaml 529415 bytes, src/, tests/,
-skills/, components.json). Orca es el contraejemplo que prueba que
-cuando un mount se hace de verdad, se ve asi.
-
-SIGUIENTE PASO REQUERIDO (no ejecutado aun, requiere decision del
-Director por ser irreversible/caro - clonar repos externos de tamano
-desconocido a un repo que ya peso 16.4GB y causo un incidente real
-de infraestructura en #11): para que MiniMax/Kimi sean usables en
-Seals Team YAIWES hay que montarlos de verdad primero (clone real a
-los commits pineados del manifest, o gitlink real via Git Data API).
-Sin eso, "ponlos en el pool de agentes" es fisicamente imposible sin
-inventar contenido.
+SIGUIENTE: con el mount real cerrado, falta (a) decidir con el
+Director si el "pool de agentes del frontend" lee estos submodules via
+un job de GitHub Actions dedicado (unico uso permitido de Actions es
+Wordflow, esto SI aplica) o via otro mecanismo, y (b) retomar el
+cierre de Seals Team YAIWES (P1-27, P1-28, P2-31, P1-30) que sigue
+siendo la Prioridad 2 y bloquea Comand Center (Prioridad 3).
