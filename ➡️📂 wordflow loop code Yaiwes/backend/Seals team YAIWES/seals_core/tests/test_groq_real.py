@@ -10,11 +10,15 @@ El PASS viene de:
   2. La respuesta trae choices[0].message.content no vacio
   3. Se ejercitan las keys validas al menos una vez (rotacion real)
 
-Diagnostico previo (primera corrida detecto 401 en 1 key y 404 en 2
-modelos): antes de probar chat completions, se valida CADA key contra
-GET /models (endpoint real, sin costo de tokens) para separar
-"key invalida" de "modelo no existe en el catalogo de esa cuenta". Esto
-es evidencia objetiva, no una suposicion.
+Diagnostico previo (primera corrida detecto 401 en 1 key y 404 en 3
+modelos inventados/fuera de catalogo): antes de probar chat completions,
+se valida CADA key contra GET /models (endpoint real, sin costo de
+tokens) para separar "key invalida" de "modelo no existe en el catalogo
+de esa cuenta". Esto es evidencia objetiva, no una suposicion.
+
+MODELOS_A_PROBAR ya fijado a los 3 modelos de texto REALES confirmados
+en el catalogo de esta cuenta (ver router_modelos.CATALOGO_GROQ_VERIFICADO):
+openai/gpt-oss-120b, openai/gpt-oss-20b, groq/compound.
 """
 import os
 import sys
@@ -30,10 +34,9 @@ CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 MODELS_URL = "https://api.groq.com/openai/v1/models"
 
 MODELOS_A_PROBAR = [
-    "llama-3.3-70b-versatile",
-    "qwen/qwen3-32b",
     "openai/gpt-oss-120b",
-    "moonshotai/kimi-k2-instruct",
+    "openai/gpt-oss-20b",
+    "groq/compound",
 ]
 
 KEYS_ENV = [f"GROQ_API_KEY_{i}" for i in range(1, 8)]
