@@ -1,0 +1,62 @@
++ pip install --break-system-packages git-filter-repo
+Defaulting to user installation because normal site-packages is not writeable
+Collecting git-filter-repo
+  Downloading git_filter_repo-2.47.0-py3-none-any.whl.metadata (31 kB)
+Downloading git_filter_repo-2.47.0-py3-none-any.whl (76 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 76.3/76.3 kB 3.3 MB/s eta 0:00:00
+Installing collected packages: git-filter-repo
+Successfully installed git-filter-repo-2.47.0
+a40bce548d2c
++ git clone --filter=blob:none --bare https://x-access-token:ghs_15368_eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhdXRobmQiLCJjdHgiOiJEal9zcVFHazZMb3JZcDBmLVJBWVlabTh2SmRYd1cyODBlakdHV3Z3RFluVGEtSEo0ZXRoWlhrIiwiZXhwIjoxNzg5Nzk5MTE1LCJpYXQiOjE3ODk3OTU1MTUsImlzcyI6ImdpdGh1YiIsImp0aSI6IjJjMzU4YmUyLTUwZDktNGMyMS1hYjEzLTg4MjUyYjZmZWU4NiIsInZlciI6M30.JMneGL3dthTqLbHBzUxDigCUnoeN8po8vV9X1Ihy8MjgRu4UwydB4XOFHeNe8pypbXQ9YAU067r4NjEnnU-gPA@github.com/maxbry123-commits/agentes.git repo-mirror
+Cloning into bare repository 'repo-mirror'...
++ echo CLONE_EXIT=0
+CLONE_EXIT=0
++ du -sh repo-mirror
+47M	repo-mirror
++ cd repo-mirror
++ git count-objects -vH
+count: 0
+size: 0 bytes
+in-pack: 186383
+packs: 1
+size-pack: 45.77 MiB
+prune-packable: 0
+garbage: 0
+size-garbage: 0 bytes
++ cd ..
++ git filter-repo --force --path '➡️📂 wordflow loop code Yaiwes' --path 'Agente Yaiwes principal' --path 'Core kernel Yaiwes' --path 'Skills agente' --path 'Claude notas' --path 'Claude readme' --path Motores --path '➡️📂motores de descarga extracción copiado movimiento archivos agentes' --path .gitmodules
+NOTICE: Removing 'origin' remote; see 'Why is my origin removed?'
+        in the manual if you want to push back there.
+        (was https://x-access-token:ghs_15368_eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhdXRobmQiLCJjdHgiOiJEal9zcVFHazZMb3JZcDBmLVJBWVlabTh2SmRYd1cyODBlakdHV3Z3RFluVGEtSEo0ZXRoWlhrIiwiZXhwIjoxNzg5Nzk5MTE1LCJpYXQiOjE3ODk3OTU1MTUsImlzcyI6ImdpdGh1YiIsImp0aSI6IjJjMzU4YmUyLTUwZDktNGMyMS1hYjEzLTg4MjUyYjZmZWU4NiIsInZlciI6M30.JMneGL3dthTqLbHBzUxDigCUnoeN8po8vV9X1Ihy8MjgRu4UwydB4XOFHeNe8pypbXQ9YAU067r4NjEnnU-gPA@github.com/maxbry123-commits/agentes.git)
+Parsed 29 commitsParsed 35 commitsParsed 446 commitsParsed 449 commitsParsed 454 commitsParsed 583 commitsParsed 2053 commitsParsed 2063 commitsParsed 2071 commitsParsed 2109 commitsParsed 2111 commitsParsed 2113 commitsParsed 2114 commitsParsed 2115 commitsParsed 2116 commitsParsed 2117 commitsParsed 2118 commitsParsed 2119 commitsParsed 2122 commitsParsed 2125 commitsParsed 2126 commitsParsed 2129 commitsParsed 2130 commitsParsed 2142 commitsParsed 2145 commitsParsed 2153 commitsParsed 2154 commitsParsed 2178 commitsParsed 2180 commitsfatal: blob not found: M 100644 e69de29bb2d1d6434b8b29ae775ad8c2e48c5391 Agente Yaiwes principal/.keep
+fast-import: dumping crash report to fast_import_crash_2204
+Traceback (most recent call last):
+  File "/home/runner/.local/bin/git-filter-repo", line 8, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/home/runner/.local/lib/python3.12/site-packages/git_filter_repo.py", line 4973, in main
+    filter.run()
+  File "/home/runner/.local/lib/python3.12/site-packages/git_filter_repo.py", line 4892, in run
+    self._parser.run(self._input, self._output)
+  File "/home/runner/.local/lib/python3.12/site-packages/git_filter_repo.py", line 1527, in run
+    self._parse_commit()
+  File "/home/runner/.local/lib/python3.12/site-packages/git_filter_repo.py", line 1378, in _parse_commit
+    self._commit_callback(commit, aux_info)
+  File "/home/runner/.local/lib/python3.12/site-packages/git_filter_repo.py", line 4125, in _tweak_commit
+    self._insert_into_stream(commit)
+  File "/home/runner/.local/lib/python3.12/site-packages/git_filter_repo.py", line 4865, in _insert_into_stream
+    self._parser.insert(obj)
+  File "/home/runner/.local/lib/python3.12/site-packages/git_filter_repo.py", line 1505, in insert
+    obj.dump(self._output)
+  File "/home/runner/.local/lib/python3.12/site-packages/git_filter_repo.py", line 820, in dump
+    change.dump(file_)
+  File "/home/runner/.local/lib/python3.12/site-packages/git_filter_repo.py", line 723, in dump
+    file_.write(b'M %s %s %s\n' % (self.mode, self.blob_id, quoted_filename))
+BrokenPipeError: [Errno 32] Broken pipe
++ git remote add limpio https://x-access-token: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@github.com/maxbry123-commits/yaiwes-nucleo-limpio.git
++ git push limpio --mirror
+fatal: unable to read 40c78a8fc804b743d7cdf6161f61034f85002941
+fatal: the remote end hung up unexpectedly
+send-pack: unexpected disconnect while reading sideband packet
+fatal: the remote end hung up unexpectedly
+error: failed to push some refs to 'https://github.com/maxbry123-commits/yaiwes-nucleo-limpio.git'
