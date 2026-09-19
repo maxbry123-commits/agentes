@@ -13,48 +13,51 @@ jobs:
     steps:
       - name: Instalar git-filter-repo
         run: |
-          pip install --break-system-packages git-filter-repo || pip3 install --break-system-packages git-filter-repo
-          git filter-repo --version
+          set -x
+          { pip install --break-system-packages git-filter-repo || pip3 install --break-system-packages git-filter-repo ; } 2>&1 | tee -a /tmp/full_log.txt
+          git filter-repo --version 2>&1 | tee -a /tmp/full_log.txt
 
       - name: Clonar mirror blobless del repo agentes
         run: |
-          git clone --filter=blob:none --bare https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git repo-mirror
-          echo "Tamano tras clone blobless:"
-          du -sh repo-mirror || true
+          set -x
+          {
+            git clone --filter=blob:none --bare "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" repo-mirror
+            echo "CLONE_EXIT=$?"
+            du -sh repo-mirror
+            cd repo-mirror && git count-objects -vH && cd ..
+          } 2>&1 | tee -a /tmp/full_log.txt
 
       - name: Filtrar - dejar SOLO las carpetas protegidas
         working-directory: repo-mirror
+        continue-on-error: true
         run: |
-          git filter-repo --force \
-            --path "➡️📂 wordflow loop code Yaiwes" \
-            --path "Agente Yaiwes principal" \
-            --path "Core kernel Yaiwes" \
-            --path "Skills agente" \
-            --path "Claude notas" \
-            --path "Claude readme" \
-            --path "Motores" \
-            --path "➡️📂motores de descarga extracción copiado movimiento archivos agentes" \
-            --path ".gitmodules"
-          echo "Tamano tras filtrado:"
-          du -sh . || true
-
-      - name: Reportar tamano final real
-        working-directory: repo-mirror
-        run: |
+          set -x
           {
-            echo "=== du -sh . ==="
+            git filter-repo --force \
+              --path "➡️📂 wordflow loop code Yaiwes" \
+              --path "Agente Yaiwes principal" \
+              --path "Core kernel Yaiwes" \
+              --path "Skills agente" \
+              --path "Claude notas" \
+              --path "Claude readme" \
+              --path "Motores" \
+              --path "➡️📂motores de descarga extracción copiado movimiento archivos agentes" \
+              --path ".gitmodules"
+            echo "FILTER_EXIT=$?"
             du -sh .
-            echo "=== git count-objects -vH ==="
             git count-objects -vH
-            echo "=== fecha ==="
-            date -u
-          } | tee /tmp/tamano_final.txt
+          } 2>&1 | tee -a /tmp/full_log.txt
 
       - name: Push al repo nuevo yaiwes-nucleo-limpio
         working-directory: repo-mirror
+        continue-on-error: true
         run: |
-          git remote add limpio "https://x-access-token:${{ secrets.MAXBRY_123_TOKENS }}@github.com/maxbry123-commits/yaiwes-nucleo-limpio.git"
-          git push limpio --mirror
+          set -x
+          {
+            git remote add limpio "https://x-access-token:${{ secrets.MAXBRY_123_TOKENS }}@github.com/maxbry123-commits/yaiwes-nucleo-limpio.git"
+            git push limpio --mirror
+            echo "PUSH_EXIT=$?"
+          } 2>&1 | tee -a /tmp/full_log.txt
 
       - name: Checkout agentes (sparse) para dejar evidencia
         if: always()
@@ -66,18 +69,18 @@ jobs:
           fetch-depth: 1
           path: agentes-evidencia
 
-      - name: Commitear evidencia real de vuelta al repo agentes
+      - name: Commitear evidencia real (log completo, exito o fallo) de vuelta al repo agentes
         if: always()
         run: |
           mkdir -p "agentes-evidencia/Claude notas/evidencia_runs"
-          if [ -f /tmp/tamano_final.txt ]; then
-            cp /tmp/tamano_final.txt "agentes-evidencia/Claude notas/evidencia_runs/limpieza_historial_${{ github.run_id }}.txt"
+          if [ -f /tmp/full_log.txt ]; then
+            cp /tmp/full_log.txt "agentes-evidencia/Claude notas/evidencia_runs/limpieza_historial_${{ github.run_id }}.txt"
           else
-            echo "FALLO ANTES DE MEDIR TAMANO - ver logs del run ${{ github.run_id }}" > "agentes-evidencia/Claude notas/evidencia_runs/limpieza_historial_${{ github.run_id }}.txt"
+            echo "NO SE GENERO NINGUN LOG - fallo en el paso Set up job o antes" > "agentes-evidencia/Claude notas/evidencia_runs/limpieza_historial_${{ github.run_id }}.txt"
           fi
           cd agentes-evidencia
           git config user.name "yaiwes-cleanup-bot"
           git config user.email "ci@yaiwes.local"
           git add "Claude notas/evidencia_runs" || true
-          git commit -m "ci: evidencia real limpieza historial run ${{ github.run_id }}" || echo "nada que commitear"
+          git commit -m "ci: evidencia real (log completo) limpieza historial run ${{ github.run_id }}" || echo "nada que commitear"
           git push || echo "push evidencia fallo, queda en el artifact/log del run"
