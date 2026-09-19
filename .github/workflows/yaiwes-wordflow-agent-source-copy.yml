@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 330
     steps:
-      - name: Checkout exact Meta4 sources, destination, and canonical motor
+      - name: Checkout Meta4 sources destination and canonical motor
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -53,50 +53,59 @@ jobs:
           DEST='➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources'
           mkdir -p "$DEST"
           run_one() {
-            id="$1"; src="$2"; dst="$DEST/$3"
+            id="$1"
+            src="$2"
+            dst="$DEST/$3"
             out="/tmp/$id.out"
-            env SOURCE_DIR="$src" DEST_DIR="$dst" STATE_FILE="/tmp/$id.state.json" BATCH_SIZE=100 COLLISION_POLICY=replace               python "$MOTOR" | tee "$out"
-            python - "$out" <<'PY'
-import json,sys
-p=json.loads(open(sys.argv[1],encoding='utf-8').read().strip().splitlines()[-1])
-assert p["verdict"]=="VERIFIED_CLOSED", p
-assert p["failed"]==0 and p["pending"]==0, p
-PY
+            env SOURCE_DIR="$src" DEST_DIR="$dst" STATE_FILE="/tmp/$id.state.json" BATCH_SIZE=100 COLLISION_POLICY=replace python "$MOTOR" | tee "$out"
+            python -c 'import json,sys; p=json.loads(open(sys.argv[1],encoding="utf-8").read().strip().splitlines()[-1]); assert p["verdict"]=="VERIFIED_CLOSED",p; assert p["failed"]==0 and p["pending"]==0,p' "$out"
           }
           run_one meta_muse_code_sdk 'Core kernel Yaiwes/Meta-Muse-Code-SDK-2026' meta_muse_code_sdk
           run_one muse_glimmer 'Core kernel Yaiwes/Meta-Muse-Glimmer-Agent-2026' muse_glimmer
           run_one metacua 'Core kernel Yaiwes/Meta-Agent-Cookbook-2026/code/03_use_cases/13_macos_cua' metacua
           run_one cua_mcp 'Core kernel Yaiwes/Meta-Agent-Cookbook-2026/code/03_use_cases/12_computer_use' cua_mcp
 
-      - name: Verify source-destination manifests 4x
+      - name: Verify source destination manifests 4x
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-import hashlib,json
-from pathlib import Path
-pairs=[
- ("meta_muse_code_sdk",Path("Core kernel Yaiwes/Meta-Muse-Code-SDK-2026"),Path("➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/meta_muse_code_sdk")),
- ("muse_glimmer",Path("Core kernel Yaiwes/Meta-Muse-Glimmer-Agent-2026"),Path("➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/muse_glimmer")),
- ("metacua",Path("Core kernel Yaiwes/Meta-Agent-Cookbook-2026/code/03_use_cases/13_macos_cua"),Path("➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/metacua")),
- ("cua_mcp",Path("Core kernel Yaiwes/Meta-Agent-Cookbook-2026/code/03_use_cases/12_computer_use"),Path("➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/cua_mcp")),
-]
-def sha(p):
- h=hashlib.sha256()
- with p.open("rb") as f:
-  for b in iter(lambda:f.read(1024*1024),b""): h.update(b)
- return h.hexdigest()
-def manifest(root):
- return [(str(p.relative_to(root)).replace("\\","/"),p.stat().st_size,sha(p)) for p in sorted(root.rglob("*")) if p.is_file()]
-rows=[]
-for ident,src,dst in pairs:
- a,b=manifest(src),manifest(dst)
- if a!=b: raise SystemExit(f"MANIFEST_MISMATCH:{ident}")
- rows.append({"id":ident,"files":len(a),"manifest_match":True})
-e={"schema":"yaiwes.meta4-copy-evidence/v1","motor_path":"➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de copiar archivos/motor_3_copy_batches.py","motor_blob":"3689924361ce4a1a9fde4ae2b6f6009c37a6042d","motor_modified":False,"destination":"➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources","verified_total":4,"results":rows,"verdict":"VERIFIED_4_OF_4"}
-Path("➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/META4_COPY_EVIDENCE_2026-09-19.json").write_text(json.dumps(e,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
-print(json.dumps(e,ensure_ascii=False))
-PY
+          import hashlib, json
+          from pathlib import Path
+          pairs = [
+              ('meta_muse_code_sdk', Path('Core kernel Yaiwes/Meta-Muse-Code-SDK-2026'), Path('➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/meta_muse_code_sdk')),
+              ('muse_glimmer', Path('Core kernel Yaiwes/Meta-Muse-Glimmer-Agent-2026'), Path('➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/muse_glimmer')),
+              ('metacua', Path('Core kernel Yaiwes/Meta-Agent-Cookbook-2026/code/03_use_cases/13_macos_cua'), Path('➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/metacua')),
+              ('cua_mcp', Path('Core kernel Yaiwes/Meta-Agent-Cookbook-2026/code/03_use_cases/12_computer_use'), Path('➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/cua_mcp')),
+          ]
+          def sha(path):
+              h = hashlib.sha256()
+              with path.open('rb') as f:
+                  for block in iter(lambda: f.read(1024 * 1024), b''):
+                      h.update(block)
+              return h.hexdigest()
+          def manifest(root):
+              return [(p.relative_to(root).as_posix(), p.stat().st_size, sha(p)) for p in sorted(root.rglob('*')) if p.is_file()]
+          rows = []
+          for ident, src, dst in pairs:
+              a, b = manifest(src), manifest(dst)
+              if a != b:
+                  raise SystemExit('MANIFEST_MISMATCH:' + ident)
+              rows.append({'id': ident, 'files': len(a), 'manifest_match': True})
+          evidence = {
+              'schema': 'yaiwes.meta4-copy-evidence/v1',
+              'motor_path': '➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de copiar archivos/motor_3_copy_batches.py',
+              'motor_blob': '3689924361ce4a1a9fde4ae2b6f6009c37a6042d',
+              'motor_modified': False,
+              'destination': '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources',
+              'verified_total': 4,
+              'results': rows,
+              'verdict': 'VERIFIED_4_OF_4',
+          }
+          out = Path('➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/META4_COPY_EVIDENCE_2026-09-19.json')
+          out.write_text(json.dumps(evidence, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+          print(json.dumps(evidence, ensure_ascii=False))
+          PY
 
       - name: Commit exact destination no force
         shell: bash
@@ -104,7 +113,12 @@ PY
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add --             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/meta_muse_code_sdk'             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/muse_glimmer'             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/metacua'             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/cua_mcp'             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/META4_COPY_EVIDENCE_2026-09-19.json'
+          git add -- \
+            '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/meta_muse_code_sdk' \
+            '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/muse_glimmer' \
+            '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/metacua' \
+            '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/cua_mcp' \
+            '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/META4_COPY_EVIDENCE_2026-09-19.json'
           if git diff --cached --quiet; then
             echo 'NO_COPY_DELTA'
             exit 0
@@ -121,17 +135,13 @@ PY
         run: |
           set -euo pipefail
           git fetch origin main
-          for P in             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/meta_muse_code_sdk'             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/muse_glimmer'             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/metacua'             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/cua_mcp'
+          for P in \
+            '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/meta_muse_code_sdk' \
+            '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/muse_glimmer' \
+            '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/metacua' \
+            '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/cua_mcp'
           do
             git cat-file -e "origin/main:$P"
           done
           git show 'origin/main:➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/META4_COPY_EVIDENCE_2026-09-19.json' > /tmp/meta4-evidence.json
-          python - <<'PY'
-import json
-p=json.load(open('/tmp/meta4-evidence.json',encoding='utf-8'))
-assert p['motor_modified'] is False
-assert p['motor_blob']=='3689924361ce4a1a9fde4ae2b6f6009c37a6042d'
-assert p['verified_total']==4
-assert p['verdict']=='VERIFIED_4_OF_4'
-print('META4_REMOTE_READBACK=VERIFIED_4_OF_4')
-PY
+          python -c 'import json; p=json.load(open("/tmp/meta4-evidence.json",encoding="utf-8")); assert p["motor_modified"] is False; assert p["motor_blob"]=="3689924361ce4a1a9fde4ae2b6f6009c37a6042d"; assert p["verified_total"]==4; assert p["verdict"]=="VERIFIED_4_OF_4"; print("META4_REMOTE_READBACK=VERIFIED_4_OF_4")'
