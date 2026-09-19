@@ -3,6 +3,10 @@ name: Wordflow Loop Code Yaiwes - Test Groq (real)
 # UNICO uso permitido de GitHub Actions en este proyecto: verificar el
 # Wordflow Loop Code Yaiwes con llamadas REALES a proveedores de LLM de
 # prueba (Groq / Cerebras). Nunca se usa Actions para nada mas.
+#
+# NOTA: el repo completo pesa >16GB (descargas de componentes en otras
+# carpetas). Este workflow usa sparse-checkout para traer SOLO la carpeta
+# seals_core; un checkout completo se cuelga/agota disco del runner.
 
 on:
   workflow_dispatch: {}
@@ -15,8 +19,13 @@ jobs:
   test-groq-real:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout (sparse, solo seals_core)
         uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            ➡️📂 wordflow loop code Yaiwes/backend/Seals team YAIWES/seals_core
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
 
       - name: Setup Python
         uses: actions/setup-python@v5
