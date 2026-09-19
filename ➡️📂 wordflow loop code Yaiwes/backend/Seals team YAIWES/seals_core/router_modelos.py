@@ -7,13 +7,30 @@ Proveedores de TEST (nunca produccion): Cerebras y Groq.
 Produccion futura: Router Inteligente Universal (repo
 router-universal-router-inteligente-) sera el unico proveedor de API key.
 
-Groq: 1 sola API key sirve para TODOS los modelos del catalogo Groq; lo
-unico que cambia entre modelos es el campo "model" del payload. Aun asi
-rotamos las 7 keys entregadas para repartir rate-limit (round robin
-determinista, no decidido por LLM).
+CATALOGO GROQ VERIFICADO (GitHub Action run, GET /models real,
+2026-09-19T04:14Z): esta cuenta tiene habilitados solo 13 modelos, y
+NINGUNO de los pedidos originalmente (llama-3.3-70b-versatile,
+qwen/qwen3-32b, moonshotai/kimi-k2-instruct) esta en ese catalogo ->
+daban HTTP 404. El unico probado con PASS real (HTTP 200 + contenido) es
+openai/gpt-oss-120b. Catalogo completo disponible:
+whisper-large-v3, openai/gpt-oss-20b, groq/compound,
+meta-llama/llama-prompt-guard-2-86m, canopylabs/orpheus-arabic-saudi,
+allam-2-7b, openai/gpt-oss-safeguard-20b, openai/gpt-oss-120b,
+canopylabs/orpheus-v1-english, qwen/qwen3.8-27b,
+meta-llama/llama-prompt-guard-2-22m, groq/compound-mini,
+whisper-large-v3-turbo.
+
+GROQ_API_KEY_1 quedo marcada INVALIDA (HTTP 401 real, dos corridas
+consecutivas). Las keys 2 a 7 son validas. Se rota solo sobre las
+validas hasta que el Director confirme/reemplace la key 1.
+
+Groq: 1 sola API key sirve para TODOS los modelos del catalogo; lo
+unico que cambia entre modelos es el campo "model" del payload.
 """
 import os
 import itertools
+
+KEY_INVALIDA_CONOCIDA = {"GROQ_API_KEY_1"}  # HTTP 401 real, confirmado 2 veces
 
 PROVEEDORES_DISPONIBLES = {
     "cerebras": {
@@ -23,24 +40,42 @@ PROVEEDORES_DISPONIBLES = {
         "uso": "alto_volumen",
     },
     "groq": {
-        "keys_env": [f"GROQ_API_KEY_{i}" for i in range(1, 8)],
+        "keys_env": [f"GROQ_API_KEY_{i}" for i in range(1, 8) if f"GROQ_API_KEY_{i}" not in KEY_INVALIDA_CONOCIDA],
         "url": "https://api.groq.com/openai/v1/chat/completions",
-        "modelo_default": "llama-3.3-70b-versatile",
+        "modelo_default": "openai/gpt-oss-120b",
         "uso": "test_multi_modelo",
     },
 }
 
-# Tabla determinista tipo_tarea -> modelo Groq. Nunca decidida por el LLM.
+# Catalogo real de la cuenta (ver GET /models, evidencia en
+# tests/evidencia_runs/). Tabla determinista tipo_tarea -> modelo,
+# nunca decidida por el LLM. Usa SOLO ids confirmados en catalogo real.
+CATALOGO_GROQ_VERIFICADO = [
+    "whisper-large-v3",
+    "openai/gpt-oss-20b",
+    "groq/compound",
+    "meta-llama/llama-prompt-guard-2-86m",
+    "canopylabs/orpheus-arabic-saudi",
+    "allam-2-7b",
+    "openai/gpt-oss-safeguard-20b",
+    "openai/gpt-oss-120b",
+    "canopylabs/orpheus-v1-english",
+    "qwen/qwen3.8-27b",
+    "meta-llama/llama-prompt-guard-2-22m",
+    "groq/compound-mini",
+    "whisper-large-v3-turbo",
+]
+
 TAREA_A_MODELO_GROQ = {
-    "codigo": "qwen/qwen3-32b",
-    "diseno_arquitectura": "qwen/qwen3-32b",
+    "codigo": "openai/gpt-oss-120b",
+    "diseno_arquitectura": "openai/gpt-oss-120b",
     "razonamiento": "openai/gpt-oss-120b",
     "evaluar_componente": "openai/gpt-oss-120b",
-    "investigar_gap": "moonshotai/kimi-k2-instruct",
-    "investigacion": "moonshotai/kimi-k2-instruct",
-    "chat_rapido": "llama-3.3-70b-versatile",
+    "investigar_gap": "groq/compound",  # tiene tool-use/search integrado
+    "investigacion": "groq/compound",
+    "chat_rapido": "openai/gpt-oss-20b",  # mas chico/rapido
 }
-MODELO_GROQ_DEFAULT = "llama-3.3-70b-versatile"
+MODELO_GROQ_DEFAULT = "openai/gpt-oss-120b"
 
 
 def _keys_presentes(proveedor: str) -> list:
@@ -69,7 +104,11 @@ def elegir_proveedor(tipo_tarea: str) -> str:
 
 def elegir_modelo(proveedor: str, tipo_tarea: str) -> str:
     if proveedor == "groq":
-        return TAREA_A_MODELO_GROQ.get(tipo_tarea, MODELO_GROQ_DEFAULT)
+        modelo = TAREA_A_MODELO_GROQ.get(tipo_tarea, MODELO_GROQ_DEFAULT)
+        if modelo not in CATALOGO_GROQ_VERIFICADO:
+            # fail-closed: nunca pedir a ciegas un modelo no verificado
+            return MODELO_GROQ_DEFAULT
+        return modelo
     return PROVEEDORES_DISPONIBLES.get(proveedor, {}).get("modelo_default")
 
 
