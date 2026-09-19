@@ -1,0 +1,48 @@
+name: Simple Rename (git mv, sparse checkout)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Escribe RUN para confirmar"
+        required: true
+        default: ""
+
+jobs:
+  simple-rename:
+    if: ${{ github.event.inputs.confirm == 'RUN' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (sparse - only the 4 folders to rename)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            /📂 Bitácora stated JSON Craxy wall.json
+            /➡️📂 wordflow loop code Yaiwes
+            /📂coda workflow persistencias
+            /➡️📂motores de descarga extracción copiado movimiento archivos agentes
+          sparse-checkout-cone-mode: false
+
+      - name: git mv each item to its clean name
+        run: |
+          git config user.email "maxbry123@gmail.com"
+          git config user.name "Maxbry via simple-rename Action"
+
+          test -e "📂 Bitácora stated JSON Craxy wall.json" && \
+            git mv "📂 Bitácora stated JSON Craxy wall.json" "Bitacora-stated-JSON-Craxy-wall.json"
+
+          test -e "➡️📂 wordflow loop code Yaiwes" && \
+            git mv "➡️📂 wordflow loop code Yaiwes" "wordflow loop code Yaiwes"
+
+          test -e "📂coda workflow persistencias" && \
+            git mv "📂coda workflow persistencias" "coda workflow persistencias"
+
+          test -e "➡️📂motores de descarga extracción copiado movimiento archivos agentes" && \
+            git mv "➡️📂motores de descarga extracción copiado movimiento archivos agentes" "motores de descarga extraccion copiado movimiento archivos agentes"
+
+          git status
+
+      - name: Commit and push
+        run: |
+          git diff --cached --quiet && echo "No changes to commit" || (git commit -m "rename: clean up emoji folder names (git mv, no content change)" && git push origin HEAD:main)
