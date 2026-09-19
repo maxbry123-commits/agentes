@@ -5,10 +5,9 @@
 [DIAG] key=GROQ_API_KEY_5 http=200 estado=VALIDA
 [DIAG] key=GROQ_API_KEY_6 http=200 estado=VALIDA
 [DIAG] key=GROQ_API_KEY_7 http=200 estado=VALIDA
-[DIAG] catalogo real (13 modelos): ['meta-llama/llama-prompt-guard-2-22m', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'canopylabs/orpheus-v1-english', 'canopylabs/orpheus-arabic-saudi', 'qwen/qwen3.8-27b', 'whisper-large-v3', 'meta-llama/llama-prompt-guard-2-86m', 'groq/compound', 'allam-2-7b', 'whisper-large-v3-turbo', 'openai/gpt-oss-safeguard-20b', 'groq/compound-mini']
-[SKIP] modelo=llama-3.3-70b-versatile no esta en el catalogo real de la cuenta, no se prueba a ciegas
-[SKIP] modelo=qwen/qwen3-32b no esta en el catalogo real de la cuenta, no se prueba a ciegas
-[SKIP] modelo=moonshotai/kimi-k2-instruct no esta en el catalogo real de la cuenta, no se prueba a ciegas
+[DIAG] catalogo real (13 modelos): ['meta-llama/llama-prompt-guard-2-86m', 'qwen/qwen3.8-27b', 'openai/gpt-oss-120b', 'whisper-large-v3-turbo', 'groq/compound', 'meta-llama/llama-prompt-guard-2-22m', 'whisper-large-v3', 'openai/gpt-oss-safeguard-20b', 'groq/compound-mini', 'allam-2-7b', 'canopylabs/orpheus-v1-english', 'canopylabs/orpheus-arabic-saudi', 'openai/gpt-oss-20b']
 [PASS] modelo=openai/gpt-oss-120b key=GROQ_API_KEY_2 http=200 motivo=PASS_OBJETIVO
-Evidencia escrita en: /home/runner/work/agentes/agentes/➡️📂 wordflow loop code Yaiwes/backend/Seals team YAIWES/seals_core/tests/evidencia_runs/groq_test_20260919T041540Z.json
-PASS: 1/1 modelos reales del catalogo verificados con Groq
+[PASS] modelo=openai/gpt-oss-20b key=GROQ_API_KEY_3 http=200 motivo=PASS_OBJETIVO
+[PASS] modelo=groq/compound key=GROQ_API_KEY_4 http=200 motivo=PASS_OBJETIVO
+Evidencia escrita en: /home/runner/work/agentes/agentes/➡️📂 wordflow loop code Yaiwes/backend/Seals team YAIWES/seals_core/tests/evidencia_runs/groq_test_20260919T041616Z.json
+PASS: 3/3 modelos reales del catalogo verificados con Groq
