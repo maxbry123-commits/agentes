@@ -1,0 +1,47 @@
+name: Wordflow Loop Code Yaiwes - Test Groq (real)
+
+# UNICO uso permitido de GitHub Actions en este proyecto: verificar el
+# Wordflow Loop Code Yaiwes con llamadas REALES a proveedores de LLM de
+# prueba (Groq / Cerebras). Nunca se usa Actions para nada mas.
+
+on:
+  workflow_dispatch: {}
+  push:
+    paths:
+      - "➡️📂 wordflow loop code Yaiwes/backend/Seals team YAIWES/seals_core/**"
+      - ".github/workflows/wordflow-groq-test.yml"
+
+jobs:
+  test-groq-real:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install requests pyyaml
+
+      - name: Run real Groq test oracle
+        env:
+          GROQ_API_KEY_1: ${{ secrets.GROQ_API_KEY_1 }}
+          GROQ_API_KEY_2: ${{ secrets.GROQ_API_KEY_2 }}
+          GROQ_API_KEY_3: ${{ secrets.GROQ_API_KEY_3 }}
+          GROQ_API_KEY_4: ${{ secrets.GROQ_API_KEY_4 }}
+          GROQ_API_KEY_5: ${{ secrets.GROQ_API_KEY_5 }}
+          GROQ_API_KEY_6: ${{ secrets.GROQ_API_KEY_6 }}
+          GROQ_API_KEY_7: ${{ secrets.GROQ_API_KEY_7 }}
+        run: |
+          cd "➡️📂 wordflow loop code Yaiwes/backend/Seals team YAIWES/seals_core"
+          python tests/test_groq_real.py
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: groq-test-evidence
+          path: "➡️📂 wordflow loop code Yaiwes/backend/Seals team YAIWES/seals_core/tests/evidencia_runs/*.json"
