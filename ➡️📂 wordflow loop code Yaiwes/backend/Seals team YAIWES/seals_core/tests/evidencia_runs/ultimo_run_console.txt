@@ -5,10 +5,10 @@
 [DIAG] key=GROQ_API_KEY_5 http=200 estado=VALIDA
 [DIAG] key=GROQ_API_KEY_6 http=200 estado=VALIDA
 [DIAG] key=GROQ_API_KEY_7 http=200 estado=VALIDA
-[DIAG] catalogo real (13 modelos): ['whisper-large-v3', 'openai/gpt-oss-20b', 'groq/compound', 'meta-llama/llama-prompt-guard-2-86m', 'canopylabs/orpheus-arabic-saudi', 'allam-2-7b', 'openai/gpt-oss-safeguard-20b', 'openai/gpt-oss-120b', 'canopylabs/orpheus-v1-english', 'qwen/qwen3.8-27b', 'meta-llama/llama-prompt-guard-2-22m', 'groq/compound-mini', 'whisper-large-v3-turbo']
+[DIAG] catalogo real (13 modelos): ['meta-llama/llama-prompt-guard-2-22m', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'canopylabs/orpheus-v1-english', 'canopylabs/orpheus-arabic-saudi', 'qwen/qwen3.8-27b', 'whisper-large-v3', 'meta-llama/llama-prompt-guard-2-86m', 'groq/compound', 'allam-2-7b', 'whisper-large-v3-turbo', 'openai/gpt-oss-safeguard-20b', 'groq/compound-mini']
 [SKIP] modelo=llama-3.3-70b-versatile no esta en el catalogo real de la cuenta, no se prueba a ciegas
 [SKIP] modelo=qwen/qwen3-32b no esta en el catalogo real de la cuenta, no se prueba a ciegas
 [SKIP] modelo=moonshotai/kimi-k2-instruct no esta en el catalogo real de la cuenta, no se prueba a ciegas
 [PASS] modelo=openai/gpt-oss-120b key=GROQ_API_KEY_2 http=200 motivo=PASS_OBJETIVO
-Evidencia escrita en: /home/runner/work/agentes/agentes/➡️📂 wordflow loop code Yaiwes/backend/Seals team YAIWES/seals_core/tests/evidencia_runs/groq_test_20260919T041417Z.json
+Evidencia escrita en: /home/runner/work/agentes/agentes/➡️📂 wordflow loop code Yaiwes/backend/Seals team YAIWES/seals_core/tests/evidencia_runs/groq_test_20260919T041540Z.json
 PASS: 1/1 modelos reales del catalogo verificados con Groq
