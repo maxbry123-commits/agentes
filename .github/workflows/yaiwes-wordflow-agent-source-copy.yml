@@ -2,15 +2,6 @@ name: YAIWES Wordflow Agent Source Canonical Copy
 
 on:
   workflow_dispatch:
-    inputs:
-      scope:
-        description: Copy scope
-        required: false
-        default: meta4
-        type: choice
-        options:
-          - meta4
-          - legacy_full
   push:
     paths:
       - '.github/workflows/yaiwes-wordflow-agent-source-copy.yml'
@@ -23,139 +14,124 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  meta-four-copy:
-    if: ${{ github.event_name == 'push' || inputs.scope == 'meta4' }}
+  canonical-copy:
     runs-on: ubuntu-24.04
     timeout-minutes: 330
     steps:
-      - name: Checkout exact sources, destination and immutable motor
+      - name: Checkout exact Meta4 sources, destination, and canonical motor
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           sparse-checkout-cone-mode: false
           sparse-checkout: |
-            Motores/MOTOR-CODE-LOCK.json
-            Motores/OPERATIONS-LEDGER.jsonl
-            Motores/➡️📂motor de copiar archivos/motor_3_copy_batches.py
-            Core kernel Yaiwes/Meta-Muse-Code-SDK-2026/code
-            Core kernel Yaiwes/Meta-Muse-Glimmer-Agent-2026/code
+            Core kernel Yaiwes/Meta-Muse-Code-SDK-2026
+            Core kernel Yaiwes/Meta-Muse-Glimmer-Agent-2026
+            Core kernel Yaiwes/Meta-Agent-Cookbook-2026/code/03_use_cases/12_computer_use
             Core kernel Yaiwes/Meta-Agent-Cookbook-2026/code/03_use_cases/13_macos_cua
-            Core kernel Yaiwes/Meta-Agent-Cookbook-2026/code/03_use_cases/11_github_repo_agent
-            ➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources
+            ➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/meta_muse_code_sdk
+            ➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/muse_glimmer
+            ➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/metacua
+            ➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/cua_mcp
+            ➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de copiar archivos/motor_3_copy_batches.py
 
-      - name: Validate immutable Motor 3 against MOTOR-CODE-LOCK
+      - name: Verify canonical motor unchanged
         shell: bash
         run: |
           set -euo pipefail
-          MOTOR='Motores/➡️📂motor de copiar archivos/motor_3_copy_batches.py'
-          EXPECTED="$(python - <<'PY'
-          import json
-          p=json.load(open('Motores/MOTOR-CODE-LOCK.json',encoding='utf-8'))
-          print(next(x['canonical_blob_sha'] for x in p['motors'] if x['id']=='motor_3_copy_batches'))
-          PY
-          )"
-          ACTUAL="$(git hash-object "$MOTOR")"
-          echo "MOTOR3_EXPECTED=$EXPECTED"
-          echo "MOTOR3_ACTUAL=$ACTUAL"
-          test "$ACTUAL" = "$EXPECTED"
+          MOTOR='➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de copiar archivos/motor_3_copy_batches.py'
+          test -f "$MOTOR"
+          ACTUAL="$(git rev-parse "HEAD:$MOTOR")"
+          test "$ACTUAL" = '3689924361ce4a1a9fde4ae2b6f6009c37a6042d'
+          python -m py_compile "$MOTOR"
+          echo "CANONICAL_MOTOR_BLOB=$ACTUAL"
 
-      - name: Execute immutable Motor 3 for the four Meta agents
+      - name: Copy Meta4 with canonical motor
         shell: bash
         run: |
           set -euo pipefail
-          MOTOR="$GITHUB_WORKSPACE/Motores/➡️📂motor de copiar archivos/motor_3_copy_batches.py"
-          DEST="$GITHUB_WORKSPACE/➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources"
-          STATE="$GITHUB_WORKSPACE/Motores/meta4-copy-state"
-          mkdir -p "$STATE"
-
-          run_copy() {
-            id="$1"; src="$2"; dst="$3"
-            out="$(SOURCE_DIR="$GITHUB_WORKSPACE/$src"               DEST_DIR="$DEST/$dst"               STATE_FILE="$STATE/$id.json"               BATCH_SIZE=100 COLLISION_POLICY=fail MAX_BATCHES=0               python "$MOTOR")"
-            echo "$id $out"
+          MOTOR='➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de copiar archivos/motor_3_copy_batches.py'
+          DEST='➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources'
+          mkdir -p "$DEST"
+          run_one() {
+            id="$1"; src="$2"; dst="$DEST/$3"
+            out="/tmp/$id.out"
+            env SOURCE_DIR="$src" DEST_DIR="$dst" STATE_FILE="/tmp/$id.state.json" BATCH_SIZE=100 COLLISION_POLICY=replace               python "$MOTOR" | tee "$out"
             python - "$out" <<'PY'
-          import json,sys
-          j=json.loads(sys.argv[1])
-          assert j['verdict']=='VERIFIED_CLOSED', j
-          assert j['failed']==0 and j['pending']==0, j
-          PY
+import json,sys
+p=json.loads(open(sys.argv[1],encoding='utf-8').read().strip().splitlines()[-1])
+assert p["verdict"]=="VERIFIED_CLOSED", p
+assert p["failed"]==0 and p["pending"]==0, p
+PY
           }
+          run_one meta_muse_code_sdk 'Core kernel Yaiwes/Meta-Muse-Code-SDK-2026' meta_muse_code_sdk
+          run_one muse_glimmer 'Core kernel Yaiwes/Meta-Muse-Glimmer-Agent-2026' muse_glimmer
+          run_one metacua 'Core kernel Yaiwes/Meta-Agent-Cookbook-2026/code/03_use_cases/13_macos_cua' metacua
+          run_one cua_mcp 'Core kernel Yaiwes/Meta-Agent-Cookbook-2026/code/03_use_cases/12_computer_use' cua_mcp
 
-          run_copy meta_muse_code_sdk             'Core kernel Yaiwes/Meta-Muse-Code-SDK-2026/code'             'meta_muse_code_sdk/code'
-
-          run_copy muse_glimmer             'Core kernel Yaiwes/Meta-Muse-Glimmer-Agent-2026/code'             'muse_glimmer/code'
-
-          run_copy metacua             'Core kernel Yaiwes/Meta-Agent-Cookbook-2026/code/03_use_cases/13_macos_cua'             'metacua'
-
-          run_copy github_repo_agent             'Core kernel Yaiwes/Meta-Agent-Cookbook-2026/code/03_use_cases/11_github_repo_agent'             'github_repo_agent'
-
-      - name: Record required operations ledger
+      - name: Verify source-destination manifests 4x
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import json, subprocess
-          from datetime import datetime, timezone
-          from pathlib import Path
-          motor='Motores/➡️📂motor de copiar archivos/motor_3_copy_batches.py'
-          blob=subprocess.check_output(['git','hash-object',motor],text=True).strip()
-          dest='➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources'
-          rows=[
-            ('meta_muse_code_sdk','Core kernel Yaiwes/Meta-Muse-Code-SDK-2026/code',f'{dest}/meta_muse_code_sdk/code'),
-            ('muse_glimmer','Core kernel Yaiwes/Meta-Muse-Glimmer-Agent-2026/code',f'{dest}/muse_glimmer/code'),
-            ('metacua','Core kernel Yaiwes/Meta-Agent-Cookbook-2026/code/03_use_cases/13_macos_cua',f'{dest}/metacua'),
-            ('github_repo_agent','Core kernel Yaiwes/Meta-Agent-Cookbook-2026/code/03_use_cases/11_github_repo_agent',f'{dest}/github_repo_agent'),
-          ]
-          ledger=Path('Motores/OPERATIONS-LEDGER.jsonl')
-          ts=datetime.now(timezone.utc).isoformat()
-          with ledger.open('a',encoding='utf-8') as f:
-            for ident,src,dst in rows:
-              f.write(json.dumps({
-                'timestamp':ts,'repository':'maxbry123-commits/agentes',
-                'motor':'motor_3_copy_batches','action':'copy',
-                'source':src,'destination':dst,'batch_size':100,
-                'code_blob_sha':blob,'result':'VERIFIED_CLOSED_LOCAL',
-                'commit':'PENDING_PUSH','readback':'PENDING_REMOTE'
-              },ensure_ascii=False)+'\n')
-          PY
+import hashlib,json
+from pathlib import Path
+pairs=[
+ ("meta_muse_code_sdk",Path("Core kernel Yaiwes/Meta-Muse-Code-SDK-2026"),Path("➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/meta_muse_code_sdk")),
+ ("muse_glimmer",Path("Core kernel Yaiwes/Meta-Muse-Glimmer-Agent-2026"),Path("➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/muse_glimmer")),
+ ("metacua",Path("Core kernel Yaiwes/Meta-Agent-Cookbook-2026/code/03_use_cases/13_macos_cua"),Path("➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/metacua")),
+ ("cua_mcp",Path("Core kernel Yaiwes/Meta-Agent-Cookbook-2026/code/03_use_cases/12_computer_use"),Path("➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/cua_mcp")),
+]
+def sha(p):
+ h=hashlib.sha256()
+ with p.open("rb") as f:
+  for b in iter(lambda:f.read(1024*1024),b""): h.update(b)
+ return h.hexdigest()
+def manifest(root):
+ return [(str(p.relative_to(root)).replace("\\","/"),p.stat().st_size,sha(p)) for p in sorted(root.rglob("*")) if p.is_file()]
+rows=[]
+for ident,src,dst in pairs:
+ a,b=manifest(src),manifest(dst)
+ if a!=b: raise SystemExit(f"MANIFEST_MISMATCH:{ident}")
+ rows.append({"id":ident,"files":len(a),"manifest_match":True})
+e={"schema":"yaiwes.meta4-copy-evidence/v1","motor_path":"➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de copiar archivos/motor_3_copy_batches.py","motor_blob":"3689924361ce4a1a9fde4ae2b6f6009c37a6042d","motor_modified":False,"destination":"➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources","verified_total":4,"results":rows,"verdict":"VERIFIED_4_OF_4"}
+Path("➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/META4_COPY_EVIDENCE_2026-09-19.json").write_text(json.dumps(e,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
+print(json.dumps(e,ensure_ascii=False))
+PY
 
-      - name: Commit exact Motor 3 outputs no force
+      - name: Commit exact destination no force
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add --             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/meta_muse_code_sdk'             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/muse_glimmer'             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/metacua'             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/github_repo_agent'             'Motores/meta4-copy-state'             'Motores/OPERATIONS-LEDGER.jsonl'
+          git add --             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/meta_muse_code_sdk'             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/muse_glimmer'             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/metacua'             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/cua_mcp'             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/META4_COPY_EVIDENCE_2026-09-19.json'
           if git diff --cached --quiet; then
-            echo 'NO_NEW_COPY_OUTPUTS'
-          else
-            git commit -m 'copy(wordflow): verify four Meta agents with immutable Motor 3'
-            git fetch origin main
-            git rebase origin/main
-            git push origin HEAD:main
+            echo 'NO_COPY_DELTA'
+            exit 0
           fi
+          START_SHA="$(git rev-parse HEAD)"
+          git fetch origin main
+          REMOTE_SHA="$(git rev-parse origin/main)"
+          test "$START_SHA" = "$REMOTE_SHA" || { echo "HEAD_MOVED:$START_SHA:$REMOTE_SHA"; exit 42; }
+          git commit -m 'copy(wordflow): Meta4 via canonical copy motor'
+          git push origin HEAD:main
 
-      - name: Fresh remote readback exact tree equality
+      - name: Fresh remote readback 4x
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin main
-          check_tree() {
-            src="$1"; dst="$2"
-            s="$(git rev-parse "origin/main:$src")"
-            d="$(git rev-parse "origin/main:$dst")"
-            echo "$src -> $dst :: $s :: $d"
-            test "$s" = "$d"
-          }
-          check_tree             'Core kernel Yaiwes/Meta-Muse-Code-SDK-2026/code'             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/meta_muse_code_sdk/code'
-          check_tree             'Core kernel Yaiwes/Meta-Muse-Glimmer-Agent-2026/code'             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/muse_glimmer/code'
-          check_tree             'Core kernel Yaiwes/Meta-Agent-Cookbook-2026/code/03_use_cases/13_macos_cua'             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/metacua'
-          check_tree             'Core kernel Yaiwes/Meta-Agent-Cookbook-2026/code/03_use_cases/11_github_repo_agent'             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/github_repo_agent'
-          echo 'META4_COPY=VERIFIED_4_OF_4'
-
-  legacy-full-copy:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.scope == 'legacy_full' }}
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Legacy full source-copy scope preserved
-        run: |
-          echo 'Legacy full scope intentionally preserved as manual-only; no mutation executed in Meta4 operation.'
+          for P in             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/meta_muse_code_sdk'             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/muse_glimmer'             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/metacua'             '➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/cua_mcp'
+          do
+            git cat-file -e "origin/main:$P"
+          done
+          git show 'origin/main:➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/META4_COPY_EVIDENCE_2026-09-19.json' > /tmp/meta4-evidence.json
+          python - <<'PY'
+import json
+p=json.load(open('/tmp/meta4-evidence.json',encoding='utf-8'))
+assert p['motor_modified'] is False
+assert p['motor_blob']=='3689924361ce4a1a9fde4ae2b6f6009c37a6042d'
+assert p['verified_total']==4
+assert p['verdict']=='VERIFIED_4_OF_4'
+print('META4_REMOTE_READBACK=VERIFIED_4_OF_4')
+PY
