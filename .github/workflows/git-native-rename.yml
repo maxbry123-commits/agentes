@@ -1,0 +1,35 @@
+name: Git-Native Rename (no checkout, API only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Escribe RUN para confirmar"
+        required: true
+        default: ""
+
+jobs:
+  git-native-rename:
+    if: ${{ github.event.inputs.confirm == 'RUN' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout only the scripts_ci folder (small, needed to run the script)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts_ci
+          sparse-checkout-cone-mode: true
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install requests
+        run: pip install requests
+
+      - name: Run git-native rename (Git Data API only, no byte copy)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts_ci/git_native_rename.py
