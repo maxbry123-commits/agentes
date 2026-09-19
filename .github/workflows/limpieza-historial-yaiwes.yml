@@ -1,0 +1,83 @@
+name: Limpieza historial YAIWES (unica vez - no es Wordflow)
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  limpiar-historial:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Instalar git-filter-repo
+        run: |
+          pip install --break-system-packages git-filter-repo || pip3 install --break-system-packages git-filter-repo
+          git filter-repo --version
+
+      - name: Clonar mirror blobless del repo agentes
+        run: |
+          git clone --filter=blob:none --bare https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git repo-mirror
+          echo "Tamano tras clone blobless:"
+          du -sh repo-mirror || true
+
+      - name: Filtrar - dejar SOLO las carpetas protegidas
+        working-directory: repo-mirror
+        run: |
+          git filter-repo --force \
+            --path "➡️📂 wordflow loop code Yaiwes" \
+            --path "Agente Yaiwes principal" \
+            --path "Core kernel Yaiwes" \
+            --path "Skills agente" \
+            --path "Claude notas" \
+            --path "Claude readme" \
+            --path "Motores" \
+            --path "➡️📂motores de descarga extracción copiado movimiento archivos agentes" \
+            --path ".gitmodules"
+          echo "Tamano tras filtrado:"
+          du -sh . || true
+
+      - name: Reportar tamano final real
+        working-directory: repo-mirror
+        run: |
+          {
+            echo "=== du -sh . ==="
+            du -sh .
+            echo "=== git count-objects -vH ==="
+            git count-objects -vH
+            echo "=== fecha ==="
+            date -u
+          } | tee /tmp/tamano_final.txt
+
+      - name: Push al repo nuevo yaiwes-nucleo-limpio
+        working-directory: repo-mirror
+        run: |
+          git remote add limpio "https://x-access-token:${{ secrets.MAXBRY_123_TOKENS }}@github.com/maxbry123-commits/yaiwes-nucleo-limpio.git"
+          git push limpio --mirror
+
+      - name: Checkout agentes (sparse) para dejar evidencia
+        if: always()
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            Claude notas
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
+          path: agentes-evidencia
+
+      - name: Commitear evidencia real de vuelta al repo agentes
+        if: always()
+        run: |
+          mkdir -p "agentes-evidencia/Claude notas/evidencia_runs"
+          if [ -f /tmp/tamano_final.txt ]; then
+            cp /tmp/tamano_final.txt "agentes-evidencia/Claude notas/evidencia_runs/limpieza_historial_${{ github.run_id }}.txt"
+          else
+            echo "FALLO ANTES DE MEDIR TAMANO - ver logs del run ${{ github.run_id }}" > "agentes-evidencia/Claude notas/evidencia_runs/limpieza_historial_${{ github.run_id }}.txt"
+          fi
+          cd agentes-evidencia
+          git config user.name "yaiwes-cleanup-bot"
+          git config user.email "ci@yaiwes.local"
+          git add "Claude notas/evidencia_runs" || true
+          git commit -m "ci: evidencia real limpieza historial run ${{ github.run_id }}" || echo "nada que commitear"
+          git push || echo "push evidencia fallo, queda en el artifact/log del run"
