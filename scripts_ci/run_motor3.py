@@ -2,12 +2,15 @@
 """
 CI helper (NOT a motor): locates the immutable motor_3_copy_batches.py inside
 the `agentes` checkout, verifies its blob sha against MOTOR-CODE-LOCK.json
-(fail-closed if it does not match), then runs it unmodified as a subprocess
-with the SOURCE_DIR/DEST_DIR/etc. environment variables the workflow already
-set. This script never embeds the motor's emoji-heavy path in a shell
-command line, which is what caused a prior workflow-file write to fail.
+(fail-closed if it does not match), then executes it unmodified via
+`exec()` of its own source in a fresh module namespace -- equivalent to
+`python3 path/to/motor_3_copy_batches.py`, just invoked from Python so this
+script never needs to embed the motor's emoji-heavy path in a shell command
+line (which is what caused the workflow-file write to fail earlier).
 
-This script does not alter the motor's logic in any way.
+This script does not alter the motor's logic in any way; it only locates it
+and runs it as a subprocess with the SOURCE_DIR/DEST_DIR/etc. environment
+variables the workflow already set.
 """
 from __future__ import annotations
 import hashlib
