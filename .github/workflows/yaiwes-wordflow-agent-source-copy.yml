@@ -32,6 +32,7 @@ jobs:
             ➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/muse_glimmer
             ➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/metacua
             ➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/cua_mcp
+            ➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/META4_COPY_EVIDENCE_2026-09-19.json
             ➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de copiar archivos/motor_3_copy_batches.py
 
       - name: Verify canonical motor unchanged
