@@ -17,11 +17,11 @@ jobs:
           { pip install --break-system-packages git-filter-repo || pip3 install --break-system-packages git-filter-repo ; } 2>&1 | tee -a /tmp/full_log.txt
           git filter-repo --version 2>&1 | tee -a /tmp/full_log.txt
 
-      - name: Clonar mirror blobless del repo agentes
+      - name: Clonar mirror COMPLETO del repo agentes (sin blob:none - el repo real pesa ~47MB, no 16.4GB, no hace falta clon parcial)
         run: |
           set -x
           {
-            git clone --filter=blob:none --bare "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" repo-mirror
+            git clone --bare "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" repo-mirror
             echo "CLONE_EXIT=$?"
             du -sh repo-mirror
             cd repo-mirror && git count-objects -vH && cd ..
