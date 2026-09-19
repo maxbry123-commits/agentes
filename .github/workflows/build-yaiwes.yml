@@ -1,25 +1,25 @@
-name: Build Yaiwes
+name: Build Yaiwes (motor_3/motor_4 driven)
 
 on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: "Escribe RUN para confirmar"
+        description: 'Escribe RUN para confirmar la construccion del repo Yaiwes'
         required: true
-        default: ""
+        default: ''
 
 jobs:
   build-yaiwes:
     if: ${{ github.event.inputs.confirm == 'RUN' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout agentes
+      - name: Checkout agentes (source)
         uses: actions/checkout@v4
         with:
           path: agentes
           fetch-depth: 1
 
-      - name: Checkout Yaiwes
+      - name: Checkout / prepare Yaiwes (destination)
         uses: actions/checkout@v4
         with:
           repository: maxbry123-commits/Yaiwes
@@ -30,30 +30,44 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: '3.12'
 
       - name: Build staging area
-        run: python3 agentes/scripts_ci/stage_files.py
+        working-directory: agentes
+        run: python3 scripts_ci/stage_files.py
 
-      - name: Run motor_3 copy
+      - name: Run motor_3 copy (via CI helper, verified by lock)
         env:
           SOURCE_DIR: /tmp/yaiwes-staging
           DEST_DIR: ${{ github.workspace }}/yaiwes
           STATE_FILE: /tmp/motor3-state.json
           BATCH_SIZE: "50"
           COLLISION_POLICY: replace
-        run: python3 agentes/scripts_ci/run_motor3.py
+        run: |
+          python3 agentes/scripts_ci/run_motor3.py | tee /tmp/motor3-result.json
+
+      - name: Log operation result (evidence)
+        run: |
+          echo "Motor 3 run complete. Result:"
+          cat /tmp/motor3-result.json || true
 
       - name: Commit and push to Yaiwes
         working-directory: yaiwes
         run: |
           git config user.email "maxbry123@gmail.com"
-          git config user.name "Maxbry via motor_3 GH Action"
+          git config user.name "Maxbry (via motor_3 GH Action)"
           git add -A
-          git diff --cached --quiet && echo "No changes to commit" || (git commit -m "build: consolidate curated Yaiwes scope via motor_3_copy_batches" && git push origin HEAD:main)
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "build: consolidate curated Yaiwes scope via motor_3_copy_batches (immutable engine)"
+            git push origin HEAD:main
+          fi
 
       - name: Read-back verification
         working-directory: yaiwes
         run: |
+          echo "--- Yaiwes final top-level tree ---"
           ls -la
+          echo "--- file count ---"
           find . -type f | wc -l
