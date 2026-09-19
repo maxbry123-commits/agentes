@@ -8,6 +8,11 @@ This script is intentionally separate from the motors themselves: the
 skill's rule is that motor source code is untouchable/copy-only. This file
 is ordinary project tooling, free to edit, whose only job is to build
 SOURCE_DIR before the motor runs.
+
+Run from the repo root of the `agentes` checkout (the workflow sets cwd
+to `agentes/` implicitly via the paths below being relative to it — this
+script resolves paths relative to its own location instead, so it is
+robust to being invoked from anywhere).
 """
 from __future__ import annotations
 import pathlib
