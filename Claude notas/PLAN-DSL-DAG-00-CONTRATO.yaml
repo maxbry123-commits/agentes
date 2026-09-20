@@ -1,0 +1,287 @@
+# =====================================================================
+# PLAN DSL DAG - PARTE 0: CONTRATO DE EJECUCION
+# Version 1.0 | 2026-09-19 | Autor: Claude Opus 5
+# Ejecutor previsto: Claude Sonnet. Sin alucinar, sin desviar, sin improvisar.
+# Los nodos estan en: Claude notas/PLAN-DSL-DAG-01-NODOS.yaml
+# =====================================================================
+dsl_version: "yaiwes.dag/v1"
+engine: "wordflow_loop"
+repo: "maxbry123-commits/agentes"
+branch: "main"
+
+# ---------------------------------------------------------------------
+# FUENTE DE VERDAD - archivo del Director cableado por rango de linea.
+# Cada nodo declara `fuente_director`. Auditable 1 a 1.
+# ---------------------------------------------------------------------
+source_of_truth:
+  archivo: "Claude notas/instrucciones 1 a 1 director.md"
+  lineas_totales: 4540
+  mapa:
+    L165_L172:   "6 componentes a investigar + montar motores"
+    L177_L184:   "prioridad: wordflow -> seals -> osquestador -> mejoras"
+    L188:        "formato de reporte: sin cuadros, cascada + microflujo"
+    L196_L208:   "skills -> runtime python + schema. DSL DAG es el metodo"
+    L202_L204:   "resolver los 2 nombres de raiz, organizar raices"
+    L210_L270:   "18 componentes Jev/RSI -> repo router universal"
+    L274:        "comand center = tarea 3, wordflow sera +50 ejercitos"
+    L276:        "componentes que el Director integra: 3 skills + minimax + kimi"
+    L278:        "Orca + Artify = backend del orquestador"
+    L279:        "omnirouter -> backend y frontend del router universal"
+    L282:        "anotar todo en notas + crazy wall + handoff, cada paso y hallazgo"
+    L284:        "eliminar nombre repetido de wordflow, una sola raiz"
+    L287:        "router que llama al router, +50 api keys en paralelo"
+    L290:        "auditar plan, refutar 3x, 12 goals, ask council 12, 8+ salidas, max 500 LOC"
+    L300_L357:   "pipeline canonico + formula VERIFIED_CLOSED"
+    L367:        "seals = agente especializado de integracion de componentes"
+    L378:        "Artify == Archify skills (confirmado SI)"
+    L383_L398:   "doble raiz, auditoria forense X-Ray, verificacion cruzada"
+    L404_L408:   "5 tareas: doble raiz, componentes, code faltante, seals, wordflow"
+    L412_L430:   "3 skills frontend confirmados fisicamente"
+    L445:        "jerarquia: Yaiwes -> NCT -> Wordflow -> Seals"
+    L448_L467:   "8 items + Artify en el osquestador + auditoria 4 pasadas"
+    L475:        "integrar minimax + kimi k + 4 agentes glimmer -> seals determinista"
+    L527:        "revisar en wordflow la parte de frontend para que visualice"
+    L530_L546:   "GRUPO 1 - 7 requisitos nativos del agente"
+    L549_L554:   "GRUPO 2 - 3 funciones del pool de agentes"
+    L563:        "prueba real: 3 agentes, 1 componente dificil cada uno"
+    L565:        "anotar instrucciones 1 a 1 input block verbatim"
+    L604_L1452:  "los 32 gaps P0/P1/P2 + 4 simulaciones + condicion de cierre"
+    L1531_L1580: "5 keys NVIDIA + base_url + modelo minimaxai/minimax-m2.7"
+    L1584_L1693: "listas frontend: 24 skills + 7 software"
+    L1701:       "watchdog cada 1 hora, nombre: Motor de descarga"
+    L1746_L2260: "patrones Meta: los 6 sistemas agentic"
+    L2263_L3200: "Meta agents en frontend, loop visual detallado"
+    L3200_L4540: "trazabilidad Meta + plantilla exacta + condicion SEALS VERIFIED"
+
+anexos:
+  A: "Claude notas/PLAN-ANEXO-A-SKILLS-A-SCHEMA.md  (los 24 skills a schema)"
+  B: "Claude notas/PLAN-ANEXO-B-SEALS-MECANISMOS.md (17 mecanismos MiniMax+Kimi+Meta)"
+  nodos: "Claude notas/PLAN-DSL-DAG-01-NODOS.yaml"
+
+# ---------------------------------------------------------------------
+# REGLAS GLOBALES - ANTI-DESVIACION
+# Se evaluan en CADA nodo. Violar una = nodo BLOQUEADO, no PASS.
+# ---------------------------------------------------------------------
+reglas_globales:
+  R01_no_codigo_desde_cero:
+    regla: "PROHIBIDO escribir codigo desde cero"
+    obligatorio: "podar -> editar quirurgico -> refactorizar -> cablear"
+    fuente: "agent_sources/ (codigo ya descargado)"
+    orden: "REUSE > PATCH > ADAPT > GENERATE"
+  R02_max_loc:
+    regla: "maximo 500 LOC por bloque"
+    si_no_cabe: "dividir en mas nodos, nunca comprimir"
+  R03_nunca_borrar:
+    regla: "NUNCA borrar archivos"
+    alternativa: "editar quirurgico o crear version nueva y comparar"
+  R04_no_pass_sin_evidencia:
+    regla: "PASS requiere CODE + TEST + EVIDENCE(sha256) + READ-BACK"
+    prohibido: "un LLM diciendo CORRECTO no es PASS"
+  R05_sparse_checkout:
+    regla: "SPARSE-CHECKOUT OBLIGATORIO en todo GitHub Action"
+    motivo: "repo 16.4GB; checkout completo tarda 13min o muere"
+    evidencia: "runs 35467245568 y 35468506302 murieron asi"
+  R06_anotar_antes_de_avanzar:
+    regla: "no se avanza al siguiente nodo sin anotar"
+    destinos: [claude_notas, crazy_wall_bitacora_stated_json, handoff, memoria_md]
+    momento: "ANTES de marcar el nodo cerrado"
+  R07_sin_emojis_en_escritura_api:
+    regla: "sin emojis literales en content de create_or_update_file (HTTP 500)"
+    alternativa: "escapes unicode en Python"
+  R08_no_escalar:
+    regla: "NUNCA escalar al Director durante la ejecucion"
+    si_hay_gap: "aplicar gap_ladder (20 formas) -> agotado: FLAG y siguiente nodo"
+    el_director: "revisa los FLAG al final, no durante"
+  R09_un_paso_por_salida:
+    regla: "un nodo por salida; contrato de nodo maximo 3 pasos"
+  R10_verificar_4_veces:
+    regla: "verificar 4 veces que una regla queda cableada en TODOS los sitios"
+    prohibido: "documentarla una vez y darla por hecha"
+  R11_biblioteca_primero:
+    regla: "antes de escribir CUALQUIER schema o bloque: consultar biblioteca/GitHub"
+    prohibido: "escribir de memoria del LLM"
+  R12_sin_sobreingenieria:
+    regla: "no gastar tokens en sobre-ingenieria"
+    test: "si el nodo no cierra un gap declarado, no se ejecuta"
+
+cadena_de_autoridad:
+  LLM: PROPONE
+  POLICY_SHERIFF: AUTORIZA
+  TOOL: EJECUTA
+  RECEIPT: DEMUESTRA
+  ORACLE: DECIDE_PASS
+
+invariantes:
+  - NO_PASS_WITHOUT_EVIDENCE
+  - NO_MUTATION_WITHOUT_AUTH
+  - NO_CLOSE_WITHOUT_ORACLE
+  - NO_REPLAY_WITHOUT_SAME_INPUT_HASH
+  - NO_TWO_WRITERS_SAME_RESOURCE
+
+# ---------------------------------------------------------------------
+# CADENA DE GOBERNANZA - 7 roles, sin solapamiento, orden obligatorio.
+# Implementacion real: control-layer/ (7 archivos de 389-804 bytes,
+# posibles stubs - se verifican y cablean en el nodo N-2.8)
+# ---------------------------------------------------------------------
+gobernanza:
+  orden: [SHERIFF, EJECUTOR, VALIDADOR, VERIFICADOR, SENTINELA, SUPERVISOR, JUEZ, GUARDIAN]
+  SHERIFF:
+    cuando: "ANTES de ejecutar"
+    funcion: "autoriza o deniega la StructuredAction segun policy"
+    deny: "el nodo no ejecuta; se registra DENY con motivo"
+    regla: "el LLM nunca llega directo a shell/git/pip/API/filesystem"
+  VALIDADOR:
+    cuando: "tras ejecutar"
+    funcion: "valida ESTRUCTURA: schema de entrada y de salida"
+    fail: "INVALID_OUTPUT -> no pasa a VERIFICADOR"
+  VERIFICADOR:
+    cuando: "tras VALIDADOR"
+    funcion: "verifica EVIDENCIA REAL: sha256, exit code, artefacto, source_commit"
+    fail: "EVIDENCE_MISSING -> GAP"
+  SENTINELA:
+    cuando: "en cada iteracion del loop"
+    funcion: "vigila el bucle: stuck detection, no_new_evidence, retry budget"
+    stuck: "mismo tool + mismos args + mismo error x3 -> BLOCKED_STUCK"
+  SUPERVISOR:
+    cuando: "antes del JUEZ"
+    funcion: "vigila el PROGRESO: cobertura de acceptance, heartbeat, lease"
+    fail: "ACCEPTANCE_INCOMPLETE -> vuelve al loop"
+  JUEZ:
+    cuando: "ultimo paso antes de cerrar"
+    funcion: "decide PASS o GAP con el ORACLE DETERMINISTA"
+    prohibido: "un LLM no puede ser el juez"
+    entrada: "test result + hash + postcondicion"
+  GUARDIAN:
+    cuando: "tras el JUEZ, antes del checkpoint"
+    funcion: "hace cumplir los 5 invariantes globales"
+    fail: "INVARIANT_VIOLATION -> revierte el nodo, no cierra"
+
+# ---------------------------------------------------------------------
+# GAP LADDER - 20 formas, en orden. NUNCA se escala.
+# Derivadas de fallos reales, no inventadas.
+# ---------------------------------------------------------------------
+gap_ladder:
+  1:  "reintento simple (asumir transitorio)"
+  2:  "reintento con backoff exponencial"
+  3:  "rotar API key (de las 5 NVIDIA / 7 GROQ)"
+  4:  "cambiar de proveedor o modelo del catalogo verificado"
+  5:  "reducir el alcance: partir el nodo en subnodos"
+  6:  "estrechar el sparse-checkout a la subcarpeta minima"
+  7:  "leer por API de GitHub en vez de checkout"
+  8:  "usar el motor de copia existente en vez de shell"
+  9:  "escapar unicode en vez de emoji literal (evita HTTP 500)"
+  10: "usar Git Data API (trees/commits/refs) en vez de contents API"
+  11: "buscar el mecanismo en otro componente ya descargado (REUSE)"
+  12: "buscar el patron en la biblioteca RAG local"
+  13: "buscar en el codigo fuente de otro agente del fleet"
+  14: "consultar el Meta Agent Cookbook por receta equivalente"
+  15: "cambiar de herramienta: otro tool del ToolRegistry"
+  16: "ejecutar en sandbox aislado en vez del entorno principal"
+  17: "ejecutar via GitHub Actions si el sandbox no tiene red (caso NVIDIA)"
+  18: "dividir el archivo si supera 500 LOC"
+  19: "degradar a modo documentado: cableado pero marcado NO_VERIFICADO"
+  20: "FLAG con traza completa y SEGUIR con el siguiente nodo"
+  regla_final: "agotadas las 20 -> FLAG + continue_next. JAMAS parar el DAG."
+
+checkpoint_policy:
+  cuando: "al cerrar cada nodo, PASS o FLAG por igual"
+  escribe:
+    - "Claude notas/<nodo>.md  (resultado + evidencia + sha)"
+    - "Crazy Wall bitacora stated JSON  (estado del nodo)"
+    - "handoff  (que sigue)"
+    - "memoria.md  (anadiendo, nunca resumiendo)"
+  durabilidad: "disco/SQLite, nunca diccionario en memoria"
+  sin_checkpoint: "el nodo NO se considera cerrado"
+
+# ---------------------------------------------------------------------
+# 12 GOALS - entrada -> salida (exigidos por el Director, L290)
+# ---------------------------------------------------------------------
+goals:
+  G01: {in: "13 submodules gitlink sin codigo", out: "codigo fuente materializado en CI"}
+  G02: {in: "35 carpetas de estado dudoso",     out: "inventario forense verificado 1 a 1"}
+  G03: {in: "5 keys NVIDIA en texto plano",     out: "5 secrets + test real desde Actions"}
+  G04: {in: "24 skills como md decorativos",    out: "24 schemas DSL DAG validados"}
+  G05: {in: "3 raices duplicadas de wordflow",  out: "una sola raiz unificada"}
+  G06: {in: "CheckpointManager en memoria",     out: "checkpoint durable que sobrevive crash"}
+  G07: {in: "2 routers de agentes en conflicto",out: "AgentFleetAdapter autoridad unica"}
+  G08: {in: "recovery generico ESCALATE",       out: "7 estados tipados con politica"}
+  G09: {in: "frontend sin verificacion visual", out: "loop CODE+BROWSER+VISUAL operativo"}
+  G10: {in: "17 mecanismos sin cablear",        out: "cada uno cableado con test propio"}
+  G11: {in: "Seals con 6 gaps abiertos",        out: "SEALS WORKER VERIFIED"}
+  G12: {in: "sin orquestador",                  out: "Comand Center con motor durable"}
+
+# ---------------------------------------------------------------------
+# ASK COUNCIL 12 PASOS - respuestas YA DECIDIDAS.
+# Proposito: que el ejecutor NO improvise. Si duda, lee aqui y sigue.
+# ---------------------------------------------------------------------
+ask_council:
+  C01:
+    q: "Quien decide PASS?"
+    a: "El oracle determinista: test/build/hash/postcondicion. NUNCA un LLM."
+  C02:
+    q: "Puedo escribir codigo nuevo?"
+    a: "NO. Solo podar/editar/refactorizar/cablear desde agent_sources/."
+  C03:
+    q: "Que hago si algo falla?"
+    a: "gap_ladder 1..20. Agotado -> FLAG + siguiente nodo. Nunca parar, nunca escalar."
+  C04:
+    q: "Puedo hacer checkout completo del repo?"
+    a: "NO. 16.4GB. Solo sparse-checkout de la subcarpeta minima."
+  C05:
+    q: "Donde va cada componente?"
+    a: >
+      Omniroute -> wordflow_loop/runtime/src/conn/ .
+      Orca -> NO se instala como carpeta; se extrae su logica.
+      Omarchy -> NO APLICA (es infraestructura).
+      Anydoc -> Motores de descarga y extraccion/anydoc/ .
+      Skill Design Anthropic -> Skills agente/skill-design-anthropic/ .
+  C06:
+    q: "Seals es un orquestador?"
+    a: "NO. Es worker. Wordflow es el unico kernel. Dos orquestadores reducen determinismo."
+  C07:
+    q: "Los skills se instalan como skills?"
+    a: "NO. Los 24 se convierten a schema DSL DAG. Un skill md es adorno."
+  C08:
+    q: "Quien puede tocar el kernel?"
+    a: "Solo Claude. Otros preparan, Claude revisa."
+  C09:
+    q: "Puedo borrar algo?"
+    a: "NUNCA. Editar quirurgico o version nueva."
+  C10:
+    q: "Cuando anoto?"
+    a: "ANTES de avanzar. Siempre. Checkpoint + Crazy Wall + handoff + notas."
+  C11:
+    q: "Cuanto codigo por bloque?"
+    a: "Maximo 500 LOC. Si no cabe, mas nodos."
+  C12:
+    q: "Cuando escalo al Director?"
+    a: "NUNCA durante la ejecucion. Solo FLAG registrado. El revisa al final."
+
+# ---------------------------------------------------------------------
+# WATCHDOG
+# ---------------------------------------------------------------------
+watchdog:
+  nombre: "Motor de descarga"
+  fuente_director: L1701
+  intervalo: "1 hora"
+  sesion: "nueva por disparo"
+  prompt: >
+    Leer Claude notas/PLAN-DSL-DAG-00-CONTRATO.yaml y
+    Claude notas/PLAN-DSL-DAG-01-NODOS.yaml.
+    Localizar el primer nodo con estado PENDIENTE segun el orden topologico.
+    Ejecutarlo aplicando la cadena de gobernanza completa.
+    Si hay gap: aplicar gap_ladder 1..20. Agotado -> FLAG + siguiente nodo.
+    NUNCA escalar. NUNCA parar. Checkpoint obligatorio antes de avanzar.
+  aviso: "puede requerir que el Director active aprobacion automatica en los ajustes"
+
+# ---------------------------------------------------------------------
+# FLAGS ABIERTOS - dependen del Director, no bloquean la ejecucion
+# ---------------------------------------------------------------------
+flags_abiertos:
+  FLAG-1: "5 keys NVIDIA en texto plano en repo PUBLICO - regenerar en NVIDIA"
+  FLAG-2: "GROQ_API_KEY_1 da HTTP 401 - invalida o revocada"
+  FLAG-3: "MAXBRY_123_TOKENS no sirve para auth git"
+  FLAG-4: "limpieza de historial no cerrada - yaiwes-nucleo-limpio size:0"
+  FLAG-5: "Open Montage sin repo verificable"
+  FLAG-6: "renombrar big-AGI requiere OK explicito del Director"
+  FLAG-7: "verificar quien ejecuto el commit c9c81072"
