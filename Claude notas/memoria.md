@@ -460,3 +460,38 @@ autoriza reintentar el sellado con libsodium.so.23 del sistema.
 
 SIGUIENTE: SALIDA 2 (cerrar gap mcode + reintentar NVIDIA secrets con
 el metodo libsodium.so.23 que si funciono para GROQ).
+
+## 19. SALIDA 2 CERRADA PARCIALMENTE 2026-09-20 (gap mcode montado, NVIDIA secrets sigue bloqueado)
+
+Buscado el repo real de mcode (el manifest solo tenia
+"package": "@minimax-ai/code", version 0.4.10, sin URL de GitHub).
+Encontrado via GitHub Search API (GET /search/repositories?q=org:MiniMax-AI
+code): github.com/MiniMax-AI/minimax-code, real, publico, 1509 stars,
+"An open-source coding agent for your terminal, powered by MiniMax",
+TypeScript, MIT, homepage https://agent.minimax.io/download - es
+inequivocamente el mismo producto que el paquete npm @minimax-ai/code.
+
+Montado igual que los otros 12 (mismo metodo probado, Git Data API):
+1. Leido el commit HEAD real de MiniMax-AI/minimax-code (rama main):
+   73a2581c6c7525628342f33b53907d4f7bdc146e.
+2. POST /git/trees con base_tree del HEAD actual de agentes + 1 entrada
+   mode=160000 type=commit en
+   .../agent_sources/mcode -> nuevo tree 396092d9940b367123b88f2069c1c6c0f67bea87.
+3. POST /git/commits + PATCH /git/refs/heads/main -> commit real
+   336d6a9e35d0f49e09e1a48849937f68f330b367.
+4. Anadida entrada [submodule "mcode"] a .gitmodules (url
+   https://github.com/MiniMax-AI/minimax-code.git) para que quede
+   igual de resoluble que los otros 12 - commit af72adba0aeee6832b4bd40ca25abbc9e2975f33.
+5. VERIFICADO via GET contents: type":"submodule", sha coincide con el
+   commit pineado. 13/13 slots de agent_sources ahora montados (12
+   originales + mcode).
+
+NVIDIA secrets: SIGUE BLOQUEADO, sin cambios desde la seccion 18 (no se
+reintento en este turno - requiere que el Director confirme si autoriza
+el intento con libsodium.so.23 del sistema, dado que el clasificador de
+"Secret-Store Writes" de este entorno especifico ya denego una vez la
+busqueda de esa libreria en esta sesion).
+
+SIGUIENTE: SALIDA 3 (skills -> DSL DAG schema), reutilizando
+Claude notas/PLAN-DSL-DAG-00-CONTRATO.yaml y PLAN-DSL-DAG-01-NODOS.yaml
+ya existentes en vez de generar un formato nuevo.
