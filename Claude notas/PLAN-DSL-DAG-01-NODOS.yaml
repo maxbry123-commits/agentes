@@ -1,0 +1,570 @@
+# =====================================================================
+# PLAN DSL DAG - PARTE 1: LOS 33 NODOS
+# El contrato de ejecucion esta en: PLAN-DSL-DAG-00-CONTRATO.yaml
+# LEER EL CONTRATO PRIMERO. Reglas, gobernanza y gap_ladder viven alli.
+# =====================================================================
+dsl_version: "yaiwes.dag/v1"
+contrato: "Claude notas/PLAN-DSL-DAG-00-CONTRATO.yaml"
+
+# Cada nodo hereda automaticamente:
+#   gobernanza: SHERIFF -> EJECUTOR -> VALIDADOR -> VERIFICADOR ->
+#               SENTINELA -> SUPERVISOR -> JUEZ -> GUARDIAN
+#   on_gap: gap_ladder 1..20
+#   on_flag: continue_next  (nunca parar, nunca escalar)
+#   checkpoint: obligatorio antes de cerrar
+#   max_loc: 500
+
+# =====================================================================
+# DAG OBJETIVO 1 - COMPONENTES + SKILLS A SCHEMA + AGENTES
+# =====================================================================
+dag_objetivo_1:
+  nombre: "Descargar componentes que faltan, skills a schema, incorporar agentes"
+  nodos:
+
+    - id: N-1.1
+      titulo: "Materializar submodules en CI"
+      fuente_director: L475
+      accion: "cablear `git submodule update --init` con sparse-checkout en workflow"
+      motivo: "el gitlink NO trae codigo; sin esto no hay mecanismo que extraer"
+      acceptance:
+        - "un run de CI lista archivos reales de al menos 1 submodule"
+        - "el run no supera 5 min"
+      evidence: [run_id, log_con_listado, sha_workflow]
+      work_surface: BACKEND
+      depends_on: []
+      bloquea: [N-1.2, N-3.1]
+
+    - id: N-1.2
+      titulo: "Inventario forense de agent_sources"
+      fuente_director: L1456_L1526
+      accion: "GET /git/trees por cada una de las 35 entradas; clasificar"
+      clasificacion: [SUBMODULE_REAL, CODIGO_REAL, CARPETA_VACIA, STUB]
+      incluir_tambien: ["kimi_k/ duplicada", "minimax_mcp/ suelta"]
+      acceptance:
+        - "35 entradas clasificadas, cero marcadas como supuesto"
+        - "sha del arbol de cada una registrado"
+      evidence: ["Claude notas/INVENTARIO-FORENSE-agent_sources.md"]
+      work_surface: BACKEND
+      depends_on: [N-1.1]
+
+    - id: N-1.3
+      titulo: "Montar mcode (unico gap de descarga)"
+      fuente_director: L1458_L1464
+      accion: "Git Data API: POST /git/trees mode=160000 type=commit -> commits -> refs"
+      metodo_probado_en: "commit f13f8f9"
+      acceptance: ["GET agent_sources/mcode devuelve html_url a repo externo"]
+      evidence: [commit_sha, respuesta_api]
+      work_surface: BACKEND
+      depends_on: []
+
+    - id: N-1.4
+      titulo: "Subir 5 keys NVIDIA como secrets + test real"
+      fuente_director: L1531_L1580
+      accion: "sellado libsodium via ctypes sobre libsodium.so.23"
+      metodo_probado_en: "memoria.md seccion 11 (las 7 GROQ)"
+      secrets: [NVIDIA_API_KEY_1, NVIDIA_API_KEY_2, NVIDIA_API_KEY_3, NVIDIA_API_KEY_4, NVIDIA_API_KEY_5]
+      base_url: "https://integrate.api.nvidia.com/v1"
+      modelo: "minimaxai/minimax-m2.7"
+      acceptance:
+        - "GET /actions/secrets lista los 5"
+        - "test desde Actions con HTTP 200 y contenido no vacio"
+      nota_critica: "el sandbox de Claude tiene la red bloqueada a NVIDIA (CONNECT 403). Solo Actions."
+      evidence: [lista_secrets, run_id, respuesta_http]
+      work_surface: BACKEND
+      depends_on: []
+
+    - id: N-1.5
+      titulo: "Convertir los 24 skills a schema DSL DAG"
+      fuente_director: L196_L208, L1584_L1693
+      detalle: "Claude notas/PLAN-ANEXO-A-SKILLS-A-SCHEMA.md"
+      regla_director: "cada skills lo transformas en un shema, ya no sera mas skills"
+      orden_obligatorio:
+        1: "skill-creator (meta-schema, genera los demas)"
+        2: "skill-router (punto de entrada)"
+        3: "Clase 2 auditoria (define los oracles)"
+        4: "Clase 1 estetica (define los acceptance)"
+        5: "Clase 3 pipeline (nodos)"
+        6: "Clase 4 motion (8 de HyperFrames)"
+      plantilla_a_reutilizar:
+        - "Core kernel Yaiwes/control-layer/schemas/output_contract.yaml"
+        - "Seals team YAIWES/dag_schema.yaml"
+      acceptance:
+        - "24 archivos skills_schema/*.dag.yaml"
+        - "cada uno valida contra el validador DAG existente"
+        - "1 test por schema"
+        - "cero skills quedan como md decorativo"
+      evidence: [lista_de_24_paths, resultado_validacion, tests]
+      work_surface: MIXED
+      depends_on: [N-2.11]
+      nota: "biblioteca RAG ANTES de generar schema (regla R11)"
+
+    - id: N-1.6
+      titulo: "Notas de tareas pendientes en readme + Crazy Wall"
+      fuente_director: L210_L270
+      accion: "escribir nota de tarea pendiente en readme arquitectura y Crazy Wall de cada repo"
+      lista_jev_rsi_18:
+        destino: "repo router-universal-router-inteligente-"
+        componentes: [TypeSafe-Agent-Skills, Jev-Router, Jev-Agent-Skill-Router,
+          Jev-Review-MCP, Jev-Harness, Fast-Jev-Compaction, System-One-Lite,
+          Open-Jev, Awesome-Jev, OpenRSI, RSIAgent, Skill-RSI, ShinkaEvolve,
+          OpenEvolve, SimpleTES, ThetaEvolve, CodeEvolve, Dream-RSI]
+        nucleo_minimo: [OpenRSI, RSIAgent, Skill-RSI, ShinkaEvolve, SimpleTES]
+        decision: "NO instalar como skills decorativos. Extraer mecanismo -> DSL/DAG contract Python"
+        skills_anthropic_extra: [docx, pdf, pptx, xlsx, artifact-design, artifact-capabilities]
+      acceptance: ["nota presente en readme arquitectura + Crazy Wall de cada repo afectado"]
+      evidence: [paths_editados, sha]
+      work_surface: BACKEND
+      depends_on: []
+
+# =====================================================================
+# DAG OBJETIVO 2 - CERRAR WORDFLOW LOOP CODE YAIWES
+# =====================================================================
+dag_objetivo_2:
+  nombre: "Cerrar wordflow loop code Yaiwes: frontend, agentes, skills schema"
+  nodos:
+
+    - id: N-2.1
+      titulo: "Auditoria forense X-Ray de la doble raiz"
+      fuente_director: L383_L398, L284
+      raiz_1: "wordflow loop code Yaiwes CON emoji, minuscula = kernel Python real"
+      raiz_2: "Wordflow loop code Yaiwes SIN emoji, W mayuscula = big-AGI ajeno"
+      accion: "listar ambas, verificacion cruzada carpeta por carpeta"
+      acceptance: ["tabla de que hay en cada raiz, sin suposiciones"]
+      evidence: ["Claude notas/XRAY-doble-raiz.md"]
+      work_surface: BACKEND
+      depends_on: []
+
+    - id: N-2.2
+      titulo: "Mover los 3 skills frontend a Skills agente"
+      fuente_director: L412_L430
+      skills: [impeccable, frontend-design, skill-creator]
+      origen: "Wordflow loop code Yaiwes/skills/"
+      destino: "Skills agente/"
+      metodo: "motor_3_copy_batches.py sin modificar el motor"
+      regla: "NO borrar el origen"
+      acceptance: ["los 3 accesibles en destino con contenido real"]
+      evidence: [paths, sha256_por_archivo]
+      work_surface: BACKEND
+      depends_on: [N-2.1]
+
+    - id: N-2.3
+      titulo: "Unificar raices duplicadas"
+      fuente_director: L284, L202_L204
+      accion: "fusionar Skills/skills, Conecciones/conectividad, 3 variantes de wordflow"
+      pendiente_director: "renombrar big-AGI requiere OK explicito (FLAG-6)"
+      acceptance: ["una sola raiz por concepto, o FLAG documentado"]
+      evidence: [arbol_antes, arbol_despues]
+      work_surface: BACKEND
+      depends_on: [N-2.2]
+
+    - id: N-2.4
+      titulo: "CheckpointManager durable"
+      prioridad: "NUMERO UNO del analisis"
+      problema: "self._checkpoints={} no sobrevive crash"
+      accion: "persistencia disco/SQLite, quirurgico sobre el archivo existente"
+      acceptance: ["test: matar proceso -> reiniciar -> estado recuperado"]
+      evidence: [test_antes_falla, test_despues_pasa]
+      work_surface: BACKEND
+      depends_on: []
+      bloquea: [N-3.1]
+
+    - id: N-2.5
+      titulo: "Deprecar agent_router.py, autoridad unica AgentFleetAdapter"
+      problema: "sin match real puede seleccionar el primero del registro en vez de fallar cerrado"
+      decision: "tomada hace turnos, NUNCA ejecutada"
+      accion: "deprecar (no borrar) + redirigir a AgentFleetAdapter + agent_fleet_registry.json"
+      acceptance: ["sin match real -> FAIL_CLOSED, nunca seleccion arbitraria"]
+      evidence: [test_fail_closed]
+      work_surface: BACKEND
+      depends_on: []
+
+    - id: N-2.6
+      titulo: "Recovery tipado"
+      estados: [RETRYABLE, DEPENDENCY, AUTH, STUCK, CRASH, IRREVERSIBLE_FAILURE, NO_NODE_SOLUTION]
+      accion: "sustituir ESCALATE_TO_DIRECTOR generico"
+      acceptance: ["cada clase con politica concreta de retry/recovery/block"]
+      evidence: [tests_por_clase]
+      work_surface: BACKEND
+      depends_on: []
+
+    - id: N-2.7
+      titulo: "Stuck detector"
+      regla: "mismo tool + mismos args + mismo error x3 -> BLOCKED_STUCK"
+      acceptance: ["no repetir 20 veces una operacion identica sin evidencia nueva"]
+      evidence: [test_stuck]
+      work_surface: BACKEND
+      depends_on: []
+
+    - id: N-2.8
+      titulo: "Leer los 7 archivos de gobernanza (posibles stubs)"
+      archivos: [sheriff, sentinel, judge, guardian, supervisor, validator, verifier]
+      tamano_actual: "389-804 bytes cada uno"
+      accion: "leer contenido real; si son stubs, cablearlos con la cadena de gobernanza del contrato"
+      acceptance: ["veredicto por archivo REAL o STUB; los stubs quedan cableados"]
+      evidence: [contenido_leido, sha, cambios]
+      work_surface: BACKEND
+      depends_on: []
+      critico: "sin esto la cadena de gobernanza del DSL no tiene implementacion"
+
+    - id: N-2.9
+      titulo: "Llenar contracts/ y evidence/ (hoy VACIAS)"
+      ruta: "wordflow_loop/wordflow_loop/"
+      acceptance: ["ambas con contenido real usado por el runtime"]
+      evidence: [listado, sha]
+      work_surface: BACKEND
+      depends_on: [N-2.8]
+
+    - id: N-2.10
+      titulo: "Resolver 2 Crazy Wall paralelos y duplicado truth_reconciler"
+      accion: "ejecutar el prompt de comparacion ya escrito y nunca ejecutado"
+      duplicado: "source_truth_reconciler.py vs truth_reconciler.py"
+      acceptance: ["un solo Crazy Wall autoritativo; un solo reconciler"]
+      evidence: [comparacion, decision, sha]
+      work_surface: BACKEND
+      depends_on: []
+
+    - id: N-2.11
+      titulo: "Construir la biblioteca RAG (13 subcarpetas VACIAS)"
+      carpetas: "templates / skills / plugins / prompts"
+      regla_asociada: R11
+      acceptance: ["biblioteca consultable antes de generar cualquier schema"]
+      evidence: [listado_plantillas]
+      work_surface: BACKEND
+      depends_on: []
+      bloquea: [N-1.5]
+
+    - id: N-2.12
+      titulo: "Equipo frontend: composicion y loop"
+      fuente_director: L527, L1746_L3200
+      detalle: "PLAN-ANEXO-A + PLAN-ANEXO-B"
+      roles:
+        ESCRITOR: "OpenCode slot 1; mcode y kimi_code como alternativos"
+        REPARADOR: "OpenHands - separado del escritor a proposito"
+        AUDITOR: "Codex - independiente, no escribio"
+        MACRO_LOOP: "meta_muse_code_sdk - goal persistente, session, completion audit"
+        MICRO_LOOP: "muse_glimmer - ToolRegistry, parser ATEM, reason-act-observe-correct"
+        OJOS: "metacua - pixeles, coords 0-1000, screenshot tras cada accion"
+        ENTORNO: "cua_mcp - sandbox aislado, navegador real"
+        NAVEGADOR: "Playwright MCP - reutilizar el adapter que Wordflow YA tiene"
+        TABLERO: "minimax_openroom - estado compartido, Multi-Agent Product Studio"
+        PLANNER: "minimax_coding_plan_mcp"
+        TOOLS_MCP: "minimax_mcp + minimax_mcp_js + 21st magic-mcp"
+        PLUGINS: "minimax_code_plugins -> Enchufe Universal Fables"
+        REFERENCIAS: "kimi_researcher - alimenta el schema Taste con referencias reales"
+        DETERMINISMO: "kimi_agent_rs - diff de screenshots determinista"
+        CONTRATO: "kimi_agent_sdk"
+        CLI: "mmx_cli + kimi_cli + hyperframes-cli"
+        ORACLE: "tests deterministas + schemas Clase 2 (100+ reglas Vercel)"
+      loop:
+        - "GOAL UI"
+        - "READ CRAZY WALL FRESH"
+        - "CLAIM + LEASE"
+        - "READ component tree / routes / state / styles / API contracts"
+        - "PLAN (minimax_coding_plan_mcp)"
+        - "DECIDE (muse_glimmer)"
+        - "SHERIFF"
+        - "EDIT (OpenCode)"
+        - "BUILD"
+        - "START APP"
+        - "OPEN REAL BROWSER (cua_mcp + Playwright)"
+        - "SCREENSHOT (metacua, coords 0-1000)"
+        - "DOM + CONSOLE"
+        - "INTERACT (click/type/drag)"
+        - "SCREENSHOT NUEVO - obligatorio, nunca asumir que el click funciono"
+        - "COMPARE ACCEPTANCE (diff determinista via kimi_agent_rs)"
+        - "GAP? -> FIX (OpenHands) -> REBUILD -> SCREENSHOT -> RETEST"
+        - "MOBILE / TOUCH TEST"
+        - "INTEGRATION TEST"
+        - "EVIDENCE (path + sha256 + screenshots)"
+        - "AUDITOR (Codex)"
+        - "JUEZ -> PASS"
+      reglas_duras:
+        - "1 path = 1 writer + lease"
+        - "screenshot en CADA paso visual, no solo al cierre"
+        - "CODE PASS != FRONTEND PASS: hacen falta CODE + BROWSER + VISUAL"
+        - "tool error vuelve como observation, nunca cierra mision"
+        - "metacua NUNCA tiene autoridad de PASS"
+      acceptance:
+        - "un componente frontend real recorre el loop completo"
+        - "evidencia con screenshots de cada paso visual"
+      evidence: [screenshots, dom, console, test_results, sha256]
+      work_surface: FRONTEND
+      depends_on: [N-1.5, N-2.8]
+
+    - id: N-2.13
+      titulo: "Leer los 4 archivos nunca abiertos"
+      fuente: "LISTA-TRABAJO-4-FRENTES, Frente 1"
+      archivos: [execution_pipeline_dsl.py, execution_pipeline_dsl_-_Copiar.md,
+        PIPELINE_MASTER.md, INPUT_BLOCK.md]
+      pendiente_extra: "identificar el motor de investigacion y deterministico de codigo de opus"
+      acceptance: ["los 4 leidos + veredicto escrito sobre el motor de opus"]
+      evidence: ["Claude notas/VEREDICTO-4-archivos-frente-1.md"]
+      work_surface: BACKEND
+      depends_on: []
+
+# =====================================================================
+# DAG OBJETIVO 3 - TERMINAR SEALS TEAM YAIWES
+# =====================================================================
+dag_objetivo_3:
+  nombre: "Terminar el agente Seals Team YAIWES"
+  ya_cerrados: "P0-01..P0-15, P0-17, P1-18..P1-23, P1-25, P1-26, P1-29"
+  firma_podada: "SealsExecutor.execute(NodeInput) -> ToolReceipt -> Evidence[] -> NodeResult"
+  pierde: "su cola propia, su watchdog propio, su decision de PASS"
+  nodos:
+
+    - id: N-3.1
+      titulo: "Cablear los 17 mecanismos MiniMax + Kimi + Meta"
+      fuente_director: L475
+      detalle: "Claude notas/PLAN-ANEXO-B-SEALS-MECANISMOS.md"
+      orden_de_extraccion:
+        1: "muse_glimmer: ToolRegistry + parser ATEM (completa P0-16)"
+        2: "kimi_researcher -> research_real.py (tapa P1-18, el peor gap)"
+        3: "meta_muse_code_sdk: idempotencia + cola + checkpoint (P0-11, P0-12, P1-27)"
+        4: "cua_mcp: sandbox (P1-28)"
+        5: "metacua: capa visual (P1-23, P1-24)"
+        6: "minimax_coding_plan_mcp: planner"
+        7: "minimax_code_plugins -> Enchufe Universal"
+        8: "kimi_agent_rs: partes deterministas criticas"
+        9: "minimax_mcp -> servidor MCP contexto compartido"
+      acceptance:
+        - "test por mecanismo: falla ANTES de cablear, pasa DESPUES"
+        - "prohibido declarar integrado porque la carpeta exista"
+      evidence: [test_por_mecanismo, sha_por_commit]
+      work_surface: BACKEND
+      depends_on: [N-1.1, N-2.4]
+
+    - id: N-3.2
+      titulo: "Gaps restantes de Seals"
+      gaps:
+        P1-24: "MetaCua/CUA-MCP: LEER implementacion real antes de declarar nada"
+        P1-27: "crash/resume con CrazyWallAdapter.checkpoint"
+        P1-28: "sandbox/rollback del instalador"
+        P0-16: "completar ToolRegistry Glimmer"
+        P2-31: "handoff drift: dice 229 componentes, real 248"
+        P1-30: "tests de crash/recovery y wrong-source-commit"
+        P2-32: "requirements con lock/pinning"
+      acceptance: ["cada gap con CODE + TEST + EVIDENCE + READ-BACK"]
+      work_surface: BACKEND
+      depends_on: [N-3.1]
+
+    - id: N-3.3
+      titulo: "GRUPO 1 - 7 requisitos nativos"
+      fuente_director: L530_L546
+      requisitos:
+        1: "saber donde va cada cosa en el kernel, sin confundirse con subagente (evitar 2 cerebros)"
+        2: "radiografia nativa de la raiz: donde va cada archivo y POR QUE, con el motor de mover"
+        3: "como convertir un skill en schema: criterios + varios modelos de ejemplo"
+        4: "usar UNICAMENTE el Enchufe Universal Fables para cablear"
+        5: "como podar, que podar, como decapitar y convertir el wordflow"
+        6: "partes criticas del kernel: solo Claude; otros preparan, Claude revisa"
+        7: "descargar con los motores: URL + nombre -> estudio de ubicacion"
+      acceptance: ["los 7 documentados con la plantilla Glimmer de 7 secciones"]
+      work_surface: BACKEND
+      depends_on: [N-3.2]
+
+    - id: N-3.4
+      titulo: "GRUPO 2 - pool de agentes"
+      fuente_director: L549_L554
+      funciones:
+        1: "codigo PURO - no integran (ej: razonamiento de Mythos del diseno de Fables)"
+        2: "bajo consenso deciden donde va un lote de codigo ya creado"
+        3: "auditoria forense X-Ray carpeta por carpeta con la plantilla Meta EXACTA"
+      acceptance: ["plantilla exacta aplicada, nunca generica ni ambigua"]
+      work_surface: BACKEND
+      depends_on: [N-3.3]
+
+    - id: N-3.5
+      titulo: "Regression suite completa"
+      simulaciones_obligatorias:
+        SIM-01: "verificar_existencia(path inexistente) -> GAP/FAILED, nunca PASS"
+        SIM-02: "evaluar_componente sin key -> AUTH_ERROR, nunca PASS"
+        SIM-03: "directorio preexistente incorrecto -> PROVENANCE/INTEGRITY FAILURE"
+        SIM-04: "watchdog wall_status=PENDING_STEP1 -> DETECT+CLAIM+ENQUEUE+EXECUTE"
+      suite_ampliada: [IDEMPOTENT_REPLAY, IDEMPOTENCY_CONFLICT, TASK_CONTRACT_INVALID,
+        CLAIM_COLLISION, LEASE_EXPIRED, WORKER_CRASH, CRASH_RESUME, WRONG_BASE_SHA,
+        WRONG_SOURCE_COMMIT, SHERIFF_DENY, TOOL_TIMEOUT, TOOL_ERROR_OBSERVATION,
+        STUCK_DETECTION, NO_NEW_EVIDENCE, ACCEPTANCE_FAIL, PASS_WITHOUT_EVIDENCE,
+        BACKEND_TEST_FAIL, FRONTEND_BUILD_FAIL, BROWSER_FAIL, VISUAL_FAIL,
+        SCREENSHOT_MISSING, DOUBLE_WRITER_COLLISION, ROLLBACK_AFTER_FAILURE]
+      acceptance: ["las 4 SIM en verde + la suite ampliada"]
+      work_surface: BACKEND
+      depends_on: [N-3.4]
+
+    - id: N-3.6
+      titulo: "Prueba real con 3 agentes"
+      fuente_director: L563
+      protocolo:
+        - "3 agentes iguales, 1 componente dificil a cada uno"
+        - "probar, corregir, perfeccionar comportamiento"
+        - "repetir con el pool del Grupo B usando codigo de Mythos"
+        - "verificar que descargan el codigo y escriben el resultado completo"
+        - "varias rondas hasta pulir"
+      regla: "esto ocurre ANTES de continuar con el Comand Center"
+      acceptance: ["3 componentes procesados con evidencia + correcciones documentadas"]
+      work_surface: MIXED
+      depends_on: [N-3.5]
+
+    - id: N-3.7
+      titulo: "Requisito 50 mundos + adapter Router Universal"
+      fuente: "REQUISITO-50-mundos-y-Router-Universal.md"
+      requisito:
+        - "cada wordflow = mundo independiente, sin compartir archivos"
+        - "Readme memoria.md propio + Handoff propio + Crazy Wall propio + System prompt propio"
+        - "mismo code_sha256, distinto worker_id/task/workspace"
+        - "Cerebras = SOLO PRUEBAS; produccion via Router Inteligente Universal"
+      accion: "adapter en router_modelos.py y consultor_experto.py -> Router Universal"
+      acceptance: ["1 worker instanciado como mundo independiente + adapter cableado"]
+      work_surface: BACKEND
+      depends_on: [N-3.6]
+
+    - id: N-3.8
+      titulo: "Cierre verificado SEALS WORKER VERIFIED"
+      formula: [DAG_REAL, TASK_CONTRACT_REAL, CLAIM_LEASE, WRITE_SCOPE,
+        STRUCTURED_ACTIONS, SHERIFF, IDEMPOTENCY, DURABLE_QUEUE_RECOVERY,
+        OBJECTIVE_ACCEPTANCE, OBJECTIVE_ORACLE, REAL_TESTS, EVIDENCE_SHA256,
+        WATCHDOG_REENQUEUE, CRASH_RESUME, BACKEND_ROUTING, FRONTEND_ROUTING,
+        BROWSER_SCREENSHOT_LOOP, REGRESSION_TESTS, COMPLETION_AUDIT,
+        INDEPENDENT_REFUTATION]
+      regla: "si un item no cierra -> GAP explicito. NUNCA cierre fingido."
+      acceptance: ["los 20 items en verde o GAP documentado"]
+      work_surface: BACKEND
+      depends_on: [N-3.7]
+
+# =====================================================================
+# DAG OBJETIVO 4 - ORQUESTADOR COMAND CENTER
+# =====================================================================
+dag_objetivo_4:
+  nombre: "Hacer el orquestador Comand Center"
+  arquitectura_aprobada: >
+    Opcion 1 = capa de control. Opcion 2 = motor de ejecucion durable.
+    Omniroute/Orca gobiernan keys, mirrors y visibilidad.
+    Dagu/DBOS aporta la durabilidad que hoy falta.
+    Solo se escriben de cero los adapters + el kernel Python.
+    CERO componentes nuevos por descargar.
+  orquesta: "WORDFLOW (el kernel central), NO Seals"
+  nodos:
+
+    - id: N-4.1
+      titulo: "Extraer mecanismos de Orca (ya descargado completo)"
+      fuente_director: L278, L437, L443
+      mecanismos:
+        - "worktree git aislado por agente (coincide con isolation.py existente)"
+        - "rotacion / hot-swap de cuentas y API keys con usage tracking"
+        - "CLI programable como contrato de automatizacion externa"
+      destino: "funciones Python en isolation.py y router_modelos.py YA EXISTENTES"
+      prohibido: "app Electron, carpeta nueva de componente"
+      regla: "el Director nunca ve ni opera Orca directamente - backend invisible"
+      acceptance: ["test de rotacion de keys + aislamiento de 2 workers sin colision"]
+      work_surface: BACKEND
+      depends_on: [N-1.2]
+
+    - id: N-4.2
+      titulo: "Artify / Archify en el orquestador"
+      fuente_director: L378, L448_L467
+      confirmado: "Artify == Archify skills (SI, confirmado por el Director)"
+      funcion: "actualizar el progreso de todos los trabajos de wordflow de forma facil y simplificada"
+      combinacion: "Artify + Orca = backend del orquestador"
+      acceptance: ["progreso de N wordflows visible y actualizado sin intervencion manual"]
+      work_surface: MIXED
+      depends_on: [N-4.1]
+
+    - id: N-4.3
+      titulo: "Motor de ejecucion durable"
+      accion: "VERIFICAR PRIMERO que hay en el repo antes de asumir nada"
+      candidatos_ya_en_repo: [Dagster, Temporal, Prefect, APScheduler, Celery]
+      referencia: "TASK-GAPS/N21-DAGU-PASO1-XRAY.md"
+      si_no_hay_dagu_ni_dbos: "FLAG al Director; no se descarga sin su OK"
+      acceptance: ["motor durable elegido y cableado, o FLAG documentado"]
+      work_surface: BACKEND
+      depends_on: []
+
+    - id: N-4.4
+      titulo: "Router de 50+ keys en paralelo"
+      fuente_director: L287
+      accion: "router que llama al Router Universal y manda senal al Comand Center + mirrors"
+      regla: "los agentes internos pueden y deben usar api keys EN PARALELO"
+      acceptance: ["N llamadas concurrentes con keys distintas, sin colision"]
+      work_surface: BACKEND
+      depends_on: [N-4.1, N-3.7]
+
+    - id: N-4.5
+      titulo: "Servidor MCP de contexto compartido"
+      base: "minimax_mcp + minimax_mcp_js (codigo real ya descargado)"
+      recursos:
+        crazy_wall_state: "lectura"
+        mission_context: "lectura/escritura controlada - lo que un agente descubre lo comparten los demas"
+        enchufe_universal_tools: "herramientas"
+      regla_de_seguridad: "MCP comparte CONTEXTO, nunca AUTORIDAD. El Kernel decide PASS."
+      acceptance: ["2 agentes comparten hallazgo via mission_context sin poder declarar PASS"]
+      work_surface: BACKEND
+      depends_on: [N-3.1]
+
+    - id: N-4.6
+      titulo: "Sistema de preguntas previas SIEMPRE activo"
+      lugares: [UI_interface, UI_backend, Input_Shark]
+      referencia: "DISENO-preguntas-siempre-activo-input-shark.md"
+      acceptance: ["las 3 ubicaciones activas"]
+      work_surface: MIXED
+      depends_on: [N-4.2]
+
+    - id: N-4.7
+      titulo: "Ciclo end-to-end del Comand Center"
+      acceptance:
+        - "goal -> DAG -> worker -> evidencia -> completion audit"
+        - "sobrevive a un crash del worker sin duplicar side effect"
+      work_surface: MIXED
+      depends_on: [N-4.3, N-4.4, N-4.5, N-4.6]
+
+# =====================================================================
+# ORDEN TOPOLOGICO DE EJECUCION
+# =====================================================================
+orden_ejecucion:
+  fase_0_desbloqueo:  [N-1.1, N-1.3, N-1.4, N-2.8, N-2.11]
+  fase_1_inventario:  [N-1.2, N-2.1, N-2.13, N-4.3]
+  fase_2_kernel:      [N-2.4, N-2.5, N-2.6, N-2.7, N-2.9, N-2.10]
+  fase_3_raiz:        [N-2.2, N-2.3, N-1.6]
+  fase_4_schemas:     [N-1.5]
+  fase_5_mecanismos:  [N-3.1, N-3.2]
+  fase_6_frontend:    [N-2.12]
+  fase_7_seals:       [N-3.3, N-3.4, N-3.5, N-3.6, N-3.7, N-3.8]
+  fase_8_orquestador: [N-4.1, N-4.2, N-4.4, N-4.5, N-4.6, N-4.7]
+  regla: "dentro de una fase los nodos son independientes; si uno FLAG, los demas siguen"
+
+# =====================================================================
+# ESTADO DE LOS 33 NODOS
+# =====================================================================
+estado:
+  N-1.1: PENDIENTE
+  N-1.2: PENDIENTE
+  N-1.3: PENDIENTE
+  N-1.4: PENDIENTE
+  N-1.5: PENDIENTE
+  N-1.6: PENDIENTE
+  N-2.1: PENDIENTE
+  N-2.2: PENDIENTE
+  N-2.3: PENDIENTE
+  N-2.4: PENDIENTE
+  N-2.5: PENDIENTE
+  N-2.6: PENDIENTE
+  N-2.7: PENDIENTE
+  N-2.8: PENDIENTE
+  N-2.9: PENDIENTE
+  N-2.10: PENDIENTE
+  N-2.11: PENDIENTE
+  N-2.12: PENDIENTE
+  N-2.13: PENDIENTE
+  N-3.1: PENDIENTE
+  N-3.2: PENDIENTE
+  N-3.3: PENDIENTE
+  N-3.4: PENDIENTE
+  N-3.5: PENDIENTE
+  N-3.6: PENDIENTE
+  N-3.7: PENDIENTE
+  N-3.8: PENDIENTE
+  N-4.1: PENDIENTE
+  N-4.2: PENDIENTE
+  N-4.3: PENDIENTE
+  N-4.4: PENDIENTE
+  N-4.5: PENDIENTE
+  N-4.6: PENDIENTE
+  N-4.7: PENDIENTE
