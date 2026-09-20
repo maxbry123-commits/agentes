@@ -3,6 +3,9 @@ name: Verify Agent Sources Are Real (sha256 evidence)
 on:
   workflow_dispatch: {}
 
+permissions:
+  contents: write
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -10,8 +13,10 @@ jobs:
       - name: Sparse checkout agent_sources only (no-cone, glob-safe for emoji paths)
         run: |
           git clone --filter=blob:none --no-checkout --depth=1 \
-            https://github.com/${{ github.repository }}.git repo
+            "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" repo
           cd repo
+          git config user.name "verify-agent-sources-bot"
+          git config user.email "actions@github.com"
           git sparse-checkout init --no-cone
           printf '%s\n' '**/wordflow_loop/agent_sources/**' '**/scripts_ci/**' > .git/info/sparse-checkout
           git checkout main
@@ -28,6 +33,16 @@ jobs:
 
       - name: Run verification script
         run: python3 repo/scripts_ci/verify_agent_sources.py "$BASE_DIR"
+
+      - name: Commit evidence back to repo
+        if: always()
+        run: |
+          mkdir -p repo/scripts_ci/evidence
+          cp verification_report.json repo/scripts_ci/evidence/verification_report_latest.json
+          cd repo
+          git add scripts_ci/evidence/verification_report_latest.json
+          git commit -m "ci: update agent sources verification evidence [skip ci]" || echo "no changes to commit"
+          git push origin main || echo "push failed, evidence still in artifact"
 
       - name: Upload evidence
         if: always()
