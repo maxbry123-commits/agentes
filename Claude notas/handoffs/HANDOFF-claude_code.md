@@ -1,3 +1,7 @@
+> **SUPERSEDED (2026-09-20)** - Este slot se reasigno. `claude_code` en `agent_sources/` es repo de documentacion/changelog, no codigo fuente instalable del CLI (sin package.json en la raiz) - no sirve para ejecutar este handoff. N-1.3 y N-1.4 pasaron a `smolagents` -> ver `Claude notas/handoffs/HANDOFF-smolagents.md` y `Claude notas/NOTA-2026-09-20-swap-agentes-fase0.md`. No se borra este archivo por R03 (nunca borrar); queda solo como registro historico.
+
+---
+
 # Handoff - agente `claude_code` (agent_sources/claude_code, confirmado con contenido real)
 
 Fuente de verdad: `Claude notas/PLAN-DSL-DAG-00-CONTRATO.yaml` (reglas R01-R12, gap_ladder, gobernanza) + `Claude notas/PLAN-DSL-DAG-01-NODOS.yaml` (nodos). No se inventa formato nuevo: este handoff reutiliza `output_contract.yaml` (Core kernel Yaiwes/control-layer/schemas/) para el reporte y el `id` propio del DAG para la traza.
