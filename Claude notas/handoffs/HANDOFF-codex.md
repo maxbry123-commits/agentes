@@ -1,3 +1,7 @@
+> **SUPERSEDED (2026-09-20)** - Este slot se reasigno. `codex` en `agent_sources/` es codigo real pero requiere compilar el monorepo `codex-rs` con toolchain Rust/cargo - no es un install simple para correr este handoff hoy. N-1.1 paso a `aider` -> ver `Claude notas/handoffs/HANDOFF-aider.md` y `Claude notas/NOTA-2026-09-20-swap-agentes-fase0.md`. No se borra este archivo por R03 (nunca borrar); queda solo como registro historico.
+
+---
+
 # Handoff — agente `codex` (agent_sources/codex, confirmado con contenido real)
 
 Fuente de verdad: `Claude notas/PLAN-DSL-DAG-00-CONTRATO.yaml` + `Claude notas/PLAN-DSL-DAG-01-NODOS.yaml`. Rol de Codex en el DAG (N-2.12): AUDITOR — independiente, no escribe código de producción, verifica. Este nodo respeta ese rol: es infraestructura/CI, no edición del kernel.
