@@ -1,0 +1,71 @@
+{
+  "agent_zero": {
+    "status": "MISSING_FOLDER"
+  },
+  "aider": {
+    "status": "MISSING_FOLDER"
+  },
+  "claude_code": {
+    "status": "MISSING_FOLDER"
+  },
+  "cline": {
+    "status": "MISSING_FOLDER"
+  },
+  "codex": {
+    "status": "MISSING_FOLDER"
+  },
+  "goose": {
+    "status": "MISSING_FOLDER"
+  },
+  "hermes": {
+    "status": "MISSING_FOLDER"
+  },
+  "meta_agent_cookbook": {
+    "status": "MISSING_FOLDER"
+  },
+  "meta_muse_code_sdk": {
+    "status": "MISSING_FOLDER"
+  },
+  "metacua": {
+    "status": "MISSING_FOLDER"
+  },
+  "mirothinker": {
+    "status": "MISSING_FOLDER"
+  },
+  "muse_glimmer": {
+    "status": "MISSING_FOLDER"
+  },
+  "openclaw": {
+    "status": "MISSING_FOLDER"
+  },
+  "opencode": {
+    "status": "MISSING_FOLDER"
+  },
+  "opendev": {
+    "status": "MISSING_FOLDER"
+  },
+  "openhands": {
+    "status": "MISSING_FOLDER"
+  },
+  "orca": {
+    "status": "MISSING_FOLDER"
+  },
+  "qwen_code": {
+    "status": "MISSING_FOLDER"
+  },
+  "research_agent_lab": {
+    "status": "MISSING_FOLDER"
+  },
+  "smolagents": {
+    "status": "MISSING_FOLDER"
+  },
+  "cua_mcp": {
+    "status": "MISSING_FOLDER"
+  },
+  "mimo_code": {
+    "status": "MISSING_FOLDER"
+  },
+  "kimi_k": {
+    "status": "MISSING_FOLDER"
+  }
+}
