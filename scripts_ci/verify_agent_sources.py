@@ -17,6 +17,14 @@ EDGE_CASES = ["cua_mcp", "mimo_code", "kimi_k"]
 
 report = {}
 
+debug = {
+    "base_dir_arg": BASE,
+    "base_dir_exists": os.path.isdir(BASE),
+    "base_dir_listing": sorted(os.listdir(BASE)) if os.path.isdir(BASE) else None,
+    "cwd": os.getcwd(),
+}
+report["_debug"] = debug
+
 
 def sha256_of_tree(path):
     h = hashlib.sha256()
@@ -59,14 +67,15 @@ def sha256_of_tree(path):
 
 
 for name in TARGETS + EDGE_CASES:
+    category = "target" if name in TARGETS else "edge_case"
     p = os.path.join(BASE, name)
     if not os.path.isdir(p):
-        report[name] = {"status": "MISSING_FOLDER"}
+        report[name] = {"status": "MISSING_FOLDER", "category": category}
         continue
     stats = sha256_of_tree(p)
     is_real = stats["file_count"] >= 5 and stats["total_bytes"] >= 5000
     stats["status"] = "REAL" if is_real else "SUSPICIOUS_EMPTY_OR_STUB"
-    stats["category"] = "target" if name in TARGETS else "edge_case"
+    stats["category"] = category
     report[name] = stats
 
 with open("verification_report.json", "w") as f:
@@ -77,7 +86,9 @@ print(json.dumps(report, indent=2, ensure_ascii=False))
 failures = [
     n
     for n, r in report.items()
-    if r.get("category") == "target" and r.get("status") != "REAL"
+    if isinstance(r, dict)
+    and r.get("category") == "target"
+    and r.get("status") != "REAL"
 ]
 if failures:
     print(f"::error::Targets NOT real: {failures}")
