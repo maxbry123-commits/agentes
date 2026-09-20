@@ -34,3 +34,6 @@
 [submodule "kimi_researcher"]
 	path = ➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/kimi_researcher
 	url = https://github.com/MoonshotAI/Kimi-Researcher.git
+[submodule "mcode"]
+	path = ➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/mcode
+	url = https://github.com/MiniMax-AI/minimax-code.git
