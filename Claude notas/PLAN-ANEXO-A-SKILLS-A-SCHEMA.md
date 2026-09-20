@@ -34,7 +34,7 @@ Campos obligatorios:
 
 ---
 
-## CLASIFICACION POR FUNCION (cada skill cae en un sitio distinto del DAG)
+## CLASIFICACION POR FUNCION
 
 CLASE 1 - ESTETICA -> se convierten en ACCEPTANCE CRITERIA verificables
 CLASE 2 - AUDITORIA -> se convierten en CHECKS EJECUTABLES del oracle
@@ -52,26 +52,26 @@ CLASE 5 - ROUTER -> schema de enrutado que invoca a los demas
    https://github.com/Leonxlnx/taste-skill  |  https://www.tasteskill.dev/
    Aporta: referencias de diseno para evitar interfaces genericas.
    -> `skills_schema/taste.dag.yaml`
-   acceptance[]: la UI generada no coincide con patron generico; usa referencia declarada.
+   acceptance: la UI no coincide con patron generico; usa la referencia declarada.
 
 2. Impeccable
    https://github.com/pbakaus/impeccable
    Aporta: tipografia, espaciado, layout, acabado visual.
    YA ESTA FISICAMENTE en el repo (Wordflow loop code Yaiwes/skills/)
    -> `skills_schema/impeccable.dag.yaml`
-   acceptance[]: escala tipografica coherente, espaciado en rejilla, sin overflow.
+   acceptance: escala tipografica coherente, espaciado en rejilla, sin overflow.
 
 3. UI/UX Pro Max
    https://github.com/nextlevelbuilder/ui-ux-pro-max-skill
    Aporta: 79 estilos, 192 paletas, 74 combinaciones tipograficas, UX, GSAP, charts, 22 stacks.
    -> `skills_schema/ui-ux-pro-max.dag.yaml`
-   acceptance[]: paleta y tipografia elegidas del catalogo declarado, no improvisadas.
+   acceptance: paleta y tipografia elegidas del catalogo declarado, no improvisadas.
 
 4. Emil Kowalski - Design Engineering Skills
    https://github.com/emilkowalski/skills
    Aporta: motion UI, easing, transiciones, microinteracciones.
    -> `skills_schema/motion-design-engineering.dag.yaml`
-   acceptance[]: curvas de easing declaradas; sin transiciones por defecto del navegador.
+   acceptance: curvas de easing declaradas; sin transiciones por defecto del navegador.
 
 5. Anthropic Frontend Design Skill
    https://github.com/anthropics/skills/tree/main/skills/frontend-design
@@ -83,7 +83,7 @@ CLASE 5 - ROUTER -> schema de enrutado que invoca a los demas
    https://github.com/AgentsORG/DESIGN/tree/main/skills/design
    Aporta: sistemas visuales, tokens, componentes, identidad, evitar design drift.
    -> `skills_schema/design-system.dag.yaml`
-   acceptance[]: todo color/espaciado sale de token declarado; cero valores magicos.
+   acceptance: todo color/espaciado sale de token declarado; cero valores magicos.
 
 ### CLASE 2 - AUDITORIA (checks ejecutables del oracle)
 
@@ -91,26 +91,27 @@ CLASE 5 - ROUTER -> schema de enrutado que invoca a los demas
    https://github.com/vercel-labs/agent-skills/tree/main/skills/web-design-guidelines
    Aporta: mas de 100 reglas de UX, accesibilidad, formularios, motion, tipografia, performance.
    -> `skills_schema/web-design-guidelines.dag.yaml`
-   ESTE ES EL MAS IMPORTANTE DE LA CLASE 2: sus 100+ reglas se vuelven
-   assertions ejecutables del oracle, no un prompt.
+   EL MAS IMPORTANTE DE LA CLASE 2: sus 100+ reglas se vuelven assertions
+   ejecutables del oracle, no un prompt.
 
 8. Vercel React Best Practices
    https://github.com/vercel-labs/agent-skills/tree/main/skills/react-best-practices
    Aporta: rendimiento React/Next, waterfalls, bundles, renders, hooks, arquitectura.
    -> `skills_schema/react-best-practices.dag.yaml`
-   acceptance[]: sin waterfalls detectados; bundle bajo umbral declarado.
+   acceptance: sin waterfalls detectados; bundle bajo umbral declarado.
 
 9. Frontend Design Codex
    https://github.com/dachent/skills/blob/main/frontend-design-codex/SKILL.md
    Aporta: obliga a revisar la interfaz RENDERIZADA, screenshots, responsive,
-   accesibilidad y browser QA - no solo el source.
+   accesibilidad y browser QA - no solo el source code.
    -> `skills_schema/frontend-design-codex.dag.yaml`
-   Este schema es el que ENFORZA el gate BROWSER PASS + VISUAL PASS.
+   Este schema ENFORZA el gate BROWSER PASS + VISUAL PASS.
 
 10. Awesome Design (VoltAgent)
     https://github.com/VoltAgent/awesome-design-md/
     Aporta: indice de referencias de diseno.
-    -> `skills_schema/awesome-design-index.dag.yaml` (biblioteca RAG, no nodo ejecutable)
+    -> `skills_schema/awesome-design-index.dag.yaml`
+    Va a la biblioteca RAG, no es nodo ejecutable.
 
 ### CLASE 3 - PIPELINE (nodos del DAG)
 
@@ -131,85 +132,80 @@ CLASE 5 - ROUTER -> schema de enrutado que invoca a los demas
     https://github.com/21st-dev/magic-mcp
     Aporta: generacion de componentes UI via MCP.
     -> `skills_schema/21st-magic.dag.yaml`
-    Se registra como TOOL en el ToolRegistry, su schema define el contrato de llamada.
+    Se registra como TOOL; su schema define el contrato de llamada.
 
 14. Skill Creator / Skills Design
     https://github.com/anthropics/skills
     Aporta: como se construye un skill.
     YA ESTA FISICAMENTE en el repo.
     -> `skills_schema/skill-creator.dag.yaml`
-    META-SCHEMA: este es el que genera los demas schemas. Se procesa PRIMERO.
+    META-SCHEMA: genera los demas schemas. Se procesa PRIMERO.
 
 15. one-skill-to-rule-them-all
     https://github.com/rebelytics/one-skill-to-rule-them-all
     Aporta: patron de skill unico que enruta a los demas.
-    -> `skills_schema/skill-router.dag.yaml`  (ver CLASE 5)
+    -> `skills_schema/skill-router.dag.yaml` (ver CLASE 5)
 
 ### CLASE 4 - MOTION / HYPERFRAMES (8 schemas)
 
 Framework: https://github.com/heygen-com/hyperframes
-Estructura: HyperFrames (framework) -> /hyperframes (router) -> skills especializados
+Estructura: HyperFrames -> /hyperframes (router) -> skills especializados
 -> CLI/renderizador -> MP4
 
-16. hyperframes (skill router)
-    -> `skills_schema/hyperframes-router.dag.yaml`
-17. hyperframes-core - estructura y contrato de composicion
-    -> `skills_schema/hyperframes-core.dag.yaml`
-18. hyperframes-animation - animaciones, motion, GSAP, Three.js
-    -> `skills_schema/hyperframes-animation.dag.yaml`
-19. hyperframes-keyframes - keyframes y animacion determinista
-    -> `skills_schema/hyperframes-keyframes.dag.yaml`
-    NOTA: "animacion determinista" encaja con la filosofia 90% determinista.
-20. hyperframes-creative - diseno, concepto, tipografia, planificacion visual
-    -> `skills_schema/hyperframes-creative.dag.yaml`
-21. hyperframes-audio - audio y automatizacion
-    -> `skills_schema/hyperframes-audio.dag.yaml`
-22. hyperframes-cli - init, preview, lint, render, publish, diagnostico
-    -> `skills_schema/hyperframes-cli.dag.yaml`
-    Se registra como TOOL (es un CLI real, contrato de automatizacion).
-23. hyperframes-registry - registro de bloques/componentes reutilizables
-    -> `skills_schema/hyperframes-registry.dag.yaml`
-    Alimenta la biblioteca RAG (REUSE antes de GENERATE).
+16. hyperframes (skill router)      -> `skills_schema/hyperframes-router.dag.yaml`
+17. hyperframes-core                -> `skills_schema/hyperframes-core.dag.yaml`
+    estructura y contrato de composicion
+18. hyperframes-animation           -> `skills_schema/hyperframes-animation.dag.yaml`
+    animaciones, motion, GSAP, Three.js
+19. hyperframes-keyframes           -> `skills_schema/hyperframes-keyframes.dag.yaml`
+    keyframes y animacion DETERMINISTA (encaja con la filosofia 90% determinista)
+20. hyperframes-creative            -> `skills_schema/hyperframes-creative.dag.yaml`
+    diseno, concepto, tipografia, planificacion visual
+21. hyperframes-audio               -> `skills_schema/hyperframes-audio.dag.yaml`
+    audio y automatizacion
+22. hyperframes-cli                 -> `skills_schema/hyperframes-cli.dag.yaml`
+    init, preview, lint, render, publish, diagnostico. Se registra como TOOL real.
+23. hyperframes-registry            -> `skills_schema/hyperframes-registry.dag.yaml`
+    registro de bloques reutilizables. Alimenta la biblioteca RAG (REUSE antes de GENERATE).
 
 24. Web Design Studio / cinematic-scroll
     https://github.com/MustBeSimo/web-design-studio
-    Aporta: sitios cinematograficos con scroll, GSAP, Three.js, 3D interactivo. MIT.
+    Sitios cinematograficos con scroll, GSAP, Three.js, 3D interactivo. MIT.
     -> `skills_schema/cinematic-scroll.dag.yaml`
 
 ### CLASE 5 - ROUTER
-El schema `skill-router.dag.yaml` (del #15) es el punto de entrada:
-  TAREA UI -> ROUTER -> selecciona que schemas aplican -> los encadena en un DAG
-  -> ejecuta -> oracle -> evidencia
+`skill-router.dag.yaml` es el punto de entrada:
+TAREA UI -> ROUTER -> selecciona que schemas aplican -> los encadena en un DAG
+-> ejecuta -> oracle -> evidencia
 
 ---
 
 ## LOS 7 SOFTWARE (NO son skills - son herramientas del entorno)
 
-Estos NO se convierten a schema. Se registran como TOOLS o se ubican en la Fabrica UI.
+No se convierten a schema. Se registran como TOOLS o se ubican en la Fabrica UI.
 
-1. Playwright MCP
-   https://github.com/microsoft/playwright
+1. Playwright MCP   https://github.com/microsoft/playwright
    ES EL NAVEGADOR REAL del gate BROWSER PASS. Se registra como tool.
    Reutiliza el capability/adapter que Wordflow YA TIENE - no crear otro.
 
-2. Caret        https://github.com/precious112/caret-desktop
-   Canvas visual + IA + React real + Git + sync diseno->app + MCP. Open source.
-3. Onlook       https://github.com/onlook-dev/onlook
+2. Caret       https://github.com/precious112/caret-desktop
+   Canvas visual + IA + React real + Git + sync diseno->app + MCP.
+3. Onlook      https://github.com/onlook-dev/onlook
    Editor visual tipo Figma sobre Next.js/Tailwind, codigo en vivo, checkpoints.
-4. Plasmic      https://github.com/plasmicapp/plasmic
+4. Plasmic     https://github.com/plasmicapp/plasmic
    Builder visual React con componentes propios.
-5. Webstudio    https://github.com/webstudio-is/webstudio
+5. Webstudio   https://github.com/webstudio-is/webstudio
    Builder visual open source, control CSS, CMS/headless, self-hosting.
    -> Los 4 anteriores van a FABRICA UI, NO dentro del loop automatico.
       Son para el humano, no para el agente.
 
 6. HyperFrames CLI/renderizador -> produce el MP4 final.
-7. ZCode        https://zcode.z.ai/  +  https://github.com/dan646/zcode-plugin-cc
-   Plugin de integracion ZCode <-> Claude Code. Evaluar, no urgente.
+7. ZCode  https://zcode.z.ai/  +  https://github.com/dan646/zcode-plugin-cc
+   Plugin de integracion ZCode con Claude Code. Evaluar, no urgente.
 
 ---
 
-## COMBINACION RECOMENDADA POR EL DIRECTOR (cadena completa)
+## CADENA COMBINADA RECOMENDADA POR EL DIRECTOR
 
 Taste/Impeccable/Emil
   -> UI-UX Pro Max
