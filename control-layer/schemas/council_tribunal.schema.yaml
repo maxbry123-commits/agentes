@@ -1,0 +1,17 @@
+# D6 COUNCIL_TRIBUNAL schema v2
+$schema: council_tribunal.schema/v2
+kind: COUNCIL_TRIBUNAL
+required: [schema_version, kind, id, roles, votacion, umbral_score]
+
+fields:
+  schema_version: {const: "2.0"}
+  kind: {const: COUNCIL_TRIBUNAL}
+  umbral_score: {type: number, minimum: 0, maximum: 100}
+  min_approvals: {type: integer, minimum: 1}
+  roles: {type: map}
+  votacion.veto_roles: {type: list}
+  votacion.score_roles: {type: list}
+
+invariants:
+  - at least one VETO role
+  - PASS requires score and approvals thresholds

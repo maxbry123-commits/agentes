@@ -1,0 +1,30 @@
+# agent.schema — D3 nodes/*.yaml = registro dinámico de agentes
+# SOURCE: Agent Identity · Discovery · no capa por agente
+
+$schema: agent.schema/v1
+required: [id, version, type, capabilities]
+
+fields:
+  id: {type: string, pattern: "^[a-z][a-z0-9_-]*$"}
+  version: {type: string}
+  type: {enum: [agent]}
+  capabilities:
+    type: list
+    items: string
+    min: 1
+  workflow:
+    recipe: string  # id de receta/workflow compatible
+  memory:
+    private: {type: bool, default: true}
+    project: {type: bool, default: true}
+    global: {type: bool, default: false}
+  permissions:
+    tools: {type: list, items: string}
+  scope:
+    project: {enum: [current], default: current}
+
+rules:
+  - type must be agent
+  - global memory default false
+  - id unique within project
+  - capabilities non-empty

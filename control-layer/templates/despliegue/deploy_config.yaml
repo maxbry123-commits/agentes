@@ -1,0 +1,37 @@
+# deploy_config.yaml — reglas FUERA del código · DESPLIEGUE v2.0
+# SOURCE: DESPLIEGUE-DETERMINISTA-UNIVERSAL-v2
+# Copiar a PROJECT/config/deploy_config.yaml
+
+schema_version: "2.0"
+kind: DEPLOY_CONFIG
+
+default_repo: main-app
+visibility: private
+branch: main
+
+# primera regla que calza gana
+repos:
+  main-app:
+    - "src/**"
+    - "app/**"
+    - "*.py"
+  docs-repo:
+    - "docs/**"
+    - "plan/**"
+    - "*.md"
+  control-layer:
+    - "control-layer/**"
+
+protected_patterns:
+  - ".env"
+  - ".env.*"
+  - "*secret*"
+  - "*key*"
+  - "*.pem"
+  - "*.key"
+  - "credentials*"
+  - "token*plain*"
+
+# dry-run: SIN_REGLA → EXIT 1 · BLOQUEADOS → EXIT 2
+strict_unmatched: true
+scan_secrets: true

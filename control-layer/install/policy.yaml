@@ -1,0 +1,24 @@
+# Política de instalación determinista
+# SOURCE: ley no-from-scratch · FROMTED · UOOS
+
+rules:
+  never_from_scratch: true
+  require_source_before_code: true
+  if_no_source_materialized: only_download   # nunca generar código inventado
+
+modes:
+  full: "clone completo del repo fuente"
+  sparse: "solo paths declarados (recomendado)"
+  file: "un archivo/binario con sha256"
+
+verification:
+  sha256_required_for_file: true
+  source_must_be_under: sources/
+
+agent_instruction: |
+  Antes de escribir cualquier código de implementación:
+  1. Busca el repo/source oficial o el indicado en el plan.
+  2. Declara SourceSpec (url, mode, paths, expected_sha256).
+  3. Llama a SourceResolver.
+  4. Solo después adapta/fusiona/conecta sobre lo descargado.
+  Si no hay source → detente y reporta. No inventes.

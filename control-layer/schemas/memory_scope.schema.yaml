@@ -1,0 +1,19 @@
+# memory_scope.schema
+# SOURCE: aislamiento tenant+project+agent+scope — nunca agent_id solo
+
+$schema: memory_scope.schema/v1
+required: [tenant_id, project_id, agent_id, scope]
+
+fields:
+  tenant_id: string
+  project_id: string
+  agent_id: string
+  scope: {enum: [private, project, global]}
+
+namespace_formula: "{tenant_id}/{project_id}/agents/{agent_id}"  # private
+project_namespace: "{tenant_id}/{project_id}/project"            # shared
+
+rules:
+  - global scope requires explicit Sheriff allow
+  - default private=true project=true global=false
+  - project-A/backend != project-B/backend namespaces

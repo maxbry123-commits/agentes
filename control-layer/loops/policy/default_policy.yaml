@@ -1,0 +1,95 @@
+# Policy DSL — reglas deterministas v1
+# SOURCE: PolicyDecision contract · detect ≠ decide
+# Cambiar comportamiento sin tocar core Python
+
+version: "1.0"
+
+rules:
+  - id: stall_repair
+    when:
+      detectors: [stall, no_progress]
+      min_severity: 0.5
+      min_iteration: 2
+    action: REPAIR
+    reason: "stall/no_progress after 2 iterations"
+
+  - id: stall_change_strategy
+    when:
+      detectors: [stall]
+      min_severity: 0.7
+      min_iteration: 4
+    action: CHANGE_STRATEGY
+    params: {new_strategy: adversarial}
+    reason: "persistent stall → adversarial"
+
+  - id: regression_rollback
+    when:
+      detectors: [regression]
+      min_severity: 0.6
+    action: ROLLBACK
+    reason: "regression detected"
+
+  - id: budget_escalate
+    when:
+      detectors: [budget, resource_exhaustion]
+      min_severity: 0.9
+    action: ESCALATE
+    reason: "budget exhausted"
+
+  - id: timeout_checkpoint
+    when:
+      detectors: [timeout]
+      min_severity: 0.5
+    action: CHECKPOINT
+    reason: "timeout → checkpoint before decide"
+
+  - id: validation_fail_repair
+    when:
+      phase_outcome: validation_failed
+      max_repair: 2
+    action: REPAIR
+    reason: "validation failed, repair budget left"
+
+  - id: validation_fail_escalate
+    when:
+      phase_outcome: validation_failed
+      min_repair: 2
+    action: ESCALATE
+    reason: "validation failed, repair exhausted"
+
+  - id: validation_pass_close
+    when:
+      phase_outcome: validation_passed
+      goal_complete: true
+    action: CLOSE
+    reason: "goal complete"
+
+  - id: validation_pass_continue
+    when:
+      phase_outcome: validation_passed
+      goal_complete: false
+    action: CONTINUE
+    reason: "progress ok, continue"
+
+  - id: repeated_failure_escalate
+    when:
+      detectors: [repeated_failure]
+      min_severity: 0.8
+    action: ESCALATE
+    reason: "repeated failure"
+
+  - id: contract_violation_abort
+    when:
+      detectors: [contract_violation]
+      min_severity: 0.9
+    action: ABORT
+    reason: "hard contract violation"
+
+  - id: high_risk_human
+    when:
+      risk_level: high
+    action: HUMAN_GATE
+    reason: "high risk requires approval"
+
+default_action: CONTINUE
+default_reason: "no rule matched"
