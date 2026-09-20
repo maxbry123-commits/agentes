@@ -1,71 +1,102 @@
 {
+  "_debug": {
+    "base_dir_arg": "repo/➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources",
+    "base_dir_exists": true,
+    "base_dir_listing": [
+      "META4_COPY_PLAN_2026-09-19.json"
+    ],
+    "cwd": "/home/runner/work/agentes/agentes"
+  },
   "agent_zero": {
-    "status": "MISSING_FOLDER"
+    "status": "MISSING_FOLDER",
+    "category": "target"
   },
   "aider": {
-    "status": "MISSING_FOLDER"
+    "status": "MISSING_FOLDER",
+    "category": "target"
   },
   "claude_code": {
-    "status": "MISSING_FOLDER"
+    "status": "MISSING_FOLDER",
+    "category": "target"
   },
   "cline": {
-    "status": "MISSING_FOLDER"
+    "status": "MISSING_FOLDER",
+    "category": "target"
   },
   "codex": {
-    "status": "MISSING_FOLDER"
+    "status": "MISSING_FOLDER",
+    "category": "target"
   },
   "goose": {
-    "status": "MISSING_FOLDER"
+    "status": "MISSING_FOLDER",
+    "category": "target"
   },
   "hermes": {
-    "status": "MISSING_FOLDER"
+    "status": "MISSING_FOLDER",
+    "category": "target"
   },
   "meta_agent_cookbook": {
-    "status": "MISSING_FOLDER"
+    "status": "MISSING_FOLDER",
+    "category": "target"
   },
   "meta_muse_code_sdk": {
-    "status": "MISSING_FOLDER"
+    "status": "MISSING_FOLDER",
+    "category": "target"
   },
   "metacua": {
-    "status": "MISSING_FOLDER"
+    "status": "MISSING_FOLDER",
+    "category": "target"
   },
   "mirothinker": {
-    "status": "MISSING_FOLDER"
+    "status": "MISSING_FOLDER",
+    "category": "target"
   },
   "muse_glimmer": {
-    "status": "MISSING_FOLDER"
+    "status": "MISSING_FOLDER",
+    "category": "target"
   },
   "openclaw": {
-    "status": "MISSING_FOLDER"
+    "status": "MISSING_FOLDER",
+    "category": "target"
   },
   "opencode": {
-    "status": "MISSING_FOLDER"
+    "status": "MISSING_FOLDER",
+    "category": "target"
   },
   "opendev": {
-    "status": "MISSING_FOLDER"
+    "status": "MISSING_FOLDER",
+    "category": "target"
   },
   "openhands": {
-    "status": "MISSING_FOLDER"
+    "status": "MISSING_FOLDER",
+    "category": "target"
   },
   "orca": {
-    "status": "MISSING_FOLDER"
+    "status": "MISSING_FOLDER",
+    "category": "target"
   },
   "qwen_code": {
-    "status": "MISSING_FOLDER"
+    "status": "MISSING_FOLDER",
+    "category": "target"
   },
   "research_agent_lab": {
-    "status": "MISSING_FOLDER"
+    "status": "MISSING_FOLDER",
+    "category": "target"
   },
   "smolagents": {
-    "status": "MISSING_FOLDER"
+    "status": "MISSING_FOLDER",
+    "category": "target"
   },
   "cua_mcp": {
-    "status": "MISSING_FOLDER"
+    "status": "MISSING_FOLDER",
+    "category": "edge_case"
   },
   "mimo_code": {
-    "status": "MISSING_FOLDER"
+    "status": "MISSING_FOLDER",
+    "category": "edge_case"
   },
   "kimi_k": {
-    "status": "MISSING_FOLDER"
+    "status": "MISSING_FOLDER",
+    "category": "edge_case"
   }
 }
