@@ -409,3 +409,54 @@ del resultado (3548 bytes vs ~19KB esperados) y corregido en este
 mismo commit restaurando el contenido completo. Leccion: nunca usar
 placeholders sin sustituir de verdad en escrituras completas a este
 archivo - verificar tamano del resultado contra lo esperado.
+
+## 18. PLAN MAESTRO 4 OBJETIVOS - SALIDA 1 CERRADA 2026-09-20 (inventario forense agent_sources)
+
+Retomado el trabajo tras corte de contexto de sesion. Fuente de verdad
+operativa: Claude notas/PLAN-MAESTRO-4-OBJETIVOS.md (ya existia en el
+repo, 25277 bytes, consistente con el plan de esta sesion). Orden de
+ejecucion S1 a S10.
+
+SALIDA 1 (inventario forense agent_sources) CERRADA con evidencia real:
+Claude notas/INVENTARIO-FORENSE-agent_sources.md, 36 entradas, ninguna
+"supuesta" - cada una con su sha de arbol/commit real via Git Data API.
+Resultado: 20 carpetas REAL + 12 submodules REAL = 32 utilizables
+directamente. 1 THIN WRAPPER (cua_mcp: solo un archivo shim). 2
+PAPER-ONLY (kimi_k y mimo_code: solo technical report/paper, sin
+codigo de agente - esto corrige la nota de la seccion 12 que describia
+kimi_k como "carpetas vacias"; en realidad tiene contenido, pero es
+documentacion, no codigo ejecutable). 1 GAP confirmado: mcode
+(@minimax-ai/code), el unico de los 13 slots originales sin montar.
+
+Nota importante: existe ya en el repo un sistema DAG mas rico del que
+esta sesion asumia al retomar - Claude notas/PLAN-DSL-DAG-00-CONTRATO.yaml,
+PLAN-DSL-DAG-01-NODOS.yaml (nodos N-1.1, N-1.2, N-2.x, fase_0_desbloqueo
+etc, con contrato JSON de salida por nodo) y Claude notas/handoffs/ ya
+tiene HANDOFF-aider.md, HANDOFF-claude_code.md, HANDOFF-codex.md (marcado
+SUPERSEDED, swap a aider por costo de compilar Rust), HANDOFF-opencode.md,
+HANDOFF-smolagents.md. El PLAN-MAESTRO-4-OBJETIVOS.md de esta sesion debe
+tratarse como COMPLEMENTARIO a ese DAG existente, no como reemplazo -
+pendiente unificar antes de generar mas nodos nuevos para no duplicar
+trabajo ya hecho en sesiones previas de este mismo proyecto.
+
+BLOQUEO DE SEGURIDAD SIN RESOLVER (heredado de sesion anterior, sigue
+vigente): las 5 API keys de NVIDIA que el Director pego en chat estan
+tambien en texto plano en Claude notas/instrucciones 1 a 1 director.md,
+en este repo PUBLICO. Estan comprometidas. Subirlas como GitHub Actions
+Secrets encriptados (libsodium sealed box) sigue bloqueado en este
+entorno de Claude: intento de instalar pynacl via pip fallo (sin
+paquete disponible), la libreria cryptography instalada no implementa
+sealed box/XSalsa20-Poly1305, y la busqueda de libsodium del sistema fue
+denegada por el clasificador de auto-modo del entorno bajo la categoria
+"Secret-Store Writes" (requiere aprobacion humana explicita). A
+diferencia de las GROQ_API_KEY (seccion 11), que SI se lograron sellar
+con ctypes sobre libsodium.so.23 del sistema en una sesion anterior -
+ese mismo camino deberia funcionar para NVIDIA si el sistema libsodium
+sigue disponible y el clasificador lo permite en un intento futuro con
+aprobacion explicita del Director. ACCION PENDIENTE DEL DIRECTOR:
+regenerar las 5 keys NVIDIA (estan expuestas en un repo publico
+independientemente de si se logran subir como secret) y confirmar si
+autoriza reintentar el sellado con libsodium.so.23 del sistema.
+
+SIGUIENTE: SALIDA 2 (cerrar gap mcode + reintentar NVIDIA secrets con
+el metodo libsodium.so.23 que si funciono para GROQ).
