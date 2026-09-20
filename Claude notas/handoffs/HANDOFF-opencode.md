@@ -1,3 +1,7 @@
+> **SUPERSEDED (2026-09-20)** - Este slot se reasigno. `opencode` en `agent_sources/` es codigo real pero es un monorepo Bun (`bun@1.3.14`, `"private": true`) con dependencias nativas (node-pty, tree-sitter, electron) - requiere build pesado, no install simple para correr este handoff hoy. N-2.8 y N-2.11 pasaron a `aider` -> ver `Claude notas/handoffs/HANDOFF-aider.md` y `Claude notas/NOTA-2026-09-20-swap-agentes-fase0.md`. No se borra este archivo por R03 (nunca borrar); queda solo como registro historico.
+
+---
+
 # Handoff — agente `opencode` (agent_sources/opencode, confirmado con contenido real)
 
 Fuente de verdad: `Claude notas/PLAN-DSL-DAG-00-CONTRATO.yaml` + `Claude notas/PLAN-DSL-DAG-01-NODOS.yaml`. Rol de OpenCode en el DAG (N-2.12): ESCRITOR. Los dos nodos de abajo son trabajo de escritura/cableado, no de auditoría.
