@@ -21,19 +21,20 @@ objetivos:
   2: "Terminar lo pendiente del Wordflow loop code Yaiwes: ubicar los componentes y todas las integraciones y hacer que funcione"
   3: "Crear el agente Seals Team YAIWES dentro de la misma raiz del Wordflow loop code Yaiwes, bajo las indicaciones ya especificadas, con los agentes funcionando"
   4: "Crear el agente Orquestador Comand Center bajo las especificaciones ordenadas"
-raiz_unica: "➡️\U0001F4C2 wordflow loop code Yaiwes"
+raiz_unica: "➡️📂 wordflow loop code Yaiwes"
 
 bitacora: Claude notas/PLAN-OPUS/CRAZY-WALL-BITACORA-PLAN-OPUS.json
-readme_loop: "Claude notas/PLAN-OPUS/\U0001F4C2readme mini LOOP coda bucle.md"
+readme_loop: "Claude notas/PLAN-OPUS/📂readme mini LOOP coda bucle.md"
 salud_apis: Claude notas/PLAN-OPUS/estado/SALUD-APIS.json
 
 router:
   norma: el router dicta clave y modelo
-  proveedor_agentes: nvidia   # nvidia | cerebras | groq. Cambiar aqui; la sonda (runner/sonda_apis.py) dice cual esta OK
+  proveedor_agentes: groq   # nvidia | cerebras | groq. Cambiar aqui; la sonda (runner/sonda_apis.py) dice cual esta OK
   cascada_ask_consul: [moonshotai/kimi-k3, nvidia/nemotron-3-super-120b-a12b, z-ai/glm-5.3-flash, deepseek-ai/deepseek-v4-flash-0731, kimi-k2-via-huggingface, minimax-m3-via-huggingface]
   modelo_agentes: nvidia/nemotron-3-super-120b-a12b
   nota_evidencia: bajo carga solo nemotron aguanta en NVIDIA; kimi y glm mejor por Hugging Face
   nota_kimi_k2: "Kimi K2 pedido por el Director; en NVIDIA kimi-k2.6 da 404, va por Hugging Face (falta token HF)"
+  nota_failover: "2026-09-21: banco NVIDIA sin credenciales en este entorno (B-001); sonda confirma Groq OK (6/7 claves, qwen/qwen3.8-27b). proveedor_agentes fijado a groq para que el loop corra en vez de quedar en BANDERA. Revertir a nvidia cuando el banco este disponible."
 
 ejecucion:
   runner: "Claude notas/PLAN-OPUS/runner/plan_opus_loop.py"
@@ -42,10 +43,10 @@ ejecucion:
   salvaguardas: "agentes con protecciones puestas; cada vuelta abre un PR que aprueba el Director; nada entra directo a main"
 
 grupos:
-  G1: {objetivo: 1, credential_ref: nvidia/digi-maxbry, rutas: ["➡️\U0001F4C2motores de descarga extracción copiado movimiento archivos agentes", "➡️\U0001F4C2 wordflow loop code Yaiwes/wordflow_loop/agent_sources", "Core kernel Yaiwes", "Skills agente"]}
-  G2: {objetivo: 2, credential_ref: nvidia/movistar-briseida, rutas: ["➡️\U0001F4C2 wordflow loop code Yaiwes/backend", "Core kernel Yaiwes"]}
-  G3: {objetivo: 3, credential_ref: nvidia/wow-maxbry, rutas: ["➡️\U0001F4C2 wordflow loop code Yaiwes/backend"]}
-  G4: {objetivo: 4, credential_ref: nvidia/wow-brisa, rutas: ["➡️\U0001F4C2 wordflow loop code Yaiwes/backend", "Core kernel Yaiwes"]}
+  G1: {objetivo: 1, credential_ref: nvidia/digi-maxbry, rutas: ["➡️📂motores de descarga extracción copiado movimiento archivos agentes", "➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources", "Core kernel Yaiwes", "Skills agente"]}
+  G2: {objetivo: 2, credential_ref: nvidia/movistar-briseida, rutas: ["➡️📂 wordflow loop code Yaiwes/backend", "Core kernel Yaiwes"]}
+  G3: {objetivo: 3, credential_ref: nvidia/wow-maxbry, rutas: ["➡️📂 wordflow loop code Yaiwes/backend"]}
+  G4: {objetivo: 4, credential_ref: nvidia/wow-brisa, rutas: ["➡️📂 wordflow loop code Yaiwes/backend", "Core kernel Yaiwes"]}
 
 plantilla_ask_consul:
   goal_entrada: ""
