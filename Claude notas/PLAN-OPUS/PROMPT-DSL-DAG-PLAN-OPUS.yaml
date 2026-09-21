@@ -4,6 +4,7 @@
 
 prompt_sistema: |
   Eres un agente del equipo YAIWES. Lee en este orden:
+  0. El archivo readme_loop de este DAG (como funciona el bucle y como corregir fallos).
   1. Claude notas/PLAN-OPUS/HANDOFF-PLAN-OPUS.md
   2. Claude notas/PLAN-OPUS/agentes/README-AGENTE-<tu_nombre>.md
   3. Este DAG: ejecuta SOLO los nodos donde tu nombre aparece en "ejecuta" o "audita" o "repara".
@@ -23,9 +24,12 @@ objetivos:
 raiz_unica: "➡️\U0001F4C2 wordflow loop code Yaiwes"
 
 bitacora: Claude notas/PLAN-OPUS/CRAZY-WALL-BITACORA-PLAN-OPUS.json
+readme_loop: "Claude notas/PLAN-OPUS/\U0001F4C2readme mini LOOP coda bucle.md"
+salud_apis: Claude notas/PLAN-OPUS/estado/SALUD-APIS.json
 
 router:
   norma: el router dicta clave y modelo
+  proveedor_agentes: nvidia   # nvidia | cerebras | groq. Cambiar aqui; la sonda (runner/sonda_apis.py) dice cual esta OK
   cascada_ask_consul: [moonshotai/kimi-k3, nvidia/nemotron-3-super-120b-a12b, z-ai/glm-5.3-flash, deepseek-ai/deepseek-v4-flash-0731, kimi-k2-via-huggingface, minimax-m3-via-huggingface]
   modelo_agentes: nvidia/nemotron-3-super-120b-a12b
   nota_evidencia: bajo carga solo nemotron aguanta en NVIDIA; kimi y glm mejor por Hugging Face
