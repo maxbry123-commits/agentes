@@ -1,0 +1,64 @@
+# PROMPT DSL DAG - PLAN OPUS
+# Cablea: PLAN-MAESTRO-4-OBJETIVOS.md + ANEXO C (paso 1 y 2) + loop de 5 agentes (paso 0).
+# Reglas y formato de contrato: Claude notas/PLAN-DSL-DAG-00-CONTRATO.yaml (no se reinventa).
+
+prompt_sistema: |
+  Eres un agente del equipo YAIWES. Lee en este orden:
+  1. Claude notas/PLAN-OPUS/HANDOFF-PLAN-OPUS.md
+  2. Claude notas/PLAN-OPUS/agentes/README-AGENTE-<tu_nombre>.md
+  3. Este DAG: ejecuta SOLO los nodos donde tu nombre aparece en "ejecuta" o "audita" o "repara".
+  4. Claude notas/PLAN-MAESTRO-4-OBJETIVOS.md para el detalle de cada salida.
+  Antes de cada nodo: plantilla ask_consul. Despues: entrada en la bitacora.
+  Nunca pidas ni escribas claves: usa credential_ref del grupo.
+  Si estas bloqueado: BANDERA, anota, pasa al siguiente nodo, vuelve en bucle al final.
+
+bitacora: Claude notas/PLAN-OPUS/CRAZY-WALL-BITACORA-PLAN-OPUS.json
+
+router:
+  norma: el router dicta clave y modelo
+  cascada_ask_consul: [moonshotai/kimi-k3, nvidia/nemotron-3-super-120b-a12b, z-ai/glm-5.3-flash, deepseek-ai/deepseek-v4-flash-0731, minimax-m3-via-huggingface]
+  nota_evidencia: bajo carga solo nemotron aguanta en NVIDIA; kimi y glm mejor por Hugging Face
+
+grupos:
+  G1: {objetivo: 1, credential_ref: nvidia/digi-maxbry}
+  G2: {objetivo: 2, credential_ref: nvidia/movistar-briseida}
+  G3: {objetivo: 3, credential_ref: nvidia/wow-maxbry}
+  G4: {objetivo: 4, credential_ref: nvidia/wow-brisa}
+
+plantilla_ask_consul:
+  goal_entrada: ""
+  goal_salida: ""
+  analisis_arquitectura: "cada modelo de la cascada analiza ANTES de ejecutar"
+  decision: "consenso; si no hay consenso, BANDERA"
+  anotar_en: bitacora
+
+plantilla_nodo:
+  pasos: [ask_consul, ejecuta, audita, repara, evidencia, bitacora]
+  pass_requiere: [ruta_y_sha, test_real_o_run_id, evidence_sha256, read_back]
+
+nodos:
+  - {id: P1-XRAY, objetivo: 1, grupo: G1, ejecuta: claude_code, audita: codex, salida: "X-Ray forense de toda la raiz de Core kernel Yaiwes, componente por componente", archivo: "Claude notas/PLAN-OPUS/XRAY-CORE-KERNEL-YAIWES.md", plantilla: "Claude notas/VERBATIM-01-node-executor-xray-v2.md", depende: []}
+  - {id: O1-S1, objetivo: 1, grupo: G1, ejecuta: claude_code, audita: codex, salida: S1, estado: HECHO, evidencia: "INVENTARIO-FORENSE-agent_sources.md"}
+  - {id: O1-S2, objetivo: 1, grupo: G1, ejecuta: claude_code, audita: codex, salida: S2, estado: HECHO, evidencia: "commit 336d6a9e35d0f49e09e1a48849937f68f330b367"}
+  - {id: O1-S3, objetivo: 1, grupo: G1, ejecuta: claude_code, audita: codex, salida: "S3 skills a DSL DAG schema", depende: []}
+  - {id: O1-CIERRE, objetivo: 1, grupo: G1, ejecuta: claude_code, audita: codex, salida: "auditoria Wordflow metodo Meta (Sol GPT)", archivo: "Claude notas/PLAN-OPUS/AUDITORIA-WORDFLOW-OBJETIVO-1.md", depende: [P1-XRAY, O1-S3]}
+
+  - {id: O2-S4, objetivo: 2, grupo: G2, ejecuta: opencode, audita: openhands, repara: meta_code, salida: "S4 doble raiz", depende: []}
+  - {id: O2-S5, objetivo: 2, grupo: G2, ejecuta: opencode, audita: openhands, repara: meta_code, salida: "S5 gaps kernel Wordflow (checkpoint durable primero)", depende: []}
+  - {id: O2-S6, objetivo: 2, grupo: G2, ejecuta: opencode, audita: openhands, repara: meta_code, salida: "S6 frontend visualizable", depende: [O2-S5]}
+  - {id: O2-CIERRE, objetivo: 2, grupo: G2, ejecuta: opencode, audita: openhands, repara: meta_code, salida: "auditoria Wordflow metodo Meta", archivo: "Claude notas/PLAN-OPUS/AUDITORIA-WORDFLOW-OBJETIVO-2.md", depende: [O2-S4, O2-S5, O2-S6]}
+
+  - {id: O3-S7, objetivo: 3, grupo: G3, ejecuta: opencode, audita: openhands, repara: meta_code, salida: "S7 gaps Seals Team", depende: [O2-S5], si_bloqueado: BANDERA_Y_SEGUIR}
+  - {id: O3-S8, objetivo: 3, grupo: G3, ejecuta: opencode, audita: openhands, repara: meta_code, salida: "S8 grupos 1 y 2 + cierre verificado", depende: [O3-S7]}
+  - {id: O3-CIERRE, objetivo: 3, grupo: G3, ejecuta: opencode, audita: openhands, repara: meta_code, salida: "auditoria Wordflow + cierre Seals Team metodo Meta", archivo: ["Claude notas/PLAN-OPUS/AUDITORIA-WORDFLOW-OBJETIVO-3.md", "Claude notas/PLAN-OPUS/AUDITORIA-CIERRE-SEALS-TEAM-YAIWES.md"], depende: [O3-S8]}
+
+  - {id: O4-S9, objetivo: 4, grupo: G4, ejecuta: opencode, audita: openhands, repara: meta_code, salida: "S9 adapters capa de control", depende: [O1-S1]}
+  - {id: O4-S10, objetivo: 4, grupo: G4, ejecuta: opencode, audita: openhands, repara: meta_code, salida: "S10 motor durable + 50 mundos", depende: [O4-S9], si_bloqueado: BANDERA_Y_SEGUIR}
+  - {id: O4-CIERRE, objetivo: 4, grupo: G4, ejecuta: opencode, audita: openhands, repara: meta_code, salida: "auditoria Wordflow + cierre Orquestador Comandante metodo Meta", archivo: ["Claude notas/PLAN-OPUS/AUDITORIA-WORDFLOW-OBJETIVO-4.md", "Claude notas/PLAN-OPUS/AUDITORIA-CIERRE-ORQUESTADOR-COMANDANTE.md"], depende: [O4-S10]}
+
+bucle_final:
+  accion: "recorrer nodos con BANDERA; si su dependencia ya esta en PASS, ejecutar; si no, seguir con BANDERA"
+  revisa: claude
+
+bloqueo_global:
+  - {id: B-001, motivo: "banco-nvidia-equipo.b64 y contrasena del Director no disponibles", bloquea: "toda llamada a modelo"}
