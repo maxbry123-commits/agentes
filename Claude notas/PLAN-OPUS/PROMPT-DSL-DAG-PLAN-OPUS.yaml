@@ -11,19 +11,37 @@ prompt_sistema: |
   Antes de cada nodo: plantilla ask_consul. Despues: entrada en la bitacora.
   Nunca pidas ni escribas claves: usa credential_ref del grupo.
   Si estas bloqueado: BANDERA, anota, pasa al siguiente nodo, vuelve en bucle al final.
+  Una sola raiz: todo se construye dentro de la raiz del Wordflow loop code Yaiwes.
+  Nada desde cero: usa los componentes ya descargados y los motores de descarga y extraccion.
+
+# Los 4 objetivos, palabras del Director (2026-09-21):
+objetivos:
+  1: "Descarga de componentes usando los motores de descarga y extraccion"
+  2: "Terminar lo pendiente del Wordflow loop code Yaiwes: ubicar los componentes y todas las integraciones y hacer que funcione"
+  3: "Crear el agente Seals Team YAIWES dentro de la misma raiz del Wordflow loop code Yaiwes, bajo las indicaciones ya especificadas, con los agentes funcionando"
+  4: "Crear el agente Orquestador Comand Center bajo las especificaciones ordenadas"
+raiz_unica: "➡️\U0001F4C2 wordflow loop code Yaiwes"
 
 bitacora: Claude notas/PLAN-OPUS/CRAZY-WALL-BITACORA-PLAN-OPUS.json
 
 router:
   norma: el router dicta clave y modelo
-  cascada_ask_consul: [moonshotai/kimi-k3, nvidia/nemotron-3-super-120b-a12b, z-ai/glm-5.3-flash, deepseek-ai/deepseek-v4-flash-0731, minimax-m3-via-huggingface]
+  cascada_ask_consul: [moonshotai/kimi-k3, nvidia/nemotron-3-super-120b-a12b, z-ai/glm-5.3-flash, deepseek-ai/deepseek-v4-flash-0731, kimi-k2-via-huggingface, minimax-m3-via-huggingface]
+  modelo_agentes: nvidia/nemotron-3-super-120b-a12b
   nota_evidencia: bajo carga solo nemotron aguanta en NVIDIA; kimi y glm mejor por Hugging Face
+  nota_kimi_k2: "Kimi K2 pedido por el Director; en NVIDIA kimi-k2.6 da 404, va por Hugging Face (falta token HF)"
+
+ejecucion:
+  runner: "Claude notas/PLAN-OPUS/runner/plan_opus_loop.py"
+  workflow: ".github/workflows/plan-opus-loop.yml (boton manual por grupo)"
+  cola_durable: "coda workflow persistencias / Fables enchufe universal / yaiwes_coda_persistence_v8.py (SQLiteDurableStore)"
+  salvaguardas: "agentes con protecciones puestas; cada vuelta abre un PR que aprueba el Director; nada entra directo a main"
 
 grupos:
-  G1: {objetivo: 1, credential_ref: nvidia/digi-maxbry}
-  G2: {objetivo: 2, credential_ref: nvidia/movistar-briseida}
-  G3: {objetivo: 3, credential_ref: nvidia/wow-maxbry}
-  G4: {objetivo: 4, credential_ref: nvidia/wow-brisa}
+  G1: {objetivo: 1, credential_ref: nvidia/digi-maxbry, rutas: ["➡️\U0001F4C2motores de descarga extracción copiado movimiento archivos agentes", "➡️\U0001F4C2 wordflow loop code Yaiwes/wordflow_loop/agent_sources", "Core kernel Yaiwes", "Skills agente"]}
+  G2: {objetivo: 2, credential_ref: nvidia/movistar-briseida, rutas: ["➡️\U0001F4C2 wordflow loop code Yaiwes/backend", "Core kernel Yaiwes"]}
+  G3: {objetivo: 3, credential_ref: nvidia/wow-maxbry, rutas: ["➡️\U0001F4C2 wordflow loop code Yaiwes/backend"]}
+  G4: {objetivo: 4, credential_ref: nvidia/wow-brisa, rutas: ["➡️\U0001F4C2 wordflow loop code Yaiwes/backend", "Core kernel Yaiwes"]}
 
 plantilla_ask_consul:
   goal_entrada: ""
@@ -40,8 +58,9 @@ nodos:
   - {id: P1-XRAY, objetivo: 1, grupo: G1, ejecuta: claude_code, audita: codex, salida: "X-Ray forense de toda la raiz de Core kernel Yaiwes, componente por componente", archivo: "Claude notas/PLAN-OPUS/XRAY-CORE-KERNEL-YAIWES.md", plantilla: "Claude notas/VERBATIM-01-node-executor-xray-v2.md", depende: []}
   - {id: O1-S1, objetivo: 1, grupo: G1, ejecuta: claude_code, audita: codex, salida: S1, estado: HECHO, evidencia: "INVENTARIO-FORENSE-agent_sources.md"}
   - {id: O1-S2, objetivo: 1, grupo: G1, ejecuta: claude_code, audita: codex, salida: S2, estado: HECHO, evidencia: "commit 336d6a9e35d0f49e09e1a48849937f68f330b367"}
+  - {id: O1-DESCARGA, objetivo: 1, grupo: G1, ejecuta: claude_code, audita: codex, salida: "Descargar los componentes que falten usando los motores de descarga y extraccion ya existentes (no scripts nuevos). Listar faltantes contra INVENTARIO-FORENSE-agent_sources.md y el plan; cada descarga con manifest y sha", archivo: "Claude notas/PLAN-OPUS/DESCARGAS-OBJETIVO-1.md", depende: [O1-S1]}
   - {id: O1-S3, objetivo: 1, grupo: G1, ejecuta: claude_code, audita: codex, salida: "S3 skills a DSL DAG schema", depende: []}
-  - {id: O1-CIERRE, objetivo: 1, grupo: G1, ejecuta: claude_code, audita: codex, salida: "auditoria Wordflow metodo Meta (Sol GPT)", archivo: "Claude notas/PLAN-OPUS/AUDITORIA-WORDFLOW-OBJETIVO-1.md", depende: [P1-XRAY, O1-S3]}
+  - {id: O1-CIERRE, objetivo: 1, grupo: G1, ejecuta: claude_code, audita: codex, salida: "auditoria Wordflow metodo Meta (Sol GPT)", archivo: "Claude notas/PLAN-OPUS/AUDITORIA-WORDFLOW-OBJETIVO-1.md", depende: [P1-XRAY, O1-DESCARGA, O1-S3]}
 
   - {id: O2-S4, objetivo: 2, grupo: G2, ejecuta: opencode, audita: openhands, repara: meta_code, salida: "S4 doble raiz", depende: []}
   - {id: O2-S5, objetivo: 2, grupo: G2, ejecuta: opencode, audita: openhands, repara: meta_code, salida: "S5 gaps kernel Wordflow (checkpoint durable primero)", depende: []}
