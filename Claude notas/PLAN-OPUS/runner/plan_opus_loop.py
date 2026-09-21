@@ -45,7 +45,12 @@ MAX_ATTEMPTS = 20                                    # R08 gap ladder
 AGENT_TIMEOUT = int(os.environ.get("PLAN_OPUS_AGENT_TIMEOUT", "1500"))
 
 sys.path.insert(0, str(CODA))
+sys.path.insert(0, str(HERE))
 from yaiwes_coda_persistence_v8 import SQLiteDurableStore  # noqa: E402  (motor de Fables)
+import sonda_apis  # noqa: E402  (salud de APIs: NVIDIA / Cerebras / Groq)
+
+BASE = NVIDIA                                        # proveedor activo; lo fija main() segun el DAG
+SALUD = PLAN / "estado" / "SALUD-APIS.json"
 
 
 def now() -> str:
@@ -119,7 +124,7 @@ def resolve_key(credential_ref: str) -> str | None:
 
 def chat(key: str, model: str, prompt: str, max_tokens: int = 900, timeout: float = 90) -> str:
     body = {"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens}
-    req = urllib.request.Request(NVIDIA + "/chat/completions", data=json.dumps(body).encode(), method="POST",
+    req = urllib.request.Request(BASE + "/chat/completions", data=json.dumps(body).encode(), method="POST",
                                  headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310
         data = json.loads(r.read().decode())
@@ -158,7 +163,7 @@ def _llm_proxy(key: str, model: str) -> subprocess.Popen:
     """LiteLLM expone formato Anthropic para que Claude Code use el modelo del router."""
     cfg = Path(tempfile.mkdtemp()) / "litellm.yaml"
     cfg.write_text(yaml.safe_dump({"model_list": [{"model_name": "*", "litellm_params": {
-        "model": "openai/" + model, "api_base": NVIDIA, "api_key": "os.environ/NVIDIA_API_KEY"}}]}))
+        "model": "openai/" + model, "api_base": BASE, "api_key": "os.environ/NVIDIA_API_KEY"}}]}))
     proc = subprocess.Popen(["litellm", "--config", str(cfg), "--port", "4000"],
                             env={**os.environ, "NVIDIA_API_KEY": key},
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -173,9 +178,8 @@ def _llm_proxy(key: str, model: str) -> subprocess.Popen:
 
 
 def run_agent(agente: str, prompt: str, key: str, model: str, log: Path) -> int:
-    env = {**os.environ, "NVIDIA_API_KEY": key}
-    for k in ("RIU_TEAM_BANK_B64", "RIU_TEAM_BANK_PASSPHRASE"):
-        env.pop(k, None)                              # el agente nunca ve el banco
+    env = {k: v for k, v in os.environ.items() if "API_KEY" not in k and "RIU_TEAM_BANK" not in k}
+    env["NVIDIA_API_KEY"] = key                       # solo la clave de su grupo; nunca el banco ni otras claves
     # SALVAGUARDAS: ningun agente corre con las protecciones apagadas. Solo leen/editan
     # archivos y corren tests; sin shell libre ni red propia. Todo cambio termina en un PR
     # que aprueba el Director (ver workflow), nunca directo en main.
@@ -191,7 +195,7 @@ def run_agent(agente: str, prompt: str, key: str, model: str, log: Path) -> int:
         home.mkdir(exist_ok=True)
         (home / "config.toml").write_text(
             f'model = "{model}"\nmodel_provider = "nvidia"\n\n[model_providers.nvidia]\n'
-            f'name = "NVIDIA"\nbase_url = "{NVIDIA}"\nenv_key = "NVIDIA_API_KEY"\nwire_api = "chat"\n')
+            f'name = "router"\nbase_url = "{BASE}"\nenv_key = "NVIDIA_API_KEY"\nwire_api = "chat"\n')
         cmd = ["codex", "exec", "--skip-git-repo-check", "--sandbox", "workspace-write", prompt]
     elif agente in ("opencode", "meta_code"):
         cfg = Path.home() / ".config" / "opencode"
@@ -202,12 +206,12 @@ def run_agent(agente: str, prompt: str, key: str, model: str, log: Path) -> int:
                            "bash": {"*": "deny", "python -m pytest*": "allow", "pytest*": "allow",
                                     "git status*": "allow", "git diff*": "allow"}},
             "provider": {"nvidia": {"npm": "@ai-sdk/openai-compatible", "name": "NVIDIA",
-                                    "options": {"baseURL": NVIDIA, "apiKey": "{env:NVIDIA_API_KEY}"},
+                                    "options": {"baseURL": BASE, "apiKey": "{env:NVIDIA_API_KEY}"},
                                     "models": {model: {}}}}}))
         cmd = ["opencode", "run", "-m", f"nvidia/{model}", prompt]
     elif agente == "openhands":
         # runtime docker (por defecto): los comandos de OpenHands corren dentro de un contenedor aislado
-        env.update(LLM_MODEL="openai/" + model, LLM_BASE_URL=NVIDIA, LLM_API_KEY=key,
+        env.update(LLM_MODEL="openai/" + model, LLM_BASE_URL=BASE, LLM_API_KEY=key,
                    SANDBOX_VOLUMES=f"{REPO}:/workspace:rw")
         cmd = [sys.executable, "-m", "openhands.core.main", "-t", prompt]
     else:
@@ -370,6 +374,39 @@ def aplicar_centro_de_control(nodes: dict, store: SQLiteDurableStore) -> set[str
                         for x in ordenes)}
 
 
+# ---------------------------------------------------------------- sonda + mini router
+def sonda_y_router(dag: dict) -> tuple[dict, str, dict]:
+    """Valida las APIs, guarda SALUD-APIS.json y decide proveedor/modelo/cascada de esta vuelta."""
+    global BASE
+    refs = [g["credential_ref"] for g in dag["grupos"].values()]
+    fuentes = {"nvidia": [(r, k) for r in refs if (k := resolve_key(r))]}
+    for prov, pref in (("cerebras", "CEREBRAS_API_KEY"), ("groq", "GROQ_API_KEY")):
+        fuentes[prov] = [(n, v) for n, v in sorted(os.environ.items()) if n.startswith(pref) and v]
+    salud = sonda_apis.sondear(fuentes, {"nvidia": dag["router"]["modelo_agentes"]})
+    SALUD.parent.mkdir(parents=True, exist_ok=True)
+    SALUD.write_text(json.dumps({"fecha": now(), "run_id": os.environ.get("GITHUB_RUN_ID"), "proveedores": salud},
+                                ensure_ascii=False, indent=2), encoding="utf-8")
+    prov = dag["router"].get("proveedor_agentes", "nvidia")
+    router = dict(dag["router"])
+    if prov != "nvidia" and salud[prov]["estado"] == "OK":        # el router cambia de proveedor si el DAG lo dicta
+        router["modelo_agentes"] = salud[prov]["recomendado"]
+        router["cascada_ask_consul"] = [p["modelo"] for p in salud[prov]["pruebas"] if p["pass"]]
+    BASE = sonda_apis.BASES[prov]
+    resumen = {p: f"{s['estado']} modelo={s['recomendado']} claves_ok={len(s.get('claves_ok', []))}" for p, s in salud.items()}
+    bitacora_append({"objetivo": "0", "nodo": "SONDA-APIS", "agente": "router", "grupo_credential_ref": None,
+                     "modelo": router["modelo_agentes"], "ask_consul": None,
+                     "accion": f"sonda de APIs; proveedor de agentes = {prov}; {resumen}",
+                     "estado": "PASS" if salud[prov]["estado"] == "OK" else "BANDERA",
+                     "evidencia": {"rutas": [str(SALUD.relative_to(REPO))], "sha": [],
+                                   "run_id": os.environ.get("GITHUB_RUN_ID"), "sha256": sha256_file(SALUD)},
+                     "bandera_motivo": None if salud[prov]["estado"] == "OK" else f"{prov}: {salud[prov]['estado']}",
+                     "revision_claude": None})
+    envs = {n: v for n, v in os.environ.items()}
+    claves = {r: k for r, k in fuentes["nvidia"]} if prov == "nvidia" else \
+        {"*": envs[salud[prov]["claves_ok"][0]]} if salud[prov].get("claves_ok") else {}
+    return router, prov, claves
+
+
 # ---------------------------------------------------------------- loop
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -392,6 +429,7 @@ def main() -> int:
             store.finish_queue(n["id"], True)
 
     pausados = aplicar_centro_de_control(nodes, store)
+    router, prov, claves = sonda_y_router(dag)
 
     def done(nid: str) -> bool:
         st = store.queue_state(nid)
@@ -413,10 +451,10 @@ def main() -> int:
                     bandera(n, grupo, n["ejecuta"], f"dependencia pendiente: {', '.join(faltan)}")
             if not listos:
                 continue
-            key = resolve_key(grupo["credential_ref"])
+            key = claves.get(grupo["credential_ref"]) or claves.get("*")
             if not key:
                 for n in listos:
-                    bandera(n, grupo, n["ejecuta"], "B-001: banco NVIDIA o contrasena no disponibles en este entorno")
+                    bandera(n, grupo, n["ejecuta"], f"B-001: sin clave valida de {prov} en este entorno (ver estado/SALUD-APIS.json)")
                 continue
             print(f"::add-mask::{key}")
             for n in listos[: args.max_nodos - len(hechos)]:
@@ -424,7 +462,7 @@ def main() -> int:
                 if not job:
                     continue
                 try:
-                    estado = run_node(n, grupo, dag["router"], dag["prompt_sistema"], handoff, key)
+                    estado = run_node(n, grupo, router, dag["prompt_sistema"], handoff, key)
                 except Exception as exc:  # noqa: BLE001 - un nodo roto no para el loop
                     bandera(n, grupo, n["ejecuta"], f"error del runner: {type(exc).__name__}: {str(exc)[:200]}")
                     estado = "BANDERA"
