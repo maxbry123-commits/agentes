@@ -1,0 +1,112 @@
+{
+  "fecha": "2026-09-21T13:16:06Z",
+  "run_id": "35604237285",
+  "proveedores": {
+    "nvidia": {
+      "base_url": "https://integrate.api.nvidia.com/v1",
+      "claves": [],
+      "catalogo_qwen_gptoss": [],
+      "pruebas": [],
+      "recomendado": null,
+      "estado": "SIN_CLAVES"
+    },
+    "cerebras": {
+      "base_url": "https://api.cerebras.ai/v1",
+      "claves": [],
+      "catalogo_qwen_gptoss": [],
+      "pruebas": [],
+      "recomendado": null,
+      "estado": "SIN_CLAVES"
+    },
+    "groq": {
+      "base_url": "https://api.groq.com/openai/v1",
+      "claves": [
+        {
+          "nombre": "GROQ_API_KEY_1",
+          "http": 401,
+          "valida": false
+        },
+        {
+          "nombre": "GROQ_API_KEY_2",
+          "http": 200,
+          "valida": true
+        },
+        {
+          "nombre": "GROQ_API_KEY_3",
+          "http": 200,
+          "valida": true
+        },
+        {
+          "nombre": "GROQ_API_KEY_4",
+          "http": 200,
+          "valida": true
+        },
+        {
+          "nombre": "GROQ_API_KEY_5",
+          "http": 200,
+          "valida": true
+        },
+        {
+          "nombre": "GROQ_API_KEY_6",
+          "http": 200,
+          "valida": true
+        },
+        {
+          "nombre": "GROQ_API_KEY_7",
+          "http": 200,
+          "valida": true
+        }
+      ],
+      "catalogo_qwen_gptoss": [
+        "openai/gpt-oss-safeguard-20b",
+        "openai/gpt-oss-120b",
+        "qwen/qwen3.8-27b",
+        "openai/gpt-oss-20b"
+      ],
+      "pruebas": [
+        {
+          "modelo": "openai/gpt-oss-safeguard-20b",
+          "clave": "GROQ_API_KEY_2",
+          "http": 200,
+          "ms": 249,
+          "pass": true,
+          "motivo": "PASS_OBJETIVO"
+        },
+        {
+          "modelo": "openai/gpt-oss-120b",
+          "clave": "GROQ_API_KEY_3",
+          "http": 200,
+          "ms": 262,
+          "pass": true,
+          "motivo": "PASS_OBJETIVO"
+        },
+        {
+          "modelo": "qwen/qwen3.8-27b",
+          "clave": "GROQ_API_KEY_4",
+          "http": 200,
+          "ms": 117,
+          "pass": true,
+          "motivo": "PASS_OBJETIVO"
+        },
+        {
+          "modelo": "openai/gpt-oss-20b",
+          "clave": "GROQ_API_KEY_5",
+          "http": 200,
+          "ms": 246,
+          "pass": true,
+          "motivo": "PASS_OBJETIVO"
+        }
+      ],
+      "recomendado": "qwen/qwen3.8-27b",
+      "estado": "OK",
+      "claves_ok": [
+        "GROQ_API_KEY_2",
+        "GROQ_API_KEY_3",
+        "GROQ_API_KEY_4",
+        "GROQ_API_KEY_5",
+        "GROQ_API_KEY_6",
+        "GROQ_API_KEY_7"
+      ]
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "goal_entrada": "Nodo P1-XRAY objetivo 1: X-Ray forense de toda la raiz de Core kernel Yaiwes, componente por componente",
+  "goal_salida": "Entrega verificable: Claude notas/PLAN-OPUS/XRAY-CORE-KERNEL-YAIWES.md; PASS solo con evidencia real.",
+  "modelos_consultados": [
+    {
+      "modelo": "openai/gpt-oss-safeguard-20b",
+      "error": "HTTPError"
+    },
+    {
+      "modelo": "openai/gpt-oss-120b",
+      "error": "HTTPError"
+    },
+    {
+      "modelo": "qwen/qwen3.8-27b",
+      "error": "HTTPError"
+    },
+    {
+      "modelo": "openai/gpt-oss-20b",
+      "error": "HTTPError"
+    }
+  ],
+  "decision_consenso": null
+}

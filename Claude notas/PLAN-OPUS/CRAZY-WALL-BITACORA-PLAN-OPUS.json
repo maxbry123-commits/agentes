@@ -17,21 +17,60 @@
     "agente": "claude_code | codex | opencode | openhands | meta_code | ask_consul | claude",
     "grupo_credential_ref": "nvidia/...",
     "modelo": "",
-    "ask_consul": {"goal_entrada": "", "goal_salida": "", "modelos_consultados": [], "decision_consenso": ""},
+    "ask_consul": {
+      "goal_entrada": "",
+      "goal_salida": "",
+      "modelos_consultados": [],
+      "decision_consenso": ""
+    },
     "accion": "",
     "estado": "PLANEADO | EN_CURSO | PASS | GAP | BANDERA",
-    "evidencia": {"rutas": [], "sha": [], "run_id": null, "sha256": null},
+    "evidencia": {
+      "rutas": [],
+      "sha": [],
+      "run_id": null,
+      "sha256": null
+    },
     "bandera_motivo": null,
     "revision_claude": null
   },
   "estado_grupos": {
-    "grupo_objetivo_1": {"credential_ref": "nvidia/digi-maxbry", "ejecuta": "claude_code", "audita": "codex", "estado": "WAITING_SIGNAL"},
-    "grupo_objetivo_2": {"credential_ref": "nvidia/movistar-briseida", "ejecuta": "opencode", "audita": "openhands", "repara": "meta_code", "estado": "WAITING_SIGNAL"},
-    "grupo_objetivo_3": {"credential_ref": "nvidia/wow-maxbry", "ejecuta": "opencode", "audita": "openhands", "repara": "meta_code", "estado": "WAITING_SIGNAL"},
-    "grupo_objetivo_4": {"credential_ref": "nvidia/wow-brisa", "ejecuta": "opencode", "audita": "openhands", "repara": "meta_code", "estado": "WAITING_SIGNAL"}
+    "grupo_objetivo_1": {
+      "credential_ref": "nvidia/digi-maxbry",
+      "ejecuta": "claude_code",
+      "audita": "codex",
+      "estado": "WAITING_SIGNAL"
+    },
+    "grupo_objetivo_2": {
+      "credential_ref": "nvidia/movistar-briseida",
+      "ejecuta": "opencode",
+      "audita": "openhands",
+      "repara": "meta_code",
+      "estado": "WAITING_SIGNAL"
+    },
+    "grupo_objetivo_3": {
+      "credential_ref": "nvidia/wow-maxbry",
+      "ejecuta": "opencode",
+      "audita": "openhands",
+      "repara": "meta_code",
+      "estado": "WAITING_SIGNAL"
+    },
+    "grupo_objetivo_4": {
+      "credential_ref": "nvidia/wow-brisa",
+      "ejecuta": "opencode",
+      "audita": "openhands",
+      "repara": "meta_code",
+      "estado": "WAITING_SIGNAL"
+    }
   },
   "banderas_abiertas": [
-    {"id": "B-001", "motivo": "banco-nvidia-equipo.b64 no esta en ningun repo y falta la contrasena del Director. Ningun grupo puede llamar a NVIDIA hasta tenerlo.", "bloquea": ["todos los nodos con modelo"]}
+    {
+      "id": "B-001",
+      "motivo": "banco-nvidia-equipo.b64 no esta en ningun repo y falta la contrasena del Director. Ningun grupo puede llamar a NVIDIA hasta tenerlo.",
+      "bloquea": [
+        "todos los nodos con modelo"
+      ]
+    }
   ],
   "entradas": [
     {
@@ -45,7 +84,16 @@
       "ask_consul": null,
       "accion": "Montado PLAN-OPUS: handoff, esta bitacora, memoria por agente (5), prompt DSL DAG. Swaps a aider/smolagents anulados; equipo = los 5 del Director.",
       "estado": "PASS",
-      "evidencia": {"rutas": ["Claude notas/PLAN-OPUS/HANDOFF-PLAN-OPUS.md"], "sha": ["d5300f7c811736b7a48e318b1b54a6efd0d10d79"], "run_id": null, "sha256": null},
+      "evidencia": {
+        "rutas": [
+          "Claude notas/PLAN-OPUS/HANDOFF-PLAN-OPUS.md"
+        ],
+        "sha": [
+          "d5300f7c811736b7a48e318b1b54a6efd0d10d79"
+        ],
+        "run_id": null,
+        "sha256": null
+      },
       "bandera_motivo": null,
       "revision_claude": "Montaje en papel. Ningun agente ha ejecutado todavia."
     },
@@ -60,9 +108,100 @@
       "ask_consul": null,
       "accion": "Test real del proveedor desde Actions (wordflow-groq-test.yml). No es NVIDIA; el Director pidio solo NVIDIA.",
       "estado": "PASS",
-      "evidencia": {"rutas": ["seals_core/tests/evidencia_runs/ultimo_run_console.txt"], "sha": ["c0dbdabe1785f6fa3fb51c4e988ad679d2acc8d3"], "run_id": 35557704586, "sha256": null},
+      "evidencia": {
+        "rutas": [
+          "seals_core/tests/evidencia_runs/ultimo_run_console.txt"
+        ],
+        "sha": [
+          "c0dbdabe1785f6fa3fb51c4e988ad679d2acc8d3"
+        ],
+        "run_id": 35557704586,
+        "sha256": null
+      },
       "bandera_motivo": null,
       "revision_claude": "Prueba el camino kernel -> LLM real. GROQ_API_KEY_1 da 401."
+    },
+    {
+      "id": "E-0003",
+      "fecha": "2026-09-21T13:16:04Z",
+      "objetivo": "1",
+      "nodo": "P1-XRAY",
+      "agente": "centro_control",
+      "grupo_credential_ref": null,
+      "modelo": null,
+      "ask_consul": null,
+      "accion": "orden C-0001 REVISION de director: Centro de control activado. Primera vuelta: X-Ray del Core kernel y descarga de componentes del Objetivo 1.",
+      "estado": "APLICADA",
+      "evidencia": {
+        "rutas": [],
+        "sha": [],
+        "run_id": "35604237285",
+        "sha256": null
+      },
+      "bandera_motivo": null,
+      "revision_claude": "Centro de control activado. Primera vuelta: X-Ray del Core kernel y descarga de componentes del Objetivo 1."
+    },
+    {
+      "id": "E-0004",
+      "fecha": "2026-09-21T13:16:06Z",
+      "objetivo": "0",
+      "nodo": "SONDA-APIS",
+      "agente": "router",
+      "grupo_credential_ref": null,
+      "modelo": "qwen/qwen3.8-27b",
+      "ask_consul": null,
+      "accion": "sonda de APIs; proveedor de agentes = groq; {'nvidia': 'SIN_CLAVES modelo=None claves_ok=0', 'cerebras': 'SIN_CLAVES modelo=None claves_ok=0', 'groq': 'OK modelo=qwen/qwen3.8-27b claves_ok=6'}",
+      "estado": "PASS",
+      "evidencia": {
+        "rutas": [
+          "Claude notas/PLAN-OPUS/estado/SALUD-APIS.json"
+        ],
+        "sha": [],
+        "run_id": "35604237285",
+        "sha256": "08b3c18fdfbfcf8aab25e45a8e6ef235339ba1d1699758714ee6942724aa5b5f"
+      },
+      "bandera_motivo": null,
+      "revision_claude": null
+    },
+    {
+      "id": "E-0005",
+      "fecha": "2026-09-21T13:16:06Z",
+      "objetivo": "1",
+      "nodo": "O1-CIERRE",
+      "agente": "claude_code",
+      "grupo_credential_ref": "nvidia/digi-maxbry",
+      "modelo": null,
+      "ask_consul": null,
+      "accion": "auditoria Wordflow metodo Meta (Sol GPT)",
+      "estado": "BANDERA",
+      "evidencia": {
+        "rutas": [],
+        "sha": [],
+        "run_id": "35604237285",
+        "sha256": null
+      },
+      "bandera_motivo": "dependencia pendiente: P1-XRAY, O1-DESCARGA, O1-S3",
+      "revision_claude": null
+    },
+    {
+      "id": "E-0006",
+      "fecha": "2026-09-21T13:54:01Z",
+      "objetivo": "1",
+      "nodo": "P1-XRAY",
+      "agente": "ask_consul",
+      "grupo_credential_ref": "nvidia/digi-maxbry",
+      "modelo": null,
+      "ask_consul": null,
+      "accion": "X-Ray forense de toda la raiz de Core kernel Yaiwes, componente por componente",
+      "estado": "BANDERA",
+      "evidencia": {
+        "rutas": [],
+        "sha": [],
+        "run_id": "35604237285",
+        "sha256": null
+      },
+      "bandera_motivo": "sin consenso: menos de 2 modelos respondieron",
+      "revision_claude": null
     }
   ]
 }
