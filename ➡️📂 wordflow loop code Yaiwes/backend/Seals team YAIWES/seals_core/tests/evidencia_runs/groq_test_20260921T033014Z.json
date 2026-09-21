@@ -1,0 +1,94 @@
+{
+  "timestamp_utc": "2026-09-21T03:30:12.052301Z",
+  "keys_presentes": [
+    "GROQ_API_KEY_1",
+    "GROQ_API_KEY_2",
+    "GROQ_API_KEY_3",
+    "GROQ_API_KEY_4",
+    "GROQ_API_KEY_5",
+    "GROQ_API_KEY_6",
+    "GROQ_API_KEY_7"
+  ],
+  "keys_faltantes": [],
+  "diagnostico_keys": [
+    {
+      "key": "GROQ_API_KEY_1",
+      "http_status": 401,
+      "valida": false
+    },
+    {
+      "key": "GROQ_API_KEY_2",
+      "http_status": 200,
+      "valida": true
+    },
+    {
+      "key": "GROQ_API_KEY_3",
+      "http_status": 200,
+      "valida": true
+    },
+    {
+      "key": "GROQ_API_KEY_4",
+      "http_status": 200,
+      "valida": true
+    },
+    {
+      "key": "GROQ_API_KEY_5",
+      "http_status": 200,
+      "valida": true
+    },
+    {
+      "key": "GROQ_API_KEY_6",
+      "http_status": 200,
+      "valida": true
+    },
+    {
+      "key": "GROQ_API_KEY_7",
+      "http_status": 200,
+      "valida": true
+    }
+  ],
+  "resultados": [
+    {
+      "modelo": "openai/gpt-oss-120b",
+      "key_usada": "GROQ_API_KEY_2",
+      "http_status": 200,
+      "pass": true,
+      "motivo": "PASS_OBJETIVO",
+      "sha256_evidencia": "682a639e6bf468e30035aeb648604a07db9d339f0280a5521a9dddda9830096a"
+    },
+    {
+      "modelo": "openai/gpt-oss-20b",
+      "key_usada": "GROQ_API_KEY_3",
+      "http_status": 200,
+      "pass": true,
+      "motivo": "PASS_OBJETIVO",
+      "sha256_evidencia": "c73c4cdbc6c57d753715dcb1e5ac0838f7841d52d0dd98e8e6cc9981f911faad"
+    },
+    {
+      "modelo": "groq/compound",
+      "key_usada": "GROQ_API_KEY_4",
+      "http_status": 200,
+      "pass": true,
+      "motivo": "PASS_OBJETIVO",
+      "sha256_evidencia": "1f592ebf3023e125d4e02567b7553e766f2f068d2456b2ab936e6c0c35571465"
+    }
+  ],
+  "catalogo_real_detectado": [
+    "qwen/qwen3.8-27b",
+    "openai/gpt-oss-safeguard-20b",
+    "openai/gpt-oss-20b",
+    "openai/gpt-oss-120b",
+    "canopylabs/orpheus-v1-english",
+    "allam-2-7b",
+    "groq/compound",
+    "whisper-large-v3-turbo",
+    "groq/compound-mini",
+    "canopylabs/orpheus-arabic-saudi",
+    "meta-llama/llama-prompt-guard-2-22m",
+    "whisper-large-v3",
+    "meta-llama/llama-prompt-guard-2-86m"
+  ],
+  "modelos_fuera_de_catalogo": [],
+  "veredicto_final": "PASS",
+  "keys_ejercitadas_count": 3
+}
