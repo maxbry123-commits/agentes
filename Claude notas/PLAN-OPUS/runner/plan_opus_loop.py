@@ -362,7 +362,9 @@ def aplicar_centro_de_control(nodes: dict, store: SQLiteDurableStore) -> set[str
                          "estado": resultado, "evidencia": {"rutas": [], "sha": [], "run_id": os.environ.get("GITHUB_RUN_ID"), "sha256": None},
                          "bandera_motivo": None,
                          "revision_claude": o.get("texto") if tipo == "REVISION" else None})
-    CONTROL.write_text(yaml.safe_dump(ctl, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    raw = CONTROL.read_text(encoding="utf-8").splitlines(keepends=True)
+    cabecera = "".join(ln for ln in raw[: next((i for i, ln in enumerate(raw) if ln.strip() and not ln.startswith("#")), len(raw))])
+    CONTROL.write_text(cabecera + yaml.safe_dump(ctl, allow_unicode=True, sort_keys=False), encoding="utf-8")  # conserva instrucciones
     return {o["nodo"] for o in ordenes if o.get("tipo") == "PAUSAR" and o.get("estado") == "APLICADA"
             and not any(x.get("tipo") == "REACTIVAR" and x.get("nodo") == o["nodo"] and x.get("aplicada", "") > o.get("aplicada", "")
                         for x in ordenes)}
