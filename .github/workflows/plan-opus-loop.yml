@@ -1,0 +1,98 @@
+name: Plan Opus - loop de agentes
+
+# Loop del plan de 4 objetivos: centro de control -> Ask Consul -> ejecuta -> audita ->
+# repara -> evidencia -> bitacora. Runner: Claude notas/PLAN-OPUS/runner/plan_opus_loop.py
+# SALVAGUARDAS: solo se lanza a mano; los agentes corren con sus protecciones puestas;
+# el resultado de cada vuelta llega como PR y el Director decide el merge (nada directo a main).
+
+on:
+  workflow_dispatch:
+    inputs:
+      grupo:
+        description: "Grupo a ejecutar (G1=obj1 ... G4=obj4, all=los 4)"
+        type: choice
+        options: [all, G1, G2, G3, G4]
+        default: all
+      max_nodos:
+        description: "Nodos por grupo en esta vuelta"
+        default: "1"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: plan-opus-loop
+  cancel-in-progress: false
+
+jobs:
+  loop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout (sparse + blob:none, R05 - el repo pesa 16GB)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            Claude notas/PLAN-OPUS
+            Claude notas/PLAN-MAESTRO-4-OBJETIVOS.md
+            Claude notas/PLAN-ANEXO-C-2-PUNTOS-ADICIONALES.md
+            Claude notas/VERBATIM-01-node-executor-xray-v2.md
+            Claude notas/INVENTARIO-FORENSE-agent_sources.md
+          sparse-checkout-cone-mode: false
+
+      - name: Anadir motor coda de Fables (cola durable)
+        run: python3 -c "import subprocess; subprocess.run(['git','sparse-checkout','add','\U0001f4c2coda workflow persistencias/Fables enchufe universal'], check=True)"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Dependencias del runner
+        run: pip install pyyaml cryptography "litellm[proxy]"
+
+      - name: Instalar Claude Code, Codex, Open Code
+        continue-on-error: true
+        run: npm install -g @anthropic-ai/claude-code @openai/codex opencode-ai
+
+      - name: Instalar Open Hands
+        continue-on-error: true
+        run: pip install openhands-ai
+
+      - name: Versiones instaladas (evidencia)
+        continue-on-error: true
+        run: |
+          claude --version || echo "claude_code NO instalado"
+          codex --version || echo "codex NO instalado"
+          opencode --version || echo "opencode NO instalado"
+          python -c "import openhands; print('openhands', getattr(openhands,'__version__','?'))" || echo "openhands NO instalado"
+
+      - name: Correr el loop
+        env:
+          RIU_TEAM_BANK_B64: ${{ secrets.RIU_TEAM_BANK_B64 }}
+          RIU_TEAM_BANK_PASSPHRASE: ${{ secrets.RIU_TEAM_BANK_PASSPHRASE }}
+        run: python "Claude notas/PLAN-OPUS/runner/plan_opus_loop.py" --grupo "${{ inputs.grupo }}" --max-nodos "${{ inputs.max_nodos }}" | tee /tmp/resumen.txt
+
+      - name: Resultado como PR para revision (centro de control / Director)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BR="plan-opus/${{ inputs.grupo }}-${{ github.run_id }}"
+          git config user.name "plan-opus-loop"
+          git config user.email "plan-opus@yaiwes.local"
+          git checkout -b "$BR"
+          git add -A
+          git commit -m "plan-opus: vuelta ${{ github.run_id }} grupo ${{ inputs.grupo }}" || { echo "sin cambios"; exit 0; }
+          git push origin "$BR"
+          gh pr create --base main --head "$BR" \
+            --title "Plan Opus - vuelta ${{ github.run_id }} (${{ inputs.grupo }})" \
+            --body "Resultado del loop. Revisar bitacora (Claude notas/PLAN-OPUS/CRAZY-WALL-BITACORA-PLAN-OPUS.json) y evidencia/. Ordenes nuevas en CENTRO-DE-CONTROL.yaml. Resumen: $(tail -1 /tmp/resumen.txt 2>/dev/null)" \
+            || echo "No se pudo abrir el PR automatico: rama $BR subida, abrirlo a mano."
