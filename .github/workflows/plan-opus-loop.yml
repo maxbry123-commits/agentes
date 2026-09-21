@@ -50,7 +50,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -69,10 +69,15 @@ jobs:
       - name: Versiones instaladas (evidencia)
         continue-on-error: true
         run: |
-          claude --version || echo "claude_code NO instalado"
-          codex --version || echo "codex NO instalado"
-          opencode --version || echo "opencode NO instalado"
-          python -c "import openhands; print('openhands', getattr(openhands,'__version__','?'))" || echo "openhands NO instalado"
+          F="Claude notas/PLAN-OPUS/evidencia/instalacion-${{ github.run_id }}.txt"
+          mkdir -p "$(dirname "$F")"
+          {
+            echo "claude_code: $(claude --version 2>&1 || echo NO instalado)"
+            echo "codex: $(codex --version 2>&1 || echo NO instalado)"
+            echo "opencode: $(opencode --version 2>&1 || echo NO instalado)"
+            echo "openhands: $(python -c "import importlib.metadata as m; print(m.version('openhands-ai'))" 2>&1 || echo NO instalado)"
+            echo "litellm: $(python -c "import importlib.metadata as m; print(m.version('litellm'))" 2>&1 || echo NO instalado)"
+          } | tee "$F"
 
       - name: Correr el loop
         env:
@@ -95,4 +100,6 @@ jobs:
           gh pr create --base main --head "$BR" \
             --title "Plan Opus - vuelta ${{ github.run_id }} (${{ inputs.grupo }})" \
             --body "Resultado del loop. Revisar bitacora (Claude notas/PLAN-OPUS/CRAZY-WALL-BITACORA-PLAN-OPUS.json) y evidencia/. Ordenes nuevas en CENTRO-DE-CONTROL.yaml. Resumen: $(tail -1 /tmp/resumen.txt 2>/dev/null)" \
-            || echo "No se pudo abrir el PR automatico: rama $BR subida, abrirlo a mano."
+            || echo "PR automatico no permitido por la configuracion del repo: abrirlo a mano."
+          echo "### Plan Opus - vuelta ${{ github.run_id }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Resultado en la rama \`$BR\`. Abrir PR: https://github.com/${{ github.repository }}/compare/main...$BR?expand=1" >> "$GITHUB_STEP_SUMMARY"
