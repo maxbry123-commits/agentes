@@ -7,7 +7,7 @@ Los swaps a aider/smolagents quedan ANULADOS: el equipo es el que dio el Directo
 ## Archivos del plan opus (todo en Claude notas/PLAN-OPUS/)
 
 1. CRAZY-WALL-BITACORA-PLAN-OPUS.json - donde los agentes anotan resultados. Claude revisa.
-2. agentes/README-AGENTE-<nombre>.md - memoria de cada agente (5 archivos).
+2. agentes/README-AGENTE-nombre.md - memoria de cada agente (5 archivos).
 3. HANDOFF-PLAN-OPUS.md - este archivo.
 4. PROMPT-DSL-DAG-PLAN-OPUS.yaml - el DAG que cablea todo.
 
@@ -42,7 +42,7 @@ El router dicta la norma: clave y modelo. 4 claves, una por grupo, un grupo por 
 4. Grupo Objetivo 4 - nvidia/wow-brisa
 Se piden por nombre (credential_ref). Nadie ve ni escribe la clave.
 
-Objetivo bloqueado: bandera 🚩, se anota en la bitacora, se sigue con la siguiente tarea, y al final se vuelve en bucle a revisar si ya se puede ejecutar.
+Objetivo bloqueado: BANDERA, se anota en la bitacora, se sigue con la siguiente tarea, y al final se vuelve en bucle a revisar si ya se puede ejecutar.
 
 ## Paso 1 - X-Ray forense de Core kernel Yaiwes
 
@@ -63,9 +63,9 @@ Todos en Claude notas/PLAN-OPUS/.
 3. Open Code: npm i -g opencode-ai
 4. Open Hands: pip install openhands-ai
 5. Meta Code: agent_sources/meta_muse_code_sdk + agent_sources/muse_glimmer/code/agentic-fundamentals
-Si una instalacion falla: 🚩 en la bitacora y seguir.
+Si una instalacion falla: BANDERA en la bitacora y seguir.
 
-## Bloqueos abiertos (🚩)
+## Bloqueos abiertos (BANDERA)
 
 1. Banco NVIDIA: banco-nvidia-equipo.b64 no esta en ningun repo; la contrasena la da el Director. Sin eso ningun grupo llama a NVIDIA.
 2. Evidencia del router: bajo carga solo Nemotron aguanta; Kimi K3 y GLM 5 se agotan en NVIDIA. El router decide la cascada.
