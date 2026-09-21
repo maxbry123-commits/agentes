@@ -83,6 +83,18 @@ jobs:
         env:
           RIU_TEAM_BANK_B64: ${{ secrets.RIU_TEAM_BANK_B64 }}
           RIU_TEAM_BANK_PASSPHRASE: ${{ secrets.RIU_TEAM_BANK_PASSPHRASE }}
+          # la sonda de APIs prueba tambien Cerebras y Groq si hay claves (solo el runner las ve)
+          CEREBRAS_API_KEY_1: ${{ secrets.CEREBRAS_API_KEY_1 }}
+          CEREBRAS_API_KEY_2: ${{ secrets.CEREBRAS_API_KEY_2 }}
+          CEREBRAS_API_KEY_3: ${{ secrets.CEREBRAS_API_KEY_3 }}
+          CEREBRAS_API_KEY_4: ${{ secrets.CEREBRAS_API_KEY_4 }}
+          GROQ_API_KEY_1: ${{ secrets.GROQ_API_KEY_1 }}
+          GROQ_API_KEY_2: ${{ secrets.GROQ_API_KEY_2 }}
+          GROQ_API_KEY_3: ${{ secrets.GROQ_API_KEY_3 }}
+          GROQ_API_KEY_4: ${{ secrets.GROQ_API_KEY_4 }}
+          GROQ_API_KEY_5: ${{ secrets.GROQ_API_KEY_5 }}
+          GROQ_API_KEY_6: ${{ secrets.GROQ_API_KEY_6 }}
+          GROQ_API_KEY_7: ${{ secrets.GROQ_API_KEY_7 }}
         run: python "Claude notas/PLAN-OPUS/runner/plan_opus_loop.py" --grupo "${{ inputs.grupo }}" --max-nodos "${{ inputs.max_nodos }}" | tee /tmp/resumen.txt
 
       - name: Resultado como PR para revision (centro de control / Director)
