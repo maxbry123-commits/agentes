@@ -73,3 +73,20 @@ Si una instalacion falla: BANDERA en la bitacora y seguir.
 ## Reglas
 
 R01 nada desde cero, R02 max 500 LOC, R03 nunca borrar, R04 no PASS sin evidencia real, R05 sparse-checkout en Actions, R06 anotar antes de avanzar, R08 gap ladder y bandera.
+
+## Como se ejecuta (loop + coda + bucle determinista)
+
+1. Workflow: .github/workflows/plan-opus-loop.yml, nombre "Plan Opus - loop de agentes". Se lanza a mano en Actions, eligiendo grupo (G1..G4 o all) y nodos por vuelta.
+2. Runner: Claude notas/PLAN-OPUS/runner/plan_opus_loop.py. Usa la cola durable de Fables (coda workflow persistencias, SQLiteDurableStore) guardada en estado/plan_opus_queue.db.
+3. Cada vuelta: aplica ordenes del centro de control, siembra la cola desde el DAG y toma por grupo el siguiente nodo con dependencias en PASS. En ese nodo hace Ask Consul (cascada y consenso), ejecuta, audita, repara si hay GAP, re-audita, guarda evidencia sha256 y anota en la bitacora y en la memoria del agente. Segunda pasada = bucle de banderas.
+4. PASS solo si: ejecutor rc 0 + auditor "VEREDICTO: OK" + archivo de salida real, o cambio real dentro de las rutas del grupo. Si no, GAP y vuelve a la cola (max 20 intentos, R08).
+5. Salvaguardas: los agentes corren con sus protecciones puestas (sin saltarse permisos ni sandbox). La clave del grupo solo llega al proceso del agente, nunca a logs (se reemplaza por ***). El banco no llega al agente. Cada vuelta termina en un PR; el Director decide el merge. La cola solo cuenta como PASS lo que ya se fusiono en main.
+6. Claves en Actions: secrets RIU_TEAM_BANK_B64 (banco cifrado) + RIU_TEAM_BANK_PASSPHRASE. Sin ellos cada nodo queda BANDERA B-001. Alternativa sin GitHub: correr el runner en otra maquina con RIU_TEAM_BANK_FILE + RIU_TEAM_BANK_PASSPHRASE.
+
+## Centro de control (Sonnet / Sol / Director)
+
+Archivo: Claude notas/PLAN-OPUS/CENTRO-DE-CONTROL.yaml. El revisor actua como mini orquestador:
+1. Revisa la bitacora, evidencia/<nodo>-<fecha>/ y el PR de la vuelta.
+2. Escribe ordenes PENDIENTE: REACTIVAR, INSTRUCCION, PAUSAR, NUEVO_NODO, REVISION.
+3. Relanza el workflow. El runner aplica las ordenes, las marca APLICADA y las anota en la bitacora.
+El centro de control da instrucciones; no escribe codigo. Los agentes ejecutan el plan.
