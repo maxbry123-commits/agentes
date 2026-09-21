@@ -17,21 +17,60 @@
     "agente": "claude_code | codex | opencode | openhands | meta_code | ask_consul | claude",
     "grupo_credential_ref": "nvidia/...",
     "modelo": "",
-    "ask_consul": {"goal_entrada": "", "goal_salida": "", "modelos_consultados": [], "decision_consenso": ""},
+    "ask_consul": {
+      "goal_entrada": "",
+      "goal_salida": "",
+      "modelos_consultados": [],
+      "decision_consenso": ""
+    },
     "accion": "",
     "estado": "PLANEADO | EN_CURSO | PASS | GAP | BANDERA",
-    "evidencia": {"rutas": [], "sha": [], "run_id": null, "sha256": null},
+    "evidencia": {
+      "rutas": [],
+      "sha": [],
+      "run_id": null,
+      "sha256": null
+    },
     "bandera_motivo": null,
     "revision_claude": null
   },
   "estado_grupos": {
-    "grupo_objetivo_1": {"credential_ref": "nvidia/digi-maxbry", "ejecuta": "claude_code", "audita": "codex", "estado": "WAITING_SIGNAL"},
-    "grupo_objetivo_2": {"credential_ref": "nvidia/movistar-briseida", "ejecuta": "opencode", "audita": "openhands", "repara": "meta_code", "estado": "WAITING_SIGNAL"},
-    "grupo_objetivo_3": {"credential_ref": "nvidia/wow-maxbry", "ejecuta": "opencode", "audita": "openhands", "repara": "meta_code", "estado": "WAITING_SIGNAL"},
-    "grupo_objetivo_4": {"credential_ref": "nvidia/wow-brisa", "ejecuta": "opencode", "audita": "openhands", "repara": "meta_code", "estado": "WAITING_SIGNAL"}
+    "grupo_objetivo_1": {
+      "credential_ref": "nvidia/digi-maxbry",
+      "ejecuta": "claude_code",
+      "audita": "codex",
+      "estado": "WAITING_SIGNAL"
+    },
+    "grupo_objetivo_2": {
+      "credential_ref": "nvidia/movistar-briseida",
+      "ejecuta": "opencode",
+      "audita": "openhands",
+      "repara": "meta_code",
+      "estado": "WAITING_SIGNAL"
+    },
+    "grupo_objetivo_3": {
+      "credential_ref": "nvidia/wow-maxbry",
+      "ejecuta": "opencode",
+      "audita": "openhands",
+      "repara": "meta_code",
+      "estado": "WAITING_SIGNAL"
+    },
+    "grupo_objetivo_4": {
+      "credential_ref": "nvidia/wow-brisa",
+      "ejecuta": "opencode",
+      "audita": "openhands",
+      "repara": "meta_code",
+      "estado": "WAITING_SIGNAL"
+    }
   },
   "banderas_abiertas": [
-    {"id": "B-001", "motivo": "banco-nvidia-equipo.b64 no esta en ningun repo y falta la contrasena del Director. Ningun grupo puede llamar a NVIDIA hasta tenerlo.", "bloquea": ["todos los nodos con modelo"]}
+    {
+      "id": "B-001",
+      "motivo": "banco-nvidia-equipo.b64 no esta en ningun repo y falta la contrasena del Director. Ningun grupo puede llamar a NVIDIA hasta tenerlo.",
+      "bloquea": [
+        "todos los nodos con modelo"
+      ]
+    }
   ],
   "entradas": [
     {
@@ -45,7 +84,16 @@
       "ask_consul": null,
       "accion": "Montado PLAN-OPUS: handoff, esta bitacora, memoria por agente (5), prompt DSL DAG. Swaps a aider/smolagents anulados; equipo = los 5 del Director.",
       "estado": "PASS",
-      "evidencia": {"rutas": ["Claude notas/PLAN-OPUS/HANDOFF-PLAN-OPUS.md"], "sha": ["d5300f7c811736b7a48e318b1b54a6efd0d10d79"], "run_id": null, "sha256": null},
+      "evidencia": {
+        "rutas": [
+          "Claude notas/PLAN-OPUS/HANDOFF-PLAN-OPUS.md"
+        ],
+        "sha": [
+          "d5300f7c811736b7a48e318b1b54a6efd0d10d79"
+        ],
+        "run_id": null,
+        "sha256": null
+      },
       "bandera_motivo": null,
       "revision_claude": "Montaje en papel. Ningun agente ha ejecutado todavia."
     },
@@ -60,9 +108,318 @@
       "ask_consul": null,
       "accion": "Test real del proveedor desde Actions (wordflow-groq-test.yml). No es NVIDIA; el Director pidio solo NVIDIA.",
       "estado": "PASS",
-      "evidencia": {"rutas": ["seals_core/tests/evidencia_runs/ultimo_run_console.txt"], "sha": ["c0dbdabe1785f6fa3fb51c4e988ad679d2acc8d3"], "run_id": 35557704586, "sha256": null},
+      "evidencia": {
+        "rutas": [
+          "seals_core/tests/evidencia_runs/ultimo_run_console.txt"
+        ],
+        "sha": [
+          "c0dbdabe1785f6fa3fb51c4e988ad679d2acc8d3"
+        ],
+        "run_id": 35557704586,
+        "sha256": null
+      },
       "bandera_motivo": null,
       "revision_claude": "Prueba el camino kernel -> LLM real. GROQ_API_KEY_1 da 401."
+    },
+    {
+      "id": "E-0003",
+      "fecha": "2026-09-21T05:56:59Z",
+      "objetivo": "1",
+      "nodo": "P1-XRAY",
+      "agente": "centro_control",
+      "grupo_credential_ref": null,
+      "modelo": null,
+      "ask_consul": null,
+      "accion": "orden C-0001 REVISION de director: Centro de control activado. Primera vuelta: X-Ray del Core kernel y descarga de componentes del Objetivo 1.",
+      "estado": "APLICADA",
+      "evidencia": {
+        "rutas": [],
+        "sha": [],
+        "run_id": "35566395263",
+        "sha256": null
+      },
+      "bandera_motivo": null,
+      "revision_claude": "Centro de control activado. Primera vuelta: X-Ray del Core kernel y descarga de componentes del Objetivo 1."
+    },
+    {
+      "id": "E-0004",
+      "fecha": "2026-09-21T05:56:59Z",
+      "objetivo": "1",
+      "nodo": "O1-CIERRE",
+      "agente": "claude_code",
+      "grupo_credential_ref": "nvidia/digi-maxbry",
+      "modelo": null,
+      "ask_consul": null,
+      "accion": "auditoria Wordflow metodo Meta (Sol GPT)",
+      "estado": "BANDERA",
+      "evidencia": {
+        "rutas": [],
+        "sha": [],
+        "run_id": "35566395263",
+        "sha256": null
+      },
+      "bandera_motivo": "dependencia pendiente: P1-XRAY, O1-DESCARGA, O1-S3",
+      "revision_claude": null
+    },
+    {
+      "id": "E-0005",
+      "fecha": "2026-09-21T05:56:59Z",
+      "objetivo": "1",
+      "nodo": "P1-XRAY",
+      "agente": "claude_code",
+      "grupo_credential_ref": "nvidia/digi-maxbry",
+      "modelo": null,
+      "ask_consul": null,
+      "accion": "X-Ray forense de toda la raiz de Core kernel Yaiwes, componente por componente",
+      "estado": "BANDERA",
+      "evidencia": {
+        "rutas": [],
+        "sha": [],
+        "run_id": "35566395263",
+        "sha256": null
+      },
+      "bandera_motivo": "B-001: banco NVIDIA o contrasena no disponibles en este entorno",
+      "revision_claude": null
+    },
+    {
+      "id": "E-0006",
+      "fecha": "2026-09-21T05:56:59Z",
+      "objetivo": "1",
+      "nodo": "O1-DESCARGA",
+      "agente": "claude_code",
+      "grupo_credential_ref": "nvidia/digi-maxbry",
+      "modelo": null,
+      "ask_consul": null,
+      "accion": "Descargar los componentes que falten usando los motores de descarga y extraccion ya existentes (no scripts nuevos). Listar faltantes contra INVENTARIO-FORENSE-agent_sources.md y el plan; cada descarga con manifest y sha",
+      "estado": "BANDERA",
+      "evidencia": {
+        "rutas": [],
+        "sha": [],
+        "run_id": "35566395263",
+        "sha256": null
+      },
+      "bandera_motivo": "B-001: banco NVIDIA o contrasena no disponibles en este entorno",
+      "revision_claude": null
+    },
+    {
+      "id": "E-0007",
+      "fecha": "2026-09-21T05:56:59Z",
+      "objetivo": "1",
+      "nodo": "O1-S3",
+      "agente": "claude_code",
+      "grupo_credential_ref": "nvidia/digi-maxbry",
+      "modelo": null,
+      "ask_consul": null,
+      "accion": "S3 skills a DSL DAG schema",
+      "estado": "BANDERA",
+      "evidencia": {
+        "rutas": [],
+        "sha": [],
+        "run_id": "35566395263",
+        "sha256": null
+      },
+      "bandera_motivo": "B-001: banco NVIDIA o contrasena no disponibles en este entorno",
+      "revision_claude": null
+    },
+    {
+      "id": "E-0008",
+      "fecha": "2026-09-21T05:56:59Z",
+      "objetivo": "2",
+      "nodo": "O2-S6",
+      "agente": "opencode",
+      "grupo_credential_ref": "nvidia/movistar-briseida",
+      "modelo": null,
+      "ask_consul": null,
+      "accion": "S6 frontend visualizable",
+      "estado": "BANDERA",
+      "evidencia": {
+        "rutas": [],
+        "sha": [],
+        "run_id": "35566395263",
+        "sha256": null
+      },
+      "bandera_motivo": "dependencia pendiente: O2-S5",
+      "revision_claude": null
+    },
+    {
+      "id": "E-0009",
+      "fecha": "2026-09-21T05:56:59Z",
+      "objetivo": "2",
+      "nodo": "O2-CIERRE",
+      "agente": "opencode",
+      "grupo_credential_ref": "nvidia/movistar-briseida",
+      "modelo": null,
+      "ask_consul": null,
+      "accion": "auditoria Wordflow metodo Meta",
+      "estado": "BANDERA",
+      "evidencia": {
+        "rutas": [],
+        "sha": [],
+        "run_id": "35566395263",
+        "sha256": null
+      },
+      "bandera_motivo": "dependencia pendiente: O2-S4, O2-S5, O2-S6",
+      "revision_claude": null
+    },
+    {
+      "id": "E-0010",
+      "fecha": "2026-09-21T05:56:59Z",
+      "objetivo": "2",
+      "nodo": "O2-S4",
+      "agente": "opencode",
+      "grupo_credential_ref": "nvidia/movistar-briseida",
+      "modelo": null,
+      "ask_consul": null,
+      "accion": "S4 doble raiz",
+      "estado": "BANDERA",
+      "evidencia": {
+        "rutas": [],
+        "sha": [],
+        "run_id": "35566395263",
+        "sha256": null
+      },
+      "bandera_motivo": "B-001: banco NVIDIA o contrasena no disponibles en este entorno",
+      "revision_claude": null
+    },
+    {
+      "id": "E-0011",
+      "fecha": "2026-09-21T05:56:59Z",
+      "objetivo": "2",
+      "nodo": "O2-S5",
+      "agente": "opencode",
+      "grupo_credential_ref": "nvidia/movistar-briseida",
+      "modelo": null,
+      "ask_consul": null,
+      "accion": "S5 gaps kernel Wordflow (checkpoint durable primero)",
+      "estado": "BANDERA",
+      "evidencia": {
+        "rutas": [],
+        "sha": [],
+        "run_id": "35566395263",
+        "sha256": null
+      },
+      "bandera_motivo": "B-001: banco NVIDIA o contrasena no disponibles en este entorno",
+      "revision_claude": null
+    },
+    {
+      "id": "E-0012",
+      "fecha": "2026-09-21T05:56:59Z",
+      "objetivo": "3",
+      "nodo": "O3-S7",
+      "agente": "opencode",
+      "grupo_credential_ref": "nvidia/wow-maxbry",
+      "modelo": null,
+      "ask_consul": null,
+      "accion": "S7 gaps Seals Team",
+      "estado": "BANDERA",
+      "evidencia": {
+        "rutas": [],
+        "sha": [],
+        "run_id": "35566395263",
+        "sha256": null
+      },
+      "bandera_motivo": "dependencia pendiente: O2-S5",
+      "revision_claude": null
+    },
+    {
+      "id": "E-0013",
+      "fecha": "2026-09-21T05:56:59Z",
+      "objetivo": "3",
+      "nodo": "O3-S8",
+      "agente": "opencode",
+      "grupo_credential_ref": "nvidia/wow-maxbry",
+      "modelo": null,
+      "ask_consul": null,
+      "accion": "S8 grupos 1 y 2 + cierre verificado",
+      "estado": "BANDERA",
+      "evidencia": {
+        "rutas": [],
+        "sha": [],
+        "run_id": "35566395263",
+        "sha256": null
+      },
+      "bandera_motivo": "dependencia pendiente: O3-S7",
+      "revision_claude": null
+    },
+    {
+      "id": "E-0014",
+      "fecha": "2026-09-21T05:56:59Z",
+      "objetivo": "3",
+      "nodo": "O3-CIERRE",
+      "agente": "opencode",
+      "grupo_credential_ref": "nvidia/wow-maxbry",
+      "modelo": null,
+      "ask_consul": null,
+      "accion": "auditoria Wordflow + cierre Seals Team metodo Meta",
+      "estado": "BANDERA",
+      "evidencia": {
+        "rutas": [],
+        "sha": [],
+        "run_id": "35566395263",
+        "sha256": null
+      },
+      "bandera_motivo": "dependencia pendiente: O3-S8",
+      "revision_claude": null
+    },
+    {
+      "id": "E-0015",
+      "fecha": "2026-09-21T05:56:59Z",
+      "objetivo": "4",
+      "nodo": "O4-S10",
+      "agente": "opencode",
+      "grupo_credential_ref": "nvidia/wow-brisa",
+      "modelo": null,
+      "ask_consul": null,
+      "accion": "S10 motor durable + 50 mundos",
+      "estado": "BANDERA",
+      "evidencia": {
+        "rutas": [],
+        "sha": [],
+        "run_id": "35566395263",
+        "sha256": null
+      },
+      "bandera_motivo": "dependencia pendiente: O4-S9",
+      "revision_claude": null
+    },
+    {
+      "id": "E-0016",
+      "fecha": "2026-09-21T05:56:59Z",
+      "objetivo": "4",
+      "nodo": "O4-CIERRE",
+      "agente": "opencode",
+      "grupo_credential_ref": "nvidia/wow-brisa",
+      "modelo": null,
+      "ask_consul": null,
+      "accion": "auditoria Wordflow + cierre Orquestador Comandante metodo Meta",
+      "estado": "BANDERA",
+      "evidencia": {
+        "rutas": [],
+        "sha": [],
+        "run_id": "35566395263",
+        "sha256": null
+      },
+      "bandera_motivo": "dependencia pendiente: O4-S10",
+      "revision_claude": null
+    },
+    {
+      "id": "E-0017",
+      "fecha": "2026-09-21T05:56:59Z",
+      "objetivo": "4",
+      "nodo": "O4-S9",
+      "agente": "opencode",
+      "grupo_credential_ref": "nvidia/wow-brisa",
+      "modelo": null,
+      "ask_consul": null,
+      "accion": "S9 adapters capa de control",
+      "estado": "BANDERA",
+      "evidencia": {
+        "rutas": [],
+        "sha": [],
+        "run_id": "35566395263",
+        "sha256": null
+      },
+      "bandera_motivo": "B-001: banco NVIDIA o contrasena no disponibles en este entorno",
+      "revision_claude": null
     }
   ]
 }

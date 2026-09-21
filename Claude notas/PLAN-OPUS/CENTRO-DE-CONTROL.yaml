@@ -1,38 +1,14 @@
-# CENTRO DE CONTROL - PLAN OPUS
-# Aqui entran Sonnet, Sol (GPT) o el Director. Actuan como mini orquestador del loop:
-#   1. REVISAR: la bitacora (CRAZY-WALL-BITACORA-PLAN-OPUS.json), la carpeta evidencia/<nodo>-<fecha>/
-#      (ask_consul.json, logs de cada agente, EVIDENCIA.json con sha256) y el PR que abrio la vuelta.
-#   2. ORDENAR: anadir ordenes abajo con estado PENDIENTE (no borrar las viejas).
-#   3. REACTIVAR: lanzar el workflow "Plan Opus - loop de agentes" (boton en Actions).
-#      Al empezar, el runner aplica las ordenes PENDIENTE, las marca APLICADA y las anota en la bitacora.
-#   4. Volver a 1. Ciclo: revisar -> ordenar -> reactivar -> revisar.
-#
-# El centro de control NO ejecuta ni escribe codigo: da instrucciones. Los agentes ejecutan el plan.
-# Nunca pongas claves aqui.
-#
-# Tipos de orden:
-#   REACTIVAR    nodo: <id>                vuelve a poner el nodo en cola (aunque estuviera en PASS, GAP o bandera)
-#   INSTRUCCION  nodo: <id>, texto: "..."  instruccion nueva para los agentes de ese nodo + lo reactiva
-#   PAUSAR       nodo: <id>                el nodo no se ejecuta hasta un REACTIVAR posterior
-#   NUEVO_NODO   nodo_def: {id, objetivo, grupo, ejecuta, audita, repara, salida, archivo, depende}
-#   REVISION     nodo: <id>, texto: "..."  veredicto del revisor; queda en la bitacora como revision
-#
-# Ejemplo (copiar, cambiar id y estado PENDIENTE):
-#   - id: C-0002
-#     fecha: "2026-09-21"
-#     autor: sonnet
-#     tipo: INSTRUCCION
-#     nodo: P1-XRAY
-#     texto: "Incluir tabla con sha de cada componente de control-layer"
-#     estado: PENDIENTE
-
-revisores: [sonnet, sol, director]
-
+revisores:
+- sonnet
+- sol
+- director
 ordenes:
-  - id: C-0001
-    fecha: "2026-09-21"
-    autor: director
-    tipo: REVISION
-    nodo: P1-XRAY
-    texto: "Centro de control activado. Primera vuelta: X-Ray del Core kernel y descarga de componentes del Objetivo 1."
-    estado: PENDIENTE
+- id: C-0001
+  fecha: '2026-09-21'
+  autor: director
+  tipo: REVISION
+  nodo: P1-XRAY
+  texto: 'Centro de control activado. Primera vuelta: X-Ray del Core kernel y descarga
+    de componentes del Objetivo 1.'
+  estado: APLICADA
+  aplicada: '2026-09-21T05:56:59Z'
