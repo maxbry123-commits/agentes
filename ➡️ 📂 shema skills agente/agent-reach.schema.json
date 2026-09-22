@@ -1,0 +1,120 @@
+{
+  "schema": "yaiwes.agent-skill.contract/v1",
+  "skill": {
+    "name": "agent-reach",
+    "description": "Read-only internet capability router for multiple web and platform backends with health checks and fallback routing.",
+    "license": "MIT",
+    "compatibility": "Python 3.10+ and platform-specific CLI/API dependencies; some channels require user-provided authenticated sessions."
+  },
+  "source": {
+    "repo": "https://github.com/Panniantong/Agent-Reach",
+    "commit": "a19a171fa980a0785849596492e0af4db800c82f",
+    "files": [
+      {
+        "path": "agent_reach/skill/SKILL_en.md",
+        "blob_sha": "4d7466d9cda598716a697f2a63774d399d2b1333",
+        "symbols": []
+      },
+      {
+        "path": "docs/README_en.md",
+        "blob_sha": "b15b3ce6a807af6980202c09a00b6d197f0a6ded",
+        "symbols": []
+      }
+    ]
+  },
+  "objective": "Give Seals a read-only multi-platform research capability with explicit health checks and backend provenance.",
+  "inputs": [
+    {
+      "name": "intent",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "platform",
+      "type": "string",
+      "required": false
+    },
+    {
+      "name": "query_or_url",
+      "type": "string",
+      "required": true
+    }
+  ],
+  "preconditions": [
+    "Run agent-reach doctor --json before multi-backend/login-backed channel execution.",
+    "Use the reported active_backend when present.",
+    "Any authenticated channel requires explicit user-controlled credentials/session and Policy authorization."
+  ],
+  "actions": [
+    {
+      "id": "health-check",
+      "operation": "agent-reach doctor --json",
+      "side_effect": false,
+      "tool": "agent-reach",
+      "constraints": [
+        "read-only health check"
+      ]
+    },
+    {
+      "id": "research-read",
+      "operation": "read/search through selected backend",
+      "side_effect": false,
+      "tool": "agent-reach",
+      "constraints": [
+        "no posting/commenting/liking",
+        "record backend",
+        "non-empty content required"
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "name": "platform",
+      "type": "string"
+    },
+    {
+      "name": "active_backend",
+      "type": "string|null"
+    },
+    {
+      "name": "content",
+      "type": "string|object"
+    },
+    {
+      "name": "source_urls",
+      "type": "array"
+    }
+  ],
+  "acceptance": [
+    "Backend used is recorded.",
+    "Actual target content is non-empty; doctor alone is not content verification.",
+    "No write operation is performed."
+  ],
+  "evidence": [
+    "source_commit",
+    "doctor_json",
+    "active_backend",
+    "source_urls",
+    "tool_receipt"
+  ],
+  "failures": [
+    "BACKEND_UNAVAILABLE",
+    "AUTH_REQUIRED",
+    "AUTH_EXPIRED",
+    "EMPTY_OUTPUT",
+    "CHANNEL_UNVERIFIED",
+    "SOURCE_COMMIT_MISMATCH"
+  ],
+  "security_rules": [
+    "Read-only integration only.",
+    "Never automate login without explicit user action when source rules require manual/session login.",
+    "Do not expose cookies/tokens in traces.",
+    "Do not let Agent Reach become a second Seals router/orchestrator."
+  ],
+  "integration": {
+    "target": "Seals optional adapter / multi_platform_research",
+    "mode": "adapter",
+    "core_embedding": false
+  },
+  "status": "SCHEMA_READY_SOURCE_MATERIALIZATION_PENDING"
+}
