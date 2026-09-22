@@ -17,7 +17,7 @@
       },
       {
         "path": "scrapling/cli.py",
-        "blob_sha": "0000000000000000000000000000000000000000",
+        "blob_sha": "8a4d905078ee10c2c0838d03f22483134265db33",
         "symbols": [
           "mcp"
         ]
