@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "yaiwes.agent-skills.official-frontmatter/v1",
+  "title": "Agent Skills official frontmatter subset",
+  "description": "Schema derived from https://agentskills.io/specification. Validates SKILL.md frontmatter fields; Markdown body and parent-directory equality require separate validation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "description"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "license": {
+      "type": "string",
+      "minLength": 1
+    },
+    "compatibility": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "allowed-tools": {
+      "type": "string"
+    }
+  },
+  "x-yaiwes-validation-notes": [
+    "SKILL.md must contain YAML frontmatter followed by Markdown.",
+    "name must match parent directory name.",
+    "Consecutive hyphens are forbidden by the name regex.",
+    "allowed-tools is experimental in the Agent Skills spec."
+  ]
+}
