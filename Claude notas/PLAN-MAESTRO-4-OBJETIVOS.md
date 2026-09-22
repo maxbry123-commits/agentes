@@ -444,13 +444,13 @@ Sin eso no se modifica el core.
 Seguir el handoff nodo por nodo.
 
 S-01 baseline/X-Ray.
-S-02 contracts/bootstrap.
-S-03 loop minimo + structured actions.
+S-02 contracts/bootstrap + ExecutionMode + PlanContract.
+S-03 loop minimo + structured actions + PLAN_MODE nativo avanzado.
 S-04 policy/execution/safe edit.
 S-05 idempotency/replay.
 S-06 oracle/evidence/completion audit.
 S-07 acquisition/integration.
-S-07A copiar motores canonicos 1:1 a Wordflow adapters + crear schemas de tool.
+S-07A copiar motores canonicos 1:1 a Wordflow adapters + crear schemas + registrarlos en NativeToolRegistry como tools NATIVAS de Seals.
 S-08 research solo cuando exista motor real trazado.
 S-09 frontend/visual solo cuando MetaCua/CUA tengan SOURCE_SYMBOL trazado.
 S-10 recovery/regression contra host contract.
@@ -493,6 +493,52 @@ Pueden aportar patrones o servir al equipo externo de construccion; no viven den
 
 Detalle completo y SHAs:
 `Claude notas/SEALS-TRAZABILIDAD-COMPONENTES.md`
+
+### PLAN_MODE NATIVO AVANZADO
+
+Seals debe tener un modo de planificacion nativo en su core.
+
+Referencia funcional:
+el comportamiento tipo Plan Mode separa exploracion/planificacion de mutacion.
+El atajo Shift+Tab, si alguna UI lo implementa, es solo una entrada de usuario;
+el kernel trabaja con `SET_MODE(PLAN|EXECUTE)`.
+
+FSM:
+
+BOOTSTRAP
+-> PLAN_MODE
+-> PLAN_READY
+-> EXECUTE_MODE
+-> OBSERVE
+-> GAP? REPLAN : VERIFY
+-> COMPLETION
+
+PLAN_MODE:
+- READ/LIST/SEARCH/INSPECT/HASH/RESEARCH permitidos;
+- WRITE/COPY/MOVE/DOWNLOAD/INSTALL/DEPLOY y todo side effect prohibidos;
+- mutacion -> `PLAN_MODE_SIDE_EFFECT_DENIED`.
+
+PlanContract obligatorio:
+plan_id, mission_id, node_id, goal_id, base_sha, write_scope, objective,
+acceptance[], evidence_refs[], findings[], actions[], dependencies[],
+expected_outputs[], rollback[], unknowns[], created_from_state_hash, plan_sha256.
+
+PlanGate antes de EXECUTE:
+- schema valido;
+- base_sha vigente;
+- target_paths dentro de write_scope;
+- tool_name registrado;
+- acceptance cubierto;
+- unknown critico resuelto;
+- plan_sha256 fijado.
+
+En EXECUTE:
+cada mutacion referencia `plan_id + action_id`.
+Operacion no planificada -> `UNPLANNED_MUTATION_DENIED`.
+Drift -> `PLAN_STALE` -> volver a PLAN_MODE sin perder evidence.
+
+No crear otro agente/planner externo.
+PLAN_MODE es una capacidad nativa de FSM+Policy.
 
 ### CAPACIDAD NATIVA - ACQUISITION + INTEGRATION
 
