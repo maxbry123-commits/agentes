@@ -145,14 +145,22 @@ NODO S-02 - contracts/bootstrap
 - ToolResult
 - EvidenceRecord
 - NodeResult
+- ExecutionMode = PLAN | EXECUTE
+- PlanContract
 - typed provider/failure states
 - validate before execution
 
-NODO S-03 - loop
+NODO S-03 - loop + PLAN_MODE nativo
 - adaptar loop minimo smolagents + Muse Glimmer
 - eliminar managed_agents/subdelegacion
 - result -> observation -> correction
 - max_steps + stuck detector
+- FSM: BOOTSTRAP -> PLAN_MODE -> PLAN_READY -> EXECUTE_MODE -> OBSERVE/VERIFY
+- PLAN_MODE solo READ/LIST/SEARCH/INSPECT/HASH/RESEARCH
+- mutacion en PLAN_MODE -> PLAN_MODE_SIDE_EFFECT_DENIED
+- PlanGate valida base_sha, write_scope, tools, acceptance y plan_sha256
+- EXECUTE exige plan_id + action_id
+- drift -> PLAN_STALE -> REPLAN
 
 NODO S-04 - policy/execution
 - Sheriff/policy antes de mutation
@@ -253,6 +261,7 @@ Estado:
 PASS S-07A:
 - 6 motores copiados con blob SHA identico;
 - 5 schemas validos;
+- registrados en NativeToolRegistry como tools nativas de Seals;
 - 1 test real por tool;
 - invalid schema no ejecuta;
 - tool failure nunca PASS;
@@ -290,6 +299,12 @@ NODO S-12 - completion
 
 ## TESTS MINIMOS OBLIGATORIOS
 
+PLAN_MODE_MUTATION_DENIED
+EXECUTE_WITHOUT_PLAN_DENIED
+UNPLANNED_MUTATION_DENIED
+STALE_PLAN_DENIED
+PLAN_WRITE_SCOPE_ESCAPE
+VALID_PLAN_EXECUTES
 PATH_NOT_FOUND_NO_PASS
 PROVIDER_ERROR_NO_PASS
 INVALID_PREEXISTING_DIR_NO_PASS
