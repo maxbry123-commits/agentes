@@ -437,6 +437,160 @@ HOST_ONLY / REFERENCE.
 
 El servidor de contexto compartido pertenece al host/Command Center, no al cerebro de Seals.
 
+## NATIVE TOOLSET - MOTORES INTEGRADOS EN SEALS
+
+Decision aprobada:
+
+Los motores son capacidades NATIVAS del agente Seals Team YAIWES.
+
+Arquitectura:
+
+SEALS CORE
+-> NativeToolRegistry
+-> schema tipado
+-> Sheriff/Policy
+-> adapter fisico Wordflow
+-> motor canonico exacto
+-> ToolResult
+-> receipt/evidence
+
+La implementacion fisica NO se pega dentro de `seals_core`.
+Se mantiene separada para preservar el limite de 500-1000 LOC, pero el runtime
+de Seals los registra como tools nativas disponibles directamente por nombre.
+
+Codigo fisico:
+`➡️📂 wordflow loop code Yaiwes/wordflow_loop/adapters/seals_motors/`
+
+Contratos:
+`➡️📂 wordflow loop code Yaiwes/wordflow_loop/contracts/seals_motors/`
+
+Tools nativas obligatorias:
+- `download_extract`
+- `extract_only`
+- `copy_batches`
+- `move_batches`
+- `zip_root`
+
+Regla:
+Seals NO llama scripts por nombre libre.
+Solo puede invocar un motor mediante una StructuredAction que resuelva a un
+tool_name registrado + schema valido + Policy PASS.
+
+Los motores 1-4 se copian 1:1 desde la fuente canonica y deben conservar blob SHA.
+Motor 5 `motor_5_zip_root.py` tambien queda bloqueado por blob SHA:
+`2516d85d81f691f86c32a70b90c2599639eb83c6`.
+
+No integrar un motor significa que Seals queda INCOMPLETO para acquisition/integration.
+
+## PLAN_MODE AVANZADO - NATIVO DEL CORE
+
+Referencia de comportamiento:
+Claude Code Plan Mode se usa como modo de exploracion/planificacion sin mutaciones.
+El atajo de UI no forma parte del kernel Seals.
+
+Seals implementa su propia version nativa mediante FSM + Policy.
+
+Estados:
+
+BOOTSTRAP
+-> PLAN_MODE
+-> PLAN_READY
+-> EXECUTE_MODE
+-> OBSERVE
+-> GAP?
+   -> REPLAN
+   -> PLAN_MODE
+   o
+   -> VERIFY
+-> COMPLETION
+
+Contrato nativo:
+
+`ExecutionMode = PLAN | EXECUTE`
+
+`PlanContract` debe contener como minimo:
+- plan_id
+- mission_id
+- node_id
+- goal_id
+- base_sha
+- write_scope
+- objective
+- acceptance[]
+- evidence_refs[]
+- findings[]
+- actions[]
+- dependencies[]
+- expected_outputs[]
+- rollback[]
+- unknowns[]
+- created_from_state_hash
+- plan_sha256
+
+Cada `actions[]`:
+- action_id
+- tool_name
+- typed_inputs
+- side_effect
+- target_paths[]
+- depends_on[]
+- expected_result
+- acceptance_ids[]
+
+PLAN_MODE:
+- puede READ/LIST/SEARCH/INSPECT/HASH/RESEARCH;
+- puede producir/actualizar PlanContract;
+- NO puede escribir, mover, copiar, descargar, instalar, ejecutar deployment ni
+  cualquier otra mutacion;
+- StructuredAction mutante en PLAN_MODE -> `PLAN_MODE_SIDE_EFFECT_DENIED`.
+
+PLAN_GATE antes de ejecutar:
+- schema PlanContract valido;
+- base_sha sigue vigente;
+- write_scope cubre todos los target_paths;
+- todos los tool_name existen en NativeToolRegistry;
+- cada mutacion apunta a action_id del plan;
+- acceptance tiene cobertura por acciones/pruebas;
+- unknown critico no resuelto -> PLAN_BLOCKED;
+- plan_sha256 fijado.
+
+Transicion:
+`SET_MODE(EXECUTE)` solo puede ocurrir despues de PLAN_GATE PASS y autorizacion
+del host/usuario segun TaskContract.
+
+En EXECUTE_MODE:
+- toda StructuredAction mutante debe referenciar `plan_id + action_id`;
+- accion fuera del plan -> `UNPLANNED_MUTATION_DENIED`;
+- drift de base_sha/write_scope/inputs -> `PLAN_STALE` y regreso a PLAN_MODE;
+- un GAP puede generar `REPLAN_REQUIRED` sin perder evidence previa.
+
+UI opcional:
+`Shift+Tab` puede mapearse a `SET_MODE`, pero nunca es la autoridad.
+La autoridad es el estado FSM + Sheriff/Policy.
+
+Evidence adicional:
+- plan_id
+- plan_sha256
+- action_id
+- mode_at_execution
+- base_sha_at_plan
+- base_sha_at_execution
+
+Tests obligatorios:
+- PLAN_MODE_MUTATION_DENIED
+- EXECUTE_WITHOUT_PLAN_DENIED
+- UNPLANNED_MUTATION_DENIED
+- STALE_PLAN_DENIED
+- PLAN_ACTION_SCHEMA_INVALID
+- PLAN_WRITE_SCOPE_ESCAPE
+- PLAN_ACCEPTANCE_UNCOVERED
+- VALID_PLAN_EXECUTES
+- GAP_REPLAN_PRESERVES_EVIDENCE
+
+Objetivo:
+hacer que Seals inspeccione y acuerde exactamente QUE va a hacer antes de tocar
+estado, sin convertir Plan Mode en otro agente ni en otro orquestador.
+
 ## CAPACIDAD NATIVA: ACQUISITION + INTEGRATION
 
 Entrada:
