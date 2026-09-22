@@ -1,0 +1,48 @@
+name: Extraction LFS quarantine repair agent 2026-09-04
+run-name: LFS repair agent • ${{ github.run_id }}
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/extraction-lfs-repair-agent-20260904.yml']
+permissions:
+  contents: write
+concurrency:
+  group: extraction-lfs-repair-agent-main
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 480
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, lfs: false}
+      - name: Enforce NO-LFS
+        run: |
+          git config --local filter.lfs.clean cat
+          git config --local filter.lfs.smudge cat
+          git config --local --unset-all filter.lfs.process || true
+          git config --local filter.lfs.required false
+      - name: Install source tree without non-code LFS placeholders
+        run: python3 scripts/extract_lfs_quarantine_repair_20260904.py --root agent
+      - name: Publish verified agent repairs
+        run: |
+          set -euo pipefail
+          git add -A -- 'Agente core kernel Yaiwes principal' forensics/extraction
+          python3 - <<'PY'
+          import pathlib,subprocess,sys
+          mark=b'version https://git-lfs.github.com/spec/v1\n'
+          ps=subprocess.check_output(['git','diff','--cached','--name-only','-z']).split(b'\0')
+          bad=[p.decode() for p in ps if p and pathlib.Path(p.decode()).is_file() and pathlib.Path(p.decode()).read_bytes()[:1024].startswith(mark)]
+          print({'staged_lfs_pointers':bad}); sys.exit(73 if bad else 0)
+          PY
+          git diff --cached --quiet && exit 0
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "fix(extraction): repair blocked agent NO-LFS [run ${GITHUB_RUN_ID}]"
+          for a in 1 2 3; do git fetch origin main && git rebase --autostash origin/main && git push --no-verify origin HEAD:main && exit 0; sleep $((a*10)); done
+          exit 41
+      - name: Read-back
+        run: |
+          git fetch origin main && git reset --hard origin/main
+          python3 scripts/extract_guardian_repair_20260903.py --audit-only
