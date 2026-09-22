@@ -1,271 +1,669 @@
-# ANEXO B - SEALS TEAM YAIWES: MAPA DE MECANISMOS
-Anexo del PLAN-MAESTRO-4-OBJETIVOS.md. Version 1, 2026-09-19.
+# ANEXO B - SEALS TEAM YAIWES: ARQUITECTURA Y MECANISMOS
+Version 2. Reparacion quirurgica aprobada.
+Scope exclusivo: Seals Team YAIWES.
 
-INSTRUCCION DEL DIRECTOR (verbatim, linea 475):
-"Que integres los agentes de minimax y Kimi k y usas PARTES DE SUS COMPONENTES
-y los 4 agente de glimer para crear el agente seals team YAIWES y lo conviertes
-en determinetista lo mas que puedas"
+## DECISION CONGELADA
 
-PRINCIPIO: no se copia ningun agente entero. Se EXTRAE EL MECANISMO de cada uno
-y se cablea dentro de Seals. Copiar un agente completo crearia un segundo kernel,
-que es exactamente lo que el analisis prohibe.
+Seals Team YAIWES es UN SOLO micro-agente/worker especializado.
 
-REGLA MADRE: PROHIBIDO ESCRIBIR CODIGO DESDE CERO.
-Todo sale del codigo YA DESCARGADO en `agent_sources/`.
-Podar -> editar quirurgicamente -> refactorizar -> cablear.
+No se copian agentes completos.
+No se ejecutan subagentes dentro de Seals.
+No se crea un segundo Wordflow, scheduler, DAG, cola global, watchdog ni provider router.
 
----
+Objetivo de tamano:
+500-1000 LOC de codigo propio/adaptado para el core y adapters finos.
 
-## INVENTARIO DE FUENTES (todas ya en el repo)
+Firma objetivo:
 
-META (4 agentes + cookbook), en `agent_sources/`:
-  meta_muse_code_sdk    - carpeta local con codigo real
-  muse_glimmer          - code/ + _archives/ + manifest
-  metacua               - carpeta local
-  cua_mcp               - carpeta local
-  meta_agent_cookbook   - carpeta local
+SealsWorker.execute(TaskContract) -> NodeResult
 
-KIMI K (5), submodules gitlink reales:
-  kimi_agent_sdk    -> MoonshotAI/kimi-agent-sdk
-  kimi_agent_rs     -> MoonshotAI/kimi-agent-rs
-  kimi_cli          -> MoonshotAI/kimi-cli
-  kimi_code         -> MoonshotAI/kimi-code
-  kimi_researcher   -> MoonshotAI/Kimi-Researcher
+Microflujo:
 
-MINIMAX (8), submodules gitlink reales salvo mcode:
-  minimax_mini_agent        -> MiniMax-AI/Mini-Agent
-  minimax_openroom          -> MiniMax-AI/OpenRoom
-  minimax_mmx_cli           -> MiniMax-AI/cli
-  minimax_code_plugins      -> MiniMax-AI/MiniMax-Code-Plugins
-  minimax_mcp               -> MiniMax-AI/MiniMax-MCP
-  minimax_mcp_js            -> MiniMax-AI/MiniMax-MCP-JS
-  minimax_coding_plan_mcp   -> MiniMax-AI/MiniMax-Coding-Plan-MCP
-  mcode                     -> FALTA MONTAR (unico gap de descarga)
+TASK CONTRACT
+-> BOOTSTRAP/VALIDATE
+-> FSM
+-> RESEARCH si aplica
+-> STRUCTURED ACTION
+-> SHERIFF/POLICY
+-> TOOL/ADAPTER
+-> TOOL RESULT
+-> OBSERVATION
+-> GAP/FIX/RETEST
+-> OBJECTIVE ORACLE
+-> EVIDENCE
+-> COMPLETION AUDIT
+-> NODE RESULT
 
-AVISO CRITICO: el gitlink NO trae el codigo fuente al repo. Para EXTRAER
-mecanismo de los 13 submodules hace falta `git submodule update --init`
-en CI con sparse-checkout. Esto es la Salida 2.3 del plan.
+Regla central:
+LLM = PROPONE
+POLICY/SHERIFF = AUTORIZA
+TOOL = EJECUTA
+RECEIPT = DEMUESTRA
+ORACLE = DECIDE PASS
 
----
+## CLASIFICACION OBLIGATORIA
 
-## MAPA MECANISMO -> GAP QUE TAPA
+CORE:
+vive dentro del micro-Seals.
 
-Cada linea: FUENTE -> MECANISMO -> GAP DE SEALS QUE RESUELVE -> DESTINO EN EL CODIGO
+HOST_CONTRACT:
+lo posee Wordflow; Seals lo recibe, valida y respeta.
 
-### De MUSE CODE SDK (Meta)
-command_id + payload_fingerprint + replay -> tapa P0-11 (mission_id no es
-  idempotencia) -> seals_core/idempotency.py
-cola durable + reclaim (SUBMITTED/ACKED/QUEUED/STARTED/MATERIALIZED/TERMINAL)
-  -> tapa P0-12 (la cola es un list Python en memoria) -> seals_core/queue.py
-crash recovery + checkpoint durable -> tapa P1-27 -> integra con
-  CrazyWallAdapter.checkpoint
-session/event state (EVENT -> FOLD -> CURRENT STATE) -> tapa el estado volatil
-worktree git aislado por subagente -> refuerza P1-25 (isolation.py ya existe)
-completion audit -> tapa P0-05 (no cerrar por texto del agente)
-approvals por etapas -> refuerza el Sheriff (P0-15)
+VALIDATION:
+sirve para probar Seals; no forma parte del runtime interno.
 
-### De MUSE GLIMMER (Meta)
-ToolRegistry + JSON tool schemas -> tapa P0-16 (quedo parcial)
-  -> extraer de agent_sources/muse_glimmer/code/agentic-fundamentals/
-     archivos reales: agent_loop.py, response_parser.py, run_agent.py
-parser ATEM (RAW OUTPUT -> channel parsing -> reasoning/tool_calls/final)
-  -> tapa "texto libre interpretado como comando"
-loop PLAN -> TOOL -> OBSERVE -> SELF-CORRECT -> NEXT -> el micro-loop del worker
-tool errors como ToolResult tipado -> tapa P0-17 (errores que acababan en PASS)
-REGLA: el tool loop va DENTRO del worker, NUNCA en el kernel.
+GAP:
+requisito real cuya implementacion/fuente todavia no esta demostrada.
 
-### De META AGENT COOKBOOK
-objective oracle -> tapa P0-04 (Claude no puede ser el oracle final)
-acceptance-driven close -> tapa P0-05
-stuck detection -> tapa P1-19
-safe edit exact-match-before-patch -> mejora la edicion quirurgica
-browser-verified web design -> es la base del gate frontend (P1-23)
-GitHub Repo Agent -> patron de worker remoto disparado por evento
-Multi-Agent Product Studio -> patron de equipo con estado compartido (Crazy Wall)
+La trazabilidad exacta vive en:
+Claude notas/SEALS-TRAZABILIDAD-COMPONENTES.md
 
-### De METACUA (Meta) - EL TRABAJO VISUAL, EN DETALLE
-CAPACIDAD REAL: NO depende del DOM. OBSERVA PIXELES mediante screenshots
-y actua mediante COORDENADAS.
+## CORE APROBADO
 
-Sistema de coordenadas:
-  SCREENSHOT -> coordenadas normalizadas 0-1000 -> convertir a coordenadas
-  del display -> mover cursor -> ejecutar accion
+El core puede contener solamente:
 
-LOOP REAL:
-  SCREENSHOT -> SEND IMAGE + TOOLS -> MODEL OBSERVES -> COMPUTER ACTION ->
-  CLICK/TYPE/KEY -> SCREENSHOT NUEVO -> OBSERVE AGAIN -> REPEAT -> COMPUTER.STOP
+- TaskContract y contratos tipados.
+- WorkerBootstrap/validacion fail-closed.
+- FSM/loop del worker.
+- StructuredAction/parser.
+- ToolRegistry fino.
+- policy adapter hacia Sheriff.
+- command_id + payload_fingerprint + replay/conflict.
+- safe edit + read-back.
+- ToolResult/Observation.
+- failure classification.
+- stuck detection.
+- objective oracle determinista.
+- EvidenceRecord + completion audit.
+- adapters finos para acquisition/research/visual.
 
-REGLA FUNDAMENTAL: ACTION -> SCREENSHOT NUEVO -> VERIFY
-  Nunca asumir que un CLICK funciono.
+No puede contener:
 
-DETECTA VISUALMENTE lo que el codigo no delata:
-  layout incorrecto
-  botones fuera de posicion
-  navegacion incorrecta
-  elementos que no aparecen
-  resultado distinto al esperado
+- managed_agents/subagents.
+- OpenCode/OpenHands/Codex como agentes internos.
+- Kimi/MiniMax agents completos.
+- durable queue global.
+- DAG global.
+- scheduler.
+- watchdog/reenqueue global.
+- claim/lease manager global.
+- provider/key pool.
+- Command Center.
 
-TEST DE ESTADO: STATE A -> ACTION -> STATE B SCREENSHOT -> VERIFY STATE B
+## HOST CONTRACT - WORDFLOW
 
-FALLO: CLICK INCORRECTO -> pagina/estado incorrecto -> screenshot ->
-  detectar error -> corregir siguiente accion
+Wordflow conserva:
 
-CONVIERTE: "el codigo parece correcto" EN "resultado realmente observado
-en pantalla"
+DAG
+-> node assignment
+-> global claim/lease
+-> durable queue/recovery scheduling
+-> watchdog/reenqueue
+-> global write-scope arbitration
+-> provider/key routing
+-> autoridad global de estado.
 
-Casos de test que cubre:
-  BUTTON -> CLICK -> VERIFY
-  FORM -> TYPE -> SUBMIT -> VERIFY
-  MENU -> OPEN -> SELECT -> VERIFY
-  DRAG -> MOVE -> VERIFY POSITION
+Seals recibe:
 
-RESTRICCION: MetaCua va SIEMPRE detras de Sheriff + sandbox + typed tool
-contract + evidence. NUNCA tiene autoridad de PASS. (P1-24)
+node_id
+mission_id
+claim_id
+lease_id
+write_scope
+base_sha
+acceptance[]
+work_surface
+capability
+secret_refs
+command_id
 
-### De CUA + MCP + SANDBOX (Meta)
-computadora Linux aislada -> el agente NO controla el host
-LOOP: AGENT -> TOOL/MCP -> SANDBOX -> BROWSER -> ACTION -> OBSERVATION -> AGENT
-Aporta el laboratorio frontend desechable: CODE -> SANDBOX -> BROWSER ->
-  RENDER -> OBSERVE
-REGLA: el agente decide, MCP transporta la accion, el sandbox limita donde
-  ocurre el side effect.
-Si el entorno queda inconsistente: se descarta y se reconstruye sin
-  contaminar el host.
--> tapa P1-28 (installer sin sandbox/rollback)
+Seals hace:
 
-### De KIMI-RESEARCHER (Kimi K)
-investigacion real multi-fuente con cross-check
--> TAPA P1-18, QUE ES UNO DE LOS PEORES GAPS:
-   hoy research_comunidad le pregunta 20 veces al MISMO Cerebras y llama a eso
-   investigar. Ademas acepta la palabra "RESUELTO" del modelo como resolucion.
--> destino: seals_core/research_real.py (ya existe, se le cablea el mecanismo)
-   ResearchResult estructurado: query, sources[], source_type, claims[],
-   cross_check[], new_evidence, conclusion
-   Regla: NO_NEW_EVIDENCE -> NO_RESEARCH
+validate
+-> heartbeat/checkpoint
+-> execute
+-> record gap/evidence
+-> release/report
+-> NodeResult
 
-### De KIMI-AGENT-SDK (Kimi K)
-contratos de sesion de agente -> refuerza el task_contract (P1-20, P1-21)
-  y el WorkerBootstrap
+Las pruebas de claim collision, lease expiry, reenqueue, 3 workers y 50 mundos son VALIDATION/INTEGRATION con Wordflow.
+NO justifican meter esos motores dentro de Seals.
 
-### De KIMI-AGENT-RS (Kimi K)
-implementacion en Rust -> para las partes que deben ser 100% DETERMINISTAS
-  El Director pidio "lo conviertes en determinetista lo mas que puedas".
-  Rust da determinismo real donde Python no alcanza.
-  Candidatos: el verificador de hashes, el motor de idempotencia, el lease.
+## MECANISMOS FUENTE APROBADOS
 
-### De KIMI-CODE y KIMI-CLI (Kimi K)
-worker de escritura alternativo + CLI programable
-  -> entran en el AgentFleetAdapter como slots con capability declarada,
-     nunca como orquestadores
+### smolagents
 
-### De MINIMAX-CODING-PLAN-MCP (MiniMax)
-planificacion estructurada de codigo via MCP
-  -> es el PLANNER del macro-loop. Hoy Seals no tiene planner real.
-  -> alimenta el paso PLAN del loop antes de cualquier StructuredAction
+Base elegida para el loop minimo.
 
-### De MINIMAX-MCP y MINIMAX-MCP-JS (MiniMax)
-servidores MCP reales, herramientas expuestas por MCP
-  -> son la BASE del servidor MCP de contexto compartido del plan (Salida 10.3)
-     3 recursos: crazy_wall_state, mission_context, enchufe_universal_tools
-  -> REGLA: MCP comparte CONTEXTO, nunca AUTORIDAD
+Commit:
+30bb1161095dbae2271e6bc3cc4c219cc3897a57
 
-### De MINIMAX-CODE-PLUGINS (MiniMax)
-sistema de plugins de codigo
-  -> encaja DIRECTO con el Enchufe Universal Fables (el unico plugin
-     autorizado para cablear, Grupo 1 punto 4)
+Extraer:
+MultiStepAgent step loop
+max_steps
+ToolOutput
+patron de final_answer_checks
 
-### De OPENROOM (MiniMax)
-entorno/sala multi-agente
-  -> encaja con Multi-Agent Product Studio: estado compartido para que
-     frontend y backend avancen en paralelo sin una sola conversacion
+Eliminar/NO usar:
+managed_agents
+delegacion/subagentes
 
-### De MINI-AGENT (MiniMax)
-loop base minimo -> referencia de arquitectura minima, no se copia entero
+### Muse Glimmer
 
-### De MMX CLI (MiniMax)
-CLI programable -> contrato de automatizacion externa (igual que el CLI de Orca)
+Fuentes locales verificadas:
 
-### De MCODE (MiniMax) - FALTA MONTAR
-agente de codigo de MiniMax -> worker de escritura. Salida 2.1
+agent_loop.py
+blob f3087c13214e97b97d2a871f378cffaf1a393bf5
 
----
+response_parser.py
+blob 82bb70b0d3b539d1740bc7bdab3646054622aeb9
 
-## ARQUITECTURA RESULTANTE DE SEALS (podado)
+Extraer:
 
-Seals NO es un orquestador. Su firma unica es:
+raw -> typed tool call
+reason -> action -> result -> observation -> correction
+tool errors -> observation
 
-  SealsExecutor.execute(NodeInput) -> ToolReceipt -> Evidence[] -> NodeResult
+No ejecutar texto libre como comando.
 
-Pierde (porque los aporta Wordflow): su cola propia, su watchdog propio,
-su decision de PASS.
+### Muse Code SDK
 
-Composicion interna por capas:
+Fuente:
 
-  CAPA CONTRATO      <- kimi_agent_sdk + task_contract + WorkerBootstrap
-  CAPA PLAN          <- minimax_coding_plan_mcp
-  CAPA DECISION      <- muse_glimmer (ToolRegistry + parser ATEM + micro-loop)
-  CAPA AUTORIZACION  <- Sheriff/policy (ya existe: sheriff_policy.py)
-  CAPA EJECUCION     <- tools registradas + minimax_code_plugins (Enchufe Universal)
-  CAPA ENTORNO       <- cua_mcp (sandbox aislado)
-  CAPA VISUAL        <- metacua (ojos: pixeles + coordenadas)
-  CAPA INVESTIGACION <- kimi_researcher
-  CAPA DURABILIDAD   <- meta_muse_code_sdk (idempotencia, cola, checkpoint, replay)
-  CAPA DETERMINISTA  <- kimi_agent_rs (partes criticas en Rust)
-  CAPA ORACLE        <- meta_agent_cookbook (objective oracle, acceptance close)
-  CAPA EVIDENCIA     <- EvidenceRecord tipado + sha256 + screenshots
+pending-command-set.ts
+blob d250ffd284ca0fb4ff42839b43155c7487d92494
 
----
+Extraer:
 
-## LOOP COMPLETO DE SEALS (con todos los mecanismos cableados)
+command identity
+replay/resubmit seguro
+idempotency conflict
+estado suficiente para evitar doble side effect
 
-GOAL (del nodo autorizado por Wordflow)
-  -> READ CRAZY WALL FRESH
-  -> CLAIM + LEASE
-  -> LOAD TASK CONTRACT (kimi_agent_sdk) -> schema validate -> READY
-  -> DISCOVER REPO -> READ RELEVANT CODE -> BUILD DEPENDENCY CONTEXT
-  -> RESEARCH si hace falta (kimi_researcher, con cross_check real)
-  -> PLAN (minimax_coding_plan_mcp)
-  -> DECIDE NEXT ACTION (muse_glimmer: reason -> structured tool call)
-  -> PARSE (parser ATEM) -> StructuredAction
-  -> SHERIFF autoriza
-  -> IDEMPOTENCY CHECK (command_id + payload_fingerprint)
-  -> EXECUTE en sandbox (cua_mcp) con el plugin Enchufe Universal
-  -> TOOL RECEIPT
-  -> si work_surface = FRONTEND:
-       BUILD -> START APP -> OPEN REAL BROWSER
-       -> SCREENSHOT (metacua, coords 0-1000)
-       -> DOM + CONSOLE
-       -> INTERACT (click/type/drag)
-       -> SCREENSHOT NUEVO  <- obligatorio, nunca asumir
-       -> COMPARE CON ACCEPTANCE
-  -> si work_surface = BACKEND:
-       RUN TESTS -> CAPTURE OUTPUT
-  -> OBSERVATION (los errores vuelven como ToolResult, nunca como PASS)
-  -> GAP? -> ROOT CAUSE -> NEW ACTION -> SHERIFF -> FIX -> RETEST
-       STUCK detector: mismo tool + mismos args + mismo error x3 -> BLOCKED_STUCK
-  -> OBJECTIVE ORACLE decide (test determinista, jamas un LLM)
-  -> COMPLETION AUDIT (acceptance uno a uno)
-  -> RECORD EVIDENCE (path + sha256 + receipt + screenshots)
-  -> CHECKPOINT DURABLE
-  -> RELEASE LEASE
-  -> NodeResult a Wordflow
+NO extraer una cola/scheduler global dentro de Seals.
+La durabilidad global pertenece a Wordflow.
 
----
+### OpenCode
 
-## ORDEN DE EXTRACCION (que se cablea primero)
+Commit:
+d7b115f623760e68a4749d16508a9eca350f246f
 
-1. submodule update --init en CI  <- sin esto no hay codigo que extraer (S2.3)
-2. muse_glimmer: ToolRegistry + parser  <- completa P0-16, desbloquea todo lo demas
-3. kimi_researcher -> research_real.py  <- tapa el peor gap (P1-18)
-4. meta_muse_code_sdk: idempotencia + cola + checkpoint  <- tapa P0-11, P0-12, P1-27
-5. cua_mcp: sandbox  <- tapa P1-28
-6. metacua: capa visual  <- habilita el gate frontend (P1-23, P1-24)
-7. minimax_coding_plan_mcp: planner
-8. minimax_code_plugins -> Enchufe Universal
-9. kimi_agent_rs: partes deterministas criticas
-10. minimax_mcp -> servidor MCP de contexto compartido
+Fuente:
+packages/opencode/src/tool/edit.ts
 
-PASS por mecanismo: test que falla ANTES de cablearlo y pasa DESPUES.
-PARCHE: cada mecanismo es un commit independiente y revertible.
-NUNCA declarar un mecanismo integrado por el hecho de que la carpeta exista.
-Copiar las fuentes NO las convierte en integracion.
+Simbolos:
+EditTool
+lock()
+replace()
+
+Extraer:
+exact-match-before-patch
+single writer local por path
+diff
+permission-before-write
+read-back
+
+OpenCode no queda ejecutandose como agente interno.
+
+### OpenHands
+
+Commit fijado:
+f7fb0c4b21f5ed726edbba8a6309634ef434b004
+
+Uso aprobado:
+patron Action -> Observation
+success/error/timeout
+
+Estado:
+REFERENCE hasta fijar SOURCE_FILE/SOURCE_SYMBOL exactos del commit.
+
+OpenHands no queda ejecutandose dentro de Seals.
+
+### Codex
+
+Commit:
+be6e8eac029b183056b7e4402879f15d2c85f61b
+
+Fuentes:
+
+codex-rs/core/src/exec.rs
+-> process_exec_tool_call
+
+codex-rs/core/src/tools/sandboxing.rs
+-> ApprovalStore
+-> ExecApprovalRequirement
+-> SandboxOverride
+-> ToolRuntime
+
+codex-rs/core/src/apply_patch.rs
+-> prepare_apply_patch
+
+Extraer:
+policy
+sandbox
+approval
+fail-closed execution
+
+Codex no queda ejecutandose como agente interno.
+
+### Kimi Agent SDK
+
+Commit:
+ed4be6be5280d02191da88bbafb3f828dcd33d72
+
+Fuente:
+python/src/kimi_agent_sdk/_session.py
+
+Simbolo:
+Session
+
+Extraer:
+session lifecycle/resume contract
+
+No extraer el agente Kimi.
+
+### Kimi Agent RS
+
+Commit:
+f9186cd20b28c02d33721c05fd248e65d56e3e53
+
+Fuente:
+kimi-agent/src/wire/server.rs
+
+Simbolos:
+PendingRequest
+WireServer
+
+Extraer:
+typed request/state validation
+
+No crear un segundo wire/orchestrator dentro de Seals.
+
+### MiniMax Code Plugins
+
+Commit:
+d592f422893846c2aac48f8b407a92bd0293c6b1
+
+Uso:
+referencia para manifest declarativo de capability/plugin
+adaptado al Enchufe Universal Fables.
+
+Estado:
+REFERENCE hasta fijar schema/validator ejecutable exacto.
+
+### MetaCua
+
+Fuente local:
+wordflow_loop/agent_sources/metacua/
+
+README blob:
+7b69c111150041b52a7bf32076dd914ff4fa34e8
+
+Patron aprobado:
+
+SCREENSHOT
+-> ACTION
+-> SCREENSHOT NUEVO
+-> VERIFY
+
+Coordenadas normalizadas 0-1000.
+
+Estado:
+REFERENCE hasta fijar SOURCE_FILE/SOURCE_SYMBOL de implementacion.
+
+Nunca autoridad de PASS.
+
+### CUA-MCP
+
+Fuente local:
+wordflow_loop/agent_sources/cua_mcp/
+
+README blob:
+e56ec0c9a8a48d4f2b52e9e22708a2ad46c34b8f
+
+Patron:
+
+Seals
+-> approved MCP tool
+-> isolated CUA sandbox
+-> observation
+
+Estado:
+REFERENCE hasta fijar bridge/source symbol.
+
+Nunca autoridad de PASS.
+
+## COMPONENTES EN GAP O DESCARTADOS COMO CORE
+
+### Kimi-Researcher
+
+Commit:
+9406d821348471bceb6d5fa0b7eba05411106f93
+
+Estado:
+GAP.
+
+Hallazgo:
+la fuente fijada auditada expone project page; no se demostro codigo ejecutable del motor multi-source/cross-check.
+
+Decision:
+NO declarar P1-18 cerrado con Kimi-Researcher hasta localizar codigo real.
+
+El requisito permanece:
+
+ResearchResult(
+query,
+sources,
+source_type,
+claims,
+cross_check,
+new_evidence,
+conclusion
+)
+
+NO_NEW_EVIDENCE
+-> cambiar estrategia
+o
+-> BLOCKED_WITH_TRACE
+
+### MiniMax-Coding-Plan-MCP
+
+Commit:
+5dbf3494d7dac35d154958e0c1dab03910b89bbd
+
+Archivo auditado:
+minimax_mcp/server.py
+
+Simbolos comprobados:
+web_search
+understand_image
+
+Estado para "planner":
+GAP.
+
+No llamarlo planner de Seals sin localizar un simbolo que implemente planificacion estructurada.
+
+### Meta Agent Cookbook
+
+Estado:
+REFERENCE.
+
+Antes de extraer objective oracle/stuck/safe-edit:
+fijar file + symbol exactos.
+
+No declarar mecanismo integrado por descripcion del cookbook.
+
+### Mini-Agent
+
+Commit:
+d76a4f6389688cabda39c224a6cdfa274215d47c
+
+Uso:
+segunda referencia de agente minimo.
+
+No copiar Agent entero.
+smolagents es la base escogida.
+
+### No entran como agentes internos
+
+kimi_code
+@ 1fddc16e3ea2de4c26a18acd764380adf9e2ed64
+
+kimi_cli
+@ 86f136422a0aae6b217ea49e7ea1d2e8a1defcd2
+
+OpenRoom
+@ 02468154c4d99f8925916425bf444d672454fb3d
+
+mmx CLI
+@ bfbb4cb75ec343149eaccfd668c5011aa27bcf2b
+
+mcode
+@ 73a2581c6c7525628342f33b53907d4f7bdc146e
+
+Pueden estudiarse como fuente.
+No quedan vivos dentro de Seals.
+
+### MCP generico MiniMax
+
+MiniMax-MCP
+@ 0856b9aef8a9d676bb63bdd6b6426d7b640a3b7a
+
+MiniMax-MCP-JS
+@ 8032f830203a1c61e56760b1680db923654bcb1b
+
+Clasificacion:
+HOST_ONLY / REFERENCE.
+
+El servidor de contexto compartido pertenece al host/Command Center, no al cerebro de Seals.
+
+## CAPACIDAD NATIVA: ACQUISITION + INTEGRATION
+
+Entrada:
+
+URL + COMPONENT + TaskContract
+
+Flujo:
+
+RECEIVE
+-> usar motor existente de descarga/extraccion
+-> verify source URL
+-> resolve exact commit
+-> checkout exact commit
+-> SOURCE_COMMIT == CHECKED_OUT_COMMIT
+-> inspect
+-> classify
+-> map destination
+-> prune
+-> decapitate external brain/orchestrator
+-> extract capability
+-> integrate through approved adapter/plugin
+-> test
+-> read-back
+-> evidence
+
+Reglas:
+
+directorio existente != instalacion valida
+
+stale/empty/wrong repo
+-> FAIL/GAP
+
+no crear downloader/mover nuevo antes de auditar el autorizado
+
+1 path = 1 writer
+
+Los SOURCE_FILE/SOURCE_SYMBOL de los motores existentes deben añadirse a la trazabilidad antes de implementar esta capa.
+
+## SKILL -> SCHEMA
+
+Seals convierte una skill en contrato/schema.
+No ejecuta skills como prompts decorativos.
+
+Flujo:
+
+SKILL
+-> extract objective/inputs/preconditions/actions/acceptance/evidence/failures
+-> typed schema
+-> validate
+-> executable contract
+
+Debe haber varios templates segun capability.
+Todos deben ser validables.
+
+No inventar schema de memoria.
+Reutilizar schemas/validators existentes despues de X-Ray.
+
+## RESEARCH
+
+Research es una capability.
+No otro agente interno.
+
+Contrato minimo:
+
+ResearchResult
+- query
+- sources[]
+- source_type
+- claims[]
+- cross_check[]
+- new_evidence
+- conclusion
+
+Regla:
+
+NO_NEW_EVIDENCE
+-> cambiar estrategia
+
+repeticion improductiva
+-> STUCK/BLOCKED_WITH_TRACE
+
+Motor concreto:
+GAP hasta cerrar trazabilidad real.
+
+## FRONTEND / VISUAL
+
+Solo si work_surface = FRONTEND o MIXED.
+
+CODE
+-> BUILD
+-> START APP
+-> REAL BROWSER
+-> SCREENSHOT
+-> DOM/CONSOLE
+-> ACTION
+-> SCREENSHOT NUEVO
+-> VERIFY
+-> GAP/FIX/REBUILD/RETEST
+-> CODE PASS + BROWSER PASS + VISUAL PASS
+
+CUA/MetaCua:
+observan/actuan detras de Sheriff+sandbox.
+
+No deciden PASS.
+
+## ORACLE / COMPLETION
+
+LLM_OPINION != OBJECTIVE_ORACLE.
+
+Cadena:
+
+TEST
+-> ACCEPTANCE
+-> EVIDENCE
+-> COMPLETION AUDIT
+-> PASS
+
+EvidenceRecord minimo:
+
+path
+sha256
+receipt
+test
+exit_code
+artifact
+source_commit
+timestamp
+mission_id/node_id
+acceptance_id
+
+Existe=false
+-> GAP/FAILED
+
+Provider/auth/timeout/invalid_output
+-> typed failure
+
+Tool error
+-> observation
+-> nunca PASS
+
+No cierre por numero de iteraciones.
+
+## RECOVERY
+
+Seals no posee el scheduler de recovery.
+
+Wordflow posee:
+claim/lease/durable queue/watchdog/reenqueue.
+
+Seals debe ser reanudable e idempotente:
+
+CRASH
+-> host reasigna/reanuda
+-> Seals load contract/checkpoint
+-> verify base/evidence hashes
+-> same command_id replay/join
+-> continue without duplicate side effect
+
+## CONSTRUCCION Y VALIDACION
+
+El equipo de construccion externo puede usar OpenCode/OpenHands/Codex u otros agentes para crear, reparar o auditar codigo.
+
+Ese equipo NO forma parte de Seals runtime.
+
+Las 3 instancias iguales en paralelo son una PRUEBA desde Wordflow/host:
+
+3 Seals iguales
+-> 3 nodos/claims/workspaces separados
+-> 1 componente dificil por instancia
+-> verify real download/write/test/evidence
+
+No convertir esta prueba en una flota interna de Seals.
+
+## ORDEN DE IMPLEMENTACION
+
+1. X-Ray baseline del Seals actual.
+2. contracts/bootstrap.
+3. loop minimo + structured actions.
+4. policy/execution/safe edit.
+5. idempotency/replay.
+6. oracle/evidence/completion audit.
+7. acquisition/integration usando motores existentes trazados.
+8. research cuando exista motor real trazado.
+9. visual adapter cuando MetaCua/CUA symbols esten trazados.
+10. recovery/regression contra host contract.
+11. prueba 3 instancias desde Wordflow.
+12. completion audit final.
+
+Cada mecanismo:
+
+test rojo
+-> adapt
+-> test verde
+-> read-back
+-> evidence SHA256
+
+## CONDICION FINAL
+
+SEALS WORKER VERIFIED significa:
+
+CORE:
+TASK_CONTRACT
+STRUCTURED_ACTION
+SHERIFF/POLICY ADAPTER
+IDEMPOTENCY
+TOOL_RESULT/OBSERVATION
+OBJECTIVE+ACCEPTANCE
+OBJECTIVE_ORACLE
+REAL_TESTS
+EVIDENCE_SHA256
+COMPLETION_AUDIT
+
+HOST INTEGRATION:
+DAG real
+CLAIM/LEASE
+WRITE_SCOPE
+DURABLE_QUEUE/RECOVERY
+WATCHDOG/REENQUEUE
+CRASH_RESUME
+BACKEND/FRONTEND routing
+browser/screenshot loop cuando aplique
+
+VALIDATION:
+regression suite
+3 isolated Seals instances
+wrong-source-commit
+provider/tool failures
+no-pass-without-evidence
+
+Ningun item HOST obliga a duplicar su motor dentro de Seals.
