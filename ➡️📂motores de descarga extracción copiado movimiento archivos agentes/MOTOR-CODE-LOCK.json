@@ -31,6 +31,11 @@
       "id": "motor_4_move_batches",
       "canonical_source": "➡️📂motores de descarga extracción copiado movimiento archivos fromtend/➡️📂motor de moves archivos/motor_4_move_batches.py",
       "canonical_blob_sha": "9a21facfe11327cf60a2afca8f415ad52f0ecbe5"
+    },
+    {
+      "id": "motor_5_zip_root",
+      "canonical_source": "➡️📂motores de descarga extracción copiado movimiento archivos fromtend/📂Motor descarga de componentes y extracción de zip/motor_5_zip_root.py",
+      "canonical_blob_sha": "2516d85d81f691f86c32a70b90c2599639eb83c6"
     }
   ],
   "on_mismatch": "MOTOR_CODE_LOCK_GAP",
