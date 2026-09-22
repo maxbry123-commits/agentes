@@ -716,7 +716,6 @@ Nunca cierre fingido.
 ---
 
 ## OBJETIVO 4 - ORQUESTADOR COMAND CENTER
-## OBJETIVO 4 - ORQUESTADOR COMAND CENTER
 
 Arquitectura YA APROBADA por el Director (verbatim):
 "Opcion 1 como capa de control y Opcion 2 como motor de ejecucion durable -
