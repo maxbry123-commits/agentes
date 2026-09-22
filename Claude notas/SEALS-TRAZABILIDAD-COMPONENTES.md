@@ -323,14 +323,126 @@ Seals NO crea:
 - segundo claim manager
 - segundo provider router
 
-## T-019 - MOTORES DE DESCARGA/MOVIMIENTO
+## T-019 - MOTORES CANONICOS DE SEALS COMO TOOLS
 
-Status: HOST_ONLY / X-RAY REQUIRED
-Requisito:
-Seals usa los motores existentes de descarga, extraccion y movimiento.
-Antes de implementar acquisition/integration registrar:
-SOURCE_FILE + SOURCE_SYMBOL + contrato de entrada/salida de cada motor.
-Prohibido crear downloader/mover nuevo mientras exista uno autorizado sin auditar.
+Status: HOST_TOOL / COPY_EXACT / BUILD_TASK
+
+Decision arquitectonica:
+los motores NO viven dentro de seals_core.
+Se copian 1:1 dentro de Wordflow como adapters/tools fisicos y Seals los consume
+mediante schemas tipados.
+
+Destino exacto de codigo:
+`➡️📂 wordflow loop code Yaiwes/wordflow_loop/adapters/seals_motors/`
+
+Destino exacto de schemas:
+`➡️📂 wordflow loop code Yaiwes/wordflow_loop/contracts/seals_motors/`
+
+Fuente canonica:
+`maxbry123-commits/frontend@main`
+
+Motores requeridos:
+
+1. EXTRACT
+Source file:
+`➡️📂motores de descarga extracción copiado movimiento archivos fromtend/➡️📂 Motor de extracción zip/motor_1_extract_only.py`
+Blob SHA:
+`a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500`
+Source symbol:
+`main()`
+Schema requerido:
+`extract_only.schema.json`
+
+2. DOWNLOAD_EXTRACT_QUEUE
+Source file:
+`➡️📂motores de descarga extracción copiado movimiento archivos fromtend/📂Motor descarga de componentes y extracción de zip/motor_2_queue_download_extract.py`
+Blob SHA:
+`84d566e2ee4e98e42eb3a864026d067d48caabd9`
+Source symbols:
+`main(), run_item(), balance()`
+Schema requerido:
+`download_extract_queue.schema.json`
+
+3. DOWNLOAD_EXTRACT_ENGINE
+Source file:
+`➡️📂motores de descarga extracción copiado movimiento archivos fromtend/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py`
+Blob SHA:
+`91e6e4486692eab314be5c7130d8310d3c855397`
+Source symbol:
+`main()`
+Schema:
+forma parte de `download_extract.schema.json`; no exponer un segundo cerebro.
+
+4. COPY
+Source file:
+`➡️📂motores de descarga extracción copiado movimiento archivos fromtend/➡️📂motor de copiar archivos/motor_3_copy_batches.py`
+Blob SHA:
+`3689924361ce4a1a9fde4ae2b6f6009c37a6042d`
+Source symbols:
+`main(), manifest(), copy_verified()`
+Schema requerido:
+`copy_batches.schema.json`
+
+5. MOVE
+Source file:
+`➡️📂motores de descarga extracción copiado movimiento archivos fromtend/➡️📂motor de moves archivos/motor_4_move_batches.py`
+Blob SHA:
+`9a21facfe11327cf60a2afca8f415ad52f0ecbe5`
+Source symbols:
+`main(), first_manifest(), move_verified()`
+Schema requerido:
+`move_batches.schema.json`
+
+6. ZIP_ROOT
+Source file:
+`➡️📂motores de descarga extracción copiado movimiento archivos fromtend/📂Motor descarga de componentes y extracción de zip/motor_5_zip_root.py`
+Blob SHA:
+`2516d85d81f691f86c32a70b90c2599639eb83c6`
+Source symbols:
+`main(), inventory(), build_zip(), verify_zip()`
+Schema requerido:
+`zip_root.schema.json`
+Funcion:
+empaquetar una raiz completa a ZIP excluyendo cualquier `.git/`, conservando
+el resto del arbol, con manifest + tree_sha256 + zip_sha256 + read-back.
+Estado:
+`CODE_CREATED / RUNTIME_TEST_PENDING`.
+
+Regla de copia:
+- fetch desde fuente canonica;
+- comparar blob SHA;
+- copiar contenido EXACTO;
+- releer destino;
+- blob SHA destino debe ser IDENTICO;
+- si cambia una sola linea -> `MOTOR_CODE_LOCK_GAP`;
+- PROHIBIDO adaptar/refactorizar el motor copiado.
+
+Regla de exposicion como tool:
+schema -> validacion -> Sheriff/Policy -> adapter/motor -> ToolResult/receipt.
+
+El schema puede mapear inputs/outputs, pero NO puede reescribir la logica del motor.
+
+Inputs minimos por schema:
+- extract: ARCHIVE_INPUT, DEST_DIR, STATE_FILE
+- download_extract: SOURCE_REPO/ref o queue contract + destinos explicitos
+- copy: SOURCE_DIR, DEST_DIR, STATE_FILE, BATCH_SIZE
+- move: SOURCE_DIR, DEST_DIR, STATE_FILE, BATCH_SIZE
+- zip_root: ROOT_DIR, OUTPUT_ZIP, MANIFEST_PATH, COLLISION_POLICY
+
+Acceptance de esta tarea:
+- 6 archivos fisicos en `adapters/seals_motors/`;
+- cada blob coincide con la fuente canonica;
+- 5 schemas de tool en `contracts/seals_motors/`;
+- schema invalid -> no ejecucion;
+- motor error -> ToolResult FAILED/OBSERVATION;
+- test real por cada tool;
+- evidence con source blob, destination blob, command, exit_code y read-back.
+
+PROHIBIDO:
+- crear un downloader/copy/move alternativo;
+- meter los motores dentro de seals_core;
+- modificar motores para hacerlos encajar;
+- declarar integrado solo porque el archivo exista.
 
 ## T-020 - ORACLE Y EVIDENCE
 
