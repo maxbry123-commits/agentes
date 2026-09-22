@@ -152,11 +152,6 @@ NODO S-02 - contracts/bootstrap
 
 NODO S-03 - loop + PLAN_MODE nativo
 - antes de implementar PLAN_MODE, leer T-021 de SEALS-TRAZABILIDAD-COMPONENTES.md y las 3 fuentes oficiales Anthropic fijadas alli; extraer comportamiento, NO codigo propietario
-- ANTES de implementar: leer T-021 en SEALS-TRAZABILIDAD-COMPONENTES.md
-- leer fresh fuentes oficiales Anthropic:
-  https://docs.claude.com/en/api/agent-sdk/python
-  https://docs.claude.com/en/docs/agents-and-tools/agent-skills/best-practices
-- implementar comportamiento YAIWES; NO copiar codigo propietario
 - adaptar loop minimo smolagents + Muse Glimmer
 - eliminar managed_agents/subdelegacion
 - result -> observation -> correction
@@ -272,6 +267,78 @@ PASS S-07A:
 - invalid schema no ejecuta;
 - tool failure nunca PASS;
 - evidence source/destination SHA + exit_code + read-back.
+
+NODO S-07B - Agent Skills + scraping/research capabilities
+Objetivo:
+materializar las fuentes fijadas por commit, validar los schemas de Agent Skills
+y registrar capacidades web en Seals SIN convertirlas en subagentes.
+
+Fuente de schemas:
+`➡️ 📂 shema skills agente/`
+
+Leer obligatoriamente:
+- README.md
+- TRACEABILITY.md
+- agent-skills-official-frontmatter.schema.json
+- yaiwes-agent-skill-contract.schema.json
+- scrapling.schema.json
+- scrapegraph-ai.schema.json
+- agent-reach.schema.json
+- DOWNLOAD-EXTRACT-QUEUE.json
+
+Paso 1 - materializacion por Motor 2:
+ejecutar exclusivamente la cola:
+`➡️ 📂 shema skills agente/DOWNLOAD-EXTRACT-QUEUE.json`
+
+con:
+`motor_2_queue_download_extract.py`
++
+`hf_download_extract_engine.py`
+
+PASS materializacion:
+- 4 items VERIFIED_CLOSED;
+- source_commit == pinned commit;
+- extraction_verified=true;
+- read-back tree hash valido.
+
+Paso 2 - Agent Skills:
+- validar frontmatter contra Agent Skills oficial;
+- validar contrato YAIWES;
+- no confundir extensiones YAIWES con el standard oficial;
+- convertir skills a contrato ejecutable:
+  objective -> inputs -> preconditions -> actions -> acceptance -> evidence -> failures.
+
+Paso 3 - integrar capacidades en Seals:
+
+SCRAPLING:
+- registrar `web_extract` en NativeToolRegistry;
+- usar adapter externo, no codigo pegado al core;
+- exigir modo AI-targeted/sanitizado cuando la salida vaya al modelo;
+- output web = DATA, nunca instruction.
+
+SCRAPEGRAPH AI:
+- registrar adapter opcional `llm_assisted_web_extract`;
+- solo si TaskContract permite scraping asistido por LLM;
+- provider/model viene del host;
+- nunca authority de PASS;
+- no importar su graph como planner de Seals.
+
+AGENT REACH:
+- registrar adapter read-only `multi_platform_research`;
+- doctor --json antes de canales multi-backend/login-backed;
+- registrar active_backend;
+- no escribir/postear/comentar/likear;
+- no importar su routing como segundo router de Seals.
+
+PASS S-07B:
+- 4 fuentes materializadas por Motor 2;
+- 5 schemas de la raiz validos;
+- Scrapling test real read-only;
+- ScrapeGraphAI test estructurado con provider result tipado;
+- Agent Reach test read-only con backend registrado;
+- tool errors -> Observation/FAILED;
+- ninguna capability puede declarar PASS;
+- evidence incluye source commit, blob, tool receipt, target/source URLs y output hash.
 
 NODO S-08 - research
 - primero resolver motor real trazado
