@@ -457,6 +457,70 @@ EvidenceRecord minimo:
 path, sha256, receipt, test, exit_code, artifact, source_commit, timestamp, mission_id/node_id, acceptance_id.
 PASS sin evidence valida = INVALID_STATE.
 
+## T-021 - PLAN_MODE AVANZADO NATIVO
+
+Status: CORE REQUIREMENT / DESIGN_NATIVE
+
+Referencia de comportamiento:
+Claude Code Plan Mode se usa como modo de exploracion/planificacion sin mutacion.
+NO se copia codigo de Claude Code.
+El comportamiento se implementa con primitives ya aprobadas de Seals:
+FSM + StructuredAction + Sheriff/Policy + Evidence.
+
+Destino:
+- ExecutionMode enum
+- PlanContract
+- PlanGate
+- transiciones PLAN/EXECUTE/REPLAN
+
+Contrato:
+`ExecutionMode = PLAN | EXECUTE`
+
+PlanContract:
+plan_id
+mission_id
+node_id
+goal_id
+base_sha
+write_scope
+objective
+acceptance[]
+evidence_refs[]
+findings[]
+actions[]
+dependencies[]
+expected_outputs[]
+rollback[]
+unknowns[]
+created_from_state_hash
+plan_sha256
+
+Reglas:
+- PLAN_MODE solo read/list/search/inspect/hash/research.
+- mutacion en PLAN_MODE -> PLAN_MODE_SIDE_EFFECT_DENIED.
+- EXECUTE requiere PlanGate PASS.
+- toda mutacion requiere plan_id + action_id.
+- target fuera de write_scope -> DENY.
+- base_sha drift -> PLAN_STALE -> REPLAN.
+- REPLAN conserva evidence anterior.
+- Shift+Tab, si existe UI, solo emite SET_MODE; no es autoridad.
+
+Tests:
+PLAN_MODE_MUTATION_DENIED
+EXECUTE_WITHOUT_PLAN_DENIED
+UNPLANNED_MUTATION_DENIED
+STALE_PLAN_DENIED
+PLAN_ACTION_SCHEMA_INVALID
+PLAN_WRITE_SCOPE_ESCAPE
+PLAN_ACCEPTANCE_UNCOVERED
+VALID_PLAN_EXECUTES
+GAP_REPLAN_PRESERVES_EVIDENCE
+
+Trazabilidad:
+este mecanismo NO se extrae de un agente externo; es diseño nativo YAIWES.
+Las fuentes externas solo sirven como referencia de comportamiento.
+Por tanto no se requiere SOURCE_SYMBOL externo para implementarlo.
+
 ## COMPONENT BUDGET
 
 Objetivo:
