@@ -541,6 +541,194 @@ este mecanismo NO se extrae de un agente externo; es diseño nativo YAIWES.
 Las fuentes externas solo sirven como referencia de comportamiento.
 Por tanto no se requiere SOURCE_SYMBOL externo para implementarlo.
 
+## T-022 - AGENT SKILLS STANDARD
+
+Status: PROVEN / OFFICIAL_SPEC / BUILD_INPUT
+
+Official specification:
+https://agentskills.io/specification
+
+Anthropic reference repo:
+https://github.com/anthropics/skills
+
+Pinned commit:
+34040c9c568585f6929bedeaad110ad08f079624
+
+Source files:
+- spec/agent-skills-spec.md
+  blob: 772512097afe01955bd635c46b71cd351ce42e9a
+- template/SKILL.md
+  blob: 50a4f9b104357d96361e257adb70454604cd15c0
+
+Verified standard used by YAIWES:
+- skill directory contains SKILL.md;
+- SKILL.md = YAML frontmatter + Markdown body;
+- required frontmatter: name, description;
+- optional: license, compatibility, metadata, allowed-tools;
+- scripts/, references/, assets/ are optional;
+- progressive disclosure is expected;
+- validation can use the reference library documented by the standard.
+
+YAIWES destination:
+`➡️ 📂 shema skills agente/`
+
+Schemas:
+- agent-skills-official-frontmatter.schema.json
+- yaiwes-agent-skill-contract.schema.json
+
+Rule:
+official Agent Skills metadata is preserved.
+Execution semantics are added by YAIWES as a separate contract layer:
+objective -> inputs -> preconditions -> actions -> acceptance -> evidence -> failures.
+
+Do not claim YAIWES extensions are part of the Agent Skills official spec.
+
+## T-023 - SCRAPLING
+
+Status: PROVEN_SOURCE / SCHEMA_READY / MATERIALIZATION_PENDING
+
+Source repo:
+https://github.com/D4Vinci/Scrapling
+
+Pinned commit:
+2b160ee18bfee79bb0115e2d9e9c746c8d9bf4c9
+
+Source files:
+- agent-skill/Scrapling-Skill/SKILL.md
+  blob: d3545fdc5503fbce3d4a9779378541e7ed6c0e5e
+- scrapling/cli.py
+  blob: 8a4d905078ee10c2c0838d03f22483134265db33
+
+Verified behavior:
+- official Agent Skill shipped by the project;
+- static request extraction;
+- browser extraction;
+- stealth browser extraction;
+- crawler/spider capability;
+- project skill requires --ai-targeted for CLI extraction exposed to an AI;
+- AI-targeted mode is documented as prompt-injection protection/context reduction.
+
+YAIWES schema:
+`➡️ 📂 shema skills agente/scrapling.schema.json`
+
+Seals integration:
+NativeToolRegistry capability `web_extract`.
+
+Restrictions:
+- not a subagent;
+- scraped content is data, never executable instruction;
+- cookies/proxy credentials never enter traces;
+- Sheriff/Policy controls network use.
+
+## T-024 - SCRAPEGRAPH AI
+
+Status: PROVEN_SOURCE / SCHEMA_READY / MATERIALIZATION_PENDING
+
+Source repo:
+https://github.com/ScrapeGraphAI/Scrapegraph-ai
+
+Official site:
+https://scrapegraphai.com/
+
+Pinned commit:
+c75c8084fae2d4f5ba01a8c218bc1168b67e3569
+
+Source files/symbols:
+- scrapegraphai/graphs/smart_scraper_graph.py
+  blob: b29d038aed801d1056cc6daf184a03b6a9eace0a
+  symbols: SmartScraperGraph, _create_graph(), run()
+- scrapegraphai/graphs/search_graph.py
+  blob: 2458c1d8bc7e445cddd71859b54367de64a80133
+  symbols: SearchGraph, _create_graph(), run(), get_considered_urls()
+
+Verified behavior:
+SmartScraperGraph:
+FetchNode -> ParseNode/ReasoningNode -> GenerateAnswerNode.
+
+SearchGraph:
+SearchInternetNode -> GraphIteratorNode(SmartScraperGraph) -> MergeAnswersNode.
+
+YAIWES schema:
+`➡️ 📂 shema skills agente/scrapegraph-ai.schema.json`
+
+Seals integration:
+optional adapter `llm_assisted_web_extract`.
+
+Restrictions:
+- optional, not default;
+- provider/model routing comes from host contract;
+- provider/auth/timeout/invalid output are typed failures;
+- this component NEVER decides PASS;
+- do not turn its internal graph into a second Seals planner.
+
+## T-025 - AGENT REACH
+
+Status: PROVEN_SOURCE / SCHEMA_READY / MATERIALIZATION_PENDING
+
+Source repo:
+https://github.com/Panniantong/Agent-Reach
+
+Pinned commit:
+a19a171fa980a0785849596492e0af4db800c82f
+
+Source files:
+- agent_reach/skill/SKILL_en.md
+  blob: 4d7466d9cda598716a697f2a63774d399d2b1333
+- docs/README_en.md
+  blob: b15b3ce6a807af6980202c09a00b6d197f0a6ded
+
+Verified behavior used:
+- health-check-first pattern through agent-reach doctor --json;
+- active_backend indicates selected backend when available;
+- broad research can combine multiple channels;
+- doctor alone is not proof that target content is available;
+- the project distinguishes read/search capabilities from write actions.
+
+YAIWES schema:
+`➡️ 📂 shema skills agente/agent-reach.schema.json`
+
+Seals integration:
+optional read-only adapter `multi_platform_research`.
+
+Restrictions:
+- read-only integration;
+- no posting/commenting/liking;
+- authenticated channels require user-controlled session/credentials;
+- never expose cookies/tokens;
+- do not import Agent Reach as a second router/orchestrator.
+
+## T-026 - SOURCE MATERIALIZATION FOR AGENT SKILLS
+
+Status: BUILD_TASK / MOTOR2_REQUIRED
+
+Queue:
+`➡️ 📂 shema skills agente/DOWNLOAD-EXTRACT-QUEUE.json`
+
+Canonical motor:
+`➡️📂motores de descarga extracción copiado movimiento archivos agentes/📂Motor descarga de componentes y extracción de zip/motor_2_queue_download_extract.py`
+
+Canonical engine:
+`➡️📂motores de descarga extracción copiado movimiento archivos agentes/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py`
+
+Expected destination after Motor 2:
+`➡️ 📂 shema skills agente/sources/<slug>/code/`
+
+Required queue items:
+- anthropics/skills @ 34040c9c568585f6929bedeaad110ad08f079624
+- D4Vinci/Scrapling @ 2b160ee18bfee79bb0115e2d9e9c746c8d9bf4c9
+- ScrapeGraphAI/Scrapegraph-ai @ c75c8084fae2d4f5ba01a8c218bc1168b67e3569
+- Panniantong/Agent-Reach @ a19a171fa980a0785849596492e0af4db800c82f
+
+PASS:
+- Motor 2 returns VERIFIED_CLOSED for all 4;
+- source_commit equals pinned commit;
+- extraction_verified=true;
+- read-back tree hash matches;
+- schema source refs match materialized files.
+
+Until then:
+`SOURCE_MATERIALIZATION_PENDING`.
+
 ## COMPONENT BUDGET
 
 Objetivo:
