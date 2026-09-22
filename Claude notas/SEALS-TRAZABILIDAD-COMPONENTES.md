@@ -479,28 +479,6 @@ Sheriff/Policy + Evidence. No se integra Claude Code ni codigo propietario.
 
 
 
-FUENTES OFICIALES DE REFERENCIA - LEER FRESH ANTES DE IMPLEMENTAR:
-
-1. Anthropic Claude Agent SDK - Python reference:
-https://docs.claude.com/en/api/agent-sdk/python
-
-Mecanismos documentados oficialmente:
-- PermissionMode incluye "plan" = planning mode, no execution.
-- ExitPlanMode entrega un plan para aprobacion antes de ejecutar.
-
-2. Anthropic Agent Skills - Best practices:
-https://docs.claude.com/en/docs/agents-and-tools/agent-skills/best-practices
-
-Patron documentado oficialmente:
-- plan -> validate -> execute -> verify
-- salida intermedia estructurada y verificable antes de mutaciones.
-
-Referencia de comportamiento:
-Claude Code/Agent SDK usa un modo de planificacion separado de ejecucion.
-NO se copia codigo propietario de Claude Code.
-Se reutiliza el concepto documentado y se implementa de forma nativa YAIWES
-con FSM + StructuredAction + Sheriff/Policy + Evidence.
-
 Destino:
 - ExecutionMode enum
 - PlanContract
