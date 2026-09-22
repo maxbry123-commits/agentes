@@ -1,0 +1,46 @@
+{
+  "schema": "yaiwes.frontend.download-extract-queue.v1",
+  "purpose": "Materialize exact source snapshots for Agent Skills schemas and Seals scraping capabilities using canonical Motor 2.",
+  "queue": [
+    {
+      "id": "agent-skills-standard",
+      "source_repo": "https://github.com/anthropics/skills",
+      "source_ref": "34040c9c568585f6929bedeaad110ad08f079624",
+      "slug": "agent-skills-standard",
+      "publish": true,
+      "dest_repo": "maxbry123-commits/agentes",
+      "dest_branch": "main",
+      "dest_root": "➡️ 📂 shema skills agente/sources"
+    },
+    {
+      "id": "scrapling",
+      "source_repo": "https://github.com/D4Vinci/Scrapling",
+      "source_ref": "2b160ee18bfee79bb0115e2d9e9c746c8d9bf4c9",
+      "slug": "scrapling",
+      "publish": true,
+      "dest_repo": "maxbry123-commits/agentes",
+      "dest_branch": "main",
+      "dest_root": "➡️ 📂 shema skills agente/sources"
+    },
+    {
+      "id": "scrapegraph-ai",
+      "source_repo": "https://github.com/ScrapeGraphAI/Scrapegraph-ai",
+      "source_ref": "c75c8084fae2d4f5ba01a8c218bc1168b67e3569",
+      "slug": "scrapegraph-ai",
+      "publish": true,
+      "dest_repo": "maxbry123-commits/agentes",
+      "dest_branch": "main",
+      "dest_root": "➡️ 📂 shema skills agente/sources"
+    },
+    {
+      "id": "agent-reach",
+      "source_repo": "https://github.com/Panniantong/Agent-Reach",
+      "source_ref": "a19a171fa980a0785849596492e0af4db800c82f",
+      "slug": "agent-reach",
+      "publish": true,
+      "dest_repo": "maxbry123-commits/agentes",
+      "dest_branch": "main",
+      "dest_root": "➡️ 📂 shema skills agente/sources"
+    }
+  ]
+}
