@@ -450,6 +450,7 @@ S-04 policy/execution/safe edit.
 S-05 idempotency/replay.
 S-06 oracle/evidence/completion audit.
 S-07 acquisition/integration.
+S-07A copiar motores canonicos 1:1 a Wordflow adapters + crear schemas de tool.
 S-08 research solo cuando exista motor real trazado.
 S-09 frontend/visual solo cuando MetaCua/CUA tengan SOURCE_SYMBOL trazado.
 S-10 recovery/regression contra host contract.
@@ -520,8 +521,16 @@ Empty/stale/wrong repo -> FAIL/GAP.
 1 path = 1 writer.
 
 Antes de implementar esta capa:
-trazar SOURCE_FILE + SOURCE_SYMBOL de los motores existentes.
-No crear otro downloader/mover.
+seguir T-019 de `SEALS-TRAZABILIDAD-COMPONENTES.md`.
+Copiar los motores canónicos 1:1 dentro de
+`wordflow_loop/adapters/seals_motors/`
+y crear sus schemas en
+`wordflow_loop/contracts/seals_motors/`.
+No modificar su codigo.
+No crear otro downloader/copy/move.
+El unico motor nuevo aprobado es `motor_5_zip_root.py`, ya creado con blob
+`2516d85d81f691f86c32a70b90c2599639eb83c6`, para empaquetar una raiz
+completa excluyendo `.git/`; runtime test aun PENDIENTE.
 
 ### SKILL -> SCHEMA
 
