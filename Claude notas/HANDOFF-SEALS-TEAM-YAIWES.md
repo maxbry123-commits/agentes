@@ -151,6 +151,7 @@ NODO S-02 - contracts/bootstrap
 - validate before execution
 
 NODO S-03 - loop + PLAN_MODE nativo
+- antes de implementar PLAN_MODE, leer T-021 de SEALS-TRAZABILIDAD-COMPONENTES.md y las 3 fuentes oficiales Anthropic fijadas alli; extraer comportamiento, NO codigo propietario
 - ANTES de implementar: leer T-021 en SEALS-TRAZABILIDAD-COMPONENTES.md
 - leer fresh fuentes oficiales Anthropic:
   https://docs.claude.com/en/api/agent-sdk/python
