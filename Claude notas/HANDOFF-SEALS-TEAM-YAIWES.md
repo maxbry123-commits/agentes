@@ -185,6 +185,79 @@ URL + COMPONENT
 -> read-back
 -> evidence
 
+NODO S-07A - motores canonicos como tools de Seals
+Objetivo:
+copiar fielmente los motores canónicos dentro de Wordflow SIN modificar su codigo
+y exponerlos a Seals mediante schemas.
+
+Codigo destino:
+`➡️📂 wordflow loop code Yaiwes/wordflow_loop/adapters/seals_motors/`
+
+Schemas destino:
+`➡️📂 wordflow loop code Yaiwes/wordflow_loop/contracts/seals_motors/`
+
+Copiar EXACTO:
+- motor_1_extract_only.py
+- motor_2_queue_download_extract.py
+- hf_download_extract_engine.py
+- motor_3_copy_batches.py
+- motor_4_move_batches.py
+- motor_5_zip_root.py
+
+Regla:
+fetch source canonical -> verify blob SHA -> exact copy -> read-back -> same blob SHA.
+
+NO:
+- refactorizar motores
+- adaptar motores
+- reescribir motores
+- meter motores en seals_core
+- crear motor alternativo
+
+Schemas requeridos:
+- extract_only.schema.json
+- download_extract.schema.json
+- copy_batches.schema.json
+- move_batches.schema.json
+- zip_root.schema.json
+
+Cada schema debe declarar:
+tool_name
+input_schema
+required
+write_scope
+side_effect
+timeout
+result_schema
+failure_types
+evidence_required
+source_blob_sha
+adapter_path
+
+Flujo:
+StructuredAction
+-> schema validate
+-> Sheriff/Policy
+-> motor exacto
+-> ToolResult
+-> receipt/evidence.
+
+Motor 5:
+empaqueta una raiz completa a ZIP excluyendo `.git/`;
+produce manifest + tree_sha256 + zip_sha256 + read-back.
+Blob canonico:
+`2516d85d81f691f86c32a70b90c2599639eb83c6`
+Estado:
+`CODE_CREATED / RUNTIME_TEST_PENDING`.
+
+PASS S-07A:
+- 6 motores copiados con blob SHA identico;
+- 5 schemas validos;
+- 1 test real por tool;
+- invalid schema no ejecuta;
+- tool failure nunca PASS;
+- evidence source/destination SHA + exit_code + read-back.
+
 NODO S-08 - research
 - primero resolver motor real trazado
 - ResearchResult estructurado
