@@ -459,7 +459,25 @@ PASS sin evidence valida = INVALID_STATE.
 
 ## T-021 - PLAN_MODE AVANZADO NATIVO
 
-Status: CORE REQUIREMENT / DESIGN_NATIVE
+Status: CORE REQUIREMENT / DESIGN_NATIVE / OFFICIAL_REFERENCE_VERIFIED
+
+Fuentes oficiales verificadas:
+- https://code.claude.com/docs/en/agent-sdk/python
+  - PermissionMode incluye "plan".
+  - La documentacion describe "plan" como planning mode sin ejecucion.
+  - La referencia expone ExitPlanMode para presentar el plan y recibir aprobacion.
+- https://code.claude.com/docs/en/commands
+  - /plan cambia a Plan Mode antes de cambios grandes.
+- https://code.claude.com/docs/en/desktop
+  - Plan mode permite leer/explorar y proponer un plan sin editar source code.
+  - La UI puede cambiar modos; el atajo/control de UI no es autoridad del kernel.
+
+Regla:
+estas fuentes definen comportamiento de referencia, NO codigo a copiar.
+Seals implementa PLAN_MODE de forma nativa con FSM + StructuredAction +
+Sheriff/Policy + Evidence. No se integra Claude Code ni codigo propietario.
+
+
 
 FUENTES OFICIALES DE REFERENCIA - LEER FRESH ANTES DE IMPLEMENTAR:
 
