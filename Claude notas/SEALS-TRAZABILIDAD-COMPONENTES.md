@@ -461,11 +461,27 @@ PASS sin evidence valida = INVALID_STATE.
 
 Status: CORE REQUIREMENT / DESIGN_NATIVE
 
+FUENTES OFICIALES DE REFERENCIA - LEER FRESH ANTES DE IMPLEMENTAR:
+
+1. Anthropic Claude Agent SDK - Python reference:
+https://docs.claude.com/en/api/agent-sdk/python
+
+Mecanismos documentados oficialmente:
+- PermissionMode incluye "plan" = planning mode, no execution.
+- ExitPlanMode entrega un plan para aprobacion antes de ejecutar.
+
+2. Anthropic Agent Skills - Best practices:
+https://docs.claude.com/en/docs/agents-and-tools/agent-skills/best-practices
+
+Patron documentado oficialmente:
+- plan -> validate -> execute -> verify
+- salida intermedia estructurada y verificable antes de mutaciones.
+
 Referencia de comportamiento:
-Claude Code Plan Mode se usa como modo de exploracion/planificacion sin mutacion.
-NO se copia codigo de Claude Code.
-El comportamiento se implementa con primitives ya aprobadas de Seals:
-FSM + StructuredAction + Sheriff/Policy + Evidence.
+Claude Code/Agent SDK usa un modo de planificacion separado de ejecucion.
+NO se copia codigo propietario de Claude Code.
+Se reutiliza el concepto documentado y se implementa de forma nativa YAIWES
+con FSM + StructuredAction + Sheriff/Policy + Evidence.
 
 Destino:
 - ExecutionMode enum
@@ -515,6 +531,14 @@ PLAN_WRITE_SCOPE_ESCAPE
 PLAN_ACCEPTANCE_UNCOVERED
 VALID_PLAN_EXECUTES
 GAP_REPLAN_PRESERVES_EVIDENCE
+
+Trazabilidad de implementacion obligatoria:
+- OFFICIAL_SOURCE_1 = https://docs.claude.com/en/api/agent-sdk/python
+- OFFICIAL_SOURCE_2 = https://docs.claude.com/en/docs/agents-and-tools/agent-skills/best-practices
+- SOURCE_BEHAVIOR = permission_mode plan + ExitPlanMode + plan-validate-execute-verify
+- YAIWES_DESIGN = ExecutionMode + PlanContract + PlanGate + SET_MODE + Policy
+- PROHIBIDO copiar codigo propietario o declarar equivalencia de implementacion.
+- Test/evidence deben demostrar solo el comportamiento YAIWES especificado.
 
 Trazabilidad:
 este mecanismo NO se extrae de un agente externo; es diseño nativo YAIWES.
