@@ -31,6 +31,7 @@ Antes de ejecutar:
 - Engine combinado del Motor 2: exigir `SOURCE_REPO`; si publica, exigir explícitamente `DEST_REPO`, `DEST_BRANCH`, `DEST_ROOT`.
 - Motor 3: exigir `SOURCE_DIR`, `DEST_DIR`, `STATE_FILE`, `BATCH_SIZE`.
 - Motor 4: exigir `SOURCE_DIR`, `DEST_DIR`, `STATE_FILE`, `BATCH_SIZE`.
+- Motor 5: exigir `ROOT_DIR`, `OUTPUT_ZIP`, `MANIFEST_PATH`; `COLLISION_POLICY=fail|replace`.
 
 Aunque un motor heredado contenga un valor default, **el default está operativamente prohibido**. Si falta un destino explícito, detener con `DESTINATION_INPUT_GAP` y no ejecutar.
 
@@ -80,6 +81,35 @@ Política por defecto de operación recomendada: `COLLISION_POLICY=fail`.
 
 Aceptación: `VERIFIED_CLOSED`, `failed=0`, `pending=0`; para traslado completo, `source_files_remaining=0`.
 
+## 7B. Motor 5 — empaquetar raíz completa a ZIP sin historial Git
+
+Ruta: `📂Motor descarga de componentes y extracción de zip/motor_5_zip_root.py`
+
+Blob canónico: `2516d85d81f691f86c32a70b90c2599639eb83c6`
+
+Función:
+
+- empaquetar una raíz completa;
+- excluir cualquier `.git/`;
+- conservar el resto del árbol;
+- verificar CRC, set de rutas y SHA-256 por archivo;
+- generar `tree_sha256`, `zip_sha256` y manifest;
+- hacer read-back del ZIP final.
+
+Entradas obligatorias:
+
+- `ROOT_DIR`
+- `OUTPUT_ZIP`
+- `MANIFEST_PATH`
+
+Reglas:
+
+- output y manifest fuera de la raíz;
+- symlink/special file => GAP, nunca seguir/materializar silenciosamente;
+- PASS solo con manifest + hashes + read-back.
+
+Estado: `CODE_CREATED / RUNTIME_TEST_PENDING`.
+
 ## 8. Proceso para copiar estos motores a otro repositorio
 
 1. Leer este skill.
@@ -91,7 +121,7 @@ Aceptación: `VERIFIED_CLOSED`, `failed=0`, `pending=0`; para traslado completo,
 7. Publicar la copia exacta mediante comandos GitHub en el `main` del repo destino.
 8. La raíz destino se llama `➡️📂motores de descarga extracción copiado movimiento archivos <NOMBRE_REPO>/`.
 9. Solo cambia `<NOMBRE_REPO>`; el código fuente de los motores no cambia.
-10. Releer desde `main` y comparar blob SHA.
+10. Releer desde `main` y comparar blob SHA, incluido Motor 5.
 
 ## 9. Registro obligatorio
 
