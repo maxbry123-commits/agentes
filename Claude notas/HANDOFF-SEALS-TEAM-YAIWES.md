@@ -151,6 +151,11 @@ NODO S-02 - contracts/bootstrap
 - validate before execution
 
 NODO S-03 - loop + PLAN_MODE nativo
+- ANTES de implementar: leer T-021 en SEALS-TRAZABILIDAD-COMPONENTES.md
+- leer fresh fuentes oficiales Anthropic:
+  https://docs.claude.com/en/api/agent-sdk/python
+  https://docs.claude.com/en/docs/agents-and-tools/agent-skills/best-practices
+- implementar comportamiento YAIWES; NO copiar codigo propietario
 - adaptar loop minimo smolagents + Muse Glimmer
 - eliminar managed_agents/subdelegacion
 - result -> observation -> correction
