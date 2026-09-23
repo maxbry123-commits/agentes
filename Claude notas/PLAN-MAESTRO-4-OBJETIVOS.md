@@ -807,59 +807,1210 @@ Nunca cierre fingido.
 
 ## OBJETIVO 4 - ORQUESTADOR COMAND CENTER
 
-Arquitectura YA APROBADA por el Director (verbatim):
-"Opcion 1 como capa de control y Opcion 2 como motor de ejecucion durable -
-Omniroute/Orca gobiernan keys, mirrors y visibilidad; Dagu/DBOS aporta la
-durabilidad que hoy falta. Lo unico que escribiria de cero son los adapters
-entre ambos y el kernel Python. Cero componentes nuevos por descargar."
+### DECISION ARQUITECTONICA CONGELADA
 
-El Comand Center orquesta WORDFLOW (el kernel central), NO Seals.
-Seals dejo de ser el orquestador principal.
+Scope EXCLUSIVO: ORQUESTADOR / COMMAND CENTER YAIWES.
 
-### SALIDA 9 - Adapters (capa de control)
-De `agent_sources/orca/` (YA DESCARGADO, codigo real) extraer:
-  worktree git aislado por agente (coincide con isolation.py ya construido)
-  rotacion/hot-swap de cuentas y API keys con usage tracking
-    (aplica directo a router_modelos.py para las 50+ keys)
-  CLI programable como contrato de automatizacion externa
-De Omniroute extraer: gobierno de keys/mirrors.
-De Munder Difflin: patron "oficina de agentes" con roles fijos.
-De DeepSeek Harness: patron provider-plugin declarativo.
-DESTINO: CAPA COMMAND CENTER/WORDFLOW, FUERA DEL CORE DE SEALS.
-PROHIBIDO introducir control-plane, key rotation, mirrors o fleet management
-dentro de seals_core.
-Antes de escribir, hacer X-Ray y fijar la ruta real existente del Command Center;
-si aun no existe un destino autorizado -> GAP_DESTINO, no inventar carpeta.
-El Director nunca ve ni opera Orca directamente - es backend invisible.
-ARTIFY (= Archify skills, confirmado por el Director):
-  parte del osquestador del wordflow, para ir actualizando el progreso de
-  todos los trabajos de wordflow de forma facil y simplificada.
-  Artify + Orca = backend del orquestador.
-PASS: test real de rotacion de keys + aislamiento de 2 workers sin colision.
+No mezclar aqui:
+- Seals Team YAIWES.
+- implementacion interna de Wordflow Loop Code.
+- planes de frontend.
+- planes de Router Inteligente Universal salvo sus interfaces/contratos de conexion.
 
-### SALIDA 10 - Motor durable + 50 mundos + MCP
-10.1 Dagu/DBOS como motor de ejecucion durable.
-     VERIFICAR PRIMERO cual esta ya en el repo: `Core kernel Yaiwes/` tiene
-     Dagster, Temporal, Prefect, APScheduler, Celery; existe
-     TASK-GAPS/N21-DAGU-PASO1-XRAY.md. Si no esta ninguno -> FLAG al Director.
-     No se descarga sin su OK (su regla: cero componentes nuevos).
-10.2 Router que llama al Router Inteligente Universal (50+ API keys EN PARALELO)
-     y manda senal al Comand Center + todos los mirrors de wordflow y sus
-     agentes internos.
-10.3 Servidor MCP - contexto compartido entre agentes. 3 recursos:
-     crazy_wall_state (lectura)
-     mission_context (lectura/escritura controlada - lo que un agente descubre
-       lo comparten los demas)
-     enchufe_universal_tools
-     REGLA DE SEGURIDAD: MCP comparte CONTEXTO, nunca AUTORIDAD.
-     El Kernel decide PASS.
-10.4 Sistema de preguntas previas SIEMPRE activo, 3 lugares:
-     UI interface, UI backend, Input Shark.
-     (diseno completo en DISENO-preguntas-siempre-activo-input-shark.md)
-10.5 Omnirouter como backend Y frontend del Router Inteligente Universal -
-     esto va DESPUES de terminar Wordflow + Comand Center.
-PASS: ciclo end-to-end: goal -> DAG -> worker -> evidencia -> completion audit,
-sobreviviendo a un crash del worker sin duplicar side effect.
+PRINCIPIO CENTRAL:
+HERMES ES EL UNICO CEREBRO GLOBAL DEL ORQUESTADOR.
+
+No se eliminan las funciones tecnicas de los componentes externos.
+Solo se retira/subordina en cada componente su capacidad de actuar como:
+- GLOBAL_GOAL_AUTHORITY
+- GLOBAL_PLANNING_AUTHORITY
+- GLOBAL_REPLANNING_AUTHORITY
+- GLOBAL_COMPLETION_AUTHORITY
+
+Las funciones internas de cada componente SE CONSERVAN.
+
+REGLA DE AUTORIDAD DEL ORQUESTADOR:
+HERMES = PIENSA / PLANIFICA / DELEGA / REPLANIFICA / SINTETIZA
+SHERIFF = AUTORIZA ANTES DE EJECUTAR
+ENGINE = EJECUTA CONSERVANDO SUS FUNCIONES NATIVAS
+RECEIPT = DEMUESTRA LO QUE OCURRIO
+ORACLE = VERIFICA DESPUES DE EJECUTAR
+HERMES = DECIDE REPLANIFICAR O ENTREGAR SEGUN EL VEREDICTO DEL ORACLE
+
+INVARIANTES:
+NO GLOBAL BRAIN OUTSIDE HERMES
+NO MUTATION WITHOUT SHERIFF
+NO PASS WITHOUT ORACLE
+NO PASS WITHOUT EVIDENCE
+NO ENGINE MAY CHANGE GLOBAL OBJECTIVE
+NO ENGINE MAY EXPAND GLOBAL SCOPE WITHOUT HERMES
+NO ENGINE MAY SELF-DECLARE GLOBAL COMPLETION
+MCP SHARES CAPABILITY/CONTEXT, NEVER GLOBAL AUTHORITY
+
+---
+
+### ARQUITECTURA OBJETIVO
+
+USER
+-> ROWBOAT COMMAND CENTER
+-> PRE-QUESTIONS
+-> INPUT SHARK
+-> HERMES/YAIWES BRAIN
+-> MISSION CONTRACT
+-> SHERIFF
+-> ROUTER / CONTROL PLANE
+-> [ROWBOAT SERVICES | MICROSOFT AGENT FRAMEWORK | ORCA | MUNDER DIFFLIN |
+    DEEPSEEK HARNESS | DAGU | DBOS | HERMES SUBAGENTS | MCP TOOLS]
+-> RESULT / RECEIPTS
+-> EVIDENCE LEDGER
+-> ORACLE
+-> [PASS | FAIL | INCOMPLETE | BLOCKED]
+-> HERMES
+-> [REPLAN | FINAL SYNTHESIS]
+-> ARCHIFY/PROGRESS VIEW
+-> ROWBOAT
+-> USER
+
+### COMPONENTES Y FUENTES OFICIALES / DE ADQUISICION
+
+Los motores de descarga/extraccion deben usar URL explicita y resolver commit exacto.
+No usar una URL derivada de memoria del LLM.
+Antes de copiar/integrar: SOURCE_URL -> RESOLVE_COMMIT -> DOWNLOAD/EXTRACT ->
+READ-BACK -> HASH -> INVENTORY -> CLASSIFY.
+
+1. Hermes Agent - cerebro global
+https://github.com/NousResearch/hermes-agent
+
+2. Rowboat Labs - Command Center / workspace / memory / Harbor / MCP
+https://github.com/rowboatlabs/rowboat
+
+3. Microsoft Agent Framework - workflow/agent execution engine
+https://github.com/microsoft/agent-framework
+
+4. Orca - parallel code workers / worktrees / worker hierarchy
+https://github.com/araa47/orca
+
+5. OmniRoute - provider/model/account routing gateway
+https://github.com/diegosouzapw/OmniRoute
+
+6. DeepSeek Harness - plugin/harness runtime
+https://github.com/deepseek-ai/deepseek-harness
+
+7. Munder Difflin - agent office / roles / messaging / memory / terminal agents
+https://github.com/chaitanyagiri/munder-difflin
+
+8. Dagu - workflow/DAG execution engine
+https://github.com/dagucloud/dagu
+
+9. DBOS Python - durable code/workflow execution
+https://github.com/dbos-inc/dbos-transact-py
+
+10. Archify - architecture/workflow visualization skill
+https://github.com/tt-a1i/archify
+
+11. MCP Specification
+https://github.com/modelcontextprotocol/modelcontextprotocol
+
+12. MCP reference servers
+https://github.com/modelcontextprotocol/servers
+
+IMPORTANTE:
+- Sheriff y Oracle son componentes INTERNOS del orquestador YAIWES.
+- No se descargan como proyectos externos por defecto.
+- Si ya existe implementacion Sheriff/Oracle en repo, REUSE > PATCH > ADAPT.
+- No crear segunda implementacion antes de X-Ray.
+
+---
+
+### FUNCIONES QUE DEBEN CONSERVARSE POR COMPONENTE
+
+#### HERMES - BRAIN_OWNER
+
+Conservar:
+- reasoning
+- research
+- planning
+- memory
+- skills
+- tools
+- MCP
+- context handling
+- subagents
+- delegation
+- model/capability selection
+- observation
+- replanning
+- final synthesis
+- scheduled/background capabilities existentes si estan presentes en el source exacto
+
+Autoridad global:
+- goal_owner = hermes
+- planning_owner = hermes
+- replanning_owner = hermes
+- capability_selection_owner = hermes
+- final_synthesis_owner = hermes
+
+Hermes NO:
+- se autoautoriza mutaciones;
+- convierte un FAIL del Oracle en PASS;
+- salta Sheriff;
+- oculta receipts/evidence.
+
+#### ROWBOAT - COMMAND_CENTER_SERVICE
+
+Conservar:
+- UI
+- Spaces
+- Harbor
+- conversations/threads
+- files
+- collaboration
+- local/persistent memory
+- knowledge graph
+- context search
+- WebSocket
+- HTTP API
+- MCP
+- Code Mode
+- background agents/automations si existen en version fijada
+- integrations
+- workspace/project surfaces
+
+Subordinar solamente:
+- global goal ownership
+- global planning
+- global completion
+
+Contrato:
+Hermes -> RowboatAdapter -> Rowboat capability -> ResultEnvelope -> Oracle/Hermes.
+
+#### MICROSOFT AGENT FRAMEWORK - WORKFLOW_ENGINE
+
+Conservar:
+- agents
+- workflow graphs
+- sequential orchestration
+- concurrent orchestration
+- handoff
+- group chat
+- orchestration patterns
+- checkpoints
+- state
+- resume
+- retries
+- human-in-the-loop
+- tools
+- middleware
+- observability
+- hosting/runtime capabilities disponibles en commit fijado
+
+Subordinar solamente:
+- global mission ownership
+- global planning authority
+- global completion authority
+
+Puede tomar decisiones LOCALES dentro de un TaskContract.
+No puede cambiar global_goal/global_scope/global_acceptance.
+
+#### ORCA - CODE_SWARM_ENGINE
+
+Conservar:
+- workers
+- subworkers
+- hierarchical workers si version fijada los soporta
+- Git worktrees
+- isolation
+- daemon/monitoring
+- lifecycle hooks
+- blocker/completion reporting
+- CLI automation
+- Claude Code adapter
+- Codex adapter
+- Cursor adapter
+- parallel execution
+- account/key usage mechanisms existentes y verificados
+- worker status
+
+Subordinar solamente:
+- L0/global brain
+- global mission ownership
+- global completion
+
+Orca puede decidir COMO ejecutar una tarea asignada.
+Orca no puede decidir QUE proyecto/objetivo global cambiar.
+
+#### OMNIROUTE - PROVIDER_CONTROL_PLANE
+
+Conservar segun source verificado:
+- OpenAI-compatible gateway
+- provider routing
+- model routing
+- account routing
+- fallback
+- account/model fallback
+- quota handling
+- OAuth/API-key integrations
+- token refresh
+- usage tracking
+- request/response translation
+- structured output handling
+- supported multimodal endpoints
+- MCP/A2A capabilities si existen en commit fijado
+- dashboard/observability si existen
+
+Subordinar:
+- no selecciona por si mismo el objetivo.
+Hermes solicita capability/constraints; OmniRoute resuelve infraestructura/ruta.
+
+#### DEEPSEEK HARNESS - PLUGIN_RUNTIME
+
+Conservar:
+- plugin runtime
+- plugin lifecycle
+- plugin discovery
+- plugin composition
+- tools/capabilities
+- Web UI si pertenece al source fijado
+- Cordis/runtime base si aplica
+- extensibility system
+
+Subordinar:
+- global brain/orchestrator role.
+
+#### MUNDER DIFFLIN - AGENT_OFFICE_ENGINE
+
+Conservar lo demostrado por source:
+- terminal agents
+- agent processes
+- roles
+- office UI
+- mailbox
+- hive/messaging
+- shared/semantic memory
+- tasks/threads
+- activity/observability
+- integrations
+- skills/MCP catalogs
+- lifecycle/remote-control capabilities
+
+Subordinar:
+- cualquier "GOD"/chief/global brain interno queda como local office manager o adapter.
+- Hermes posee el objetivo global.
+
+#### DAGU - WORKFLOW_EXECUTION_ENGINE
+
+Conservar:
+- DAG definitions
+- scheduler
+- retries
+- dependencies
+- parallel steps
+- sub-DAGs
+- worker execution
+- shell/container/remote capabilities demostradas
+- human tasks
+- logs/history
+- webhooks
+- Web UI
+- MCP server si existe en source fijado
+
+Subordinar:
+- global planning/goal authority.
+
+#### DBOS - DURABLE_EXECUTION_ENGINE
+
+Conservar:
+- durable workflows
+- durable steps
+- PostgreSQL persistence
+- queues
+- retries
+- scheduling
+- notifications
+- event processing
+- workflow management
+- crash recovery
+- resume
+
+Subordinar:
+- global goal/planning authority.
+
+#### MCP - CAPABILITY/CONTEXT BUS
+
+Conservar:
+- resources
+- tools
+- prompts
+- lifecycle
+- capability negotiation
+- authorization model
+- client/server
+- supported transports
+- JSON-RPC behavior
+
+Regla:
+MCP comparte contexto/capabilities/tools.
+MCP NO comparte ni otorga GLOBAL AUTHORITY.
+
+Recursos minimos del Command Center:
+- crazy_wall_state
+- mission_context
+- enchufe_universal_tools
+- evidence_ledger
+- worker_status
+- artifact_registry
+
+#### ARCHIFY / ARTIFY - VISUALIZATION ADAPTER
+
+Usar la capacidad REAL demostrada por el repo fijado.
+Objetivo YAIWES:
+state/progress snapshot
+-> normalized architecture/workflow description
+-> Archify adapter
+-> diagram/visual representation
+-> Rowboat.
+
+No inventar que Archify sea por si mismo state store, scheduler u oracle.
+
+---
+
+### SHERIFF - PRE-EXECUTION GATE
+
+Sheriff es interno, determinista y transversal.
+
+Input minimo:
+- mission_id
+- task_id
+- executor
+- repo
+- branch
+- read_scope
+- write_scope
+- tool_name
+- provider/model
+- worker_count
+- network_permission
+- deploy_permission
+- secret_refs
+- budget
+- side_effect
+- plan_hash / input_hash cuando aplique
+
+Output:
+- ALLOW
+- DENY
+- REQUIRE_APPROVAL
+
+Sheriff NO:
+- razona el objetivo global;
+- replanifica;
+- declara PASS.
+
+Toda mutacion debe tener SheriffReceipt.
+
+---
+
+### ORACLE - POST-EXECUTION GATE
+
+Oracle es interno, determinista y transversal.
+
+Input:
+- objective
+- acceptance[]
+- expected_outputs[]
+- results[]
+- receipts[]
+- evidence[]
+- tests[]
+- artifacts[]
+- hashes[]
+- error/gap classification
+
+Output:
+- PASS
+- FAIL
+- INCOMPLETE
+- BLOCKED
+
+Oracle NO:
+- crea objetivos;
+- cambia scope;
+- replanifica;
+- sustituye a Hermes.
+
+FAIL/INCOMPLETE/BLOCKED -> Hermes REPLAN.
+PASS -> Hermes puede sintetizar/entregar.
+
+---
+
+## DSL DAG - CONSTRUCCION DEL ORQUESTADOR
+
+### DAG ID
+YAIWES-ORCHESTRATOR-COMMAND-CENTER-V1
+
+### GLOBAL INPUT
+
+director_goal:
+  construir_orquestador_yaiwes
+
+brain_owner:
+  hermes
+
+constraints:
+  preserve_component_capabilities: true
+  remove_only_global_brain_authority: true
+  no_seals_scope: true
+  no_frontend_factory_scope: true
+  sheriff_required: true
+  oracle_required: true
+  evidence_required: true
+  read_back_required: true
+  source_commit_required: true
+  no_unverified_component_claims: true
+
+### NODE O4-00 - BASELINE / XRAY
+
+depends_on: []
+
+objective:
+- localizar ruta REAL actual del Command Center/orquestador.
+- inventariar componentes ya presentes.
+- detectar duplicados/stubs/submodules/codigo real.
+- localizar implementaciones existentes de Sheriff, Oracle, Router, Evidence Ledger,
+  MCP, Dagu/DBOS, Orca, OmniRoute, Rowboat, Hermes.
+
+actions:
+- READ repo tree.
+- READ Crazy Wall/handoff/architecture del orquestador.
+- FIND exact paths.
+- HASH relevant files.
+- CLASSIFY each component:
+  REAL_CODE | SUBMODULE | STUB | ABSENT | DUPLICATE | UNKNOWN.
+
+outputs:
+- ORCHESTRATOR-BASELINE-XRAY.md
+- component_inventory.json
+- destination_map.json
+
+pass:
+- ninguna ruta marcada por supuesto;
+- cada componente con source_path + type + hash/SHA;
+- destino autorizado demostrado antes de descargar.
+
+failure:
+- destino no demostrado -> GAP_DESTINO.
+- componente ambiguo -> GAP_SOURCE.
+
+### NODE O4-01 - SOURCE LOCK / DOWNLOAD QUEUE
+
+depends_on:
+- O4-00
+
+objective:
+crear cola de adquisicion reproducible.
+
+input_urls:
+- https://github.com/NousResearch/hermes-agent
+- https://github.com/rowboatlabs/rowboat
+- https://github.com/microsoft/agent-framework
+- https://github.com/araa47/orca
+- https://github.com/diegosouzapw/OmniRoute
+- https://github.com/deepseek-ai/deepseek-harness
+- https://github.com/chaitanyagiri/munder-difflin
+- https://github.com/dagucloud/dagu
+- https://github.com/dbos-inc/dbos-transact-py
+- https://github.com/tt-a1i/archify
+- https://github.com/modelcontextprotocol/modelcontextprotocol
+- https://github.com/modelcontextprotocol/servers
+
+actions:
+for each component:
+  - resolve canonical repo URL.
+  - resolve exact commit SHA.
+  - record license.
+  - record tree hash.
+  - compare with local existing copy.
+  - if exact source already exists -> REUSE.
+  - if missing -> enqueue approved download/extract engine.
+  - if stale -> DO NOT overwrite; materialize side-by-side staging candidate.
+  - read-back manifest.
+
+output:
+- DOWNLOAD-EXTRACT-QUEUE-ORCHESTRATOR.json
+- SOURCE-LOCK-ORCHESTRATOR.json
+
+required_fields_per_source:
+- component
+- source_url
+- resolved_commit
+- tree_hash
+- license
+- local_status
+- destination_candidate
+- acquisition_action
+- verified_at
+
+pass:
+- 100% components have exact source URL + commit or explicit GAP.
+- no "latest" floating ref used for integration.
+
+### NODE O4-02 - ACQUIRE / MATERIALIZE
+
+depends_on:
+- O4-01
+
+objective:
+materializar solo componentes faltantes mediante motores existentes.
+
+actions:
+- invoke existing approved download/extract motor.
+- download exact commit/archive.
+- extract.
+- verify no truncation.
+- verify source commit.
+- inventory root.
+- read-back.
+- hash extracted tree.
+- write acquisition manifest.
+
+rules:
+- NO GitHub Action unless separately authorized.
+- NO ad-hoc downloader.
+- NO overwrite of existing verified source.
+- existing directory != valid acquisition.
+
+output:
+- acquisition_manifests/<component>.json
+
+pass:
+SOURCE_COMMIT == MATERIALIZED_COMMIT
+AND extraction_verified == true
+AND read_back_verified == true.
+
+### NODE O4-03 - CAPABILITY INVENTORY / DO-NOT-DELETE MAP
+
+depends_on:
+- O4-02
+
+objective:
+demostrar TODAS las capacidades reales que deben conservarse.
+
+for_each_component:
+- find entrypoints.
+- find runtime.
+- find planner/orchestrator symbols.
+- find tools/adapters.
+- find state/memory.
+- find worker/lifecycle.
+- find UI/API/MCP.
+- identify global-brain symbols separately.
+
+classify:
+KEEP:
+  toda capacidad tecnica.
+SUBORDINATE:
+  global goal/planning/replanning/completion authority.
+ADAPT:
+  interfaces requeridas para MissionContract/ResultEnvelope.
+GAP:
+  funcion no demostrada.
+
+output:
+- COMPONENT-CAPABILITY-MAP.md
+- component_capabilities.json
+
+hard_rule:
+NO DELETE merely because capability overlaps another component.
+Overlap is resolved by routing/authority contracts, not destructive pruning.
+
+### NODE O4-04 - HERMES BRAIN ADAPTER
+
+depends_on:
+- O4-03
+
+objective:
+convertir Hermes en unica autoridad cognitiva global SIN destruir sus funciones nativas.
+
+build/adapt:
+- BrainAdapter
+- MissionBuilder
+- CapabilitySelector
+- GlobalPlanner
+- GlobalReplanner
+- ResultSynthesizer
+
+contracts:
+MissionContract:
+  mission_id
+  objective
+  acceptance[]
+  constraints[]
+  context_refs[]
+  budgets
+  permissions
+  required_capabilities[]
+  output_contract
+  created_from_state_hash
+
+tests:
+- only_hermes_can_create_global_goal
+- only_hermes_can_replan_global_mission
+- engine_cannot_change_global_goal
+
+### NODE O4-05 - SHERIFF GATE
+
+depends_on:
+- O4-04
+
+objective:
+cablear gate PRE execution.
+
+actions:
+- X-Ray existing Sheriff first.
+- REUSE/PATCH existing implementation.
+- define SheriffRequest/SheriffReceipt.
+- enforce on every mutation-capable engine adapter.
+
+must_cover:
+- Rowboat Code Mode
+- Microsoft AF tools/workflows
+- Orca workers
+- Munder agent actions
+- DeepSeek Harness tools/plugins
+- Dagu steps
+- DBOS steps
+- Hermes subagents
+- MCP mutating tools
+- OmniRoute credential/provider selection where policy applies
+
+tests:
+- mutation_without_sheriff_denied
+- write_scope_escape_denied
+- deploy_without_permission_denied
+- unauthorized_provider_denied
+- excessive_worker_count_denied
+
+### NODE O4-06 - NORMALIZED TASK CONTRACT
+
+depends_on:
+- O4-04
+- O4-05
+
+schema:
+TaskContract:
+  mission_id
+  task_id
+  parent_task_id
+  capability
+  executor
+  objective
+  acceptance[]
+  context_refs[]
+  scope:
+    repo
+    branch
+    read_paths[]
+    write_paths[]
+  permissions
+  execution:
+    parallelism
+    durable_engine
+    timeout_policy
+    retries
+  expected_outputs[]
+  required_evidence[]
+  return_to
+  input_hash
+
+ResultEnvelope:
+  mission_id
+  task_id
+  executor
+  worker_ids[]
+  status
+  outputs[]
+  artifacts[]
+  tests[]
+  receipts[]
+  evidence[]
+  errors[]
+  gaps[]
+  metrics
+  return_to
+
+pass:
+all engine adapters consume TaskContract and return ResultEnvelope
+OR explicit typed adapter transforms them losslessly.
+
+### NODE O4-07 - ROWBOAT ADAPTER
+
+depends_on:
+- O4-06
+
+preserve:
+all verified Rowboat capabilities.
+
+wire:
+- command center UI
+- mission/thread projection
+- memory/context lookup
+- artifact publication
+- worker/progress surfaces
+- MCP/Harbor
+- optional Code Mode through Sheriff
+
+disable/subordinate_only:
+- global goal authority
+- global mission planning
+- global completion authority
+
+tests:
+- rowboat_context_roundtrip
+- rowboat_cannot_change_global_goal
+- rowboat_mutation_requires_sheriff
+- rowboat_result_returns_envelope
+
+### NODE O4-08 - MICROSOFT AGENT FRAMEWORK ADAPTER
+
+depends_on:
+- O4-06
+
+preserve:
+all verified agents/workflow/orchestration/state/checkpoint/HITL/tool functions.
+
+wire:
+TaskContract
+-> MicrosoftAFAdapter
+-> local workflow
+-> ResultEnvelope.
+
+rules:
+- local workflow intelligence ON.
+- global brain OFF.
+- local subgraph cannot mutate global objective.
+
+tests:
+- sequential_task
+- concurrent_task
+- handoff_task
+- checkpoint_resume
+- local_workflow_cannot_rewrite_global_goal
+
+### NODE O4-09 - ORCA ADAPTER
+
+depends_on:
+- O4-06
+
+preserve:
+workers/subworkers/worktrees/isolation/daemon/hooks/CLI/monitoring/code-agent adapters.
+
+wire:
+TaskContract(capability=code)
+-> Sheriff
+-> OrcaAdapter
+-> isolated workers
+-> worker receipts
+-> ResultEnvelope.
+
+tests:
+- 2_workers_isolated_no_collision
+- worktree_per_worker
+- worker_failure_reported
+- worker_cannot_expand_global_scope
+- code_result_evidence_returned
+
+### NODE O4-10 - OMNIROUTE CONTROL PLANE ADAPTER
+
+depends_on:
+- O4-06
+
+preserve:
+all verified routing/account/fallback/quota/OAuth/API/translation/observability capabilities.
+
+wire:
+Hermes capability requirements
+-> RoutingRequest
+-> OmniRoute
+-> provider/model/account/fallback selection
+-> RoutingReceipt.
+
+rules:
+OmniRoute decides HOW to route.
+Hermes decides WHAT capability is needed.
+
+tests:
+- provider_failover
+- account_failover
+- quota_route
+- routing_receipt
+- route_cannot_change_task_objective
+
+### NODE O4-11 - DEEPSEEK HARNESS ADAPTER
+
+depends_on:
+- O4-06
+
+preserve:
+verified plugin runtime/lifecycle/composition/tools/UI/extensibility.
+
+wire:
+TaskContract
+-> Sheriff
+-> HarnessAdapter
+-> plugin runtime
+-> ResultEnvelope.
+
+tests:
+- plugin_discovery
+- plugin_execution
+- plugin_side_effect_requires_sheriff
+- harness_cannot_become_global_brain
+
+### NODE O4-12 - MUNDER DIFFLIN ADAPTER
+
+depends_on:
+- O4-06
+
+preserve:
+verified office/roles/terminal-agents/mailbox/hive/memory/tasks/activity/integration functions.
+
+wire:
+Hermes role assignment
+-> MunderAdapter
+-> local office/agent execution
+-> ResultEnvelope.
+
+rules:
+internal manager may coordinate LOCAL office.
+Hermes owns GLOBAL mission.
+
+tests:
+- role_assignment
+- mailbox/hive_roundtrip
+- local_manager_cannot_replan_global_mission
+- agent_result_returns_envelope
+
+### NODE O4-13 - DAGU / DBOS DURABILITY
+
+depends_on:
+- O4-06
+
+objective:
+durable execution without turning either engine into global brain.
+
+Dagu:
+- keep full verified DAG/scheduler/retry/execution capabilities.
+DBOS:
+- keep full verified durable-workflow/step/persistence/queue/recovery capabilities.
+
+routing:
+execution.durable_engine:
+  NONE | DAGU | DBOS | DAGU_PLUS_DBOS
+
+tests:
+- crash_resume
+- retry_without_duplicate_side_effect
+- durable_state_readback
+- completion_after_process_restart
+
+### NODE O4-14 - MCP BUS
+
+depends_on:
+- O4-06
+
+resources:
+- crazy_wall_state
+- mission_context
+- evidence_ledger
+- worker_status
+- artifact_registry
+
+tools:
+- enchufe_universal_tools
+- approved engine adapters
+
+rules:
+- read/write scope governed by Sheriff.
+- MCP server cannot grant itself authority.
+- tool metadata must declare side_effect.
+- mutating MCP call requires SheriffReceipt.
+
+tests:
+- resource_read
+- controlled_context_write
+- unauthorized_mutating_tool_denied
+- context_shared_without_authority_transfer
+
+### NODE O4-15 - EVIDENCE LEDGER
+
+depends_on:
+- O4-07
+- O4-08
+- O4-09
+- O4-10
+- O4-11
+- O4-12
+- O4-13
+- O4-14
+
+EvidenceRecord:
+- mission_id
+- task_id
+- executor
+- worker_id
+- input_hash
+- source_commit
+- action/tool
+- receipt
+- artifact
+- path
+- sha256
+- test
+- exit_code
+- timestamp
+- error/gap
+- acceptance_id
+
+rules:
+- append-only semantics where feasible.
+- evidence read-back required.
+- no engine self-edits prior evidence silently.
+
+tests:
+- evidence_hash_valid
+- missing_evidence_detected
+- tampered_evidence_detected
+- cross_engine_trace_complete
+
+### NODE O4-16 - ORACLE
+
+depends_on:
+- O4-15
+
+objective:
+post-execution deterministic verification.
+
+OracleRequest:
+- objective
+- acceptance[]
+- expected_outputs[]
+- ResultEnvelope[]
+- EvidenceRecord[]
+- tests[]
+- artifacts[]
+- receipts[]
+
+OracleVerdict:
+- PASS
+- FAIL
+- INCOMPLETE
+- BLOCKED
+
+rules:
+- LLM opinion != PASS.
+- engine completion != PASS.
+- missing required evidence -> INCOMPLETE/FAIL.
+- Oracle cannot create new mission.
+- Oracle cannot replan.
+- FAIL/INCOMPLETE/BLOCKED return to Hermes.
+
+tests:
+- pass_with_complete_evidence
+- no_pass_without_evidence
+- failed_test_no_pass
+- missing_artifact_no_pass
+- oracle_cannot_replan
+
+### NODE O4-17 - ARCHIFY / PROGRESS PROJECTION
+
+depends_on:
+- O4-15
+- O4-16
+
+objective:
+mostrar progreso y arquitectura SIN convertir Archify en state engine.
+
+flow:
+EvidenceLedger + worker_status + OracleVerdict
+-> ProgressSnapshot
+-> ArchifyAdapter
+-> diagrams/views
+-> Rowboat.
+
+tests:
+- progress_snapshot_matches_ledger
+- visual_projection_readback
+- archify_cannot_mutate_mission_state
+
+### NODE O4-18 - PRE-QUESTIONS / INPUT SHARK
+
+depends_on:
+- O4-07
+- O4-04
+
+required_surfaces:
+- Rowboat/UI interface
+- UI/backend intake
+- Input Shark
+
+flow:
+raw_user_input
+-> detect_missing_required_fields
+-> questions
+-> normalized goal
+-> MissionContract
+-> Hermes.
+
+tests:
+- ambiguous_goal_requests_missing_fields
+- complete_goal_does_not_loop_questions
+- normalized_goal_hash_stable
+
+### NODE O4-19 - END-TO-END INTEGRATION
+
+depends_on:
+- O4-05
+- O4-07
+- O4-08
+- O4-09
+- O4-10
+- O4-11
+- O4-12
+- O4-13
+- O4-14
+- O4-15
+- O4-16
+- O4-17
+- O4-18
+
+scenario:
+USER
+-> Rowboat
+-> PreQuestions/InputShark
+-> Hermes MissionContract
+-> Sheriff
+-> route at least 3 different engines
+-> durable execution
+-> ResultEnvelope
+-> EvidenceLedger
+-> Oracle
+-> FAIL branch creates Hermes REPLAN
+-> second execution
+-> PASS
+-> Archify projection
+-> Rowboat final result.
+
+required_tests:
+- one Rowboat capability
+- one Microsoft AF workflow
+- one Orca code swarm task
+- one OmniRoute provider route
+- one durable crash/resume path
+- one MCP context-share path
+- one Sheriff DENY
+- one Oracle FAIL then PASS
+- one evidence tamper detection
+
+PASS:
+- same mission_id across full trace.
+- no unauthorized mutation.
+- no engine changes global objective.
+- crash recovery does not duplicate side effect.
+- Oracle PASS backed by evidence hashes.
+- Rowboat displays final state.
+- Hermes remains only global brain.
+
+### NODE O4-20 - COMPLETION AUDIT
+
+depends_on:
+- O4-19
+
+audit:
+- compare implementation vs this DSL DAG.
+- verify all source commits.
+- verify every adapter.
+- verify every Sheriff gate.
+- verify every Oracle gate.
+- verify evidence read-back.
+- verify URLs and acquisition manifests.
+- verify component capabilities were PRESERVED.
+- verify only global-brain authorities were subordinated.
+
+required_matrix:
+COMPONENT
+SOURCE_URL
+SOURCE_COMMIT
+SOURCE_PATH
+CAPABILITIES_KEPT
+GLOBAL_AUTHORITY_SUBORDINATED
+ADAPTER
+SHERIFF_GATE
+RESULT_ENVELOPE
+TESTS
+EVIDENCE
+STATUS
+
+final_state:
+ORCHESTRATOR_VERIFIED
+only if ALL mandatory nodes PASS.
+
+otherwise:
+ORCHESTRATOR_INCOMPLETE
+with explicit GAP list.
+
+---
+
+### ORDEN DE EJECUCION OBJETIVO 4
+
+O4-00
+-> O4-01
+-> O4-02
+-> O4-03
+-> O4-04
+-> O4-05
+-> O4-06
+-> [O4-07 || O4-08 || O4-09 || O4-10 || O4-11 || O4-12 || O4-13 || O4-14]
+-> O4-15
+-> O4-16
+-> O4-17
+-> O4-18
+-> O4-19
+-> O4-20
+
+REGLA DE PARALELISMO:
+O4-07..O4-14 pueden ejecutarse en paralelo SOLO despues de que
+TaskContract/ResultEnvelope + Sheriff esten fijados.
+
+REGLA DE BLOQUEO:
+si un componente falla adquisicion/integracion:
+- registrar GAP.
+- no fingir PASS.
+- continuar con nodos independientes.
+- el Completion Audit final queda INCOMPLETE si el componente es mandatory.
+
+### ESTADO INICIAL OBJETIVO 4
+
+O4-00 PENDIENTE
+O4-01 PENDIENTE
+O4-02 PENDIENTE
+O4-03 PENDIENTE
+O4-04 PENDIENTE
+O4-05 PENDIENTE
+O4-06 PENDIENTE
+O4-07 PENDIENTE
+O4-08 PENDIENTE
+O4-09 PENDIENTE
+O4-10 PENDIENTE
+O4-11 PENDIENTE
+O4-12 PENDIENTE
+O4-13 PENDIENTE
+O4-14 PENDIENTE
+O4-15 PENDIENTE
+O4-16 PENDIENTE
+O4-17 PENDIENTE
+O4-18 PENDIENTE
+O4-19 PENDIENTE
+O4-20 PENDIENTE
 
 ---
 
