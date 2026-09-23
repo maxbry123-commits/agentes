@@ -218,6 +218,30 @@ LISTA JEV + RSI -> destino repo `router-universal-router-inteligente-`:
   NUCLEO MINIMO: OpenRSI + RSIAgent + Skill-RSI + ShinkaEvolve + SimpleTES
   DECISION: NO instalar como skills decorativos. Extraer mecanismo ->
   DSL/DAG contract Python, patron de seals_core/.
+
+ROUTER RESEARCH PREPASS -> proyecto separado `router-universal-router-inteligente-`:
+  NO integrar dentro de Seals ni dentro del Orquestador.
+  Raiz ya definida:
+  `➡️📂motores de búsqueda contexto router inteligente universal/`
+  Componentes:
+  sources.json
+  context_packet.schema.json
+  motor_1_web_domains.py
+  motor_2_github_search.py
+  motor_3_huggingface_search.py
+  motor_4_research_prepass.py
+  README.md
+  Flujo:
+  INPUT_BLOCK VERBATIM -> SHA256 -> deterministic terms -> secret-redacted query ->
+  WEB/GitHub/HuggingFace -> DEDUPE -> SCORE -> CONTEXT_PACKET -> LLM/AGENT -> PLAN.
+  Regla:
+  INPUT VERBATIM = source of truth.
+  QUERY SANITIZED = external research.
+  Research Prepass = CONTEXT, nunca autoridad.
+  Estado reportado:
+  diseño/schema/handoff READY;
+  runtime network test PENDIENTE;
+  conexion exacta al punto PLAN del Router PENDIENTE.
 LISTA FRONTEND -> destino wordflow + copia repo frontend + fabrica UI:
   Taste Skill, 21st MCP, Web Design Guidelines (vercel-labs), Image to Code,
   Awesome Design (VoltAgent), UI/UX Pro Max, Vercel React Best Practices,
@@ -451,6 +475,31 @@ S-05 idempotency/replay.
 S-06 oracle/evidence/completion audit.
 S-07 acquisition/integration.
 S-07A copiar motores canonicos 1:1 a Wordflow adapters + crear schemas + registrarlos en NativeToolRegistry como tools NATIVAS de Seals.
+  Layout objetivo:
+  `wordflow_loop/adapters/seals_motors/`
+    motor_1_extract_only.py
+    motor_2_queue_download_extract.py
+    hf_download_extract_engine.py
+    motor_3_copy_batches.py
+    motor_4_move_batches.py
+    motor_5_zip_root.py
+  Contratos:
+  `wordflow_loop/contracts/seals_motors/`
+    extract_only.schema.json
+    download_extract.schema.json
+    copy_batches.schema.json
+    move_batches.schema.json
+    zip_root.schema.json
+  Regla exacta:
+  FUENTE CANONICA -> VERIFY BLOB SHA -> COPIA EXACTA -> READ-BACK ->
+  MISMO BLOB SHA -> CREATE SCHEMA -> REGISTER TOOL.
+  NO modificar/refactorizar motores canonicos. El schema solo traduce
+  StructuredAction <-> inputs reales del motor y normaliza ToolResult/receipt.
+  Motor 5 ZIP ROOT blob SHA:
+  2516d85d81f691f86c32a70b90c2599639eb83c6
+  Estado Motor 5: codigo/copia SHA verificados; runtime test PENDIENTE.
+  GAP conocido: `motor_copy_root_to_repo.py` tiene allowlist anterior y no conoce
+  Motor 5; NO modificarlo dentro de esta tarea.
 S-07B Agent Skills + Scrapling + ScrapeGraphAI + Agent Reach: materializar por Motor 2, validar schemas y registrar capacidades web como adapters/tools, NO subagentes.
 S-08 research solo cuando exista motor real trazado.
 S-09 frontend/visual solo cuando MetaCua/CUA tengan SOURCE_SYMBOL trazado.
@@ -541,6 +590,22 @@ Drift -> `PLAN_STALE` -> volver a PLAN_MODE sin perder evidence.
 No crear otro agente/planner externo.
 PLAN_MODE es una capacidad nativa de FSM+Policy.
 
+FUENTE DE COMPORTAMIENTO / TRAZABILIDAD:
+- Claude Agent SDK PermissionMode="plan" / ExitPlanMode:
+  https://code.claude.com/docs/en/agent-sdk/python
+- Claude Code commands /plan:
+  https://code.claude.com/docs/en/commands
+- Claude Code Desktop Plan Mode:
+  https://code.claude.com/docs/en/desktop
+
+REGLA DE IMPLEMENTACION:
+FUENTE OFICIAL -> extraer COMPORTAMIENTO -> NO copiar codigo propietario ->
+implementar nativo YAIWES con FSM + StructuredAction + PlanContract + PlanGate +
+Sheriff/Policy + Evidence.
+
+Shift+Tab, si existe en UI, solo mapea a SET_MODE(PLAN|EXECUTE).
+Nunca sustituye la autoridad FSM + Sheriff/Policy.
+
 ### CAPACIDAD NATIVA - ACQUISITION + INTEGRATION
 
 Entrada:
@@ -575,6 +640,35 @@ y crear sus schemas en
 `wordflow_loop/contracts/seals_motors/`.
 No modificar su codigo.
 No crear otro downloader/copy/move.
+
+MOTOR 2 CANONICO - COMPORTAMIENTO VERIFICADO:
+`motor_2_queue_download_extract.py` recibe:
+- source_repo
+- source_ref
+- slug
+- dest_repo
+- dest_branch
+- dest_root
+- publish
+
+y delega en `hf_download_extract_engine.py`.
+Aunque el nombre del engine contiene "hf", su implementacion verificada usa
+Git/GitHub + ZIP + hashes; NO depende de Hugging Face para este flujo.
+
+Flujo real:
+ORIGEN
+-> git fetch ref/commit exacto
+-> verify source tree
+-> deterministic ZIP
+-> reconstruct ZIP
+-> safe extract
+-> compare source tree hash vs extracted tree hash
+-> publish DESTINO
+-> read-back
+-> VERIFIED_CLOSED.
+
+Por tanto S-07/S-07B DEBEN usar este motor existente; prohibido inventar una
+segunda via de adquisicion mientras este motor cubra el caso.
 El unico motor nuevo aprobado es `motor_5_zip_root.py`, ya creado con blob
 `2516d85d81f691f86c32a70b90c2599639eb83c6`, para empaquetar una raiz
 completa excluyendo `.git/`; runtime test aun PENDIENTE.
@@ -599,8 +693,50 @@ Schemas ya preparados:
 - scrapegraph-ai.schema.json
 - agent-reach.schema.json
 
+TRAZABILIDAD VERIFICADA:
+Scrapling:
+- skill: agent-skill/Scrapling-Skill/SKILL.md
+- blob: d3545fdc5503fbce3d4a9779378541e7ed6c0e5e
+- destino Seals: NativeToolRegistry -> web_extract
+
+ScrapeGraphAI:
+- SmartScraperGraph blob: b29d038aed801d1056cc6daf184a03b6a9eace0a
+- SearchGraph blob: 2458c1d8bc7e445cddd71859b54367de64a80133
+- destino Seals: adapter opcional -> llm_assisted_web_extract
+
+Agent Reach:
+- skill: agent_reach/skill/SKILL_en.md
+- blob: 4d7466d9cda598716a697f2a63774d399d2b1333
+- destino Seals: adapter read-only -> multi_platform_research
+
 Materializacion obligatoria:
 usar `DOWNLOAD-EXTRACT-QUEUE.json` con el Motor 2 canonico.
+
+SOURCE LOCKS:
+- Anthropic Skills
+  https://github.com/anthropics/skills
+  commit 34040c9c568585f6929bedeaad110ad08f079624
+- Scrapling
+  https://github.com/D4Vinci/Scrapling
+  commit 2b160ee18bfee79bb0115e2d9e9c746c8d9bf4c9
+- ScrapeGraphAI
+  https://github.com/ScrapeGraphAI/Scrapegraph-ai
+  commit c75c8084fae2d4f5ba01a8c218bc1168b67e3569
+- Agent Reach
+  https://github.com/Panniantong/Agent-Reach
+  commit a19a171fa980a0785849596492e0af4db800c82f
+
+DESTINO UNICO DE MATERIALIZACION:
+repo `maxbry123-commits/agentes`
+branch `main`
+root `➡️ 📂 shema skills agente/sources/<componente>/code/`
+
+ESTADO:
+SCHEMAS_READY
+SOURCE_MATERIALIZATION_PENDING
+
+No convertir Skills -> DSL/DAG antes de que las 4 fuentes queden
+VERIFIED_CLOSED fisicamente en destino.
 NO declarar descargado hasta `VERIFIED_CLOSED` + source_commit exacto + extraction_verified + read-back.
 
 Integracion objetivo:
