@@ -1,13 +1,31 @@
 # =====================================================================
 # PLAN DSL DAG - PARTE 0: CONTRATO DE EJECUCION
-# Version 1.0 | 2026-09-19 | Autor: Claude Opus 5
-# Ejecutor previsto: Claude Sonnet. Sin alucinar, sin desviar, sin improvisar.
+# Version 1.1 | 2026-09-23 | base Claude Opus 5 + sincronizacion quirurgica
+# Ejecutor: runtime/fleet autorizado por el DAG. Ningun modelo es autoridad de PASS.
 # Los nodos estan en: Claude notas/PLAN-DSL-DAG-01-NODOS.yaml
 # =====================================================================
 dsl_version: "yaiwes.dag/v1"
 engine: "wordflow_loop"
 repo: "maxbry123-commits/agentes"
 branch: "main"
+
+canonical_files:
+  contrato: "Claude notas/PLAN-DSL-DAG-00-CONTRATO.yaml"
+  nodos: "Claude notas/PLAN-DSL-DAG-01-NODOS.yaml"
+  arquitectura: "Claude notas/PLAN-MAESTRO-4-OBJETIVOS.md"
+  mirror_legacy: "Claude notas/PLAN-DSL-DAG-4-OBJETIVOS.yaml"
+
+read_order:
+  - "AGENTS.md"
+  - "Claude notas/PLAN-DSL-DAG-00-CONTRATO.yaml"
+  - "Claude notas/PLAN-DSL-DAG-01-NODOS.yaml"
+  - "Claude notas/PLAN-MAESTRO-4-OBJETIVOS.md"
+
+precedence:
+  executable_contract: "PLAN-DSL-DAG-00-CONTRATO.yaml"
+  executable_nodes: "PLAN-DSL-DAG-01-NODOS.yaml"
+  architecture_and_intent: "PLAN-MAESTRO-4-OBJETIVOS.md"
+  legacy_duplicate: "NO EJECUTAR; solo redirect/index"
 
 # ---------------------------------------------------------------------
 # FUENTE DE VERDAD - archivo del Director cableado por rango de linea.
@@ -111,6 +129,15 @@ cadena_de_autoridad:
   RECEIPT: DEMUESTRA
   ORACLE: DECIDE_PASS
 
+autoridad_objetivo_4:
+  GLOBAL_BRAIN_OWNER: HERMES
+  GLOBAL_GOAL_AUTHORITY: HERMES
+  GLOBAL_PLANNING_AUTHORITY: HERMES
+  GLOBAL_REPLANNING_AUTHORITY: HERMES
+  PRE_EXECUTION_AUTHORITY: SHERIFF
+  POST_EXECUTION_VERDICT: ORACLE
+  regla: "los engines conservan capacidades tecnicas; solo se subordinan sus autoridades globales"
+
 invariantes:
   - NO_PASS_WITHOUT_EVIDENCE
   - NO_MUTATION_WITHOUT_AUTH
@@ -118,8 +145,23 @@ invariantes:
   - NO_REPLAY_WITHOUT_SAME_INPUT_HASH
   - NO_TWO_WRITERS_SAME_RESOURCE
 
+contratos_objetivo_4:
+  MissionContract:
+    required: [mission_id, objective, acceptance, constraints, context_refs, permissions, required_capabilities, output_contract]
+  TaskContract:
+    required: [mission_id, task_id, capability, executor, objective, acceptance, scope, permissions, execution, required_evidence, input_hash]
+  SheriffReceipt:
+    required: [mission_id, task_id, decision, scope, policy_hash]
+    decisions: [ALLOW, DENY, REQUIRE_APPROVAL]
+  ResultEnvelope:
+    required: [mission_id, task_id, executor, status, outputs, artifacts, tests, receipts, evidence, errors, gaps]
+  EvidenceRecord:
+    required: [mission_id, task_id, executor, input_hash, action, receipt, sha256, acceptance_id]
+  OracleVerdict:
+    values: [PASS, FAIL, INCOMPLETE, BLOCKED]
+
 # ---------------------------------------------------------------------
-# CADENA DE GOBERNANZA - 7 roles, sin solapamiento, orden obligatorio.
+# CADENA DE GOBERNANZA - 8 roles, sin solapamiento, orden obligatorio.
 # Implementacion real: control-layer/ (7 archivos de 389-804 bytes,
 # posibles stubs - se verifican y cablean en el nodo N-2.8)
 # ---------------------------------------------------------------------
