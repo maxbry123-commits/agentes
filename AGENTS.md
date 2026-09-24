@@ -19,3 +19,19 @@
 
 Code: `extensions/wordflow/engine/programming_pipeline.py`  
 Gates: `extensions/wordflow/standards/executor_gates.py`
+
+
+## Canonical YAIWES DSL/DAG execution
+Read in this exact order before executing any node:
+1. `Claude notas/PLAN-DSL-DAG-00-CONTRATO.yaml`
+2. `Claude notas/PLAN-DSL-DAG-01-NODOS.yaml`
+3. `Claude notas/PLAN-MAESTRO-4-OBJETIVOS.md`
+
+`Claude notas/PLAN-DSL-DAG-4-OBJETIVOS.yaml` is redirect-only and MUST NOT be executed as a second DAG.
+
+Objective 4 authority:
+- Hermes = only global brain / goal / planning / replanning owner.
+- Sheriff = pre-execution authority.
+- Engines preserve verified technical capabilities but cannot change the global objective.
+- Oracle = post-execution PASS/FAIL authority.
+- No PASS without evidence + read-back.
