@@ -306,233 +306,111 @@ dag_objetivo_2:
 # DAG OBJETIVO 3 - TERMINAR SEALS TEAM YAIWES
 # =====================================================================
 dag_objetivo_3:
-  nombre: "Terminar el agente Seals Team YAIWES"
-  ya_cerrados: "P0-01..P0-15, P0-17, P1-18..P1-23, P1-25, P1-26, P1-29"
-  firma_podada: "SealsExecutor.execute(NodeInput) -> ToolReceipt -> Evidence[] -> NodeResult"
-  pierde: "su cola propia, su watchdog propio, su decision de PASS"
+  nombre: "Terminar Seals Team YAIWES como micro-worker, NO orquestador"
+  fuente_detalle:
+    - "Claude notas/PLAN-MAESTRO-4-OBJETIVOS.md"
+    - "Claude notas/PLAN-ANEXO-B-SEALS-MECANISMOS.md"
+    - "Claude notas/SEALS-TRAZABILIDAD-COMPONENTES.md"
+    - "Claude notas/HANDOFF-SEALS-TEAM-YAIWES.md"
+  firma_objetivo: "SealsWorker.execute(TaskContract) -> NodeResult"
   nodos:
-
-    - id: N-3.1
-      titulo: "Cablear los 17 mecanismos MiniMax + Kimi + Meta"
-      fuente_director: L475
-      detalle: "Claude notas/PLAN-ANEXO-B-SEALS-MECANISMOS.md"
-      orden_de_extraccion:
-        1: "muse_glimmer: ToolRegistry + parser ATEM (completa P0-16)"
-        2: "kimi_researcher -> research_real.py (tapa P1-18, el peor gap)"
-        3: "meta_muse_code_sdk: idempotencia + cola + checkpoint (P0-11, P0-12, P1-27)"
-        4: "cua_mcp: sandbox (P1-28)"
-        5: "metacua: capa visual (P1-23, P1-24)"
-        6: "minimax_coding_plan_mcp: planner"
-        7: "minimax_code_plugins -> Enchufe Universal"
-        8: "kimi_agent_rs: partes deterministas criticas"
-        9: "minimax_mcp -> servidor MCP contexto compartido"
-      acceptance:
-        - "test por mecanismo: falla ANTES de cablear, pasa DESPUES"
-        - "prohibido declarar integrado porque la carpeta exista"
-      evidence: [test_por_mecanismo, sha_por_commit]
-      work_surface: BACKEND
-      depends_on: [N-1.1, N-2.4]
-
-    - id: N-3.2
-      titulo: "Gaps restantes de Seals"
-      gaps:
-        P1-24: "MetaCua/CUA-MCP: LEER implementacion real antes de declarar nada"
-        P1-27: "crash/resume con CrazyWallAdapter.checkpoint"
-        P1-28: "sandbox/rollback del instalador"
-        P0-16: "completar ToolRegistry Glimmer"
-        P2-31: "handoff drift: dice 229 componentes, real 248"
-        P1-30: "tests de crash/recovery y wrong-source-commit"
-        P2-32: "requirements con lock/pinning"
-      acceptance: ["cada gap con CODE + TEST + EVIDENCE + READ-BACK"]
-      work_surface: BACKEND
-      depends_on: [N-3.1]
-
-    - id: N-3.3
-      titulo: "GRUPO 1 - 7 requisitos nativos"
-      fuente_director: L530_L546
-      requisitos:
-        1: "saber donde va cada cosa en el kernel, sin confundirse con subagente (evitar 2 cerebros)"
-        2: "radiografia nativa de la raiz: donde va cada archivo y POR QUE, con el motor de mover"
-        3: "como convertir un skill en schema: criterios + varios modelos de ejemplo"
-        4: "usar UNICAMENTE el Enchufe Universal Fables para cablear"
-        5: "como podar, que podar, como decapitar y convertir el wordflow"
-        6: "partes criticas del kernel: solo Claude; otros preparan, Claude revisa"
-        7: "descargar con los motores: URL + nombre -> estudio de ubicacion"
-      acceptance: ["los 7 documentados con la plantilla Glimmer de 7 secciones"]
-      work_surface: BACKEND
-      depends_on: [N-3.2]
-
-    - id: N-3.4
-      titulo: "GRUPO 2 - pool de agentes"
-      fuente_director: L549_L554
-      funciones:
-        1: "codigo PURO - no integran (ej: razonamiento de Mythos del diseno de Fables)"
-        2: "bajo consenso deciden donde va un lote de codigo ya creado"
-        3: "auditoria forense X-Ray carpeta por carpeta con la plantilla Meta EXACTA"
-      acceptance: ["plantilla exacta aplicada, nunca generica ni ambigua"]
-      work_surface: BACKEND
-      depends_on: [N-3.3]
-
-    - id: N-3.5
-      titulo: "Regression suite completa"
-      simulaciones_obligatorias:
-        SIM-01: "verificar_existencia(path inexistente) -> GAP/FAILED, nunca PASS"
-        SIM-02: "evaluar_componente sin key -> AUTH_ERROR, nunca PASS"
-        SIM-03: "directorio preexistente incorrecto -> PROVENANCE/INTEGRITY FAILURE"
-        SIM-04: "watchdog wall_status=PENDING_STEP1 -> DETECT+CLAIM+ENQUEUE+EXECUTE"
-      suite_ampliada: [IDEMPOTENT_REPLAY, IDEMPOTENCY_CONFLICT, TASK_CONTRACT_INVALID,
-        CLAIM_COLLISION, LEASE_EXPIRED, WORKER_CRASH, CRASH_RESUME, WRONG_BASE_SHA,
-        WRONG_SOURCE_COMMIT, SHERIFF_DENY, TOOL_TIMEOUT, TOOL_ERROR_OBSERVATION,
-        STUCK_DETECTION, NO_NEW_EVIDENCE, ACCEPTANCE_FAIL, PASS_WITHOUT_EVIDENCE,
-        BACKEND_TEST_FAIL, FRONTEND_BUILD_FAIL, BROWSER_FAIL, VISUAL_FAIL,
-        SCREENSHOT_MISSING, DOUBLE_WRITER_COLLISION, ROLLBACK_AFTER_FAILURE]
-      acceptance: ["las 4 SIM en verde + la suite ampliada"]
-      work_surface: BACKEND
-      depends_on: [N-3.4]
-
-    - id: N-3.6
-      titulo: "Prueba real con 3 agentes"
-      fuente_director: L563
-      protocolo:
-        - "3 agentes iguales, 1 componente dificil a cada uno"
-        - "probar, corregir, perfeccionar comportamiento"
-        - "repetir con el pool del Grupo B usando codigo de Mythos"
-        - "verificar que descargan el codigo y escriben el resultado completo"
-        - "varias rondas hasta pulir"
-      regla: "esto ocurre ANTES de continuar con el Comand Center"
-      acceptance: ["3 componentes procesados con evidencia + correcciones documentadas"]
-      work_surface: MIXED
-      depends_on: [N-3.5]
-
-    - id: N-3.7
-      titulo: "Requisito 50 mundos + adapter Router Universal"
-      fuente: "REQUISITO-50-mundos-y-Router-Universal.md"
-      requisito:
-        - "cada wordflow = mundo independiente, sin compartir archivos"
-        - "Readme memoria.md propio + Handoff propio + Crazy Wall propio + System prompt propio"
-        - "mismo code_sha256, distinto worker_id/task/workspace"
-        - "Cerebras = SOLO PRUEBAS; produccion via Router Inteligente Universal"
-      accion: "adapter en router_modelos.py y consultor_experto.py -> Router Universal"
-      acceptance: ["1 worker instanciado como mundo independiente + adapter cableado"]
-      work_surface: BACKEND
-      depends_on: [N-3.6]
-
-    - id: N-3.8
-      titulo: "Cierre verificado SEALS WORKER VERIFIED"
-      formula: [DAG_REAL, TASK_CONTRACT_REAL, CLAIM_LEASE, WRITE_SCOPE,
-        STRUCTURED_ACTIONS, SHERIFF, IDEMPOTENCY, DURABLE_QUEUE_RECOVERY,
-        OBJECTIVE_ACCEPTANCE, OBJECTIVE_ORACLE, REAL_TESTS, EVIDENCE_SHA256,
-        WATCHDOG_REENQUEUE, CRASH_RESUME, BACKEND_ROUTING, FRONTEND_ROUTING,
-        BROWSER_SCREENSHOT_LOOP, REGRESSION_TESTS, COMPLETION_AUDIT,
-        INDEPENDENT_REFUTATION]
-      regla: "si un item no cierra -> GAP explicito. NUNCA cierre fingido."
-      acceptance: ["los 20 items en verde o GAP documentado"]
-      work_surface: BACKEND
-      depends_on: [N-3.7]
+    - {id: S-01, titulo: "Baseline / X-Ray Seals", depends_on: [N-2.4, N-2.8], acceptance: ["baseline con paths+sha; cero supuestos"]}
+    - {id: S-02, titulo: "Contracts + Bootstrap + ExecutionMode + PlanContract", depends_on: [S-01], acceptance: ["TaskContract/NodeResult tipados", "PLAN y EXECUTE explicitos"]}
+    - {id: S-03, titulo: "Loop minimo + StructuredAction + PLAN_MODE", depends_on: [S-02], acceptance: ["PLAN_MODE_MUTATION_DENIED", "EXECUTE_WITHOUT_PLAN_DENIED", "STALE_PLAN_DENIED", "VALID_PLAN_EXECUTES"]}
+    - {id: S-04, titulo: "Policy / Sheriff / safe edit", depends_on: [S-03], acceptance: ["plan_id+action_id obligatorio", "scope escape DENY"]}
+    - {id: S-05, titulo: "Idempotency / replay", depends_on: [S-04], acceptance: ["same input hash replay seguro", "conflict tipado"]}
+    - {id: S-06, titulo: "Oracle + Evidence + Completion Audit", depends_on: [S-05], acceptance: ["NO PASS sin tests+evidence+read-back"]}
+    - {id: S-07, titulo: "Acquisition / integration contract", depends_on: [S-06], acceptance: ["URL+component+TaskContract -> exact commit -> adapt -> test -> evidence"]}
+    - id: S-07A
+      titulo: "Motores canonicos como Native Toolset"
+      depends_on: [S-07]
+      adapters: "wordflow_loop/adapters/seals_motors/"
+      contracts: "wordflow_loop/contracts/seals_motors/"
+      motores: [motor_1_extract_only.py, motor_2_queue_download_extract.py, hf_download_extract_engine.py, motor_3_copy_batches.py, motor_4_move_batches.py, motor_5_zip_root.py]
+      motor5_blob: "2516d85d81f691f86c32a70b90c2599639eb83c6"
+      regla: "FUENTE CANONICA -> blob SHA -> copia exacta -> read-back -> mismo SHA -> schema -> NativeToolRegistry"
+      acceptance: ["schemas traducen StructuredAction <-> inputs reales", "runtime test Motor 5"]
+    - id: S-07B
+      titulo: "Agent Skills + web capabilities"
+      depends_on: [S-07A]
+      source_locks:
+        anthropic_skills: {url: "https://github.com/anthropics/skills", commit: "34040c9c568585f6929bedeaad110ad08f079624"}
+        scrapling: {url: "https://github.com/D4Vinci/Scrapling", commit: "2b160ee18bfee79bb0115e2d9e9c746c8d9bf4c9"}
+        scrapegraph_ai: {url: "https://github.com/ScrapeGraphAI/Scrapegraph-ai", commit: "c75c8084fae2d4f5ba01a8c218bc1168b67e3569"}
+        agent_reach: {url: "https://github.com/Panniantong/Agent-Reach", commit: "a19a171fa980a0785849596492e0af4db800c82f"}
+      acquisition: "DOWNLOAD-EXTRACT-QUEUE.json -> Motor 2 canonico -> VERIFIED_CLOSED"
+      acceptance: ["tools/capabilities, NO subagentes"]
+    - {id: S-08, titulo: "Research capability trazada", depends_on: [S-07B], acceptance: ["ResearchResult tipado", "source real trazado"]}
+    - {id: S-09, titulo: "Frontend/visual capability bajo Sheriff", depends_on: [S-08], acceptance: ["CODE+BROWSER+VISUAL PASS", "ACTION -> screenshot nuevo -> VERIFY"]}
+    - {id: S-10, titulo: "Recovery / regression contra Host Contract", depends_on: [S-09], acceptance: ["claim/lease/crash/wrong_sha/sheriff/stuck tests"]}
+    - {id: S-11, titulo: "Prueba real 3 instancias DESDE Wordflow", depends_on: [S-10], acceptance: ["3 workers aislados", "evidence por worker"]}
+    - {id: S-12, titulo: "Completion Audit Seals", depends_on: [S-11], acceptance: ["SEALS_WORKER_VERIFIED solo con core+host+tests+evidence"]}
 
 # =====================================================================
-# DAG OBJETIVO 4 - ORQUESTADOR COMAND CENTER
+# DAG OBJETIVO 4 - ORQUESTADOR / COMMAND CENTER
 # =====================================================================
 dag_objetivo_4:
-  nombre: "Hacer el orquestador Comand Center"
-  arquitectura_aprobada: >
-    Opcion 1 = capa de control. Opcion 2 = motor de ejecucion durable.
-    Omniroute/Orca gobiernan keys, mirrors y visibilidad.
-    Dagu/DBOS aporta la durabilidad que hoy falta.
-    Solo se escriben de cero los adapters + el kernel Python.
-    CERO componentes nuevos por descargar.
-  orquesta: "WORDFLOW (el kernel central), NO Seals"
+  nombre: "Construir Orquestador YAIWES / Command Center"
+  dag_id: "YAIWES-ORCHESTRATOR-COMMAND-CENTER-V1"
+  brain_owner: HERMES
+  authority: {pre_execution: SHERIFF, post_execution: ORACLE}
+  regla_componentes: "conservar capacidades tecnicas; subordinar solo autoridad global"
   nodos:
-
-    - id: N-4.1
-      titulo: "Extraer mecanismos de Orca (ya descargado completo)"
-      fuente_director: L278, L437, L443
-      mecanismos:
-        - "worktree git aislado por agente (coincide con isolation.py existente)"
-        - "rotacion / hot-swap de cuentas y API keys con usage tracking"
-        - "CLI programable como contrato de automatizacion externa"
-      destino: "funciones Python en isolation.py y router_modelos.py YA EXISTENTES"
-      prohibido: "app Electron, carpeta nueva de componente"
-      regla: "el Director nunca ve ni opera Orca directamente - backend invisible"
-      acceptance: ["test de rotacion de keys + aislamiento de 2 workers sin colision"]
-      work_surface: BACKEND
-      depends_on: [N-1.2]
-
-    - id: N-4.2
-      titulo: "Artify / Archify en el orquestador"
-      fuente_director: L378, L448_L467
-      confirmado: "Artify == Archify skills (SI, confirmado por el Director)"
-      funcion: "actualizar el progreso de todos los trabajos de wordflow de forma facil y simplificada"
-      combinacion: "Artify + Orca = backend del orquestador"
-      acceptance: ["progreso de N wordflows visible y actualizado sin intervencion manual"]
-      work_surface: MIXED
-      depends_on: [N-4.1]
-
-    - id: N-4.3
-      titulo: "Motor de ejecucion durable"
-      accion: "VERIFICAR PRIMERO que hay en el repo antes de asumir nada"
-      candidatos_ya_en_repo: [Dagster, Temporal, Prefect, APScheduler, Celery]
-      referencia: "TASK-GAPS/N21-DAGU-PASO1-XRAY.md"
-      si_no_hay_dagu_ni_dbos: "FLAG al Director; no se descarga sin su OK"
-      acceptance: ["motor durable elegido y cableado, o FLAG documentado"]
-      work_surface: BACKEND
-      depends_on: []
-
-    - id: N-4.4
-      titulo: "Router de 50+ keys en paralelo"
-      fuente_director: L287
-      accion: "router que llama al Router Universal y manda senal al Comand Center + mirrors"
-      regla: "los agentes internos pueden y deben usar api keys EN PARALELO"
-      acceptance: ["N llamadas concurrentes con keys distintas, sin colision"]
-      work_surface: BACKEND
-      depends_on: [N-4.1, N-3.7]
-
-    - id: N-4.5
-      titulo: "Servidor MCP de contexto compartido"
-      base: "minimax_mcp + minimax_mcp_js (codigo real ya descargado)"
-      recursos:
-        crazy_wall_state: "lectura"
-        mission_context: "lectura/escritura controlada - lo que un agente descubre lo comparten los demas"
-        enchufe_universal_tools: "herramientas"
-      regla_de_seguridad: "MCP comparte CONTEXTO, nunca AUTORIDAD. El Kernel decide PASS."
-      acceptance: ["2 agentes comparten hallazgo via mission_context sin poder declarar PASS"]
-      work_surface: BACKEND
-      depends_on: [N-3.1]
-
-    - id: N-4.6
-      titulo: "Sistema de preguntas previas SIEMPRE activo"
-      lugares: [UI_interface, UI_backend, Input_Shark]
-      referencia: "DISENO-preguntas-siempre-activo-input-shark.md"
-      acceptance: ["las 3 ubicaciones activas"]
-      work_surface: MIXED
-      depends_on: [N-4.2]
-
-    - id: N-4.7
-      titulo: "Ciclo end-to-end del Comand Center"
-      acceptance:
-        - "goal -> DAG -> worker -> evidencia -> completion audit"
-        - "sobrevive a un crash del worker sin duplicar side effect"
-      work_surface: MIXED
-      depends_on: [N-4.3, N-4.4, N-4.5, N-4.6]
+    - {id: O4-00, titulo: "Baseline / X-Ray", depends_on: [], acceptance: ["ruta real demostrada", "inventario clasificado"]}
+    - id: O4-01
+      titulo: "Source Lock + Download Queue"
+      depends_on: [O4-00]
+      urls:
+        Hermes: "https://github.com/NousResearch/hermes-agent"
+        Rowboat: "https://github.com/rowboatlabs/rowboat"
+        MicrosoftAgentFramework: "https://github.com/microsoft/agent-framework"
+        Orca: "https://github.com/araa47/orca"
+        OmniRoute: "https://github.com/diegosouzapw/OmniRoute"
+        DeepSeekHarness: "https://github.com/deepseek-ai/deepseek-harness"
+        MunderDifflin: "https://github.com/chaitanyagiri/munder-difflin"
+        Dagu: "https://github.com/dagucloud/dagu"
+        DBOS: "https://github.com/dbos-inc/dbos-transact-py"
+        Archify: "https://github.com/tt-a1i/archify"
+        MCP: "https://github.com/modelcontextprotocol/modelcontextprotocol"
+        MCPServers: "https://github.com/modelcontextprotocol/servers"
+      acceptance: ["exact URL+commit o GAP", "sin floating latest"]
+    - {id: O4-02, titulo: "Acquire / Materialize faltantes", depends_on: [O4-01], acceptance: ["SOURCE_COMMIT == MATERIALIZED_COMMIT", "read-back"]}
+    - {id: O4-03, titulo: "Capability inventory / Do-not-delete map", depends_on: [O4-02], acceptance: ["KEEP|SUBORDINATE|ADAPT|GAP por capacidad"]}
+    - {id: O4-04, titulo: "Hermes Brain Adapter", depends_on: [O4-03], acceptance: ["solo Hermes crea/replanifica global goal"]}
+    - {id: O4-05, titulo: "Sheriff pre-execution gate", depends_on: [O4-04], acceptance: ["mutation_without_sheriff_denied", "scope/provider deny"]}
+    - {id: O4-06, titulo: "Normalized contracts", depends_on: [O4-04, O4-05], acceptance: ["MissionContract/TaskContract/ResultEnvelope/EvidenceRecord/OracleVerdict"]}
+    - {id: O4-07, titulo: "Rowboat Adapter", depends_on: [O4-06], acceptance: ["context roundtrip", "no global goal mutation"]}
+    - {id: O4-08, titulo: "Microsoft Agent Framework Adapter", depends_on: [O4-06], acceptance: ["sequential/concurrent/handoff/checkpoint_resume"]}
+    - {id: O4-09, titulo: "Orca Adapter", depends_on: [O4-06], acceptance: ["2 workers no collision", "worktree per worker"]}
+    - {id: O4-10, titulo: "OmniRoute Control Plane Adapter", depends_on: [O4-06], acceptance: ["provider/account failover", "routing receipt"]}
+    - {id: O4-11, titulo: "DeepSeek Harness Adapter", depends_on: [O4-06], acceptance: ["plugin execution", "side effects require Sheriff"]}
+    - {id: O4-12, titulo: "Munder Difflin Adapter", depends_on: [O4-06], acceptance: ["local role coordination", "no global replan"]}
+    - {id: O4-13, titulo: "Dagu / DBOS durability", depends_on: [O4-06], acceptance: ["crash_resume", "no duplicate side effect"]}
+    - {id: O4-14, titulo: "MCP capability/context bus", depends_on: [O4-06], acceptance: ["controlled context write", "no authority transfer"]}
+    - {id: O4-15, titulo: "Evidence Ledger", depends_on: [O4-07, O4-08, O4-09, O4-10, O4-11, O4-12, O4-13, O4-14], acceptance: ["hash valid", "tamper/missing evidence detected"]}
+    - {id: O4-16, titulo: "Oracle post-execution gate", depends_on: [O4-15], acceptance: ["PASS|FAIL|INCOMPLETE|BLOCKED", "no PASS without evidence"]}
+    - {id: O4-17, titulo: "Archify / progress projection", depends_on: [O4-15, O4-16], acceptance: ["projection matches ledger", "cannot mutate mission"]}
+    - {id: O4-18, titulo: "Pre-Questions / Input Shark", depends_on: [O4-04, O4-07], acceptance: ["ambiguous goal asks missing fields", "normalized goal hash stable"]}
+    - {id: O4-19, titulo: "End-to-End integration", depends_on: [O4-05, O4-07, O4-08, O4-09, O4-10, O4-11, O4-12, O4-13, O4-14, O4-15, O4-16, O4-17, O4-18], acceptance: ["same mission_id", "Oracle FAIL -> Hermes REPLAN -> PASS", "crash no duplicate"]}
+    - {id: O4-20, titulo: "Completion Audit Orchestrator", depends_on: [O4-19], acceptance: ["all mandatory nodes PASS", "capabilities preserved", "only global authorities subordinated"]}
 
 # =====================================================================
-# ORDEN TOPOLOGICO DE EJECUCION
+# ORDEN TOPOLOGICO CANONICO
 # =====================================================================
 orden_ejecucion:
-  fase_0_desbloqueo:  [N-1.1, N-1.3, N-1.4, N-2.8, N-2.11]
-  fase_1_inventario:  [N-1.2, N-2.1, N-2.13, N-4.3]
-  fase_2_kernel:      [N-2.4, N-2.5, N-2.6, N-2.7, N-2.9, N-2.10]
-  fase_3_raiz:        [N-2.2, N-2.3, N-1.6]
-  fase_4_schemas:     [N-1.5]
-  fase_5_mecanismos:  [N-3.1, N-3.2]
-  fase_6_frontend:    [N-2.12]
-  fase_7_seals:       [N-3.3, N-3.4, N-3.5, N-3.6, N-3.7, N-3.8]
-  fase_8_orquestador: [N-4.1, N-4.2, N-4.4, N-4.5, N-4.6, N-4.7]
-  regla: "dentro de una fase los nodos son independientes; si uno FLAG, los demas siguen"
+  objetivo_1:
+    fases: [[N-1.1, N-1.3, N-1.4], [N-1.2], [N-1.5, N-1.6]]
+  objetivo_2:
+    fases: [[N-2.1, N-2.8, N-2.11, N-2.13], [N-2.4, N-2.5, N-2.6, N-2.7, N-2.9, N-2.10], [N-2.2, N-2.3], [N-2.12]]
+  objetivo_3:
+    secuencia: [S-01, S-02, S-03, S-04, S-05, S-06, S-07, S-07A, S-07B, S-08, S-09, S-10, S-11, S-12]
+  objetivo_4:
+    secuencia: [O4-00, O4-01, O4-02, O4-03, O4-04, O4-05, O4-06]
+    paralelo: [O4-07, O4-08, O4-09, O4-10, O4-11, O4-12, O4-13, O4-14]
+    cierre: [O4-15, O4-16, O4-17, O4-18, O4-19, O4-20]
+  prioridad_global: [objetivo_1, objetivo_2, objetivo_3, objetivo_4]
+  regla: "depends_on manda; FLAG no permite saltar dependencia obligatoria"
 
-# =====================================================================
-# ESTADO DE LOS 33 NODOS
-# =====================================================================
 estado:
   N-1.1: PENDIENTE
   N-1.2: PENDIENTE
@@ -553,18 +431,38 @@ estado:
   N-2.11: PENDIENTE
   N-2.12: PENDIENTE
   N-2.13: PENDIENTE
-  N-3.1: PENDIENTE
-  N-3.2: PENDIENTE
-  N-3.3: PENDIENTE
-  N-3.4: PENDIENTE
-  N-3.5: PENDIENTE
-  N-3.6: PENDIENTE
-  N-3.7: PENDIENTE
-  N-3.8: PENDIENTE
-  N-4.1: PENDIENTE
-  N-4.2: PENDIENTE
-  N-4.3: PENDIENTE
-  N-4.4: PENDIENTE
-  N-4.5: PENDIENTE
-  N-4.6: PENDIENTE
-  N-4.7: PENDIENTE
+  S-01: PENDIENTE
+  S-02: PENDIENTE
+  S-03: PENDIENTE
+  S-04: PENDIENTE
+  S-05: PENDIENTE
+  S-06: PENDIENTE
+  S-07: PENDIENTE
+  S-07A: PENDIENTE
+  S-07B: PENDIENTE
+  S-08: PENDIENTE
+  S-09: PENDIENTE
+  S-10: PENDIENTE
+  S-11: PENDIENTE
+  S-12: PENDIENTE
+  O4-00: PENDIENTE
+  O4-01: PENDIENTE
+  O4-02: PENDIENTE
+  O4-03: PENDIENTE
+  O4-04: PENDIENTE
+  O4-05: PENDIENTE
+  O4-06: PENDIENTE
+  O4-07: PENDIENTE
+  O4-08: PENDIENTE
+  O4-09: PENDIENTE
+  O4-10: PENDIENTE
+  O4-11: PENDIENTE
+  O4-12: PENDIENTE
+  O4-13: PENDIENTE
+  O4-14: PENDIENTE
+  O4-15: PENDIENTE
+  O4-16: PENDIENTE
+  O4-17: PENDIENTE
+  O4-18: PENDIENTE
+  O4-19: PENDIENTE
+  O4-20: PENDIENTE
