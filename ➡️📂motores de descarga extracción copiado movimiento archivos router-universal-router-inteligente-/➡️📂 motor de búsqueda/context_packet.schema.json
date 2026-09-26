@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "yaiwes.research.prepass.context-packet/v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "run_id",
+    "llm_used",
+    "input",
+    "source_registry_sha256",
+    "derived_query",
+    "sources_requested",
+    "source_status",
+    "records",
+    "budget_tokens",
+    "estimated_context_tokens",
+    "truncated",
+    "verdict"
+  ],
+  "properties": {
+    "schema": {
+      "const": "yaiwes.research.prepass.v1"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "llm_used": {
+      "const": false
+    },
+    "input": {
+      "type": "object",
+      "required": [
+        "sha256",
+        "bytes",
+        "verbatim_preserved"
+      ],
+      "properties": {
+        "origin": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "verbatim_preserved": {
+          "const": true
+        }
+      }
+    },
+    "plan": {
+      "type": "object"
+    },
+    "source_registry_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "derived_query": {
+      "type": "string",
+      "minLength": 1
+    },
+    "derived_terms": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "sources_requested": {
+      "type": "array",
+      "minItems": 12,
+      "items": {
+        "type": "string"
+      }
+    },
+    "source_status": {
+      "type": "object"
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "source_id",
+          "title",
+          "url",
+          "provider",
+          "score",
+          "estimated_tokens"
+        ],
+        "properties": {
+          "source_id": {
+            "type": "string"
+          },
+          "source_kind": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "pattern": "^https?://"
+          },
+          "snippet": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number"
+          },
+          "estimated_tokens": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "budget_tokens": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "estimated_context_tokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "truncated": {
+      "type": "boolean"
+    },
+    "verdict": {
+      "enum": [
+        "VERIFIED_CLOSED",
+        "NO_NEW_EVIDENCE"
+      ]
+    }
+  }
+}

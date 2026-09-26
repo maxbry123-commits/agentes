@@ -1,0 +1,89 @@
+{
+  "schema": "yaiwes.research.source-registry.v1",
+  "policy": {
+    "query_mode": "deterministic_site_scoped",
+    "llm_used": false,
+    "preserve_input_verbatim": true,
+    "fail_open_per_source": true,
+    "no_result_state": "NO_NEW_EVIDENCE"
+  },
+  "direct_sources": [
+    {
+      "id": "github",
+      "adapter": "github_api",
+      "kind": "code_and_issues",
+      "weight": 1,
+      "url": "https://github.com"
+    },
+    {
+      "id": "huggingface",
+      "adapter": "huggingface_hub_api",
+      "kind": "models_datasets_spaces",
+      "weight": 0.98,
+      "url": "https://huggingface.co"
+    }
+  ],
+  "web_sources": [
+    {
+      "id": "stackoverflow",
+      "domain": "stackoverflow.com",
+      "kind": "developer_community",
+      "weight": 0.88
+    },
+    {
+      "id": "devto",
+      "domain": "dev.to",
+      "kind": "developer_community",
+      "weight": 0.64
+    },
+    {
+      "id": "reddit_programming",
+      "domain": "reddit.com",
+      "kind": "developer_community",
+      "weight": 0.52
+    },
+    {
+      "id": "python_docs",
+      "domain": "docs.python.org",
+      "kind": "official_docs",
+      "weight": 0.94
+    },
+    {
+      "id": "mdn",
+      "domain": "developer.mozilla.org",
+      "kind": "official_docs",
+      "weight": 0.94
+    },
+    {
+      "id": "rust_docs",
+      "domain": "docs.rs",
+      "kind": "package_docs",
+      "weight": 0.9
+    },
+    {
+      "id": "node_docs",
+      "domain": "nodejs.org",
+      "kind": "official_docs",
+      "weight": 0.92
+    },
+    {
+      "id": "docker_docs",
+      "domain": "docs.docker.com",
+      "kind": "official_docs",
+      "weight": 0.92
+    },
+    {
+      "id": "vercel_docs",
+      "domain": "vercel.com",
+      "path_prefix": "/docs",
+      "kind": "official_docs",
+      "weight": 0.9
+    },
+    {
+      "id": "npm",
+      "domain": "npmjs.com",
+      "kind": "package_registry",
+      "weight": 0.82
+    }
+  ]
+}
