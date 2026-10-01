@@ -126,3 +126,31 @@ Estado verificado por read-back:
 - GitHub Actions usados para este montaje: **NO**.
 
 Importante: el gitlink/submodule monta y fija el source upstream, pero no embebe/vendoriza todos los blobs dentro del superproyecto. Kimi Code/Kimi CLI conservan su source upstream en el submodule; la variante materializada sin symlinks fue verificada por Motor 3 y queda como gate separado de vendorización si se exige copia física byte-a-byte dentro del superproyecto. Mcode está montado como pin npm exacto; los bytes completos del paquete no están vendorizados.
+
+## Consolidación canónica de raíces — 2026-10-01
+
+Raíz única autorizada y físicamente presente:
+
+`➡️📂 wordflow loop code Yaiwes/`
+
+Se eliminaron del nivel superior las raíces duplicadas:
+- `wordflow loop code Yaiwes/` (solo contenía `.gitkeep`)
+- `➡️📂 Wordflow LOOP Yaiwes/` (solo conservaba un META4 copy plan ya recuperado)
+- `arquitectura wordflow loop code Yaiwes/` (24 documentos movidos a `➡️📂 wordflow loop code Yaiwes/arquitectura/`)
+
+Plan de 4 objetivos consolidado en:
+`➡️📂 wordflow loop code Yaiwes/PLAN-4-OBJETIVOS/`
+
+Contiene:
+- `PLAN-MAESTRO-4-OBJETIVOS.md`
+- `HANDOFF-PLAN-OPUS.md`
+- `PLAN-ANEXO-C-2-PUNTOS-ADICIONALES.md`
+- `PROMPT-DSL-DAG-PLAN-OPUS.yaml`
+
+Agentes/fuentes:
+`➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/`
+
+Regla importante: los 13 componentes MiniMax/Kimi/mcode aparecen como gitlinks/submodules (modo Git 160000) y están definidos en la `.gitmodules` del repo. Eso fija repo+commit, pero no significa que sus archivos fuente estén materializados dentro del tree principal de GitHub. Para un checkout completo se requiere inicializar submodules. Los demás agentes materializados siguen como árboles normales.
+
+Invariante: no crear otra raíz Wordflow. Toda nueva integración, documentación, plan, agente o evidencia debe vivir bajo la raíz canónica anterior.
+
