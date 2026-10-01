@@ -1,0 +1,2225 @@
+# PLAN MAESTRO - 4 OBJETIVOS YAIWES
+Version 2. Creado 2026-09-19 por Claude Opus 5.
+v2 = verificacion cruzada 5 pasadas contra `instrucciones 1 a 1 director.md` (4540 lineas)
++ las 24 notas de `Claude notas/`. La v1 tenia 31 omisiones; todas incorporadas aqui.
+
+NOTACION: `<E>` = prefijo emoji flecha+carpeta del Director.
+URL-encoded: `%E2%9E%A1%EF%B8%8F%F0%9F%93%82`
+No se escriben emojis literales (la API de escritura devuelve HTTP 500).
+
+FORMATO DE REPORTE AL DIRECTOR (regla suya, linea 188):
+NO usar cuadros/tablas - dificil de leer en smartphone.
+Usar cascada + microflujo transversal horizontal + formato Glimmer resumido.
+
+---
+
+## JERARQUIA REAL (no confundir nunca)
+
+Yaiwes (proyecto completo)
+  -> NCT / Neuronas Code Turbo (repo nct-core)
+      -> Wordflow Loop Code Yaiwes (motor de PROGRAMAR CODIGO, 95% de Fables)
+          -> Seals Team (worker especializado dentro de ese motor)
+
+Wordflow Loop Code Yaiwes NO ES Yaiwes. Es un motor de workflow para programar.
+
+---
+
+## ESTADO REAL VERIFICADO POR API 2026-09-19 (no de documentos)
+
+Los documentos previos mentian. Esto es lo fisico:
+
+13 submodules MiniMax/Kimi -> MONTADOS REALES (gitlinks a repos externos)
+  en `<E> wordflow loop code Yaiwes/wordflow_loop/agent_sources/`
+  incluidos kimi_code, kimi_cli y mcode.
+mcode (@minimax-ai/code) -> MONTADO como gitlink al commit
+  73a2581c6c7525628342f33b53907d4f7bdc146e.
+  NO volver a montarlo; solo verificar/materializar con submodule update --init.
+orca/ -> DESCARGADO COMPLETO (src/, skills/, skill-guides/, skill-stubs/,
+  native/, mobile/, cloud/, orca.yaml, package.json, pnpm-lock 529KB)
+  Las notas decian "adquisicion ausente" - ERA FALSO
+muse_glimmer/ -> real (code/, _archives/, DOWNLOAD_EXTRACT_MANIFEST.json)
+opencode/ -> real y completo (packages/, sdks/, specs/, infra/)
+meta_muse_code_sdk, metacua, cua_mcp, meta_agent_cookbook -> presentes, verificar en S1
+18 slots de agentes (aider, cline, codex, goose, hermes, openhands, qwen_code,
+  smolagents, agent_zero, claude_code, mimo_code, mirothinker, openclaw,
+  opendev, research_agent_lab) -> presentes, verificar en S1
+
+CONCLUSION: el objetivo 1 es mucho mas pequeno de lo que decian las notas.
+El trabajo real es VERIFICAR, PODAR, CABLEAR - no descargar.
+
+---
+
+## BLOQUEOS QUE DEPENDEN DEL DIRECTOR (no los puede resolver Claude)
+
+FLAG-1 SEGURIDAD: las 5 API keys NVIDIA estan en texto plano en
+  `Claude notas/instrucciones 1 a 1 director.md`, repo PUBLICO.
+  Comprometidas. Regenerar en NVIDIA.
+FLAG-2: GROQ_API_KEY_1 da HTTP 401 real (invalida o revocada). Keys 2-7 OK.
+FLAG-3: MAXBRY_123_TOKENS no sirve para auth git (push de limpieza de historial falla).
+FLAG-4: limpieza de historial NO CERRADA. yaiwes-nucleo-limpio sigue size:0.
+  filter-repo funciona pero solo baja de 15.70 a 15.09 GiB - el peso esta DENTRO
+  de las carpetas protegidas. Falta decidir si se podan blobs grandes
+  (--strip-blobs-bigger-than) dentro de esas carpetas.
+FLAG-5: Open Montage sin repo verificable (solo un video de YouTube).
+  Confirmar nombre/link exacto o se descarta.
+FLAG-6: renombrar la carpeta ajena `Wordflow loop code Yaiwes` (big-AGI) a
+  `big-AGI-descargado/` - requiere OK explicito (es un proyecto de cientos de MB).
+FLAG-7: quien ejecuto el commit c9c81072 (copia META4) y si respeta la regla
+  "Sol GPT retirado de todo trabajo mecanico".
+
+---
+
+## REGLAS DURAS (no negociables)
+
+1. PROHIBIDO ESCRIBIR CODIGO DESDE CERO. Todo sale del codigo ya descargado:
+   podar -> editar quirurgicamente -> refactorizar -> cablear.
+   REUSE > PATCH > ADAPT > GENERATE. COPY-FIRST.
+2. Maximo 500 LOC por bloque. Si no cabe, mas salidas.
+3. NUNCA BORRAR ARCHIVOS. Editar quirurgicamente o crear version nueva y comparar.
+4. No PASS sin evidencia: CODE + TEST + EVIDENCE(sha256) + READ-BACK.
+5. SPARSE-CHECKOUT OBLIGATORIO en todo Action (repo 16.4GB; checkout completo
+   tarda 13min o muere - runs 35467245568 y 35468506302 murieron asi).
+6. Cada paso se anota en `Claude notas/` + Crazy Wall bitacora stated JSON +
+   handoff, ANTES de pasar al siguiente. Y cada HALLAZGO tambien.
+7. Escritura via API. Sin emojis literales (HTTP 500). En Python usar
+   escapes `➡️\U0001f4c2`.
+8. Si algo se bloquea: FLAG + anotar + seguir. Nunca parar el ciclo.
+9. Un paso/tarea por salida. Contrato de nodo: maximo 3 pasos.
+10. Verificar 4 veces (no 1) que una regla nueva quede cableada en TODOS los
+    lugares donde aplica, no solo documentada una vez.
+11. Antes de escribir CUALQUIER schema o bloque: consultar biblioteca/GitHub
+    primero. Nunca escribir de memoria del LLM.
+12. Anotar las instrucciones del Director 1 a 1, input block VERBATIM.
+
+### REGLA CENTRAL DE AUTORIDAD
+LLM = PROPONE
+POLICY/SHERIFF = AUTORIZA
+TOOL = EJECUTA
+RECEIPT = DEMUESTRA
+ORACLE = DECIDE PASS
+
+### INVARIANTES FORMALES (nunca violables)
+NO PASS WITHOUT EVIDENCE
+NO MUTATION WITHOUT AUTH
+NO CLOSE WITHOUT ORACLE
+NO REPLAY WITHOUT SAME INPUT HASH
+NO TWO WRITERS SAME RESOURCE
+
+### PLANTILLA EXACTA (Glimmer, 7 secciones) - obligatoria para agentes y componentes
+Capacidad
+Patron - microflujo transversal horizontal (texto, sin imagenes salvo peticion)
+LOOP
+Aporta
+Usa
+Reglas
+Fallos
+Test
+El diseno debe ser EXACTO, nunca generico ni ambiguo.
+
+### ROLES DE CONSTRUCCION/VALIDACION - NO SON SUBAGENTES DE SEALS
+Orquestar DAG/FSM      -> Wordflow Kernel      (autoridad maxima)
+Autorizar ejecucion    -> Runtime determinista (autoridad maxima)
+Escritura de codigo    -> OpenCode             (herramienta/agente EXTERNO de construccion)
+Reparacion/revision    -> OpenHands            (EXTERNO, separado del escritor)
+Auditoria independiente-> Codex                (EXTERNO)
+Arquitectura dificil   -> Claude Code / MiMo   (ASESOR EXTERNO)
+Ambiguedad             -> Council12            (ASESOR EXTERNO)
+PASS final             -> Tests/oracle determinista
+
+REGLA: OpenCode/OpenHands/Codex/Kimi/MiniMax completos NO viven dentro de Seals.
+Solo se estudian para extraer mecanismos trazados o se usan fuera del runtime para
+construir/reparar/auditar.
+
+### SEALS PODADO A - ARQUITECTURA CONGELADA
+Firma objetivo:
+SealsWorker.execute(TaskContract) -> NodeResult
+
+Seals = UN SOLO micro-agente/worker especializado.
+Objetivo: 500-1000 LOC de codigo propio/adaptado para core + adapters finos.
+
+CORE permitido:
+TaskContract -> Bootstrap -> FSM -> StructuredAction -> Sheriff/Policy adapter ->
+Tool/Adapter -> ToolResult -> Observation -> GAP/FIX -> Objective Oracle ->
+Evidence -> Completion Audit -> NodeResult.
+
+HOST_CONTRACT (Wordflow lo posee; Seals solo consume/respeta):
+DAG, global claim/lease, durable queue/recovery scheduling, watchdog/reenqueue,
+global write-scope arbitration, provider/key routing.
+
+PROHIBIDO dentro de Seals:
+subagentes, scheduler, segundo DAG, segunda cola global, segundo watchdog,
+fleet manager, provider pool, Command Center.
+
+Trazabilidad obligatoria:
+`Claude notas/SEALS-TRAZABILIDAD-COMPONENTES.md`
+Handoff operativo:
+`Claude notas/HANDOFF-SEALS-TEAM-YAIWES.md`
+
+### SEMANTICA DE ESTADOS (Muse Code)
+SUBMITTED -> ACKED -> QUEUED -> STARTED -> MATERIALIZED -> VALIDATING -> VERIFIED_CLOSED
+
+### FSM DEL NODO
+PENDING -> CLAIMED -> RESEARCHING -> READY -> EXECUTING -> OBSERVING ->
+VALIDATING -> VERIFIED_CLOSED
+
+---
+
+## OBJETIVO 1 - COMPONENTES + SKILLS->SCHEMA + AGENTES FALTANTES
+
+### SALIDA 1 - Inventario forense real de agent_sources/
+Recorrer las ~35 entradas via `GET /git/trees/<sha>` (1 llamada por carpeta).
+Clasificar: SUBMODULE REAL / CODIGO REAL / CARPETA VACIA / STUB.
+Incluir tambien: `kimi_k/` (vieja, duplicada con kimi_researcher) y
+`minimax_mcp/` suelta fuera de agent_sources - marcar para fusion futura, NO borrar.
+Escribir `Claude notas/INVENTARIO-FORENSE-agent_sources.md`.
+PASS: 35 entradas, ninguna marcada "supuesto", sha de cada arbol.
+PARCHE: archivo parcial ya sirve; retomar desde la ultima fila.
+
+### SALIDA 2 - mcode + keys NVIDIA + submodule checkout en CI
+2.1 mcode YA ESTA MONTADO como gitlink real.
+    Commit fijado: 73a2581c6c7525628342f33b53907d4f7bdc146e.
+    Accion: verificar gitlink + materializar con `git submodule update --init`.
+    PROHIBIDO remontar/reemplazar sin nueva evidencia.
+2.2 Subir 5 keys NVIDIA como secrets NVIDIA_API_KEY_1..5, sellado libsodium
+    via ctypes sobre libsodium.so.23 (metodo probado con las 7 GROQ, memoria.md 11).
+2.3 GAP CRITICO YA IDENTIFICADO: montar el gitlink NO trae el codigo fuente.
+    Para que Seals pueda EJECUTAR el codigo de esos 12 submodules hace falta
+    `git submodule update --init` real en tiempo de build/CI.
+    Cablear ese paso en el workflow (con sparse-checkout).
+PASS: GET agent_sources/mcode -> html_url externo;
+      GET /actions/secrets -> 5 NVIDIA;
+      un run de CI que materializa al menos 1 submodule y lista sus archivos.
+PARCHE: si el mount falla, FLAG y seguir - mcode no bloquea nada mas.
+
+### SALIDA 3 - Skills -> DSL DAG Schema (decision Fables, no negociable)
+Regla del Director: los skills NO sirven de adorno. Se convierten en
+contratos -> DSL DAG schema -> runtime Python.
+Fuentes:
+  - los 3 skills frontend (impeccable, frontend-design, skill-creator)
+  - skills nativos en `agent_sources/orca/skills/` y `orca/skill-guides/`
+  - skills Anthropic adicionales: docx, pdf, pptx, xlsx, artifact-design,
+    artifact-capabilities
+REUTILIZAR como plantilla (NO inventar formato):
+  `Core kernel Yaiwes/control-layer/schemas/output_contract.yaml`
+  `Seals team YAIWES/dag_schema.yaml`
+Producir `skills_schema/<nombre>.dag.yaml` con:
+  objective, acceptance[], tools[], evidence[], work_surface
+PASS: cada schema valida contra el validador DAG existente; 1 test por schema.
+PARCHE: schemas independientes - si uno falla, los demas siguen.
+
+### SALIDA 3B - Notas de tareas pendientes en readme + Crazy Wall
+Instruccion literal: "Coloca una nota dentro de la readme arquitectura y cada
+Craxy wall segun el repo como tarea pendiente".
+LISTA JEV + RSI -> destino repo `router-universal-router-inteligente-`:
+  TypeSafe Agent Skills, Jev Router, Jev Agent Skill Router, Jev Review MCP,
+  Jev Harness, Fast Jev Compaction, System One Lite, Open Jev, Awesome Jev,
+  OpenRSI/OpenMLE, RSIAgent, Skill-RSI, ShinkaEvolve, OpenEvolve, SimpleTES,
+  ThetaEvolve, CodeEvolve, Dream-RSI
+  NUCLEO MINIMO: OpenRSI + RSIAgent + Skill-RSI + ShinkaEvolve + SimpleTES
+  DECISION: NO instalar como skills decorativos. Extraer mecanismo ->
+  DSL/DAG contract Python, patron de seals_core/.
+
+ROUTER RESEARCH PREPASS -> proyecto separado `router-universal-router-inteligente-`:
+  NO integrar dentro de Seals ni dentro del Orquestador.
+  Raiz ya definida:
+  `➡️📂motores de búsqueda contexto router inteligente universal/`
+  Componentes:
+  sources.json
+  context_packet.schema.json
+  motor_1_web_domains.py
+  motor_2_github_search.py
+  motor_3_huggingface_search.py
+  motor_4_research_prepass.py
+  README.md
+  Flujo:
+  INPUT_BLOCK VERBATIM -> SHA256 -> deterministic terms -> secret-redacted query ->
+  WEB/GitHub/HuggingFace -> DEDUPE -> SCORE -> CONTEXT_PACKET -> LLM/AGENT -> PLAN.
+  Regla:
+  INPUT VERBATIM = source of truth.
+  QUERY SANITIZED = external research.
+  Research Prepass = CONTEXT, nunca autoridad.
+  Estado reportado:
+  diseño/schema/handoff READY;
+  runtime network test PENDIENTE;
+  conexion exacta al punto PLAN del Router PENDIENTE.
+LISTA FRONTEND -> destino wordflow + copia repo frontend + fabrica UI:
+  Taste Skill, 21st MCP, Web Design Guidelines (vercel-labs), Image to Code,
+  Awesome Design (VoltAgent), UI/UX Pro Max, Vercel React Best Practices,
+  Design-to-Code, Frontend Design Codex, Emil Kowalski skills, Impeccable,
+  HyperFrames (framework + 9 skills), Web Design Studio / cinematic-scroll
+  Software adicional: Caret, Onlook, Plasmic, Webstudio, Playwright MCP
+COMPONENTES COMAND CENTER (investigados, mecanismo extraible):
+  Orca (worktree aislado + rotacion de keys) - el mas fuerte, YA DESCARGADO
+  Munder Difflin (oficina de agentes con roles fijos)
+  DeepSeek Harness (provider-plugin declarativo)
+  Herdr (sesiones/paneles concurrentes, secundario)
+  MatPocock Skills (biblioteca, no motor - fuera de scope de motores)
+  Open Montage -> FLAG-5, sin repo verificable
+DESTINOS YA CORREGIDOS (no repetir el error anterior):
+  Omniroute -> `wordflow_loop/runtime/src/conn/`
+  Orca -> NO se instala como carpeta de componente; se extrae su logica
+  Omarchy -> NO APLICA como componente de repo (es infraestructura)
+  Anydoc -> `Motores de descarga y extraccion/anydoc/`
+  Skill Design Anthropic -> `Skills agente/skill-design-anthropic/`
+PASS: nota escrita en el readme arquitectura de cada repo afectado + Crazy Wall.
+
+---
+
+## OBJETIVO 2 - CERRAR WORDFLOW LOOP CODE YAIWES
+
+### SALIDA 4 - Doble raiz + reorganizacion de raiz
+4.1 Carpeta 1 = `<E> wordflow loop code Yaiwes` (kernel Python real).
+    Carpeta 2 = `Wordflow loop code Yaiwes` (SIN emoji, W mayuscula) =
+    proyecto ajeno big-AGI (Electron+Next.js) con los 3 skills dentro de `skills/`.
+4.2 Auditoria forense X-Ray: verificacion cruzada carpeta por carpeta entre
+    ambas raices. Lista de lo que hay en cada una para decidir.
+4.3 Mover SOLO los 3 skills a `Skills agente/` con el motor de copia existente
+    (motor_3_copy_batches.py), sin borrar el origen.
+4.4 Renombrar Carpeta 2 -> `big-AGI-descargado/` SOLO con OK del Director (FLAG-6).
+4.5 Reorganizacion de raiz APROBADA hace turnos y NUNCA EJECUTADA:
+    fusionar `Skills`/`skills`, `Conecciones router inteligente universal`/
+    `conectividad con Router inteligente universal`, y los 3 duplicados de
+    "wordflow loop code Yaiwes" en main -> UNA SOLA RAIZ UNIFICADA.
+PASS: 3 skills en `Skills agente/` con contenido real; tabla de doble raiz;
+      raices duplicadas resueltas o FLAG explicito.
+PARCHE: nada se borra; el origen queda intacto.
+
+### SALIDA 5 - Gaps del kernel Wordflow (orden del propio analisis)
+5.1 CheckpointManager guarda en memoria (`self._checkpoints={}`) ->
+    persistencia durable en disco/SQLite. PRIORIDAD NUMERO UNO.
+5.2 Deprecar `runtime/src/agent/agent_router.py` (debil: si no hay match real
+    puede seleccionar el primero del registro en vez de fallar cerrado) ->
+    AUTORIDAD UNICA `AgentFleetAdapter` + `agent_fleet_registry.json`
+    (fail-closed real, contrato tel.workflow/v4). Decision tomada, nunca ejecutada.
+5.3 Recovery Engine generico (ESCALATE_TO_DIRECTOR) -> estados tipados:
+    RETRYABLE / DEPENDENCY / AUTH / STUCK / CRASH / IRREVERSIBLE_FAILURE /
+    NO_NODE_SOLUTION.
+5.4 Stuck detector: mismo tool + mismos args + mismo error x3 -> BLOCKED_STUCK.
+5.5 1 path = 1 writer + lease (resource locks).
+5.6 Idempotencia persistente (hoy el cache del Kernel tambien es memoria de proceso).
+5.7 `contracts/` y `evidence/` (wordflow_loop/wordflow_loop/) estan VACIAS - llenar.
+5.8 Los 7 archivos de gobernanza (sheriff, sentinel, judge, guardian, supervisor,
+    validator, verifier) miden 389-804 bytes. LEER su contenido real:
+    si son stubs, cablearlos; si no, documentar por que son tan pequenos.
+5.9 2 sistemas de Crazy Wall paralelos (raiz principal vs "Crazy Wall Orquestador/")
+    - el prompt de comparacion ya esta escrito, nunca se ejecuto. Ejecutarlo.
+5.10 Duplicado `source_truth_reconciler.py` vs `truth_reconciler.py` - resolver.
+5.11 13 subcarpetas de templates/skills/plugins/prompts VACIAS = biblioteca RAG
+     sin construir. Construirla (es requisito previo a generar cualquier schema).
+5.12 AGENT_FLEET_READY_FOR_TEST.json: 18 agentes registrados, CERO pruebas de
+     runtime real. Ejecutar al menos 1 prueba real por rol del nucleo pequeno
+     (OpenCode, OpenHands, Codex).
+PASS por item: test que falla ANTES del fix y pasa DESPUES.
+PARCHE: cada item = commit independiente, revertible por separado.
+
+### SALIDA 6 - Frontend visualizable
+Peticion literal: "revisa en wordflow la parte de frontend para que visualice
+el frontend".
+REUTILIZAR el capability/adapter de navegador que Wordflow YA TIENE.
+NO crear otro navegador-kernel dentro de Seals.
+Cablear el gate: CODE PASS + BROWSER PASS + VISUAL PASS
+  (spec en `arquitectura wordflow loop code Yaiwes/SCHEMA-frontend-browser-verified.md`)
+Tool loop Meta/Glimmer DENTRO de cada worker (NO en el kernel).
+Screenshot recurrente en CADA paso visual relevante, no solo al cierre.
+LOOP FRONTEND completo:
+GOAL UI -> READ CRAZY WALL FRESH -> CLAIM -> READ COMPONENT TREE ->
+READ STATE/STYLES/ROUTES -> READ API CONTRACTS -> PLAN -> EDIT -> BUILD ->
+START APP -> OPEN REAL BROWSER -> SCREENSHOT/DOM/CONSOLE -> INTERACT ->
+COMPARE ACCEPTANCE -> GAP? -> FIX -> REBUILD -> RETEST -> MOBILE/TOUCH TEST ->
+INTEGRATION TEST -> EVIDENCE -> PASS -> RELEASE/NEXT
+PASS: un componente frontend real recorriendo el loop completo con evidencia.
+PARCHE: si no hay navegador en CI, FLAG y dejar el gate cableado marcado
+NO_VERIFICADO.
+
+### SALIDA 6B - Los 4 archivos nunca abiertos (Frente 1)
+Pendiente explicito desde 2026-09-16, nunca resuelto:
+  execution_pipeline_dsl.py
+  execution_pipeline_dsl_-_Copiar.md
+  PIPELINE_MASTER.md
+  INPUT_BLOCK.md
+Y el "motor de investigacion y deterministico de codigo de opus" que el Director
+menciono y que NO fue identificado ni integrado.
+ACCION: localizarlos en el repo, leerlos, y decidir si el System Prompt DSL/DAG
+del Frente 1 ya esta cubierto o falta cablearlo.
+PASS: los 4 leidos + veredicto escrito sobre el motor de opus.
+
+---
+
+## OBJETIVO 3 - TERMINAR SEALS TEAM YAIWES
+
+FUENTES AUTORITATIVAS PARA ESTE OBJETIVO:
+1. `Claude notas/PLAN-ANEXO-B-SEALS-MECANISMOS.md`
+2. `Claude notas/SEALS-TRAZABILIDAD-COMPONENTES.md`
+3. `Claude notas/HANDOFF-SEALS-TEAM-YAIWES.md`
+4. codigo real fijado por SHA
+5. tests/run fresh
+
+No confiar en etiquetas historicas de "cerrado" sin revalidacion.
+El primer paso es X-Ray del runtime Seals actual contra esta arquitectura aprobada.
+
+### PRINCIPIO DE DISENO - NO NEGOCIABLE
+
+Seals Team YAIWES es UN SOLO micro-agente/worker de ejecucion e integracion.
+NO es orquestador general.
+NO contiene subagentes.
+NO duplica Wordflow.
+
+Firma:
+`SealsWorker.execute(TaskContract) -> NodeResult`
+
+Microflujo:
+
+TASK CONTRACT
+-> BOOTSTRAP/VALIDATE
+-> FSM
+-> RESEARCH si aplica
+-> STRUCTURED ACTION
+-> SHERIFF/POLICY
+-> APPROVED TOOL/ADAPTER
+-> TOOL RESULT
+-> OBSERVATION
+-> GAP/FIX/RETEST
+-> OBJECTIVE ORACLE
+-> EVIDENCE
+-> COMPLETION AUDIT
+-> NODE RESULT
+
+Regla de autoridad:
+LLM PROPONE -> POLICY AUTORIZA -> TOOL EJECUTA -> RECEIPT DEMUESTRA ->
+ORACLE DECIDE PASS.
+
+### CLASIFICACION OBLIGATORIA
+
+CORE:
+vive dentro del micro-Seals.
+
+HOST_CONTRACT:
+Wordflow lo posee; Seals lo recibe, valida y respeta.
+
+VALIDATION:
+prueba Seals; no forma parte del runtime interno.
+
+GAP:
+requisito real cuya fuente/implementacion aun no esta demostrada.
+
+### HOST_CONTRACT - WORDFLOW
+
+Wordflow conserva:
+DAG
+global claim/lease
+durable queue/recovery scheduling
+watchdog/reenqueue
+global write-scope arbitration
+provider/key routing
+autoridad global de estado.
+
+TaskContract entregado a Seals debe declarar como minimo:
+node_id
+mission_id
+claim_id
+lease_id
+write_scope
+base_sha
+acceptance[]
+work_surface
+capability
+secret_refs
+command_id.
+
+Seals puede:
+validate
+heartbeat/checkpoint
+execute
+record_gap
+record_evidence
+release/report
+return NodeResult.
+
+Seals NO crea motores globales equivalentes.
+
+### SALIDA 7 - BASELINE + GAPS REALES
+
+7.1 X-Ray del Seals actual:
+- contar LOC y modulos reales
+- leer ejecutor/verificador/watchdog/tests
+- identificar cualquier cola/scheduler/watchdog/PASS oracle duplicado
+- marcar que se conserva, poda, decapita o migra al host
+- NO borrar antes de test comparativo.
+
+7.2 Revalidar gaps historicos contra codigo:
+P0-16 ToolRegistry/Glimmer
+P1-27 crash/resume
+P1-28 sandbox/rollback
+P1-24 MetaCua/CUA-MCP
+P1-30 crash/recovery + wrong-source-commit tests
+P2-31 handoff drift
+P2-32 lock/pinning.
+
+7.3 Materializar submodules antes de extraer mecanismo:
+`git submodule update --init`
+No declarar mecanismo integrado porque exista gitlink/directorio.
+
+PASS S7:
+X-Ray escrito + mapa KEEP/PRUNE/DECAPITATE/HOST/GAP + tests baseline.
+Sin eso no se modifica el core.
+
+### SALIDA 8 - CONSTRUIR EL MICRO-SEALS
+
+Seguir el handoff nodo por nodo.
+
+S-01 baseline/X-Ray.
+S-02 contracts/bootstrap + ExecutionMode + PlanContract.
+S-03 loop minimo + structured actions + PLAN_MODE nativo avanzado.
+S-04 policy/execution/safe edit.
+S-05 idempotency/replay.
+S-06 oracle/evidence/completion audit.
+S-07 acquisition/integration.
+S-07A copiar motores canonicos 1:1 a Wordflow adapters + crear schemas + registrarlos en NativeToolRegistry como tools NATIVAS de Seals.
+  Layout objetivo:
+  `wordflow_loop/adapters/seals_motors/`
+    motor_1_extract_only.py
+    motor_2_queue_download_extract.py
+    hf_download_extract_engine.py
+    motor_3_copy_batches.py
+    motor_4_move_batches.py
+    motor_5_zip_root.py
+  Contratos:
+  `wordflow_loop/contracts/seals_motors/`
+    extract_only.schema.json
+    download_extract.schema.json
+    copy_batches.schema.json
+    move_batches.schema.json
+    zip_root.schema.json
+  Regla exacta:
+  FUENTE CANONICA -> VERIFY BLOB SHA -> COPIA EXACTA -> READ-BACK ->
+  MISMO BLOB SHA -> CREATE SCHEMA -> REGISTER TOOL.
+  NO modificar/refactorizar motores canonicos. El schema solo traduce
+  StructuredAction <-> inputs reales del motor y normaliza ToolResult/receipt.
+  Motor 5 ZIP ROOT blob SHA:
+  2516d85d81f691f86c32a70b90c2599639eb83c6
+  Estado Motor 5: codigo/copia SHA verificados; runtime test PENDIENTE.
+  GAP conocido: `motor_copy_root_to_repo.py` tiene allowlist anterior y no conoce
+  Motor 5; NO modificarlo dentro de esta tarea.
+S-07B Agent Skills + Scrapling + ScrapeGraphAI + Agent Reach: materializar por Motor 2, validar schemas y registrar capacidades web como adapters/tools, NO subagentes.
+S-08 research solo cuando exista motor real trazado.
+S-09 frontend/visual solo cuando MetaCua/CUA tengan SOURCE_SYMBOL trazado.
+S-10 recovery/regression contra host contract.
+S-11 validacion con 3 instancias DESDE Wordflow.
+S-12 completion audit.
+
+Objetivo de tamano:
+500-1000 LOC para micro-agent + adapters finos.
+
+Si un mecanismo exige otro agente completo, segunda cola, scheduler,
+segundo kernel o segundo orquestador -> NO ENTRA.
+
+### MECANISMOS APROBADOS Y ESTADO
+
+PROVEN:
+- smolagents @ 30bb116... -> loop minimo, max_steps, ToolOutput, final checks.
+- Muse Glimmer -> parser ATEM + reason/action/result/observation/correction.
+- Muse Code SDK -> command_id/replay/idempotency pattern, NO cola global Seals.
+- OpenCode @ d7b115f... -> exact safe edit + per-path lock + diff/permission.
+- Codex @ be6e8eac... -> sandbox/policy/approval execution.
+- kimi-agent-sdk @ ed4be6... -> lifecycle/resume contract.
+- kimi-agent-rs @ f9186cd... -> typed request/state validation.
+
+REFERENCE hasta cerrar SOURCE_SYMBOL:
+- OpenHands action/observation.
+- MiniMax Code Plugins capability manifest.
+- MetaCua implementation.
+- CUA-MCP bridge.
+- Meta Agent Cookbook mechanisms.
+
+GAP:
+- Kimi-Researcher: commit 9406d8... no demostro codigo ejecutable del
+  motor multi-source/cross-check.
+- MiniMax-Coding-Plan-MCP: server.py demostro web_search/understand_image,
+  NO un planner estructurado. Prohibido llamarlo planner sin simbolo.
+
+EXCLUDED como agentes internos:
+kimi_code, kimi_cli, OpenRoom, mmx CLI, mcode, OpenCode, OpenHands, Codex.
+Pueden aportar patrones o servir al equipo externo de construccion; no viven dentro de Seals.
+
+Detalle completo y SHAs:
+`Claude notas/SEALS-TRAZABILIDAD-COMPONENTES.md`
+
+### PLAN_MODE NATIVO AVANZADO
+
+Seals debe tener un modo de planificacion nativo en su core.
+
+Referencia funcional:
+el comportamiento tipo Plan Mode separa exploracion/planificacion de mutacion.
+El atajo Shift+Tab, si alguna UI lo implementa, es solo una entrada de usuario;
+el kernel trabaja con `SET_MODE(PLAN|EXECUTE)`.
+
+FSM:
+
+BOOTSTRAP
+-> PLAN_MODE
+-> PLAN_READY
+-> EXECUTE_MODE
+-> OBSERVE
+-> GAP? REPLAN : VERIFY
+-> COMPLETION
+
+PLAN_MODE:
+- READ/LIST/SEARCH/INSPECT/HASH/RESEARCH permitidos;
+- WRITE/COPY/MOVE/DOWNLOAD/INSTALL/DEPLOY y todo side effect prohibidos;
+- mutacion -> `PLAN_MODE_SIDE_EFFECT_DENIED`.
+
+PlanContract obligatorio:
+plan_id, mission_id, node_id, goal_id, base_sha, write_scope, objective,
+acceptance[], evidence_refs[], findings[], actions[], dependencies[],
+expected_outputs[], rollback[], unknowns[], created_from_state_hash, plan_sha256.
+
+PlanGate antes de EXECUTE:
+- schema valido;
+- base_sha vigente;
+- target_paths dentro de write_scope;
+- tool_name registrado;
+- acceptance cubierto;
+- unknown critico resuelto;
+- plan_sha256 fijado.
+
+En EXECUTE:
+cada mutacion referencia `plan_id + action_id`.
+Operacion no planificada -> `UNPLANNED_MUTATION_DENIED`.
+Drift -> `PLAN_STALE` -> volver a PLAN_MODE sin perder evidence.
+
+No crear otro agente/planner externo.
+PLAN_MODE es una capacidad nativa de FSM+Policy.
+
+FUENTE DE COMPORTAMIENTO / TRAZABILIDAD:
+- Claude Agent SDK PermissionMode="plan" / ExitPlanMode:
+  https://code.claude.com/docs/en/agent-sdk/python
+- Claude Code commands /plan:
+  https://code.claude.com/docs/en/commands
+- Claude Code Desktop Plan Mode:
+  https://code.claude.com/docs/en/desktop
+
+REGLA DE IMPLEMENTACION:
+FUENTE OFICIAL -> extraer COMPORTAMIENTO -> NO copiar codigo propietario ->
+implementar nativo YAIWES con FSM + StructuredAction + PlanContract + PlanGate +
+Sheriff/Policy + Evidence.
+
+Shift+Tab, si existe en UI, solo mapea a SET_MODE(PLAN|EXECUTE).
+Nunca sustituye la autoridad FSM + Sheriff/Policy.
+
+### CAPACIDAD NATIVA - ACQUISITION + INTEGRATION
+
+Entrada:
+URL + COMPONENT + TaskContract.
+
+RECEIVE
+-> motor existente descarga/extraccion
+-> verify source URL
+-> resolve exact commit
+-> checkout exact commit
+-> SOURCE_COMMIT == CHECKED_OUT_COMMIT
+-> inspect
+-> classify
+-> determine destination
+-> prune
+-> decapitate external brain/orchestrator
+-> extract capability
+-> integrate via adapter/plugin aprobado
+-> test
+-> read-back
+-> evidence.
+
+Directorio existente != instalacion valida.
+Empty/stale/wrong repo -> FAIL/GAP.
+1 path = 1 writer.
+
+Antes de implementar esta capa:
+seguir T-019 de `SEALS-TRAZABILIDAD-COMPONENTES.md`.
+Copiar los motores canónicos 1:1 dentro de
+`wordflow_loop/adapters/seals_motors/`
+y crear sus schemas en
+`wordflow_loop/contracts/seals_motors/`.
+No modificar su codigo.
+No crear otro downloader/copy/move.
+
+MOTOR 2 CANONICO - COMPORTAMIENTO VERIFICADO:
+`motor_2_queue_download_extract.py` recibe:
+- source_repo
+- source_ref
+- slug
+- dest_repo
+- dest_branch
+- dest_root
+- publish
+
+y delega en `hf_download_extract_engine.py`.
+Aunque el nombre del engine contiene "hf", su implementacion verificada usa
+Git/GitHub + ZIP + hashes; NO depende de Hugging Face para este flujo.
+
+Flujo real:
+ORIGEN
+-> git fetch ref/commit exacto
+-> verify source tree
+-> deterministic ZIP
+-> reconstruct ZIP
+-> safe extract
+-> compare source tree hash vs extracted tree hash
+-> publish DESTINO
+-> read-back
+-> VERIFIED_CLOSED.
+
+Por tanto S-07/S-07B DEBEN usar este motor existente; prohibido inventar una
+segunda via de adquisicion mientras este motor cubra el caso.
+El unico motor nuevo aprobado es `motor_5_zip_root.py`, ya creado con blob
+`2516d85d81f691f86c32a70b90c2599639eb83c6`, para empaquetar una raiz
+completa excluyendo `.git/`; runtime test aun PENDIENTE.
+
+### AGENT SKILLS + WEB CAPABILITIES
+
+Raiz autoritativa:
+`➡️ 📂 shema skills agente/`
+
+Standard oficial:
+https://agentskills.io/specification
+
+Repositorio de referencia Anthropic:
+https://github.com/anthropics/skills
+commit:
+`34040c9c568585f6929bedeaad110ad08f079624`
+
+Schemas ya preparados:
+- agent-skills-official-frontmatter.schema.json
+- yaiwes-agent-skill-contract.schema.json
+- scrapling.schema.json
+- scrapegraph-ai.schema.json
+- agent-reach.schema.json
+
+TRAZABILIDAD VERIFICADA:
+Scrapling:
+- skill: agent-skill/Scrapling-Skill/SKILL.md
+- blob: d3545fdc5503fbce3d4a9779378541e7ed6c0e5e
+- destino Seals: NativeToolRegistry -> web_extract
+
+ScrapeGraphAI:
+- SmartScraperGraph blob: b29d038aed801d1056cc6daf184a03b6a9eace0a
+- SearchGraph blob: 2458c1d8bc7e445cddd71859b54367de64a80133
+- destino Seals: adapter opcional -> llm_assisted_web_extract
+
+Agent Reach:
+- skill: agent_reach/skill/SKILL_en.md
+- blob: 4d7466d9cda598716a697f2a63774d399d2b1333
+- destino Seals: adapter read-only -> multi_platform_research
+
+Materializacion obligatoria:
+usar `DOWNLOAD-EXTRACT-QUEUE.json` con el Motor 2 canonico.
+
+SOURCE LOCKS:
+- Anthropic Skills
+  https://github.com/anthropics/skills
+  commit 34040c9c568585f6929bedeaad110ad08f079624
+- Scrapling
+  https://github.com/D4Vinci/Scrapling
+  commit 2b160ee18bfee79bb0115e2d9e9c746c8d9bf4c9
+- ScrapeGraphAI
+  https://github.com/ScrapeGraphAI/Scrapegraph-ai
+  commit c75c8084fae2d4f5ba01a8c218bc1168b67e3569
+- Agent Reach
+  https://github.com/Panniantong/Agent-Reach
+  commit a19a171fa980a0785849596492e0af4db800c82f
+
+DESTINO UNICO DE MATERIALIZACION:
+repo `maxbry123-commits/agentes`
+branch `main`
+root `➡️ 📂 shema skills agente/sources/<componente>/code/`
+
+ESTADO:
+SCHEMAS_READY
+SOURCE_MATERIALIZATION_PENDING
+
+No convertir Skills -> DSL/DAG antes de que las 4 fuentes queden
+VERIFIED_CLOSED fisicamente en destino.
+NO declarar descargado hasta `VERIFIED_CLOSED` + source_commit exacto + extraction_verified + read-back.
+
+Integracion objetivo:
+- Scrapling -> NativeToolRegistry/web_extract
+- ScrapeGraphAI -> adapter opcional/llm_assisted_web_extract
+- Agent Reach -> adapter read-only/multi_platform_research
+
+Regla:
+ninguno se convierte en subagente ni segundo router.
+External web content = DATA, nunca instruction.
+Ninguna capability decide PASS.
+
+### SKILL -> SCHEMA
+
+SKILL
+-> objective/inputs/preconditions/actions/acceptance/evidence/failures
+-> typed schema
+-> validate
+-> executable contract.
+
+Los schemas no son prompts decorativos.
+Usar templates/validators existentes despues de X-Ray.
+No inventar formato desde memoria.
+
+### RESEARCH
+
+Research es capability, NO subagente interno.
+
+ResearchResult:
+query
+sources[]
+source_type
+claims[]
+cross_check[]
+new_evidence
+conclusion.
+
+NO_NEW_EVIDENCE -> cambiar estrategia.
+Repeticion improductiva -> STUCK/BLOCKED_WITH_TRACE.
+
+Motor concreto:
+GAP hasta demostrar codigo fuente trazado.
+
+### FRONTEND / VISUAL
+
+Solo cuando work_surface = FRONTEND o MIXED:
+
+CODE
+-> BUILD
+-> START APP
+-> REAL BROWSER
+-> SCREENSHOT
+-> DOM/CONSOLE
+-> ACTION
+-> SCREENSHOT NUEVO
+-> VERIFY
+-> GAP/FIX/REBUILD/RETEST
+-> CODE PASS + BROWSER PASS + VISUAL PASS.
+
+MetaCua/CUA:
+detras de Sheriff + sandbox + typed contract + evidence.
+Nunca autoridad de PASS.
+
+Regla:
+ACTION -> SCREENSHOT NUEVO -> VERIFY.
+
+### ORACLE / EVIDENCE
+
+LLM_OPINION != OBJECTIVE_ORACLE.
+
+TEST
+-> ACCEPTANCE
+-> EVIDENCE
+-> COMPLETION AUDIT
+-> PASS.
+
+EvidenceRecord minimo:
+path
+sha256
+receipt
+test
+exit_code
+artifact
+source_commit
+timestamp
+mission_id/node_id
+acceptance_id.
+
+Existe=false -> GAP/FAILED.
+Provider/auth/timeout/invalid_output -> typed failure.
+Tool error -> observation, nunca PASS.
+No cierre por cantidad de iteraciones.
+
+### SALIDA 8B - TRAZABILIDAD + REGRESSION SUITE
+
+Cada mecanismo debe tener:
+SOURCE_REPO
+SOURCE_COMMIT/BLOB
+SOURCE_FILE
+SOURCE_SYMBOL
+BEHAVIOR_EXTRACTED
+SEALS_DESTINATION
+TEST
+EVIDENCE.
+
+Sin SOURCE_SYMBOL:
+REFERENCE/GAP, nunca INTEGRATED.
+
+Tests obligatorios:
+PATH_NOT_FOUND_NO_PASS
+PROVIDER_ERROR_NO_PASS
+INVALID_PREEXISTING_DIR_NO_PASS
+WRONG_SOURCE_COMMIT
+TASK_CONTRACT_INVALID
+IDEMPOTENT_REPLAY
+IDEMPOTENCY_CONFLICT
+ACCEPTANCE_FAIL
+PASS_WITHOUT_EVIDENCE
+EVIDENCE_HASH
+TOOL_ERROR_OBSERVATION
+STUCK_DETECTION
+NO_NEW_EVIDENCE
+WRONG_BASE_SHA
+SHERIFF_DENY
+TOOL_TIMEOUT
+CRASH_RESUME
+BACKEND_TEST_FAIL
+FRONTEND_BUILD_FAIL
+BROWSER_FAIL
+VISUAL_FAIL
+SCREENSHOT_MISSING
+ROLLBACK_AFTER_FAILURE.
+
+Mantener tambien:
+12 GOALS de entrada/salida
+Ask Council 12 puntos
+3 refutaciones independientes
+SIM-01..04.
+
+Estos son VALIDATION, no motores internos.
+
+### SALIDA 8C - PRUEBA REAL + CIERRE
+
+Prueba desde Wordflow/host:
+3 instancias identicas de Seals
+-> 3 nodos/claims/workspaces separados
+-> 1 componente dificil distinto por instancia
+-> verificar descarga real
+-> verificar escritura/materializacion real
+-> test/read-back/evidence
+-> corregir comportamiento
+-> repetir.
+
+NO crear una flota dentro de Seals para hacer esta prueba.
+
+Los "50 mundos" son HOST/INTEGRATION VALIDATION:
+cada mundo mantiene su estado/archivos/worker identity.
+Seals recibe su TaskContract; no administra los 50 mundos ni las keys.
+
+Cerebras/Router/provider routing:
+pertenece al host.
+Seals recibe referencias/capabilities; no un pool de API keys interno.
+
+### CONDICION DE CIERRE
+
+CORE demostrado:
+TASK_CONTRACT
+STRUCTURED_ACTION
+SHERIFF/POLICY ADAPTER
+IDEMPOTENCY
+TOOL_RESULT/OBSERVATION
+OBJECTIVE+ACCEPTANCE
+OBJECTIVE_ORACLE
+REAL_TESTS
+EVIDENCE_SHA256
+COMPLETION_AUDIT.
+
+HOST INTEGRATION demostrada:
+DAG real
+CLAIM/LEASE
+WRITE_SCOPE
+DURABLE_QUEUE/RECOVERY
+WATCHDOG/REENQUEUE
+CRASH_RESUME
+BACKEND/FRONTEND routing
+browser/screenshot loop cuando aplique.
+
+VALIDATION demostrada:
+regression suite
+3 isolated Seals instances
+wrong-source-commit
+provider/tool failures
+no-pass-without-evidence
+independent refutation.
+
+Solo entonces:
+SEALS WORKER VERIFIED.
+
+PARCHE:
+si algo no cierra -> GAP explicito.
+Nunca cierre fingido.
+
+---
+
+## OBJETIVO 4 - ORQUESTADOR COMAND CENTER
+
+### DECISION ARQUITECTONICA CONGELADA
+
+Scope EXCLUSIVO: ORQUESTADOR / COMMAND CENTER YAIWES.
+
+No mezclar aqui:
+- Seals Team YAIWES.
+- implementacion interna de Wordflow Loop Code.
+- planes de frontend.
+- planes de Router Inteligente Universal salvo sus interfaces/contratos de conexion.
+
+PRINCIPIO CENTRAL:
+HERMES ES EL UNICO CEREBRO GLOBAL DEL ORQUESTADOR.
+
+No se eliminan las funciones tecnicas de los componentes externos.
+Solo se retira/subordina en cada componente su capacidad de actuar como:
+- GLOBAL_GOAL_AUTHORITY
+- GLOBAL_PLANNING_AUTHORITY
+- GLOBAL_REPLANNING_AUTHORITY
+- GLOBAL_COMPLETION_AUTHORITY
+
+Las funciones internas de cada componente SE CONSERVAN.
+
+REGLA DE AUTORIDAD DEL ORQUESTADOR:
+HERMES = PIENSA / PLANIFICA / DELEGA / REPLANIFICA / SINTETIZA
+SHERIFF = AUTORIZA ANTES DE EJECUTAR
+ENGINE = EJECUTA CONSERVANDO SUS FUNCIONES NATIVAS
+RECEIPT = DEMUESTRA LO QUE OCURRIO
+ORACLE = VERIFICA DESPUES DE EJECUTAR
+HERMES = DECIDE REPLANIFICAR O ENTREGAR SEGUN EL VEREDICTO DEL ORACLE
+
+INVARIANTES:
+NO GLOBAL BRAIN OUTSIDE HERMES
+NO MUTATION WITHOUT SHERIFF
+NO PASS WITHOUT ORACLE
+NO PASS WITHOUT EVIDENCE
+NO ENGINE MAY CHANGE GLOBAL OBJECTIVE
+NO ENGINE MAY EXPAND GLOBAL SCOPE WITHOUT HERMES
+NO ENGINE MAY SELF-DECLARE GLOBAL COMPLETION
+MCP SHARES CAPABILITY/CONTEXT, NEVER GLOBAL AUTHORITY
+
+---
+
+### ARQUITECTURA OBJETIVO
+
+USER
+-> ROWBOAT COMMAND CENTER
+-> PRE-QUESTIONS
+-> INPUT SHARK
+-> HERMES/YAIWES BRAIN
+-> MISSION CONTRACT
+-> SHERIFF
+-> ROUTER / CONTROL PLANE
+-> [ROWBOAT SERVICES | MICROSOFT AGENT FRAMEWORK | ORCA | MUNDER DIFFLIN |
+    DEEPSEEK HARNESS | DAGU | DBOS | HERMES SUBAGENTS | MCP TOOLS]
+-> RESULT / RECEIPTS
+-> EVIDENCE LEDGER
+-> ORACLE
+-> [PASS | FAIL | INCOMPLETE | BLOCKED]
+-> HERMES
+-> [REPLAN | FINAL SYNTHESIS]
+-> ARCHIFY/PROGRESS VIEW
+-> ROWBOAT
+-> USER
+
+### COMPONENTES Y FUENTES OFICIALES / DE ADQUISICION
+
+Los motores de descarga/extraccion deben usar URL explicita y resolver commit exacto.
+No usar una URL derivada de memoria del LLM.
+Antes de copiar/integrar: SOURCE_URL -> RESOLVE_COMMIT -> DOWNLOAD/EXTRACT ->
+READ-BACK -> HASH -> INVENTORY -> CLASSIFY.
+
+1. Hermes Agent - cerebro global
+https://github.com/NousResearch/hermes-agent
+
+2. Rowboat Labs - Command Center / workspace / memory / Harbor / MCP
+https://github.com/rowboatlabs/rowboat
+
+3. Microsoft Agent Framework - workflow/agent execution engine
+https://github.com/microsoft/agent-framework
+
+4. Orca - parallel code workers / worktrees / worker hierarchy
+https://github.com/araa47/orca
+
+5. OmniRoute - provider/model/account routing gateway
+https://github.com/diegosouzapw/OmniRoute
+
+6. DeepSeek Harness - plugin/harness runtime
+https://github.com/deepseek-ai/deepseek-harness
+
+7. Munder Difflin - agent office / roles / messaging / memory / terminal agents
+https://github.com/chaitanyagiri/munder-difflin
+
+8. Dagu - workflow/DAG execution engine
+https://github.com/dagucloud/dagu
+
+9. DBOS Python - durable code/workflow execution
+https://github.com/dbos-inc/dbos-transact-py
+
+10. Archify - architecture/workflow visualization skill
+https://github.com/tt-a1i/archify
+
+11. MCP Specification
+https://github.com/modelcontextprotocol/modelcontextprotocol
+
+12. MCP reference servers
+https://github.com/modelcontextprotocol/servers
+
+IMPORTANTE:
+- Sheriff y Oracle son componentes INTERNOS del orquestador YAIWES.
+- No se descargan como proyectos externos por defecto.
+- Si ya existe implementacion Sheriff/Oracle en repo, REUSE > PATCH > ADAPT.
+- No crear segunda implementacion antes de X-Ray.
+
+---
+
+### FUNCIONES QUE DEBEN CONSERVARSE POR COMPONENTE
+
+#### HERMES - BRAIN_OWNER
+
+Conservar:
+- reasoning
+- research
+- planning
+- memory
+- skills
+- tools
+- MCP
+- context handling
+- subagents
+- delegation
+- model/capability selection
+- observation
+- replanning
+- final synthesis
+- scheduled/background capabilities existentes si estan presentes en el source exacto
+
+Autoridad global:
+- goal_owner = hermes
+- planning_owner = hermes
+- replanning_owner = hermes
+- capability_selection_owner = hermes
+- final_synthesis_owner = hermes
+
+Hermes NO:
+- se autoautoriza mutaciones;
+- convierte un FAIL del Oracle en PASS;
+- salta Sheriff;
+- oculta receipts/evidence.
+
+#### ROWBOAT - COMMAND_CENTER_SERVICE
+
+Conservar:
+- UI
+- Spaces
+- Harbor
+- conversations/threads
+- files
+- collaboration
+- local/persistent memory
+- knowledge graph
+- context search
+- WebSocket
+- HTTP API
+- MCP
+- Code Mode
+- background agents/automations si existen en version fijada
+- integrations
+- workspace/project surfaces
+
+Subordinar solamente:
+- global goal ownership
+- global planning
+- global completion
+
+Contrato:
+Hermes -> RowboatAdapter -> Rowboat capability -> ResultEnvelope -> Oracle/Hermes.
+
+#### MICROSOFT AGENT FRAMEWORK - WORKFLOW_ENGINE
+
+Conservar:
+- agents
+- workflow graphs
+- sequential orchestration
+- concurrent orchestration
+- handoff
+- group chat
+- orchestration patterns
+- checkpoints
+- state
+- resume
+- retries
+- human-in-the-loop
+- tools
+- middleware
+- observability
+- hosting/runtime capabilities disponibles en commit fijado
+
+Subordinar solamente:
+- global mission ownership
+- global planning authority
+- global completion authority
+
+Puede tomar decisiones LOCALES dentro de un TaskContract.
+No puede cambiar global_goal/global_scope/global_acceptance.
+
+#### ORCA - CODE_SWARM_ENGINE
+
+Conservar:
+- workers
+- subworkers
+- hierarchical workers si version fijada los soporta
+- Git worktrees
+- isolation
+- daemon/monitoring
+- lifecycle hooks
+- blocker/completion reporting
+- CLI automation
+- Claude Code adapter
+- Codex adapter
+- Cursor adapter
+- parallel execution
+- account/key usage mechanisms existentes y verificados
+- worker status
+
+Subordinar solamente:
+- L0/global brain
+- global mission ownership
+- global completion
+
+Orca puede decidir COMO ejecutar una tarea asignada.
+Orca no puede decidir QUE proyecto/objetivo global cambiar.
+
+#### OMNIROUTE - PROVIDER_CONTROL_PLANE
+
+Conservar segun source verificado:
+- OpenAI-compatible gateway
+- provider routing
+- model routing
+- account routing
+- fallback
+- account/model fallback
+- quota handling
+- OAuth/API-key integrations
+- token refresh
+- usage tracking
+- request/response translation
+- structured output handling
+- supported multimodal endpoints
+- MCP/A2A capabilities si existen en commit fijado
+- dashboard/observability si existen
+
+Subordinar:
+- no selecciona por si mismo el objetivo.
+Hermes solicita capability/constraints; OmniRoute resuelve infraestructura/ruta.
+
+#### DEEPSEEK HARNESS - PLUGIN_RUNTIME
+
+Conservar:
+- plugin runtime
+- plugin lifecycle
+- plugin discovery
+- plugin composition
+- tools/capabilities
+- Web UI si pertenece al source fijado
+- Cordis/runtime base si aplica
+- extensibility system
+
+Subordinar:
+- global brain/orchestrator role.
+
+#### MUNDER DIFFLIN - AGENT_OFFICE_ENGINE
+
+Conservar lo demostrado por source:
+- terminal agents
+- agent processes
+- roles
+- office UI
+- mailbox
+- hive/messaging
+- shared/semantic memory
+- tasks/threads
+- activity/observability
+- integrations
+- skills/MCP catalogs
+- lifecycle/remote-control capabilities
+
+Subordinar:
+- cualquier "GOD"/chief/global brain interno queda como local office manager o adapter.
+- Hermes posee el objetivo global.
+
+#### DAGU - WORKFLOW_EXECUTION_ENGINE
+
+Conservar:
+- DAG definitions
+- scheduler
+- retries
+- dependencies
+- parallel steps
+- sub-DAGs
+- worker execution
+- shell/container/remote capabilities demostradas
+- human tasks
+- logs/history
+- webhooks
+- Web UI
+- MCP server si existe en source fijado
+
+Subordinar:
+- global planning/goal authority.
+
+#### DBOS - DURABLE_EXECUTION_ENGINE
+
+Conservar:
+- durable workflows
+- durable steps
+- PostgreSQL persistence
+- queues
+- retries
+- scheduling
+- notifications
+- event processing
+- workflow management
+- crash recovery
+- resume
+
+Subordinar:
+- global goal/planning authority.
+
+#### MCP - CAPABILITY/CONTEXT BUS
+
+Conservar:
+- resources
+- tools
+- prompts
+- lifecycle
+- capability negotiation
+- authorization model
+- client/server
+- supported transports
+- JSON-RPC behavior
+
+Regla:
+MCP comparte contexto/capabilities/tools.
+MCP NO comparte ni otorga GLOBAL AUTHORITY.
+
+Recursos minimos del Command Center:
+- crazy_wall_state
+- mission_context
+- enchufe_universal_tools
+- evidence_ledger
+- worker_status
+- artifact_registry
+
+#### ARCHIFY / ARTIFY - VISUALIZATION ADAPTER
+
+Usar la capacidad REAL demostrada por el repo fijado.
+Objetivo YAIWES:
+state/progress snapshot
+-> normalized architecture/workflow description
+-> Archify adapter
+-> diagram/visual representation
+-> Rowboat.
+
+No inventar que Archify sea por si mismo state store, scheduler u oracle.
+
+---
+
+### SHERIFF - PRE-EXECUTION GATE
+
+Sheriff es interno, determinista y transversal.
+
+Input minimo:
+- mission_id
+- task_id
+- executor
+- repo
+- branch
+- read_scope
+- write_scope
+- tool_name
+- provider/model
+- worker_count
+- network_permission
+- deploy_permission
+- secret_refs
+- budget
+- side_effect
+- plan_hash / input_hash cuando aplique
+
+Output:
+- ALLOW
+- DENY
+- REQUIRE_APPROVAL
+
+Sheriff NO:
+- razona el objetivo global;
+- replanifica;
+- declara PASS.
+
+Toda mutacion debe tener SheriffReceipt.
+
+---
+
+### ORACLE - POST-EXECUTION GATE
+
+Oracle es interno, determinista y transversal.
+
+Input:
+- objective
+- acceptance[]
+- expected_outputs[]
+- results[]
+- receipts[]
+- evidence[]
+- tests[]
+- artifacts[]
+- hashes[]
+- error/gap classification
+
+Output:
+- PASS
+- FAIL
+- INCOMPLETE
+- BLOCKED
+
+Oracle NO:
+- crea objetivos;
+- cambia scope;
+- replanifica;
+- sustituye a Hermes.
+
+FAIL/INCOMPLETE/BLOCKED -> Hermes REPLAN.
+PASS -> Hermes puede sintetizar/entregar.
+
+---
+
+## DSL DAG - CONSTRUCCION DEL ORQUESTADOR
+
+### DAG ID
+YAIWES-ORCHESTRATOR-COMMAND-CENTER-V1
+
+### GLOBAL INPUT
+
+director_goal:
+  construir_orquestador_yaiwes
+
+brain_owner:
+  hermes
+
+constraints:
+  preserve_component_capabilities: true
+  remove_only_global_brain_authority: true
+  no_seals_scope: true
+  no_frontend_factory_scope: true
+  sheriff_required: true
+  oracle_required: true
+  evidence_required: true
+  read_back_required: true
+  source_commit_required: true
+  no_unverified_component_claims: true
+
+### NODE O4-00 - BASELINE / XRAY
+
+depends_on: []
+
+objective:
+- localizar ruta REAL actual del Command Center/orquestador.
+- inventariar componentes ya presentes.
+- detectar duplicados/stubs/submodules/codigo real.
+- localizar implementaciones existentes de Sheriff, Oracle, Router, Evidence Ledger,
+  MCP, Dagu/DBOS, Orca, OmniRoute, Rowboat, Hermes.
+
+actions:
+- READ repo tree.
+- READ Crazy Wall/handoff/architecture del orquestador.
+- FIND exact paths.
+- HASH relevant files.
+- CLASSIFY each component:
+  REAL_CODE | SUBMODULE | STUB | ABSENT | DUPLICATE | UNKNOWN.
+
+outputs:
+- ORCHESTRATOR-BASELINE-XRAY.md
+- component_inventory.json
+- destination_map.json
+
+pass:
+- ninguna ruta marcada por supuesto;
+- cada componente con source_path + type + hash/SHA;
+- destino autorizado demostrado antes de descargar.
+
+failure:
+- destino no demostrado -> GAP_DESTINO.
+- componente ambiguo -> GAP_SOURCE.
+
+### NODE O4-01 - SOURCE LOCK / DOWNLOAD QUEUE
+
+depends_on:
+- O4-00
+
+objective:
+crear cola de adquisicion reproducible.
+
+input_urls:
+- https://github.com/NousResearch/hermes-agent
+- https://github.com/rowboatlabs/rowboat
+- https://github.com/microsoft/agent-framework
+- https://github.com/araa47/orca
+- https://github.com/diegosouzapw/OmniRoute
+- https://github.com/deepseek-ai/deepseek-harness
+- https://github.com/chaitanyagiri/munder-difflin
+- https://github.com/dagucloud/dagu
+- https://github.com/dbos-inc/dbos-transact-py
+- https://github.com/tt-a1i/archify
+- https://github.com/modelcontextprotocol/modelcontextprotocol
+- https://github.com/modelcontextprotocol/servers
+
+actions:
+for each component:
+  - resolve canonical repo URL.
+  - resolve exact commit SHA.
+  - record license.
+  - record tree hash.
+  - compare with local existing copy.
+  - if exact source already exists -> REUSE.
+  - if missing -> enqueue approved download/extract engine.
+  - if stale -> DO NOT overwrite; materialize side-by-side staging candidate.
+  - read-back manifest.
+
+output:
+- DOWNLOAD-EXTRACT-QUEUE-ORCHESTRATOR.json
+- SOURCE-LOCK-ORCHESTRATOR.json
+
+required_fields_per_source:
+- component
+- source_url
+- resolved_commit
+- tree_hash
+- license
+- local_status
+- destination_candidate
+- acquisition_action
+- verified_at
+
+pass:
+- 100% components have exact source URL + commit or explicit GAP.
+- no "latest" floating ref used for integration.
+
+### NODE O4-02 - ACQUIRE / MATERIALIZE
+
+depends_on:
+- O4-01
+
+objective:
+materializar solo componentes faltantes mediante motores existentes.
+
+actions:
+- invoke existing approved download/extract motor.
+- download exact commit/archive.
+- extract.
+- verify no truncation.
+- verify source commit.
+- inventory root.
+- read-back.
+- hash extracted tree.
+- write acquisition manifest.
+
+rules:
+- NO GitHub Action unless separately authorized.
+- NO ad-hoc downloader.
+- NO overwrite of existing verified source.
+- existing directory != valid acquisition.
+
+output:
+- acquisition_manifests/<component>.json
+
+pass:
+SOURCE_COMMIT == MATERIALIZED_COMMIT
+AND extraction_verified == true
+AND read_back_verified == true.
+
+### NODE O4-03 - CAPABILITY INVENTORY / DO-NOT-DELETE MAP
+
+depends_on:
+- O4-02
+
+objective:
+demostrar TODAS las capacidades reales que deben conservarse.
+
+for_each_component:
+- find entrypoints.
+- find runtime.
+- find planner/orchestrator symbols.
+- find tools/adapters.
+- find state/memory.
+- find worker/lifecycle.
+- find UI/API/MCP.
+- identify global-brain symbols separately.
+
+classify:
+KEEP:
+  toda capacidad tecnica.
+SUBORDINATE:
+  global goal/planning/replanning/completion authority.
+ADAPT:
+  interfaces requeridas para MissionContract/ResultEnvelope.
+GAP:
+  funcion no demostrada.
+
+output:
+- COMPONENT-CAPABILITY-MAP.md
+- component_capabilities.json
+
+hard_rule:
+NO DELETE merely because capability overlaps another component.
+Overlap is resolved by routing/authority contracts, not destructive pruning.
+
+### NODE O4-04 - HERMES BRAIN ADAPTER
+
+depends_on:
+- O4-03
+
+objective:
+convertir Hermes en unica autoridad cognitiva global SIN destruir sus funciones nativas.
+
+build/adapt:
+- BrainAdapter
+- MissionBuilder
+- CapabilitySelector
+- GlobalPlanner
+- GlobalReplanner
+- ResultSynthesizer
+
+contracts:
+MissionContract:
+  mission_id
+  objective
+  acceptance[]
+  constraints[]
+  context_refs[]
+  budgets
+  permissions
+  required_capabilities[]
+  output_contract
+  created_from_state_hash
+
+tests:
+- only_hermes_can_create_global_goal
+- only_hermes_can_replan_global_mission
+- engine_cannot_change_global_goal
+
+### NODE O4-05 - SHERIFF GATE
+
+depends_on:
+- O4-04
+
+objective:
+cablear gate PRE execution.
+
+actions:
+- X-Ray existing Sheriff first.
+- REUSE/PATCH existing implementation.
+- define SheriffRequest/SheriffReceipt.
+- enforce on every mutation-capable engine adapter.
+
+must_cover:
+- Rowboat Code Mode
+- Microsoft AF tools/workflows
+- Orca workers
+- Munder agent actions
+- DeepSeek Harness tools/plugins
+- Dagu steps
+- DBOS steps
+- Hermes subagents
+- MCP mutating tools
+- OmniRoute credential/provider selection where policy applies
+
+tests:
+- mutation_without_sheriff_denied
+- write_scope_escape_denied
+- deploy_without_permission_denied
+- unauthorized_provider_denied
+- excessive_worker_count_denied
+
+### NODE O4-06 - NORMALIZED TASK CONTRACT
+
+depends_on:
+- O4-04
+- O4-05
+
+schema:
+TaskContract:
+  mission_id
+  task_id
+  parent_task_id
+  capability
+  executor
+  objective
+  acceptance[]
+  context_refs[]
+  scope:
+    repo
+    branch
+    read_paths[]
+    write_paths[]
+  permissions
+  execution:
+    parallelism
+    durable_engine
+    timeout_policy
+    retries
+  expected_outputs[]
+  required_evidence[]
+  return_to
+  input_hash
+
+ResultEnvelope:
+  mission_id
+  task_id
+  executor
+  worker_ids[]
+  status
+  outputs[]
+  artifacts[]
+  tests[]
+  receipts[]
+  evidence[]
+  errors[]
+  gaps[]
+  metrics
+  return_to
+
+pass:
+all engine adapters consume TaskContract and return ResultEnvelope
+OR explicit typed adapter transforms them losslessly.
+
+### NODE O4-07 - ROWBOAT ADAPTER
+
+depends_on:
+- O4-06
+
+preserve:
+all verified Rowboat capabilities.
+
+wire:
+- command center UI
+- mission/thread projection
+- memory/context lookup
+- artifact publication
+- worker/progress surfaces
+- MCP/Harbor
+- optional Code Mode through Sheriff
+
+disable/subordinate_only:
+- global goal authority
+- global mission planning
+- global completion authority
+
+tests:
+- rowboat_context_roundtrip
+- rowboat_cannot_change_global_goal
+- rowboat_mutation_requires_sheriff
+- rowboat_result_returns_envelope
+
+### NODE O4-08 - MICROSOFT AGENT FRAMEWORK ADAPTER
+
+depends_on:
+- O4-06
+
+preserve:
+all verified agents/workflow/orchestration/state/checkpoint/HITL/tool functions.
+
+wire:
+TaskContract
+-> MicrosoftAFAdapter
+-> local workflow
+-> ResultEnvelope.
+
+rules:
+- local workflow intelligence ON.
+- global brain OFF.
+- local subgraph cannot mutate global objective.
+
+tests:
+- sequential_task
+- concurrent_task
+- handoff_task
+- checkpoint_resume
+- local_workflow_cannot_rewrite_global_goal
+
+### NODE O4-09 - ORCA ADAPTER
+
+depends_on:
+- O4-06
+
+preserve:
+workers/subworkers/worktrees/isolation/daemon/hooks/CLI/monitoring/code-agent adapters.
+
+wire:
+TaskContract(capability=code)
+-> Sheriff
+-> OrcaAdapter
+-> isolated workers
+-> worker receipts
+-> ResultEnvelope.
+
+tests:
+- 2_workers_isolated_no_collision
+- worktree_per_worker
+- worker_failure_reported
+- worker_cannot_expand_global_scope
+- code_result_evidence_returned
+
+### NODE O4-10 - OMNIROUTE CONTROL PLANE ADAPTER
+
+depends_on:
+- O4-06
+
+preserve:
+all verified routing/account/fallback/quota/OAuth/API/translation/observability capabilities.
+
+wire:
+Hermes capability requirements
+-> RoutingRequest
+-> OmniRoute
+-> provider/model/account/fallback selection
+-> RoutingReceipt.
+
+rules:
+OmniRoute decides HOW to route.
+Hermes decides WHAT capability is needed.
+
+tests:
+- provider_failover
+- account_failover
+- quota_route
+- routing_receipt
+- route_cannot_change_task_objective
+
+### NODE O4-11 - DEEPSEEK HARNESS ADAPTER
+
+depends_on:
+- O4-06
+
+preserve:
+verified plugin runtime/lifecycle/composition/tools/UI/extensibility.
+
+wire:
+TaskContract
+-> Sheriff
+-> HarnessAdapter
+-> plugin runtime
+-> ResultEnvelope.
+
+tests:
+- plugin_discovery
+- plugin_execution
+- plugin_side_effect_requires_sheriff
+- harness_cannot_become_global_brain
+
+### NODE O4-12 - MUNDER DIFFLIN ADAPTER
+
+depends_on:
+- O4-06
+
+preserve:
+verified office/roles/terminal-agents/mailbox/hive/memory/tasks/activity/integration functions.
+
+wire:
+Hermes role assignment
+-> MunderAdapter
+-> local office/agent execution
+-> ResultEnvelope.
+
+rules:
+internal manager may coordinate LOCAL office.
+Hermes owns GLOBAL mission.
+
+tests:
+- role_assignment
+- mailbox/hive_roundtrip
+- local_manager_cannot_replan_global_mission
+- agent_result_returns_envelope
+
+### NODE O4-13 - DAGU / DBOS DURABILITY
+
+depends_on:
+- O4-06
+
+objective:
+durable execution without turning either engine into global brain.
+
+Dagu:
+- keep full verified DAG/scheduler/retry/execution capabilities.
+DBOS:
+- keep full verified durable-workflow/step/persistence/queue/recovery capabilities.
+
+routing:
+execution.durable_engine:
+  NONE | DAGU | DBOS | DAGU_PLUS_DBOS
+
+tests:
+- crash_resume
+- retry_without_duplicate_side_effect
+- durable_state_readback
+- completion_after_process_restart
+
+### NODE O4-14 - MCP BUS
+
+depends_on:
+- O4-06
+
+resources:
+- crazy_wall_state
+- mission_context
+- evidence_ledger
+- worker_status
+- artifact_registry
+
+tools:
+- enchufe_universal_tools
+- approved engine adapters
+
+rules:
+- read/write scope governed by Sheriff.
+- MCP server cannot grant itself authority.
+- tool metadata must declare side_effect.
+- mutating MCP call requires SheriffReceipt.
+
+tests:
+- resource_read
+- controlled_context_write
+- unauthorized_mutating_tool_denied
+- context_shared_without_authority_transfer
+
+### NODE O4-15 - EVIDENCE LEDGER
+
+depends_on:
+- O4-07
+- O4-08
+- O4-09
+- O4-10
+- O4-11
+- O4-12
+- O4-13
+- O4-14
+
+EvidenceRecord:
+- mission_id
+- task_id
+- executor
+- worker_id
+- input_hash
+- source_commit
+- action/tool
+- receipt
+- artifact
+- path
+- sha256
+- test
+- exit_code
+- timestamp
+- error/gap
+- acceptance_id
+
+rules:
+- append-only semantics where feasible.
+- evidence read-back required.
+- no engine self-edits prior evidence silently.
+
+tests:
+- evidence_hash_valid
+- missing_evidence_detected
+- tampered_evidence_detected
+- cross_engine_trace_complete
+
+### NODE O4-16 - ORACLE
+
+depends_on:
+- O4-15
+
+objective:
+post-execution deterministic verification.
+
+OracleRequest:
+- objective
+- acceptance[]
+- expected_outputs[]
+- ResultEnvelope[]
+- EvidenceRecord[]
+- tests[]
+- artifacts[]
+- receipts[]
+
+OracleVerdict:
+- PASS
+- FAIL
+- INCOMPLETE
+- BLOCKED
+
+rules:
+- LLM opinion != PASS.
+- engine completion != PASS.
+- missing required evidence -> INCOMPLETE/FAIL.
+- Oracle cannot create new mission.
+- Oracle cannot replan.
+- FAIL/INCOMPLETE/BLOCKED return to Hermes.
+
+tests:
+- pass_with_complete_evidence
+- no_pass_without_evidence
+- failed_test_no_pass
+- missing_artifact_no_pass
+- oracle_cannot_replan
+
+### NODE O4-17 - ARCHIFY / PROGRESS PROJECTION
+
+depends_on:
+- O4-15
+- O4-16
+
+objective:
+mostrar progreso y arquitectura SIN convertir Archify en state engine.
+
+flow:
+EvidenceLedger + worker_status + OracleVerdict
+-> ProgressSnapshot
+-> ArchifyAdapter
+-> diagrams/views
+-> Rowboat.
+
+tests:
+- progress_snapshot_matches_ledger
+- visual_projection_readback
+- archify_cannot_mutate_mission_state
+
+### NODE O4-18 - PRE-QUESTIONS / INPUT SHARK
+
+depends_on:
+- O4-07
+- O4-04
+
+required_surfaces:
+- Rowboat/UI interface
+- UI/backend intake
+- Input Shark
+
+flow:
+raw_user_input
+-> detect_missing_required_fields
+-> questions
+-> normalized goal
+-> MissionContract
+-> Hermes.
+
+tests:
+- ambiguous_goal_requests_missing_fields
+- complete_goal_does_not_loop_questions
+- normalized_goal_hash_stable
+
+### NODE O4-19 - END-TO-END INTEGRATION
+
+depends_on:
+- O4-05
+- O4-07
+- O4-08
+- O4-09
+- O4-10
+- O4-11
+- O4-12
+- O4-13
+- O4-14
+- O4-15
+- O4-16
+- O4-17
+- O4-18
+
+scenario:
+USER
+-> Rowboat
+-> PreQuestions/InputShark
+-> Hermes MissionContract
+-> Sheriff
+-> route at least 3 different engines
+-> durable execution
+-> ResultEnvelope
+-> EvidenceLedger
+-> Oracle
+-> FAIL branch creates Hermes REPLAN
+-> second execution
+-> PASS
+-> Archify projection
+-> Rowboat final result.
+
+required_tests:
+- one Rowboat capability
+- one Microsoft AF workflow
+- one Orca code swarm task
+- one OmniRoute provider route
+- one durable crash/resume path
+- one MCP context-share path
+- one Sheriff DENY
+- one Oracle FAIL then PASS
+- one evidence tamper detection
+
+PASS:
+- same mission_id across full trace.
+- no unauthorized mutation.
+- no engine changes global objective.
+- crash recovery does not duplicate side effect.
+- Oracle PASS backed by evidence hashes.
+- Rowboat displays final state.
+- Hermes remains only global brain.
+
+### NODE O4-20 - COMPLETION AUDIT
+
+depends_on:
+- O4-19
+
+audit:
+- compare implementation vs this DSL DAG.
+- verify all source commits.
+- verify every adapter.
+- verify every Sheriff gate.
+- verify every Oracle gate.
+- verify evidence read-back.
+- verify URLs and acquisition manifests.
+- verify component capabilities were PRESERVED.
+- verify only global-brain authorities were subordinated.
+
+required_matrix:
+COMPONENT
+SOURCE_URL
+SOURCE_COMMIT
+SOURCE_PATH
+CAPABILITIES_KEPT
+GLOBAL_AUTHORITY_SUBORDINATED
+ADAPTER
+SHERIFF_GATE
+RESULT_ENVELOPE
+TESTS
+EVIDENCE
+STATUS
+
+final_state:
+ORCHESTRATOR_VERIFIED
+only if ALL mandatory nodes PASS.
+
+otherwise:
+ORCHESTRATOR_INCOMPLETE
+with explicit GAP list.
+
+---
+
+### ORDEN DE EJECUCION OBJETIVO 4
+
+O4-00
+-> O4-01
+-> O4-02
+-> O4-03
+-> O4-04
+-> O4-05
+-> O4-06
+-> [O4-07 || O4-08 || O4-09 || O4-10 || O4-11 || O4-12 || O4-13 || O4-14]
+-> O4-15
+-> O4-16
+-> O4-17
+-> O4-18
+-> O4-19
+-> O4-20
+
+REGLA DE PARALELISMO:
+O4-07..O4-14 pueden ejecutarse en paralelo SOLO despues de que
+TaskContract/ResultEnvelope + Sheriff esten fijados.
+
+REGLA DE BLOQUEO:
+si un componente falla adquisicion/integracion:
+- registrar GAP.
+- no fingir PASS.
+- continuar con nodos independientes.
+- el Completion Audit final queda INCOMPLETE si el componente es mandatory.
+
+### ESTADO INICIAL OBJETIVO 4
+
+O4-00 PENDIENTE
+O4-01 PENDIENTE
+O4-02 PENDIENTE
+O4-03 PENDIENTE
+O4-04 PENDIENTE
+O4-05 PENDIENTE
+O4-06 PENDIENTE
+O4-07 PENDIENTE
+O4-08 PENDIENTE
+O4-09 PENDIENTE
+O4-10 PENDIENTE
+O4-11 PENDIENTE
+O4-12 PENDIENTE
+O4-13 PENDIENTE
+O4-14 PENDIENTE
+O4-15 PENDIENTE
+O4-16 PENDIENTE
+O4-17 PENDIENTE
+O4-18 PENDIENTE
+O4-19 PENDIENTE
+O4-20 PENDIENTE
+
+---
+
+## PIPELINE CANONICO (del Director)
+
+GOAL BUILDER
+  -> REQUIREMENTS + COUNCIL
+  -> DAG VISUAL
+  -> NODE / CLAIM / LEASE
+  -> AGENT FLEET
+  -> CODE + TOOL EXECUTION
+  -> BACKEND TEST / FRONTEND BROWSER
+  -> GAP / FIX LOOP
+  -> EVIDENCE LEDGER + RECOVERY
+  -> COMPLETION AUDIT / GOAL OUTPUT
+
+Campos por nodo: GOAL, ACCEPTANCE, STATE, WORKER, CLAIM, LEASE, INPUT SHA,
+BASE SHA, FILES TOUCHED, COMMANDS, TOOLS, OBSERVATIONS, TESTS, SCREENSHOTS,
+GAPS, FIXES, RETRIES, EVIDENCE, OUTPUT, WHY PASS / WHY BLOCKED.
+
+---
+
+## WATCHDOG
+
+Tarea programada cada 1 hora. Nombre: "Motor de descarga".
+Sesion nueva por disparo.
+Prompt: leer este archivo -> primera salida no cerrada -> ejecutarla ->
+anotar en Claude notas + Crazy Wall + handoff -> siguiente.
+AVISO: puede requerir que el Director active "aprobacion automatica" en los
+ajustes de la tarea, o cada disparo se quedara esperando permiso.
+
+---
+
+## VERIFICACION END-TO-END
+
+GET /actions/secrets -> 5 NVIDIA presentes
+Test real NVIDIA (https://integrate.api.nvidia.com/v1, modelo
+  minimaxai/minimax-m2.7) DESDE GITHUB ACTIONS con sparse-checkout
+  (el sandbox de Claude tiene la red bloqueada hacia NVIDIA: CONNECT tunnel 403)
+SIM-01..04 en verde + la suite ampliada
+Un componente frontend real pasando CODE+BROWSER+VISUAL
+Crash de worker -> lease expira -> mision recuperada sin duplicar side effect
+Read-back por API de cada archivo escrito
+Auditoria 4 pasadas de todos los archivos creados/actualizados por Claude
+
+---
+
+## ORDEN DE EJECUCION
+
+S1 -> S2 -> S3 -> S3B -> S4 -> S5 -> S6 -> S6B -> S7 -> S8 -> S8B -> S8C -> S9 -> S10
+
+Dependencias reales:
+  S7 depende de S5.1 (checkpoint durable)
+  S9 depende de S1 (saber exactamente que hay dentro de orca)
+  S3 depende de S5.11 (biblioteca RAG antes de generar schemas)
+  S8C depende de S8 y S8B
+Si una se bloquea: FLAG y saltar a la siguiente.
+
+---
+
+## ESTADO DE LAS SALIDAS
+
+S1  obj1  PENDIENTE
+S2  obj1  PENDIENTE
+S3  obj1  PENDIENTE
+S3B obj1  PENDIENTE
+S4  obj2  PENDIENTE
+S5  obj2  PENDIENTE
+S6  obj2  PENDIENTE
+S6B obj2  PENDIENTE
+S7  obj3  PENDIENTE
+S8  obj3  PENDIENTE
+S8B obj3  PENDIENTE
+S8C obj3  PENDIENTE
+S9  obj4  PENDIENTE
+S10 obj4  PENDIENTE
