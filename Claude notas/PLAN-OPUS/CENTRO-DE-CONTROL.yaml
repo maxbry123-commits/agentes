@@ -26,13 +26,17 @@
 #     texto: "Incluir tabla con sha de cada componente de control-layer"
 #     estado: PENDIENTE
 
-revisores: [sonnet, sol, director]
-
+revisores:
+- sonnet
+- sol
+- director
 ordenes:
-  - id: C-0001
-    fecha: "2026-09-21"
-    autor: director
-    tipo: REVISION
-    nodo: P1-XRAY
-    texto: "Centro de control activado. Primera vuelta: X-Ray del Core kernel y descarga de componentes del Objetivo 1."
-    estado: PENDIENTE
+- id: C-0001
+  fecha: '2026-09-21'
+  autor: director
+  tipo: REVISION
+  nodo: P1-XRAY
+  texto: 'Centro de control activado. Primera vuelta: X-Ray del Core kernel y descarga
+    de componentes del Objetivo 1.'
+  estado: APLICADA
+  aplicada: '2026-09-21T06:27:54Z'
