@@ -154,3 +154,15 @@ Regla importante: los 13 componentes MiniMax/Kimi/mcode aparecen como gitlinks/s
 
 Invariante: no crear otra raíz Wordflow. Toda nueva integración, documentación, plan, agente o evidencia debe vivir bajo la raíz canónica anterior.
 
+## Mapa completo de ubicación de archivos — 2026-10-09
+
+Detalle archivo por archivo, con enlaces: [`HANDOFF-WORKFLOW-LOOPS-YAIWES.md`](https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20wordflow%20loop%20code%20Yaiwes/HANDOFF-WORKFLOW-LOOPS-YAIWES.md) (misma carpeta).
+
+| Ubicación | Archivos | Estado |
+|---|---|---|
+| [`agentes` main · `➡️📂 wordflow loop code Yaiwes/`](https://github.com/maxbry123-commits/agentes/tree/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20wordflow%20loop%20code%20Yaiwes) | 154.796 + 13 submódulos | Original y más completa (agent_sources 112.202, frontend 42.078) |
+| [router · rama `devin/1790824641-chat-agent-plan` · `chat router/Workflow Loop code Yaiwes/`](https://github.com/maxbry123-commits/router-universal-router-inteligente-/tree/devin/1790824641-chat-agent-plan/chat%20router/Workflow%20Loop%20code%20Yaiwes) | 15.630 | Copia recortada + plan/estado + harness + capas L01–L06 ([PR #6](https://github.com/maxbry123-commits/router-universal-router-inteligente-/pull/6), sin fusionar) |
+| [router · `chat router/📂 workflow Loops code Yaiwes/` @ 81e6c43eb6](https://github.com/maxbry123-commits/router-universal-router-inteligente-/tree/81e6c43eb6edf7d7686f90ce54f7bdcb23b65bf5/chat%20router/%F0%9F%93%82%20workflow%20Loops%20code%20Yaiwes) | 494 | Histórico; aplanado el 2026-10-08 en la raíz anterior |
+| router `main` | — | Sin workflow; solo [`deepseek-harness-chat`](https://github.com/maxbry123-commits/router-universal-router-inteligente-/tree/main/chat%20router/deepseek-harness-chat) y [`chat frontend`](https://github.com/maxbry123-commits/router-universal-router-inteligente-/tree/main/chat%20router/chat%20frontend) |
+
+Diferencias (sin agent_sources/frontend): 397 rutas comunes · 119 solo en `agentes` (archivos download, 3 capas, arquitectura, PLAN-4-OBJETIVOS) · 97 solo en el router (tests, contracts/adapters seals_motors, skills_schema DAG, orchestrator_*, runner, thinking_system). Plan Opus: [`Claude notas/PLAN-OPUS/`](https://github.com/maxbry123-commits/agentes/tree/main/Claude%20notas/PLAN-OPUS); loop: [`.github/workflows/plan-opus-loop.yml`](https://github.com/maxbry123-commits/agentes/blob/main/.github/workflows/plan-opus-loop.yml).
