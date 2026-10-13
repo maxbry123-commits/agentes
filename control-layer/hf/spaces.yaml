@@ -1,0 +1,55 @@
+# SOURCE: arquitectura final de hf.md
+# 5 HF Spaces — roles y TTL
+
+spaces:
+  hf1_control:
+    role: openclaw_supervisor
+    agents: false
+    models_local: false
+    ttl: long
+    sleep_on_idle: true
+    description: OpenClaw + Hermes + Supervisión + Dispatcher ligero
+
+  hf2_backend_core:
+    role: backend_core
+    agents: false
+    models_local: true
+    ttl: medium
+    sleep_on_idle: true
+    description: Backend runtime + Model Manager (Seed/Nemotron/Nanbeige/Gemma)
+
+  hf3_backend_agents:
+    role: backend_agents
+    agents: true
+    models_local: true
+    ttl: short
+    sleep_on_idle: true
+    description: Grupo de agentes Backend + Router Backend + Local Queue
+
+  hf4_frontend_core:
+    role: frontend_core
+    agents: false
+    models_local: true
+    ttl: medium
+    sleep_on_idle: true
+    description: Frontend runtime + Model Manager
+
+  hf5_frontend_agents:
+    role: frontend_agents
+    agents: true
+    models_local: true
+    ttl: short
+    sleep_on_idle: true
+    description: Grupo de agentes Frontend + Router Frontend + Local Queue
+
+models_pool:
+  - Seed-Coder-8B
+  - Nemotron-Nano-9B-v2
+  - Nanbeige4.2-3B
+  - Gemma-4-E4B
+
+external_providers:
+  - Groq
+  - Cerebras
+  - NVIDIA
+  - DeepSeek  # last resort only

@@ -1,0 +1,28 @@
+# project.schema — D1 PROJECT_MANIFEST formal
+# SOURCE: incorporación Agent Identity + Project Identity
+
+$schema: project.schema/v1
+required: [project_id, project_version, control_schema, agents_source, workflows_source]
+
+fields:
+  project_id: {type: string, pattern: "^[a-z0-9][a-z0-9_-]*$"}
+  project_version: {type: string}  # semver
+  control_schema: {type: string, default: "1.0"}
+  agents_source:
+    type: list
+    items: string  # e.g. nodes/*.yaml
+  workflows_source:
+    type: list
+    items: string  # e.g. dag/*.yaml
+  memory:
+    provider: string
+    isolation: {enum: [project-agent, project-only, agent-only]}
+    shared_scope: {enum: [project, none]}
+  tenant_id: {type: string, optional: true}
+  what_it_is: string
+  what_it_is_not: string
+  limits_hard: list
+
+rules:
+  - agents_source must resolve under project root
+  - no secrets in manifest

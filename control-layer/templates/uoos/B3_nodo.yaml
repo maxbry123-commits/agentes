@@ -1,0 +1,63 @@
+# Plantilla B3 — Nodo DSL (UOOS Parte 1)
+# SOURCE: CAPA DE CONTROL 1 · schema de nodo obligatorio
+# El agente copia este archivo por cada tarea (A01.yaml, A02.yaml, …).
+# Campos vacíos = nodo rechazado por el Sheriff.
+
+nodo:
+  id: A01
+  version: "1.0.0"
+  goal: ""                          # 1 frase concreta, verificable
+  subgoals: []
+
+  contrato:
+    input:
+      tipo: ""
+      schema: ""
+      validacion: ""
+    output:
+      tipo: ""
+      schema: ""
+      criterio_exito_verificable_por_maquina: ""   # obligatorio, no texto libre
+
+  context: ""
+  constraints: []
+  dependencies: []                  # ids de otros nodos
+  risk: bajo                        # bajo | medio | alto
+  priority: 3                       # 1-5 (1 = más urgente)
+  skills_requeridas: []
+  timeout_seg: 600
+  retry:
+    max: 3
+    regla: "cada retry con DELTA nuevo"
+  sandbox: ""                       # light | medium | heavy | none
+
+  states:
+    - pending
+    - running
+    - validating
+    - blocked
+    - done
+    - failed
+    - recovered
+
+  checkpoint: ""
+  rollback: ""                      # comando o procedure_id verificable
+  approval: ""                      # vacío | Director | Council
+  evidence: ""                      # qué evidencia debe generarse
+  validation:
+    tribunal: true
+    umbral: 70
+  telemetry: []
+  memory:
+    lee: []
+    escribe: []
+
+state_machine:
+  allowed:
+    - "pending → running"
+    - "running → validating"
+    - "validating → done"
+    - "failed → recovered"
+    - "recovered → running"
+  forbidden:
+    - "failed → done"               # PROHIBIDO saltar recovery

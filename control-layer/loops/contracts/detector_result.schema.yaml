@@ -1,0 +1,38 @@
+# DetectorResult — detectar ≠ decidir v1
+# SOURCE: arquitectura loops · detectors solo producen señales
+
+$schema: detector_result.schema/v1
+required: [detector, severity, fired_at]
+
+fields:
+  detector:
+    type: enum
+    values:
+      - stall
+      - oscillation
+      - regression
+      - drift
+      - budget
+      - timeout
+      - invalid_output
+      - contract_violation
+      - dependency_failure
+      - resource_exhaustion
+      - repeated_failure
+      - goal_drift
+      - no_progress
+  severity: {type: float, min: 0.0, max: 1.0}
+  evidence: {type: list, default: []}
+  action_hint:
+    type: enum
+    optional: true
+    values: [none, log, repair, change_strategy, escalate, abort, checkpoint]
+  run_id: {type: string}
+  iteration: {type: integer, optional: true}
+  phase: {type: string, optional: true}
+  fired_at: {type: string}   # ISO-8601
+
+rules:
+  - detector NEVER mutates LoopContext.state
+  - detector NEVER calls PolicyEngine — only returns DetectorResult
+  - multiple detectors may fire in same phase → panel aggregates

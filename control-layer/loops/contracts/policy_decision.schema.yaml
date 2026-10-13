@@ -1,0 +1,36 @@
+# PolicyDecision — policy engine output v1
+# SOURCE: DETECTORS → SIGNALS → POLICY → ACTION
+
+$schema: policy_decision.schema/v1
+required: [action, run_id, decided_at]
+
+fields:
+  action:
+    type: enum
+    values:
+      - CONTINUE
+      - REPAIR
+      - RETRY
+      - REFRAME
+      - CHANGE_STRATEGY
+      - CHANGE_MODEL
+      - CHANGE_AGENT
+      - REDUCE_SCOPE
+      - ROLLBACK
+      - ISOLATE
+      - CHECKPOINT
+      - ESCALATE
+      - ABORT
+      - CLOSE
+      - HUMAN_GATE
+  run_id: {type: string}
+  reason: {type: string}
+  triggered_by: {type: list, default: []}   # detector names or phase outcomes
+  params: {type: object, default: {}}       # e.g. {new_strategy: adversarial}
+  decided_at: {type: string}
+  policy_rule_id: {type: string, optional: true}
+
+rules:
+  - only PolicyEngine emits PolicyDecision
+  - action maps to state transition via LoopState machine
+  - HUMAN_GATE pauses until external LoopCommand RESUME/APPROVE

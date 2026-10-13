@@ -1,0 +1,9 @@
+contract:
+  id: C33
+  version: "1.0.0"
+  layer: L4_failure
+  name: Error Contract
+defines:
+  - errores con código E0XX, nunca mensajes libres
+severity: critical
+failure: reject

@@ -1,0 +1,34 @@
+# R21-R30 Anti-escalamiento (SOURCE: SALIDA_1_CAPA_CONTROL_PARTE_2)
+# Estas reglas son banderas booleanas. El Sheriff las aplica antes de ejecutar.
+
+rules:
+  R21:
+    name: no_crear_nuevas_fases
+    value: true
+  R22:
+    name: no_crear_nuevas_tareas
+    value: true
+  R23:
+    name: no_modificar_la_mision
+    value: true
+  R24:
+    name: solo_ejecutar_nodos_registrados
+    value: true
+  R25:
+    name: no_descubrir_componentes_nuevos
+    value: true
+  R26:
+    name: no_cambiar_dag_durante_ejecucion
+    value: true
+  R27:
+    name: no_modificar_arquitectura
+    value: true
+  R28:
+    name: no_cambiar_configuraciones_protegidas
+    value: true
+  R29:
+    name: no_salir_del_alcance_de_la_mision
+    value: true
+  R30:
+    name: solo_trabajar_sobre_registry_existente
+    value: true

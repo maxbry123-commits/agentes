@@ -1,0 +1,25 @@
+# C49 / L11 — Evidencia obligatoria
+# SOURCE: UOOS L11 · SALIDA_6 · CAPA DE CONTROL
+# Sin evidencia → la tarea no existió.
+
+contract:
+  id: L11_EVIDENCE
+  version: "1.0.0"
+
+required_fields:
+  - nodo_id
+  - timestamp
+  - que_se_hizo
+  - archivos_tocados      # lista de ruta@hash_antes→hash_despues
+  - tests                 # vacíos solo si el nodo declara no-tests
+  - score_tribunal
+  - delta_vs_anterior
+
+rules:
+  missing_any_required: REJECT
+  narrative_without_raw_output: REJECT
+  partial_without_raw: never_CERTIFIED
+
+agent_instruction: |
+  Al cerrar un nodo debes emitir evidence con los campos de arriba.
+  Si falta uno → el Wordflow marca la tarea como inexistente (L11).

@@ -1,0 +1,23 @@
+# ProgressResult — scoring normalizado v1
+# SOURCE: ProgressEvaluator · no solo delta fijo 0-100
+
+$schema: progress_result.schema/v1
+required: [progress_score, confidence, evaluated_at]
+
+fields:
+  progress_score: {type: float, min: 0.0, max: 1.0}
+  confidence: {type: float, min: 0.0, max: 1.0}
+  kind:
+    type: enum
+    values: [numeric, boolean, quality_score, tests, validation, evidence, llm_judge, custom]
+  details: {type: object, default: {}}
+  threshold: {type: float, default: 0.1}     # bajo esto → possible stall/no_progress
+  delta_vs_prev: {type: float, optional: true}
+  evaluated_at: {type: string}
+  evaluator_id: {type: string, optional: true}
+
+rules:
+  - progress_score < threshold → signal no_progress | stall hint
+  - progress_score high + goal complete → CLOSE candidate
+  - regression = delta_vs_prev < 0 with confidence > 0.5
+  - LLM judge only if kind=llm_judge and policy allows (10% zone)

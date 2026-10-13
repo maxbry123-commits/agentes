@@ -1,0 +1,79 @@
+# Schema de identificación de documentos de proyecto
+# SOURCE: UOOS Parte 1 (B1–B8) + CAPA DE CONTROL 1 + acuerdo proyecto inmutable
+# El Wordflow usa este schema para detectar y validar la carpeta de un proyecto.
+# No se modifica el núcleo: solo se lee la carpeta del proyecto en turno.
+
+project_root:
+  required_dirs:
+    - nodes
+    - dag
+    - loops
+    - council
+    - plan
+    - recovery
+    - config
+  optional_dirs:
+    - code
+    - memory
+    - templates
+
+documents:
+  B1:
+    path: PROJECT_MANIFEST.md
+    required: true
+    type: markdown
+    purpose: identidad del proyecto, límites, qué es y qué no es
+  B2:
+    path: state.json
+    required: true
+    type: json
+    purpose: estado de todos los nodos (pending/running/done/...)
+  B3:
+    path: nodes/*.yaml
+    required: true
+    type: yaml_glob
+    purpose: nodos DSL de las tareas
+  B4:
+    path: dag/DAG-*.yaml
+    required: true
+    type: yaml_glob
+    purpose: orden topológico de ejecución
+  B5:
+    path: loops/L*.yaml
+    required: true
+    type: yaml_glob
+    purpose: los 11 loops + regla del delta
+  B6:
+    path: council/*.yaml
+    required: true
+    type: yaml_glob
+    purpose: tribunal / roles
+  B7:
+    path: plan/PLAN_*.md
+    required: true
+    type: markdown_glob
+    purpose: plan de construcción o despliegue
+  B8:
+    path: recovery/RECOVERY.yaml
+    required: true
+    type: yaml
+    purpose: triggers y protocolo de recuperación
+
+config:
+  token_ref:
+    path: config/token_ref.yaml
+    required: false
+    purpose: referencia al token (nunca el valor)
+  repo_destino:
+    path: config/repo_destino.yaml
+    required: false
+    purpose: repo y ruta donde va el código
+  backup_destino:
+    path: config/backup_destino.yaml
+    required: false
+    purpose: memoria / Google Drive para respaldo UOOS
+
+validation:
+  missing_required: REJECT
+  unknown_extra_files: WARN
+  token_value_in_repo: REJECT  # si aparece un secret real → rechazo

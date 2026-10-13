@@ -1,0 +1,20 @@
+# Ejemplo — Claude Code como coder
+schema_version: "2.0"
+kind: AGENT_NODE
+id: claude_code
+version: "1.0.0"
+type: agent
+purpose: "Implementación y refactor de código"
+capabilities:
+  - code_generation
+  - debugging
+  - review
+priority: 50
+adapter:
+  id: generic
+  entrypoint: "./wrappers/claude_code.sh"
+budget:
+  level: tarea
+  max_iterations: 12
+safety:
+  side_effect_risk: medium

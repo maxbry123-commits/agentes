@@ -1,0 +1,14 @@
+# D8 RECOVERY_POLICY schema v2
+$schema: recovery_policy.schema/v2
+kind: RECOVERY_POLICY
+required: [schema_version, kind, id, triggers, protocolo, rules]
+
+fields:
+  schema_version: {const: "2.0"}
+  kind: {const: RECOVERY_POLICY}
+  rules.never_delete_failure_evidence: {const: true}
+  rules.max_recoveries_same_node: {type: integer, minimum: 1}
+
+invariants:
+  - evidence of failure is retained
+  - after_max escalates to Director

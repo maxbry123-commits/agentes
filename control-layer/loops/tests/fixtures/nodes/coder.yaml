@@ -1,0 +1,7 @@
+node:
+  id: coder
+  capabilities:
+    - code_generation
+    - debugging
+  priority: 10
+  model: default

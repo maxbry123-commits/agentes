@@ -1,0 +1,65 @@
+# LoopState — máquina de estados determinista v1
+# SOURCE: arquitectura loops · transiciones explícitas · 0% LLM
+
+$schema: loop_state.schema/v1
+
+enum:
+  - CREATED
+  - LOCKED
+  - RUNNING
+  - VALIDATING
+  - REPAIRING
+  - CHECKPOINT
+  - DECIDING
+  - CLOSED
+  - ESCALATED
+  - FAILED
+  - CANCELLED
+  - PAUSED
+
+# Grafo de transiciones permitidas (determinista)
+transitions:
+  CREATED:
+    - LOCKED
+    - CANCELLED
+  LOCKED:
+    - RUNNING
+    - CANCELLED
+  RUNNING:
+    - VALIDATING
+    - CHECKPOINT
+    - PAUSED
+    - FAILED
+    - CANCELLED
+  VALIDATING:
+    - DECIDING
+    - REPAIRING
+    - FAILED
+  REPAIRING:
+    - RUNNING
+    - ESCALATED
+    - FAILED
+  CHECKPOINT:
+    - RUNNING
+    - PAUSED
+    - DECIDING
+  DECIDING:
+    - RUNNING        # CONTINUE
+    - CLOSED         # COMPLETE
+    - ESCALATED      # ESCALATE
+    - FAILED
+    - CANCELLED
+  PAUSED:
+    - RUNNING        # RESUME
+    - CANCELLED
+  CLOSED: []         # terminal
+  ESCALATED: []      # terminal (hasta reinyección externa)
+  FAILED: []         # terminal
+  CANCELLED: []      # terminal
+
+invariants:
+  - completed (CLOSED) cannot return to RUNNING
+  - goal_id immutable from LOCKED onward
+  - only DECIDING may emit CONTINUE|COMPLETE|ESCALATE
+  - FAILED never transitions to CLOSED without external reopen
+  - every transition emits LoopEvent

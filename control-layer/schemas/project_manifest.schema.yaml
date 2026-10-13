@@ -1,0 +1,31 @@
+# JSON-like YAML schema — PROJECT_MANIFEST D1 v2
+$schema: project_manifest.schema/v2
+kind: PROJECT_MANIFEST
+required:
+  - schema_version
+  - kind
+  - project_id
+  - project_version
+  - name
+  - status
+  - identity
+  - agents_source
+
+fields:
+  schema_version: {const: "2.0"}
+  kind: {const: PROJECT_MANIFEST}
+  project_id: {type: string, pattern: "^[a-z0-9][a-z0-9_-]{1,63}$"}
+  project_version: {type: string}  # semver
+  status: {enum: [draft, active, paused, archived]}
+  identity:
+    required: [purpose, what_it_is, what_it_is_not]
+  agents_source: {type: list, min_items: 1}
+  memory.isolation: {enum: [project-agent, project-only, agent-only]}
+  policy.autonomy_max: {enum: [supervised, semi, autonomous]}
+  policy.default_loop_strategy: {enum: [sequential, parallel, adversarial, consensus]}
+  policy.default_budget_level: {enum: [micro, tarea, fase, proyecto]}
+
+invariants:
+  - project_id immutable when status is active
+  - no secrets in file body
+  - agents not defined in manifest (nodes only)
