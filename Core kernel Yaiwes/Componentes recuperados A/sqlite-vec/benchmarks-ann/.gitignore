@@ -1,8 +1,0 @@
-*.db
-*.db-shm
-*.db-wal
-*.parquet
-runs/
-
-viewer/
-searcher/

@@ -1,3 +1,0 @@
-mypy
-graphviz
-types-six
