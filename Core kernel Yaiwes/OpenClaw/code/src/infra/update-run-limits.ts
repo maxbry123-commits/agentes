@@ -1,2 +1,0 @@
-export const UPDATE_RUN_TEXT_LIMIT = 1024;
-export const UPDATE_RUN_DIAGNOSTIC_LIMIT = 32;
