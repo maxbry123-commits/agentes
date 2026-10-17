@@ -1,4 +1,0 @@
-module OpenClawWatchRTC {
-    header "OpenClawWatchRTC.h"
-    export *
-}
