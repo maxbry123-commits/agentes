@@ -50,7 +50,7 @@ class ResearchPrepassTests(unittest.TestCase):
             return [r.make_record(s, "Title "+s["id"], "https://"+domain+path, "evidence", 1, "mock")]
 
         with tempfile.TemporaryDirectory() as td:
-            with patch.object(r, "github_search", side_effect=fake), patch.object(r, "hf_search", side_effect=fake), patch.object(r, "search_web_source", side_effect=fake_web):
+            with patch.object(r, "github_search", side_effect=fake), patch.object(r, "search_web_source", side_effect=fake_web):
                 raw = "LINEA 1\nLINEA 2 exacta\n"
                 packet = r.run(
                     input_text=raw,

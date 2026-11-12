@@ -10,6 +10,15 @@ BATCH_SIZE = int(os.getenv("BATCH_SIZE", "25"))
 COLLISION_POLICY = os.getenv("COLLISION_POLICY", "fail").lower()
 MAX_BATCHES = int(os.getenv("MAX_BATCHES", "0"))
 
+def guard_roots():
+    if not str(SOURCE_DIR) or not str(DEST_DIR):
+        raise RuntimeError("SOURCE_DIR and DEST_DIR required")
+    s = SOURCE_DIR.resolve(); d = DEST_DIR.resolve()
+    if s == d or s in d.parents:
+        raise RuntimeError("DEST_INSIDE_SOURCE_GAP")
+    if d in s.parents:
+        raise RuntimeError("SOURCE_INSIDE_DEST_GAP")
+
 
 def sha256_file(p: pathlib.Path) -> str:
     h = hashlib.sha256()
@@ -24,6 +33,8 @@ def first_manifest():
         raise RuntimeError("SOURCE_DIR_NOT_FOUND")
     rows = []
     for p in sorted((x for x in SOURCE_DIR.rglob("*") if x.is_file()), key=lambda x: x.relative_to(SOURCE_DIR).as_posix()):
+        if p.is_symlink():
+            raise RuntimeError("SOURCE_SYMLINK_GAP:" + p.relative_to(SOURCE_DIR).as_posix())
         if p.resolve() == STATE_FILE.resolve():
             continue
         rows.append({"rel": p.relative_to(SOURCE_DIR).as_posix(), "bytes": p.stat().st_size, "sha256": sha256_file(p)})
@@ -31,9 +42,20 @@ def first_manifest():
 
 
 def load_state():
-    if STATE_FILE.exists():
-        return json.loads(STATE_FILE.read_text())
-    return {"schema": SCHEMA, "manifest": first_manifest(), "completed": {}, "failed": {}, "batches": 0}
+    files = first_manifest()
+    fresh = {"schema": SCHEMA, "manifest": files, "completed": {}, "failed": {}, "batches": 0}
+    if not STATE_FILE.exists():
+        return fresh
+    old = json.loads(STATE_FILE.read_text())
+    by_rel = {r["rel"]: r for r in files}
+    completed = {}
+    for rel, status in old.get("completed", {}).items():
+        row = by_rel.get(rel); dst = DEST_DIR / rel
+        if row and dst.is_file() and sha256_file(dst) == row["sha256"]:
+            completed[rel] = status
+    fresh["completed"] = completed
+    fresh["batches"] = old.get("batches", 0)
+    return fresh
 
 
 def save_state(state):
@@ -84,8 +106,10 @@ def main():
         raise SystemExit(json.dumps({"schema": SCHEMA, "verdict": "INPUT_GAP", "detail": "BATCH_SIZE must be 1..100"}))
     if COLLISION_POLICY not in {"fail", "skip", "replace"}:
         raise SystemExit(json.dumps({"schema": SCHEMA, "verdict": "INPUT_GAP", "detail": "COLLISION_POLICY must be fail|skip|replace"}))
-    if not str(SOURCE_DIR) or not str(DEST_DIR):
-        raise SystemExit(json.dumps({"schema": SCHEMA, "verdict": "INPUT_GAP", "detail": "SOURCE_DIR and DEST_DIR required"}))
+    try:
+        guard_roots()
+    except RuntimeError as e:
+        raise SystemExit(json.dumps({"schema": SCHEMA, "verdict": "INPUT_GAP", "detail": str(e)}))
     state = load_state(); completed = state.setdefault("completed", {}); batches = 0
     while True:
         pending = [r for r in state["manifest"] if r["rel"] not in completed]

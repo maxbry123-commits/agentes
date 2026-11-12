@@ -4,13 +4,13 @@ Motor de búsqueda web multi-proveedor para Router Inteligente Universal.
 
 ## Objetivo
 
-Ejecutar búsqueda fuera del chat usando Hugging Face Jobs ON_DEMAND y escribir el resultado en archivos para que Claude/Sol/agentes lean solo el resultado final.
+Ejecutar búsqueda fuera del chat, de forma **local y anónima**, y escribir el resultado en archivos para que Claude/Sol/agentes lean solo el resultado final.
 
 Flujo:
 
-TRIGGER -> Hugging Face Job -> 5 proveedores -> deduplicación/ranking determinista -> result.json + summary.md
+TRIGGER local -> 5 proveedores -> deduplicación/ranking determinista -> result.json + summary.md
 
-No usa GitHub Actions. No usa LLM por defecto.
+No usa Actions de CI. No usa LLM por defecto. No publica en repositorios remotos.
 
 ## Proveedores
 
@@ -20,33 +20,31 @@ No usa GitHub Actions. No usa LLM por defecto.
 4. serper — SERPER_API_KEY.
 5. firecrawl — FIRECRAWL_API_KEY.
 
-El scraper HTML directo de DuckDuckGo se conserva solo como fallback interno opcional; no es el proveedor principal porque HF puede recibir challenge/CAPTCHA.
+El scraper HTML directo de DuckDuckGo se conserva solo como fallback interno opcional; no es el proveedor principal porque puede recibir challenge/CAPTCHA.
 
 Los proveedores sin secreto quedan GAP; el motor continúa con los disponibles.
 
 ## Archivos
 
 - websearch_engine.py — ejecuta, agrega, deduplica, puntúa y escribe resultados.
-- trigger_hf_websearch.py — dispara Hugging Face Job directamente con run_job().
+- trigger_websearch.py — trigger local on-demand; invoca al engine y devuelve el veredicto.
 - test_websearch_engine.py — tests deterministas sin red.
+- source_registry.json — fuentes habilitadas del research prepass.
+- research_prepass.py — búsqueda determinista de evidencia directa y contextual.
+- context_packet.schema.json — esquema del context packet.
+- test_research_prepass.py — tests deterministas sin red.
+- RESEARCH-PREPASS-TRAZABILIDAD.md — documento histórico (no refleja el flujo vigente).
 
 ## Salida
 
-Durante el Job, por defecto:
+Por defecto:
 
-/tmp/websearch-results/<JOB_ID>/result.json
+./websearch-results/<RUN_ID>/result.json
+./websearch-results/<RUN_ID>/summary.md
 
-/tmp/websearch-results/<JOB_ID>/summary.md
+El run id se toma de `RUN_ID` si existe; si no, se genera con marca temporal y hash de la consulta.
 
-Para persistencia hay dos rutas:
-
-1. GitHub directo (sin GitHub Actions): si el entorno que activa el trigger tiene GITHUB_TOKEN, el Job publica summary.md en:
-   router inteligente universal/websearch-results/<JOB_ID>/summary.md
-   y realiza read-back antes de declarar publicación verificada.
-
-2. Storage Bucket HF opcional: pasar --volume con formato:
-   hf://buckets/<owner>/<bucket>:/data
-   y usar /data/websearch/results como output.
+La persistencia es **solo local**: `result.json` y `summary.md` se escriben y se verifican por read-back. No hay publicación remota.
 
 summary.md es la vista compacta que debe leer el agente para reducir contexto/tokens.
 
@@ -54,31 +52,19 @@ summary.md es la vista compacta que debe leer el agente para reducir contexto/to
 
 python websearch_engine.py "consulta"
 
-## Trigger HF directo
+## Trigger local
 
-python trigger_hf_websearch.py "consulta"
+python trigger_websearch.py "consulta"
 
 Opcional:
 
-python trigger_hf_websearch.py "consulta" --providers ddgs,brave,tavily,serper,firecrawl --worker HF1
+python trigger_websearch.py "consulta" --providers ddgs,brave,tavily,serper,firecrawl --limit 8
 
-Conserva el patrón del centro de cómputo existente:
-- namespace: COMAND-CENTER-1
-- flavor: cpu-upgrade
-- workers lógicos: HF1, HF2, HF3
-- lifecycle: ON_DEMAND
-- engine pinneado a commit probado
-- sin GitHub Actions
-
-Persistencia por GitHub:
-python trigger_hf_websearch.py "consulta" --publish-github auto
-
-Persistencia por bucket, cuando la credencial tenga permiso:
-python trigger_hf_websearch.py "consulta" --volume hf://buckets/COMAND-CENTER-1/yaiwes-v54:/data
+Variables: `QUERY`, `PROVIDERS`, `MAX_RESULTS_PER_PROVIDER`, `WEBSEARCH_OUTPUT_ROOT`, `RUN_ID`.
 
 ## Secretos
 
-Nunca se imprimen claves. Solo se reenvían al Job mediante secrets= cuando ya existen en el entorno que activa el trigger. Esto aplica a las claves de búsqueda y a GITHUB_TOKEN.
+El motor no lee, imprime ni reenvía credenciales de repositorios. Las claves de los proveedores de búsqueda se leen del entorno del proceso que ejecuta el motor y solo se usan para esa llamada.
 
 ## PASS
 
@@ -99,8 +85,7 @@ Objetivo:
 INPUT_BLOCK verbatim
 -> research_prepass.py
 -> 10 fuentes web preestablecidas
--> GitHub API
--> Hugging Face Hub API
+-> API REST pública de GitHub
 -> dedupe/ranking/budget
 -> context_packet.json + context.md
 -> agente/LLM
@@ -128,8 +113,7 @@ Fuentes web preestablecidas:
 
 Fuentes directas de alta autoridad:
 
-- GitHub REST Search API
-- Hugging Face Hub API
+- API REST de búsqueda de GitHub (pública y anónima)
 
 Reglas:
 

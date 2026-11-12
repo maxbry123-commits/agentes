@@ -1,0 +1,214 @@
+{
+  "schema": "yaiwes.tools.gateway.v1",
+  "tools": [
+    {
+      "description": "Extrae ZIP (fragmentado o no) con CRC, guardas de ruta y read-back.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "archive_input": {
+            "type": "string"
+          },
+          "batch_size": {
+            "type": "integer"
+          },
+          "dest_dir": {
+            "type": "string"
+          },
+          "state_file": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "archive_input",
+          "dest_dir"
+        ],
+        "type": "object"
+      },
+      "name": "motores_extract_zip"
+    },
+    {
+      "description": "Descarga en cola un lote de componentes (repo/subcarpeta), parte en trozos, extrae y verifica; publicacion opcional.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "dest_branch": {
+            "type": "string"
+          },
+          "dest_repo": {
+            "type": "string"
+          },
+          "dest_root": {
+            "type": "string"
+          },
+          "index_path": {
+            "type": "string"
+          },
+          "max_items_per_run": {
+            "type": "integer"
+          },
+          "max_retries": {
+            "type": "integer"
+          },
+          "queue": {
+            "type": "array"
+          },
+          "queue_file": {
+            "type": "string"
+          },
+          "state_file": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "state_file"
+        ],
+        "type": "object"
+      },
+      "name": "motores_download_queue"
+    },
+    {
+      "description": "Copia lotes de archivos o raices completas con SHA-256, reanudacion y politica de colision.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_size": {
+            "type": "integer"
+          },
+          "collision_policy": {
+            "type": "string"
+          },
+          "dest_dir": {
+            "type": "string"
+          },
+          "max_batches": {
+            "type": "integer"
+          },
+          "source_dir": {
+            "type": "string"
+          },
+          "state_file": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_dir",
+          "dest_dir"
+        ],
+        "type": "object"
+      },
+      "name": "motores_copy_batches"
+    },
+    {
+      "description": "Mueve lotes de archivos o raices completas con verificacion antes/despues y reanudacion.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_size": {
+            "type": "integer"
+          },
+          "collision_policy": {
+            "type": "string"
+          },
+          "dest_dir": {
+            "type": "string"
+          },
+          "max_batches": {
+            "type": "integer"
+          },
+          "source_dir": {
+            "type": "string"
+          },
+          "state_file": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_dir",
+          "dest_dir"
+        ],
+        "type": "object"
+      },
+      "name": "motores_move_batches"
+    },
+    {
+      "description": "Copia la raiz canonica completa de motores+skill a otro repo validando allowlist y lock de blobs.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_size": {
+            "type": "integer"
+          },
+          "dest_repo_name": {
+            "type": "string"
+          },
+          "dest_root": {
+            "type": "string"
+          },
+          "source_root": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_root",
+          "dest_root",
+          "dest_repo_name"
+        ],
+        "type": "object"
+      },
+      "name": "motores_copy_root"
+    },
+    {
+      "description": "Descarga un archivo grande con reanudacion Range, lo divide en partes <=95MiB (limites GitHub), manifiesto SHA-256 y verificacion de reensamblado.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "dest_dir": {
+            "type": "string"
+          },
+          "expected_sha256": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "part_bytes_mib": {
+            "type": "integer"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "dest_dir"
+        ],
+        "type": "object"
+      },
+      "name": "motores_fetch_resumable"
+    },
+    {
+      "description": "Ejecuta un plan DAG de tools con ledger de recuperacion, reintentos, cooldown por rate-limit y reanudacion.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "plan_file": {
+            "type": "string"
+          },
+          "state_file": {
+            "type": "string"
+          },
+          "wait": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "plan_file",
+          "state_file"
+        ],
+        "type": "object"
+      },
+      "name": "motores_workflow"
+    }
+  ]
+}

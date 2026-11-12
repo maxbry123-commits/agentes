@@ -11,15 +11,27 @@ import sys
 SCHEMA = "yaiwes.repo-root-copy.v1"
 ROOT_PREFIX = "➡️📂motores de descarga extracción copiado movimiento archivos "
 SKILL_NAME = "➡️📂 skills descargar extraer zip copiar mover archivos readme.md"
+PACKAGE_NAME = "motores de descarga y extracción"
+GATEWAY_ROOT_REL = "Yaiwes motor arquitecto/motor nuevo de tools para agentes"
 
 ALLOWED_FILES = (
     SKILL_NAME,
+    "MOTORES_VERSION.json",
     "➡️📂 Motor de extracción zip/motor_1_extract_only.py",
     "📂Motor descarga de componentes y extracción de zip/motor_2_queue_download_extract.py",
-    "📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py",
+    "📂Motor descarga de componentes y extracción de zip/download_extract_engine.py",
     "➡️📂motor de copiar archivos/motor_3_copy_batches.py",
     "➡️📂motor de copiar archivos/motor_copy_root_to_repo.py",
     "➡️📂motor de moves archivos/motor_4_move_batches.py",
+    "➡️📂 motor de búsqueda/README.md",
+    "➡️📂 motor de búsqueda/RESEARCH-PREPASS-TRAZABILIDAD.md",
+    "➡️📂 motor de búsqueda/context_packet.schema.json",
+    "➡️📂 motor de búsqueda/research_prepass.py",
+    "➡️📂 motor de búsqueda/source_registry.json",
+    "➡️📂 motor de búsqueda/test_research_prepass.py",
+    "➡️📂 motor de búsqueda/test_websearch_engine.py",
+    "➡️📂 motor de búsqueda/trigger_websearch.py",
+    "➡️📂 motor de búsqueda/websearch_engine.py",
 )
 
 SOURCE_ROOT = pathlib.Path(os.getenv("SOURCE_ROOT", "")).expanduser()
@@ -61,6 +73,27 @@ def validate_inputs() -> None:
             "DESTINATION_NAME_GAP",
             f"DEST_ROOT name must be exactly: {expected_name}",
         )
+
+
+def git_blob_sha1(path: pathlib.Path) -> str:
+    data = path.read_bytes()
+    return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+
+
+def validate_engine_locks() -> None:
+    lock_path = SOURCE_ROOT / "MOTORES_VERSION.json"
+    lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    engines = lock.get("engines", {})
+    if not engines:
+        fail("MOTOR_CODE_LOCK_GAP", "MOTORES_VERSION.json sin engines bloqueados")
+    repo_root = SOURCE_ROOT.parent
+    for rel, expected in engines.items():
+        if rel.startswith(GATEWAY_ROOT_REL + "/"):
+            path = repo_root / pathlib.PurePosixPath(rel)
+        else:
+            path = SOURCE_ROOT / pathlib.PurePosixPath(rel)
+        if not path.is_file() or git_blob_sha1(path) != expected:
+            fail("MOTOR_CODE_LOCK_GAP", rel)
 
 
 def validate_source_allowlist() -> list[dict]:
@@ -130,6 +163,7 @@ def copy_batch(rows: list[dict], start: int) -> list[str]:
 def main() -> None:
     validate_inputs()
     rows = validate_source_allowlist()
+    validate_engine_locks()
 
     if SOURCE_ROOT.resolve() == DEST_ROOT.resolve():
         fail("DESTINATION_INPUT_GAP", "SOURCE_ROOT and DEST_ROOT cannot be identical")

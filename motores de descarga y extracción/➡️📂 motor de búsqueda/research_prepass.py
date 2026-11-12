@@ -86,7 +86,7 @@ def terms_from(text: str, max_terms: int = 24) -> list[str]:
 
     pos = 0
     for m in QUOTE_RE.finditer(text):
-        add(compact(m.group(1), 0, pos)
+        add(m.group(1), 0, pos)
         pos += 1
 
     for m in TOKEN_RE.finditer(text):
@@ -132,10 +132,8 @@ def load_registry(path: pathlib.Path) -> dict:
     return data
 
 
-def api_json(url: str, token: str = ""):
+def api_json(url: str):
     headers = {"Accept": "application/json", "User-Agent": "YaiwesResearchPrepass/1.0"}
-    if token:
-        headers["Authorization"] = "Bearer " + token
     req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=float(os.getenv("RESEARCH_TIMEOUT_SECONDS", "18"))) as r:
         return json.loads(r.read().decode("utf-8", "replace"))
@@ -178,52 +176,14 @@ def search_web_source(source: dict, query: str, limit: int) -> list[dict]:
 
 
 def github_search(source: dict, query: str, limit: int) -> list[dict]:
-    token = os.getenv("GITHUB_TOKEN", "").strip() or os.getenv("GH_TOKEN", "").strip()
     out = []
     q = urllib.parse.quote(query)
     url = f"https://api.github.com/search/repositories?q={q}&sort=stars&order=desc&per_page={min(limit,10)}"
-    data = api_json(url, token)
+    data = api_json(url)
     for i, x in enumerate(data.get("items", [])[:limit], 1):
         snippet = f"{x.get('description') or ''} stars={x.get('stargazers_count',0)} language={x.get('language') or ''} updated={x.get('updated_at') or ''}"
         out.append(make_record(source, x.get("full_name", ""), x.get("html_url", ""), snippet, i, "github_api"))
 
-    if token and len(out) < limit:
-        remaining = limit - len(out)
-        code_url = f"https://api.github.com/search/code?q={q}&per_page={min(remaining,10)}"
-        try:
-            code = api_json(code_url, token)
-            for x in code.get("items", [])[:remaining]:
-                repo = (x.get("repository") or {}).get("full_name", "")
-                title = f"{repo}/{x.get('path','')}".strip("/")
-                out.append(make_record(source, title, x.get("html_url", ""), "GitHub code search match", len(out) + 1, "github_code_api"))
-        except Exception:
-            pass
-    return out[:limit]
-
-
-def hf_search(source: dict, query: str, limit: int) -> list[dict]:
-    token = os.getenv("HF_TOKEN", "").strip() or os.getenv("HUGGINGFACE_TOKEN", "").strip()
-    out = []
-    endpoints = [
-        ("model", "models", "https://huggingface.co/"),
-        ("dataset", "datasets", "https://huggingface.co/datasets/"),
-        ("space", "spaces", "https://huggingface.co/spaces/"),
-    ]
-    per_kind = max(1, min(4, limit))
-    for kind, endpoint, base in endpoints:
-        url = "https://huggingface.co/api/" + endpoint + "?" + urllib.parse.urlencode({"search": query, "limit": per_kind})
-        try:
-            rows = api_json(url, token)
-        except Exception:
-            continue
-        for x in rows[:per_kind]:
-            item_id = x.get("modelId") or x.get("id") or ""
-            if not item_id:
-                continue
-            snippet = f"{kind} downloads={x.get('downloads',0)} likes={x.get('likes',0)} updated={x.get('lastModified') or ''} pipeline={x.get('pipeline_tag') or ''}"
-            out.append(make_record(source, item_id, base + item_id, snippet, len(out) + 1, "huggingface_api"))
-            if len(out) >= limit:
-                return out
     return out[:limit]
 
 
@@ -356,8 +316,6 @@ def run(
         try:
             if source["adapter"] == "github_api":
                 got = github_search(source, query, limit)
-            elif source["adapter"] == "huggingface_hub_api":
-                got = hf_search(source, query, limit)
             else:
                 raise RuntimeError("UNKNOWN_DIRECT_ADAPTER")
             all_rows.extend(got)

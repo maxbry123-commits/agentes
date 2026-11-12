@@ -1,3 +1,5 @@
+> NOTA 2026-11-11: documento HISTÓRICO. Las integraciones de jobs externos y de hub de modelos descritas aquí fueron retiradas del motor. Flujo vigente: local y anónimo (ver README.md). Excluido del guard de limpieza por ser archivo histórico.
+
 # TRAZABILIDAD - RESEARCH PREPASS NATIVO RIU
 
 Scope: Router Inteligente Universal.

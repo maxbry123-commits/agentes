@@ -1,0 +1,13 @@
+{
+  "schema": "yaiwes.motores.lock.v2",
+  "origen": "maxbry123-commits/Yaiwes",
+  "engines": {
+    "➡️📂 Motor de extracción zip/motor_1_extract_only.py": "a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500",
+    "📂Motor descarga de componentes y extracción de zip/motor_2_queue_download_extract.py": "fb564d17866c264e65627e486cb6ae12d59489a4",
+    "📂Motor descarga de componentes y extracción de zip/download_extract_engine.py": "66fafc442ca47d9b018cc040c21a65a170502681",
+    "➡️📂motor de copiar archivos/motor_3_copy_batches.py": "f7f6705770ecb1d6c2fb5da3f999eef5de2865e0",
+    "➡️📂motor de copiar archivos/motor_copy_root_to_repo.py": "ca21283aae5266389d74b7a1e336882dcda80e34",
+    "➡️📂motor de moves archivos/motor_4_move_batches.py": "d1b991879c2623c4ac3f8edd73e74653f610ddb0",
+    "Yaiwes motor arquitecto/motor nuevo de tools para agentes/motor_tool_gateway.py": "71047188a4f5b430313c96926247d0956f27510f"
+  }
+}
