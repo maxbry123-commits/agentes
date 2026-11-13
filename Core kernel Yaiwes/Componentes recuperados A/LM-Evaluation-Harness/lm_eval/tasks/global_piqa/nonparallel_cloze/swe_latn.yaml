@@ -1,3 +1,0 @@
-dataset_name: swe_latn
-include: _template
-task: global_piqa_nonparallel_cloze_swe_latn

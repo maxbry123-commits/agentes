@@ -1,4 +1,0 @@
-valid-bucket
-prefix/with/slashes
-
-double_sep

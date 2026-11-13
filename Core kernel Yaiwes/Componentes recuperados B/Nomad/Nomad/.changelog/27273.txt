@@ -1,3 +1,0 @@
-```release-note:bug
-drivers: adds hostname to NetworkCreateRequest for external drivers
-```

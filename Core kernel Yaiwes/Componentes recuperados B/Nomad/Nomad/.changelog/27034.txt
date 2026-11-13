@@ -1,3 +1,0 @@
-```release-note:security
-build: Update go-getter to 1.8.3 that prevents a partially written file from remaining on disk with permissions that didn't include the umask.
-```

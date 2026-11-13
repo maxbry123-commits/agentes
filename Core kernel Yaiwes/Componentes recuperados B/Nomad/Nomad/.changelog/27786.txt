@@ -1,3 +1,0 @@
-```release-note:improvement
-identity: allow additional claims to be added to workload identities
-```

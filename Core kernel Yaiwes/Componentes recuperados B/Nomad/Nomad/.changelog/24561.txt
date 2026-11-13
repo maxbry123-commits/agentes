@@ -1,3 +1,0 @@
-```release-note:bug
-agent: Fixed a bug where `retry_join` gave up after a single failure, rather than retrying until max attempts had been reached
-```

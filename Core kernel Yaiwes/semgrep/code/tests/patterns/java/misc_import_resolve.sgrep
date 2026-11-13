@@ -1,2 +1,0 @@
-@Foo.Bar(method=$M)
-public $RETURN $METHOD(...) { ... }

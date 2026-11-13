@@ -1,3 +1,0 @@
-```release-note:bug
-cli: Fixed a bug that caused the `nomad agent` command to ignore the `VAULT_TOKEN` and `VAULT_NAMESPACE` environment variables
-```

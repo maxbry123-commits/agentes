@@ -1,3 +1,0 @@
-```release-note:bug
-scheduler: keep draining batch alloc counted when node is re-enabled
-```

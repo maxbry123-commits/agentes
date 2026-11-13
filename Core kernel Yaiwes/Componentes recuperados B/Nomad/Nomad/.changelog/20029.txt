@@ -1,3 +1,0 @@
-```release-note:improvement
-server: Add new options for reconcilation in case of disconnected nodes
-```

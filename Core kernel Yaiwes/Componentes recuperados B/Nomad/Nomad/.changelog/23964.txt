@@ -1,3 +1,0 @@
-```release-note:improvement
-metrics: introduce client config to include alloc metadata as part of the base labels
-```

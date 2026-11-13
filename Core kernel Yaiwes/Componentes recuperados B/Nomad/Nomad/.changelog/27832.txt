@@ -1,3 +1,0 @@
-```release-note:bug
-api: Fix a bug where the Create Job, Update Job, and Scale Job APIs could fail to respect EnforceIndex under concurrent requests
-```

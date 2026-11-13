@@ -1,1 +1,0 @@
-myglobal = 1

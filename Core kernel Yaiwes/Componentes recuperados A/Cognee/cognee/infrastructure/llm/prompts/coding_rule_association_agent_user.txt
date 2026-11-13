@@ -1,5 +1,0 @@
-**User-agent interaction text:**
-`{{chat}}`
-
-**Already existing rules:**
-`{{rules}}`

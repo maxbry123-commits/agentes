@@ -1,1 +1,0 @@
-SchemathesisConfig(projects=ProjectsConfig(default=ProjectConfig(servers=ServersConfig(variables={'hostname': 'staging.example.com', 'version': 'v2'}))))

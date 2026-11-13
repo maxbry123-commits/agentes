@@ -1,6 +1,0 @@
-node_modules
-dist
-coverage
-
-public/signal-compiler.wasm
-public/wasm_exec.js

@@ -1,3 +1,0 @@
-```release-note:bug
-cli: Fix return code when `nomad job run` succeeds after a blocked eval
-```

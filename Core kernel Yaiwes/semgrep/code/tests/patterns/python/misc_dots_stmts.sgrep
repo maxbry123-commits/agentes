@@ -1,3 +1,0 @@
-for $KEY, $VALUE in $DICT.items():
-    ...
-    del $DICT[$KEY]

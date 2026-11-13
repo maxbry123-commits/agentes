@@ -1,9 +1,0 @@
-steps:
-  - id: loop
-    foreach:
-      items: [one]
-      steps:
-        - id: review
-          action: human.task
-          with:
-            prompt: Review the item

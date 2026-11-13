@@ -1,5 +1,0 @@
-overrides:
-  marked: ^18.0.5
-allowBuilds:
-  '@swc/core': true
-  esbuild: true

@@ -1,2 +1,0 @@
-# PIPELINE
-REF → ../../PIPELINE

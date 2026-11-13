@@ -1,3 +1,0 @@
-name,age,__expected
-Alice,30,contains: Alice
-Bob,25,contains: Bob

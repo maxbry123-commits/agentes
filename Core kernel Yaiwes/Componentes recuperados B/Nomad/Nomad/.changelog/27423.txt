@@ -1,3 +1,0 @@
-```release-note:improvement
-scheduler: Do not create node evals for terminal node allocs
-```

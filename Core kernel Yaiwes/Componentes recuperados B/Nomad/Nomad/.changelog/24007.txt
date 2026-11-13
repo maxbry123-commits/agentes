@@ -1,3 +1,0 @@
-```release-note:bug
-bug: Allow client template config block to be parsed when using json config
-```

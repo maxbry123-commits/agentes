@@ -1,1 +1,0 @@
-CREATE INDEX CONCURRENTLY IF NOT EXISTS "RuntimeEnvironment_projectId_idx" ON "RuntimeEnvironment" ("projectId");

@@ -1,1 +1,0 @@
-$TYPE $RESULT = ($TYPE)$EXPR.foo($SOURCE);

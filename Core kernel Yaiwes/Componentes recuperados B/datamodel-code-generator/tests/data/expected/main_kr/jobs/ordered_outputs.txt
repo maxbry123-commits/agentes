@@ -1,2 +1,0 @@
-plain.py
-strict.py

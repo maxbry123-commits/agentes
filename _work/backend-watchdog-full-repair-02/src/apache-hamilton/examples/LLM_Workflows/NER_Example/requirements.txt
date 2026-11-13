@@ -1,7 +1,0 @@
-apache-hamilton[visualization, sdk]
-datasets
-lancedb
-numpy
-sentence_transformers
-torch
-tqdm

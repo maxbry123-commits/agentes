@@ -1,3 +1,0 @@
-```release-note:improvement
-agent: Added `agent.tls.cert.expiration_seconds` and `agent.tls.ca.expiration_seconds` telemetry data points to track TLS certificate expiration.
-```

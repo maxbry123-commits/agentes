@@ -1,3 +1,0 @@
-```release-note:bug
-ui: Fixed an issue where Accessor ID was masked by default when editing a token
-```

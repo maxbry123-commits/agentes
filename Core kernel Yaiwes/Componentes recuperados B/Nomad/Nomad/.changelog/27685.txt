@@ -1,3 +1,0 @@
-```release-note:improvement
-build: Upgrade to Go 1.26
-```

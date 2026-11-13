@@ -1,3 +1,0 @@
-```release-note:improvement
-api: Added support for Unix domain sockets
-```

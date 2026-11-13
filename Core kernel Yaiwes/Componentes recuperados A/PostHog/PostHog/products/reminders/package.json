@@ -1,6 +1,0 @@
-{
-    "name": "@posthog/products-reminders",
-    "scripts": {
-        "backend:test": "pytest -c ../../pytest.ini --rootdir ../.. backend/ -v --tb=short"
-    }
-}

@@ -1,1 +1,0 @@
-export const MAX_32_BIT_INTEGER = 2147483647;

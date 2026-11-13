@@ -1,3 +1,0 @@
-test_expect_success 'bare grep is flagged' '
-	grep pattern file
-'

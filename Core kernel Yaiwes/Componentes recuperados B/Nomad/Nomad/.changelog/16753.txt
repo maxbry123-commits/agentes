@@ -1,3 +1,0 @@
-```release-note:improvement
-consul/connect: Added support for TLS configuration, headers configuration, and request limit configuration to ingress service block
-```

@@ -1,3 +1,0 @@
-```release-note:improvement
-deps: Updated `docker` dependency to 26.0.1
-```

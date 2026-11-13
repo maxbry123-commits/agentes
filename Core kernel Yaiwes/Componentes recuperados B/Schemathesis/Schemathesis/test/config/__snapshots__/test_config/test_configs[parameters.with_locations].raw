@@ -1,1 +1,0 @@
-SchemathesisConfig(projects=ProjectsConfig(default=ProjectConfig(parameters={'path.user_id': 42, 'query.user_id': 100})))

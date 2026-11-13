@@ -1,3 +1,0 @@
-steps:
-  - action: wait.file
-    with: {}

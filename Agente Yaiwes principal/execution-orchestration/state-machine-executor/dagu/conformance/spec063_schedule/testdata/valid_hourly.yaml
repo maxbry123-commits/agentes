@@ -1,4 +1,0 @@
-schedule: "@hourly"
-steps:
-  - id: noop
-    run: "true"

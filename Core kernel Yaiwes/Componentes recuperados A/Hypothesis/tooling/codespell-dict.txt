@@ -1,2 +1,0 @@
-sipport->support
-stratgy->strategy

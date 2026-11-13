@@ -1,3 +1,0 @@
-```release-note:bug
-connect: Fixed envoy sidecars being unable to restart after node reboots
-```

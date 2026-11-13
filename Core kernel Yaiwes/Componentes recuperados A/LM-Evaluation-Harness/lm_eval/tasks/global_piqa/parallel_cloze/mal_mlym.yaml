@@ -1,3 +1,0 @@
-dataset_name: mal_mlym
-include: _template
-task: global_piqa_parallel_cloze_mal_mlym

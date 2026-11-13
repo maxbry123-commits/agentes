@@ -1,5 +1,0 @@
-Link display text
-t
-Hello
-Click here
-Data

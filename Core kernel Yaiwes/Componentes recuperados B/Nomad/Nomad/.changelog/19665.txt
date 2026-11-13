@@ -1,3 +1,0 @@
-```release-note:improvement
-consul: Added support for Consul Enterprise admin partitions
-```

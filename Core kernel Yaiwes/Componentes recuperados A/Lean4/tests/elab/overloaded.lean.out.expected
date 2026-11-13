@@ -1,6 +1,0 @@
-f A.x : Nat
-g B.x : String
-f (1 + 1) : Nat
-g (Append.append "hello" " world") : String
-f 1 : Nat
-g "hello world" : String

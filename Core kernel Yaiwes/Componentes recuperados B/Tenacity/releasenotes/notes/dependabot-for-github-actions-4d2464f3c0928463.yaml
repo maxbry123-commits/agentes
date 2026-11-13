@@ -1,5 +1,0 @@
----
-other:
-  - |
-    Add a Dependabot configuration submit PRs monthly (as needed)
-    to keep GitHub action versions updated.

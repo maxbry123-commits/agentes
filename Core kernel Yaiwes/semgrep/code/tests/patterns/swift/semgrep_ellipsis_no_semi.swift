@@ -1,3 +1,0 @@
-// MATCH:
-foo;
-baz;

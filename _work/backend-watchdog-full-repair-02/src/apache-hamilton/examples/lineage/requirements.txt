@@ -1,5 +1,0 @@
-apache-hamilton
-gitpython
-numpy
-pandas
-scikit-learn

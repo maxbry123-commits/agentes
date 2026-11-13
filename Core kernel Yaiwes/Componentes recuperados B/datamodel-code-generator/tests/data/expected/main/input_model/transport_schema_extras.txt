@@ -1,9 +1,0 @@
-{
-  "extensions": {
-    "x-note": "kept",
-    "x-python-type": "str"
-  },
-  "model_extras": {
-    "x-python-type": "str"
-  }
-}

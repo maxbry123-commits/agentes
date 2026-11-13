@@ -1,2 +1,0 @@
-release-name-template: "helm-{{ .Name }}-{{ .Version }}"
-release-notes-file: "RELEASE.md"

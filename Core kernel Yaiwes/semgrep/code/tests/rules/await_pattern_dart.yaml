@@ -1,7 +1,0 @@
-rules:
-- id: await-pattern-dart
-  message: awaited fetch
-  severity: ERROR
-  languages:
-  - dart
-  pattern: 'await fetch($URL)'

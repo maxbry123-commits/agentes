@@ -1,7 +1,0 @@
-name = "test"
-testDriver = "dep/driver"
-lintDriver = "dep/driver"
-
-[[require]]
-name = "dep"
-path = "dep"

@@ -1,3 +1,0 @@
-```release-note:bug
-exec: Correctly set the `LOGNAME` env var when the job specification user value is set
-```

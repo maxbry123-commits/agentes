@@ -1,6 +1,0 @@
-name = "InverseModuleHierarchy"
-version = "0.1.0"
-defaultTargets = ["InverseModuleHierarchy"]
-
-[[lean_lib]]
-name = "InverseModuleHierarchy"

@@ -1,3 +1,0 @@
-```release-note:bug
-scheduler: Fixed a bug where updating the rescheduler tracker could corrupt the state store
-```

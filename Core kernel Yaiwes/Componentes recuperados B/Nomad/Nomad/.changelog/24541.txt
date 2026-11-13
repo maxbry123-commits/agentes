@@ -1,3 +1,0 @@
-```release-note:security
-security: add executeTemplate to default template function_denylist
-```

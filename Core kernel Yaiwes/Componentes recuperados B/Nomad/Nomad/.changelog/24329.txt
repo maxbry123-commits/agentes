@@ -1,3 +1,0 @@
-```release-note:bug
-connect: add validation to ensure that connect native services specify a port
-```

@@ -1,8 +1,0 @@
-{
-  "operation": "request",
-  "limits": {"json_depth": 2},
-  "body": {
-    "model": "client-model",
-    "messages": [{"role": "user", "content": "hello"}]
-  }
-}

@@ -1,3 +1,0 @@
-```release-note:bug
-docker: Always negotiate API version when initializing clients
-```

@@ -1,3 +1,0 @@
-```release-note:improvement
-cli: Increase default log level and duration when capturing logs with `operator debug`
-```

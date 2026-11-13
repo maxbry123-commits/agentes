@@ -1,3 +1,0 @@
-# `Spec`
-
-::: guardrails.spec

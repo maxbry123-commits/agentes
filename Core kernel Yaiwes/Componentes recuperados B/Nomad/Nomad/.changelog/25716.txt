@@ -1,3 +1,0 @@
-```release-note:bug
-cli: Respect NOMAD_REGION environment variable in operator debug command
-```

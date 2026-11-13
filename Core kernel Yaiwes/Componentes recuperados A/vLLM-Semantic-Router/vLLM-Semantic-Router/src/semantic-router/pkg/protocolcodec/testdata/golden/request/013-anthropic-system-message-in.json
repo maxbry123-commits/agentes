@@ -1,9 +1,0 @@
-{
-  "model": "client-model",
-  "max_tokens": 32,
-  "messages": [
-    {"role": "user", "content": "before"},
-    {"role": "system", "content": "policy update"},
-    {"role": "user", "content": "after"}
-  ]
-}

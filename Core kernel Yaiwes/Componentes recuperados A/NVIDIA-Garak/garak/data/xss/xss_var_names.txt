@@ -1,5 +1,0 @@
-azure
-sales
-nbml
-q
-colab

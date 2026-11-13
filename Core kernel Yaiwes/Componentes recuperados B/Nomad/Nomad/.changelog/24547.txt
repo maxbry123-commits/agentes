@@ -1,3 +1,0 @@
-```release-note:bug
-docker: Fix a bug where images with port number and no tags weren't parsed correctly
-```

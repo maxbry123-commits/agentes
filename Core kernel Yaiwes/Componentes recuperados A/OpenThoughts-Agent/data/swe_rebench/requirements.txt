@@ -1,2 +1,0 @@
-swebench>=4.0.3
-datasets

@@ -1,1 +1,0 @@
-ALTER TABLE "runs" ADD COLUMN "repos" jsonb DEFAULT '[]'::jsonb NOT NULL;

@@ -1,5 +1,0 @@
-steps:
-  - action: outputs.write
-    with:
-      values: { a: 1 }
-      extra: true

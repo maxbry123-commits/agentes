@@ -1,5 +1,0 @@
-steps:
-  - action: git.worktree.remove
-    with:
-      branch: topic
-      force: "true"

@@ -1,3 +1,0 @@
-```release-note:bug
-scheduler: fixes reconnecting allocations not getting picked correctly when replacements failed
-```

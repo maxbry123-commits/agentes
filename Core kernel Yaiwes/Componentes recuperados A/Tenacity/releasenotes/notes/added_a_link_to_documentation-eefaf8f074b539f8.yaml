@@ -1,5 +1,0 @@
----
-other:
-  - |
-    Added a link to the documentation, as code snippets are not being rendered properly
-    Changed branch name to main in index.rst

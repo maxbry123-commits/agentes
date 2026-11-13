@@ -1,7 +1,0 @@
-Analyze the following data:
-{{ data }}
-
-Focus on:
-{% for aspect in aspects %}
-- {{ aspect }}
-{% endfor %}

@@ -1,3 +1,0 @@
-```release-note:feature
-**Dynamic Host Volumes:** Nomad now supports creating host volumes via the API
-```

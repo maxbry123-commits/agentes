@@ -1,6 +1,0 @@
-id: trace-failed
-namespace: io.kestra.tests
-
-tasks:
-  - id: fail
-    type: io.kestra.plugin.core.execution.Fail

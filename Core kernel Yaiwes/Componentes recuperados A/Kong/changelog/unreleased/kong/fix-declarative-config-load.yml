@@ -1,3 +1,0 @@
-message: "Fixed an issue where a valid declarative config with certificate/sni entities cannot be loaded in dbless mode"
-type: bugfix
-scope: Core

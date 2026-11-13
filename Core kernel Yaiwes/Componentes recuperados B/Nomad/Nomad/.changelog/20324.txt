@@ -1,3 +1,0 @@
-```release-note:bug
-config: Fixed a bug where IPv6 addresses were not accepted without ports for `client.servers` blocks
-```

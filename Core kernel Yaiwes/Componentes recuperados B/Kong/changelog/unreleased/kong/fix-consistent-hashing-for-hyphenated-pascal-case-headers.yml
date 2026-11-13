@@ -1,3 +1,0 @@
-message: "Fixed an issue where consistent hashing did not correctly handle hyphenated-Pascal-case headers, leading to uneven distribution of requests across upstream targets."
-type: bugfix
-scope: Core

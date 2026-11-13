@@ -1,8 +1,0 @@
-package p
-
-import input.foo
-
-r if {
-	1 in [1]
-	0, 1 in [1]
-}

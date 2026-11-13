@@ -1,3 +1,0 @@
-```release-note:bug
-vault: Fixed a bug that could cause errors during leadership transition when migrating to the new JWT and workload identity authentication workflow
-```

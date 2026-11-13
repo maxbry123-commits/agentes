@@ -1,3 +1,0 @@
-```release-note:improvement
-client: expose network namespace bridge/cni configuration values as task env vars
-```

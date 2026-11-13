@@ -1,3 +1,0 @@
-```release-note:breaking-change
-sysbatch: Submitting a sysbatch job with a `reschedule` block will now return an error instead of being silently ignored
-```

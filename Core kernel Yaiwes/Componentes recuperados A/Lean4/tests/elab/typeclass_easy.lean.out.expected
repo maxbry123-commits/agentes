@@ -1,5 +1,0 @@
-instToStringProd
-instAddNat
-boolToProp
-instDecidableAnd
-fun a b => instDecidableEqProd a b

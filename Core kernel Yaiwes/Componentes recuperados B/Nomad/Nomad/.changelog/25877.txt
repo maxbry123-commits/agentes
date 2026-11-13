@@ -1,3 +1,0 @@
-```release-note:improvement
-connect: allow configuring identities for sidecar_task
-```

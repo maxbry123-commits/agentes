@@ -1,8 +1,0 @@
-[
-  [
-    "Conversation",
-    "GET /conversations",
-    "200",
-    "/_embedded/conversations"
-  ]
-]

@@ -1,1 +1,0 @@
-HEALTHCHECK CMD echo hello

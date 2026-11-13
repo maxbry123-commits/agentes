@@ -1,5 +1,0 @@
-name = "initialize"
-defaultTargets = ["Initialize"]
-
-[[lean_lib]]
-name = "Initialize"

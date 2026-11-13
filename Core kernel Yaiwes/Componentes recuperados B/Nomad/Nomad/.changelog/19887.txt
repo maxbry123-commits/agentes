@@ -1,3 +1,0 @@
-```release-note:security
-migration: Fixed a bug where archives used for migration were not checked for symlinks that escaped the allocation directory
-```

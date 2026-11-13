@@ -1,3 +1,0 @@
-message: Fixed an issue where the error logs generated during router rebuilding might be excessively noisy.
-type: bugfix
-scope: Core

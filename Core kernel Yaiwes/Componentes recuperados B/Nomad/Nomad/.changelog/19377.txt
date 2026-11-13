@@ -1,3 +1,0 @@
-```release-note:improvement
-ui: dont allow new jobspec download until template is populated, and remove group count from jobs index
-```

@@ -1,5 +1,0 @@
-litellm
-PyPDF2
-tenacity
-tiktoken
-tqdm

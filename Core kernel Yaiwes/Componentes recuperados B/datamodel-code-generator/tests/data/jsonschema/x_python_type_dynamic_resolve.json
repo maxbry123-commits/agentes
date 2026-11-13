@@ -1,9 +1,0 @@
-{
-  "type": "object",
-  "properties": {
-    "point": {
-      "type": "string",
-      "x-python-type": "NamedTuple"
-    }
-  }
-}

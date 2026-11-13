@@ -1,1 +1,0 @@
-Non-hashed UI fixture file used by UiControllerTest to assert the default cache policy.

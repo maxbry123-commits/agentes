@@ -1,3 +1,0 @@
-```release-note:feature
-core (Enterprise): Enable parsing and reporting with IBM PAO licenses
-```

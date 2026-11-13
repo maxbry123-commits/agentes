@@ -1,3 +1,0 @@
-```release-note:improvement
-driver/rawexec: Allow specifying custom cgroups
-```

@@ -1,4 +1,0 @@
-camunda:
-  client:
-    zeebe:
-      execution-threads: 2

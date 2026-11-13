@@ -1,3 +1,0 @@
-```release-note:improvement
-cgroups: Allow clients with delegated cgroups check that required cgroup v2 controllers exist
-```

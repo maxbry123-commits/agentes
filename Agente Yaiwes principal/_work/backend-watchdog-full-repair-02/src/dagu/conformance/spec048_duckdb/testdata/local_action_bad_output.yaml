@@ -1,3 +1,0 @@
-working_dir: .
-steps:
-  - action: "source:./bad_output_action@v1"

@@ -1,4 +1,0 @@
-{
-  "operation": "request",
-  "body_json": "{\"model\":\"first\",\"model\":\"second\",\"input\":\"hello\"}"
-}

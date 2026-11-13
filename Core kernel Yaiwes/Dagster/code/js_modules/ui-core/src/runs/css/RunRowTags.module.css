@@ -1,6 +1,0 @@
-.runTagsWrapper {
-  display: contents;
-  > * {
-    display: contents;
-  }
-}

@@ -1,3 +1,0 @@
-```release-note:breaking-change
-drivers: remove remote task support for task drivers
-```

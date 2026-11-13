@@ -1,2 +1,0 @@
-759d0d7855d8df106462b966bfc4ee543f24a3e789a27048f253159b58ff8d1a  ficha_contract_v2.py
-93ce721d14fdc93ac8a1467443dbc61afeff10d34fc6e71fe6e9e6a65fa2e55c  universal_plugin_bus_v2_integrated.py

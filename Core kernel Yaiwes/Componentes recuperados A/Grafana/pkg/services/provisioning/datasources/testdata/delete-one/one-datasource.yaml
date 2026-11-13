@@ -1,3 +1,0 @@
-datasources: []
-delete_datasources:
-  - name: old-data-source

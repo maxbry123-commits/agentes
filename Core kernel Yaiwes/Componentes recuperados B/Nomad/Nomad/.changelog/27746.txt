@@ -1,3 +1,0 @@
-```release-note:bug
-agent: Fixed a potential panic in agents using systemd notification
-```

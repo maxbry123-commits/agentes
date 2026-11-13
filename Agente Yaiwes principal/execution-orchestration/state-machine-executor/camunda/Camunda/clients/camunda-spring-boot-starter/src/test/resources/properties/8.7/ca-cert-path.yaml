@@ -1,4 +1,0 @@
-camunda:
-  client:
-    zeebe:
-      ca-certificate-path: /path/to/certificate.pem

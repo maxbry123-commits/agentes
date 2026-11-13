@@ -1,3 +1,0 @@
-```release-note:improvement
-audit (Enterprise): Added ACL token role links to audit log auth objects
-```

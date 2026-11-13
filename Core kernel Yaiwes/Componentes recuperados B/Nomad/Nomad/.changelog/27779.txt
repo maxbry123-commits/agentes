@@ -1,3 +1,0 @@
-```release-note:improvement
-secrets: increase secrets plugin execution timeout to 60s
-```

@@ -1,7 +1,0 @@
-id: flow-trigger-at-least-mode-flow-b
-namespace: io.kestra.tests.trigger.at.least.mode
-
-tasks:
-  - id: only
-    type: io.kestra.plugin.core.debug.Return
-    format: "from flow-b: {{execution.id}}"

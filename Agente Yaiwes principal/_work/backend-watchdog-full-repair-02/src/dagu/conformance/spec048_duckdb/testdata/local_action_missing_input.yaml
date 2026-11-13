@@ -1,3 +1,0 @@
-working_dir: .
-steps:
-  - action: "source:./echo_action@v1"

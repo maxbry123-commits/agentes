@@ -1,3 +1,0 @@
-```release-note:bug
-client: return 403 when the caller doesn't have log streaming capabilities
-```

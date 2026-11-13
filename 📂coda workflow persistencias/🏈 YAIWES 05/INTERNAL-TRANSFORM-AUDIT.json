@@ -1,9 +1,0 @@
-{
-  "schema": "yaiwes.internal.transform/v1",
-  "component": "🏈 05-AI-Infra-Guard",
-  "mode": "TRANSFORM",
-  "source_files": 881,
-  "candidates": 0,
-  "changed": 0,
-  "findings": []
-}

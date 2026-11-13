@@ -1,5 +1,0 @@
-camunda:
-  client:
-    zeebe:
-      defaults:
-        max-jobs-active: 32

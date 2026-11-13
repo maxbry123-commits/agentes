@@ -1,3 +1,0 @@
-```release-note:improvement
-consul: provide tasks that have Consul tokens the CONSUL_HTTP_TOKEN environment variable
-```

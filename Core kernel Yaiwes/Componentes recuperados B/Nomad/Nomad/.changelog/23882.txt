@@ -1,3 +1,0 @@
-```release-note:improvement
-networking: IPv6 can now be enabled on the Nomad bridge network mode
-```

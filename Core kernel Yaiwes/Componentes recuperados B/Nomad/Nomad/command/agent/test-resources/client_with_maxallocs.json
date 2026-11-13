@@ -1,6 +1,0 @@
-{
-	"client": {
-		"enabled": true,
-		"node_max_allocs": 5
-	}
-}

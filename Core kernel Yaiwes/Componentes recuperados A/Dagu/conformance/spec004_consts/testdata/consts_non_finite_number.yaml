@@ -1,5 +1,0 @@
-consts:
-  - replicas: .nan
-steps:
-  - name: should-not-run
-    run: echo executed > executed.txt

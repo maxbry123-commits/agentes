@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "graymatter": {
-      "command": "graymatter",
-      "args": ["mcp", "serve"]
-    }
-  }
-}

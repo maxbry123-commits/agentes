@@ -1,3 +1,0 @@
-```release-note:bug
-jobspec: Validate required hook field in lifecycle block
-```

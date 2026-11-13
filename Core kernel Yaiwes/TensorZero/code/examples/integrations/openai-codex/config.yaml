@@ -1,8 +1,0 @@
-model: "tensorzero::model_name::anthropic::claude-sonnet-4-5-20250929"
-provider: tensorzero
-providers:
-  tensorzero:
-    name: TensorZero
-    baseURL: http://localhost:3000/openai/v1
-    envKey: TENSORZERO_API_KEY # not used but required by Codex
-  # ... other providers ...

@@ -1,3 +1,0 @@
-```release-note:bug
-ui: Put a max-width on token name so it doesn't collide with the search box in the top nav
-```

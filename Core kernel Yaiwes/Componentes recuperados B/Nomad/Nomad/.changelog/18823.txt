@@ -1,3 +1,0 @@
-```release-note:improvement
-ui: Adds a warning message to pages in the Web UI when logs are disabled
-```

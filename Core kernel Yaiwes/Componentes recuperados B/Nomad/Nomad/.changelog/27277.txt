@@ -1,3 +1,0 @@
-```release-note:bug
-numa: Fixed a bug where NUMA detection would cause a panic on hosts with discontinuous node IDs
-```

@@ -1,3 +1,0 @@
-```release-note:bug
-cli: Fixed a bug where `acl policy self` command would output all policies when used with a management token
-```

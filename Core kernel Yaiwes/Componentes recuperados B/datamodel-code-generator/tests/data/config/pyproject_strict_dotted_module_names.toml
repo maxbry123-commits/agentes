@@ -1,2 +1,0 @@
-[tool.datamodel-codegen]
-strict-dotted-module-names = true

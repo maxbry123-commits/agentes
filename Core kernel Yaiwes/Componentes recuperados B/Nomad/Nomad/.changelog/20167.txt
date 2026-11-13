@@ -1,3 +1,0 @@
-```release-note:improvement
-consul/connect: Added support for destination partition in `upstream` block
-```

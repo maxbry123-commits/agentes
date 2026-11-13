@@ -1,3 +1,0 @@
-#eval none
-
-#eval [].head?

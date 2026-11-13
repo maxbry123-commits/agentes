@@ -1,5 +1,0 @@
-Earlier literal <!-- END -->
-<!-- BEGIN -->
-Generated
-<!-- END -->
-After

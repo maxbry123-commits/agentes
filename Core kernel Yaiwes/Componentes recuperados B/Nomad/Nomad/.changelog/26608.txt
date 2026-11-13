@@ -1,3 +1,0 @@
-```release-note:security
-client: inspect artifacts for sandbox escape when landlock is unavailable
-```

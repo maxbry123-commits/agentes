@@ -1,9 +1,0 @@
-type Query {
-  pet: SkillGraphPet
-}
-
-type SkillGraphPet {
-  id: ID!
-  name: String!
-  age: Int
-}

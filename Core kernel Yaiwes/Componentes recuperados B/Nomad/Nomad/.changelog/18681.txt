@@ -1,3 +1,0 @@
-```release-note:feature
-**NUMA aware scheduling**: Nomad Enterprise now supports optimized scheduling on NUMA hardware
-```

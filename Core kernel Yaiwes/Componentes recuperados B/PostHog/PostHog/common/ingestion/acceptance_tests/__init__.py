@@ -1,1 +1,0 @@
-# PostHog Ingestion Acceptance Tests

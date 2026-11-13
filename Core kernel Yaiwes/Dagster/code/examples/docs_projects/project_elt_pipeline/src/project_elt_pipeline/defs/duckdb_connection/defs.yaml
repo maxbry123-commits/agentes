@@ -1,4 +1,0 @@
-type: project_elt_pipeline.DuckDBConnectionComponent
-
-attributes:
-  database: "{{ env.DEST_DUCKDB_PATH }}"

@@ -1,2 +1,0 @@
-$C := http.DefaultClient
-$C.$FIELD = $VALUE

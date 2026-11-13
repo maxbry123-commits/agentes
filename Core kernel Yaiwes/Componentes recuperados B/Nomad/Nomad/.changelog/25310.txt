@@ -1,3 +1,0 @@
-```release-note:bug
-cli: Add node_prefix read when setting up the task workload identity Consul policy
-```

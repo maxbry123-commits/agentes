@@ -1,4 +1,0 @@
-opensearch:
-  connection:
-    proxy:
-      enabled: true

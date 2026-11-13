@@ -1,3 +1,0 @@
-true
-false
-decide (5 > 2) == b : Bool

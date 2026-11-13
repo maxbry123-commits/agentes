@@ -1,6 +1,0 @@
-name = "test"
-enableArtifactCache = true
-platformIndependent = true
-
-[[lean_lib]]
-name = "Test"

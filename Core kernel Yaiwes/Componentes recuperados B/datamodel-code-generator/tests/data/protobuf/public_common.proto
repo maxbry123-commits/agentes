@@ -1,7 +1,0 @@
-syntax = "proto3";
-
-package example.public;
-
-message PublicToken {
-  string value = 1;
-}

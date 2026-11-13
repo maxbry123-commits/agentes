@@ -1,7 +1,0 @@
-working_dir: .
-env:
-  - SOURCE=expanded
-steps:
-  - name: write
-    run: |
-      printf '%s\n%s\n' '$SOURCE' '${SOURCE}' > single-quoted-env.txt

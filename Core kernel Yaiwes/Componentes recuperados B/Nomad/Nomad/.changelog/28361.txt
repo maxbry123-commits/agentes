@@ -1,3 +1,0 @@
-```release-note:improvement
-checks: Nomad native service check IDs are now SHA256
-```

@@ -1,5 +1,0 @@
-working_dir: .
-steps:
-  - name: write
-    run: |
-      printf '%s\n' '${not.env}' '${env}' > braced-text.txt

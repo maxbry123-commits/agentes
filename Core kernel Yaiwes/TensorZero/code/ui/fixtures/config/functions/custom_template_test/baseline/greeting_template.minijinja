@@ -1,1 +1,0 @@
-Hello {{ name }}! Welcome to {{ place }}. Today is {{ day_of_week }}.

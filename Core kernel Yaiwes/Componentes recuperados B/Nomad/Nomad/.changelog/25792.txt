@@ -1,3 +1,0 @@
-```release-note:bug
-api: Fixed pagination bug which could result in duplicate results
-```

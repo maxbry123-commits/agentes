@@ -1,4 +1,0 @@
-valid-bucket
-safe/path
-child
-current_segment

@@ -1,2 +1,0 @@
-# Gemini Live API tests
-

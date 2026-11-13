@@ -1,3 +1,0 @@
-```release-note:bug
-ui: fix bug preventing OIDC login when `iss` parameter is required
-```

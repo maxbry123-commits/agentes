@@ -1,3 +1,0 @@
-```release-note:improvement
-ui: Allow users to create Global ACL tokens from the Administration UI
-```

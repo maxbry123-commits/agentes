@@ -1,3 +1,0 @@
-```release-note:improvement
-rpc: Submitting a plan no longer serializes the whole Job object
-```

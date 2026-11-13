@@ -1,5 +1,0 @@
-working_dir: .
-preconditions: "   "
-steps:
-  - id: main
-    run: "true"

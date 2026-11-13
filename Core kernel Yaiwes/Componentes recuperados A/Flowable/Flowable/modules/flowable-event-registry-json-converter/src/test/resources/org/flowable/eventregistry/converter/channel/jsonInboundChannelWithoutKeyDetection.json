@@ -1,6 +1,0 @@
-{
-  "key": "jsonInboundWithoutKey",
-  "channelType": "inbound",
-  "type": "jms",
-  "deserializerType": "json"
-}

@@ -1,3 +1,0 @@
-```release-note:feature
-config: add nonproduction config option for server, license, and reporting config
-```

@@ -1,9 +1,0 @@
-{
-  "schema": "yaiwes.internal.transform/v1",
-  "component": "🏈 17-AI-Red-Team-Agent",
-  "mode": "TRANSFORM",
-  "source_files": 6,
-  "candidates": 0,
-  "changed": 0,
-  "findings": []
-}

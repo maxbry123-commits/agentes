@@ -1,3 +1,0 @@
-```release-note:bug
-vault: Fixed a bug where `allow_unauthenticated` was enforced when a `default_identity` was set
-```

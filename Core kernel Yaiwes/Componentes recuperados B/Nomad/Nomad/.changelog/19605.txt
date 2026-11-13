@@ -1,3 +1,0 @@
-```release-note:bug
-core: Ensure job HCL submission data is persisted and restored during the FSM snapshot process
-```

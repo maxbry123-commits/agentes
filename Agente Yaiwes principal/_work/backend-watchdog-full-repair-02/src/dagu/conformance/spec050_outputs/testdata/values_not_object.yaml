@@ -1,4 +1,0 @@
-steps:
-  - action: outputs.write
-    with:
-      values: "not-an-object"

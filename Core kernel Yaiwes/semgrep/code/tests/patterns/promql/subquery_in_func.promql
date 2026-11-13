@@ -1,2 +1,0 @@
-# MATCH:
-sum_over_time((X>2)[5m:10s])

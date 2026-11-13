@@ -1,3 +1,0 @@
-```release-note:security
-template: Fixed a bug where symlinks could force templates to read and write to arbitrary locations (CVE-2024-1329)
-```

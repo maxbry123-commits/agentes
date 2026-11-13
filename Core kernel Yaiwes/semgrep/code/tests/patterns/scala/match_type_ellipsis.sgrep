@@ -1,4 +1,0 @@
-type t = $FOO match {
-  case $X => Int;
-  ...
-}

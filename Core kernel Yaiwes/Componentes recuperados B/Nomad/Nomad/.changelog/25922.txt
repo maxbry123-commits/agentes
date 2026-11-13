@@ -1,3 +1,0 @@
-```release-note:improvement
-template: adds ability to specify once mode for job templates
-```

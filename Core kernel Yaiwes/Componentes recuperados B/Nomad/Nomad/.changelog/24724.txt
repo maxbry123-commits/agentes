@@ -1,3 +1,0 @@
-```release-note:improvement
-csi: Added CSI volume and plugin events to the event stream
-```

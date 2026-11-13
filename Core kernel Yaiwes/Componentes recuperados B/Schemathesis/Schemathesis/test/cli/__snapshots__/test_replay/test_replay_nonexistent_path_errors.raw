@@ -1,4 +1,0 @@
-Exit code: 2
----
-Stdout:
-Error: path not found: /tmp/missing.json

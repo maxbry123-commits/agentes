@@ -1,3 +1,0 @@
-Question: {{question}}
-Provided Answer: {{answer}}
-Golden Answer: {{golden_answer}}

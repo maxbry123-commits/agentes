@@ -1,7 +1,0 @@
-id: duplicate
-namespace: io.kestra.tests
-
-tasks:
-  - id: taskInvalid
-    type: io.kestra.plugin.core.debug.Return
-    invalid: "{{taskrun.startDate}}"

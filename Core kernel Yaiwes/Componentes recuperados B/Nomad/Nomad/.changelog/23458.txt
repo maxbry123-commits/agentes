@@ -1,3 +1,0 @@
-```release-note:bug
-ui: Fix an issue where access to Job Templates in the UI was restricted to variable.write access
-```

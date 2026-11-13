@@ -1,6 +1,0 @@
-{
-  "definitions": {
-    "Name": "scalar"
-  },
-  "$ref": "#/definitions/Name/properties/value"
-}

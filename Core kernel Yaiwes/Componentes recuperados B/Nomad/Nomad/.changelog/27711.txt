@@ -1,3 +1,0 @@
-```release-note:bug
-drivers: kill plugin instance on dispense failure
-```

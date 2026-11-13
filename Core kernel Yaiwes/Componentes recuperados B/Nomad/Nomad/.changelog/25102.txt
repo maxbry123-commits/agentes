@@ -1,3 +1,0 @@
-```release-note:bug
-fingerprint: Fixed a bug where Consul/Vault would never be fingerprinted if not available on agent start
-```

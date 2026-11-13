@@ -1,5 +1,0 @@
-steps:
-  - action: archive.extract
-    with:
-      source: a.zip
-      strip_components: -1

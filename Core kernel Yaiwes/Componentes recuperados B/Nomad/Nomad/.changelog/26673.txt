@@ -1,3 +1,0 @@
-```release-note:improvement
-config: Validate the `keyring` configuration block label against supported values on agent startup
-```

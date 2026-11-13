@@ -1,3 +1,0 @@
-```release-note:improvement
-fingerprint: clients now backoff after successfully fingerprinting Consul
-```

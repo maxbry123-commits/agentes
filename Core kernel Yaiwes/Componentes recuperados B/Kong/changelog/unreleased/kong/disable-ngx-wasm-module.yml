@@ -1,2 +1,0 @@
-message: "**Wasm**: removed ngx_wasm_module from default builds."
-type: dependency

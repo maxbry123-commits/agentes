@@ -1,1 +1,0 @@
-export { SurveyViewRedesign } from './SurveyViewRedesign'

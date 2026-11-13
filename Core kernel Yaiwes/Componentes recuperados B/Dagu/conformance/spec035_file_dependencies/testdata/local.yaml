@@ -1,6 +1,0 @@
-name: local-file-dependencies
-
-steps:
-  - id: consume
-    run: test "$(cat input.txt)" = "local dependency"
-    dependencies: input.txt

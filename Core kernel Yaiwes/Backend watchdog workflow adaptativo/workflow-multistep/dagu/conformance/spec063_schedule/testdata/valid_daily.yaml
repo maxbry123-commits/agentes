@@ -1,4 +1,0 @@
-schedule: "@daily"
-steps:
-  - id: noop
-    run: "true"

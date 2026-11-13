@@ -1,1 +1,0 @@
-SchemathesisConfig(projects=ProjectsConfig(default=ProjectConfig(auth=AuthConfig(dynamic=OpenAPIDynamicAuthConfig(schemes={'BearerAuth': DynamicTokenAuthConfig(path='/api/auth', payload={'username': 'foo', 'password': 'bar'}, extract_selector='/access_token')})))))

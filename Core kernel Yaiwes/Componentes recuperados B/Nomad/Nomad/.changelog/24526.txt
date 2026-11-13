@@ -1,3 +1,0 @@
-```release-note:breaking-change
-fingerprint: Consul and Vault fingerprints no longer reload periodically
-```

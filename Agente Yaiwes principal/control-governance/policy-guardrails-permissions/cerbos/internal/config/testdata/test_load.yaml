@@ -1,7 +1,0 @@
----
-server:
-  listenAddr: ":9999"
-  dataDir: "${HOME}/tmp"
-  tls:
-    certificate: "cert"
-    key: "key"

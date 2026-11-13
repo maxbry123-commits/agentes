@@ -1,8 +1,0 @@
-[
-  [
-    "Warehouse",
-    "GET /warehouses/{id}",
-    "200",
-    "/"
-  ]
-]

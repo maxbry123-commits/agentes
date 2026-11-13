@@ -1,3 +1,0 @@
-```release-note:improvement
-fingerprint: Added a fingerprint for Consul DNS address and port
-```

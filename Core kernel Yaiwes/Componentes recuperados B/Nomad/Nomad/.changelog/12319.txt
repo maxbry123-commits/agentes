@@ -1,3 +1,0 @@
-```release-note:bug
-scheduler: Fixed a bug where rescheduled allocations that could not be placed would later ignore their reschedule policy limits
-```

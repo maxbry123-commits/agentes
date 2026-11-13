@@ -1,4 +1,0 @@
-camunda:
-  client:
-    zeebe:
-      grpc-address: http://localhost:26500

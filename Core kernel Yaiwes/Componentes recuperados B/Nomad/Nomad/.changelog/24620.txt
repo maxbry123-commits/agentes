@@ -1,3 +1,0 @@
-```release-note:bug
-ui: Fix an issue where system jobs with garbage-collected allocations were showing as Scaled Down
-```

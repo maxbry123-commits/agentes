@@ -1,6 +1,0 @@
-{
-	"extends": "./tsconfig.common.go.json",
-	"compilerOptions": {
-		"types": ["node"]
-	}
-}

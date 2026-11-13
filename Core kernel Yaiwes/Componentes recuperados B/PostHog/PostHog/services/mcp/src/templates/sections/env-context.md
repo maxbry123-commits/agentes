@@ -1,3 +1,0 @@
-{defined_groups}
-
-{metadata}

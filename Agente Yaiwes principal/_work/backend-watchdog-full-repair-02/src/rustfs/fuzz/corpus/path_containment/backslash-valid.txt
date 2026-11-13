@@ -1,4 +1,0 @@
-valid-bucket
-folder/path/file.txt
-
-backslash

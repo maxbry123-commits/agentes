@@ -1,5 +1,0 @@
-include: _default_greekmmlu_template_yaml
-tag: greekmmlu_stem_tasks
-task: greekmmlu_physics_university
-task_alias: Physics_University
-dataset_name: Physics_University

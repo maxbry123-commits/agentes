@@ -1,3 +1,0 @@
-```release-note:bug
-ui: fixes an issue where streaming task logs would error
-```

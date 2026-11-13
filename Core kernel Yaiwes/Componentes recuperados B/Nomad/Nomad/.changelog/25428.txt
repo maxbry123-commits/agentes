@@ -1,3 +1,0 @@
-```release-note:bug
-csi: Fixed a bug where cleaning up volume claims on GC'd nodes would cause errors on the leader
-```

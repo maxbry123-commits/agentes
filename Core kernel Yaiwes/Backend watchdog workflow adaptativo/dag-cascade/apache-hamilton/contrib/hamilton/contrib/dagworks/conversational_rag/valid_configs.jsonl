@@ -1,2 +1,0 @@
-{"description": "Default (OpenAI)", "name": "default", "config": {}}
-{"description": "MiniMax", "name": "minimax", "config": {"provider": "minimax"}}

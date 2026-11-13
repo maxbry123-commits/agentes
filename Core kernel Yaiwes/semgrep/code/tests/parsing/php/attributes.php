@@ -1,4 +1,0 @@
-<?php
-
-#[Attribute]
-class SetUp {}

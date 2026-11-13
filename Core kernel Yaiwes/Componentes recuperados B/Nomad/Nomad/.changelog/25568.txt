@@ -1,3 +1,0 @@
-```release-note:improvement
-cli: Add -group option to `alloc exec`, `alloc logs`, `alloc fs` commands
-```

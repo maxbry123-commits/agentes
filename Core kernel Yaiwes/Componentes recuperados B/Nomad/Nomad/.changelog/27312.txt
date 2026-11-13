@@ -1,3 +1,0 @@
-```release-note:bug
-event broker: fix memory leak in methods that close subscriptions
-```

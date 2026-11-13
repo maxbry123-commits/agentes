@@ -1,3 +1,0 @@
-```release-note:improvement
-server: RPC dial timeout is configurable
-```

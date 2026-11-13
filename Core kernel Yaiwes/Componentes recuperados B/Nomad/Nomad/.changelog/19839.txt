@@ -1,3 +1,0 @@
-```release-note:improvement
-client/volumes: Add a mount volume level option for selinux tags on volumes
-```

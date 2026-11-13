@@ -1,3 +1,0 @@
-```release-note:improvement
-tls: Allow setting the `tls_min_version` field to `"tls13"`
-```

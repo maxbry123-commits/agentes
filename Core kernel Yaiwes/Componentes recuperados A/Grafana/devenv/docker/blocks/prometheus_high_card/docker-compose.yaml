@@ -1,6 +1,0 @@
-  prometheus_high_card:
-    build: docker/blocks/prometheus_high_card
-    ports:
-      - "3012:3012"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"

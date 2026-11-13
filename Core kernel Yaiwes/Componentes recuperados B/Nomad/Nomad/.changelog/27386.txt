@@ -1,3 +1,0 @@
-```release-note:bug
-multiregion: fixes a bug where resubmitting an unchanged job would cause server handler to hang
-```

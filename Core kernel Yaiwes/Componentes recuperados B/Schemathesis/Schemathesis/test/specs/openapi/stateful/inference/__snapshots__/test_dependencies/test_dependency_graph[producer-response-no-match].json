@@ -1,9 +1,0 @@
-{
-  "operations": {
-    "POST /items": {
-      "inputs": [],
-      "outputs": []
-    }
-  },
-  "resources": {}
-}

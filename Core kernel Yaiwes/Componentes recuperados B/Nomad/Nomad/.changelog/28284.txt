@@ -1,3 +1,0 @@
-```release-note:bug
-ui: refetch nomad license when logging in with new token
-```

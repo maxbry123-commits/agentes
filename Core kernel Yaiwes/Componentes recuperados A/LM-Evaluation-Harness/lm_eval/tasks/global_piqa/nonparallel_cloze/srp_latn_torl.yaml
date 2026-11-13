@@ -1,3 +1,0 @@
-dataset_name: srp_latn_torl
-include: _template
-task: global_piqa_nonparallel_cloze_srp_latn_torl

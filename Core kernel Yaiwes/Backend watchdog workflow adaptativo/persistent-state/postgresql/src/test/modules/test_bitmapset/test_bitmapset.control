@@ -1,4 +1,0 @@
-comment = 'Test code for Bitmapset'
-default_version = '1.0'
-module_pathname = '$libdir/test_bitmapset'
-relocatable = true

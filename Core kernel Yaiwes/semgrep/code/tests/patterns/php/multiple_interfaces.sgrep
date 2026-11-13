@@ -1,1 +1,0 @@
-interface $SOME extends Serializable { ... }

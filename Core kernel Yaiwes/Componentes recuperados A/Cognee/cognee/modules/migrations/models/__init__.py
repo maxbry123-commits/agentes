@@ -1,1 +1,0 @@
-from .GlobalDatabaseVersion import GLOBAL_DATABASE_VERSION_ROW_ID, GlobalDatabaseVersion

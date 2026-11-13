@@ -1,8 +1,0 @@
-routing:
-  signals:
-    metadata:
-      - name: consent-denied
-        description: Caller explicitly denied remote processing consent.
-        key: consent
-        predicate:
-          equals: denied

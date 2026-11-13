@@ -1,2 +1,0 @@
-apache-hamilton[pandera, dask]
-# apache-hamilton[visualization]   # if visualization is desired

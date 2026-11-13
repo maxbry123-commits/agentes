@@ -1,3 +1,0 @@
-message: dynamic control upstream tls when kong.service.request.set_scheme was called
-type: feature
-scope: PDK

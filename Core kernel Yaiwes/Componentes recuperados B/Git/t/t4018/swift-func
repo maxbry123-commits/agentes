@@ -1,5 +1,0 @@
-func RIGHT(x: Int) -> Int {
-    let y = x
-    // a comment
-    return ChangeMe
-}

@@ -1,6 +1,0 @@
-name = "test"
-
-[[require]]
-name = "mdgen"
-scope = "Seasawher"
-version = "2.*"

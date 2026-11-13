@@ -1,1 +1,0 @@
-ALTER TABLE `task_metadata` ADD `archived_at` text;

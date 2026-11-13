@@ -1,4 +1,0 @@
-# MATCH:
-f() {
-  echo hello
-}

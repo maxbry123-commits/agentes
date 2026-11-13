@@ -1,3 +1,0 @@
-```release-note:improvement
-csi: Show volume capabilities in the volume status command
-```

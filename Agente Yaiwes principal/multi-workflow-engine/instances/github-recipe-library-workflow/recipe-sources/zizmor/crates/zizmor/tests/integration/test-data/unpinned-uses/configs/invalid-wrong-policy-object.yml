@@ -1,5 +1,0 @@
-rules:
-  unpinned-uses:
-    config:
-      # Invalid: policies should be a mapping, not a list.
-      policies: []

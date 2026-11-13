@@ -1,3 +1,0 @@
-```release-note:bug
-structs: Fix job canonicalization for array type fields
-```

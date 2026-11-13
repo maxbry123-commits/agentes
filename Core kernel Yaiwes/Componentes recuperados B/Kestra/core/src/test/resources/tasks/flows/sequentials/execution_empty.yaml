@@ -1,8 +1,0 @@
-id: execution_empty
-namespace: io.kestra.tests
-flowId: sequential
-flowRevision: 1
-taskRunList: []
-state:
-  current: CREATED
-  histories: []

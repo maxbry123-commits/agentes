@@ -1,3 +1,0 @@
-```release-note:bug
-services: Added retry to Nomad service deregistration RPCs during alloc stop
-```

@@ -1,3 +1,0 @@
-```release-note:security
-auth: Redact OIDC client secret from API responses and event stream ([CVE-2025-1296](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2025-1296))
-```

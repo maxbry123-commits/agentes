@@ -1,1 +1,0 @@
-assertInstanceOf($EXPECTED, $ACTUAL)

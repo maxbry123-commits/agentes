@@ -1,3 +1,0 @@
-```release-note:bug
-windows: Fix bug with containers capabilities on Docker CE
-```

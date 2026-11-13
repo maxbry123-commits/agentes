@@ -1,3 +1,0 @@
-boto3
-# put non-hamilton requirements here
-openai

@@ -1,1 +1,0 @@
-"""Product tours for PostHog."""

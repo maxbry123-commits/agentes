@@ -1,2 +1,0 @@
-apache-hamilton[pandera, ray]
-# apache-hamilton[visualization]   # if visualization is desired

@@ -1,8 +1,0 @@
-[
-  [
-    "Customer",
-    "POST /customers",
-    "201",
-    "/"
-  ]
-]

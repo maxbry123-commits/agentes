@@ -1,3 +1,0 @@
-```release-note:improvement
-ui: make the exec window look nicer on mobile screens
-```

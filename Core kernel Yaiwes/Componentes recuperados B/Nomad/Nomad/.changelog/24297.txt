@@ -1,3 +1,0 @@
-```release-note:bug
-scheduler: fixed a bug where resource calculation did not account correctly for poststart tasks
-```

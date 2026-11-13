@@ -1,3 +1,0 @@
-```release-note:bug
-driver: Allow resources.cpu values above the maximum cpu.share value on Linux
-```

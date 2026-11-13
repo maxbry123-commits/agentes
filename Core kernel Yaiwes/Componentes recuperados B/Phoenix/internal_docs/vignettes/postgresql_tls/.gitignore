@@ -1,7 +1,0 @@
-# Ignore certificates and keys
-certs/
-*.key
-*.crt
-*.pem
-*.csr
-*.srl 

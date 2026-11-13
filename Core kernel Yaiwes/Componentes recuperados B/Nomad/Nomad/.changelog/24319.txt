@@ -1,3 +1,0 @@
-```release-note:improvement
-cni: Add Nomad specific workload information to CNI_ARGS
-```

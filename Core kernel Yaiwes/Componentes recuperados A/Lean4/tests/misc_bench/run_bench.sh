@@ -1,5 +1,0 @@
-NAME="$1"
-FILE="$(realpath "$1")"
-OUT="$FILE.measurements.jsonl"
-TOPIC="misc/$(basename "$1" .sh)"
-source "$1"

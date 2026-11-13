@@ -1,4 +1,0 @@
-steps:
-  - id: ENV
-    name: Reserved id
-    run: echo invalid

@@ -1,3 +1,0 @@
-Analyze the following text and propose a graph schema (JSON Schema) that captures the entity types and relationships present:
-
-{{SAMPLE_TEXT}}

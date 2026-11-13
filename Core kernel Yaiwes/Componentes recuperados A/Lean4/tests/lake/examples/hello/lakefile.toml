@@ -1,9 +1,0 @@
-name = "hello"
-defaultTargets = ["hello"]
-
-[[lean_lib]]
-name = "Hello"
-
-[[lean_exe]]
-name = "hello"
-root = "Main"

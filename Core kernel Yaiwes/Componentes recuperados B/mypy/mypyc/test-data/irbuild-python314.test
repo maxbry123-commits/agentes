@@ -1,3 +1,0 @@
-[case testTemplateStringNotSupported_python3_14]
-def f() -> object:
-    return t"value={1}"  # E: Template strings are not supported by mypyc

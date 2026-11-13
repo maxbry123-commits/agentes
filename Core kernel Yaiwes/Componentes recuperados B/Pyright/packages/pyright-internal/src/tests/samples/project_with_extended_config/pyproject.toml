@@ -1,2 +1,0 @@
-[tool.pyright]
-extends = "baseconfig1.toml"

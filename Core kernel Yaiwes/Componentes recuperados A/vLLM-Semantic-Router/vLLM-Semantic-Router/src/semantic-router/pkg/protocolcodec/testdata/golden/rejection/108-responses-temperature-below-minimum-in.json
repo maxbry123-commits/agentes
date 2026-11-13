@@ -1,8 +1,0 @@
-{
-  "operation": "request",
-  "body": {
-    "model": "client-model",
-    "input": "hello",
-    "temperature": -0.000001
-  }
-}

@@ -1,3 +1,0 @@
-$MUX.Lock()
-$VALUE := <- $CHANNEL
-$MUX.Unlock()

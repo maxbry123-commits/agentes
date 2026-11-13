@@ -1,8 +1,0 @@
-package hacknews
-
-import (
-	"strconv"
-)
-
-func main() {
-}

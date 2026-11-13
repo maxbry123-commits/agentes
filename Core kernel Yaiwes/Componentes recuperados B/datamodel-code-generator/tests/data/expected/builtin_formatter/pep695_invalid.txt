@@ -1,5 +1,0 @@
-[unclosed-string]
-TokenError
-
-[unclosed-bracket]
-TokenError

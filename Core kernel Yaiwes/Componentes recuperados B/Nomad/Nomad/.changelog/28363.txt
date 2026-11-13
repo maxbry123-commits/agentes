@@ -1,3 +1,0 @@
-```release-note:improvement
-services: rendezvous hashes are now SHA256
-```

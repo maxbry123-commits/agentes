@@ -1,3 +1,0 @@
-```release-note:bug
-qemu: fixes graceful_shutdown to wait kill_timeout before signalling process
-```

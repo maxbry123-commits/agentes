@@ -1,2 +1,0 @@
-# Header comment containing """quotes""" and a semicolon;
-# Another comment containing 'quotes'; nothing here is Python syntax.

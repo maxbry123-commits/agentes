@@ -1,3 +1,0 @@
-```release-note:improvement
-keyring: Warn if deleting a key previously used to encrypt an existing variable
-```

@@ -1,3 +1,0 @@
-```release-note:improvement
-connect: Added support for `volume_mount` blocks on sidecar task overrides
-```

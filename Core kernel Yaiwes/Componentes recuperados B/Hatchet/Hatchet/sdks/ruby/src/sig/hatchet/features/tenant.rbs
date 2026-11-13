@@ -1,8 +1,0 @@
-module Hatchet
-  module Features
-    class Tenant
-      def initialize: (untyped rest_client, Hatchet::Config config) -> void
-      def get: () -> untyped
-    end
-  end
-end

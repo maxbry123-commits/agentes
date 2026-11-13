@@ -1,8 +1,0 @@
-type: chain
-steps:
-  - id: first
-    run: echo first
-
-  - id: second
-    depends: []
-    run: echo second

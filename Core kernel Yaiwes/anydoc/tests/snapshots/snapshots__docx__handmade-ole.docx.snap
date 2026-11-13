@@ -1,7 +1,0 @@
----
-source: tests/snapshots.rs
-expression: output
----
-Before the object
-
-Embedded object: Excel.Sheet.12

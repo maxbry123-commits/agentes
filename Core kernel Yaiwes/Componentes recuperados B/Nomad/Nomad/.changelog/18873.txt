@@ -1,3 +1,0 @@
-```release-note:bug
-scheduler: Ensure duplicate allocation indexes are tracked and fixed when performing job updates
-```

@@ -1,6 +1,0 @@
-group: cieacova
-task:
-  - cieacova_choice
-  - cieacova_word
-metadata:
-  version: 1.0

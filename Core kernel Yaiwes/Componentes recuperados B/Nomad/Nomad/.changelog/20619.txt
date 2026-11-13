@@ -1,3 +1,0 @@
-```release-note:bug
-windows: Fixed a regression where scanning task processes was inefficient
-```

@@ -1,3 +1,0 @@
-# agent-framework, agent-framework-foundry-hosting, and agent-framework-hyperlight
-# are installed from local source by the Dockerfile (build context = python/).
-# Add any sample-only third-party deps here.

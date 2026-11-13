@@ -1,6 +1,0 @@
-{
-  "imports": [
-    "circular_import_a.json"
-  ],
-  "blocks": []
-}

@@ -1,3 +1,0 @@
-```release-note:bug
-namespaces: Failed delete calls no longer return success codes
-```

@@ -1,5 +1,0 @@
-steps:
-  - action: docker.run
-    with:
-      platform: linux/amd64
-      command: echo nope

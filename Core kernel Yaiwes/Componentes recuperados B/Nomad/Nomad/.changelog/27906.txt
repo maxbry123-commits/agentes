@@ -1,3 +1,0 @@
-```release-note:improvement
-cli: Automatically expand `nomad exec -it` to `-i -t`
-```

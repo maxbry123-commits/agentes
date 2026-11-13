@@ -1,4 +1,0 @@
-LNot.unpackFun.{u} {P : Sort u} {L : P → Prop} (K : LNot L) (p : P) : ¬L p
-Funtype.unpack : LNot ?m → ∀ (p : ?m), ¬?m p
-LNot.applyFun.{u} {P : Sort u} {L : P → Prop} (K : LNot L) {p : P} : ¬L p
-Funtype.apply : LNot ?m → ∀ {p : ?m}, ¬?m p

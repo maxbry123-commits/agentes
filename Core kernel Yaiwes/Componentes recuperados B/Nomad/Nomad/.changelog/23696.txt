@@ -1,3 +1,0 @@
-```release-note:improvement
-resources: Added `resources.secrets` field to configure size of secrets directory on Linux
-```

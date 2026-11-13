@@ -1,3 +1,0 @@
-```release-note:improvement
-cli: Improve command line completion of the `sentinel apply` command
-```

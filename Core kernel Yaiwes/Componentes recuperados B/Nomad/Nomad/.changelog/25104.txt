@@ -1,3 +1,0 @@
-```release-note:improvement
-ui: System, Batch and Sysbatch jobs get a "Revert to prev version" button on their main pages
-```

@@ -1,3 +1,0 @@
-```release-note:improvement
-scheduler: Stop failed allocations first when downscaling a task group
-```

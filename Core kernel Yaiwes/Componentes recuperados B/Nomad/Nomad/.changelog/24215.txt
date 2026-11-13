@@ -1,3 +1,0 @@
-```release-note:bug
-docker: Fix incorrect auth parsing for private registries
-```

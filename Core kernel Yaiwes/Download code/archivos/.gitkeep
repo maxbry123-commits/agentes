@@ -1,3 +1,0 @@
-# Download code / archivos
-
-Los artefactos de descarga generados por GitHub Actions se publican como artifacts del workflow y no se almacenan en Git.\n

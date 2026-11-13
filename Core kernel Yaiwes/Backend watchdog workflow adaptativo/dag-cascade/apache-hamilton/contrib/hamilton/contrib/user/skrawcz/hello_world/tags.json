@@ -1,7 +1,0 @@
-{
-  "schema": "1.0",
-  "use_case_tags": ["example", "transformation"],
-  "secondary_tags": {
-    "dataframe-library": "pandas"
-  }
-}

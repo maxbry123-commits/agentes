@@ -1,3 +1,0 @@
-```release-note:bug
-csi: Fixed a bug where evals blocked on missing CSI volumes would not unblock
-```

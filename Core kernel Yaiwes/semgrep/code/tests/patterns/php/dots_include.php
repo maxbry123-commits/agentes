@@ -1,3 +1,0 @@
-<?php
-//ERROR:
-include 'test';

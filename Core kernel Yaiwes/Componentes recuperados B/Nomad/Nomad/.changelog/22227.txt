@@ -1,3 +1,0 @@
-```release-note:bug
-config: Fixed a panic triggered by registering a job specifying a Vault cluster that has not been configured within the server
-```

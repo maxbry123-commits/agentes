@@ -1,3 +1,0 @@
-```release-note:bug
-agent: Fixed a bug where reloading the agent with systemd notification enabled would cause the agent to be killed by system
-```

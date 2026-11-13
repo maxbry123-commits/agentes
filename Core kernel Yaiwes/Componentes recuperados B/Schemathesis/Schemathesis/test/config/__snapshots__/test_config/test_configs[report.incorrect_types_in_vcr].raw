@@ -1,4 +1,0 @@
-Error in [reports.junit] section:
-  Type error:
-
-  - 'enabled' -> Must be a boolean, but got int: 1

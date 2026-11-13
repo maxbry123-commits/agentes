@@ -1,3 +1,0 @@
-steps:
-  build:
-    run: echo executed > executed.txt

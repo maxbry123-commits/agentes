@@ -1,8 +1,0 @@
-#: noheader.py:3
-msgid "Foo"
-msgstr ""
-
-#: noheader.py:5
-msgid "Bar"
-msgstr ""
-

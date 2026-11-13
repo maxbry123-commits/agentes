@@ -1,5 +1,0 @@
-{
-  "Evil": {
-    "py_type": "__import__('os').system('id') or str"
-  }
-}

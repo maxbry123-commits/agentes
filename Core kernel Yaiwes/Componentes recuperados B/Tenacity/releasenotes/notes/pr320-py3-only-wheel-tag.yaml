@@ -1,5 +1,0 @@
----
-other: >-
-  Corrected the PyPI-published wheel tag to match the
-  metadata saying that the release is Python 3 only.
-...

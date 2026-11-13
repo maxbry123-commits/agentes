@@ -1,8 +1,0 @@
-{
-  "operation": "request",
-  "body": {
-    "model": "client-model",
-    "input": "hello",
-    "top_p": 1.01
-  }
-}

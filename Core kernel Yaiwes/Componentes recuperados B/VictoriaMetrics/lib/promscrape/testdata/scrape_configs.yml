@@ -1,3 +1,0 @@
-- job_name: bar
-  static_configs:
-  - targets: [foo, bar]

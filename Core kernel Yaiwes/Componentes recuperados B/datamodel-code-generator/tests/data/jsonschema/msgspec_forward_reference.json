@@ -1,9 +1,0 @@
-{
-  "title": "Node",
-  "type": "object",
-  "properties": {
-    "child": {
-      "$ref": "#"
-    }
-  }
-}

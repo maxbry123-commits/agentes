@@ -1,1 +1,0 @@
-testdata/last/path.txt file contents!

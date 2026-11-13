@@ -1,1 +1,0 @@
-ALTER TABLE `artifact_view` ADD `use_in_workflow` boolean DEFAULT true NOT NULL;

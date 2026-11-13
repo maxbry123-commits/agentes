@@ -1,5 +1,0 @@
-{
-    "name": "Inception",
-    "director": "Christopher Nolan",
-    "extra": "key"
-}

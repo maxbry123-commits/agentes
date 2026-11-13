@@ -1,6 +1,0 @@
-apache-hamilton[visualization]
-numpy
-optuna
-pandas
-scikit-learn
-xgboost

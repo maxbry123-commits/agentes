@@ -1,3 +1,0 @@
-```release-note:improvement
-ui: Added Dynamic Host Volumes to the web UI
-```

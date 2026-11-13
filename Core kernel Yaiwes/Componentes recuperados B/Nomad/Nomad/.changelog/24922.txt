@@ -1,3 +1,0 @@
-```release-note:bug
-csi: Fixed a bug where volume context from the plugin would be erased on volume updates
-```

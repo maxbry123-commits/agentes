@@ -1,5 +1,0 @@
-User-agent: *
-Disallow: /api/
-Disallow: /admin/
-Allow: /v1/feeds/plugins
-Allow: /v1/feeds/skills

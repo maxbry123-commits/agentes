@@ -1,6 +1,0 @@
-Cargo.lock
-
-src/*.rs
-!src/lib.rs
-!src/trans.rs
-!src/serde_config.rs

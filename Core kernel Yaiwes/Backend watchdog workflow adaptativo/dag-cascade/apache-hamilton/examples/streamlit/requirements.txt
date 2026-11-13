@@ -1,4 +1,0 @@
-apache-hamilton
-pandas
-plotly
-streamlit

@@ -1,7 +1,0 @@
-syntax = "proto3";
-
-import "child.proto";
-
-message Root {
-  Child child = 1;
-}

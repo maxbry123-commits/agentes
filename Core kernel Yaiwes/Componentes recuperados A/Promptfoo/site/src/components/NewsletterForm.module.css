@@ -1,7 +1,0 @@
-.container {
-  padding-bottom: 4rem;
-}
-
-.container :global(.inline-container) {
-  margin: 0 auto;
-}

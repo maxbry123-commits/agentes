@@ -1,1 +1,0 @@
-SchemathesisConfig(projects=ProjectsConfig(default=ProjectConfig(parameters={'query.filter': {'kind': 'active', 'limit': 10}})))

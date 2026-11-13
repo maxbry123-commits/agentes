@@ -1,8 +1,0 @@
----
-source: tests/snapshots.rs
-expression: output
----
-| col1 | col2 |
-| --- | --- |
-| naïve | café |
-| Αθήνα | 数据 |

@@ -1,4 +1,0 @@
-__pycache__/
-*.pyc
-agentic-fundamentals/workspace/*
-!agentic-fundamentals/workspace/.gitignore

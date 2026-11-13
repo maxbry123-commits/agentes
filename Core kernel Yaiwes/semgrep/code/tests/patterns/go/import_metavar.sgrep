@@ -1,9 +1,0 @@
-import $P "github.com/sirupsen/logrus"
-
-...
-
-func $F() {
-  ...
-  $P.WithError(...).Info(...)
-  ...
-}

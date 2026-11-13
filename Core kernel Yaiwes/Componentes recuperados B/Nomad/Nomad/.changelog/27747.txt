@@ -1,3 +1,0 @@
-```release-note:bug
-oidc: Fixed a bug where the request cache could be corrupted by concurrent requests with the same nonce
-```

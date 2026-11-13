@@ -1,2 +1,0 @@
--- AlterTable
-ALTER TABLE "TaskRun" ADD COLUMN     "costInCents" DOUBLE PRECISION NOT NULL DEFAULT 0;

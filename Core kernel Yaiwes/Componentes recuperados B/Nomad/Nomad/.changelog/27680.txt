@@ -1,3 +1,0 @@
-```release-note:bug
-cli: Fixed `job dispatch` and `job periodic force` failing with a paginator error against servers older than the CLI
-```

@@ -1,6 +1,0 @@
-{
-  "title": "Foo",
-  "description": "before\nfrom __future__ import annotations\nafter",
-  "type": "object",
-  "properties": {}
-}

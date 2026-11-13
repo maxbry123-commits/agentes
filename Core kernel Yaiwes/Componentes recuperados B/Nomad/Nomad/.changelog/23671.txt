@@ -1,3 +1,0 @@
-```release-note:improvement
-cli: Added synopsis for `operator root` and `operator gossip` command
-```

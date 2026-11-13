@@ -1,3 +1,0 @@
-// this actually requires the tree-sitter-cpp parser
-// it does not parse with parser_cpp.mly
-$VAR->$MEMBER = ...;

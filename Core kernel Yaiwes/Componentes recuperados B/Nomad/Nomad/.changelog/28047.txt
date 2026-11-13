@@ -1,3 +1,0 @@
-```release-note:bug
-ui: Fixed the client drain popover form to provide an accessible name for assistive technologies
-```

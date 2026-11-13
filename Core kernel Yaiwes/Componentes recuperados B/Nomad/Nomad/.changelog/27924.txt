@@ -1,3 +1,0 @@
-```release-note:improvement
-build: Update Go toolchain to 1.26.3
-```

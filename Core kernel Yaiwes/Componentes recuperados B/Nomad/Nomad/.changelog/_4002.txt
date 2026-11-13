@@ -1,3 +1,0 @@
-```release-note:bug
-job (Enterprise): Renabled use of multiple vault namespaces in a single job
-```

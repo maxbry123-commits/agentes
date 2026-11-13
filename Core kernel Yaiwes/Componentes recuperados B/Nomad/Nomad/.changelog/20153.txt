@@ -1,3 +1,0 @@
-```release-note:improvement
-autopilot: add Enterprise health information to autopilot API
-```

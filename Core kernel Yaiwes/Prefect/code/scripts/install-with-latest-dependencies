@@ -1,3 +1,0 @@
-#!/bin/bash
-pip uninstall `pip freeze | grep -v '\-e'` --yes
-pip install -U -e .[dev]

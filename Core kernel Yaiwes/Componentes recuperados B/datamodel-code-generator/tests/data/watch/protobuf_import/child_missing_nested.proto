@@ -1,8 +1,0 @@
-syntax = "proto3";
-
-import "nested/grandchild.proto";
-
-message Child {
-  string name = 1;
-  Grandchild grandchild = 2;
-}

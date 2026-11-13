@@ -1,3 +1,0 @@
-```release-note:improvement
-ui: Added a copy button on Action output
-```

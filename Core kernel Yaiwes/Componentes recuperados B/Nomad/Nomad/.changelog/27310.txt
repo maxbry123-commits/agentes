@@ -1,3 +1,0 @@
-```release-note:improvement
-build: Add dev-static and static-release build targets that disable CGO and offer statically-linked binaries
-```

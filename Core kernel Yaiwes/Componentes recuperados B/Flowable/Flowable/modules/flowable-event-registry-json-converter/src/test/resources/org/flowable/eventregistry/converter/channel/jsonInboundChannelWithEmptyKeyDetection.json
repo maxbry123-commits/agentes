@@ -1,8 +1,0 @@
-{
-  "key": "jsonInboundWithEmptyKeyDetection",
-  "channelType": "inbound",
-  "type": "jms",
-  "deserializerType": "json",
-  "channelEventKeyDetection": {
-  }
-}

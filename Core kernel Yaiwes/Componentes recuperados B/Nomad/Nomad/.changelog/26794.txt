@@ -1,3 +1,0 @@
-```release-note:improvement
-build: Add tzdata to Docker container final image
-```

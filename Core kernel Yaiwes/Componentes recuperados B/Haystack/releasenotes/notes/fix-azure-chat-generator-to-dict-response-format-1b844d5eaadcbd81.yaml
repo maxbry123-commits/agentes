@@ -1,4 +1,0 @@
----
-fixes:
-  - |
-    Fix crash in ``AzureOpenAIChatGenerator.to_dict()`` when ``response_format`` is passed as a dictionary.

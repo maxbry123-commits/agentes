@@ -1,4 +1,0 @@
-steps:
-  - action: wait.http
-    with:
-      url: not-a-url

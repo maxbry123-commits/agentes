@@ -1,3 +1,0 @@
-message: "**response-ratelimiting**: Fixed an issue in response rate limiting plugin where usage headers ought to be sent to upstream are lost."
-type: bugfix
-scope: Plugin

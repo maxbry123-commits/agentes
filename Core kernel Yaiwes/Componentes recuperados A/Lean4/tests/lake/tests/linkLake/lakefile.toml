@@ -1,6 +1,0 @@
-name = "test"
-defaultTargets = ["main"]
-
-[[lean_exe]]
-name = "main"
-root = "Main"

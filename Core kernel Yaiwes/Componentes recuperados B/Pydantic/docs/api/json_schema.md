@@ -1,1 +1,0 @@
-::: pydantic.json_schema

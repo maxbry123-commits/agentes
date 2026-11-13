@@ -1,3 +1,0 @@
-```release-note:improvement
-cli: Added job start command to allow starting a stopped job from the cli
-```

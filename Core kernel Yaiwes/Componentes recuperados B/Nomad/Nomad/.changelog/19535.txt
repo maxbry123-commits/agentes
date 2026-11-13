@@ -1,3 +1,0 @@
-```release-note:improvement
-identity: Added vault_role to JWT workload identity claims if specified in jobspec
-```
