@@ -1,4 +1,0 @@
-target
-.docker/compat/data
-.docker/compat/kms
-target/compat

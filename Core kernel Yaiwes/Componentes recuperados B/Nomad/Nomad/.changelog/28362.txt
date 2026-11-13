@@ -1,3 +1,0 @@
-```release-note:improvement
-consul: Check IDs are now derived from SHA256 instead of SHA1
-```

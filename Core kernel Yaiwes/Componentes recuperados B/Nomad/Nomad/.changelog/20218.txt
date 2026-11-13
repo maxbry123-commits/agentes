@@ -1,3 +1,0 @@
-```release-note:bug
-ui: Show the namespace in the web UI exec command hint
-```

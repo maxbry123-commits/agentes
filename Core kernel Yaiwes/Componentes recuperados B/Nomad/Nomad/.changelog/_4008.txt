@@ -1,3 +1,0 @@
-```release-note:security
-sentinel: require sentinel-override ACL capability for overriding soft-mandatory policies on volumes
-```

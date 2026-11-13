@@ -1,3 +1,0 @@
-```release-note:improvement
-connect: Able to accept go-sockaddr address for consul grpc address
-```

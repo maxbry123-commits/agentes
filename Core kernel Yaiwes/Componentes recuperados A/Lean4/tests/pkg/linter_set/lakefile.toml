@@ -1,6 +1,0 @@
-name = "linter_set"
-defaultTargets = ["LinterSet"]
-
-[[lean_lib]]
-name = "LinterSet"
-leanOptions = { weak.linter.set.bar = true }

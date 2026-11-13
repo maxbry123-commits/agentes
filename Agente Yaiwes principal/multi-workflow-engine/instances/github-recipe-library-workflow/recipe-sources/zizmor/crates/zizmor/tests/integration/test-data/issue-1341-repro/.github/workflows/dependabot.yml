@@ -1,8 +1,0 @@
-name: a valid workflow
-on: [push]
-permissions: {}
-jobs:
-  something:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo ok

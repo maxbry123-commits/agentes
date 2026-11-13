@@ -1,5 +1,0 @@
-{
-  "deny": [
-    "user alice with role guest cannot delete orders/42"
-  ]
-}

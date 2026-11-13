@@ -1,3 +1,0 @@
-```release-note:improvement
-cli: Added `-json` and `-t` options to the `operator autopilot get-config` command.
-```

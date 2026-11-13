@@ -1,8 +1,0 @@
-{
-  "allow": false,
-  "reasons": [
-    "@example.com email blocked",
-    "name must be set",
-    "you must be 1 year older"
-  ]
-}

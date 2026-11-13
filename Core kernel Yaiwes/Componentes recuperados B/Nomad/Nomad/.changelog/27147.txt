@@ -1,3 +1,0 @@
-```release-note:bug
-dynamic host volumes: fix Windows compatibility
-```

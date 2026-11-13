@@ -1,4 +1,0 @@
-steps:
-  - action: file.move
-    with:
-      destination: example.txt

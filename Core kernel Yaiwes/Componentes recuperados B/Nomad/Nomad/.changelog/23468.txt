@@ -1,3 +1,0 @@
-```release-note:improvement
-ui: allow for multiple namespaces in jobs index filters
-```

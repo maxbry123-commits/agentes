@@ -1,3 +1,0 @@
-```release-note:breaking-change
-docker: default to hyper-v isolation mode on Windows
-```

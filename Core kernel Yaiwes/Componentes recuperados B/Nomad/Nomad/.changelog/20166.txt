@@ -1,3 +1,0 @@
-```release-note:bug
-agent: allow configuration of in-memory telemetry sink
-```

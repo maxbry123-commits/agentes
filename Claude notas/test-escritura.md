@@ -1,1 +1,0 @@
-test de escritura pequena

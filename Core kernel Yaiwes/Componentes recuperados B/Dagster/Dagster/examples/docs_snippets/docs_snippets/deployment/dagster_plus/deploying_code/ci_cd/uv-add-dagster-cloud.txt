@@ -1,2 +1,0 @@
-uv add dagster-cloud
-uv add --dev dagster-dg-cli

@@ -1,3 +1,0 @@
-```release-note:bug
-acl: Fix plugin policy validation when checking write permissions
-```

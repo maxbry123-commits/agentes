@@ -1,3 +1,0 @@
-```release-note:bug
-core: Fixed system jobs being rescheduled after a node is drained and marked eligible again
-```

@@ -1,3 +1,0 @@
-```release-note:bug
-api: only include running tasks in allocation resource usage
-```

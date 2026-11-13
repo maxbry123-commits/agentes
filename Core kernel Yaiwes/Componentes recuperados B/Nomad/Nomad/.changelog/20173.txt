@@ -1,3 +1,0 @@
-```release-note:improvement
-deps: Update msgpack to v2
-```

@@ -1,3 +1,0 @@
-test_expect_success 'grep -E is flagged' '
-	grep -E "pat+ern" file
-'

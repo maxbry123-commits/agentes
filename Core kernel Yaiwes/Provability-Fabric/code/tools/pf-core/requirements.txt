@@ -1,4 +1,0 @@
-# PF-Core validator pin (Phase 7 PR-3)
--e tools/pf-core
-jsonschema>=4.0
-referencing>=0.30

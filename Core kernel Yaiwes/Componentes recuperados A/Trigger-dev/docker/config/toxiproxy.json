@@ -1,8 +1,0 @@
-[
-  {
-    "name": "trigger_webapp_local",
-    "listen": "[::]:30303",
-    "upstream": "host.docker.internal:3030",
-    "enabled": true
-  }
-]

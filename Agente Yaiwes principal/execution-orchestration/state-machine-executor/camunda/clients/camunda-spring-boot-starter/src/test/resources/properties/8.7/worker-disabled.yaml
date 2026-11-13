@@ -1,6 +1,0 @@
-camunda:
-  client:
-    zeebe:
-      override:
-        foo:
-          enabled: false

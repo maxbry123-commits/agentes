@@ -1,3 +1,0 @@
-```release-note:improvement
-ui: for system and sysbatch jobs, now show client name on hover in job panel
-```

@@ -1,3 +1,0 @@
-```release-note:improvement
-cli: Updated example job specifications in nomad job init
-```

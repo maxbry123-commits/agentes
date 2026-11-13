@@ -1,5 +1,0 @@
-steps:
-  - action: artifact.write
-    with:
-      path: "/etc/escape.txt"
-      content: hi

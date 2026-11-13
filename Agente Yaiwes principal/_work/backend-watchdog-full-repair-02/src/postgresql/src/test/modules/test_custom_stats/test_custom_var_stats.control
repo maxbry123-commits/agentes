@@ -1,4 +1,0 @@
-comment = 'variable-sized custom pgstats'
-default_version = '1.0'
-module_pathname = '$libdir/test_custom_var_stats'
-relocatable = true

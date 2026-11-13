@@ -1,4 +1,0 @@
-# Bun workspace configuration.
-# Dependencies are hoisted to the root node_modules by default.
-[install]
-exact = true

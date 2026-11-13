@@ -1,5 +1,0 @@
-enum RIGHT {
-    case first
-    // a comment
-    case ChangeMe
-}

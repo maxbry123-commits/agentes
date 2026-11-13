@@ -1,3 +1,0 @@
-```release-note:bug
-client: Added a new `fingerprint` configuration block which allows users to specify retry behavior for the `env_aws`, `env_azure`, `env_digitalocean` and `env_gcp` fingerprinters.
-```

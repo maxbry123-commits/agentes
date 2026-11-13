@@ -1,4 +1,0 @@
-local $V = open();
-close($V)
-
-

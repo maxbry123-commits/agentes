@@ -1,9 +1,0 @@
-{
-  "title": "Golden Synthesizer",
-  "pages": [
-    "synthesizer-generate-from-docs",
-    "synthesizer-generate-from-contexts",
-    "synthesizer-generate-from-goldens",
-    "synthesizer-generate-from-scratch"
-  ]
-}

@@ -1,1 +1,0 @@
-ALTER TABLE `browser_tabs` ADD `task_id` text;

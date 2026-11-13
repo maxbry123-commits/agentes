@@ -1,7 +1,0 @@
-{
-  "allow": false,
-  "new_checkout_features": [
-    "new_ui",
-    "test_speedy_checkout"
-  ]
-}

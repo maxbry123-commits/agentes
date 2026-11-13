@@ -1,6 +1,0 @@
-# MATCH:
-ONBUILD RUN ls
-
-ONBUILD RUN echo
-
-RUN ls

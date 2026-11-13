@@ -1,7 +1,0 @@
-class Service {
-    @objc func RIGHT() {
-        let path = "/api"
-        // a comment
-        log(ChangeMe)
-    }
-}

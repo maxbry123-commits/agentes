@@ -1,3 +1,0 @@
-x : Bool
-fun x => x : Nat → Nat
-fun x x_1 => x : Int → Nat → Int

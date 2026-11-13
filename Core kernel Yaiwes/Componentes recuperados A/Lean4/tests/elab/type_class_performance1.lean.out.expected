@@ -1,6 +1,0 @@
-structure USize : Type
-number of parameters: 0
-fields:
-  USize.toBitVec : BitVec System.Platform.numBits
-constructor:
-  USize.ofBitVec (toBitVec : BitVec System.Platform.numBits) : USize

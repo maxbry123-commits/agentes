@@ -1,3 +1,0 @@
-```release-note:improvement
-getter: Added option to chown artifact(s) to task user
-```

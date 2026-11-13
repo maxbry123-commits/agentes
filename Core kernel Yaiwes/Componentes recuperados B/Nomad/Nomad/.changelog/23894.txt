@@ -1,3 +1,0 @@
-```release-note:improvement
-quotas (Enterprise): Added the possibility to set device count limits
-```

@@ -1,4 +1,0 @@
-42
-[Meta.debug] r: match x with
-    | some x => x
-    | none => 0

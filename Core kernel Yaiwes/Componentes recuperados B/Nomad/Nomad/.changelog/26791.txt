@@ -1,3 +1,0 @@
-```release-note:improvement
-install (Enterprise): Updated license information displayed during post-install
-```

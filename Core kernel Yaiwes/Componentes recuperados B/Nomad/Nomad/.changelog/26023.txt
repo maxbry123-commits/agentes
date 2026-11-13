@@ -1,3 +1,0 @@
-```release-note:bug
-agent: Fixed bug where agent would exit early from graceful shutdown when managed by systemd
-```

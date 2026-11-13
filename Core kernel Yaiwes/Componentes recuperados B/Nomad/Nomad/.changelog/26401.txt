@@ -1,3 +1,0 @@
-```release-note:bug
-alloc exec: Fixed executor panic when exec-ing a rootless raw_exec task
-```

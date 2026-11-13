@@ -1,7 +1,0 @@
-Cat:
-  type: object
-  properties:
-    name:
-      type: string
-    breed:
-      type: string

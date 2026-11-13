@@ -1,7 +1,0 @@
-extend type Foo {
-  baz: Bar!
-}
-
-type Baz {
-  quux: Int!
-}

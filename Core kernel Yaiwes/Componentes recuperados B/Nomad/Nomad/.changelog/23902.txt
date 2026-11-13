@@ -1,3 +1,0 @@
-```release-note:bug
-identity: Fixed a bug where dispatch and periodic jobs would have their job ID and not parent job ID used when creating the subject claim
-```

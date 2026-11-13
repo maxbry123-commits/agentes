@@ -1,3 +1,0 @@
-test_expect_success 'negated grep is flagged' '
-	! grep pattern file
-'

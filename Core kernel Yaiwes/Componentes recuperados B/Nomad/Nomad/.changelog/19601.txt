@@ -1,3 +1,0 @@
-```release-note:improvement
-ui: Added group name to allocation tooltips on job status panel
-```

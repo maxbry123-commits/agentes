@@ -1,3 +1,0 @@
-```release-note:improvement
-qemu: adds an emulator allowlist to qemu plugin config
-```

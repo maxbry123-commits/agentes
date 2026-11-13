@@ -1,3 +1,0 @@
-certifi>=2023.11.17
-chardet >= 4.0.0 , < 5
-urllib3

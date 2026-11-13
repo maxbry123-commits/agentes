@@ -1,9 +1,0 @@
-{
-  "operations": {
-    "GET /items": {
-      "inputs": [],
-      "outputs": []
-    }
-  },
-  "resources": {}
-}

@@ -1,5 +1,0 @@
-params: "prod"
-steps:
-  - name: should-not-run
-    run: |
-      printf '%s\n' '${params.environment}' > executed.txt

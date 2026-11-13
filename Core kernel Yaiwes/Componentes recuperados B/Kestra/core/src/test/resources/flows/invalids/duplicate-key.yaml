@@ -1,8 +1,0 @@
-id: duplicate-key
-namespace: io.kestra.tests
-
-tasks:
-  - id: bad-task
-    type: io.kestra.plugin.core.log.Log
-    message: Hello World
-    message: Hello World

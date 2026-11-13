@@ -1,1 +1,0 @@
-export { ChatHistoryTab } from './ChatHistoryTab';

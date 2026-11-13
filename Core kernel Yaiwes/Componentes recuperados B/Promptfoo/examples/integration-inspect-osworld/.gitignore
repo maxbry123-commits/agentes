@@ -1,9 +1,0 @@
-inspect_logs/
-*.eval
-*.json
-*.jsonl
-screenshots/
-*.png
-*.jpg
-*.jpeg
-*.webp

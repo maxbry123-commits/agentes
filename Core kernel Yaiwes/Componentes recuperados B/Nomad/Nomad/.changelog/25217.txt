@@ -1,3 +1,0 @@
-```release-note:breaking-change
-consul: The deprecated token-based authentication workflow for allocations has been removed. Please see [Nomad's upgrade guide](https://developer.hashicorp.com/nomad/docs/upgrade/upgrade-specific) for more detail.
-```

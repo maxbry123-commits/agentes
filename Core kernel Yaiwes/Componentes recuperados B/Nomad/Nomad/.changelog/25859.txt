@@ -1,3 +1,0 @@
-```release-note:bug
-exec: Adjust USER and HOME env vars when user value is set
-```

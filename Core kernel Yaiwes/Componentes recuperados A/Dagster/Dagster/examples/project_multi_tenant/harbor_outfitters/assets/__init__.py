@@ -1,1 +1,0 @@
-"""Tenant Alpha asset modules."""

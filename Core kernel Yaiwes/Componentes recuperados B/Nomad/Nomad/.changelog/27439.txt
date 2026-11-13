@@ -1,3 +1,0 @@
-```release-note:security
-build: Updated toolchain to Go 1.25.6
-```

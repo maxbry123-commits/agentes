@@ -1,3 +1,0 @@
-```release-note:security
-ui: Upgraded Ember to 6.10
-```

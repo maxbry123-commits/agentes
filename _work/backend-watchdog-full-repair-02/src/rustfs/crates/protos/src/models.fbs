@@ -1,5 +1,0 @@
-namespace models;
-
-table PingBody {
-    payload: [ubyte];
-}

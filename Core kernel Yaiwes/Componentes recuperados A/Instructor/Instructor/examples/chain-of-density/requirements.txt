@@ -1,5 +1,0 @@
-openai
-pydantic
-instructor
-nltk
-rich

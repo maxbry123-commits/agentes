@@ -1,3 +1,0 @@
-```release-note:improvement
-ui: Added possibility to supply HCL variable values on job submission
-```

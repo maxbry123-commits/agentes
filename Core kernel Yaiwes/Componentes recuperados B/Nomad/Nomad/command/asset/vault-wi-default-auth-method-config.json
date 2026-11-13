@@ -1,5 +1,0 @@
-{
-  "jwks_url": "http://localhost:4646/.well-known/jwks.json",
-  "jwt_supported_algs": ["EdDSA", "RS256"],
-  "default_role": "nomad-workloads"
-}

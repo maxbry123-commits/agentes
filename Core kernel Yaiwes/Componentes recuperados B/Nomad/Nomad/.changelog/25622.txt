@@ -1,3 +1,0 @@
-```release-note:improvement
-command: added priority flag to job dispatch command
-```

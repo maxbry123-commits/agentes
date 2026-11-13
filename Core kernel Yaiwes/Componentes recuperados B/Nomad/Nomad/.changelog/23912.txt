@@ -1,3 +1,0 @@
-```release-note:breaking-change
-jobspec: Removed support for HCLv1
-```

@@ -1,3 +1,0 @@
-{"textDocument": {"uri": "file:///goalEOF.lean"},
- "position": {"line": 5, "character": 25}}
-{"rendered": "```lean\n⊢ False\n```", "goals": ["⊢ False"]}

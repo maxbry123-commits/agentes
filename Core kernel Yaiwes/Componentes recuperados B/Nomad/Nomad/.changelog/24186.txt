@@ -1,3 +1,0 @@
-```release-note:improvement
-consul: add support for service weight
-```

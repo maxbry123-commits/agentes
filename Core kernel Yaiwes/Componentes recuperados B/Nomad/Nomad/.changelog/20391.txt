@@ -1,3 +1,0 @@
-```release-note:security
-artifact: Updated `go-getter` dependency to v1.7.4 to address CVE-2024-3817
-```

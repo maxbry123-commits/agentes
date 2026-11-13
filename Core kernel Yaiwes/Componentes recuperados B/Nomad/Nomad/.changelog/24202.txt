@@ -1,3 +1,0 @@
-```release-note:bug
-docker: Fixed a bug where alloc exec with stdin would hang
-```

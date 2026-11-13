@@ -1,3 +1,0 @@
-```release-note:improvement
-client: Fixed a bug where JSON formatted logs would not show the requested and overlapping cores when failing to reserve cores
-```

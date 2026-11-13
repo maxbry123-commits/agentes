@@ -1,4 +1,0 @@
-steps:
-  - action: duckdb@v1
-    with:
-      query: "SELECT 42 AS answer, 'duckdb' AS engine;"

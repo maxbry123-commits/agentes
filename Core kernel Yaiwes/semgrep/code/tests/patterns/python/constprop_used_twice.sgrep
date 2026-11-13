@@ -1,1 +1,0 @@
-flask.response.set_cookie(..., httponly=True, secure=True,...)

@@ -1,2 +1,0 @@
-apache-hamilton[dask]
-# apache-hamilton[visualization]   # if visualization is desired

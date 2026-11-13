@@ -1,1 +1,0 @@
-Function.uncurry Nat.add : Nat × Nat → Nat

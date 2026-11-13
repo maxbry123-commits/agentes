@@ -1,3 +1,0 @@
-```release-note:bug
-csi: Fixed a bug where drivers that emit multiple topology segments would cause placements to fail
-```

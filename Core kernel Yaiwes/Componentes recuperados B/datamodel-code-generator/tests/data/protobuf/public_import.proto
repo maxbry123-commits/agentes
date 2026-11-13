@@ -1,5 +1,0 @@
-syntax = "proto3";
-
-package example.public;
-
-import public "public_common.proto";

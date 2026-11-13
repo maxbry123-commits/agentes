@@ -1,3 +1,0 @@
-```release-note:improvement
-docker: Validate that unprivileged containers aren't running as ContainerAdmin on Windows
-```

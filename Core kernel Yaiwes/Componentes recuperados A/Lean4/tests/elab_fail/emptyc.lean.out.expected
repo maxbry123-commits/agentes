@@ -1,6 +1,0 @@
-emptyc.lean:19:0-19:2: error: Ambiguous term
-  { }
-Possible interpretations:
-  ∅ : A
-  
-  { } : A

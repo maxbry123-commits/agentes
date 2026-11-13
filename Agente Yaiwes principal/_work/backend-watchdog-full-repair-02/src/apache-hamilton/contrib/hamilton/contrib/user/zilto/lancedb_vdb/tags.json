@@ -1,7 +1,0 @@
-{
-  "schema": "1.0",
-  "use_case_tags": ["NLP", "LLM", "Vector search"],
-  "secondary_tags": {
-    "language": "English"
-  }
-}

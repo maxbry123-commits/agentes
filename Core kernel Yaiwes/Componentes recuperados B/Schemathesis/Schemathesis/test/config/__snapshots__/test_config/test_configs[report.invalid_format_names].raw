@@ -1,7 +1,0 @@
-Error in [reports] section:
-  Unknown properties:
-
-  - 'csv'
-  - 'junitxml' -> Did you mean 'junit'?
-
-Valid properties for [reports] are: 'directory', 'preserve-bytes', 'junit', 'har', 'vcr', 'ndjson', 'json', 'allure'.

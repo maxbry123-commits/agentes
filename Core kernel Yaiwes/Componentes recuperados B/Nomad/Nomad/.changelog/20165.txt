@@ -1,3 +1,0 @@
-```release-note:bug
-template: Fixed a bug where a partial `client.template` block would cause defaults for unspecified fields to be ignored
-```

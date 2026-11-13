@@ -1,3 +1,0 @@
-```release-note:bug
-api: Fixed bug where newlines in JobSubmission vars weren't encoded correctly
-```

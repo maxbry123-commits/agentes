@@ -1,5 +1,0 @@
-working_dir: .
-steps:
-  - id: write
-    run: |
-      printf 'alpha\nbeta\n' | grep beta > operators-preserved.txt

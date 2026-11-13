@@ -1,4 +1,0 @@
-Error in root section:
-  Type error:
-
-  - 'reports' -> Must be an object, but got int: 42

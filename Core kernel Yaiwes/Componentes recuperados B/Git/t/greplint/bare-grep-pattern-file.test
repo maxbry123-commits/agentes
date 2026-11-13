@@ -1,3 +1,0 @@
-test_expect_success 'grep -f is flagged' '
-	grep -f patterns.txt file
-'

@@ -1,5 +1,0 @@
-{
-  "schema_version": 2,
-  "comment": "Active recalls. Empty = no recalls. Format: list of {manifest_version, reason, recalled_at_utc, severity}.",
-  "recalls": []
-}

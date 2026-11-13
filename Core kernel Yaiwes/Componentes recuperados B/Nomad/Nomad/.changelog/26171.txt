@@ -1,3 +1,0 @@
-```release-note:bug
-agent: Fixed a bug to prevent panic during graceful server shutdown
-```

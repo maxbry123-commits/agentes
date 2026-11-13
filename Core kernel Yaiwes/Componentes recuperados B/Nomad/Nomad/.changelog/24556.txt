@@ -1,3 +1,0 @@
-```release-note:improvement
-client: Emit telemetry from prerun and prestart hooks for monitoring and alerting
-```

@@ -1,3 +1,0 @@
-```release-note:bug
-scheduler: Fix a bug where reserved resources are not calculated correctly
-```

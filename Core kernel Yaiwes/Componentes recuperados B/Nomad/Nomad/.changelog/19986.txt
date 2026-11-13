@@ -1,3 +1,0 @@
-```release-note:bug
-server: Prevent NPE when service lacks identity
-```

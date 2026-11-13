@@ -1,3 +1,0 @@
-```release-note:bug
-state: Fixed setting GC threshold to more than 72hrs being ignored
-```

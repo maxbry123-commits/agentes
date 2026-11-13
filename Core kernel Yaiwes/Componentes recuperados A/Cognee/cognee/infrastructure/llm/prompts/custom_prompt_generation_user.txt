@@ -1,3 +1,0 @@
-Generate the extraction prompt based on the following schema:
-
-{{GRAPH_SCHEMA_JSON}}

@@ -1,7 +1,0 @@
-{
-  "schema": "1.0",
-  "use_case_tags": ["ML", "classification", "regression", "XGBoost", "Optuna", "hyperparameters"],
-  "secondary_tags": {
-    "language": "English"
-  }
-}

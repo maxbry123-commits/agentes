@@ -1,5 +1,0 @@
----
-fixes:
-  - |
-    Cancel and await sibling retrieval tasks when a concurrent call fails in ``MultiRetriever``,
-    ``MultiQueryTextRetriever``, or ``MultiQueryEmbeddingRetriever``.

@@ -1,2 +1,0 @@
-Chose the summaries that are relevant to the following query: `{{ query }}`
-Here are the all summaries: `{{ summaries }}`

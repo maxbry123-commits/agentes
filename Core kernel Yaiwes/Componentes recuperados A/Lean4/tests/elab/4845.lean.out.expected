@@ -1,4 +1,0 @@
-z : Nat
-_H : 0 = z
-H : z = z
-⊢ True

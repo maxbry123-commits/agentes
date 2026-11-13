@@ -1,4 +1,0 @@
-{"textDocument": {"uri": "file:///ghostGoals.lean"},
- "position": {"line": 17, "character": 4}}
-{"rendered": "```lean\nx : Nat\n⊢ ∀ (b : Nat), x ≤ b → b ≤ x → x = b\n```",
- "goals": ["x : Nat\n⊢ ∀ (b : Nat), x ≤ b → b ≤ x → x = b"]}

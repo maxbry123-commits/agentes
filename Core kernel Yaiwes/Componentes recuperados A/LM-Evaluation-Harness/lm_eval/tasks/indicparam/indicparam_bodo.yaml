@@ -1,4 +1,0 @@
-include: _default_indicparam_template_yaml
-task: indicparam_bodo
-task_alias: Bodo
-process_docs: !function utils.process_docs_bodo

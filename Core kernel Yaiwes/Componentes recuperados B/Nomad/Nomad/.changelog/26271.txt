@@ -1,3 +1,0 @@
-```release-note:bug
-client: run all allocrunner postrun (cleanup) hooks, even if any of them error
-```

@@ -1,3 +1,0 @@
-```release-note:improvement
-acl: Support uploading client ACL tokens
-```

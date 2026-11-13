@@ -1,3 +1,0 @@
-```release-note:bug
-client: fixed a bug where AMD CPUs were not correctly fingerprinting base speed
-```

@@ -1,4 +1,0 @@
-public static func RIGHT() -> Int {
-    // a comment
-    return ChangeMe
-}

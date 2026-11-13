@@ -1,5 +1,0 @@
-working_dir: .
-steps:
-  - id: hello
-    run: printf 'hello\n'
-    stdout: single-command.out

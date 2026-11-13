@@ -1,8 +1,0 @@
-groups:
-  - name: TestEmptyRules
-    interval: 2s
-    concurrency: 2
-    rules:
-
-  - name: TestNoRules
-    type: prometheus

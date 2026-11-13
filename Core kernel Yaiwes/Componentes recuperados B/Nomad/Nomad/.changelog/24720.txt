@@ -1,3 +1,0 @@
-```release-note:improvement
-deps: Upgraded aws-sdk-go from v1 to v2
-```

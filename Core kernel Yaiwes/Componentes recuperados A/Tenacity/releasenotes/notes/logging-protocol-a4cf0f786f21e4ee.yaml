@@ -1,5 +1,0 @@
----
-other:
-  - |
-    Accept non-standard logger in helpers logging something (eg: structlog, loguru...)
-

@@ -1,2 +1,0 @@
-param($value)
-$value

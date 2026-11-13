@@ -1,3 +1,0 @@
-```release-note:bug
-cli: Corrected an ordering mistake in job tag unset help text
-```

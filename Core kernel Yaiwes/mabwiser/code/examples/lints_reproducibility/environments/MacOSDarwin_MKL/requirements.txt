@@ -1,6 +1,0 @@
-jupyter
-jurity
-mabwiser
-numpy==1.18.1
-pandas
-scikit-learn==0.24.1

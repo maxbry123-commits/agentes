@@ -1,3 +1,0 @@
-```release-note:improvement
-client: Add noswap mount option to secrets directory where supported on Linux
-```

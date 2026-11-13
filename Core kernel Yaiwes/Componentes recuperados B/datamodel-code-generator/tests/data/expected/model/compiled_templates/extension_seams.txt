@@ -1,9 +1,0 @@
-Direct: TypeAlias = str
-external override: External
-class ExternalJinja(BaseModel):
-    pass
-unknown Unknown: accepted
-custom Custom: accepted
-absolute Absolute: raw template data
-class Positional(BaseModel):
-    pass

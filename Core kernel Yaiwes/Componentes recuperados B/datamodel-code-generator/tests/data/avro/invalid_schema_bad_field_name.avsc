@@ -1,7 +1,0 @@
-{
-  "type": "record",
-  "name": "BadField",
-  "fields": [
-    {"name": "bad-name", "type": "string"}
-  ]
-}

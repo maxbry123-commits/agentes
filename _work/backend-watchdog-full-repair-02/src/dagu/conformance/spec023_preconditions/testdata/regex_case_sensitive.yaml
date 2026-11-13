@@ -1,7 +1,0 @@
-working_dir: .
-steps:
-  - id: write
-    preconditions:
-      - condition: alpha
-        expected: re:^ALPHA$
-    run: printf '%s\n' ran > regex-case-ran.txt

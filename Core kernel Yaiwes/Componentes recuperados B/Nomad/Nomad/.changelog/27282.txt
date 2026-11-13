@@ -1,3 +1,0 @@
-```release-note:bug
-ui: Tagging job versions in another namespace than the default-namespace resulted in an error
-```

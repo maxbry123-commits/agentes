@@ -1,7 +1,0 @@
-aggregate_metric_list:
--   metric: acc
-    weight_by_size: true
-group: greekmmlu_humanities
-group_alias: humanities
-task:
-- greekmmlu_humanities_tasks

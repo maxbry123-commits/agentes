@@ -1,5 +1,0 @@
-"""Custom module docstring.
-
-This module contains generated models.
-"""
-

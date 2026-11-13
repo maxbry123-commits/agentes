@@ -1,3 +1,0 @@
-```release-note:improvement
-cli: Added support for prefix ID matching and wildcard namespaces to `service info` command
-```

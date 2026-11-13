@@ -1,3 +1,0 @@
-```release-note:bug
-scheduler: Fixed a bug where preemption of allocations by tasks that require devices could incorrectly fail placement
-```

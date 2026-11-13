@@ -1,1 +1,0 @@
-add_gtest(test_llama2 model kernel-cpu module)

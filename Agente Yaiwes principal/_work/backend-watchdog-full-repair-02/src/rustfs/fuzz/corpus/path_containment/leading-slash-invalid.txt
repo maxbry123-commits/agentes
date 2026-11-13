@@ -1,4 +1,0 @@
-valid-bucket
-nested/path.txt
-
-leading_slash

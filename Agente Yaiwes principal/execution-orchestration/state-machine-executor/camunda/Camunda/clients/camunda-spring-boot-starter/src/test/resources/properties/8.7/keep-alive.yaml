@@ -1,4 +1,0 @@
-camunda:
-  client:
-    zeebe:
-      keep-alive: PT60S

@@ -1,3 +1,0 @@
-```release-note:improvement
-scheduling: Improve performance of scheduling when checking reserved ports usage
-```

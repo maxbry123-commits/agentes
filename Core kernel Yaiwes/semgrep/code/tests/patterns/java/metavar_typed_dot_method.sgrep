@@ -1,1 +1,0 @@
-(HttpServletRequest $A).getQueryString();

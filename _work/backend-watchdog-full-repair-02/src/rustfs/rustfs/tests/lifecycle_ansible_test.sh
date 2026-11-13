@@ -1,1 +1,0 @@
-ansible-playbook rustfs/tests/lifecycle_ansible_test.yml

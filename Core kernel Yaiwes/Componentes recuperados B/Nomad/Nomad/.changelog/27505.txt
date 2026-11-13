@@ -1,3 +1,0 @@
-```release-note:improvement
-cli: Added autocompletions for ACL auth method, binding rule, policy, and token subcommands
-```

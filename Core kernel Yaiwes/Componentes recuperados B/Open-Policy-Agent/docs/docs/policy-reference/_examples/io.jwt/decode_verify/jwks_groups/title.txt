@@ -1,1 +1,0 @@
-Validating a token's groups or roles

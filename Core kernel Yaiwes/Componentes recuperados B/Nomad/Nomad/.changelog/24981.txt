@@ -1,3 +1,0 @@
-```release-note:bug
-docker: Fixed a bug where "error reading image pull progress" caused the allocation to get stuck pending
-```

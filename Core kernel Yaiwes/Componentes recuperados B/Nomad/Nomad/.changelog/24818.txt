@@ -1,3 +1,0 @@
-```release-note:bug
-ui: Ensure pending service check blocks are filled
-```

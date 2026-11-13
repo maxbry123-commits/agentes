@@ -1,3 +1,0 @@
-```release-note:bug
-acl: Made /agent and /recommendations endpoints workload-identity-aware
-```

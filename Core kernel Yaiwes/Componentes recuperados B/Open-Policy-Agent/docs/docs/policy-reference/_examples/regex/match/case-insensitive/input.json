@@ -1,8 +1,0 @@
-{
-  "repos": {
-    "regal": "github.com/styrainc/regal",
-    "demos": "github.com/StyraInc/opa-sdk-demos",
-    "enterprise-opa": "github.com/styrainc/enterprise-opa",
-    "opa": "github.com/open-policy-agent/opa"
-  }
-}

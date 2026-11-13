@@ -1,1 +1,0 @@
-CREATE INDEX `workspaces_repository_id_idx` ON `workspaces` (`repository_id`);

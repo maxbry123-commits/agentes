@@ -1,7 +1,0 @@
-# MATCH:
-ENV FOO=42
-
-# MATCH:
-ENV FOO="hello!"
-
-ENV BAR=42

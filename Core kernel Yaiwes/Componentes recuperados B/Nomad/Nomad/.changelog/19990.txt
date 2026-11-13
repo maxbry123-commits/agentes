@@ -1,3 +1,0 @@
-```release-note:bug
-connect: Fixed a bug where `expose` blocks would not appear in `job plan` diff output
-```

@@ -1,3 +1,0 @@
-```release-note:bug
-client: Fix issue where deleted allocations may remain running
-```

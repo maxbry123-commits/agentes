@@ -1,9 +1,0 @@
-{
-  "mappings": {
-    "properties": {
-      "hello": {
-        "type": "text"
-      }
-    }
-  }
-}

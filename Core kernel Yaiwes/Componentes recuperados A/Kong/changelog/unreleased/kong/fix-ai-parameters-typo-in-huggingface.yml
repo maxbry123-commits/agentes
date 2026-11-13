@@ -1,4 +1,0 @@
-message: |
-  **ai-proxy**: fix a parameters typo in llm huggingface
-type: bugfix
-scope: Plugin

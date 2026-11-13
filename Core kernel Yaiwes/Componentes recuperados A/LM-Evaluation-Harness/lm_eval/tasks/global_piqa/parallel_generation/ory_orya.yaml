@@ -1,3 +1,0 @@
-dataset_name: ory_orya
-include: _template
-task: global_piqa_parallel_generation_ory_orya

@@ -1,2 +1,0 @@
-class LMTPStreamError(Exception):
-    pass

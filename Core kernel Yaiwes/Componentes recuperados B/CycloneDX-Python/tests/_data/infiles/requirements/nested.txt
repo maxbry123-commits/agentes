@@ -1,4 +1,0 @@
-# nest another requirement file in
-
--r frozen.txt
-

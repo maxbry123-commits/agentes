@@ -1,2 +1,0 @@
-pytest-benchmark==4.0.0
--r test-requirements.txt

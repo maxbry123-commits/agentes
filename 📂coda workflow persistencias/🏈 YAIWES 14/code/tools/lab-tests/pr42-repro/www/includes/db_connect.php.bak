@@ -1,4 +1,0 @@
-<?php
-$db_host = 'db01.corp';
-$db_user = 'lupinadmin';
-$db_password = 'Sup3rS3cretLupin';

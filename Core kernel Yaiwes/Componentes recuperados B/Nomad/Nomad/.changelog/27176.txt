@@ -1,3 +1,0 @@
-```release-note:bug
-csi: Fixed a bug where reading a volume from the API or event stream could erase its secrets
-```

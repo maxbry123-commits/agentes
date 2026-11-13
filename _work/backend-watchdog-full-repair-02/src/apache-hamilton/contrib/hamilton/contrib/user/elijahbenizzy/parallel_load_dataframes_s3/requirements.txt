@@ -1,3 +1,0 @@
-# put non-hamilton requirements here
-boto3
-pandas

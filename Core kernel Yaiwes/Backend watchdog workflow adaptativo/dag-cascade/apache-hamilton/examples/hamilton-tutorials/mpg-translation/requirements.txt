@@ -1,4 +1,0 @@
-apache-hamilton[visualization,sdk,ui]
-numpy
-pandas
-scikit-learn

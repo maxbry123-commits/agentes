@@ -1,6 +1,0 @@
-*.o
-config.pb.h
-config.pb.cc
-unotify/unotify.pb.h
-unotify/unotify.pb.cc
-nsjail

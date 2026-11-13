@@ -1,3 +1,0 @@
-name = "test"
-testDriver = "dep/driver/foo"
-lintDriver = "dep/driver/foo"

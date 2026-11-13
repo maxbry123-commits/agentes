@@ -1,4 +1,0 @@
-name: permissions
-description: Edit permissions for the current agent profile.
-type: script
-script_path: connector_commands.py

@@ -1,1 +1,0 @@
-"""Shared agent runtime infrastructure."""

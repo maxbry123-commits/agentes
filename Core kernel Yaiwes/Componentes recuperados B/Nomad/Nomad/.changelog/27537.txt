@@ -1,3 +1,0 @@
-```release-note:bug
-drivers: Pass error when included in fingerprint response
-```

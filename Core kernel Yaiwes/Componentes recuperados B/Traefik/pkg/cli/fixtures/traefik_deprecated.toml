@@ -1,8 +1,0 @@
-[accesslog]
-
-[entrypoints.test.http.tls]
-
-[providers.marathon]
-
-[experimental]
-  futureUnknownFlag = true

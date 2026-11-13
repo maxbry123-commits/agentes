@@ -1,3 +1,0 @@
-```release-note:improvement
-cli: `job plan` now propagates `-hcl2-strict=false` into the suggested `nomad job run -check-index` invocation when the user passed it on the plan command line
-```

@@ -1,7 +1,0 @@
-options:
-  provider:
-    id: file://../providers/defaulttest-llm-rubric-grader.cjs
-
-assert:
-  - type: llm-rubric
-    value: 'Does the output correctly reference the input: {{myVar}}?'

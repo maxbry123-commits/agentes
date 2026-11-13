@@ -1,5 +1,0 @@
-name = "test"
-defaultTargets = ["Foo"]
-
-[[lean_lib]]
-name = "Foo"

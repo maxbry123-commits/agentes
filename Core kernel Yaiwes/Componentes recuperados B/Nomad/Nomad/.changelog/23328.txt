@@ -1,3 +1,0 @@
-```release-note:improvement
-ui: adds a Stopped label for jobs that a user has manually stopped
-```

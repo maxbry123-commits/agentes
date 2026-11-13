@@ -1,3 +1,0 @@
-```release-note:improvement
-cli: Added retry for nomad job run monitoring
-```

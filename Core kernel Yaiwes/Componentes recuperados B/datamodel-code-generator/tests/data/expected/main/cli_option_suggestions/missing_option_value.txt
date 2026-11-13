@@ -1,3 +1,0 @@
-usage:
-  datamodel-codegen [options]
-pytest: error: argument --output-model-type: expected one argument

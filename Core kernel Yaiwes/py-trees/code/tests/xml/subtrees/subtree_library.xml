@@ -1,7 +1,0 @@
-<root>
-  <BehaviorTree ID="LibraryTree">
-    <Sequence name="LibSeq">
-      <Producer name="LibProducer" output="{lib_out}"/>
-    </Sequence>
-  </BehaviorTree>
-</root>

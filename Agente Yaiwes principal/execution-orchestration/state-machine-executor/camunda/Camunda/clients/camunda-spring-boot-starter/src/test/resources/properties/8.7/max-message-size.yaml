@@ -1,4 +1,0 @@
-camunda:
-  client:
-    zeebe:
-      max-message-size: 6MB

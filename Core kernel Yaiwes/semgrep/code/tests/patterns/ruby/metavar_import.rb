@@ -1,2 +1,0 @@
-#ERROR: match
-require 'foo'

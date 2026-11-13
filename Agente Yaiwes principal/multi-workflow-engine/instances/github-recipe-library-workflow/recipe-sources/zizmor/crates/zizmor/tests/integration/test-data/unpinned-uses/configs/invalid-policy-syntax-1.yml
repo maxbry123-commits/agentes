@@ -1,6 +1,0 @@
-rules:
-  unpinned-uses:
-    config:
-      policies:
-        # Invalid: lol should be one of *, `lol/...` or `lol/*`
-        "lol": "any"

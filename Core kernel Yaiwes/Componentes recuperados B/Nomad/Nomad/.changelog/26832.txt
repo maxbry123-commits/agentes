@@ -1,3 +1,0 @@
-```release-note:bug
-csi: Fixed a bug where multiple node plugin RPCs could be in-flight for a single volume
-```

@@ -1,3 +1,0 @@
-```release-note:feature
-**Stateful Deployments:** Nomad now supports stateful deployments when using dynamic host volumes.
-```

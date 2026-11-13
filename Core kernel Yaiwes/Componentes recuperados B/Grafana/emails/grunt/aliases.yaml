@@ -1,4 +1,0 @@
-default:
-  - 'assemble'
-  - 'replace'
-  - 'copy'

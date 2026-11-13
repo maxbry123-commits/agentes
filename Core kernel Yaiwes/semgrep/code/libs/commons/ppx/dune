@@ -1,8 +1,0 @@
-(library
- (public_name commons.ppx)
- (name ppx_commons)
- (kind ppx_deriver)
- (libraries
-   ppxlib
-   commons
- ))

@@ -1,1 +1,0 @@
-SchemathesisConfig(projects=ProjectsConfig(default=ProjectConfig(phases=PhasesConfig(fuzzing=FuzzingPhaseConfig(extra_data_sources=ExtraDataSourcesConfig(responses=False))))))

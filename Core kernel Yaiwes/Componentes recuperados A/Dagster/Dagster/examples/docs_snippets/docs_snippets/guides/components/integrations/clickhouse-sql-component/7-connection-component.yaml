@@ -1,7 +1,0 @@
-type: dagster_clickhouse.ClickhouseQueryComponent
-
-attributes:
-  host: localhost
-  port: 9000
-  user: default
-  password: ""

@@ -1,3 +1,0 @@
-```release-note:bug
-windows: Fixed a bug where agents would not gracefully shut down on Ctrl-C
-```

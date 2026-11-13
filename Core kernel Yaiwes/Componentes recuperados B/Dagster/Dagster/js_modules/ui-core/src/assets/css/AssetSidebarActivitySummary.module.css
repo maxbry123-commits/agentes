@@ -1,8 +1,0 @@
-.removeTableBorderOuter {
-  max-width: 100%;
-  overflow: hidden;
-}
-.removeTableBorderInner {
-  margin: -1px;
-  overflow-x: auto;
-}

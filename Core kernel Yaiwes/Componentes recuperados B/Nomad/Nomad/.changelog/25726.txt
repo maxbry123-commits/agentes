@@ -1,3 +1,0 @@
-```release-note:bug
-scheduler: Fixed a bug where draining a node with canaries could result in a stuck deployment
-```

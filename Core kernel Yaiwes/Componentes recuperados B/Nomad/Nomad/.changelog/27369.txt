@@ -1,3 +1,0 @@
-```release-note:improvement
-cli: add `-json-output` and `-t` flags to `nomad job plan` for structured plan output
-```

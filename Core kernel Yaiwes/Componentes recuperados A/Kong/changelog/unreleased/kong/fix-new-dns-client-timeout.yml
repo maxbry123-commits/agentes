@@ -1,3 +1,0 @@
-message: Fixed an issue where the new DNS client did not correctly handle the timeout option in resolv.conf.
-type: bugfix
-scope: Core

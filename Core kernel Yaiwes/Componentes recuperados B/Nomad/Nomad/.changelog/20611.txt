@@ -1,3 +1,0 @@
-```release-note:improvement
-consul/connect: Attempt autodetection of podman task driver for Connect gateways
-```

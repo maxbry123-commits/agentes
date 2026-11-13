@@ -1,3 +1,0 @@
-```release-note:improvement
-wi: new API endpoint for listing workload-attached ACL policies
-```

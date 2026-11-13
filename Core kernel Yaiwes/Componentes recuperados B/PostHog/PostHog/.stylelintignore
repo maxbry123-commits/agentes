@@ -1,7 +1,0 @@
-frontend/dist/
-common/tailwind/
-common/mosaic/storybook
-services/mcp/src/ui-apps/styles/tailwind.css
-node_modules/**
-frontend/node_modules/**
-products/**/node_modules/**

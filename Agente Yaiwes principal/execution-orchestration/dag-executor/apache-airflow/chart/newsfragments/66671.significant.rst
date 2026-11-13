@@ -1,3 +1,0 @@
-All deprecated fields under ``workers`` section has been removed.
-
-Use ``workers.celery`` or ``workers.kubernetes`` instead.

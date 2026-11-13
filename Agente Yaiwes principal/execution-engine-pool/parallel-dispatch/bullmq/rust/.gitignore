@@ -1,5 +1,0 @@
-/target
-Cargo.lock
-
-# Copied Lua scripts (from rawScripts/)
-src/commands/

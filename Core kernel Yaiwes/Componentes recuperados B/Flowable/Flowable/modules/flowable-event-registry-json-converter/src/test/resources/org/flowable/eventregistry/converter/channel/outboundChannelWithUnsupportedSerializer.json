@@ -1,6 +1,0 @@
-{
-  "key": "ymlOutbound",
-  "channelType": "outbound",
-  "type": "jms",
-  "serializerType": "yml"
-}

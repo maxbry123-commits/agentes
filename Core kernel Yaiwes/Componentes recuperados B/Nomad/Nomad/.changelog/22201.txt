@@ -1,3 +1,0 @@
-```release-note:improvement
-jobspec: Add a schedule{} block for time based task execution (Enterprise)
-```

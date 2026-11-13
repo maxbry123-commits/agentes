@@ -1,6 +1,0 @@
-TRADE CONFIRMATION
-Confirmation: TRADE-1234ABCD
-Date: 2025-09-12
-Symbol: AMZN
-Action: BUY
-Quantity: 30

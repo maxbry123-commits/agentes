@@ -1,9 +1,0 @@
-type: graph
-steps:
-  - id: build
-    run: echo build
-
-  - id: deploy
-    depends:
-      step: build
-    run: echo deploy

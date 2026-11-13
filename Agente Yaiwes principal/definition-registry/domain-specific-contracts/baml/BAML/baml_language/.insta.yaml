@@ -1,5 +1,0 @@
-# https://insta.rs/docs/settings/
-behavior:
-  test:
-    # Options: auto, cargo-test, nextest
-    runner: "nextest"

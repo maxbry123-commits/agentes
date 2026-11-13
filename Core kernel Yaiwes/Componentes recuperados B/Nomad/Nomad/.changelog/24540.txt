@@ -1,3 +1,0 @@
-```release-note:security
-security: Added more host environment variables to the default deny list for tasks
-```

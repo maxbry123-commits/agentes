@@ -1,3 +1,0 @@
-```release-note:improvement
-reporting (Enterprise): Include product usage metrics with license utilization reports
-```

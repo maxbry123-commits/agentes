@@ -1,4 +1,0 @@
-# I cannot disable napi-derive's typedef
-ignore.d.ts
-lang/*.d.ts
-.tsimp

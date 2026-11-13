@@ -1,7 +1,0 @@
-{
-  "status": "error",
-  "error": {
-    "category": "unsupported_feature",
-    "code": "unsupported_responses_max_output_tokens"
-  }
-}

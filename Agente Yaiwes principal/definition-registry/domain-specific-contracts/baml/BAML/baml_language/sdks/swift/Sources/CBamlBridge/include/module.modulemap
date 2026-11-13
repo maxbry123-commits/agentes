@@ -1,4 +1,0 @@
-module CBamlBridge {
-    header "baml_cffi.h"
-    export *
-}

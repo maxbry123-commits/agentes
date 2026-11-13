@@ -1,3 +1,0 @@
-```release-note:bug
-client: Fixed bug where drained batch jobs would not be rescheduled if no eligible nodes were immediately available
-```

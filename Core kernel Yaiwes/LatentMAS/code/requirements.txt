@@ -1,6 +1,0 @@
-transformers
-torch
-numpy
-tqdm
-accelerate
-datasets

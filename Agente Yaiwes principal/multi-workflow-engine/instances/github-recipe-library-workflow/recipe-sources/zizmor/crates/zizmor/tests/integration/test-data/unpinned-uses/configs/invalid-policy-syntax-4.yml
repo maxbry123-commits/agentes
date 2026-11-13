@@ -1,6 +1,0 @@
-rules:
-  unpinned-uses:
-    config:
-      policies:
-        # Invalid: * must be alone in repo position
-        "foo/b*r": "any"

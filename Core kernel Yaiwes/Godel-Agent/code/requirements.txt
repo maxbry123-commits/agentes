@@ -1,5 +1,0 @@
-numpy
-tqdm
-pandas
-openai==1.2.0
-backoff

@@ -1,3 +1,0 @@
-```release-note:bug
-dynamic host volumes: Fixed a bug where allocations claiming host volumes with the per_alloc flag would not prevent the volume from being deleted
-```

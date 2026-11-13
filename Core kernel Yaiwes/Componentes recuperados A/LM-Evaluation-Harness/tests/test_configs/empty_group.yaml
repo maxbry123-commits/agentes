@@ -1,5 +1,0 @@
-# Group with no task list — edge case.
-group: empty_group
-aggregate_metric_list:
-  - metric: acc
-    weight_by_size: true

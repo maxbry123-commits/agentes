@@ -1,6 +1,0 @@
-(
-    r"""Parenthesized module docstring."""
-    """ Concatenated without allocating at runtime."""
-); import os
-
-type HeaderAlias[T] = list[T]

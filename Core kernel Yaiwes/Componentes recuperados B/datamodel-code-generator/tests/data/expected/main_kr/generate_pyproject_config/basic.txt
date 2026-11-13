@@ -1,4 +1,0 @@
-[tool.datamodel-codegen]
-input = "schema.yaml"
-output = "model.py"
-

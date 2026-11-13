@@ -1,3 +1,0 @@
-```release-note:improvement
-agent: Added support for systemd readiness notifications
-```

@@ -1,6 +1,0 @@
-apache-hamilton
-apache-hamilton[visualization]
-numpy
-pandas
-pyarrow
-scikit-learn

@@ -1,3 +1,0 @@
-```release-note:bug
-exec: Fixed a bug in `alloc exec` where closing websocket streams could cause a panic
-```

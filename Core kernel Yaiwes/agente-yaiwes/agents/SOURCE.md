@@ -1,2 +1,0 @@
-# agents
-REF → ../../agents

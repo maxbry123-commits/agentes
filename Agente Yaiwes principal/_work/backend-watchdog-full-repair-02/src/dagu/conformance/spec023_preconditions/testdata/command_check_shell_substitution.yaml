@@ -1,6 +1,0 @@
-working_dir: .
-steps:
-  - id: write
-    preconditions:
-      - condition: test "$(printf command)" = command
-    run: printf '%s\n' command > command-check.txt

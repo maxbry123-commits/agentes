@@ -1,4 +1,0 @@
----
-fixes:
-  - |
-    Avoid overwriting local contexts when applying the retry decorator.

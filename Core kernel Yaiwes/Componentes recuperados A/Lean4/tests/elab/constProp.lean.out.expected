@@ -1,3 +1,0 @@
-Val.bool true : Val
-0 : Val
-constProp.lean:659:0-659:5: warning: using 'exit' to interrupt Lean

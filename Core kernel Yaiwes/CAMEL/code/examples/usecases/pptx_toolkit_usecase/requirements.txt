@@ -1,3 +1,0 @@
-camel-ai[all]==0.2.80
-streamlit
-python-pptx

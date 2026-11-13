@@ -1,5 +1,0 @@
-[run]
-source =
-    instructor/
-omit =
-    instructor/cli/*

@@ -1,3 +1,0 @@
-beginEndAsMacro.lean:18:2-18:5: error: unsolved goals
-x : Nat
-⊢ x = 0 + x

@@ -1,8 +1,0 @@
-ruleDirs:
-  - .ci/ast-grep/rules
-
-testConfigs:
-  - testDir: .ci/ast-grep/tests
-
-utilDirs:
-  - .ci/ast-grep/common

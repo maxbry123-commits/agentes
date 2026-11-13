@@ -1,8 +1,0 @@
-{
-  "operation": "error",
-  "body": {
-    "error": {
-      "type": "server_error"
-    }
-  }
-}

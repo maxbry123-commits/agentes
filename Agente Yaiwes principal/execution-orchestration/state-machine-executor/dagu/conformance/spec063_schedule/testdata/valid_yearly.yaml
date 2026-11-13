@@ -1,4 +1,0 @@
-schedule: "@yearly"
-steps:
-  - id: noop
-    run: "true"

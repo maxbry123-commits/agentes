@@ -1,5 +1,0 @@
-include: _default_greekmmlu_template_yaml
-tag: greekmmlu_social_sciences_tasks
-task: greekmmlu_geography_secondary_school
-task_alias: Geography_Secondary_School
-dataset_name: Geography_Secondary_School

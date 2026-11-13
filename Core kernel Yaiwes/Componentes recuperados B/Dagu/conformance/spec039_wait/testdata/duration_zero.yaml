@@ -1,4 +1,0 @@
-steps:
-  - action: wait.duration
-    with:
-      duration: 0s

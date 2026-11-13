@@ -1,1 +1,0 @@
-def basic := 0

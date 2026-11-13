@@ -1,2 +1,0 @@
-id fun x => x + 1 : Nat → Nat
-id fun x => x + 1 : Nat → Nat

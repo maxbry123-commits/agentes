@@ -1,3 +1,0 @@
-```release-note:bug
-auth: Fixed a bug where `tls.verify_server_hostname=false` was not respected, leading to authentication failures between Nomad agents
-```

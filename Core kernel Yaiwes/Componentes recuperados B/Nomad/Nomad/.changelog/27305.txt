@@ -1,3 +1,0 @@
-```release-note:bug
-client: Fixed generation of the "NOMAD_ALLOC_ADDR_" environment variable when using static port assignments
-```

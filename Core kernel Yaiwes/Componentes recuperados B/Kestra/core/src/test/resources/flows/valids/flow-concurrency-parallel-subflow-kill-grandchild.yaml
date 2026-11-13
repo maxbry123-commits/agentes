@@ -1,7 +1,0 @@
-id: flow-concurrency-parallel-subflow-kill-grandchild
-namespace: io.kestra.tests
-
-tasks:
-  - id: sleep
-    type: io.kestra.plugin.core.flow.Sleep
-    duration: PT10S

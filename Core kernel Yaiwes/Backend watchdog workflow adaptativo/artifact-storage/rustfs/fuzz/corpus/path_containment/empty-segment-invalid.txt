@@ -1,4 +1,0 @@
-valid-bucket
-a/b/c
-
-empty_segment

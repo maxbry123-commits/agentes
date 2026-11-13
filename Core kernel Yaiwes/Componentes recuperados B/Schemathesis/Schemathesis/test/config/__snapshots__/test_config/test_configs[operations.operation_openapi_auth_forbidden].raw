@@ -1,6 +1,0 @@
-Error in [operations.0.auth] section:
-  Unknown properties:
-
-  - 'openapi'
-
-Valid properties for [operations.0.auth] are: 'basic'.

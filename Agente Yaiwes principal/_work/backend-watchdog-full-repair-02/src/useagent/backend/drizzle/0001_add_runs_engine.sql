@@ -1,1 +1,0 @@
-ALTER TABLE "runs" ADD COLUMN "engine" text DEFAULT 'mock' NOT NULL;

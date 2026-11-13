@@ -1,4 +1,0 @@
-type: invalid
-steps:
-  - name: work
-    run: echo work

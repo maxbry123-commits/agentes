@@ -1,3 +1,0 @@
-```release-note:improvement
-consul: constraint for minimum version of Consul increased to 1.8.0
-```

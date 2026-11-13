@@ -1,6 +1,0 @@
-def x : IO Nat :=
-do
-  IO.println (toString "a")
-  have a : Nat := 1
-  IO.println (toString "b")
-  pure a

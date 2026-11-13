@@ -1,3 +1,0 @@
-```release-note:bug
-acl: Fixed a bug where ACL policies would silently accept invalid or duplicate blocks
-```

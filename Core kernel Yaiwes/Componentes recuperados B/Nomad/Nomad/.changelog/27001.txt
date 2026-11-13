@@ -1,3 +1,0 @@
-```release-note:security
-job: Disallow tasks using the name "alloc" which breaks inter-task filesystem isolation
-```

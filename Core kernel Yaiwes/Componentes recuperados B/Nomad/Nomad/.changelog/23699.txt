@@ -1,3 +1,0 @@
-```release-note:improvement
-cli: Added option to return original HCL in `job inspect` command
-```

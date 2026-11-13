@@ -1,8 +1,0 @@
-{
-  "models": [
-    "GeneratedUser"
-  ],
-  "validated": {
-    "name": "Alice"
-  }
-}

@@ -1,3 +1,0 @@
-"""
-Worker classes for Azure
-"""

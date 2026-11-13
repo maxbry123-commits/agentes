@@ -1,6 +1,0 @@
-working_dir: .
-steps:
-  - action: wait.file
-    with:
-      path: ready.txt
-      poll_interval: 100ms

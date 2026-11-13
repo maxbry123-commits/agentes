@@ -1,9 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: gatekeeper-test-playground
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: gatekeeper-test-playground-scoped

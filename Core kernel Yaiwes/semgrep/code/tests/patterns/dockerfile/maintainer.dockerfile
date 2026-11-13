@@ -1,4 +1,0 @@
-# MATCH:
-MAINTAINER nobody
-
-MAINTAINER bob

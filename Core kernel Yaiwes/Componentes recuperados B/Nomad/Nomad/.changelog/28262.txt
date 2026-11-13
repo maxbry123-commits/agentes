@@ -1,3 +1,0 @@
-```release-note:bug
-ui: Fixed SSO sign in display not displaying when SSO enabled
-```

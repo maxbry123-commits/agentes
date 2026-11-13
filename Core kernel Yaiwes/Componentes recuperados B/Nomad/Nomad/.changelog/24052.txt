@@ -1,3 +1,0 @@
-```release-note:bug
-task: adds node.pool attribute to interpretable values in task env
-```

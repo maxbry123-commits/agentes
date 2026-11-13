@@ -1,3 +1,0 @@
-```release-note:bug
-agent: fix api.Job.Version used in job PUT actions
-```

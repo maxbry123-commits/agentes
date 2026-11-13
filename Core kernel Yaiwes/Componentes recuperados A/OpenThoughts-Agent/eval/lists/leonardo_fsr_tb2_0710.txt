@@ -1,3 +1,0 @@
-penfever/a3-rl-SankalpKJ_swesmith-oracle-filtered-40-8B
-DCAgent/a1-nl2bash
-DCAgent/a1-nemotron_csharp

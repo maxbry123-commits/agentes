@@ -1,7 +1,0 @@
-{
-  "cniVersion": "1.0.0",
-  "name": "test-loopback-conflist",
-  "plugins": [{
-    "type": "loopback"
-  }]
-}

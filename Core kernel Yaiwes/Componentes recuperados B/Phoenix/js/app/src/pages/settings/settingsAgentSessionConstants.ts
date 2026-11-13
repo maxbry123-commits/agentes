@@ -1,1 +1,0 @@
-export const SETTINGS_AGENT_SESSIONS_PAGE_SIZE = 20;

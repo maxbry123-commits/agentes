@@ -1,3 +1,0 @@
-```release-note:improvement
-host volumes: Add -force flag to volume delete command for removing volumes from GC'd nodes
-```

@@ -1,6 +1,0 @@
-rules:
-  unpinned-uses:
-    config:
-      policies:
-        # Valid use pattern, but invalid policy
-        "foo/*": "does not exist"

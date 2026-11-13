@@ -1,3 +1,0 @@
-test_expect_success 'grep reading from stdin redirect is not flagged' '
-	grep pattern <input
-'

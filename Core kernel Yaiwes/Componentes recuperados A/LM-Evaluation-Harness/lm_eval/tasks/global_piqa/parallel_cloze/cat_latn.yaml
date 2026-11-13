@@ -1,3 +1,0 @@
-dataset_name: cat_latn
-include: _template
-task: global_piqa_parallel_cloze_cat_latn

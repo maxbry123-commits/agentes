@@ -1,3 +1,0 @@
-test_expect_success 'grep receiving pipe input is not flagged' '
-	cmd | grep pattern
-'

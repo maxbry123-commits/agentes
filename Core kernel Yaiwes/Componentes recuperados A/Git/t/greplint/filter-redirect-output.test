@@ -1,3 +1,0 @@
-test_expect_success 'grep with output redirect is not flagged' '
-	grep pattern file >output
-'

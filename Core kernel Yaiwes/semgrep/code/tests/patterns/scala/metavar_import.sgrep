@@ -1,3 +1,0 @@
-import $A._
-import $B.Thingy
-import $C.{ $X => $Y }

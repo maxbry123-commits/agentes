@@ -1,3 +1,0 @@
-```release-note:bug
-reconciler: fixes a bug where stopping a job does not stop all allocations
-```

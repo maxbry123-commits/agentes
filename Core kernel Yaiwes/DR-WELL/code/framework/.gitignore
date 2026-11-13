@@ -1,9 +1,0 @@
-__pycache__
-.DS_Store
-runs*
-runs/episode_*
-runs/universe/snapshots
-.env
-.env.*
-.vscode/
-*.md

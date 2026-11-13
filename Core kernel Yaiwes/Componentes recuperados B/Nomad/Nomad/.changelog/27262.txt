@@ -1,3 +1,0 @@
-```release-note:bug
-deployment: Fixed a bug where deploying a system job could panic the leader
-```

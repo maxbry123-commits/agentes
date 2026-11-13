@@ -1,3 +1,0 @@
-```release-note:bug
-logs: skip logging SIGPIPE
-```

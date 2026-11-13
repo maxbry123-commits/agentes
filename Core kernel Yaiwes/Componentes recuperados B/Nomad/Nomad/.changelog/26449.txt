@@ -1,3 +1,0 @@
-```release-note:improvement
-consul connect: Allow cni/* network mode; use at your own risk
-```

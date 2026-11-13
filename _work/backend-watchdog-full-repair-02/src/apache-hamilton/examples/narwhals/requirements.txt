@@ -1,4 +1,0 @@
-apache-hamilton[visualization]
-narwhals
-pandas
-polars

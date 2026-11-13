@@ -1,3 +1,0 @@
-```release-note:improvement
-ui: added a Pack badge to the jobs index page for jobs run via Nomad Pack
-```

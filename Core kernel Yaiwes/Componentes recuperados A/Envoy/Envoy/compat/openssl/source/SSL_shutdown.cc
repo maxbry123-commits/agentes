@@ -1,8 +1,0 @@
-#include <openssl/ssl.h>
-#include <ossl.h>
-
-
-int SSL_shutdown(SSL *ssl) {
-  ossl.ossl_ERR_clear_error();
-  return ossl.ossl_SSL_shutdown(ssl);
-}

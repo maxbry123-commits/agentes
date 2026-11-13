@@ -1,3 +1,0 @@
-```release-note:improvement
-secrets: Adds nomad job ID and namespace to plugin environment
-```

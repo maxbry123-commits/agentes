@@ -1,9 +1,0 @@
-{
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "MultiType",
-    "type": ["object", "string"],
-    "properties": {
-        "name": { "type": "string" }
-    },
-    "unevaluatedProperties": false
-}

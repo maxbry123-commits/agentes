@@ -1,3 +1,0 @@
-```release-note:improvement
-identity: Allow ACL policies to be applied to a namespace
-```

@@ -1,3 +1,0 @@
-```release-note:bug
-api: return proper 403 message when getting variables instead of swallowing error
-```

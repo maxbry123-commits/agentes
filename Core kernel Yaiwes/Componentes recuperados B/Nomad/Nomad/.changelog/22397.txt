@@ -1,3 +1,0 @@
-```release-note:improvement
-api: Add support for setting Notes field for Consul health checks
-```

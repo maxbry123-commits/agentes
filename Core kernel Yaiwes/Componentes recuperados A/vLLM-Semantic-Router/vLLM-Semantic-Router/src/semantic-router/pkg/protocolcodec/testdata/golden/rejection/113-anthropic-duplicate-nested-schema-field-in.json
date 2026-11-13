@@ -1,4 +1,0 @@
-{
-  "operation": "request",
-  "body_json": "{\"model\":\"client-model\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}],\"tools\":[{\"type\":\"custom\",\"name\":\"lookup\",\"input_schema\":{\"type\":\"object\",\"type\":\"array\"}}]}"
-}

@@ -1,2 +1,0 @@
-bucket
-nested/path.txt

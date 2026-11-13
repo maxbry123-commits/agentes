@@ -1,3 +1,0 @@
-```release-note:bug
-state: Fixed a bug where purged jobs would not get new deployments
-```

@@ -1,8 +1,0 @@
-working_dir: .
-env:
-  - SERVICE=api
-steps:
-  - name: write
-    run: |
-      SERVICE=shell
-      printf '%s %s\n' "$SERVICE" "${env.SERVICE}" > shell-boundary.txt

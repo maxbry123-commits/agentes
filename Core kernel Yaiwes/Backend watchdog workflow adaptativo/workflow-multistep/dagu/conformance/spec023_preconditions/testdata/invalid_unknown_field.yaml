@@ -1,8 +1,0 @@
-working_dir: .
-preconditions:
-  - condition: ready
-    expected: ready
-    actual: ready
-steps:
-  - id: main
-    run: "true"

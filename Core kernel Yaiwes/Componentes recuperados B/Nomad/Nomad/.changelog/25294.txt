@@ -1,3 +1,0 @@
-```release-note:bug
-hcl: Avoid panics by checking null values on durations
-```

@@ -1,3 +1,0 @@
-```release-note:bug
-task schedule: Fixed a bug where schedules wrongly errored as invalid on the last day of the month
-```

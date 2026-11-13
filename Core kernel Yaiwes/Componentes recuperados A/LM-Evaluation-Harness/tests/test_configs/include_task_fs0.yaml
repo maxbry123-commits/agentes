@@ -1,6 +1,0 @@
-# Task demonstrating include inheritance
-
-task: include_task_fs0
-include: include_base.yaml
-num_fewshot: 0
-description: "Zero-shot with inheritance"

@@ -1,3 +1,0 @@
-match some #[1, 2] with
-| some #[x, y] => x
-| x => 0 : Nat

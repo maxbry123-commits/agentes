@@ -1,2 +1,0 @@
-apache-hamilton
-# apache-hamilton[visualization]   # if visualization is desired

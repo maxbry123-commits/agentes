@@ -1,3 +1,0 @@
-```release-note:bug
-ui: Fixed version diff display and missing deployment version numbers
-```

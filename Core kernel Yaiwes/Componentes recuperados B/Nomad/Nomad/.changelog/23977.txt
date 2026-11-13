@@ -1,3 +1,0 @@
-```release-note:improvement
-keyring: Stored wrapped data encryption keys in Raft
-```

@@ -1,8 +1,0 @@
-{
-  "key": "ymlInbound",
-  "channelType": "inbound",
-  "type": "jms",
-  "deserializerType": "yml",
-  "channelEventKeyDetection": {
-  }
-}

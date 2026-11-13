@@ -1,3 +1,0 @@
-```release-note:improvement
-alloc: don't restore when allocDir is inaccessible
-```

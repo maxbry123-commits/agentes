@@ -1,3 +1,0 @@
-{"vars": {"name": "Eve"}, "assert": [{"type": "contains", "value": "Eve"}]}
-{"vars": {"name": "Frank"}, "assert": [{"type": "contains", "value": "Frank"}]}
-{"vars": {"name": "Grace"}, "assert": [{"type": "contains", "value": "Grace"}]}

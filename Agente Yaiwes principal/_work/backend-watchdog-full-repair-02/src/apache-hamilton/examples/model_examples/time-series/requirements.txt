@@ -1,5 +1,0 @@
-apache-hamilton
-lightgbm
-numpy
-pandas
-scikit-learn

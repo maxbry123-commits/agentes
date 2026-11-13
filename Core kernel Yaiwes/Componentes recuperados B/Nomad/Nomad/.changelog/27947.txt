@@ -1,3 +1,0 @@
-```release-note:improvement
-vault: adds token renewal retries
-```

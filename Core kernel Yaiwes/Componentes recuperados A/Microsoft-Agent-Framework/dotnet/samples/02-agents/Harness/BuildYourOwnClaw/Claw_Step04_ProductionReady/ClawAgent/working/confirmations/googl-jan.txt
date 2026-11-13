@@ -1,6 +1,0 @@
-﻿TRADE CONFIRMATION
-Confirmation: TRADE-EE11FF22
-Date: 2025-01-30
-Symbol: GOOGL
-Action: BUY
-Quantity: 25

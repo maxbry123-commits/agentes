@@ -1,3 +1,0 @@
-"""Module docstring after form-feed whitespace."""
-
-import os

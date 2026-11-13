@@ -1,1 +1,0 @@
-export { TriggerDetails } from './TriggerDetails';

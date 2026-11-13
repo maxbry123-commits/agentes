@@ -1,1 +1,0 @@
-ALTER TABLE "runs" ADD COLUMN "memory_scope" text DEFAULT 'org' NOT NULL;

@@ -1,6 +1,0 @@
-unclosed-string
-type Alias = "unterminated
-
----CASE---
-unclosed-bracket
-type Alias = (

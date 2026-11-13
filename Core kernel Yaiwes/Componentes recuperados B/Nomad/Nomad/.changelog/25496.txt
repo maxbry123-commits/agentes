@@ -1,3 +1,0 @@
-```release-note:improvement
-rawexec: add support for setting the task user on windows platform
-```

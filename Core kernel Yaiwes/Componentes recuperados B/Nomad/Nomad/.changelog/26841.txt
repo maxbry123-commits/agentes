@@ -1,3 +1,0 @@
-```release-note:improvement
-cli: Add -preserve-resources flag for keeping resource block when updating jobs
-```

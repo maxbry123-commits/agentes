@@ -1,6 +1,0 @@
-{
-  "groups": {
-    "admins": ["alice", "charlie"],
-    "editors": ["bob", "charlie"]
-  }
-}

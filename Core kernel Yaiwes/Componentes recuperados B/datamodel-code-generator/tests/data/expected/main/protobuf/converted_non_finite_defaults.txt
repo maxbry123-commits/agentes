@@ -1,6 +1,0 @@
-- .inf
-- -.inf
-- .nan
-- .inf
-- -.inf
-- .nan

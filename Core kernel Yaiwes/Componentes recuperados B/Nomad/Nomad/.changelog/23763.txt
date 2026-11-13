@@ -1,3 +1,0 @@
-```release-note:bug
-identity: Fixed a bug where a missing default task identity could panic the leader
-```

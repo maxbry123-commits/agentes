@@ -1,3 +1,0 @@
-```release-note:improvement
-cli: Added help text to `acl bootstrap` about reading the initial token from a file
-```

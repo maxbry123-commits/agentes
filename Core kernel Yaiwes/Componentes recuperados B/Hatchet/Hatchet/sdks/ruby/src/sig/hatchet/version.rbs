@@ -1,3 +1,0 @@
-module Hatchet
-  VERSION: String
-end

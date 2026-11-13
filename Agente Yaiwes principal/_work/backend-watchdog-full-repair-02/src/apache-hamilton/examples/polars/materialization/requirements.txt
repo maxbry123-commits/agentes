@@ -1,4 +1,0 @@
-apache-hamilton
-polars
-xlsx2csv  # for excel data loader
-xlsxwriter  # Excel export requires 'xlsxwriter'

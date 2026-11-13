@@ -1,3 +1,0 @@
-```release-note:bug
-identity: fix bug where client identity failed to renew after server upgrade to >=1.11.0
-```

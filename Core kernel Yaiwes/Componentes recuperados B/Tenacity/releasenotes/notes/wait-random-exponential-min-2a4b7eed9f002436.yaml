@@ -1,4 +1,0 @@
----
-fixes:
-  - |
-    Respects `min` arg for `wait_random_exponential`

@@ -1,1 +1,0 @@
-ALTER TABLE alert ADD COLUMN filter JSONB;

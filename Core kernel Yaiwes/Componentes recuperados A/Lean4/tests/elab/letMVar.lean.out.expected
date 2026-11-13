@@ -1,2 +1,0 @@
-def tst : Nat → Nat :=
-fun x => x + 1 + (x + 1)

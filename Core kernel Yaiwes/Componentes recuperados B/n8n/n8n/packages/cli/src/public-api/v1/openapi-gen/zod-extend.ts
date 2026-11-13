@@ -1,8 +1,0 @@
-import { extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
-import { z } from 'zod';
-
-// Must run before any `.openapi()` call anywhere in the process. `extendZodWithOpenApi`
-// monkey-patches the shared `zod` module's prototypes, so schemas imported from
-// `@n8n/api-types` still pick up `.openapi()` once this has run once here, in the generator,
-// in the same process.
-extendZodWithOpenApi(z);

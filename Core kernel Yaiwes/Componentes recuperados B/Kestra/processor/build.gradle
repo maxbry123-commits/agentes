@@ -1,4 +1,0 @@
-dependencies {
-    // Kestra
-    api project(':model')
-}

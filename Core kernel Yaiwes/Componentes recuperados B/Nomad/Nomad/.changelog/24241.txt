@@ -1,3 +1,0 @@
-```release-note:bug
-heartbeat: Fixed a bug where failed nodes would not be marked down
-```

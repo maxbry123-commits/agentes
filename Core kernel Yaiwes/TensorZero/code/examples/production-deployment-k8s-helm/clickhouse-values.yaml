@@ -1,7 +1,0 @@
-clickhouse:
-  defaultUser:
-    password: "tensorzero"
-    allowExternalAccess: true
-  image:
-    repository: "altinity/clickhouse-server"
-    tag: "24.8.14.10459.altinitystable"

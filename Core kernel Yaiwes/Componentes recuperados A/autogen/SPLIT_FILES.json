@@ -1,9 +1,0 @@
-[
-  {
-    "repo": "autogen",
-    "path": "dotnet/samples/dev-team/seed-memory/azure-well-architected.pdf",
-    "chunks_dir": "autogen/dotnet/samples/dev-team/seed-memory/azure-well-architected.pdf.chunks",
-    "bytes": 31534925,
-    "chunk_bytes": 8388608
-  }
-]

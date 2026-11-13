@@ -1,3 +1,0 @@
-```release-note:improvement
-quota (Enterprise): Allow CPU cores to be configured within a quota
-```

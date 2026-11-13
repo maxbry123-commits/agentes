@@ -1,3 +1,0 @@
-match $X:
-  case str():
-    print("oh no")

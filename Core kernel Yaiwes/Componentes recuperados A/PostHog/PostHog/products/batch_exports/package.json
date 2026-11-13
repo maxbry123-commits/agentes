@@ -1,6 +1,0 @@
-{
-    "name": "@posthog/products-batch-exports",
-    "scripts": {
-        "backend:test": "pytest -c ../../pytest.ini --rootdir ../.. backend/tests backend/api/test -v --tb=short"
-    }
-}

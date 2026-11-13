@@ -1,3 +1,0 @@
-```release-note:improvement
-oidc: add support for array-based OIDC claims
-```

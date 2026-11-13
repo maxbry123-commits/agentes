@@ -1,3 +1,0 @@
-```release-note:bug
-scheduler: Fix bug where forced garbage collection does not ignore GC thresholds
-```

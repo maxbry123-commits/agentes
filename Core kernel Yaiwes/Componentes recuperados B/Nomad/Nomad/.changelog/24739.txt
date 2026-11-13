@@ -1,3 +1,0 @@
-```release-note:bug
-taskrunner: fix panic when a task with dynamic user is recovered
-```

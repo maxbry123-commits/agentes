@@ -1,1 +1,0 @@
-SchemathesisConfig(projects=ProjectsConfig(default=ProjectConfig(request_cert='/path/to/client-cert.crt', request_cert_key='/path/to/private-key.key')))

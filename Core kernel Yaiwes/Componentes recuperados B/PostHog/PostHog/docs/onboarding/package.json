@@ -1,7 +1,0 @@
-{
-    "name": "@posthog/docs-onboarding",
-    "peerDependencies": {
-        "@types/react": "*",
-        "react": "*"
-    }
-}

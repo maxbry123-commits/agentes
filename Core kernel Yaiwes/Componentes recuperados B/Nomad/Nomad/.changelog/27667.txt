@@ -1,3 +1,0 @@
-```release-note:bug
-tls: fix parsing of combined key files when creating tls expiry metric
-```

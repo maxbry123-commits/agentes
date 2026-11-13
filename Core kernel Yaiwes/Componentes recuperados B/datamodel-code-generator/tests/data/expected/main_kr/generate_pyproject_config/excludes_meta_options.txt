@@ -1,3 +1,0 @@
-[tool.datamodel-codegen]
-input = "schema.yaml"
-

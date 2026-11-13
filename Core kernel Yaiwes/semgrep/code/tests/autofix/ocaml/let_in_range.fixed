@@ -1,5 +1,0 @@
-(* bugfix: `let` expressions previously had the wrong range, which led to
- * autofix bugs *)
-(* MATCH: *)
-let x = new_value in x + 1
-

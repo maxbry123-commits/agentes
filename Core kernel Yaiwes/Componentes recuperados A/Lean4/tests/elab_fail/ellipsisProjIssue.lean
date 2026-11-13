@@ -1,1 +1,0 @@
-#check Nat.add ...succ

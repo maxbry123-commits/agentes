@@ -1,6 +1,0 @@
-*.node
-*.internal.js
-*.tgz
-temp.d.ts
-*.wasm
-npm/

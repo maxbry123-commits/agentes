@@ -1,3 +1,0 @@
-```release-note:improvement
-cli: Improved options autocompletions for various commands
-```

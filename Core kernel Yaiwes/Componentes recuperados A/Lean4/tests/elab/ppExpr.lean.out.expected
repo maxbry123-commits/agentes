@@ -1,3 +1,0 @@
-#0
-fun a => a
-id (@id Nat (id Nat.zero))

@@ -1,3 +1,0 @@
-```release-note:improvement
-ui: Added a UI for creating, editing and deleting Sentinel Policies
-```

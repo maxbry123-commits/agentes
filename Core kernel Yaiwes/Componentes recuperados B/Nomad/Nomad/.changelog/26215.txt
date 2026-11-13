@@ -1,3 +1,0 @@
-```release-note:improvement
-metrics: Added node_pool label to blocked_evals metrics
-```

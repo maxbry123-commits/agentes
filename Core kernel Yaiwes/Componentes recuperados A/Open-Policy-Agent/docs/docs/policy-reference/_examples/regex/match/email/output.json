@@ -1,7 +1,0 @@
-{
-  "example_email_1": "foo [at] example.com",
-  "example_email_2": "foo@example.com",
-  "match_1": false,
-  "match_2": true,
-  "match_3": false
-}

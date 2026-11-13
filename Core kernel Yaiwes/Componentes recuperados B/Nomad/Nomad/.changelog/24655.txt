@@ -1,3 +1,0 @@
-```release-note:bug
-cli: Ensure the `operator autopilot health` command only outputs JSON when the `json` flag is supplied
-```

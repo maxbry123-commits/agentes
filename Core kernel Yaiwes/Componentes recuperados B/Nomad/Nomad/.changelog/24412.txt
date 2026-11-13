@@ -1,3 +1,0 @@
-```release-note:bug
-fsm: Fix bug in snapshot restore that could partially wipe state
-```

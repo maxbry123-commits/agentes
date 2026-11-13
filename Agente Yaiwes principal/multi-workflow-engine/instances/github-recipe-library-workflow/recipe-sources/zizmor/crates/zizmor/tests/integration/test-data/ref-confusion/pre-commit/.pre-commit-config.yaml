@@ -1,5 +1,0 @@
-repos:
-  - repo: https://github.com/woodruffw/gha-hazmat
-    rev: confusable
-    hooks:
-      - id: some-hook

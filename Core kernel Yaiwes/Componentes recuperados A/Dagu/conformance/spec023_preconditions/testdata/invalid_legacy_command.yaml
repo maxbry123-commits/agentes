@@ -1,6 +1,0 @@
-working_dir: .
-preconditions:
-  - command: test -f ready.flag
-steps:
-  - id: main
-    run: "true"

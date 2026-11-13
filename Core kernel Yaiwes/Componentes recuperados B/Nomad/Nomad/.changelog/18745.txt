@@ -1,3 +1,0 @@
-```release-note:improvement
-config: Add `go-netaddrs` support to `server_join.retry_join`
-```

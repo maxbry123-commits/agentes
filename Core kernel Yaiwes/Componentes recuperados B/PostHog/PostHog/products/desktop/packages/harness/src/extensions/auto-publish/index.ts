@@ -1,1 +1,0 @@
-export { createAutoPublishExtension } from "./extension";

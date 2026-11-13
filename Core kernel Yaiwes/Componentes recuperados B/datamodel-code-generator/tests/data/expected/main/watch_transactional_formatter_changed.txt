@@ -1,2 +1,0 @@
-# formatter_revision = "transactional"
-value=1

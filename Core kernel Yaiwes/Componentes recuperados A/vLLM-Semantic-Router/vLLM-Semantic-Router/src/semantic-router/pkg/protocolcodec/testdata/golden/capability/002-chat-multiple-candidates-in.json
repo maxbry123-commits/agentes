@@ -1,8 +1,0 @@
-{
-  "operation": "request",
-  "body": {
-    "model": "client-model",
-    "messages": [{"role": "user", "content": "Give two answers."}],
-    "n": 2
-  }
-}

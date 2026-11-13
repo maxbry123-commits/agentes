@@ -1,3 +1,0 @@
-Extract key entities from this text:
-
-{{ text }}

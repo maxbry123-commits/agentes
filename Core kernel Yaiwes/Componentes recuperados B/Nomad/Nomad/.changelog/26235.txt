@@ -1,3 +1,0 @@
-```release-note:bug
-ui: Fixed the error message presented for invalid Variables definitions
-```

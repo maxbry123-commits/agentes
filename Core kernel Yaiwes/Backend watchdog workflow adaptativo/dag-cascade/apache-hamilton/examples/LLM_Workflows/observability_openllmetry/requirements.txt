@@ -1,4 +1,0 @@
-apache-hamilton
-openai
-opentelemetry-instrumentation-openai
-traceloop-sdk

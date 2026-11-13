@@ -1,7 +1,0 @@
-query-filters:
-  - exclude:
-      # catching base exceptions is required
-      id: py/catch-base-exception
-
-paths-ignore:
-  - tests/**/test_*.py

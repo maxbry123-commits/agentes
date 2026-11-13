@@ -1,3 +1,0 @@
-```release-note:bug
-acl: fix rpc permission denied error when using node_pool="all"
-```

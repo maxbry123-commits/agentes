@@ -1,3 +1,0 @@
-```release-note:improvement
-identity: default to RS256 for new workload ids
-```

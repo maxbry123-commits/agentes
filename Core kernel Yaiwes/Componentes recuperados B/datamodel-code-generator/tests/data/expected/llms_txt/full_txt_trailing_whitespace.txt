@@ -1,9 +1,0 @@
-# Example
-
-Source: https://example.test/example/
-
-Line with spaces
-
-Next line
-
----

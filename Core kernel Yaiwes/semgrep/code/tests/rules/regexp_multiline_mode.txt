@@ -1,8 +1,0 @@
-hi
-
-# ruleid: test-regex-multiline-mode
-hello
-
-hello world
-
-oh, hello

@@ -1,7 +1,0 @@
-.rowGrid {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
-  gap: 8px;
-  height: 100%;
-  align-items: center;
-}

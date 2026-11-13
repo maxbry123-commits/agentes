@@ -1,3 +1,0 @@
-message: "Fixed an issue where the error was not thrown when parsing the certificate from vault."
-type: bugfix
-scope: Core

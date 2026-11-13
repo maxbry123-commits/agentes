@@ -1,5 +1,0 @@
-name: cron-test
-schedule: "*/1 * * * *"
-steps:
-  - name: test-step
-    run: echo "hello"

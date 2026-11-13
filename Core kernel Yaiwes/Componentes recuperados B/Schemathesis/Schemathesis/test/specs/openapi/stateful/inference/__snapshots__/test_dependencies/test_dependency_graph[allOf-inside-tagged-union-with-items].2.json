@@ -1,8 +1,0 @@
-[
-  [
-    "Tag",
-    "GET /tags/{resourceArn}",
-    "200",
-    "/tags"
-  ]
-]

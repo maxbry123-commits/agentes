@@ -1,6 +1,0 @@
-{
-  "key": "xmlInboundWithoutKey",
-  "channelType": "inbound",
-  "type": "jms",
-  "deserializerType": "xml"
-}

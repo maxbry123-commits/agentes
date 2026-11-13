@@ -1,3 +1,0 @@
-```release-note:improvement
-task schedule: The task being paused no longer impacts restart attempts
-```

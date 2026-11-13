@@ -1,3 +1,0 @@
-```release-note:improvement
-landlock: check paths exist on setup
-```

@@ -1,3 +1,0 @@
-```release-note:bug
-ui: Actions run from jobs with explicit name properties now work from the web UI
-```

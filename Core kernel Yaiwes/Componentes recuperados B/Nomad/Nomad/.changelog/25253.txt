@@ -1,3 +1,0 @@
-```release-note:bug
-csi: Fixed a CSI ExpandVolume bug where the namespace was left out of the staging path
-```

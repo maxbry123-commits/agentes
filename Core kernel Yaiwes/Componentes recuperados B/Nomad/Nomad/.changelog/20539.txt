@@ -1,3 +1,0 @@
-```release-note:improvement
-ui: Added token.name information to the top nav for ease of operator debugging
-```

@@ -1,3 +1,0 @@
-```release-note:bug
-scheduler: fixes a bug selecting nodes for updated jobs with ephemeral disks when nodepool changes
-```

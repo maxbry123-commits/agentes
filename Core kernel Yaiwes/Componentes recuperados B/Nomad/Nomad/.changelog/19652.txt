@@ -1,3 +1,0 @@
-```release-note:bug
-server: Fix panic when validating non-service reschedule block
-```

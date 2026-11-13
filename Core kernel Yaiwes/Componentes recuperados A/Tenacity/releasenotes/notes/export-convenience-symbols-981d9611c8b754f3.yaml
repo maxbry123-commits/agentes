@@ -1,3 +1,0 @@
----
-features:
-  - Explicitly export convenience symbols from tenacity root module

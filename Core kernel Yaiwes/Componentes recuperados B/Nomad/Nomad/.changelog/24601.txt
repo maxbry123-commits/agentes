@@ -1,3 +1,0 @@
-```release-note:breaking-change
-sentinel: The sentinel apply command now requires the -scope option
-```

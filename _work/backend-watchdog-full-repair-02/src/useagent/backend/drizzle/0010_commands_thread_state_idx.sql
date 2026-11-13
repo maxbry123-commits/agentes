@@ -1,1 +1,0 @@
-CREATE INDEX "idx_commands_thread_state" ON "commands" USING btree ("thread_id","state","created_at");

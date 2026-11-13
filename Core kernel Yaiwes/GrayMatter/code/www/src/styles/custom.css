@@ -1,8 +1,0 @@
-/* GrayMatter docs site — custom styles.
-   Starlight's default theme is kept; only small adjustments live here. */
-
-/* Slightly tighter hero title on the landing page. */
-.hero .sl-inline-code,
-.hero h1 {
-  letter-spacing: -0.02em;
-}

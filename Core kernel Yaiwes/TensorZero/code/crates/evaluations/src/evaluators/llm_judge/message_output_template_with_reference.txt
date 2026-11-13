@@ -1,7 +1,0 @@
-# Generated Output
-
-{}
-
-# Reference Output
-
-{}

@@ -1,3 +1,0 @@
-{"description": "foo", "name": "read-pdf", "config": {"file_type":  "pdf"}}
-{"description": "foo", "name": "read-text", "config": {"file_type":  "text"}}
-{"description": "foo", "name": "input-text", "config": {}}

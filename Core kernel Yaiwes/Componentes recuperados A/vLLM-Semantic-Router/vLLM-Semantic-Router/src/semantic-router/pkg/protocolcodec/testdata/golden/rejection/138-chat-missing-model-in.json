@@ -1,8 +1,0 @@
-{
-  "operation": "request",
-  "body": {
-    "messages": [
-      {"role": "user", "content": "hello"}
-    ]
-  }
-}

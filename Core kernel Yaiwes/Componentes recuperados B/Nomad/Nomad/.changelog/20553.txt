@@ -1,3 +1,0 @@
-```release-note:bug
-core: Fix multiple incorrect type conversion for potential overflows
-```

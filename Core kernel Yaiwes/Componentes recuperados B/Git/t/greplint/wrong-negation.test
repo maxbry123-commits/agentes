@@ -1,3 +1,0 @@
-test_expect_success 'wrong negation of test_grep is flagged' '
-	! test_grep pattern file
-'

@@ -1,5 +1,0 @@
-name = "module_linter"
-defaultTargets = ["ModLinter"]
-
-[[lean_lib]]
-name = "ModLinter"

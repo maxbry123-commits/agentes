@@ -1,4 +1,0 @@
-returncode: 0
-stdout:
-Architecture docs are up to date.
-stderr:

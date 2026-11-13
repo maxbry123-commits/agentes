@@ -1,9 +1,0 @@
-{
-  "type": "object",
-  "properties": {
-    "handler": {
-      "type": "string",
-      "x-python-type": "my.custom.Handler[[str], str]"
-    }
-  }
-}

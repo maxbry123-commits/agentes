@@ -1,3 +1,0 @@
-```release-note:bug
-host volumes: Fixed a bug where volumes with server-terminal allocations could be deleted from clients but not the state store
-```

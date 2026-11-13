@@ -1,3 +1,0 @@
-```release-note:bug
-artifact: Fix artifact inspection when using `file` mode
-```

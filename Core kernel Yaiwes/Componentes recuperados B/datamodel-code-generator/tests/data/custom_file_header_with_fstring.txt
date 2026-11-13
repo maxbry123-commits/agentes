@@ -1,3 +1,0 @@
-f"{runtime_value}"
-
-type HeaderAlias[T] = list[T]

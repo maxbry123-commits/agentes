@@ -1,7 +1,0 @@
-name = "test"
-enableArtifactCache = true
-restoreAllArtifacts = true
-defaultTargets = ["Test"]
-
-[[lean_lib]]
-name = "Test"

@@ -1,4 +1,0 @@
-scrape_configs:
-  - oci_sd_configs:
-      - auth: invalid
-        region: us-ashburn-1

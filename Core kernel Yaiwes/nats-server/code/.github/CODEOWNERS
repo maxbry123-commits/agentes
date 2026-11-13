@@ -1,5 +1,0 @@
-* @nats-io/server
-*.go @nats-io/server-dev
-doc/ @nats-io/server-dev
-test/ @nats-io/server-dev
-locksordering.txt @nats-io/server-dev

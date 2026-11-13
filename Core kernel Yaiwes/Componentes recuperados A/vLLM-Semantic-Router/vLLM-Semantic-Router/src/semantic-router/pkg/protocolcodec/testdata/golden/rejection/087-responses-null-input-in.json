@@ -1,7 +1,0 @@
-{
-  "operation": "request",
-  "body": {
-    "model": "provider-model",
-    "input": null
-  }
-}

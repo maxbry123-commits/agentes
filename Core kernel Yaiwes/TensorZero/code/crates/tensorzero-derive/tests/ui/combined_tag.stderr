@@ -1,5 +1,0 @@
-error: TensorZeroDeserialize: Please split `#[serde(tag = "...")]` into its own attribute
- --> tests/ui/combined_tag.rs:2:1
-  |
-2 | #[serde(tag = "tag", rename_all = "snake_case")]
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

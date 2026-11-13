@@ -1,3 +1,0 @@
-```release-note:security
-ui: Increased the client-side generated OIDC nonce entropy to 256-bit.
-```

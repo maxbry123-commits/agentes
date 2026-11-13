@@ -1,4 +1,0 @@
-include: _default_indicparam_template_yaml
-task: indicparam_marathi
-task_alias: Marathi
-process_docs: !function utils.process_docs_marathi

@@ -1,5 +1,0 @@
-*.egg-info/
-__pycache__
-.venv/
-debug_toggles.json
-needs_resync.txt

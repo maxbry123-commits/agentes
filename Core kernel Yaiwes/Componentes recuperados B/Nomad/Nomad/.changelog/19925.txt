@@ -1,3 +1,0 @@
-```release-note:security
-windows: Remove `LazyDLL` calls for system modules to harden Nomad against attacks from the host
-```

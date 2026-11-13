@@ -1,3 +1,0 @@
-```release-note:improvement
-api: new parameterized dispatch endpoint sends raw HTTP request body as Payload
-```
